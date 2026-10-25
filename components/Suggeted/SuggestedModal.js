@@ -36,6 +36,8 @@ import {
     getSuggestedTaskBypassLabel,
     moveSuggestedTaskToDoneBypassingWorkflow,
 } from './suggestedTaskBypass'
+import { completeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
+
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -132,41 +134,69 @@ export default class SuggestedModal extends Component {
         const { projectId, task, hidePopover, checkBoxId } = this.props
 
         hidePopover()
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-            if (accept) {
-                if (task.userId === tmpTask.userId) {
-                    updateSuggestedTask(projectId, task.id, {
-                        suggestedBy: null,
-                        estimations: { [OPEN_STEP]: estimation },
-                    })
+        updateNewAttachmentsData(projectId, comment)
+            .then(commentWithAttachments => {
+                if (accept) {
+                    if (task.userId === tmpTask.userId) {
+                        updateSuggestedTask(projectId, task.id, {
+                            suggestedBy: null,
+                            estimations: { [OPEN_STEP]: estimation },
+                        })
+                    } else {
+                        updateSuggestedTask(projectId, task.id, {
+                            userId: tmpTask.userId,
+                            userIds: [tmpTask.userId],
+                            currentReviewerId: tmpTask.userId,
+                            suggestedBy: task.creatorId === tmpTask.userId ? null : task.suggestedBy,
+                            estimations: { [OPEN_STEP]: estimation },
+                        })
+                    }
+                    if (comment) {
+                        createObjectMessage(
+                            projectId,
+                            task.id,
+                            commentWithAttachments,
+                            'tasks',
+                            FORDWARD_COMMENT,
+                            null,
+                            null
+                        )
+                    }
                 } else {
-                    updateSuggestedTask(projectId, task.id, {
-                        userId: tmpTask.userId,
-                        userIds: [tmpTask.userId],
-                        currentReviewerId: tmpTask.userId,
-                        suggestedBy: task.creatorId === tmpTask.userId ? null : task.suggestedBy,
-                        estimations: { [OPEN_STEP]: estimation },
-                    })
-                }
-                if (comment) {
-                    createObjectMessage(
-                        projectId,
-                        task.id,
-                        commentWithAttachments,
-                        'tasks',
-                        FORDWARD_COMMENT,
-                        null,
-                        null
+                    const { currentUser } = store.getState()
+                    const hasWorkflow = Object.keys(currentUser.workflow?.[projectId] || {}).length > 0
+                    const stepId = hasWorkflow
+                        ? getWorkflowStepsIdsSorted(currentUser.workflow[projectId])[0]
+                        : DONE_STEP
+                    const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
+                    // AT-2495 — declining the suggestion moves the task on, and with no workflow that
+                    // move is straight to DONE. Only then is it a completion; a first workflow step
+                    // gets the exit and nothing else. Accepting (the branch above) leaves the task
+                    // open, so it is deliberately not animated.
+                    return completeTaskWithMotion(
+                        this.props.completionMotion,
+                        { isCompletion: stepId === DONE_STEP },
+                        () =>
+                            nextStepSuggestedTask(
+                                projectId,
+                                stepId,
+                                task,
+                                estimations,
+                                commentWithAttachments,
+                                checkBoxId
+                            )
                     )
                 }
-            } else {
-                const { currentUser } = store.getState()
-                const hasWorkflow = Object.keys(currentUser.workflow?.[projectId] || {}).length > 0
-                const stepId = hasWorkflow ? getWorkflowStepsIdsSorted(currentUser.workflow[projectId])[0] : DONE_STEP
-                const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
-                nextStepSuggestedTask(projectId, stepId, task, estimations, commentWithAttachments, checkBoxId)
-            }
-        })
+            })
+            // The popover is already gone; the handoff has put the row back, so the only thing
+            // left is to report why. Previously this chain had no rejection handler at all.
+            .catch(error => {
+                console.error('[SuggestedModal] Could not resolve suggested task', {
+                    projectId,
+                    taskId: task?.id,
+                    error,
+                })
+            })
     }
 
     // Skips every workflow step of the accepting user and completes the suggested task right away.
@@ -178,16 +208,28 @@ export default class SuggestedModal extends Component {
         this.setState({ processingAction: true })
 
         hidePopover()
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-            const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
-            moveSuggestedTaskToDoneBypassingWorkflow({
-                projectId,
-                task,
-                estimations,
-                comment: commentWithAttachments,
-                checkBoxId,
+        updateNewAttachmentsData(projectId, comment)
+            .then(commentWithAttachments => {
+                const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
+                // Skips every workflow step and completes the task, so this is always a real
+                // completion (AT-2495).
+                return completeTaskWithMotion(this.props.completionMotion, { isCompletion: true }, () =>
+                    moveSuggestedTaskToDoneBypassingWorkflow({
+                        projectId,
+                        task,
+                        estimations,
+                        comment: commentWithAttachments,
+                        checkBoxId,
+                    })
+                )
             })
-        })
+            .catch(error => {
+                console.error('[SuggestedModal] Could not complete suggested task', {
+                    projectId,
+                    taskId: task?.id,
+                    error,
+                })
+            })
     }
 
     onEnter = e => {

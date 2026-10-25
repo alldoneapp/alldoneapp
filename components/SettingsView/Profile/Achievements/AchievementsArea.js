@@ -1,19 +1,71 @@
 import React, { useMemo, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
-import EmptyInboxDayCelebration from './EmptyInboxDayCelebration'
+import EmptyInboxStreakValue from './EmptyInboxStreakValue'
+import EmptyInboxTodayDot from './EmptyInboxTodayDot'
+import useEmptyInboxDotCelebration from './emptyInboxDotMotion'
 import useTodayEmptyInboxCelebration from './useTodayEmptyInboxCelebration'
 import {
     buildEmptyInboxActivityWeeks,
     buildEmptyInboxMonthSegments,
     getEmptyInboxAchievementStats,
     getEmptyInboxDaysWithLegacyFallback,
+    getTodayEmptyInboxTimestamp,
 } from './AchievementsHelper'
+import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
+import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
+import { canRenderSkyline } from './Skyline/webglSupport'
+import { SKYLINE_RANGE_WEEKS } from './Skyline/skylineData'
+
+// Week or Month (the 3D city) or Year (the 2D grid). Remembered per browser: it is a viewing
+// preference, not account data. Until the user picks one — or where storage is unavailable
+// (private mode) — the card opens on the week, the range whose buildings are big enough to read.
+const RANGE_STORAGE_KEY = 'alldone.emptyInbox.range'
+export const EMPTY_INBOX_RANGES = ['week', 'month', 'year']
+export const DEFAULT_EMPTY_INBOX_RANGE = 'week'
+const RANGE_LABELS = { week: 'Week', month: 'Month', year: 'Year' }
+const readStoredRange = () => {
+    try {
+        const stored = window.localStorage.getItem(RANGE_STORAGE_KEY)
+        return EMPTY_INBOX_RANGES.includes(stored) ? stored : DEFAULT_EMPTY_INBOX_RANGE
+    } catch (error) {
+        return DEFAULT_EMPTY_INBOX_RANGE
+    }
+}
+const storeRange = range => {
+    try {
+        window.localStorage.setItem(RANGE_STORAGE_KEY, range)
+    } catch (error) {}
+}
+
+const RangeSwitch = ({ range, onChange }) => (
+    <View style={localStyles.rangeSwitch} accessibilityRole="radiogroup">
+        {EMPTY_INBOX_RANGES.map(option => {
+            const active = option === range
+            return (
+                <TouchableOpacity
+                    key={option}
+                    testID={`empty-inbox-range-${option}`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => onChange(option)}
+                    style={[localStyles.rangeOption, active && localStyles.rangeOptionActive]}
+                >
+                    <Text style={[localStyles.rangeText, active && localStyles.rangeTextActive]}>
+                        {translate(RANGE_LABELS[option])}
+                    </Text>
+                </TouchableOpacity>
+            )
+        })}
+    </View>
+)
 
 const CELL_SIZE = 11
 const CELL_GAP = 3
+const CELL_RADIUS = 2
 const WEEK_WIDTH = CELL_SIZE + CELL_GAP
 const DAY_LABEL_WIDTH = 40
 const MIN_WEEKS = 12
@@ -31,22 +83,87 @@ const getNumberOfWeeks = width =>
 // margin in `activityGrid` takes it back out of the centering math (see below).
 export const getGridWidth = numberOfWeeks => DAY_LABEL_WIDTH + numberOfWeeks * WEEK_WIDTH
 
-const Metric = ({ label, value }) => (
+const Metric = ({ label, value, celebration }) => (
     <View style={localStyles.metric}>
-        <Text style={localStyles.metricValue}>{value}</Text>
+        {celebration ? (
+            <EmptyInboxStreakValue value={value} celebration={celebration} style={localStyles.metricValue} />
+        ) : (
+            <Text style={localStyles.metricValue}>{value}</Text>
+        )}
         <Text style={localStyles.metricLabel}>{label}</Text>
     </View>
 )
 
-export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false }) {
+/**
+ * @param {number} [props.celebrationRunId] AT-2445 — a run id owned by the CALLER. The empty-inbox
+ *   board celebrates in several places at once now (the congratulation, the confetti, the picture,
+ *   and this card's dot), and they are one event, so the board decides once and hands the answer
+ *   down. When it is absent the card falls back to deciding for itself, which is what keeps
+ *   `celebrateNewDay` working for any other caller and keeps the Settings → Profile copy — which
+ *   passes neither — unable to spend the day.
+ */
+export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false, celebrationRunId }) {
     const [contentWidth, setContentWidth] = useState(0)
+    // The year is drawn as a 3D city wherever the browser can draw one; the 2D grid below remains
+    // the fallback (native, no WebGL, jsdom).
+    const showSkyline = useMemo(() => canRenderSkyline(), [])
+    const [range, setRange] = useState(readStoredRange)
+    const changeRange = next => {
+        setRange(next)
+        storeRange(next)
+    }
+    // The city draws the current week or the last month; the year stays the 2D grid, which is also
+    // the fallback wherever the browser cannot draw the city at all.
+    const showCity = showSkyline && range !== 'year'
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(
         () => getEmptyInboxDaysWithLegacyFallback(user),
         [user.emptyInboxDays, user.lastDayEmptyInbox]
     )
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
-    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay)
+    /**
+     * AT-2461 — on a day that has been cleared, the card reports WHEN it was cleared instead of
+     * explaining the grid.
+     *
+     * The grid legend is a fact about the squares below it and never changes; "Today you reached
+     * empty inbox at 18:34 — congrats!" is the one thing on this card that is about today, and the
+     * all-projects board renders the card precisely at the moment that sentence is true.
+     *
+     * The legend remains the fallback rather than being deleted, so the line is never empty and the
+     * squares are still explained on every day that has not been earned yet — which is every day for
+     * a user who has not cleared their inbox, and the state the Settings → Profile copy is usually
+     * in.
+     */
+    const todayEmptyInboxTimestamp = useMemo(
+        () => getTodayEmptyInboxTimestamp(user, emptyInboxDays),
+        [user.lastDayEmptyInbox, emptyInboxDays]
+    )
+    const description = todayEmptyInboxTimestamp
+        ? translate('Empty inbox reached today at', {
+              // The user's own date-format preference decides 18:34 vs 6:34 pm, exactly as it does
+              // for every other clock time in the app; the timestamp is rendered in local time,
+              // which is the timezone it was recorded in.
+              time: moment(todayEmptyInboxTimestamp).format(getTimeFormat()),
+          })
+        : translate(
+              showCity
+                  ? range === 'week'
+                      ? 'Empty inbox skyline week description'
+                      : 'Empty inbox skyline description'
+                  : 'Empty inbox achievement description'
+          )
+    // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
+    // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
+    // day twice.
+    const ownCelebrationRunId = useTodayEmptyInboxCelebration(
+        emptyInboxDays,
+        celebrateNewDay && celebrationRunId == null,
+        user.uid
+    )
+    const resolvedRunId = celebrationRunId == null ? ownCelebrationRunId : celebrationRunId
+    // AT-2418: one bundle of Animated.Values drives the dot AND the streak number, so the two beats
+    // are one event rather than two animations that happen to overlap.
+    const celebration = useEmptyInboxDotCelebration(resolvedRunId, stats.currentStreak)
     const numberOfWeeks = contentWidth ? getNumberOfWeeks(contentWidth) : MIN_WEEKS
     const weeks = useMemo(
         () => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks),
@@ -71,69 +188,126 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 ? { accessibilityRole: 'link', activeOpacity: 0.8, onPress: onOpenAchievements }
                 : {})}
         >
-            <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
-            <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
-
-            {celebrateNewDay && (
-                <EmptyInboxDayCelebration runId={celebrationRunId} currentStreak={stats.currentStreak} />
+            {/* AT-2460: while the day is being added, the card outlines itself in green. The dot is
+                11px in a field of 371 and lives several blocks below the congratulation that sent
+                the user looking for it — this is the thing that is visible from up there. It is a
+                border-only overlay with no fill, so it never tints the content it sits over, and it
+                is absolutely positioned so it cannot change the card's size or its layout. */}
+            {celebration.animated && celebration.celebrating && (
+                <Animated.View
+                    testID="empty-inbox-card-spotlight"
+                    style={[
+                        localStyles.cardSpotlight,
+                        {
+                            opacity: celebration.spotlight.interpolate({
+                                inputRange: [0, 0.1, 0.6, 1],
+                                outputRange: [0, 1, 0.9, 0],
+                                extrapolate: 'clamp',
+                            }),
+                        },
+                    ]}
+                />
             )}
 
+            <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
+            <Text style={localStyles.description}>{description}</Text>
+
             <View style={localStyles.metricsContainer}>
-                <Metric label={translate('Current streak')} value={stats.currentStreak} />
+                <Metric
+                    label={translate('Current streak')}
+                    value={stats.currentStreak}
+                    celebration={resolvedRunId ? celebration : null}
+                />
                 <Metric label={translate('Longest streak')} value={stats.longestStreak} />
                 <Metric label={translate('Total days')} value={stats.totalDays} />
             </View>
 
+            {showSkyline && <RangeSwitch range={range} onChange={changeRange} />}
+
             <View style={localStyles.activityContainer}>
-                <View style={[localStyles.activityGrid, { width: getGridWidth(numberOfWeeks) }]}>
-                    <View style={localStyles.monthLabels}>
-                        <View style={{ width: DAY_LABEL_WIDTH }} />
-                        {monthSegments.map((segment, index) => (
-                            <View
-                                key={`${segment.monthName}-${index}`}
-                                style={[localStyles.monthLabelSlot, { width: WEEK_WIDTH * segment.numberOfWeeks }]}
-                            >
-                                <Text numberOfLines={1} style={localStyles.monthLabel}>
-                                    {translate(segment.monthName).slice(0, 3)}
-                                </Text>
-                            </View>
-                        ))}
-                    </View>
-                    <View style={localStyles.activityRows}>
-                        <View style={localStyles.dayLabels}>
-                            {dayLabels.map((label, index) => (
-                                <Text key={index} style={localStyles.dayLabel}>
-                                    {label}
-                                </Text>
-                            ))}
-                        </View>
-                        <View style={localStyles.weeks}>
-                            {weeks.map((week, weekIndex) => (
-                                <View key={weekIndex} style={localStyles.week}>
-                                    {week.days.map(day => (
-                                        <View
-                                            key={day.dateKey}
-                                            accessible={day.achieved}
-                                            accessibilityLabel={
-                                                day.achieved
-                                                    ? translate('Empty inbox reached on', {
-                                                          date: day.date.format('LL'),
-                                                      })
-                                                    : undefined
-                                            }
-                                            style={[
-                                                localStyles.activityCell,
-                                                day.achieved && localStyles.achievedCell,
-                                                day.isFuture && localStyles.futureCell,
-                                                day.isToday && !day.achieved && localStyles.todayCell,
-                                            ]}
-                                        />
-                                    ))}
+                {showCity ? (
+                    <EmptyInboxSkyline
+                        // The scene is built for one layout (5 rows or 1), so a range change remounts it.
+                        key={range}
+                        weeks={SKYLINE_RANGE_WEEKS[range]}
+                        user={user}
+                        emptyInboxDays={emptyInboxDays}
+                        celebrationRunId={resolvedRunId}
+                        width={contentWidth}
+                    />
+                ) : (
+                    <View style={[localStyles.activityGrid, { width: getGridWidth(numberOfWeeks) }]}>
+                        <View style={localStyles.monthLabels}>
+                            <View style={{ width: DAY_LABEL_WIDTH }} />
+                            {monthSegments.map((segment, index) => (
+                                <View
+                                    key={`${segment.monthName}-${index}`}
+                                    style={[localStyles.monthLabelSlot, { width: WEEK_WIDTH * segment.numberOfWeeks }]}
+                                >
+                                    <Text numberOfLines={1} style={localStyles.monthLabel}>
+                                        {translate(segment.monthName).slice(0, 3)}
+                                    </Text>
                                 </View>
                             ))}
                         </View>
+                        <View style={localStyles.activityRows}>
+                            <View style={localStyles.dayLabels}>
+                                {dayLabels.map((label, index) => (
+                                    <Text key={index} style={localStyles.dayLabel}>
+                                        {label}
+                                    </Text>
+                                ))}
+                            </View>
+                            <View style={localStyles.weeks}>
+                                {weeks.map((week, weekIndex) => (
+                                    <View key={weekIndex} style={localStyles.week}>
+                                        {week.days.map(day => {
+                                            const achievedLabel = day.achieved
+                                                ? translate('Empty inbox reached on', { date: day.date.format('LL') })
+                                                : undefined
+
+                                            // AT-2418: only today's cell, only on the run that is
+                                            // celebrating it. Every other cell keeps the plain View it
+                                            // has always rendered, so the 370 squares around it cost
+                                            // nothing extra.
+                                            return resolvedRunId && day.isToday && day.achieved ? (
+                                                <EmptyInboxTodayDot
+                                                    key={day.dateKey}
+                                                    celebration={celebration}
+                                                    size={CELL_SIZE}
+                                                    gap={CELL_GAP}
+                                                    radius={CELL_RADIUS}
+                                                    accessibilityLabel={achievedLabel}
+                                                    // AT-2460: names what the dot is worth right next
+                                                    // to it, a beat before the "Current streak" metric
+                                                    // below flips to the same number.
+                                                    streakLabel={translate('Empty inbox day badge', {
+                                                        count: stats.currentStreak,
+                                                    })}
+                                                />
+                                            ) : (
+                                                <View
+                                                    key={day.dateKey}
+                                                    accessible={day.achieved}
+                                                    accessibilityLabel={achievedLabel}
+                                                    style={[
+                                                        localStyles.activityCell,
+                                                        day.achieved && localStyles.achievedCell,
+                                                        day.isFuture && localStyles.futureCell,
+                                                        // Today is ringed whether or not it was cleared
+                                                        // (the green fill says that), the same blue the
+                                                        // city marks today in.
+                                                        day.isToday && localStyles.todayCell,
+                                                    ]}
+                                                />
+                                            )
+                                        })}
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
                     </View>
-                </View>
+                )}
             </View>
         </CardContainer>
     )
@@ -165,6 +339,20 @@ const localStyles = StyleSheet.create({
     profileCard: {
         marginTop: 16,
     },
+    // Sits just outside the card's own 1px border so the green replaces it optically instead of
+    // doubling it. No background: a fill would tint every metric and label underneath.
+    cardSpotlight: {
+        position: 'absolute',
+        top: -1,
+        left: -1,
+        right: -1,
+        bottom: -1,
+        borderRadius: 9,
+        borderWidth: 2,
+        borderColor: colors.UtilityGreen200,
+        // In style, not as a prop: react-native-web 0.21 deprecates `props.pointerEvents`.
+        pointerEvents: 'none',
+    },
     title: {
         ...styles.subtitle1,
         color: colors.Text01,
@@ -195,6 +383,33 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 2,
         textAlign: 'center',
+    },
+    rangeSwitch: {
+        flexDirection: 'row',
+        alignSelf: 'center',
+        marginTop: 20,
+        padding: 3,
+        borderRadius: 999,
+        backgroundColor: colors.Grey200,
+    },
+    rangeOption: {
+        paddingHorizontal: 16,
+        paddingVertical: 5,
+        borderRadius: 999,
+    },
+    rangeOptionActive: {
+        backgroundColor: '#FFFFFF',
+        shadowColor: colors.Text01,
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
+        shadowOffset: { width: 0, height: 1 },
+    },
+    rangeText: {
+        ...styles.caption1,
+        color: colors.Text03,
+    },
+    rangeTextActive: {
+        color: colors.Text01,
     },
     activityContainer: {
         marginTop: 24,
@@ -246,7 +461,7 @@ const localStyles = StyleSheet.create({
         width: CELL_SIZE,
         height: CELL_SIZE,
         marginBottom: CELL_GAP,
-        borderRadius: 2,
+        borderRadius: CELL_RADIUS,
         backgroundColor: colors.Grey200,
     },
     achievedCell: {
@@ -256,7 +471,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     todayCell: {
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: colors.Primary100,
     },
 })

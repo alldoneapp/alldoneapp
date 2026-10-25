@@ -17,7 +17,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
-class ImagePickerModal extends Component {
+export class ImagePickerModal extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -32,11 +32,13 @@ class ImagePickerModal extends Component {
         }
 
         this.actionButton = React.createRef()
+        this._isMounted = false
     }
 
     async componentDidMount() {
+        this._isMounted = true
         const { onOpenModal } = this.props
-        this.actionButton.current.focus()
+        this.focusActionButton()
         if (onOpenModal) {
             onOpenModal()
         }
@@ -44,22 +46,29 @@ class ImagePickerModal extends Component {
 
         if (Platform.OS !== 'web') {
             const { status } = await ImagePicker.requestCameraRollPermissionsAsync()
-            if (status !== 'granted') {
+            if (this._isMounted && status !== 'granted') {
                 this.setState({ enabled: false })
             }
         }
 
-        Image.getSize(this.props.picture, (width, height) => {
-            this.setState({
-                pictures: [{ index: 0, file: this.props.picture }],
-                height: height * ((getPopoverWidth() - 34) / width),
+        if (this.props.picture)
+            Image.getSize(this.props.picture, (width, height) => {
+                if (!this._isMounted) return
+                this.setState({
+                    pictures: [{ index: 0, file: this.props.picture }],
+                    height: height * ((getPopoverWidth() - 34) / width),
+                })
             })
-        })
     }
 
     componentWillUnmount() {
+        this._isMounted = false
         document.removeEventListener('keydown', this.onPressSaveButton)
         this.state.unsubscribe()
+    }
+
+    focusActionButton = () => {
+        this.actionButton.current?.focus()
     }
 
     updateState = () => {
@@ -78,17 +87,22 @@ class ImagePickerModal extends Component {
             quality: 1,
         })
 
+        if (!this._isMounted) return
+
         if (!result.cancelled) {
             Image.getSize(result.uri, (width, height) => {
-                this.setState({
-                    pictures: [{ index: 0, file: result.uri }],
-                    height: height * ((getPopoverWidth() - 34) / width),
-                    changed: true,
-                })
-                this.actionButton.current.focus()
+                if (!this._isMounted) return
+                this.setState(
+                    {
+                        pictures: [{ index: 0, file: result.uri }],
+                        height: height * ((getPopoverWidth() - 34) / width),
+                        changed: true,
+                    },
+                    this.focusActionButton
+                )
             })
         } else {
-            this.actionButton.current.focus()
+            this.focusActionButton()
         }
     }
 

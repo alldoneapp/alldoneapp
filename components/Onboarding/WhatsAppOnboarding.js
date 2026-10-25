@@ -113,12 +113,12 @@ export default function WhatsAppOnboarding({ navigation }) {
                 Animated.timing(blinkAnim, {
                     toValue: 0.5,
                     duration: 500,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(blinkAnim, {
                     toValue: 1,
                     duration: 500,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         ).start()

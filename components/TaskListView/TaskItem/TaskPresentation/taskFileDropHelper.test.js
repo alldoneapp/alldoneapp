@@ -7,7 +7,10 @@ import {
     appendTokensToDescription,
     buildNewAttachmentToken,
     canDropFilesOnTaskRow,
+    createDraftAttachmentTokens,
+    hasDraftAttachments,
     isStoredAttachmentToken,
+    resolveDraftAttachments,
 } from './taskFileDropHelper'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import { setTaskDescription } from '../../../../utils/backends/Tasks/tasksFirestore'
@@ -172,6 +175,51 @@ describe('taskFileDropHelper', () => {
 
         it('returns the description untouched when there is nothing to append', () => {
             expect(appendTokensToDescription('text', [])).toBe('text')
+        })
+    })
+
+    describe('new task draft attachments', () => {
+        it('uses the same image token and size gate as task-row drops', () => {
+            const { tokens, uris } = createDraftAttachmentTokens([
+                { name: 'my photo.png', size: 10 },
+                { name: 'too-large.png', size: 60 * 1024 * 1024 },
+            ])
+
+            expect(tokens).toEqual([
+                `${IMAGE_TRIGGER}blob:my photo.png${IMAGE_TRIGGER}blob:my photo.png${IMAGE_TRIGGER}my_photo.png${IMAGE_TRIGGER}1`,
+            ])
+            expect(uris).toEqual(['blob:my photo.png'])
+            expect(global.alert).toHaveBeenCalledTimes(1)
+        })
+
+        it('uploads draft images to the selected project and preserves existing description', async () => {
+            const localToken = buildNewAttachmentToken('photo.png', 'blob:photo.png')
+            updateNewAttachmentsData.mockResolvedValueOnce(remoteImageToken())
+
+            const original = appendTokensToDescription('Existing text', [localToken])
+            expect(hasDraftAttachments(original)).toBe(true)
+            expect(await resolveDraftAttachments('new-project', original)).toEqual({
+                description: appendTokensToDescription('Existing text', [remoteImageToken()]),
+                failedCount: 0,
+            })
+            expect(updateNewAttachmentsData).toHaveBeenCalledWith('new-project', localToken)
+        })
+
+        it('keeps failed words for retry and never treats them as stored', async () => {
+            const first = buildNewAttachmentToken('first.png', 'blob:first')
+            const second = buildNewAttachmentToken('second.png', 'blob:second')
+            updateNewAttachmentsData.mockResolvedValueOnce(remoteImageToken('first.png')).mockResolvedValueOnce(second)
+
+            const result = await resolveDraftAttachments('project-1', `${first} ${second}`)
+            expect(result).toEqual({ description: `${remoteImageToken('first.png')} ${second}`, failedCount: 1 })
+            expect(hasDraftAttachments(result.description)).toBe(true)
+
+            updateNewAttachmentsData.mockResolvedValueOnce(remoteImageToken('second.png'))
+            expect(await resolveDraftAttachments('project-1', result.description)).toEqual({
+                description: `${remoteImageToken('first.png')} ${remoteImageToken('second.png')}`,
+                failedCount: 0,
+            })
+            expect(updateNewAttachmentsData).toHaveBeenCalledTimes(3)
         })
     })
 

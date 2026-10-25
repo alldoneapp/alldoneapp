@@ -1,10 +1,10 @@
 const SELECTABLE_ASSISTANT_MODELS = [
     {
-        model: 'MODEL_GPT5_6_SOL',
-        labelKey: 'GPT 5_6 Sol',
+        model: 'MODEL_GPT6_SOL',
+        labelKey: 'GPT 6.1 Sol',
         name: 'Sol',
         descriptionKey: 'Most capable',
-        tokensPerGold: 100,
+        tokensPerGold: 200,
     },
     {
         model: 'MODEL_GPT5_6_TERRA',
@@ -14,11 +14,11 @@ const SELECTABLE_ASSISTANT_MODELS = [
         tokensPerGold: 200,
     },
     {
-        model: 'MODEL_GPT5_6_LUNA',
-        labelKey: 'GPT 5_6 Luna',
+        model: 'MODEL_GPT6_LUNA',
+        labelKey: 'GPT 6 Luna',
         name: 'Luna',
         descriptionKey: 'Efficient for high-volume work',
-        tokensPerGold: 500,
+        tokensPerGold: 1000,
     },
     {
         // Served through OpenRouter rather than OpenAI — see `assistantModelRouting.js`. The
@@ -35,8 +35,17 @@ const SELECTABLE_ASSISTANT_MODELS = [
     },
 ]
 
+function normalizeSelectableAssistantModelKey(modelKey) {
+    return modelKey === 'MODEL_GPT5_6_SOL'
+        ? 'MODEL_GPT6_SOL'
+        : modelKey === 'MODEL_GPT5_6_LUNA'
+          ? 'MODEL_GPT6_LUNA'
+          : modelKey
+}
+
 function getAssistantModelTokensPerGold(modelKey) {
-    const option = SELECTABLE_ASSISTANT_MODELS.find(model => model.model === modelKey)
+    const currentModelKey = normalizeSelectableAssistantModelKey(modelKey)
+    const option = SELECTABLE_ASSISTANT_MODELS.find(model => model.model === currentModelKey)
     const tokens = Number(option?.tokensPerGold)
     return Number.isFinite(tokens) && tokens > 0 ? tokens : undefined
 }
@@ -48,6 +57,7 @@ function formatAssistantModelTokensPerGold(value) {
 
 module.exports = {
     SELECTABLE_ASSISTANT_MODELS,
+    normalizeSelectableAssistantModelKey,
     getAssistantModelTokensPerGold,
     formatAssistantModelTokensPerGold,
 }

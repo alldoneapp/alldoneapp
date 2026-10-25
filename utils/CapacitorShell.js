@@ -37,3 +37,37 @@ export function isCapacitorIosShell() {
 export function getNativePurchasesPlugin() {
     return getShellPlugin('Purchases')
 }
+
+// Local native bridge owned by ios-app/. It stores only the scoped share-
+// extension capability in the shared App Group; no Firebase session material
+// leaves the web view.
+export function getIosShareExtensionPlugin() {
+    return isCapacitorIosShell() ? getShellPlugin('IosShareExtension') : null
+}
+
+// Local native bridge owned by ios-app/ (CallAudioSessionPlugin.swift). It
+// configures the host app's AVAudioSession for a voice chat around an
+// assistant call so the `audio` UIBackgroundMode keeps the WebRTC capture
+// alive when the app is backgrounded (AT-2496). iOS only: Android is a TWA
+// where Chrome owns the microphone and its own foreground notification.
+export function getNativeCallAudioSessionPlugin() {
+    return isCapacitorIosShell() ? getShellPlugin('CallAudioSession') : null
+}
+
+// Provisioning can overlap when auth state changes quickly. Only the newest
+// attempt may publish a token to the App Group; logout invalidates every
+// attempt that was already waiting on the backend.
+let iosShareCredentialProvisioningGeneration = 0
+
+export function beginIosShareCredentialProvisioning() {
+    iosShareCredentialProvisioningGeneration += 1
+    return iosShareCredentialProvisioningGeneration
+}
+
+export function invalidateIosShareCredentialProvisioning() {
+    iosShareCredentialProvisioningGeneration += 1
+}
+
+export function isCurrentIosShareCredentialProvisioning(generation) {
+    return generation === iosShareCredentialProvisioningGeneration
+}

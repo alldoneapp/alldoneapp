@@ -1,3 +1,4 @@
+import { TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
 import React, { Component } from 'react'
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
@@ -17,6 +18,7 @@ import { FEED_CONTACT_OBJECT_TYPE, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/
 import SocialText from '../UIControls/SocialText/SocialText'
 import Icon from '../Icon'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
+import { createSwipeCloseGuard } from '../../hooks/useSwipeCloseGuard'
 import NavigationService from '../../utils/NavigationService'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import SwipeNewTaskWrapper from '../NotesView/SwipeNewTaskWrapper'
@@ -29,11 +31,17 @@ import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_USER_PROFILE } from '../../utils/TabN
 import v4 from 'uuid/v4'
 import {
     getContactBacklinksWatcherKey,
+    getContactInfoPreview,
     getContactItemStoreUpdate,
     getContactPresentationData,
 } from './contactItemStoreUpdate'
+import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
+
+export const CONTACT_BACKLINKS_ROOT_MARGIN = '600px 0px'
 
 export default class ContactItem extends Component {
+    static contextType = TaskHierarchyBackgroundContext
+
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -55,9 +63,39 @@ export default class ContactItem extends Component {
         }
 
         this.itemSwipe = React.createRef()
+        this.containerRef = React.createRef()
+        // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
+        // and leave the row permanently unopenable. See the hook module.
+        this.swipeCloseGuard = createSwipeCloseGuard(blockOpen => this.setState({ blockOpen }))
     }
 
     componentDidMount() {
+        const target = this.containerRef.current
+        if (typeof IntersectionObserver === 'undefined' || !target) {
+            this.startBacklinksWatcher()
+            return
+        }
+
+        try {
+            this.backlinksObserver = new IntersectionObserver(
+                entries => {
+                    if (!entries.some(entry => entry.isIntersecting)) return
+                    this.backlinksObserver?.disconnect()
+                    this.backlinksObserver = null
+                    this.startBacklinksWatcher()
+                },
+                { rootMargin: CONTACT_BACKLINKS_ROOT_MARGIN }
+            )
+            this.backlinksObserver.observe(target)
+        } catch {
+            this.backlinksObserver?.disconnect()
+            this.backlinksObserver = null
+            this.startBacklinksWatcher()
+        }
+    }
+
+    startBacklinksWatcher = () => {
+        if (this.backlinksWatcherKey) return
         const { loggedUserProjects } = this.state
         const { projectIndex, contact } = this.props
         const projectId = loggedUserProjects[projectIndex].id
@@ -82,8 +120,9 @@ export default class ContactItem extends Component {
     }
 
     componentWillUnmount() {
+        this.backlinksObserver?.disconnect()
         const { contact } = this.props
-        Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
+        if (this.backlinksWatcherKey) Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
         this.state.unsubscribe()
     }
 
@@ -174,7 +213,7 @@ export default class ContactItem extends Component {
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
         const contactHighlightColor = ProjectHelper.getUserHighlightInProject(projectIndex, contact)
 
-        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : this.context
         const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
@@ -209,12 +248,13 @@ export default class ContactItem extends Component {
             return `${translate('Edited')}: ${moment(date).format(`${getTimeFormat(true)} of ${getDateFormat()}`)}`
         }
 
-        const userInfo =
+        const userInfo = getContactInfoPreview(
             !role && !company && !description
                 ? ''
                 : `${role ? role : ''}${role && (company || description) ? ' • ' : ''}${company ? company : ''}${
                       company && description ? ' • ' : ''
                   }${description ? description : ''}`
+        )
 
         const backlinksCount = backlinksTasksCount + backlinksNotesCount
         const backlinkObject =
@@ -238,7 +278,10 @@ export default class ContactItem extends Component {
         const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
         return showContact ? (
-            <View>
+            <View
+                ref={this.containerRef}
+                dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
+            >
                 <View style={localStyles.swipeContainer}>
                     <View style={localStyles.leftSwipeArea}>
                         <Icon name="circle-details" size={18} color={colors.UtilityGreen200} />
@@ -276,12 +319,7 @@ export default class ContactItem extends Component {
                     friction={2}
                     containerStyle={{ overflow: 'visible' }}
                     failOffsetY={[-5, 5]}
-                    onSwipeableWillClose={() => {
-                        this.setState({ blockOpen: true })
-                    }}
-                    onSwipeableClose={() => {
-                        this.setState({ blockOpen: false })
-                    }}
+                    {...this.swipeCloseGuard}
                 >
                     <TouchableOpacity
                         onPress={blockOpen ? undefined : inCommentPopup ? onPress : this.onOpenDV}
@@ -297,6 +335,7 @@ export default class ContactItem extends Component {
                                 },
                             ]}
                         >
+                            <ProjectMoveIndicator object={contact} projectId={projectId} />
                             <View style={localStyles.mainRow}>
                                 <View style={localStyles.avatarContainer}>
                                     {contact.photoURL != null && contact.photoURL !== '' ? (

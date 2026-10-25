@@ -114,11 +114,36 @@ export async function archiveLinkedEmailsInMailbox(linkedEmails = []) {
 // Chat and Email Line archive is "I'm done with this": take the mail out of the inbox and
 // mark the matching Alldone chat comments as read. The mailbox read/unread state is left
 // alone (AT-2298).
+//
+// The unread state is cleared FIRST, and that ordering is the whole point (AT-2424).
+//
+// It used to be the other way round, which meant the email comment stayed on screen and kept
+// counting as unread until Gmail had answered - and that is not one round trip but two, because
+// `performEmailLineAction` awaits a forced `fetchEmailLineSummary` of its own before it resolves.
+// Measured in production: ~1s for the archive plus 3-7s for the summary refresh, so 4-8 seconds
+// of pressing Archive and watching nothing happen. Nothing in that chain is needed to know the
+// user is done with the mail; only the notification docs decide what the frontend shows.
+//
+// Deleting them first is instant on screen without any new optimistic state to keep in sync:
+// Firestore applies the delete to the local cache as the write is issued, `watchChatNotifications`
+// fires from it, and the row, the preview and every unread counter follow in the same tick.
+//
+// If the mailbox archive then fails the unread state is put back (Karsten's call on AT-2424), so a
+// failed archive is "nothing happened, try again" rather than a comment that quietly went read
+// while the mail is still sitting in the inbox. This function still rejects on that failure, so
+// every caller's existing error affordance - the thread's alert, the bulk button's "try again" -
+// keeps working unchanged.
 export async function archiveAndMarkReadLinkedEmails(linkedEmails = []) {
     const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
     if (Object.keys(groupedEmails).length === 0) return
 
-    await archiveLinkedEmailsInMailbox(linkedEmails)
-    const { markAlldoneChatsReadForLinkedEmails } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
-    await markAlldoneChatsReadForLinkedEmails(linkedEmails)
+    const { clearChatCommentsForLinkedEmails } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
+    const restoreUnreadState = await clearChatCommentsForLinkedEmails(linkedEmails)
+
+    try {
+        await archiveLinkedEmailsInMailbox(linkedEmails)
+    } catch (error) {
+        await restoreUnreadState()
+        throw error
+    }
 }

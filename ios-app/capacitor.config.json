@@ -9,6 +9,12 @@
         "FirebaseAuthentication": {
             "skipNativeAuth": true,
             "providers": ["google.com", "apple.com"]
+        },
+        "CapacitorUpdater": {
+            "autoUpdate": false,
+            "autoDeleteFailed": true,
+            "autoDeletePrevious": true,
+            "appReadyTimeout": 60000
         }
     }
 }

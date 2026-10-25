@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
@@ -52,6 +52,7 @@ export default function StopAssistantRunButton({
     assistantRun,
     isLoading,
     appearance = 'light',
+    variant = 'standalone',
     style,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser?.uid)
@@ -105,19 +106,37 @@ export default function StopAssistantRunButton({
         <TouchableOpacity
             style={[
                 localStyles.stopRunButton,
+                variant === 'card' && localStyles.cardButton,
                 darkAppearance && localStyles.stopRunButtonDark,
                 stopRequested && localStyles.stopRunButtonDisabled,
                 style,
             ]}
             onPress={stopAssistantRun}
             disabled={stopRequested}
-            accessibilityLabel={translate('Stop assistant')}
+            accessibilityRole="button"
+            accessibilityLabel={translate(stopRequested ? 'Stopping assistant' : 'Stop assistant')}
+            aria-busy={stopRequested}
             testID="stop-assistant-run"
         >
-            <Icon name="x-thicker" size={10} color={contentColor} />
-            <Text style={[localStyles.stopRunButtonText, { color: contentColor }]}>
-                {stopRequested ? translate('Stopping assistant') : translate('Stop')}
-            </Text>
+            <View
+                style={[
+                    localStyles.buttonContent,
+                    variant === 'card' && [localStyles.cardButtonContent, { borderColor: contentColor }],
+                ]}
+                testID="stop-assistant-run-content"
+            >
+                <Icon name="x-thicker" size={10} color={contentColor} />
+                <Text
+                    style={[
+                        localStyles.stopRunButtonText,
+                        variant === 'card' && localStyles.cardButtonText,
+                        { color: contentColor },
+                    ]}
+                    numberOfLines={1}
+                >
+                    {stopRequested ? translate('Stopping assistant') : translate('Stop')}
+                </Text>
+            </View>
         </TouchableOpacity>
     )
 }
@@ -137,11 +156,39 @@ const localStyles = StyleSheet.create({
     stopRunButtonDark: {
         borderColor: colors.UtilityRed125,
     },
+    cardButton: {
+        alignSelf: 'center',
+        maxWidth: '100%',
+        minHeight: 44,
+        minWidth: 44,
+        marginTop: 0,
+        paddingHorizontal: 0,
+        borderWidth: 0,
+        flexShrink: 1,
+        justifyContent: 'center',
+    },
+    buttonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+    },
+    // Keep the header control visually small without shrinking its 44px touch target.
+    cardButtonContent: {
+        minHeight: 28,
+        paddingHorizontal: 8,
+        borderWidth: 1,
+        borderRadius: 6,
+    },
+    cardButtonText: {
+        fontSize: 11,
+        lineHeight: 16,
+    },
     stopRunButtonDisabled: {
         opacity: 0.6,
     },
     stopRunButtonText: {
         ...global.caption2,
         marginLeft: 4,
+        flexShrink: 1,
     },
 })

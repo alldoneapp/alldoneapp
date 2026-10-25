@@ -59,9 +59,13 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
             console.log('[TranscribeButton] Opening new note in new tab:', url)
             window.open(url, '_blank')
 
-            // Create note in background
+            // Create note in background. The tab is already open (it has to be, or the
+            // popup blocker eats it), so there is nothing to wait for here — but an
+            // unhandled rejection would be invisible, hence the explicit report.
             updateTaskData(projectId, task.id, { noteId: generatedId })
-            uploadNewNote(projectId, newNote)
+            uploadNewNote(projectId, newNote).catch(error =>
+                console.error('[TranscribeButton] Could not create the note', error)
+            )
             setIsProcessing(false)
         }
     }

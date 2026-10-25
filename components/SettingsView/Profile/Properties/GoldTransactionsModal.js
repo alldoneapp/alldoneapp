@@ -50,8 +50,10 @@ function getTransactionLabel(source) {
         task_goal_routing: 'Automatic goal assignment',
         linkedin_enrichment: 'LinkedIn enrichment',
         linkedin_search: 'LinkedIn search',
+        contact_enrichment: 'Contact enrichment',
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
+        rage_mode_item: 'Rage mode weapon',
         meeting_transcription: 'Meeting transcription',
         rambler: 'Rambler dictation',
         email_draft_reply: 'Email reply draft',
@@ -60,8 +62,13 @@ function getTransactionLabel(source) {
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
         mcp_tool_call: 'MCP tool call',
+        knowledge_base_ingest: 'Project wiki update',
+        browser_automation: 'Website visit',
         whatsapp_voice: 'WhatsApp voice message',
         whatsapp_call: 'WhatsApp assistant call',
+        browser_call: 'Assistant voice call',
+        phone_call: 'Assistant phone call',
+        assistant_voice_duration: 'Assistant voice duration',
         iframe_deduction: 'Embedded app deduction',
         iframe_refund: 'Embedded app refund',
         menubar_app_usage: 'Anna Alldone app usage',
@@ -83,6 +90,7 @@ function getTransactionSubtitle(entry) {
     if (entry?.channel === 'assistant') return translate('Triggered from the assistant')
     if (entry?.channel === 'whatsapp') return translate('Triggered from WhatsApp')
     if (entry?.channel === 'linkedin') return translate('Triggered from LinkedIn')
+    if (entry?.channel === 'contact') return translate('Triggered from a contact')
     if (entry?.channel === 'admin_panel') return translate('Changed from the admin panel')
     if (entry?.channel === 'menubar_app') return translate('Triggered from the Anna Alldone app')
     if (entry?.channel === 'guides') return translate('Triggered from a guide unlock')
@@ -105,7 +113,7 @@ function getTransactionLink(entry) {
         }
     }
 
-    if (source === 'linkedin_enrichment' && projectId && objectId) {
+    if ((source === 'linkedin_enrichment' || source === 'contact_enrichment') && projectId && objectId) {
         return {
             label: translate('Open contact'),
             url: `${window.location.origin}/projects/${projectId}/contacts/${objectId}`,

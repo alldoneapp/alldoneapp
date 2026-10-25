@@ -79,6 +79,16 @@
     padding-right: 34px !important;
 }
 
+/* The assistant composer pins the chat attachment menu beside the mic. Keep both controls
+   outside the scroll content and reserve their width, including on narrow screens. */
+.ql-editorWithAttachment {
+    padding-right: 34px !important;
+}
+
+.ql-editorWithAttachmentAndDictation {
+    padding-right: 62px !important;
+}
+
 .ql-clipboard {
     -webkit-user-select: text;
 }

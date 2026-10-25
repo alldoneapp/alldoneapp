@@ -1,14 +1,13 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import Backend from '../../../../../utils/BackendBridge'
 import UrlWrapper from '../tags/UrlWrapper'
 import store from '../../../../../redux/store'
 import { handleNestedLinks } from '../../../../../utils/LinkingHelper'
 import { isPrivateNote } from '../../../../NotesView/NotesHelper'
+import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
 const DEFAULT_URL = {
     open: false,
     url: '',
@@ -19,10 +18,9 @@ const DEFAULT_URL = {
     userIdAllowedToEditTags: false,
 }
 
-class Url extends Embed {
+class Url extends ReactEmbedBlot {
     static create(value = DEFAULT_URL) {
         let node = super.create(value)
-        const refs = Url.refs
         node.setAttribute('open', value.open)
         node.setAttribute('href', value.url)
         node.setAttribute('urlType', value.type)
@@ -32,10 +30,6 @@ class Url extends Embed {
         node.setAttribute('userIdAllowedToEditTags', value.userIdAllowedToEditTags)
         node.setAttribute('contenteditable', false)
         Url.data = value
-        Url.refs = {
-            ...refs,
-            [value.id]: React.createRef(),
-        }
 
         // Special handling for preConfigTask - extract name from URL query params
         if (value.type === 'preConfigTask' && value?.url) {
@@ -50,11 +44,16 @@ class Url extends Embed {
                 // Ignore URL parsing errors
             }
 
-            ReactDOM.render(
+            renderEmbedContent(
+                node,
                 <Provider store={store}>
-                    <UrlWrapper value={value} objectName={taskName || 'Pre-configured Task'} isShared={false} />
-                </Provider>,
-                node
+                    <UrlWrapper
+                        value={value}
+                        objectName={taskName || 'Pre-configured Task'}
+                        isShared={false}
+                        embedNode={node}
+                    />
+                </Provider>
             )
         } else if (value.type !== 'plain' && value?.url) {
             Backend.getObjectFromUrl(value.type, value.url, ({ object, objectName }, externalContact) => {
@@ -63,24 +62,25 @@ class Url extends Embed {
                     (object?.hasOwnProperty('userIds') || object?.hasOwnProperty('stickyData')) &&
                     !isPrivateNote(object)
 
-                ReactDOM.render(
+                renderEmbedContent(
+                    node,
                     <Provider store={store}>
                         <UrlWrapper
                             value={object ? value : { ...value, type: 'plain' }}
                             objectName={object ? text : null}
                             isShared={object ? isShared : null}
                             externalContact={object ? externalContact : null}
+                            embedNode={node}
                         />
-                    </Provider>,
-                    node
+                    </Provider>
                 )
             })
         } else {
-            ReactDOM.render(
+            renderEmbedContent(
+                node,
                 <Provider store={store}>
-                    <UrlWrapper value={value} />
-                </Provider>,
-                node
+                    <UrlWrapper value={value} embedNode={node} />
+                </Provider>
             )
         }
         return node

@@ -39,6 +39,19 @@ export default function CommentsList({
                     effectiveIsLoading &&
                     item.assistantRun?.kind === 'chat' &&
                     ['running', 'cancel_requested'].includes(item.assistantRun?.status)
+                const stopButton = (
+                    <StopAssistantRunButton
+                        projectId={projectId}
+                        objectType={objectType}
+                        objectId={objectId}
+                        commentId={item.id}
+                        assistantRun={item.assistantRun}
+                        isLoading={effectiveIsLoading}
+                        appearance="dark"
+                        variant={showAssistantProgress ? 'card' : 'standalone'}
+                        style={!showAssistantProgress && localStyles.stopButton}
+                    />
+                )
                 return (
                     <React.Fragment key={item.id}>
                         <Comment
@@ -55,9 +68,13 @@ export default function CommentsList({
                                 showAssistantProgress ? (
                                     <AssistantProgress
                                         activity={item.assistantRun?.activity}
+                                        activityHistory={item.assistantRun?.activityHistory}
+                                        runId={item.assistantRun?.runId}
                                         compact={true}
                                         appearance="dark"
-                                    />
+                                    >
+                                        {stopButton}
+                                    </AssistantProgress>
                                 ) : null
                             }
                             containerStyle={{
@@ -79,23 +96,7 @@ export default function CommentsList({
                                 assistantRun={item.assistantRun}
                             />
                         )}
-                        {/* Same control, state and callable as the full chat view, so a run
-                            can be stopped from wherever the comment is shown. It renders
-                            nothing unless the run is actually stoppable. */}
-                        <StopAssistantRunButton
-                            projectId={projectId}
-                            objectType={objectType}
-                            objectId={objectId}
-                            commentId={item.id}
-                            assistantRun={item.assistantRun}
-                            isLoading={effectiveIsLoading}
-                            appearance="dark"
-                            // Popup-only breathing room: in the modal the button is the last
-                            // thing in its comment block and would otherwise sit flush against
-                            // the next comment or the "open chat" row. The full chat view keeps
-                            // the component's own spacing.
-                            style={localStyles.stopButton}
-                        />
+                        {!showAssistantProgress && stopButton}
                     </React.Fragment>
                 )
             })}

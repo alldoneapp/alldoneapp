@@ -14,14 +14,23 @@
 const Typesense = require('typesense')
 
 const { getEnvFunctions } = require('./envFunctionsHelper')
+const { buildRecencySortBy } = require('./Typesense/searchRanking')
 
 const TASKS_COLLECTION = 'dev_tasks'
 const GOALS_COLLECTION = 'dev_goals'
 const NOTES_COLLECTION = 'dev_notes'
 const CONTACTS_COLLECTION = 'dev_contacts'
 const CHATS_COLLECTION = 'dev_updates'
+const ARTIFACTS_COLLECTION = 'dev_artifacts'
 
-const ALL_COLLECTIONS = [TASKS_COLLECTION, GOALS_COLLECTION, NOTES_COLLECTION, CONTACTS_COLLECTION, CHATS_COLLECTION]
+const ALL_COLLECTIONS = [
+    TASKS_COLLECTION,
+    GOALS_COLLECTION,
+    NOTES_COLLECTION,
+    CONTACTS_COLLECTION,
+    CHATS_COLLECTION,
+    ARTIFACTS_COLLECTION,
+]
 
 const IMPORT_BATCH_SIZE = 500
 
@@ -108,6 +117,24 @@ const COLLECTION_SCHEMAS = {
             { name: '.*', type: 'auto' },
         ],
     },
+    // Project artifacts (functions/Artifacts/artifactSearch.js). `content` is the text of the
+    // entry file, searched but never returned.
+    [ARTIFACTS_COLLECTION]: {
+        name: ARTIFACTS_COLLECTION,
+        fields: [
+            { name: 'title', type: 'string', optional: true },
+            { name: 'description', type: 'string', optional: true },
+            { name: 'content', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'userId', type: 'string', facet: true, optional: true },
+            { name: 'kind', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: 'created', type: 'int64', optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
 }
 
 let cachedClient = null
@@ -151,6 +178,17 @@ const getTypesenseClient = () => {
         retryIntervalSeconds: 1,
     })
     return cachedClient
+}
+
+// Scoped search keys are generated locally by typesense-js (HMAC); this does not
+// make a network request or reveal the parent search key to the caller. The parent
+// must itself be restricted to documents:search — Typesense rejects scoped keys
+// derived from an admin key.
+const generateTypesenseScopedSearchKey = (parentSearchKey, parameters) => {
+    if (!parentSearchKey) throw new Error('Typesense scoped-search parent key is not configured')
+    const client = getTypesenseClient()
+    if (!client) throw new Error('Typesense is not configured (TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY)')
+    return client.keys().generateScopedSearchKey(parentSearchKey, parameters)
 }
 
 // Millisecond-timestamp fields that legacy documents occasionally carry with garbage values.
@@ -315,27 +353,26 @@ const SEARCH_QUERY_CONFIG = {
     [TASKS_COLLECTION]: {
         query_by: 'humanReadableIdSearchable,humanReadableId,name',
         num_typos: 2,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     [GOALS_COLLECTION]: {
         query_by: 'name',
         num_typos: 0,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     [NOTES_COLLECTION]: {
         query_by: 'title,content',
         num_typos: 2,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     [CONTACTS_COLLECTION]: {
         query_by: 'displayName,cleanDescription,role,company',
         num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     [CHATS_COLLECTION]: {
         query_by: 'cleanName,cleanLastComment,cleanComments',
         num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
+    },
+    [ARTIFACTS_COLLECTION]: {
+        query_by: 'title,description,content',
+        num_typos: 2,
     },
 }
 
@@ -367,15 +404,18 @@ const searchTypesenseDocuments = async (collectionName, query, { filterBy, perPa
     const config = SEARCH_QUERY_CONFIG[collectionName]
     if (!config) throw new Error(`No Typesense query config for collection ${collectionName}`)
 
-    const result = await client.collections(collectionName).documents().search({
-        q: query,
-        query_by: config.query_by,
-        num_typos: config.num_typos,
-        sort_by: config.sort_by,
-        filter_by: filterBy,
-        per_page: perPage,
-        highlight_fields: 'none',
-    })
+    const result = await client
+        .collections(collectionName)
+        .documents()
+        .search({
+            q: query,
+            query_by: config.query_by,
+            num_typos: config.num_typos,
+            sort_by: buildRecencySortBy(collectionName, query, config.query_by),
+            filter_by: filterBy,
+            per_page: perPage,
+            highlight_fields: 'none',
+        })
 
     const hits = (result.hits || []).map(adaptTypesenseSearchHit)
     return { hits }
@@ -419,10 +459,12 @@ module.exports = {
     NOTES_COLLECTION,
     CONTACTS_COLLECTION,
     CHATS_COLLECTION,
+    ARTIFACTS_COLLECTION,
     ALL_COLLECTIONS,
     COLLECTION_SCHEMAS,
     isTypesenseConfigured,
     getTypesenseClient,
+    generateTypesenseScopedSearchKey,
     normalizeDocumentForTypesense,
     upsertTypesenseDocument,
     deleteTypesenseDocument,

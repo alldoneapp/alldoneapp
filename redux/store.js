@@ -13,6 +13,7 @@ import { FOLLOWED_TAB } from '../components/Feeds/Utils/FeedsConstants'
 import { getOptimisticGoalPostponeKey } from '../utils/backends/Goals/optimisticGoalPostpone'
 import {
     DV_TAB_ADMIN_PANEL_USER,
+    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
@@ -46,12 +47,37 @@ import {
 import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
 import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
+import { reduceLoadingData, START_LOADING_OPERATION, FINISH_LOADING_OPERATION } from './loadingData'
+import { SET_OKR_TODAY_OPERATION, reduceOkrTodayOperation, reconcileOkrTodayOperations } from './okrTodayVisibility'
+
+const SHOW_MORE_TIME_FIELDS = ['hasTomorrowTasks', 'hasFutureTasks', 'hasSomedayTasks']
+
+const recomputeProjectShowMoreFlags = projectData => {
+    if (!projectData) return
+    const categoryData = Object.entries(projectData)
+        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && key !== WORKSTREAM_TASKS_MY_DAY_TYPE && value)
+        .map(([, value]) => value)
+    const workstreamData = Object.values(projectData[WORKSTREAM_TASKS_MY_DAY_TYPE] || {})
+    SHOW_MORE_TIME_FIELDS.forEach(field => {
+        projectData[field] = [...categoryData, ...workstreamData].some(value => !!value?.[field])
+    })
+}
+
+const recomputeGlobalShowMoreFlags = openTasksShowMoreData => {
+    const projectData = Object.entries(openTasksShowMoreData)
+        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && value && typeof value === 'object')
+        .map(([, value]) => value)
+    SHOW_MORE_TIME_FIELDS.forEach(field => {
+        openTasksShowMoreData[field] = projectData.some(value => !!value[field])
+    })
+}
 
 export const initialState = {
     loggedIn: null,
     loadingStep: 0,
     loadingMessage: getRandomLoadingMessage(),
     loggedUser: {},
+    okrTodayOperations: {},
     currentUser: {},
     loggedUserProjects: [],
     loggedUserProjectsMap: {},
@@ -65,6 +91,13 @@ export const initialState = {
     projectChatLastNotification: {},
     globalAssistants: [],
     defaultAssistant: {},
+    // AT-2430: which assistant the assistant line is talking to in a given project, when the
+    // user picked one with the line's switch control. `{ [projectId]: assistantId }`, session
+    // only and deliberately never persisted — it is a view preference, not a property of the
+    // project (`project.assistantId` is the project's SHARED assistant and changing it would
+    // change the assistant for every member). A stale entry cannot do harm: readers resolve it
+    // against the project's live option list and fall back when it no longer matches.
+    assistantLineSelection: {},
     selectedProjectIndex: ALL_PROJECTS_INDEX,
     selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
     selectedNavItem: DV_TAB_ROOT_TASKS,
@@ -106,6 +139,7 @@ export const initialState = {
     },
     showFloatPopup: 0,
     shownFloatPopup: false,
+    taskEditorCount: 0,
     dismissibleActive: false,
     dismissibleComponent: null,
     dismissibleLimits: null,
@@ -119,6 +153,7 @@ export const initialState = {
     assignee: {},
     browserHistoryState: {},
     initialUrl: '/',
+    pendingWebShareTarget: null,
     processedInitialURL: false,
     // True while an anonymous visitor's shared-resource link is being resolved, so the login
     // screen shows a neutral spinner instead of the login UI until we forward them to the view.
@@ -141,6 +176,8 @@ export const initialState = {
     lastVisitedScreen: ['/projects/tasks/open'],
     taskTitleElementsWidths: [],
     isLoadingData: 0,
+    legacyLoadingDataCount: 0,
+    loadingDataOperations: {},
     showLoadingDataSpinner: false,
     registeredNewUser: false,
     alldoneVersion: { major: 0, minor: 0, patch: 0 },
@@ -165,6 +202,10 @@ export const initialState = {
     // '' until the first observed transition, then 'offline' | 'online' ('online' only
     // ever set as a recovery from 'offline' — see utils/connectionState.js)
     connectionState: '',
+    // 'live' | 'reconnecting' | 'stale' | 'offline' — what the app can PROVE about
+    // the server connection, as opposed to what the browser claims (PT-4660).
+    // Starts 'live': every uncertain path resolves to live, including boot.
+    connectionHealth: 'live',
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     noteChangedNotification: false,
@@ -275,6 +316,13 @@ export const initialState = {
     laterTasksExpandState: 0,
     somedayTasksExpanded: false,
     openTasksAmount: 0,
+    // AT-2445: `openTasksAmount` starts at 0 and is reset to 0 every time the count watchers are
+    // rebuilt, so "0" on its own cannot tell an empty inbox apart from an inbox that has not been
+    // counted yet. This flag is the missing half — see `setOpenTasksAmountLoaded`.
+    openTasksAmountLoaded: false,
+    // A same-day, complete-project cold-start proof that the previous Tasks board was empty.
+    // It is cleared as soon as the live aggregate queries take over.
+    taskColdStartEmptyToday: null,
     doneTasksAmount: null,
     earlierDoneTasksAmount: null,
     workflowTasksAmount: { amount: 0, loaded: false },
@@ -369,7 +417,6 @@ export const initialState = {
     lastTaskAddedId: '',
     openTasksShowMoreData: { hasFutureTasks: false, hasSomedayTasks: false },
     navigationSource: null,
-    showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
     triggerChatDraft: null,
     iframeModalData: { visible: false, url: '', name: '' },
@@ -449,7 +496,9 @@ const getDefaultAssistant = state => {
     const defaultProjectId = state?.loggedUser?.defaultProjectId
 
     if (!defaultProjectId) {
-        console.warn('No default project ID found')
+        // Empty startup/logout state has no user yet; that is expected. Keep the warning for an
+        // actually loaded account whose membership data is inconsistent.
+        if (state?.loggedIn && state?.loggedUser?.uid) console.warn('No default project ID found')
         return {}
     }
 
@@ -537,7 +586,9 @@ export const theReducer = (state = initialState, action) => {
         case 'Set selected Note':
             return { ...state, selectedNote: action.selectedNote }
         case 'Log out':
-            return { ...state, loggedIn: false }
+            // A failed signup can leave this flag armed. Carrying it into the next login skips the
+            // existing-user read and attempts to provision the account again.
+            return { ...state, loggedIn: false, registeredNewUser: false }
         case 'Set Version':
             return { ...state, alldoneVersion: action.version }
         case 'Set new version':
@@ -575,8 +626,16 @@ export const theReducer = (state = initialState, action) => {
                 previousFocusProjectId !== (loggedUser.inFocusTaskProjectId || '')
             const myDayState = focusChanged ? getMyDayStateForLoggedUserFocusChange(state, loggedUser) : null
 
-            return { ...state, loggedUser, currentUser, ...(myDayState || {}) }
+            return {
+                ...state,
+                loggedUser,
+                currentUser,
+                okrTodayOperations: reconcileOkrTodayOperations(state.okrTodayOperations, loggedUser),
+                ...(myDayState || {}),
+            }
         }
+        case SET_OKR_TODAY_OPERATION:
+            return reduceOkrTodayOperation(state, action)
         case 'Store current user': {
             return { ...state, currentUser: action.currentUser }
         }
@@ -764,6 +823,10 @@ export const theReducer = (state = initialState, action) => {
         case 'Reset float popup': {
             return { ...state, showFloatPopup: 0, shownFloatPopup: false }
         }
+        case 'Start task editor':
+            return { ...state, taskEditorCount: (state.taskEditorCount || 0) + 1 }
+        case 'Finish task editor':
+            return { ...state, taskEditorCount: Math.max((state.taskEditorCount || 0) - 1, 0) }
         case 'Toggle dismissible active':
             return { ...state, dismissibleActive: action.dismissibleActive }
         case 'Set dismissible component':
@@ -811,6 +874,10 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, webBeingResponsive: action.webBeingResponsive }
         case 'Set initial url':
             return { ...state, initialUrl: action.url }
+        case 'Set pending web share target':
+            return { ...state, pendingWebShareTarget: action.payload }
+        case 'Clear pending web share target':
+            return { ...state, pendingWebShareTarget: null }
         case 'Set task in detail view':
             return { ...state, taskInDetailView: action.task }
         case 'Set navigation route':
@@ -849,6 +916,28 @@ export const theReducer = (state = initialState, action) => {
             }
 
             return { ...state, projectAssistants, currentUser }
+        }
+        // AT-2430. Writes the SAME state back by identity when nothing changed: the assistant
+        // line is mounted on every task board, so a redundant new map identity here would
+        // re-render every one of them for a no-op selection.
+        case 'Set assistant line assistant': {
+            const { projectId, assistantId } = action
+            if (!projectId) return state
+
+            const current = state.assistantLineSelection[projectId]
+
+            if (!assistantId) {
+                if (current === undefined) return state
+                const assistantLineSelection = { ...state.assistantLineSelection }
+                delete assistantLineSelection[projectId]
+                return { ...state, assistantLineSelection }
+            }
+
+            if (current === assistantId) return state
+            return {
+                ...state,
+                assistantLineSelection: { ...state.assistantLineSelection, [projectId]: assistantId },
+            }
         }
         case 'Set workstreams in project': {
             const { projectId, workstreams } = action
@@ -922,6 +1011,9 @@ export const theReducer = (state = initialState, action) => {
                         projectChatNotifications[projectId][chatId].followedNotifications.push({
                             commentId: notification.commentId,
                             date: notification.date,
+                            chatType: notification.chatType,
+                            creatorId: notification.creatorId,
+                            creatorType: notification.creatorType,
                         })
                     }
                 } else {
@@ -1000,20 +1092,12 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, lastVisitedScreen: action.lastVisitedScreen }
         case 'Set task title elements widths':
             return { ...state, taskTitleElementsWidths: action.taskTitleElementsWidths }
-        case 'Start loading data': {
-            const { processes } = action
-            const valueInc =
-                processes !== undefined && processes !== null && processes > 0
-                    ? state.isLoadingData + processes
-                    : state.isLoadingData + 1
-            return { ...state, isLoadingData: valueInc, showLoadingDataSpinner: valueInc > 0 }
-        }
-        case 'Stop loading data': {
-            const valueDec = state.isLoadingData > 0 ? state.isLoadingData - 1 : 0
-            return { ...state, isLoadingData: valueDec, showLoadingDataSpinner: valueDec > 0 }
-        }
+        case START_LOADING_OPERATION:
+        case FINISH_LOADING_OPERATION:
+        case 'Start loading data':
+        case 'Stop loading data':
         case 'Reset loading data':
-            return { ...state, isLoadingData: 0, showLoadingDataSpinner: false }
+            return reduceLoadingData(state, action)
         case 'Set registered new user':
             return { ...state, registeredNewUser: action.registeredNewUser }
         case 'Set global search results':
@@ -1064,6 +1148,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, screenDimensions: action.screenDimensions }
         case 'Set connection state':
             return { ...state, connectionState: action.connectionState }
+        case 'Set connection health':
+            return { ...state, connectionHealth: action.connectionHealth }
         case 'Set show new day notification':
             return { ...state, showNewDayNotification: action.show }
         case 'Show note changed notification':
@@ -1754,6 +1840,22 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 openTasksAmount: openTasksAmount ? openTasksAmount : 0,
+            }
+        }
+
+        case 'Set open tasks amount loaded': {
+            const { openTasksAmountLoaded } = action
+            if (state.openTasksAmountLoaded === openTasksAmountLoaded) return state
+            return {
+                ...state,
+                openTasksAmountLoaded,
+            }
+        }
+
+        case 'Set task cold start empty today': {
+            return {
+                ...state,
+                taskColdStartEmptyToday: action.emptyToday || null,
             }
         }
 
@@ -2741,6 +2843,17 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
+        case 'Navigate to all projects artifacts': {
+            return {
+                ...state,
+                currentUser: state.loggedUser,
+                selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
+                selectedProjectIndex: ALL_PROJECTS_INDEX,
+                shortcutSelectedProjectIndex: null,
+                selectedSidebarTab: DV_TAB_ROOT_ARTIFACTS,
+            }
+        }
+
         case 'Navigate to goals': {
             const { options } = action
             return {
@@ -3221,6 +3334,8 @@ export const theReducer = (state = initialState, action) => {
             const openTasksShowMoreData = cloneDeep(state.openTasksShowMoreData)
             if (openTasksShowMoreData[projectId]?.[WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]) {
                 delete openTasksShowMoreData[projectId][WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]
+                recomputeProjectShowMoreFlags(openTasksShowMoreData[projectId])
+                recomputeGlobalShowMoreFlags(openTasksShowMoreData)
             }
 
             return { ...state, openTasksShowMoreData }
@@ -3231,6 +3346,7 @@ export const theReducer = (state = initialState, action) => {
 
             const openTasksShowMoreData = { ...state.openTasksShowMoreData }
             if (openTasksShowMoreData[projectId]) delete openTasksShowMoreData[projectId]
+            recomputeGlobalShowMoreFlags(openTasksShowMoreData)
 
             return { ...state, openTasksShowMoreData }
         }
@@ -3249,12 +3365,6 @@ export const theReducer = (state = initialState, action) => {
         case 'RESET_NAVIGATION_SOURCE':
             return { ...state, navigationSource: null }
 
-        case 'Show task completion animation':
-        case 'Set show task completion animation':
-            return {
-                ...state,
-                showTaskCompletionAnimation: action.showTaskCompletionAnimation,
-            }
         case 'Trigger chat submit':
             return {
                 ...state,

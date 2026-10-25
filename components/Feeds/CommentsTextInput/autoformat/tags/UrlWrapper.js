@@ -5,19 +5,14 @@ import { useDispatch, useSelector } from 'react-redux'
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputIsCalendarTask, quillTextInputRefs } from '../../CustomTextInput3'
-import {
-    addProtocol,
-    checkDVLink,
-    formatUrl,
-    getUrlObject,
-    isValidPreConfigTaskLink,
-} from '../../../../../utils/LinkingHelper'
+import { addProtocol, formatUrl, getUrlObject, isValidPreConfigTaskLink } from '../../../../../utils/LinkingHelper'
 import { colors } from '../../../../styles/global'
 import { getQuillEditorRef } from '../../textInputHelper'
 import URLTrigger from '../../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../../utils/NavigationService'
 import LinkTag, { getPathname } from '../../../../Tags/LinkTag'
-import { getPreConfigTask, getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { resolvePreConfigTaskLink } from '../../../../../utils/preConfigTaskLink'
 import { getAssistant, GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../../../../redux/actions'
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
@@ -36,10 +31,12 @@ import {
 import { REGEX_URL } from '../../../Utils/HelperFunctions'
 import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
+import { isLegacyEmailUrlFragment } from './legacyEmailUrlFragment'
+import { translate } from '../../../../../i18n/TranslationService'
 
 const Delta = ReactQuill.Quill.import('delta')
 
-export default function UrlWrapper({ value, objectName, isShared }) {
+export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
     const dispatch = useDispatch()
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const projectId = useSelector(state => state.quillEditorProjectId)
@@ -56,6 +53,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     const [objectProjectId, setObjectProjectId] = useState(null)
     const [isPrivate, setIsPrivate] = useState(false)
     const [showEditObjectPopup, setShowEditObjectPopup] = useState(false)
+    const [renderAsLegacyEmailText, setRenderAsLegacyEmailText] = useState(false)
     const inReadOnlyNote = activeNoteId !== '' && (activeNoteIsReadOnly || loggedUser.isAnonymous)
 
     useEffect(() => {
@@ -63,6 +61,16 @@ export default function UrlWrapper({ value, objectName, isShared }) {
             openModal()
         }
     }, [])
+
+    useEffect(() => {
+        // Older generated notes stored the local part and domain of an email address as separate
+        // URL embeds. The converter now prevents that for new notes; this read-time compatibility
+        // path makes already stored notes render as normal email text without mutating their CRDT.
+        const timeout = setTimeout(() => {
+            setRenderAsLegacyEmailText(isLegacyEmailUrlFragment(embedNode, url))
+        }, 0)
+        return () => clearTimeout(timeout)
+    }, [embedNode, url])
 
     useEffect(() => {
         if (!isOpen && canceled && !virtualQuillLoaded) {
@@ -93,11 +101,8 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     const openModal = e => {
-        console.log('[UrlWrapper] openModal called:', { type, url, projectId })
-
         // For pre-configured tasks, directly execute the action (open the modal)
         if (type === 'preConfigTask' || isValidPreConfigTaskLink(url, projectId)) {
-            console.log('[UrlWrapper] Detected preConfigTask, calling performAction')
             performAction(url)
             return
         }
@@ -142,120 +147,88 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     const performAction = async currentUrl => {
-        console.log('[UrlWrapper] performAction called:', { currentUrl, type, projectId })
-
         if (url.trim() !== currentUrl.trim()) {
             updateUrl(currentUrl)
         }
 
         // Handle pre-configured task links - open the task generator modal
         const isPreConfig = type === 'preConfigTask' || isValidPreConfigTaskLink(currentUrl, projectId)
-        console.log('[UrlWrapper] isPreConfigTask check:', { type, isPreConfig })
 
         if (isPreConfig) {
-            console.log('[UrlWrapper] Handling preConfigTask link')
             try {
-                const urlObj = new URL(addProtocol(currentUrl))
-                const assistantId = urlObj.searchParams.get('assistantId')
-                const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
-                const pathParts = urlObj.pathname.split('/')
-                const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
-                const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
-
-                console.log('[UrlWrapper] Parsed URL:', { taskId, assistantId, assistantProjectId })
-
-                if (taskId && assistantId) {
+                const resolved = await resolvePreConfigTaskLink(currentUrl, projectId)
+                if (resolved) {
+                    const { task, assistantId, assistantProjectId, targetProjectId } = resolved
                     closeModal()
-                    console.log('[UrlWrapper] Fetching preConfigTask...')
-                    const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
-                    console.log('[UrlWrapper] Got task:', task)
+                    const taskType = task.type || 'prompt'
 
-                    if (task) {
-                        const taskType = task.type || 'prompt'
-                        const targetProjectId = projectId || assistantProjectId
+                    // Handle different task types
+                    if (taskType === 'prompt' || taskType === 'webhook') {
+                        // For prompt/webhook: show modal if has variables, otherwise execute directly
+                        if (task.variables && task.variables.length > 0) {
+                            // Get assistant from Redux, or fetch from backend
+                            let assistant = getAssistant(assistantId)
 
-                        // Handle different task types
-                        if (taskType === 'prompt' || taskType === 'webhook') {
-                            // For prompt/webhook: show modal if has variables, otherwise execute directly
-                            if (task.variables && task.variables.length > 0) {
-                                // Get assistant from Redux, or fetch from backend
-                                let assistant = getAssistant(assistantId)
-                                console.log('[UrlWrapper] Got assistant from Redux:', assistant)
-
-                                if (!assistant) {
-                                    const fetchProjectId = isGlobalAssistant(assistantId)
-                                        ? GLOBAL_PROJECT_ID
-                                        : assistantProjectId
-                                    console.log(
-                                        '[UrlWrapper] Fetching assistant from backend, projectId:',
-                                        fetchProjectId
-                                    )
-                                    assistant = await getAssistantData(fetchProjectId, assistantId)
-                                    console.log('[UrlWrapper] Got assistant from backend:', assistant)
-                                }
-
-                                if (assistant) {
-                                    console.log(
-                                        '[UrlWrapper] Opening PreConfigTaskGeneratorModal for task with variables'
-                                    )
-                                    dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
-                                }
-                            } else {
-                                // No variables - execute directly
-                                console.log('[UrlWrapper] Executing prompt task directly (no variables)')
-                                const aiSettings =
-                                    task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
-                                        ? {
-                                              model: task.aiModel,
-                                              reasoningEffort: task.aiReasoningEffort,
-                                              systemMessage: task.aiSystemMessage,
-                                          }
-                                        : null
-                                const taskMetadata = {
-                                    ...(task.taskMetadata || {}),
-                                    sendWhatsApp: !!task.sendWhatsApp,
-                                    executionMode: task.executionMode,
-                                }
-                                generateTaskFromPreConfig(
-                                    targetProjectId,
-                                    task.name,
-                                    assistantId,
-                                    task.prompt,
-                                    aiSettings,
-                                    taskMetadata
-                                )
+                            if (!assistant) {
+                                const fetchProjectId = isGlobalAssistant(assistantId)
+                                    ? GLOBAL_PROJECT_ID
+                                    : assistantProjectId
+                                assistant = await getAssistantData(fetchProjectId, assistantId)
                             }
-                        } else if (taskType === 'iframe') {
-                            // Open iframe modal
-                            console.log('[UrlWrapper] Opening iframe modal:', task.link)
-                            dispatch(setIframeModalData(true, task.link, task.name))
-                        } else if (taskType === 'link') {
-                            // Open external link in new tab
-                            console.log('[UrlWrapper] Opening external link:', task.link)
-                            window.open(task.link, '_blank')
+
+                            if (assistant) {
+                                dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                            }
                         } else {
-                            // Unknown type - try to open as link
-                            console.log('[UrlWrapper] Unknown task type, opening as link:', taskType)
-                            if (task.link) {
-                                window.open(task.link, '_blank')
+                            // No variables - execute directly
+                            const aiSettings =
+                                task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
+                                    ? {
+                                          model: task.aiModel,
+                                          reasoningEffort: task.aiReasoningEffort,
+                                          systemMessage: task.aiSystemMessage,
+                                      }
+                                    : null
+                            const taskMetadata = {
+                                ...(task.taskMetadata || {}),
+                                sendWhatsApp: !!task.sendWhatsApp,
+                                executionMode: task.executionMode,
                             }
+                            generateTaskFromPreConfig(
+                                targetProjectId,
+                                task.name,
+                                assistantId,
+                                task.prompt,
+                                aiSettings,
+                                taskMetadata
+                            )
+                        }
+                    } else if (taskType === 'iframe') {
+                        // Open iframe modal
+                        dispatch(setIframeModalData(true, task.link, task.name))
+                    } else if (taskType === 'link') {
+                        // Open external link in new tab
+                        window.open(task.link, '_blank')
+                    } else {
+                        // Unknown type - try to open as link
+                        if (task.link) {
+                            window.open(task.link, '_blank')
                         }
                     }
                 } else {
-                    console.log('[UrlWrapper] Missing taskId or assistantId:', { taskId, assistantId })
+                    window.alert(translate('pre_config_task_link_unavailable'))
                 }
             } catch (error) {
                 console.error('[UrlWrapper] Error opening pre-configured task:', error)
+                window.alert(translate('pre_config_task_link_load_failed'))
             }
             return
         }
 
-        console.log('[UrlWrapper] Not a preConfigTask, checking other types')
         if (type !== 'plain' && type !== 'preConfigTask' && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
             if (!loggedUser.isAnonymous || isShared) {
                 closeModal()
                 setTimeout(() => {
-                    checkDVLink(type)
                     URLTrigger.processUrl(NavigationService, getPathname(currentUrl))
                 }, 400)
             }
@@ -345,7 +318,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                     tagPosition += typeof insert === 'string' ? insert.length : 1
                 }
             } catch (error) {
-                console.log('Editor Error')
+                console.warn('Failed to replace the url tag in the editor', error)
             }
         }, 400)
     }
@@ -398,6 +371,10 @@ export default function UrlWrapper({ value, objectName, isShared }) {
         }
     }
 
+    if (renderAsLegacyEmailText) {
+        return <span data-legacy-email-fragment="true">{url}</span>
+    }
+
     return (
         <AppPopover
             content={
@@ -413,6 +390,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                         tagId={tagId}
                         isPrivate={isPrivate}
                         objectUrl={url}
+                        inNote={inNote}
                     />
                 ) : (
                     <TagsInteractionPopup

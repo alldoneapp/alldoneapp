@@ -9,7 +9,14 @@ import MultiToggleSwitch from '../UIControls/MultiToggleSwitch/MultiToggleSwitch
 import ChatsSwitchableTagContainer from '../ChatsView/ChatsSwitchableTag/ChatsSwitchableTagContainer'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { updateContactsActiveTab, updateNotesActiveTab } from '../../redux/actions'
+import { useArtifactsActiveTab } from '../ArtifactsView/artifactsNavigationState'
+import URLsArtifacts, {
+    URL_ALL_PROJECTS_ARTIFACTS_ALL,
+    URL_ALL_PROJECTS_ARTIFACTS_FOLLOWED,
+} from '../../URLSystem/Artifacts/URLsArtifacts'
+import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import {
+    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
@@ -49,6 +56,30 @@ function ContactsSectionToggle() {
     )
 }
 
+function ArtifactsSectionToggle() {
+    const [artifactsActiveTab, setArtifactsActiveTab] = useArtifactsActiveTab()
+    const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
+
+    return (
+        <MultiToggleSwitch
+            options={[
+                { icon: 'eye', text: 'Followed', badge: null },
+                { icon: 'package', text: 'All', badge: null },
+            ]}
+            currentIndex={artifactsActiveTab === ALL_TAB ? 1 : 0}
+            onChangeOption={index => {
+                const tab = index === 0 ? FOLLOWED_TAB : ALL_TAB
+                setArtifactsActiveTab(tab)
+                if (checkIfSelectedAllProjects(selectedProjectIndex)) {
+                    URLsArtifacts.push(
+                        tab === ALL_TAB ? URL_ALL_PROJECTS_ARTIFACTS_ALL : URL_ALL_PROJECTS_ARTIFACTS_FOLLOWED
+                    )
+                }
+            }}
+        />
+    )
+}
+
 export default function RootSectionNavigation({ useOuterMargins = true }) {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -66,15 +97,22 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
                 return <ContactsSectionToggle />
             case DV_TAB_ROOT_CHATS:
                 return <ChatsSwitchableTagContainer />
+            case DV_TAB_ROOT_ARTIFACTS:
+                return <ArtifactsSectionToggle />
             default:
                 return null
         }
     }
 
     if (
-        ![DV_TAB_ROOT_TASKS, DV_TAB_ROOT_GOALS, DV_TAB_ROOT_NOTES, DV_TAB_ROOT_CONTACTS, DV_TAB_ROOT_CHATS].includes(
-            selectedTab
-        )
+        ![
+            DV_TAB_ROOT_TASKS,
+            DV_TAB_ROOT_GOALS,
+            DV_TAB_ROOT_NOTES,
+            DV_TAB_ROOT_CONTACTS,
+            DV_TAB_ROOT_CHATS,
+            DV_TAB_ROOT_ARTIFACTS,
+        ].includes(selectedTab)
     ) {
         return null
     }
@@ -82,7 +120,7 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
     return (
         <View
             style={[
-                useOuterMargins && localStyles.container,
+                useOuterMargins ? localStyles.container : localStyles.containerInProject,
                 useOuterMargins &&
                     (smallScreenNavigation
                         ? localStyles.containerMobile
@@ -95,6 +133,9 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
 }
 
 const localStyles = StyleSheet.create({
+    containerInProject: {
+        paddingHorizontal: 8,
+    },
     container: {
         marginHorizontal: 104,
     },

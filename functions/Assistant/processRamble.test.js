@@ -5,7 +5,10 @@
  */
 
 const mockUserGet = jest.fn()
-const mockDoc = jest.fn(() => ({ get: mockUserGet }))
+const mockProjectGet = jest.fn()
+const mockDoc = jest.fn(path => ({
+    get: path.startsWith('projects/') ? mockProjectGet : mockUserGet,
+}))
 jest.mock('firebase-admin', () => ({
     firestore: jest.fn(() => ({ doc: mockDoc })),
 }))
@@ -57,6 +60,11 @@ jest.mock('../Gold/goldHelper', () => ({
     deductGold: (...args) => mockDeductGold(...args),
 }))
 
+const mockGetUserVocabularyTerms = jest.fn()
+jest.mock('../shared/userVoiceVocabulary', () => ({
+    getUserVocabularyTerms: (...args) => mockGetUserVocabularyTerms(...args),
+}))
+
 const {
     processRambleSecondGen,
     calculateRambleGoldCost,
@@ -72,15 +80,17 @@ const callHandler = (data = BASE_DATA, auth = AUTH) => processRambleSecondGen({ 
 beforeEach(() => {
     jest.clearAllMocks()
     mockUserGet.mockResolvedValue({ exists: true, data: () => ({ gold: 50, language: 'de' }) })
+    mockProjectGet.mockResolvedValue({ exists: true, data: () => ({ userIds: ['user-1'] }) })
     mockGetAccessibleProjectIds.mockReturnValue(['project-1'])
     mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
-    mockGetAssistantForChat.mockResolvedValue({ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' })
+    mockGetAssistantForChat.mockResolvedValue({ uid: 'assistant-1', model: 'MODEL_GPT6_SOL' })
     mockGetProjectContext.mockResolvedValue('project context')
     mockGetUserContext.mockResolvedValue('user context')
     mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'raw transcript', durationSeconds: 60 })
-    mockCleanupRamble.mockResolvedValue({ text: 'cleaned text', totalTokens: 1000, modelKey: 'MODEL_GPT5_6_SOL' })
+    mockCleanupRamble.mockResolvedValue({ text: 'cleaned text', totalTokens: 1000, modelKey: 'MODEL_GPT6_SOL' })
     mockGetTokensPerGold.mockReturnValue(100)
     mockDeductGold.mockResolvedValue({ success: true })
+    mockGetUserVocabularyTerms.mockResolvedValue({ terms: [], cacheState: 'fresh', pendingRebuild: null })
 })
 
 describe('processRambleSecondGen', () => {
@@ -93,6 +103,9 @@ describe('processRambleSecondGen', () => {
             source: 'rambler',
             channel: 'comment',
             projectId: 'project-1',
+            // The cleanup model the token half of the price came from — recorded so
+            // `goldStats.spendByModel` can attribute rambler spend (AT-2487).
+            model: 'MODEL_GPT6_SOL',
         })
         expect(result).toEqual({
             text: 'cleaned text',
@@ -117,7 +130,7 @@ describe('processRambleSecondGen', () => {
     })
 
     test('rejects a project the user cannot access before any API spend', async () => {
-        mockGetAccessibleProjectIds.mockReturnValue(['other-project'])
+        mockProjectGet.mockResolvedValue({ exists: true, data: () => ({ userIds: ['other-user'] }) })
         await expect(callHandler()).rejects.toMatchObject({ code: 'permission-denied' })
         expect(mockTranscribeAudioBase64).not.toHaveBeenCalled()
         expect(mockDeductGold).not.toHaveBeenCalled()
@@ -153,6 +166,23 @@ describe('processRambleSecondGen', () => {
             message: 'EMPTY_TRANSCRIPT',
         })
         expect(mockDeductGold).not.toHaveBeenCalled()
+        expect(mockCleanupRamble).not.toHaveBeenCalled()
+        expect(mockTranscribeAudioBase64).toHaveBeenCalledWith(
+            BASE_DATA.audio,
+            expect.objectContaining({ retryEmptyTranscript: true })
+        )
+    })
+
+    test('recovered dictation is cleaned and charged only once', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({
+            transcript: 'recovered speech',
+            durationSeconds: 12,
+            emptyTranscriptRetried: true,
+        })
+        const result = await callHandler()
+        expect(result.transcript).toBe('recovered speech')
+        expect(mockCleanupRamble).toHaveBeenCalledTimes(1)
+        expect(mockDeductGold).toHaveBeenCalledTimes(1)
     })
 
     test('cleanup failure falls back to the raw transcript and bills only transcription', async () => {
@@ -181,6 +211,7 @@ describe('processRambleSecondGen', () => {
             source: 'rambler',
             channel: 'generic',
             projectId: 'project-1',
+            model: 'MODEL_GPT6_SOL',
         })
     })
 
@@ -209,7 +240,7 @@ describe('processRambleSecondGen', () => {
 describe('calculateRambleGoldCost', () => {
     test('charges at least 1 gold even for tiny rambles', () => {
         mockGetTokensPerGold.mockReturnValue(100)
-        expect(calculateRambleGoldCost({ durationSeconds: 3, totalTokens: 20, modelKey: 'MODEL_GPT5_6_SOL' })).toBe(1)
+        expect(calculateRambleGoldCost({ durationSeconds: 3, totalTokens: 20, modelKey: 'MODEL_GPT6_SOL' })).toBe(1)
     })
 
     test('bills tokens at the executing model rate', () => {
@@ -265,5 +296,187 @@ describe('normalizeTargetKind', () => {
         expect(normalizeTargetKind('note')).toBe('note')
         expect(normalizeTargetKind('anything')).toBe('generic')
         expect(normalizeTargetKind(undefined)).toBe('generic')
+    })
+})
+
+// PT-4648: without this, there is no way to tell whether Deepgram's keyterm prompting or the LLM
+// cleanup fixed a brand spelling — or whether the cleanup introduced the mirror-image error.
+describe('dictation vocabulary observability', () => {
+    let logSpy
+
+    beforeEach(() => {
+        logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        logSpy.mockRestore()
+    })
+
+    const loggedPayload = () => logSpy.mock.calls.find(call => call[0] === '[processRamble] timing')?.[1]
+
+    test('reports a brand the cleanup repaired, separating the two layers', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'add this to all done', durationSeconds: 5 })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Add this to Alldone.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT6_SOL',
+        })
+
+        await callHandler()
+
+        const payload = loggedPayload()
+        // Absent from the raw transcript, present after cleanup => the LLM did the work.
+        expect(payload.vocabularyTerms.Alldone).toEqual({ raw: 0, cleaned: 1 })
+        expect(payload.vocabularyConfusable['all done']).toEqual({ raw: 1, cleaned: 0 })
+    })
+
+    test('reports a brand Deepgram already got right', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'add this to Alldone', durationSeconds: 5 })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Add this to Alldone.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT6_SOL',
+        })
+
+        await callHandler()
+
+        expect(loggedPayload().vocabularyTerms.Alldone).toEqual({ raw: 1, cleaned: 1 })
+    })
+
+    test('never logs the dictated content itself', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({
+            transcript: 'salary negotiation with Daniela',
+            durationSeconds: 5,
+        })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Salary negotiation with Daniela.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT6_SOL',
+        })
+
+        await callHandler()
+
+        const serialized = JSON.stringify(loggedPayload())
+        expect(serialized).not.toContain('salary')
+        expect(serialized).not.toContain('Daniela')
+        // Lengths are fine — they are not content.
+        expect(loggedPayload().transcriptChars).toBe('salary negotiation with Daniela'.length)
+    })
+})
+
+// PT-4648: the per-user half. The load-bearing property is that BOTH layers receive the SAME final
+// list — if they could disagree, the cleanup would "correct" a spelling Deepgram was told to emit.
+describe('per-user dictation vocabulary', () => {
+    const { PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
+
+    beforeEach(() => {
+        mockGetUserVocabularyTerms.mockResolvedValue({
+            terms: ['Anna Somova', 'Heyflow'],
+            cacheState: 'fresh',
+            pendingRebuild: null,
+        })
+    })
+
+    test('sends the static glossary merged with the user terms to Deepgram', async () => {
+        await callHandler()
+
+        const [, options] = mockTranscribeAudioBase64.mock.calls[0]
+        expect(options.keyterms).toEqual([...PRODUCT_KEYTERMS, 'Anna Somova', 'Heyflow'])
+    })
+
+    test('hands the cleanup the identical list, so the two layers cannot disagree', async () => {
+        await callHandler()
+
+        const [, transcribeOptions] = mockTranscribeAudioBase64.mock.calls[0]
+        const cleanupArgs = mockCleanupRamble.mock.calls[0][0]
+        expect(cleanupArgs.vocabularyTerms).toEqual(transcribeOptions.keyterms)
+    })
+
+    test('excludes the static glossary when asking for the user terms', async () => {
+        // A term every user already gets must not consume one of this user's slots.
+        await callHandler()
+        expect(mockGetUserVocabularyTerms).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: 'user-1', excludeTerms: PRODUCT_KEYTERMS })
+        )
+    })
+
+    test('still dictates when the vocabulary lookup degrades to nothing', async () => {
+        // Losing the personalized boost is a bad day; losing the dictation is a broken feature.
+        mockGetUserVocabularyTerms.mockResolvedValue({ terms: [], cacheState: 'unavailable', pendingRebuild: null })
+
+        const result = await callHandler()
+
+        expect(result.text).toBe('cleaned text')
+        const [, options] = mockTranscribeAudioBase64.mock.calls[0]
+        expect(options.keyterms).toEqual(PRODUCT_KEYTERMS)
+    })
+
+    test('awaits an in-flight rebuild so the cache is not left cold forever', async () => {
+        // Cloud Run may freeze the container once the response returns; an un-awaited rebuild is a
+        // cache that never fills, and the user would silently get the static glossary every time.
+        let resolveRebuild
+        const pendingRebuild = new Promise(resolve => {
+            resolveRebuild = resolve
+        })
+        let settled = false
+        pendingRebuild.then(() => {
+            settled = true
+        })
+        mockGetUserVocabularyTerms.mockResolvedValue({ terms: ['Somova'], cacheState: 'stale', pendingRebuild })
+
+        const pendingCall = callHandler()
+        await Promise.resolve()
+        resolveRebuild()
+        await pendingCall
+
+        expect(settled).toBe(true)
+    })
+
+    test('does not hang the response on a rebuild that never finishes', async () => {
+        jest.useFakeTimers()
+        try {
+            mockGetUserVocabularyTerms.mockResolvedValue({
+                terms: ['Somova'],
+                cacheState: 'stale',
+                pendingRebuild: new Promise(() => {}),
+            })
+
+            const pendingCall = callHandler()
+            // Drain the microtask queue, then let the drain timeout fire.
+            await Promise.resolve()
+            await jest.advanceTimersByTimeAsync(5000)
+
+            await expect(pendingCall).resolves.toEqual(expect.objectContaining({ text: 'cleaned text' }))
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    test('logs the cache state and per-user counts without naming a single term', async () => {
+        // These terms are contact names. `Somova: 1` in Cloud Logging would be a data leak through
+        // a spelling hint.
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+        try {
+            mockTranscribeAudioBase64.mockResolvedValue({
+                transcript: 'call Anna Somova about Heyflow',
+                durationSeconds: 5,
+            })
+            mockCleanupRamble.mockResolvedValue({
+                text: 'Call Anna Somova about Heyflow.',
+                totalTokens: 10,
+                modelKey: 'MODEL_GPT6_SOL',
+            })
+
+            await callHandler()
+
+            const payload = logSpy.mock.calls.find(call => call[0] === '[processRamble] timing')?.[1]
+            expect(payload.vocabularyCacheState).toBe('fresh')
+            expect(payload.vocabularyDynamicCount).toBe(2)
+            expect(payload.vocabularyDynamic).toEqual({ termCount: 2, raw: 2, cleaned: 2, matchedTerms: 2 })
+            expect(JSON.stringify(payload)).not.toContain('Somova')
+            expect(JSON.stringify(payload)).not.toContain('Heyflow')
+        } finally {
+            logSpy.mockRestore()
+        }
     })
 })

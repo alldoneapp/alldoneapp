@@ -3,6 +3,7 @@ import renderer from 'react-test-renderer'
 
 import DueDateSinglePopup from './DueDateSinglePopup'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+import { setTaskDueDate } from '../../utils/backends/Tasks/tasksFirestore'
 
 const mockState = {
     loggedUser: { showAllProjectsByTime: false },
@@ -24,7 +25,13 @@ jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
     useSelector: selector => selector(mockState),
 }))
-jest.mock('react-tiny-popover', () => 'Popover')
+jest.mock('react-tiny-popover', () => {
+    const React = require('react')
+    return {
+        __esModule: true,
+        default: props => React.createElement('Popover', props, props.children, props.content),
+    }
+})
 jest.mock('../UIComponents/FloatModals/DueDateModal/DueDateModal', () => 'DueDateModal')
 const mockUpdateGoalAssigneeReminderDate = jest.fn()
 jest.mock('../../utils/BackendBridge', () => ({
@@ -36,6 +43,17 @@ jest.mock('../../utils/BackendBridge', () => ({
 jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskDueDate: jest.fn(),
     setTaskToBacklog: jest.fn(),
+}))
+const mockPostponeProjectTasks = jest.fn()
+jest.mock('../../utils/backends/Tasks/projectPostpone', () => ({
+    postponeProjectTasks: (...args) => mockPostponeProjectTasks(...args),
+}))
+const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
+jest.mock('../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
+    postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
+}))
+jest.mock('../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
+    postponeGoalWithMotion: (context, write) => write(),
 }))
 jest.mock('../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper', () => ({
     checkIfInMyDayOpenTab: jest.fn(() => false),
@@ -82,6 +100,84 @@ describe('DueDateSinglePopup positioning', () => {
     })
 })
 
+it('opens a project picker without a representative task and delegates dates/auto to the cloud', () => {
+    mockState.showSwipeDueDatePopup.data = { projectId: 'p1', isProjectPostpone: true }
+    const tree = renderer.create(<DueDateSinglePopup />)
+    const modal = tree.root.findByType('DueDateModal')
+    modal.props.postponeProject(123, 'date')
+    modal.props.postponeProject(undefined, 'auto')
+    expect(mockPostponeProjectTasks).toHaveBeenCalledWith('p1', 123, 'date')
+    expect(mockPostponeProjectTasks).toHaveBeenCalledWith('p1', undefined, 'auto')
+    expect(modal.props.task.id).toBeUndefined()
+    tree.unmount()
+    mockState.showSwipeDueDatePopup.data = { projectId: 'project-1', task: { id: 'task-1' } }
+})
+
+describe('DueDateSinglePopup task postpone handoff (AT-2541)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockState.showSwipeDueDatePopup.data = {
+            projectId: 'project-1',
+            task: { id: 'task-1' },
+        }
+    })
+
+    const dueDateModal = tree => tree.root.findByType('DueDateModal')
+
+    it('hands a single swipe postpone to the mounted Today row before writing', async () => {
+        const tree = renderer.create(<DueDateSinglePopup />)
+        const task = mockState.showSwipeDueDatePopup.data.task
+
+        await dueDateModal(tree).props.saveDueDateBeforeSaveTask(task, 4242, false)
+
+        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                task,
+                targetDate: 4242,
+                updatesDueDate: true,
+                updatesObservedDate: false,
+            }),
+            expect.any(Function)
+        )
+        expect(setTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', 4242, task, false, null)
+        tree.unmount()
+    })
+
+    it('does not animate a bulk goal postpone', async () => {
+        const task = { id: 'task-1' }
+        mockState.showSwipeDueDatePopup.data = {
+            projectId: 'project-1',
+            task,
+            multipleTasks: true,
+            parentGoaltasks: [task],
+        }
+        const tree = renderer.create(<DueDateSinglePopup />)
+
+        await dueDateModal(tree).props.saveDueDateBeforeSaveTask(task, 4242, false)
+
+        expect(mockPostponeTaskWithMotion).not.toHaveBeenCalled()
+        expect(setTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', 4242, task, false, null)
+        tree.unmount()
+    })
+
+    it('marks a goal swipe popup as the source of a whole-section postpone', () => {
+        const goal = { id: 'goal-1', assigneesReminderDate: { 'user-1': 1 } }
+        mockState.showSwipeDueDatePopup.data = {
+            projectId: 'project-1',
+            task: { id: 'task-1' },
+            goal,
+            multipleTasks: true,
+            parentGoaltasks: [{ id: 'task-1' }],
+        }
+
+        const tree = renderer.create(<DueDateSinglePopup />)
+
+        expect(dueDateModal(tree).props.animateGoalPostpone).toBe(true)
+        tree.unmount()
+    })
+})
+
 // AT-2160
 describe('DueDateSinglePopup goal reminder write', () => {
     const goal = { id: 'goal-1', assigneesReminderDate: { 'user-1': 1 } }
@@ -100,8 +196,7 @@ describe('DueDateSinglePopup goal reminder write', () => {
     // write — a full round trip in front of every goal postpone made from this popup.
     it('hands the loaded goal to the backend so it does not re-read it first', () => {
         const tree = renderer.create(<DueDateSinglePopup />)
-        // Popover is mocked as a host element, so its content stays an unrendered element prop.
-        const modal = tree.root.findByType('Popover').props.content.props.children
+        const modal = tree.root.findByType('DueDateModal')
 
         modal.props.updateParentGoalReminderDate(4242)
 

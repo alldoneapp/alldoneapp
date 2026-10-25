@@ -229,6 +229,14 @@ export const setDismissibleComponent = dismissibleComponent => {
     return action
 }
 
+export const startTaskEditor = () => ({
+    type: 'Start task editor',
+})
+
+export const finishTaskEditor = () => ({
+    type: 'Finish task editor',
+})
+
 export const setShortcutFocusTasks = shortcutFocusTasks => {
     const action = {
         type: 'Set shortcut focus tasks',
@@ -453,6 +461,15 @@ export const setInitialUrl = url => {
     return action
 }
 
+export const setPendingWebShareTarget = payload => ({
+    type: 'Set pending web share target',
+    payload,
+})
+
+export const clearPendingWebShareTarget = () => ({
+    type: 'Clear pending web share target',
+})
+
 export const setTaskInDetailView = task => {
     const action = {
         type: 'Set task in detail view',
@@ -569,6 +586,18 @@ export const setAssistantsInProject = (projectId, assistants) => {
         type: 'Set assistants in project',
         projectId,
         assistants,
+    }
+    return action
+}
+
+// AT-2430: the assistant the assistant line should use inside `projectId`, chosen with the
+// line's own switch control. Pass a falsy `assistantId` to drop the choice and fall back to the
+// project's configured assistant.
+export const setAssistantLineAssistant = (projectId, assistantId) => {
+    const action = {
+        type: 'Set assistant line assistant',
+        projectId,
+        assistantId,
     }
     return action
 }
@@ -951,6 +980,14 @@ export const setConnectionState = connectionState => {
     const action = {
         type: 'Set connection state',
         connectionState,
+    }
+    return action
+}
+
+export const setConnectionHealth = connectionHealth => {
+    const action = {
+        type: 'Set connection health',
+        connectionHealth,
     }
     return action
 }
@@ -2012,6 +2049,27 @@ export const setOpenTasksAmount = openTasksAmount => {
     return action
 }
 
+export const setTaskColdStartEmptyToday = emptyToday => ({
+    type: 'Set task cold start empty today',
+    emptyToday,
+})
+
+/**
+ * AT-2445 — "has every open-task count watcher delivered its first snapshot?".
+ *
+ * `openTasksAmount` is a running total accumulated across one Firestore listener per project, and
+ * it is forced back to 0 whenever those listeners are rebuilt. Without this flag, `!openTasksAmount`
+ * is true for the whole loading window of every visit to the all-projects board, which is
+ * indistinguishable from a genuinely empty inbox.
+ */
+export const setOpenTasksAmountLoaded = openTasksAmountLoaded => {
+    const action = {
+        type: 'Set open tasks amount loaded',
+        openTasksAmountLoaded,
+    }
+    return action
+}
+
 export const setDoneTasksAmount = doneTasksAmount => {
     const action = {
         type: 'Set done tasks amount',
@@ -2707,6 +2765,13 @@ export const navigateToAllProjectsNotes = options => {
     return action
 }
 
+export const navigateToAllProjectsArtifacts = () => {
+    const action = {
+        type: 'Navigate to all projects artifacts',
+    }
+    return action
+}
+
 export const navigateToGoals = options => {
     const action = {
         type: 'Navigate to goals',
@@ -3019,20 +3084,6 @@ export const setShowAllProjectsByTime = showAllProjectsByTime => {
     const action = {
         type: 'Set show all projects by time',
         showAllProjectsByTime,
-    }
-    return action
-}
-
-export const showTaskCompletionAnimation = () => {
-    const action = {
-        type: 'Show task completion animation',
-    }
-    return action
-}
-
-export const hideTaskCompletionAnimation = () => {
-    const action = {
-        type: 'Hide task completion animation',
     }
     return action
 }

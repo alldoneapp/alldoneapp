@@ -1,3 +1,4 @@
+import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
@@ -40,14 +41,28 @@ export default function AddGoalTag({ projectId, style }) {
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             <TouchableOpacity
-                style={[localStyles.tag, smallScreenNavigation && localStyles.tagMobile, style]}
+                style={[
+                    localStyles.tag,
+                    taskHierarchyStyles.headerAddButton,
+                    smallScreenNavigation && taskHierarchyStyles.headerAddButtonMobile,
+                    style,
+                ]}
                 onPress={openModal}
             >
                 <View style={localStyles.icon}>
-                    <Icon name={'target'} size={16} color={colors.Text03} />
+                    <Icon name={'plus'} size={16} color={'#FFFFFF'} />
                 </View>
                 {!smallScreenNavigation && (
-                    <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{translate('Add goal')}</Text>
+                    <Text
+                        style={[
+                            styles.subtitle2,
+                            localStyles.text,
+                            windowTagStyle(),
+                            taskHierarchyStyles.headerAddText,
+                        ]}
+                    >
+                        {translate('Add goal')}
+                    </Text>
                 )}
             </TouchableOpacity>
         </AppPopover>
@@ -65,10 +80,6 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Text03,
         paddingHorizontal: 4,
-    },
-    tagMobile: {
-        width: 24,
-        height: 24,
     },
     text: {
         color: colors.Text03,

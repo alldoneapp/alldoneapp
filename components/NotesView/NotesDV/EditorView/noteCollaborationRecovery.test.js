@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+jest.mock('../../../../utils/connectionState', () => ({ isBrowserOffline: () => navigator.onLine === false }))
 
 import { hasDestructiveCollaborationSync, prepareSyncedNoteDocument } from './noteCollaborationRecovery'
 

@@ -33,12 +33,7 @@ describe('pre-configured task model selection', () => {
         const values = PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => option.value)
 
         expect(values).toEqual(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
-        expect(values).toEqual([
-            'MODEL_GPT5_6_SOL',
-            'MODEL_GPT5_6_TERRA',
-            'MODEL_GPT5_6_LUNA',
-            'MODEL_DEEPSEEK_V4_FLASH',
-        ])
+        expect(values).toEqual(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT6_LUNA', 'MODEL_DEEPSEEK_V4_FLASH'])
         expect(SELECTABLE_ASSISTANT_MODELS.map(option => option.name)).toEqual([
             'Sol',
             'Terra',

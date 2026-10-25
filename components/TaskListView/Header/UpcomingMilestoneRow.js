@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react'
 import { View } from 'react-native'
+import MilestoneRowTransition from './MilestoneRowTransition'
+import ProjectPostponeSwipe from './ProjectPostponeSwipe'
 import { useDispatch, useSelector } from 'react-redux'
 import MilestonePresentation from '../../GoalsView/MilestonePresentation'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { setSelectedSidebarTab, switchProject } from '../../../redux/actions'
 import { DV_TAB_ROOT_GOALS } from '../../../utils/TabNavigationConstants'
 
-export default function UpcomingMilestoneRow({ projectId }) {
+export default function UpcomingMilestoneRow({ projectId, hidden = false, allowProjectPostpone = false }) {
     // Call all hooks unconditionally to preserve hook order between renders
     const dispatch = useDispatch()
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
@@ -47,7 +49,7 @@ export default function UpcomingMilestoneRow({ projectId }) {
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
-    if (!nextUpcoming || !usersInProject) return null
+    if (!usersInProject) return null
 
     const goToGoalsTab = () => {
         if (typeof projectIndex === 'number') {
@@ -57,19 +59,36 @@ export default function UpcomingMilestoneRow({ projectId }) {
         }
     }
 
+    const milestoneRow = nextUpcoming && (
+        <MilestonePresentation
+            outlined
+            onPress={goToGoalsTab}
+            milestone={nextUpcoming}
+            projectId={projectId}
+            goals={goals}
+            firstMilestoneId={firstMilestoneId}
+            previousMilestoneDate={previousMilestoneDate}
+            isActiveMilestone={false}
+            loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+            hideMoreButton={true}
+        />
+    )
+
     return (
-        <View style={{ paddingTop: 20, paddingBottom: 8 }}>
-            <MilestonePresentation
-                onPress={goToGoalsTab}
-                milestone={nextUpcoming}
-                projectId={projectId}
-                goals={goals}
-                firstMilestoneId={firstMilestoneId}
-                previousMilestoneDate={previousMilestoneDate}
-                isActiveMilestone={false}
-                loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                hideMoreButton={true}
-            />
-        </View>
+        <MilestoneRowTransition
+            key={`${projectId}:${currentUserId}`}
+            milestoneId={hidden ? null : nextUpcoming?.id || null}
+        >
+            {!hidden && nextUpcoming && (
+                <View style={{ paddingTop: 20, paddingBottom: 8 }}>
+                    {/* Postpone the project just like its header; keep the row's spacing outside the swipe. */}
+                    {allowProjectPostpone ? (
+                        <ProjectPostponeSwipe projectId={projectId}>{milestoneRow}</ProjectPostponeSwipe>
+                    ) : (
+                        milestoneRow
+                    )}
+                </View>
+            )}
+        </MilestoneRowTransition>
     )
 }

@@ -46,6 +46,7 @@ import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUti
 import ModalItem from '../Common/ModalItem'
 import TaskPriorityModal from '../../TaskPriorityModal/TaskPriorityModal'
 import useFloatPopupLock from '../../../../../hooks/useFloatPopupLock'
+import PrepareMeetingsItem from '../../PrepareMeetings/PrepareMeetingsItem'
 
 export default function TaskMoreButton({
     formType,
@@ -125,7 +126,7 @@ export default function TaskMoreButton({
     }
 
     const hideEstimationPopup = () => {
-        hidePopups(setShowEstimation)
+        hidePopups(setShowEstimation, ESTIMATIONS_MODAL_ID)
         dismissModal()
     }
 
@@ -211,6 +212,11 @@ export default function TaskMoreButton({
             removeModal(TASK_WORKFLOW_MODAL_ID)
             popupLock.release()
         }
+        if (showEstimation) {
+            setShowEstimation(false)
+            removeModal(ESTIMATIONS_MODAL_ID)
+            popupLock.release()
+        }
         if (showHighlight) {
             setShowHighlight(false)
             removeModal(HIGHLIGHT_MODAL_ID)
@@ -225,13 +231,26 @@ export default function TaskMoreButton({
     const renderItems = () => {
         const list = []
 
+        if (editing && task.id && task.calendarData) {
+            list.push(shortcut => (
+                <PrepareMeetingsItem
+                    key="mbtn-prepare-meetings"
+                    projectId={projectId}
+                    tasks={[task]}
+                    specificTask={true}
+                    shortcut={shortcut}
+                    closeModal={hideNoModalsProperties}
+                />
+            ))
+        }
+
         if (editing) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem
                         key={'mbtn-priority'}
                         icon={'flag'}
-                        text={translate('Priority')}
+                        text={'Priority'}
                         visibilityData={{ openPopup, visibilityFn: setShowPriority }}
                         shortcut={shortcut}
                     />

@@ -6,14 +6,20 @@ const admin = require('firebase-admin')
 const { ALL_USERS, DYNAMIC_PERCENT, getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 const { isGoalCompleted } = require('../Goals/linearGoalMilestones')
 const { goalIsVisibleInOpenMilestone } = require('../shared/goalMilestonesHelper')
+const { PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
+const {
+    appendCalendarGoalLearnedRulesToPrompt,
+    findLearnedCalendarGoalSeriesRoute,
+    loadCalendarProjectRoutingConfig,
+} = require('../GoogleCalendar/calendarProjectRoutingConfig')
 
 const TASK_GOAL_ROUTING_OFF = 'off'
 const TASK_GOAL_ROUTING_SUGGESTIONS = 'suggestions'
 const TASK_GOAL_ROUTING_AUTOMATIC = 'automatic'
 // Default only — the routing user can override the model in Settings → Customizations
 // (featureModelPreferences.taskGoalRouting; OpenAI models only, this runs on the Responses API).
-const TASK_GOAL_ROUTING_MODEL = 'gpt-5.6-luna'
-const TASK_GOAL_ROUTING_MODEL_KEY = 'MODEL_GPT5_6_LUNA'
+const TASK_GOAL_ROUTING_MODEL = 'gpt-6-luna'
+const TASK_GOAL_ROUTING_MODEL_KEY = 'MODEL_GPT6_LUNA'
 const SUGGESTION_CONFIDENCE_THRESHOLD = 0.65
 const AUTO_ASSIGN_CONFIDENCE_THRESHOLD = 0.9
 const AUTO_ASSIGN_MARGIN_THRESHOLD = 0.15
@@ -143,12 +149,11 @@ const chooseRoutingAction = (mode, classification) => {
     if (!classification.goalId || classification.confidence < SUGGESTION_CONFIDENCE_THRESHOLD) return 'none'
 
     const confidenceMargin = classification.confidence - classification.alternativeConfidence
-    if (
-        mode === TASK_GOAL_ROUTING_AUTOMATIC &&
-        classification.confidence >= AUTO_ASSIGN_CONFIDENCE_THRESHOLD &&
-        confidenceMargin >= AUTO_ASSIGN_MARGIN_THRESHOLD
-    ) {
-        return 'auto_assign'
+    if (mode === TASK_GOAL_ROUTING_AUTOMATIC) {
+        return classification.confidence >= AUTO_ASSIGN_CONFIDENCE_THRESHOLD &&
+            confidenceMargin >= AUTO_ASSIGN_MARGIN_THRESHOLD
+            ? 'auto_assign'
+            : 'none'
     }
     return 'suggest'
 }
@@ -158,6 +163,14 @@ const buildClassifierInput = (task, goals) => ({
         title: String(task.extendedName || task.name || '').slice(0, 500),
         description: String(task.description || '').slice(0, 1500),
     },
+    calendarEvent: task.calendarData
+        ? {
+              provider: String(task.calendarData.provider || 'google').slice(0, 50),
+              recurringEventId: String(task.calendarData.recurringEventId || '').slice(0, 500),
+              start: task.calendarData.start || null,
+              end: task.calendarData.end || null,
+          }
+        : null,
     goals: goals.map(goal => ({
         goalId: goal.id,
         title: String(goal.extendedName || goal.name || '').slice(0, 500),
@@ -165,7 +178,7 @@ const buildClassifierInput = (task, goals) => ({
     })),
 })
 
-async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL_ROUTING_MODEL }) {
+async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL_ROUTING_MODEL, learnedRules = '' }) {
     const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
     const { OPEN_AI_KEY } = getCachedEnvFunctions()
     if (!OPEN_AI_KEY) throw new Error('OPEN_AI_KEY is not configured')
@@ -173,8 +186,10 @@ async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL
     const openai = getOpenAIClient(OPEN_AI_KEY)
     const response = await openai.responses.create({
         model,
-        instructions:
+        instructions: appendCalendarGoalLearnedRulesToPrompt(
             'Choose the single active goal that this task most directly advances. Return no goal when the match is weak or merely topical. Never invent IDs. Keep the reason short, user-facing, and in the same language as the task.',
+            learnedRules
+        ),
         input: JSON.stringify(buildClassifierInput(task, goals)),
         reasoning: { effort: 'low' },
         text: {
@@ -226,7 +241,14 @@ const getFirstMilestone = snapshot => {
     return doc ? { id: doc.id, ...doc.data() } : null
 }
 
-async function loadCandidateGoals(db, projectId, project, userId, task) {
+async function loadCandidateGoals(
+    db,
+    projectId,
+    project,
+    userId,
+    task,
+    { preferredGoalIds = [], learnedRules = '' } = {}
+) {
     const ownerId = project.parentTemplateId ? userId : ALL_USERS
     const [goalsSnapshot, milestoneSnapshot] = await Promise.all([
         db.collection(`goals/${projectId}/items`).where('ownerId', '==', ownerId).get(),
@@ -237,10 +259,30 @@ async function loadCandidateGoals(db, projectId, project, userId, task) {
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(goal => isGoalEligibleForTaskRouting(goal, currentMilestone) && isVisibleToUser(goal, userId))
 
-    return selectCandidateGoals(task, eligibleGoals, currentMilestone)
+    const candidates = selectCandidateGoals(task, eligibleGoals, currentMilestone)
+    const preferredGoalIdSet = new Set((Array.isArray(preferredGoalIds) ? preferredGoalIds : []).filter(Boolean))
+    const normalizedLearnedRules = typeof learnedRules === 'string' ? learnedRules : ''
+    const preferredGoals = eligibleGoals.filter(
+        goal => preferredGoalIdSet.has(goal.id) || (normalizedLearnedRules && normalizedLearnedRules.includes(goal.id))
+    )
+    if (preferredGoals.length === 0) return candidates
+
+    return [
+        ...preferredGoals,
+        ...candidates.filter(candidate => !preferredGoals.some(preferred => preferred.id === candidate.id)),
+    ].slice(0, MAX_CANDIDATE_GOALS)
 }
 
-const createSuggestion = ({ classification, action, claimId, projectId, now, goldSpent, model }) => ({
+const createSuggestion = ({
+    classification,
+    action,
+    claimId,
+    projectId,
+    now,
+    goldSpent,
+    model,
+    source = 'task_goal_router',
+}) => ({
     goalId: classification.goalId,
     status: action === 'auto_assign' ? 'auto_assigned' : action === 'suggest' ? 'pending' : 'none',
     confidence: classification.confidence,
@@ -249,11 +291,31 @@ const createSuggestion = ({ classification, action, claimId, projectId, now, gol
     reason: classification.reason,
     projectId,
     model: model || TASK_GOAL_ROUTING_MODEL,
-    source: 'task_goal_router',
+    source,
     claimId,
     goldSpent,
     createdAt: now,
 })
+
+async function loadCalendarGoalLearning({ task, projectId, userId, loadConfig }) {
+    const calendarData = task?.calendarData
+    if (!calendarData || typeof calendarData !== 'object') return { learnedGoalRules: '', exactSeriesRoute: null }
+
+    const syncProjectId = String(
+        calendarData.originalProjectId || calendarData.projectRouting?.syncProjectId || projectId
+    ).trim()
+    if (!syncProjectId) return { learnedGoalRules: '', exactSeriesRoute: null }
+
+    const configContext = await loadConfig(userId, syncProjectId, calendarData.email || '')
+    if (!configContext?.exists || !configContext.config?.enabled) {
+        return { learnedGoalRules: '', exactSeriesRoute: null }
+    }
+
+    return {
+        learnedGoalRules: configContext.config.learnedGoalRules || '',
+        exactSeriesRoute: findLearnedCalendarGoalSeriesRoute(configContext.config, calendarData, projectId),
+    }
+}
 
 const isStaleUnresolvedGoalSuggestion = (task, projectId) => {
     const suggestion = task?.goalSuggestion
@@ -319,7 +381,7 @@ async function writeAutomaticGoalRoutingArtifacts({
             goalName: getTaskNameWithoutMeta(goal.extendedName || goal.name || ''),
             reasoning: suggestion.reason,
             confidence: suggestion.confidence,
-            source: 'task_goal_routing',
+            source: suggestion.source === 'calendar_goal_learning' ? 'calendar_goal_learning' : 'task_goal_routing',
             routingKey: suggestion.claimId,
             routingData: {
                 automatic: true,
@@ -386,6 +448,7 @@ async function routeNewTaskToGoal({
     projectId,
     db = admin.firestore(),
     classify = classifyTaskAgainstGoals,
+    loadCalendarRoutingConfig = loadCalendarProjectRoutingConfig,
     now = Date.now(),
 }) {
     const resetResult = task?.id ? await resetStaleGoalSuggestion(db, projectId, task) : { task, canRoute: true }
@@ -417,17 +480,49 @@ async function routeNewTaskToGoal({
     if (!userId) return { action: 'skipped' }
 
     const userSnapshot = await db.doc(`users/${userId}`).get()
-    if (!userSnapshot.exists || (Number(userSnapshot.data()?.gold) || 0) < MINIMUM_GOLD_COST) {
+    if (!userSnapshot.exists) return { action: 'skipped' }
+
+    let calendarGoalLearning = { learnedGoalRules: '', exactSeriesRoute: null }
+    if (userSnapshot.data()?.premium?.status === PLAN_STATUS_PREMIUM) {
+        try {
+            calendarGoalLearning = await loadCalendarGoalLearning({
+                task,
+                projectId,
+                userId,
+                loadConfig: loadCalendarRoutingConfig,
+            })
+        } catch (error) {
+            console.warn('[taskGoalRouting] Could not load calendar Goal learning', {
+                projectId,
+                taskId: task.id,
+                error: error.message,
+            })
+        }
+    }
+
+    if (calendarGoalLearning.exactSeriesRoute?.routeToNoGoal) {
+        return { action: 'learned_no_goal', learnedFromFeedback: true }
+    }
+
+    const goals = await loadCandidateGoals(db, projectId, project, userId, task, {
+        preferredGoalIds: [calendarGoalLearning.exactSeriesRoute?.targetGoalId],
+        learnedRules: calendarGoalLearning.learnedGoalRules,
+    })
+    if (goals.length === 0) return { action: 'no_goals' }
+
+    const exactGoal = calendarGoalLearning.exactSeriesRoute?.targetGoalId
+        ? goals.find(goal => goal.id === calendarGoalLearning.exactSeriesRoute.targetGoalId) || null
+        : null
+    const usesExactCalendarGoalRoute = !!exactGoal
+    if (!usesExactCalendarGoalRoute && (Number(userSnapshot.data()?.gold) || 0) < MINIMUM_GOLD_COST) {
         return { action: 'insufficient_gold' }
     }
+
     // The routing user's model preference; upstream id for the API, key for Gold metering.
     const { resolveFeatureModelKey } = require('../Assistant/featureModelPreferences')
     const { getModel } = require('../Assistant/assistantHelper')
     const routingModelKey = resolveFeatureModelKey('taskGoalRouting', userSnapshot.data() || {})
     const routingModel = getModel(routingModelKey)
-
-    const goals = await loadCandidateGoals(db, projectId, project, userId, task)
-    if (goals.length === 0) return { action: 'no_goals' }
 
     const taskRef = db.doc(`items/${projectId}/tasks/${task.id}`)
     const claimId = db.collection('_taskGoalRoutingClaims').doc().id
@@ -466,22 +561,44 @@ async function routeNewTaskToGoal({
     }
 
     try {
-        const classified = await classify({ task, goals, userId, model: routingModel })
+        const classified = usesExactCalendarGoalRoute
+            ? {
+                  result: {
+                      goalId: exactGoal.id,
+                      confidence: 1,
+                      alternativeGoalId: null,
+                      alternativeConfidence: 0,
+                      reason: 'Remembered from your calendar Goal choice for this recurring event.',
+                  },
+                  totalTokens: 0,
+              }
+            : await classify({
+                  task,
+                  goals,
+                  userId,
+                  model: routingModel,
+                  learnedRules: calendarGoalLearning.learnedGoalRules,
+              })
         const classification = normalizeClassificationResult(
             classified.result,
             goals.map(goal => goal.id)
         )
         const action = chooseRoutingAction(mode, classification)
-        const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
-        const { deductGold } = require('../Gold/goldHelper')
-        const estimatedGold = calculateGoldCostFromTokens(classified.totalTokens, routingModelKey)
-        const goldSpent = Math.max(MINIMUM_GOLD_COST, estimatedGold)
-        const charge = await deductGold(userId, goldSpent, {
-            source: 'task_goal_routing',
-            projectId,
-            objectId: task.id,
-            channel: 'tasks',
-        })
+        let goldSpent = 0
+        let charge = { success: true }
+        if (!usesExactCalendarGoalRoute) {
+            const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
+            const { deductGold } = require('../Gold/goldHelper')
+            const estimatedGold = calculateGoldCostFromTokens(classified.totalTokens, routingModelKey)
+            goldSpent = Math.max(MINIMUM_GOLD_COST, estimatedGold)
+            charge = await deductGold(userId, goldSpent, {
+                source: 'task_goal_routing',
+                projectId,
+                objectId: task.id,
+                channel: 'tasks',
+                model: routingModelKey || '',
+            })
+        }
 
         if (!charge?.success) {
             await markClaimFinished({
@@ -527,7 +644,8 @@ async function routeNewTaskToGoal({
                 projectId,
                 now,
                 goldSpent,
-                model: routingModel,
+                model: usesExactCalendarGoalRoute ? 'calendar-goal-learning' : routingModel,
+                source: usesExactCalendarGoalRoute ? 'calendar_goal_learning' : 'task_goal_router',
             })
 
             if (!currentProjectSnapshot.exists || currentMode === TASK_GOAL_ROUTING_OFF) {
@@ -589,7 +707,8 @@ async function routeNewTaskToGoal({
                     actionId: actionRef.id,
                     initiatorId: userId,
                     actorId: userId,
-                    source: 'task_goal_routing',
+                    source:
+                        suggestion.source === 'calendar_goal_learning' ? 'calendar_goal_learning' : 'task_goal_routing',
                     label: `Added “${task.name || task.extendedName || 'Task'}” to “${
                         getTaskNameWithoutMeta(currentGoal.extendedName || currentGoal.name || '') || 'Goal'
                     }”`,
@@ -632,7 +751,11 @@ async function routeNewTaskToGoal({
             })
         }
 
-        return { action: applied ? appliedAction : 'superseded', classification }
+        return {
+            action: applied ? appliedAction : 'superseded',
+            classification,
+            learnedFromFeedback: usesExactCalendarGoalRoute,
+        }
     } catch (error) {
         console.error('[taskGoalRouting] Failed to route task', { projectId, taskId: task.id, error })
         await markClaimFinished({

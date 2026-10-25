@@ -1,0 +1,1605 @@
+.anna-shell {
+    background: var(--anna-surface);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.anna-shell *:not(.anna-workspace-content, .anna-workspace-content *) {
+    box-sizing: border-box;
+}
+.anna-shell button:not(.anna-workspace-content *),
+.anna-shell textarea:not(.anna-workspace-content *),
+.anna-shell a:not(.anna-workspace-content *) {
+    font: inherit;
+}
+.anna-shell button:not(.anna-workspace-content *) {
+    cursor: pointer;
+}
+.anna-shell button:not(.anna-workspace-content *):disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.anna-shell button:not(.anna-workspace-content *):focus-visible,
+.anna-shell a:not(.anna-workspace-content *):focus-visible,
+.anna-shell textarea:not(.anna-workspace-content *):focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-header {
+    min-height: 72px;
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--anna-border);
+    background: #fff;
+}
+.anna-header-left,
+.anna-header-right {
+    display: flex;
+    align-items: center;
+    gap: inherit;
+    min-width: 0;
+}
+.anna-header-sidebar {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+.anna-header-right {
+    justify-content: flex-end;
+}
+.anna-header-tasks {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 36px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--anna-muted);
+}
+.anna-header-tasks:hover {
+    background: var(--anna-tint);
+    color: var(--anna-accent);
+}
+.anna-task-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+}
+.anna-brand {
+    color: var(--anna-ink);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    display: block;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.anna-header-note {
+    color: var(--anna-muted);
+    font-size: 13px;
+}
+.anna-search {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    color: var(--anna-ink);
+    font-size: 13px !important;
+}
+.anna-workspace-link {
+    color: var(--anna-ink);
+    text-decoration: none;
+    font-size: 13px !important;
+}
+.anna-layout {
+    display: grid;
+    grid-template-columns: minmax(330px, 38%) minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+}
+.anna-conversation {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    border-right: 1px solid var(--anna-border);
+    background: #fff;
+    position: relative;
+}
+.anna-header-assistant {
+    display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 8px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--anna-ink);
+    text-align: left;
+}
+.anna-header-assistant:hover .anna-brand {
+    color: var(--anna-accent);
+}
+.anna-open-tasks-badge {
+    position: absolute;
+    top: 0;
+    left: 14px;
+    display: inline-flex;
+}
+.anna-header-details {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 16px;
+}
+.anna-header-identity {
+    min-width: 0;
+    max-width: 360px;
+    flex: 0 1 auto;
+}
+.anna-small-avatar {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--anna-tint);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+}
+.anna-small-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.anna-header-identity > span {
+    display: block;
+    max-width: 220px;
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--anna-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.anna-shell i:not(.anna-workspace-content *) {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--anna-accent);
+}
+.anna-context-notice {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    margin: 16px 0;
+    color: var(--anna-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    gap: 12px;
+}
+.anna-context-notice span {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+.anna-context-notice time {
+    flex: none;
+    font-size: 10px;
+    white-space: nowrap;
+}
+.anna-activity-notice a {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--anna-muted);
+    text-decoration: none;
+}
+.anna-activity-notice a:hover {
+    text-decoration: none;
+}
+.anna-activity-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 3px;
+}
+.anna-activity-title {
+    font-weight: 500;
+}
+.anna-activity-preview,
+.anna-activity-meta {
+    color: var(--anna-muted);
+}
+.anna-activity-meta {
+    font-size: 10px;
+}
+.anna-activity-notice a > :last-child {
+    flex-shrink: 0;
+    color: var(--anna-accent);
+}
+.anna-messages {
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 16px 24px 24px;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+    /* The follow controller owns anchoring. Browser anchoring would race it. */
+    overflow-anchor: none;
+    scrollbar-gutter: stable;
+    scroll-behavior: auto;
+}
+.anna-message-timeline {
+    display: flow-root;
+}
+.anna-message-answer {
+    animation: anna-answer-arrive 160ms ease-out;
+}
+.anna-messages:focus-visible {
+    outline: 2px solid var(--anna-focus);
+    outline-offset: -2px;
+}
+.anna-welcome {
+    padding: 48px 4px 28px;
+}
+.anna-eyebrow {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--anna-muted);
+}
+.anna-welcome h1 {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: -1.1px;
+    line-height: 1.2;
+    margin: 16px 0;
+}
+.anna-welcome p {
+    color: var(--anna-muted);
+    font-size: 15px;
+    line-height: 1.65;
+    margin: 0 0 30px;
+}
+.anna-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    align-items: flex-start;
+}
+.anna-suggestions button {
+    border: 1px solid var(--anna-border);
+    background: var(--anna-surface);
+    border-radius: 9px;
+    color: var(--anna-ink);
+    padding: 11px 14px;
+    font-size: 13px;
+    text-align: left;
+}
+.anna-message {
+    border-radius: 12px;
+    margin: 0 0 24px;
+    padding: 10px 0;
+    min-width: 0;
+    animation: anna-message-arrive 180ms ease-out both;
+}
+.anna-message-user {
+    margin-left: 32px;
+    background: var(--anna-neutral);
+    padding: 14px 16px;
+    border: 1px solid var(--anna-border);
+}
+.anna-message-author {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--anna-muted);
+}
+.anna-message-avatar {
+    display: flex;
+    flex: none;
+    width: 20px;
+    height: 20px;
+}
+.anna-message-author-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-message-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.anna-message-status {
+    display: block;
+    margin-top: 8px;
+    color: var(--anna-muted);
+    font-size: 11px;
+}
+.anna-message-author time {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 400;
+}
+.anna-composer {
+    flex: none;
+    margin: 0 22px;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    container: anna-composer / inline-size;
+}
+.anna-composer-slot {
+    position: relative;
+}
+.anna-composer-slot-connecting .anna-composer-field {
+    visibility: hidden;
+}
+.anna-composer-connecting {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    border-radius: 20px;
+}
+.anna-composer-cancel {
+    position: absolute;
+    bottom: 2px;
+    right: 8px;
+    font-size: 11px !important;
+}
+.anna-composer-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 12px 10px;
+    border: 1px solid var(--anna-border);
+    background: var(--anna-surface);
+    border-radius: 20px;
+    transition:
+        border-color 150ms ease,
+        box-shadow 150ms ease;
+}
+.anna-composer-draft {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.anna-composer-slot-voice .anna-composer-draft {
+    visibility: hidden;
+    pointer-events: none;
+}
+.anna-rich-composer {
+    min-width: 0;
+    width: 100%;
+}
+.anna-rich-composer .ql-container,
+.anna-rich-composer .ql-editor {
+    background: transparent;
+    border: 0;
+    color: var(--anna-ink) !important;
+    font-size: 16px !important;
+    line-height: 24px !important;
+}
+.anna-rich-composer .ql-editor {
+    min-height: 48px;
+    padding: 0 4px !important;
+    overflow-y: visible !important;
+}
+.anna-rich-composer .ql-container > .ql-editor > p {
+    line-height: 24px;
+}
+.anna-rich-composer .ql-container > .ql-editor.ql-blank::before {
+    color: var(--anna-placeholder);
+    /* Match the editor's text inset instead of the shared task placeholder offsets. */
+    top: 0;
+    left: 4px !important;
+    right: 4px !important;
+}
+.anna-composer-field:focus-within {
+    border-color: var(--anna-focus);
+    box-shadow: 0 0 0 1px var(--anna-focus);
+}
+.anna-shell .anna-rich-composer .ql-editor:focus-visible {
+    outline: none;
+}
+.anna-composer-toolbar,
+.anna-composer-tools,
+.anna-composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.anna-composer-toolbar {
+    justify-content: space-between;
+}
+.anna-composer-attachment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+}
+.anna-send {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--anna-accent);
+    color: white;
+    transition:
+        box-shadow 150ms ease,
+        opacity 150ms ease;
+}
+.anna-send:not(:disabled):hover {
+    box-shadow: 0 2px 8px #0c66ff33;
+}
+.anna-voice-button {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--anna-muted);
+}
+.anna-voice-button:hover {
+    background: var(--anna-hover);
+}
+.anna-voice-active,
+.anna-voice-active:hover {
+    color: #a12f36;
+    background: #fbefef;
+}
+.anna-composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--anna-muted);
+    padding: 8px 4px 2px;
+    white-space: nowrap;
+    min-width: 0;
+}
+.anna-composer-footer > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.anna-composer-shortcut {
+    flex: none;
+}
+.anna-composer-footer-idle {
+    justify-content: flex-end;
+}
+.anna-call-audio {
+    position: absolute;
+    inset: 0;
+    padding: 14px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+}
+.anna-call-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    min-width: 0;
+}
+.anna-call-levels {
+    display: flex;
+    gap: 10px;
+    flex: none;
+}
+.anna-call-level {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid var(--anna-border);
+    border-radius: 12px;
+    background: var(--anna-surface);
+    color: #227c60;
+    --anna-meter-color: #36a77b;
+}
+.anna-call-level-output {
+    color: #5964bb;
+    --anna-meter-color: #7b87ed;
+}
+.anna-call-settings {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    overflow: auto;
+    border: 1px solid #e4e9ee;
+    border-radius: 16px;
+    background: #fff;
+    color: #18283f;
+    box-shadow: 0 8px 32px #18283f24;
+    font:
+        14px / 1.4 -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+.anna-call-settings * {
+    box-sizing: border-box;
+}
+.anna-call-settings-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.anna-call-settings-heading button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: #536786;
+    background: #f6f8fa;
+    cursor: pointer;
+}
+.anna-call-settings button:focus-visible,
+.anna-call-settings select:focus-visible {
+    outline: 2px solid #0c66ff;
+    outline-offset: 2px;
+}
+.anna-call-settings .anna-call-devices {
+    grid-template-columns: minmax(0, 1fr);
+}
+.anna-call-settings-button {
+    position: relative;
+    border: 1px solid var(--anna-border);
+}
+.anna-call-settings-warning,
+.anna-call-settings-error {
+    color: #a12f36;
+}
+.anna-call-notice-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.anna-call-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.anna-call-devices {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.anna-call-device {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.anna-call-device label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+.anna-call-device-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #536786;
+    font-size: 12px;
+}
+.anna-call-device select {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 6px 8px;
+    border: 1px solid #e4e9ee;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #18283f;
+    font: inherit;
+    font-size: 14px;
+    text-overflow: ellipsis;
+}
+.anna-call-device-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--anna-muted);
+    font-size: 12px;
+    min-height: 16px;
+}
+.anna-call-meter {
+    position: relative;
+    width: 7px;
+    height: 32px;
+    border-radius: 4px;
+    background: var(--anna-border);
+    overflow: hidden;
+}
+.anna-call-meter > div {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    border-radius: inherit;
+    background: linear-gradient(to top, var(--anna-meter-color), #a4e9d1);
+    transition: height 80ms linear;
+}
+.anna-call-level-output .anna-call-meter > div {
+    background: linear-gradient(to top, var(--anna-meter-color), #c6ceff);
+}
+.anna-call-meter::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(to top, transparent 0 6px, var(--anna-surface) 6px 8px);
+}
+.anna-call-hint,
+.anna-call-duration {
+    color: var(--anna-muted);
+    font-size: 11px;
+}
+.anna-call-duration {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 0;
+}
+.anna-call-duration > span:first-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-call-clock {
+    color: var(--anna-ink);
+    font-size: 18px;
+    line-height: 24px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.5px;
+}
+.anna-call-settings .anna-call-hint,
+.anna-call-settings .anna-call-device-name {
+    color: #536786;
+}
+.anna-composer-actions {
+    flex: none;
+}
+@container anna-composer (max-width: 420px) {
+    .anna-composer-footer-idle {
+        display: none;
+    }
+    .anna-call-devices {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+    }
+}
+.anna-end-call {
+    color: #a12f36;
+    background: #fbefef;
+    border: 1px solid #f2d2d5;
+    border-radius: 20px;
+    padding: 8px 12px;
+}
+.anna-duration {
+    font-size: 12px;
+    color: var(--anna-muted);
+}
+.anna-stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.anna-presence {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 32px;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 40%, var(--anna-tint) 0, var(--anna-surface) 48%, #fff 100%);
+}
+.anna-presence-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--anna-muted);
+    margin-bottom: 32px;
+}
+.anna-portrait {
+    width: clamp(160px, 23vw, 330px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    padding: 9px;
+    border: 1px solid var(--anna-border);
+    box-shadow: 0 15px 70px #0c66ff14;
+    flex: none;
+}
+.anna-portrait img,
+.anna-portrait > span {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    background: var(--anna-tint);
+    display: grid;
+    place-items: center;
+    font-size: 70px;
+    color: var(--anna-accent);
+}
+.anna-presence-live .anna-portrait {
+    border-color: var(--anna-focus);
+    box-shadow:
+        0 0 0 10px #0c66ff15,
+        0 15px 70px #0c66ff14;
+}
+.anna-presence-copy {
+    text-align: center;
+    margin: 30px 0 26px;
+}
+.anna-presence-copy h2 {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: -1px;
+    margin: 10px 0;
+}
+.anna-presence-copy p {
+    font-size: 14px;
+    color: var(--anna-muted);
+    line-height: 1.5;
+}
+.anna-quick-views {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.anna-quick-views button {
+    min-width: 110px;
+    display: flex;
+    gap: 24px;
+    justify-content: space-between;
+    background: #ffffff90;
+    border: 1px solid var(--anna-border);
+    border-radius: 10px;
+    padding: 13px 16px;
+    color: var(--anna-ink);
+    font-size: 13px;
+}
+.anna-workspace {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+    background: white;
+}
+.anna-workspace-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    isolation: isolate;
+}
+.anna-pending {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    padding: 12px 16px;
+    background: var(--anna-tint);
+    font-size: 13px;
+}
+.anna-pending span {
+    flex: 1;
+}
+.anna-pending button,
+.anna-error button {
+    border: 1px solid var(--anna-border);
+    background: white;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--anna-accent);
+}
+.anna-error {
+    color: #a3373c;
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.anna-empty {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 14px;
+    padding: 28px;
+}
+.anna-muted {
+    color: var(--anna-muted);
+    font-size: 13px;
+}
+.anna-text-button {
+    border: 0;
+    background: none;
+    color: var(--anna-accent);
+    padding: 8px;
+}
+.anna-latest {
+    align-self: center;
+    border: 1px solid var(--anna-border);
+    border-radius: 20px;
+    padding: 7px 14px;
+    color: var(--anna-accent);
+    background: white;
+}
+.anna-mobile-dock {
+    display: none;
+}
+@media (max-width: 760px) {
+    .anna-header-note {
+        display: none;
+    }
+    .anna-layout {
+        display: flex;
+        flex-direction: column-reverse;
+        position: relative;
+    }
+    .anna-stage {
+        flex: 0 0 30%;
+    }
+    .anna-conversation {
+        flex: 1;
+        border-right: 0;
+    }
+    .anna-presence {
+        flex-direction: row;
+        gap: 20px;
+        padding: 14px 20px;
+        justify-content: center;
+    }
+    .anna-presence-kicker,
+    .anna-quick-views {
+        display: none;
+    }
+    .anna-portrait {
+        width: 110px;
+        padding: 4px;
+    }
+    .anna-presence-copy {
+        margin: 0;
+        text-align: left;
+    }
+    .anna-presence-copy h2 {
+        font-size: 23px;
+    }
+    .anna-presence-copy p {
+        font-size: 12px;
+        max-width: 180px;
+        margin-bottom: 0;
+    }
+    .anna-presence-copy .anna-eyebrow {
+        font-size: 9px;
+    }
+    .anna-messages {
+        padding: 14px 16px;
+    }
+    .anna-welcome {
+        padding: 18px 4px;
+    }
+    .anna-welcome h1 {
+        font-size: 28px;
+    }
+    .anna-welcome p {
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+    .anna-suggestions {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .anna-suggestions button {
+        font-size: 12px;
+        padding: 9px 10px;
+    }
+    .anna-composer {
+        margin: 0 14px;
+    }
+    .anna-composer-shortcut {
+        display: none;
+    }
+    .anna-has-workspace .anna-stage {
+        flex: 1;
+    }
+    .anna-has-workspace .anna-conversation {
+        flex: 0 0 auto;
+    }
+    .anna-has-workspace .anna-conversation .anna-messages {
+        display: none;
+    }
+    .anna-has-workspace .anna-mobile-dock {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 16px;
+        width: 100%;
+        background: white;
+        border: 0;
+        font-size: 13px;
+        color: var(--anna-ink);
+    }
+    .anna-mobile-dock img {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .anna-mobile-dock span:last-child {
+        margin-left: auto;
+    }
+    .anna-chat-expanded.anna-has-workspace .anna-conversation {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 78%;
+        z-index: 30;
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -12px 45px #04142f30;
+        overflow: hidden;
+    }
+    .anna-chat-expanded.anna-has-workspace .anna-conversation .anna-messages {
+        display: block;
+    }
+    .app-keyboard-open .anna-shell .anna-stage {
+        flex-basis: 0;
+    }
+    .app-keyboard-open .anna-shell.anna-has-workspace .anna-conversation {
+        height: 100%;
+    }
+}
+
+/* Temporary overlays: the actual task/note DOM and text selection remain untouched. */
+.anna-highlight-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10000;
+}
+.anna-highlight-overlay span {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+.anna-highlight-marker {
+    background: rgba(255, 211, 64, 0.38);
+    border-bottom: 2px solid #c79100;
+}
+.anna-highlight-outline {
+    outline: 2px solid var(--anna-accent, #0c66ff);
+    outline-offset: 2px;
+    background: rgba(12, 102, 255, 0.08);
+}
+.anna-workspace-content {
+    position: relative;
+}
+.anna-highlight-caption {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    max-width: min(340px, calc(100% - 24px));
+    z-index: 31;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid #d9bf6d;
+    border-radius: 9px;
+    color: #493d18;
+    background: #fff8db;
+    box-shadow: 0 3px 14px #493d1818;
+    font-size: 12px;
+}
+.anna-highlight-caption span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-highlight-caption button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 4px;
+}
+
+.anna-conversation,
+.anna-header,
+.anna-browser-surface,
+.anna-pending {
+    font-family: Roboto, Arial, sans-serif;
+    color: var(--anna-ink);
+}
+
+/* The workspace subtree stays in the same position in both layouts. */
+.anna-zoom-shell [hidden]:not(.anna-workspace-content *) {
+    display: none !important;
+}
+.anna-zoom-shell .anna-layout {
+    grid-template-columns: minmax(0, var(--anna-chat-width, 420px)) 6px minmax(0, 1fr);
+    position: relative;
+}
+.anna-zoom-shell .anna-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.anna-zoom-shell .anna-workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+.anna-zoom-shell .anna-workspace-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.anna-zoom-shell .anna-workspace-content > * {
+    min-width: 0;
+}
+.anna-zoom-active {
+    --anna-workspace-gutter: clamp(12px, 2vw, 24px);
+}
+.anna-zoom-active .anna-workspace {
+    padding-inline: var(--anna-workspace-gutter);
+}
+.anna-zoom-active .anna-workspace-content {
+    /* Inline fixed dialogs belong to Alldone, including its navigation. Body
+       portals keep browser coordinates and use the measured workspace bounds. */
+    transform: translateX(0);
+}
+.anna-zoom-shell .anna-conversation {
+    min-width: 0;
+}
+.anna-divider {
+    cursor: col-resize;
+    touch-action: none;
+    background: var(--anna-border);
+}
+.anna-divider:hover,
+.anna-divider:focus-visible {
+    background: var(--anna-focus);
+}
+.anna-surface-hidden {
+    position: absolute !important;
+    inset: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.anna-fullscreen {
+    background: transparent;
+}
+.anna-fullscreen .anna-layout {
+    display: flex;
+    flex: 1;
+}
+.anna-fullscreen .anna-conversation,
+.anna-fullscreen .anna-divider {
+    display: none;
+}
+.anna-fullscreen .anna-stage {
+    flex: 1;
+}
+.anna-fullscreen .anna-workspace {
+    width: 100%;
+}
+.anna-date-divider {
+    text-align: center;
+    color: var(--anna-muted);
+    margin: 16px 0;
+    font-size: 12px;
+}
+.anna-browser-surface {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--anna-surface);
+}
+.anna-vm-dot {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--anna-accent);
+}
+.anna-vm-dot-awaiting_user {
+    background: #b56b10;
+}
+.anna-vm-dot-completed,
+.anna-vm-dot-cancelled,
+.anna-vm-dot-interrupted {
+    background: var(--anna-muted);
+}
+.anna-vm-surface,
+.anna-vm-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    font-family: Roboto, Arial, sans-serif;
+    color: var(--anna-ink);
+    background: var(--anna-surface);
+}
+.anna-vm-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px;
+    border-bottom: 1px solid var(--anna-border);
+    background: white;
+}
+.anna-vm-identity {
+    min-width: 0;
+}
+.anna-vm-identity h2 {
+    margin: 6px 0;
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-identity .anna-muted {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-status {
+    color: var(--anna-accent);
+    font-size: 12px;
+    font-weight: 500;
+}
+.anna-vm-task-link {
+    color: var(--anna-accent);
+    flex-shrink: 0;
+    font-size: 12px !important;
+}
+.anna-vm-activity {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 20px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-terminal {
+    background: #20232b;
+    color: #ebedf3;
+    padding: 20px;
+    border-radius: 10px;
+    min-height: 240px;
+}
+.anna-vm-terminal-label {
+    color: #a7adbc;
+    font-size: 11px;
+    margin-bottom: 18px;
+}
+.anna-vm-terminal pre {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+}
+.anna-vm-cursor {
+    color: #aabcf4;
+}
+.anna-vm-actions {
+    display: flex;
+    flex-direction: column;
+    margin-top: 16px;
+}
+@media (max-width: 760px) {
+    .anna-vm-heading {
+        flex-wrap: wrap;
+        padding: 16px;
+    }
+    .anna-vm-activity {
+        padding: 12px;
+    }
+}
+.anna-browser-workspace {
+    padding: 16px;
+}
+.anna-browser-takeover {
+    padding: 16px;
+}
+.anna-browser-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    justify-content: space-between;
+}
+.anna-browser-heading > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.anna-browser-heading button {
+    flex: none;
+}
+.anna-browser-workspace button {
+    border: 1px solid var(--anna-border);
+    background: white;
+    border-radius: 7px;
+    padding: 8px 12px;
+}
+.anna-browser-frame {
+    margin: 12px 0;
+    background: var(--anna-border);
+}
+.anna-browser-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+.anna-browser-controls form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.anna-browser-controls input {
+    min-width: 0;
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--anna-border);
+    border-radius: 6px;
+    font-size: 16px;
+}
+.anna-browser-controls > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.anna-small {
+    font-size: 12px;
+    color: var(--anna-muted);
+    margin-top: 8px;
+}
+@media (max-width: 760px) {
+    .anna-zoom-shell .anna-layout {
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+    .anna-zoom-shell .anna-divider {
+        display: none;
+    }
+    .anna-zoom-shell .anna-stage,
+    .anna-zoom-shell .anna-conversation {
+        flex: 1;
+        min-height: 0;
+    }
+    .anna-zoom-active.anna-mobile-chat .anna-stage,
+    .anna-zoom-active.anna-mobile-workspace .anna-conversation {
+        position: absolute;
+        inset: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+    .anna-fullscreen .anna-stage {
+        visibility: visible;
+        position: relative;
+    }
+    .anna-browser-heading {
+        flex-wrap: wrap;
+    }
+}
+
+/* A visual receipt for Anna's saved work, clipped to the Alldone pane. */
+.anna-reveal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    pointer-events: none;
+    animation: anna-reveal-lifetime 3.6s ease both;
+}
+.anna-reveal-ring {
+    box-sizing: border-box;
+    position: absolute;
+    border: 2px solid #438eff;
+    border-radius: 12px;
+    background: rgba(55, 130, 255, 0.055);
+    box-shadow: 0 0 0 4px rgba(55, 130, 255, 0.07);
+    animation: anna-reveal-pulse 1.25s ease-in-out 2;
+}
+.anna-reveal-label {
+    box-sizing: border-box;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 27px;
+    padding: 0 10px 0 6px;
+    border: 1px solid #d7e7ff;
+    border-radius: 999px;
+    color: #175bc5;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 3px 12px #205eaf14;
+    font:
+        500 12px Roboto,
+        Arial,
+        sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.anna-reveal-check {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #eaf3ff;
+}
+.anna-reveal-label-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@keyframes anna-reveal-lifetime {
+    0% {
+        opacity: 0;
+    }
+    9%,
+    82% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes anna-reveal-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 3px #3782ff0c;
+        border-color: #438eff;
+    }
+    48% {
+        box-shadow:
+            0 0 0 7px #3782ff18,
+            0 4px 20px #3782ff0d;
+        border-color: #8ab7ff;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .anna-message,
+    .anna-message-answer,
+    .anna-reveal-overlay,
+    .anna-reveal-ring {
+        animation: none;
+    }
+    .anna-composer-field,
+    .anna-send,
+    .anna-call-meter > div {
+        transition: none;
+    }
+}
+
+@keyframes anna-message-arrive {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@keyframes anna-answer-arrive {
+    from {
+        opacity: 0.65;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Pane controls belong to the conversation, leaving the workspace full height. */
+.anna-pane-toggle {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--anna-muted);
+}
+.anna-pane-toggle:hover {
+    background: var(--anna-tint);
+    color: var(--anna-accent);
+}
+.anna-header-picker {
+    position: relative;
+    flex: 0 1 98px;
+    min-width: 0;
+}
+.anna-header-picker select {
+    max-width: 100%;
+    font-family: inherit;
+    color: var(--anna-ink);
+    border: 1px solid var(--anna-border);
+    border-radius: 7px;
+    background: white;
+    cursor: pointer;
+}
+.anna-header-picker select {
+    width: 98px;
+    height: 36px;
+    padding: 6px 24px 6px 9px;
+    font-size: 12px;
+    appearance: none;
+}
+.anna-header-picker > span {
+    position: absolute;
+    right: 7px;
+    top: 10px;
+    pointer-events: none;
+}
+.anna-shell select:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 2px;
+}
+.anna-chat-only .anna-layout {
+    grid-template-columns: minmax(0, 1fr);
+}
+.anna-chat-only .anna-divider {
+    display: none;
+}
+.anna-chat-only .anna-conversation {
+    border-right: 0;
+}
+.anna-chat-only .anna-messages {
+    padding-inline: max(24px, calc((100% - 760px) / 2));
+}
+.anna-chat-only .anna-composer {
+    width: calc(100% - 44px);
+    max-width: 760px;
+    margin-inline: auto;
+}
+.anna-chat-only .anna-stage {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: max(0px, calc(100% - var(--anna-chat-width) - 6px));
+    visibility: hidden;
+    pointer-events: none;
+}
+.anna-vms {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    gap: 16px;
+    padding: 16px;
+    background: var(--anna-surface);
+}
+.anna-vms .anna-vm-surface {
+    flex: none;
+    border: 1px solid var(--anna-border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.anna-vms .anna-vm-selected {
+    border-color: var(--anna-accent);
+}
+.anna-vm-surface:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-vms .anna-vm-activity {
+    flex: none;
+    max-height: min(480px, 60dvh);
+}
+@media (max-width: 760px) {
+    .anna-vms {
+        gap: 12px;
+        padding: 12px;
+    }
+    .anna-chat-only .anna-stage {
+        width: 100%;
+    }
+    .anna-header {
+        padding: 12px 16px;
+        gap: 6px;
+    }
+    .anna-pane-toggle,
+    .anna-header-tasks,
+    .anna-header-picker select {
+        height: 44px;
+    }
+    .anna-pane-toggle {
+        width: 40px;
+    }
+    .anna-header-picker > span {
+        top: 14px;
+    }
+    .anna-header-assistant {
+        min-height: 44px;
+    }
+}
+@media (max-width: 360px) {
+    .anna-header .anna-small-avatar {
+        display: none;
+    }
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 
 import { MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
@@ -7,6 +7,7 @@ import store from '../../../../redux/store'
 import Backend from '../../../../utils/BackendBridge'
 import InputArea from './InputArea'
 import ButtonsArea from './ButtonsArea'
+import { translate } from '../../../../i18n/TranslationService'
 
 export default function TaskEditForm({
     projectId,
@@ -21,6 +22,7 @@ export default function TaskEditForm({
     showRecurring,
     showParentGoal,
     showMoreOptions,
+    uploadingDraft,
 }) {
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [linkedParentNotesUrl, setLinkedParentNotesUrl] = useState([])
@@ -30,6 +32,7 @@ export default function TaskEditForm({
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
+    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
 
     const onChangeInputText = (
         text,
@@ -39,7 +42,8 @@ export default function TaskEditForm({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (text) {
             setLinkedParentContactsUrl(linkedParentContactsUrl)
@@ -48,6 +52,7 @@ export default function TaskEditForm({
             setLinkedParentProjectsUrl(linkedParentProjectsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
+            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
             setLinkedParentTasksUrl(linkedParentTasksUrl)
         }
         setTaskProperty('name', text.replace(/\r?\n|\r/g, ''))
@@ -64,6 +69,7 @@ export default function TaskEditForm({
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )
@@ -118,6 +124,11 @@ export default function TaskEditForm({
                 enterKeyAction={enterKeyAction}
                 setMentionsModalActive={setMentionsModalActive}
             />
+            {(uploadingDraft || task.description?.includes('blob:')) && (
+                <Text style={localStyles.attachmentHint} accessibilityLiveRegion="polite">
+                    {translate(uploadingDraft ? 'Adding files to description' : 'Files added to description')}
+                </Text>
+            )}
             <ButtonsArea
                 projectId={projectId}
                 task={task}
@@ -127,6 +138,7 @@ export default function TaskEditForm({
                 showParentGoal={showParentGoal}
                 showMoreOptions={showMoreOptions}
                 done={done}
+                uploadingDraft={uploadingDraft}
             />
         </View>
     )
@@ -137,5 +149,11 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#162764',
         borderRadius: 4,
+    },
+    attachmentHint: {
+        color: '#ffffff',
+        fontSize: 12,
+        marginHorizontal: 16,
+        marginBottom: 8,
     },
 })

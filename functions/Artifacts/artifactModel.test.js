@@ -1,0 +1,157 @@
+const fs = require('fs')
+const path = require('path')
+
+const {
+    ARTIFACT_KINDS,
+    ARTIFACT_SERVER_FIELDS,
+    buildArtifactIsPublicFor,
+    buildArtifactServePath,
+    buildArtifactServeUrl,
+    getArtifactKindForMimeType,
+    getLostReaderIds,
+    getMimeTypeForPath,
+    getTitleFromFileName,
+    isActiveMimeType,
+    normalizeArtifactPath,
+    parseArtifactServePath,
+    resolveEntryPath,
+    resolveRequestedFilePath,
+    sortArtifactsByLastEdition,
+} = require('./artifactModel')
+
+const SECRET = 'abcdefghijklmnopqrstuvwxyz012345'
+
+describe('normalizeArtifactPath', () => {
+    it('keeps a relative path as written', () => {
+        expect(normalizeArtifactPath('assets/app.js')).toBe('assets/app.js')
+        expect(normalizeArtifactPath('Bericht Q3.html')).toBe('Bericht Q3.html')
+    })
+
+    it('drops leading slashes and turns backslashes into slashes', () => {
+        expect(normalizeArtifactPath('/index.html')).toBe('index.html')
+        expect(normalizeArtifactPath('assets\\logo.png')).toBe('assets/logo.png')
+    })
+
+    it.each(['', '../secret', 'a/../b', 'a//b', './a', 'a/.', 'bad\u0000name'])('refuses %p', path => {
+        expect(() => normalizeArtifactPath(path)).toThrow()
+    })
+})
+
+describe('types', () => {
+    it('derives the type from the file name only', () => {
+        expect(getMimeTypeForPath('index.HTML')).toBe('text/html')
+        expect(getMimeTypeForPath('chart.svg')).toBe('image/svg+xml')
+        expect(getMimeTypeForPath('report.pdf')).toBe('application/pdf')
+        expect(getMimeTypeForPath('no-extension')).toBe('application/octet-stream')
+        expect(getMimeTypeForPath('.htaccess')).toBe('application/octet-stream')
+    })
+
+    it('treats every document a browser can run script in as active', () => {
+        ;['text/html', 'image/svg+xml', 'application/xhtml+xml', 'application/xml'].forEach(type =>
+            expect(isActiveMimeType(type)).toBe(true)
+        )
+        ;['application/pdf', 'image/png', 'text/plain', 'text/markdown'].forEach(type =>
+            expect(isActiveMimeType(type)).toBe(false)
+        )
+    })
+
+    it('maps types to the kinds the list shows', () => {
+        expect(getArtifactKindForMimeType('text/html')).toBe(ARTIFACT_KINDS.WEB)
+        expect(getArtifactKindForMimeType('text/markdown')).toBe(ARTIFACT_KINDS.MARKDOWN)
+        expect(getArtifactKindForMimeType('application/pdf')).toBe(ARTIFACT_KINDS.PDF)
+        expect(getArtifactKindForMimeType('image/svg+xml')).toBe(ARTIFACT_KINDS.IMAGE)
+        expect(getArtifactKindForMimeType('text/csv')).toBe(ARTIFACT_KINDS.DATA)
+        expect(getArtifactKindForMimeType('text/plain')).toBe(ARTIFACT_KINDS.TEXT)
+        expect(getArtifactKindForMimeType('application/zip')).toBe(ARTIFACT_KINDS.FILE)
+    })
+})
+
+describe('resolveEntryPath', () => {
+    it('lands on the only file, else a root index.html, else the first HTML file', () => {
+        expect(resolveEntryPath(['report.pdf'])).toBe('report.pdf')
+        expect(resolveEntryPath(['app.js', 'index.html', 'page.html'])).toBe('index.html')
+        expect(resolveEntryPath(['app.js', 'dashboard.html'])).toBe('dashboard.html')
+        expect(resolveEntryPath(['a.png', 'b.png'])).toBe('a.png')
+        expect(resolveEntryPath([])).toBeNull()
+    })
+})
+
+describe('serve addresses', () => {
+    const params = { projectId: 'project-a', artifactId: 'artifact_1', serveSecret: SECRET }
+
+    it('round-trips the current version, a pinned version and encoded paths', () => {
+        const current = buildArtifactServePath({ ...params, path: 'Bericht Q3.html' })
+        expect(current).toBe(`/a/project-a/artifact_1/${SECRET}/Bericht%20Q3.html`)
+        expect(parseArtifactServePath(current)).toEqual({ ...params, versionId: null, path: 'Bericht Q3.html' })
+
+        const pinned = buildArtifactServePath({ ...params, versionId: 'v1', path: 'assets/app.js' })
+        expect(parseArtifactServePath(pinned)).toEqual({ ...params, versionId: 'v1', path: 'assets/app.js' })
+    })
+
+    it('accepts the function name in front of the path', () => {
+        expect(parseArtifactServePath(`/serveArtifact/a/project-a/artifact_1/${SECRET}/`)).toEqual({
+            ...params,
+            versionId: null,
+            path: '',
+        })
+    })
+
+    it('builds an absolute URL without doubling slashes', () => {
+        expect(buildArtifactServeUrl('https://example.test/serveArtifact/', { ...params, path: 'x.html' })).toBe(
+            `https://example.test/serveArtifact/a/project-a/artifact_1/${SECRET}/x.html`
+        )
+        expect(buildArtifactServeUrl('https://example.test', { ...params, serveSecret: null })).toBeNull()
+    })
+
+    it.each([
+        '/a/project-a/artifact_1',
+        '/a/project-a/artifact_1/short/index.html',
+        `/a/project a/artifact_1/${SECRET}/index.html`,
+        `/a/project-a/artifact_1/${SECRET}/~bad version/index.html`,
+        `/b/project-a/artifact_1/${SECRET}/index.html`,
+        `/a/project-a/artifact_1/${SECRET}/%E0%A4%A`,
+    ])('refuses %p', path => {
+        expect(parseArtifactServePath(path)).toBeNull()
+    })
+
+    it('resolves the entry file, a directory index and refuses traversal', () => {
+        expect(resolveRequestedFilePath('', 'dashboard.html')).toBe('dashboard.html')
+        expect(resolveRequestedFilePath('docs/', 'index.html')).toBe('docs/index.html')
+        expect(resolveRequestedFilePath('../other/index.html', 'index.html')).toBeNull()
+    })
+})
+
+describe('access', () => {
+    it('makes a private artifact visible to its owner only', () => {
+        expect(buildArtifactIsPublicFor(true, 'owner')).toEqual(['owner'])
+        expect(buildArtifactIsPublicFor(false, 'owner')).toEqual([0, 'owner'])
+    })
+
+    it('reports exactly the readers that lost access', () => {
+        expect(getLostReaderIds({ readerIds: [0, 'a', 'b'] }, { readerIds: ['a'] })).toEqual([0, 'b'])
+        expect(getLostReaderIds({ readerIds: ['a'] }, { readerIds: [0, 'a', 'b'] })).toEqual([])
+        expect(getLostReaderIds({}, { readerIds: ['a'] })).toEqual([])
+    })
+
+    // The rules are the enforcement, this list is what the server code reads; they must name the
+    // same fields or a client could write one the server then trusts.
+    it('protects exactly the server-owned fields in firestore.rules', () => {
+        const rules = fs.readFileSync(path.join(__dirname, '..', '..', 'firestore.rules'), 'utf8')
+        const block = rules.match(/function artifactServerFieldsUnchanged\(\)[\s\S]*?\]\);/)
+        expect(block).not.toBeNull()
+        const ruleFields = [...block[0].matchAll(/'([A-Za-z]+)'/g)].map(match => match[1]).sort()
+        expect(ruleFields).toEqual([...ARTIFACT_SERVER_FIELDS].sort())
+    })
+})
+
+it('names an artifact after its file and sorts the newest edit first', () => {
+    expect(getTitleFromFileName('sales_dashboard.html')).toBe('sales dashboard')
+    expect(getTitleFromFileName('README')).toBe('README')
+    expect(
+        sortArtifactsByLastEdition([
+            { id: 'a', lastEditionDate: 1 },
+            { id: 'b', lastEditionDate: 3 },
+            { id: 'c', lastEditionDate: 2 },
+        ]).map(artifact => artifact.id)
+    ).toEqual(['b', 'c', 'a'])
+})

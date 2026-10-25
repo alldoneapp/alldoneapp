@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { Platform, StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -38,11 +39,14 @@ export default function ShellInsetPainter({ routeName }) {
     const isLoginLike = LOGIN_LIKE_ROUTES.has(routeName)
     const topColor = isLoginLike ? LOGIN_TOP_COLOR : getTheme(Themes, themeName, 'TopBar').container.backgroundColor
 
-    return (
+    // System inset paint belongs to the physical screen, outside the workspace.
+    return createPortal(
         <View
+            testID="system-inset-paint"
             pointerEvents="none"
             style={[localStyles.strip, { top: 0, height: insets.top, backgroundColor: topColor }]}
-        />
+        />,
+        document.body
     )
 }
 

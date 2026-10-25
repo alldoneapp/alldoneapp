@@ -62,7 +62,7 @@ async function processWebhookCallback(req, res) {
         })
 
         // Check if already processed
-        if (pendingWebhook.status === 'completed' || pendingWebhook.status === 'failed') {
+        if (['completed', 'failed', 'cancelled', 'interrupted'].includes(pendingWebhook.status)) {
             console.warn('🌐 WEBHOOK CALLBACK: Webhook already processed:', {
                 correlationId,
                 currentStatus: pendingWebhook.status,

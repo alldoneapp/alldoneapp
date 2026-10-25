@@ -22,6 +22,8 @@ export default function FixedDueDatesModalFooter({
     updateParentGoalReminderDate,
     showAutoPostpone,
     goal,
+    animateGoalPostpone,
+    postponeProject,
 }) {
     const lastSelectedDueDate = useSelector(state => state.lastSelectedDueDate)
 
@@ -59,6 +61,8 @@ export default function FixedDueDatesModalFooter({
                     updateParentGoalReminderDate={updateParentGoalReminderDate}
                     inParentGoal={inParentGoal}
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
+                    animateGoalPostpone={animateGoalPostpone}
+                    postponeProject={postponeProject}
                 />
             )}
         </View>

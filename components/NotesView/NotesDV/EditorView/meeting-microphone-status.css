@@ -1,0 +1,87 @@
+.meeting-microphone-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    box-sizing: border-box;
+    min-height: 64px;
+    padding: 12px;
+    border: 1px solid #e7ecef;
+    border-radius: 4px;
+    background: #fafbfb;
+    color: #04142f;
+    font-family: Roboto-Regular, sans-serif;
+    font-size: 12px;
+    line-height: 20px;
+    letter-spacing: 0.48px;
+}
+
+.meeting-microphone-status-error {
+    background: #fff6eb;
+    border-color: #ffe6c7;
+}
+
+.meeting-microphone-status-content {
+    flex: 1 1 260px;
+    min-width: 0;
+}
+
+.meeting-microphone-status-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+}
+
+.meeting-microphone-status-title {
+    font-family: Roboto-Medium, sans-serif;
+}
+
+.meeting-microphone-status-indicator {
+    flex: 0 0 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e00000;
+}
+
+.meeting-microphone-status-pending,
+.meeting-microphone-status-description {
+    color: #4e5d78;
+    overflow-wrap: anywhere;
+}
+
+.meeting-microphone-status-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.meeting-microphone-status-actions button {
+    box-sizing: border-box;
+    min-height: 32px;
+    padding: 5px 12px;
+    border: 1px solid #c6cdd2;
+    border-radius: 4px;
+    background: #fff;
+    color: #4e5d78;
+    font-family: Roboto-Medium, sans-serif;
+    font-size: 12px;
+    line-height: 20px;
+    letter-spacing: 0.48px;
+    cursor: pointer;
+}
+
+.meeting-microphone-status-actions button:hover {
+    background: #f1f3f4;
+}
+
+.meeting-microphone-status-actions button:focus-visible {
+    outline: 2px solid #0c66ff;
+    outline-offset: 2px;
+}
+
+.meeting-microphone-status-actions button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

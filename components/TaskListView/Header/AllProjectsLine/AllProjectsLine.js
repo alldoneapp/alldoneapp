@@ -2,17 +2,21 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
+import { HeaderActionsContext } from '../../TaskHierarchy'
 import { colors } from '../../../styles/global'
 import AllProjectData from './AllProjectData'
-import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
-import AddTaskTag from '../../../Tags/AddTaskTag'
 import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
-import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 
-export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
+export default function AllProjectsLine({
+    showActions = true,
+    showEmailLabels = false,
+    customRight,
+    bottomSpacing = 16,
+}) {
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
@@ -20,45 +24,39 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
     const inOpenSection = taskViewToggleSection === 'Open'
 
     return (
-        <View style={localStyles.container}>
-            <View style={localStyles.rightContainer}>
-                <Avatar
-                    borderSize={0}
-                    avatarId={loggedUserId}
-                    reviewerPhotoURL={photoURL}
-                    size={22}
-                    externalStyle={localStyles.avatar}
-                />
-                <AllProjectData />
-                <ToggleByTime containerStyle={localStyles.toggleByTimeInline} />
-                {showEmailLabels && <AllProjectsEmailLabelChips />}
-            </View>
-            <View style={localStyles.leftContainer}>
-                {customRight}
-                {showActions && inOpenSection && (
-                    <>
-                        {/* In All Projects there is no project in context, so the picker
-                            opens on "Automatic" and the server routes the task (AT-2306).
-                            The user's default project is still where it is created, and
-                            picking a project by hand overrides the routing entirely. */}
-                        <AddTaskTag
-                            projectId={AUTOMATIC_PROJECT_OPTION}
-                            style={{ marginLeft: 8 }}
-                            sourceType={FEED_TASK_OBJECT_TYPE}
-                            expandTaskListIfNeeded={true}
-                            showProjectSelector={true}
-                            primary={true}
+        <HeaderActionsContext.Provider value={true}>
+            <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
+                <View style={localStyles.rightContainer}>
+                    <Avatar
+                        borderSize={0}
+                        avatarId={loggedUserId}
+                        reviewerPhotoURL={photoURL}
+                        size={22}
+                        externalStyle={localStyles.avatar}
+                    />
+                    <View style={[localStyles.titleAndGrouping, mobile && localStyles.mobileTitleAndGrouping]}>
+                        <AllProjectData />
+                        <ToggleByTime
+                            containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
                         />
+                    </View>
+                    {showEmailLabels && <AllProjectsEmailLabelChips />}
+                </View>
+                <View style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}>
+                    {customRight}
+                    {showActions && inOpenSection && (
                         <TaskHeaderMoreButton
+                            projectIdOverride={null}
                             userId={loggedUserId}
                             wrapperStyle={localStyles.taskMoreWrapper}
-                            buttonStyle={localStyles.taskMoreButton}
+                            buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
                             iconSize={16}
+                            iconColor={colors.Text02}
                         />
-                    </>
-                )}
+                    )}
+                </View>
             </View>
-        </View>
+        </HeaderActionsContext.Provider>
     )
 }
 
@@ -74,6 +72,29 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingTop: 25,
         paddingBottom: 6,
+    },
+    hierarchyHeader: {
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+        borderBottomWidth: 0,
+        borderRadius: 12,
+        backgroundColor: colors.Grey200,
+    },
+    titleAndGrouping: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    mobileTitleAndGrouping: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+    },
+    mobileGrouping: {
+        marginLeft: 0,
+        height: 18,
     },
     leftContainer: {
         flexDirection: 'row',
@@ -94,14 +115,16 @@ const localStyles = StyleSheet.create({
         marginRight: 10,
     },
     taskMoreWrapper: {
-        marginLeft: 2,
-        marginTop: 3,
+        marginLeft: 6,
+        marginTop: 0,
     },
     taskMoreButton: {
-        width: 18,
-        height: 18,
-        minWidth: 18,
-        minHeight: 18,
+        width: 32,
+        height: 32,
+        minWidth: 32,
+        minHeight: 32,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
     },
     toggleByTimeInline: {
         marginTop: 0,

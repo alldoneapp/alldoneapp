@@ -106,7 +106,7 @@ describe('gmailPromptClassifier', () => {
         const result = await classifyGmailMessage({
             config: {
                 prompt: 'Classify by active project.',
-                model: 'MODEL_GPT5_6_SOL',
+                model: 'MODEL_GPT6_SOL',
                 confidenceThreshold: 0.83,
                 labelDefinitions: [
                     {

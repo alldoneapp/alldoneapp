@@ -59,7 +59,7 @@ export default function CommentWrapper({
         }
     }
 
-    const addComment = comment => {
+    const addComment = async comment => {
         if (
             !isQuillTagEditorOpen &&
             !isMentionModalOpen &&
@@ -68,12 +68,12 @@ export default function CommentWrapper({
             !isBotWarningModalOpen &&
             comment.trim()
         ) {
+            await createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
             if (!assistantEnabled) {
                 setTimeout(() => {
                     updateCurrentChanges()
                 })
             }
-            createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
         }
     }
 

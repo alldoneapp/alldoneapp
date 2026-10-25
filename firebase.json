@@ -50,6 +50,19 @@
                         "value": "bytes"
                     }
                 ]
+            },
+            {
+                "source": "/ota/**",
+                "headers": [
+                    {
+                        "key": "Access-Control-Allow-Origin",
+                        "value": "*"
+                    },
+                    {
+                        "key": "Cache-Control",
+                        "value": "private, no-cache, max-age=0"
+                    }
+                ]
             }
         ],
         "rewrites": [
@@ -142,6 +155,14 @@
                     "functionId": "menubarAssistantMessage",
                     "region": "europe-west1"
                 }
+            },
+            {
+                "source": "/api/menubar/writing-start",
+                "function": { "functionId": "menubarWritingStart", "region": "europe-west1" }
+            },
+            {
+                "source": "/api/menubar/writing-session",
+                "function": { "functionId": "menubarWritingSession", "region": "europe-west1" }
             },
             {
                 "source": "/api/menubar/assistant-thread",

@@ -18,6 +18,8 @@ import Spinner from '../../UIComponents/Spinner'
 import { colors } from '../../styles/global'
 import ContactResults from './Contacts/ContactResults'
 import ChatsResults from './Chats/ChatsResults'
+import ArtifactResults from './Artifacts/ArtifactResults'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB } from '../searchIndexes'
 
 export default function ResultLists({
     projects,
@@ -31,6 +33,8 @@ export default function ResultLists({
     contactsResult,
     chatsResultAmount,
     chatsResult,
+    artifactsResultAmount = 0,
+    artifactsResult = {},
     processing,
     activeItemData,
     activeTab,
@@ -40,6 +44,8 @@ export default function ResultLists({
     resultsContainerRef,
     showShortcuts,
     indexing,
+    mobile,
+    compact,
 }) {
     const showEmptyResult = () => {
         if (activeTab === MENTION_MODAL_TASKS_TAB && tasksResultAmount > 0) {
@@ -52,12 +58,14 @@ export default function ResultLists({
             return false
         } else if (activeTab === MENTION_MODAL_TOPICS_TAB && chatsResultAmount > 0) {
             return false
+        } else if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB && artifactsResultAmount > 0) {
+            return false
         }
         return true
     }
 
     return (
-        <View style={localStyles.container}>
+        <View testID="global-search-results" style={[localStyles.container, mobile && localStyles.mobileContainer]}>
             <Header
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -66,7 +74,10 @@ export default function ResultLists({
                 notesResultAmount={notesResultAmount}
                 contactsResultAmount={contactsResultAmount}
                 chatsResultAmount={chatsResultAmount}
+                artifactsResultAmount={artifactsResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
+                compact={compact}
             />
 
             {processing[activeTab] ? (
@@ -136,6 +147,16 @@ export default function ResultLists({
                                         />
                                     )
                                 }
+                                case GLOBAL_SEARCH_ARTIFACTS_TAB: {
+                                    return (
+                                        <ArtifactResults
+                                            artifactsResult={artifactsResult}
+                                            activeItemData={activeItemData}
+                                            activeItemRef={activeItemRef}
+                                            projects={projects}
+                                        />
+                                    )
+                                }
                             }
                         })()}
                     </View>
@@ -148,8 +169,15 @@ export default function ResultLists({
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
+        minHeight: 0,
         width: '100%',
         marginHorizontal: -16,
+    },
+    // The desktop result surface deliberately bleeds 16px beyond the card.
+    // A bottom sheet is already edge-constrained and clips that bleed, leaving
+    // the first and last tabs visibly cut off on narrow phones.
+    mobileContainer: {
+        marginHorizontal: 0,
     },
     spinnerContainer: {
         flex: 1,

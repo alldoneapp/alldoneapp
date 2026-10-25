@@ -8,7 +8,7 @@
  *
  * These tests pin the two properties that fix it:
  *   1. a write for project A must not re-render project B's row, and
- *   2. the loading counter must be incremented once per effect, not once per project timer.
+ *   2. project listeners are admitted one-by-one while only the primary project owns page wait.
  */
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
@@ -22,6 +22,13 @@ import {
     storeCurrentUser,
     storeLoggedUser,
 } from '../../redux/actions'
+import { getOwnerId } from './GoalsHelper'
+import {
+    buildSecondaryViewCacheKey,
+    resetSecondaryViewCacheForTests,
+    SECONDARY_VIEW_GOALS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
 
 const renderCountsByProject = {}
 
@@ -62,6 +69,7 @@ jest.mock('../../URLSystem/Goals/URLsGoals', () => ({
 
 const GoalsViewAllProjects = require('./GoalsViewAllProjects').default
 const { watchAllGoals, watchAllMilestones } = require('../../utils/backends/Goals/goalsFirestore')
+const Backend = require('../../utils/BackendBridge').default
 
 const PROJECT_IDS = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
 
@@ -104,9 +112,17 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        resetSecondaryViewCacheForTests()
         Object.keys(renderCountsByProject).forEach(key => delete renderCountsByProject[key])
         watchAllGoals.mockClear()
         watchAllMilestones.mockClear()
+        Backend.unwatch.mockClear()
+        watchAllGoals.mockImplementation((projectId, watcherKey, ownerId, options) =>
+            options.onInitialSnapshot(projectId)
+        )
+        watchAllMilestones.mockImplementation((projectId, watcherKey, ownerId, options) =>
+            options.onInitialSnapshot(projectId)
+        )
         store.dispatch(resetLoadingData())
         clearBoards()
     })
@@ -121,6 +137,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         clearBoards()
         store.dispatch(resetLoadingData())
         jest.useRealTimers()
+        resetSecondaryViewCacheForTests()
     })
 
     const mount = () => {
@@ -133,14 +150,63 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         })
     }
 
-    it('watches every active project exactly once', () => {
+    const mountAll = () => {
         mount()
+        for (let index = 1; index < PROJECT_IDS.length; index++) {
+            act(() => {
+                jest.advanceTimersByTime(500)
+            })
+        }
+    }
+
+    it('starts only the primary project listeners on the first render', () => {
+        mount()
+        expect(watchAllGoals).toHaveBeenCalledTimes(1)
+        expect(watchAllMilestones).toHaveBeenCalledTimes(1)
+        expect(watchAllGoals.mock.calls[0][3]).toEqual(
+            expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
+        )
+        expect(watchAllMilestones.mock.calls[0][3]).toEqual(
+            expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
+        )
+    })
+
+    it('hydrates a cached project board before its listeners refresh it', () => {
+        const ownerId = getOwnerId('p0', 'user-1')
+        const cacheKey = buildSecondaryViewCacheKey('p0', ownerId)
+        setSecondaryViewCacheEntry(
+            'user-1',
+            SECONDARY_VIEW_GOALS,
+            cacheKey,
+            {
+                projectId: 'p0',
+                ownerId,
+                goals: [{ id: 'cached-goal' }],
+                openMilestones: [{ id: 'cached-open-milestone' }],
+                doneMilestones: [],
+            },
+            { persist: false }
+        )
+
+        mount()
+
+        expect(store.getState().goalsByProject.p0).toEqual([{ id: 'cached-goal' }])
+        expect(store.getState().openMilestonesByProject.p0).toEqual([{ id: 'cached-open-milestone' }])
+        expect(watchAllGoals.mock.calls[0][3]).toEqual(expect.objectContaining({ manageLoading: false }))
+        expect(watchAllMilestones.mock.calls[0][3]).toEqual(expect.objectContaining({ manageLoading: false }))
+    })
+
+    it('eventually watches every active project exactly once', () => {
+        mountAll()
         expect(watchAllGoals).toHaveBeenCalledTimes(PROJECT_IDS.length)
         expect(watchAllMilestones).toHaveBeenCalledTimes(PROJECT_IDS.length)
+        watchAllGoals.mock.calls.slice(1).forEach(call => {
+            expect(call[3]).toEqual(expect.objectContaining({ manageLoading: false, trackConnectionHealth: false }))
+        })
     })
 
     it('does not re-render other projects when one project board arrives', () => {
-        mount()
+        mountAll()
         // p0 sorts first and therefore owns `firstMilestoneId`, which is shared by every row.
         act(() => {
             store.dispatch(setBoardMilestonesInProject('p0', [{ id: 'm-p0', date: 10 }]))
@@ -162,7 +228,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         // `firstMilestoneId` is one value shared by every row, so the row that becomes the first
         // visible project legitimately re-renders all of them. Pinned so the memoization above is
         // never "optimized" into dropping a real prop update.
-        mount()
+        mountAll()
         const rendersAfterMount = { ...renderCountsByProject }
         act(() => {
             store.dispatch(setBoardMilestonesInProject('p5', [{ id: 'm-p5', date: 42 }]))
@@ -173,7 +239,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
     })
 
     it('settles in O(projects) renders, not O(projects^2), as each project board arrives', () => {
-        mount()
+        mountAll()
         Object.keys(renderCountsByProject).forEach(key => delete renderCountsByProject[key])
 
         // One board write per project, exactly like one snapshot per per-project watcher.
@@ -191,7 +257,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
     })
 
     it('re-renders when a project board is emptied again', () => {
-        mount()
+        mountAll()
         act(() => {
             store.dispatch(setBoardMilestonesInProject('p2', [{ id: 'm-p2', date: 100 }]))
         })
@@ -202,35 +268,12 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         expect(renderCountsByProject.p2).toBeGreaterThan(before)
     })
 
-    it('increments the loading counter once per watcher effect instead of once per project', () => {
-        mount()
-        act(() => {
-            jest.advanceTimersByTime(5)
-        })
-        // Two effects (milestones + goals), each reserving one slot per project in a single
-        // batched dispatch. The counter total is unchanged; the number of dispatches is not.
-        expect(store.getState().isLoadingData).toBe(PROJECT_IDS.length * 2)
-    })
-
-    it('releases every reserved loading slot on unmount', () => {
-        mount()
-        act(() => {
-            jest.advanceTimersByTime(5)
-        })
+    it('unwatches both listeners for every admitted project on unmount', () => {
+        mountAll()
         act(() => {
             tree.unmount()
             tree = null
         })
-        expect(store.getState().isLoadingData).toBe(0)
-    })
-
-    it('does not leave a pending loading increment behind when unmounted before the timer fires', () => {
-        mount()
-        act(() => {
-            tree.unmount()
-            tree = null
-            jest.advanceTimersByTime(50)
-        })
-        expect(store.getState().isLoadingData).toBe(0)
+        expect(Backend.unwatch).toHaveBeenCalledTimes(PROJECT_IDS.length * 2)
     })
 })

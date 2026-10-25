@@ -5,6 +5,7 @@ import moment from 'moment'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
+import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import { getHeartbeatIntervalMs } from './heartbeatIntervalHelper'
 import { getHeartbeatStatusForUser } from './heartbeatStatusHelper'
@@ -93,7 +94,7 @@ function formatTimestamp(timestamp) {
         return translate('Never')
     }
 
-    return `${moment(timestamp).fromNow()} • ${moment(timestamp).format('MMM D, h:mm A')}`
+    return `${localizedMoment(timestamp).fromNow()} • ${moment(timestamp).format('MMM D, h:mm A')}`
 }
 
 function getHeartbeatBadgeStatus(chancePercent, hasRecentCheck, lastCheckedAt) {

@@ -18,9 +18,9 @@ jest.mock('./assistantHelper', () => ({
     getModel: modelKey =>
         modelKey === 'MODEL_GPT5_6_TERRA'
             ? 'gpt-5.6-terra'
-            : modelKey === 'MODEL_GPT5_6_LUNA'
-              ? 'gpt-5.6-luna'
-              : 'gpt-5.6-sol',
+            : modelKey === 'MODEL_GPT6_LUNA'
+              ? 'gpt-6-luna'
+              : 'gpt-6.1-sol',
     logOpenAiCacheUsage: (...args) => mockLogOpenAiCacheUsage(...args),
 }))
 
@@ -53,6 +53,30 @@ describe('system prompt contract', () => {
         expect(RAMBLER_SYSTEM_PROMPT).toContain('spoken edits and self-corrections')
         expect(RAMBLER_SYSTEM_PROMPT).toContain('Detect the language of the dictation')
         expect(RAMBLER_SYSTEM_PROMPT).toContain('Do not default to the user app language')
+    })
+
+    // PT-4648: the semantic half of the dictation vocabulary. Deepgram's keyterm prompting biases
+    // the acoustics towards the brand; only this prompt has the sentence and can tell the product
+    // "Alldone" from the ordinary phrase "all done".
+    test('carries the product glossary', () => {
+        const { PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
+        for (const term of PRODUCT_KEYTERMS) {
+            expect(RAMBLER_SYSTEM_PROMPT).toContain(term)
+        }
+    })
+
+    test('disambiguates the brand from the ordinary phrase in BOTH directions', () => {
+        // Pushing "Alldone" without protecting "all done" just trades one error for its mirror.
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Alldone')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('all done')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Decide from the sentence')
+    })
+
+    test('keeps the glossary in the SYSTEM prompt, which is the cached prefix', () => {
+        // The glossary never varies, so it must not ride along in the per-request user content
+        // where it would defeat prompt caching on every single dictation.
+        const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'generic' })
+        expect(content).not.toContain('Known product vocabulary')
     })
 })
 
@@ -109,8 +133,8 @@ describe('buildRamblerUserContent', () => {
 
 describe('resolveCleanupModelKey', () => {
     test('defaults to Luna with no stored preference', () => {
-        expect(resolveCleanupModelKey({})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveCleanupModelKey(undefined)).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveCleanupModelKey({})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveCleanupModelKey(undefined)).toBe('MODEL_GPT6_LUNA')
     })
 
     test('uses the user preference when valid, including OpenRouter models', () => {
@@ -124,7 +148,7 @@ describe('resolveCleanupModelKey', () => {
 
     test('an invalid stored value falls back to the default', () => {
         expect(resolveCleanupModelKey({ featureModelPreferences: { rambler: 'MODEL_SONAR_PRO' } })).toBe(
-            'MODEL_GPT5_6_LUNA'
+            'MODEL_GPT6_LUNA'
         )
     })
 })
@@ -142,6 +166,8 @@ describe('cleanupRamble', () => {
         const request = mockCreate.mock.calls[0][0]
         expect(request.model).toBe('gpt-5.6-terra')
         expect(request.prompt_cache_key).toBe('cache-key-1')
+        expect(request.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
+        expect(JSON.stringify(request.messages)).not.toContain('prompt_cache_breakpoint')
         expect(request.messages[0]).toEqual({ role: 'system', content: RAMBLER_SYSTEM_PROMPT })
         expect(result).toEqual({ text: 'cleaned text', totalTokens: 321, modelKey: 'MODEL_GPT5_6_TERRA' })
     })
@@ -161,6 +187,7 @@ describe('cleanupRamble', () => {
         const request = mockCreate.mock.calls[0][0]
         expect(request.model).toBe('deepseek/deepseek-v4-flash-0731')
         expect(request).not.toHaveProperty('prompt_cache_key')
+        expect(request).not.toHaveProperty('prompt_cache_options')
         expect(mockBuildOpenAiPromptCacheKey).not.toHaveBeenCalled()
         expect(result.modelKey).toBe('MODEL_DEEPSEEK_V4_FLASH')
     })

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -61,6 +61,7 @@ import { getDvTabLink } from '../../../../utils/LinkingHelper'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import SelectProjectModalInSearch from '../SelectProjectModal/SelectProjectModalInSearch'
 import { AUTOMATIC_PROJECT_OPTION, isAutomaticProjectOption } from '../SelectProjectModal/projectPickerConstants'
+import { applyProjectSwitchToDraft } from './projectSwitchDraft'
 import { buildPendingProjectRouting, resolveAutomaticHostProjectId } from '../../../../utils/automaticProjectRouting'
 import {
     addProjectDataToMyDayData,
@@ -68,6 +69,7 @@ import {
 } from '../../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { TO_ATTEND_TASKS_MY_DAY_TYPE, WORKSTREAM_TASKS_MY_DAY_TYPE } from '../../../../utils/backends/Tasks/myDayTasks'
 import useSingleFlightSubmit from '../../../../hooks/useSingleFlightSubmit'
+import { translate } from '../../../../i18n/TranslationService'
 
 const buildLinkBack = (projectId, sourceType, sourceId, objectNoteType) => {
     const { selectedNavItem } = store.getState()
@@ -145,14 +147,15 @@ const getNewInitialDefaultTask = (
     sourceIsPublicFor,
     objectNoteType,
     lockKey,
-    useLoggedUser
+    useLoggedUser,
+    initialTaskName
 ) => {
     const { loggedUser, currentUser } = store.getState()
     const user = fromTaskList && !useLoggedUser ? currentUser : loggedUser
     const uid = user.uid
     const newTask = TasksHelper.getNewDefaultTask()
     const taskName = fromTaskList
-        ? ''
+        ? initialTaskName || ''
         : `${window.location.origin}${buildLinkBack(projectId, sourceType, sourceId, objectNoteType)} `
     newTask.name = taskName
     newTask.extendedName = taskName
@@ -196,16 +199,19 @@ export default function RichCreateTaskModal({
     modalTitle,
     tryExpandTasksListInGoalWhenAddTask,
     useLoggedUser,
-    showProjectSelector,
+    // PT-4745: the project switcher is part of the add-task popup at EVERY entry
+    // point now, so this defaults to on and no caller passes it. It stays a prop
+    // (rather than being deleted) so a future surface that genuinely has no
+    // project to switch to can opt out explicitly, and so the two All Projects
+    // call sites keep saying out loud that they depend on it.
+    showProjectSelector = true,
     expandTaskListIfNeeded,
-    // AT-2364: opt in to the wide card (used by the big, centered All Projects
-    // "Add task" call to action). Every other entry point keeps its width.
-    wide,
+    initialTaskName,
 }) {
     const dispatch = useDispatch()
     // One measurement shared by the form and the in-place project picker, so
     // the popup never changes width between the two steps.
-    const widthStyle = useCreateTaskPopupWidth(wide)
+    const widthStyle = useCreateTaskPopupWidth()
     // "Automatic" is a picker option, not a project: the task still needs a real
     // project to be written to, so the sentinel is split here into the flag that
     // asks the server to route it and the host project it is created in.
@@ -223,6 +229,15 @@ export default function RichCreateTaskModal({
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
     const [selectedProject, setSelectedProject] = useState(null)
     const [projects, setProjects] = useState([])
+    const [uploadingDraft, setUploadingDraft] = useState(false)
+    const droppedObjectUrls = useRef(new Set())
+
+    useEffect(
+        () => () => {
+            droppedObjectUrls.current.forEach(uri => URL.revokeObjectURL(uri))
+        },
+        []
+    )
 
     // Enter can reach the creation handlers through several independent
     // listeners at once (see TaskEditForm/ButtonsArea/DoneButton and Quill's
@@ -242,7 +257,8 @@ export default function RichCreateTaskModal({
                   sourceIsPublicFor,
                   objectNoteType,
                   lockKey,
-                  useLoggedUser
+                  useLoggedUser,
+                  initialTaskName
               )
     )
 
@@ -291,9 +307,62 @@ export default function RichCreateTaskModal({
     }
 
     const saveDescription = description => {
-        setTask({ ...task, description })
+        if (submitOnce.isInFlight()) return
+        setTask(current => ({ ...current, description }))
         setShowMoreOptionsModal(false)
     }
+
+    const onFilesDropped = files => {
+        if (submitOnce.isInFlight()) return
+        // This module pulls in the user backend; load it only for an actual file drop.
+        const { checkIsLimitedByTraffic } = require('../../../Premium/PremiumHelper')
+        if (checkIsLimitedByTraffic(projectId)) return
+        const {
+            appendTokensToDescription,
+            createDraftAttachmentTokens,
+        } = require('../../../TaskListView/TaskItem/TaskPresentation/taskFileDropHelper')
+        const { tokens, uris } = createDraftAttachmentTokens(files)
+        if (tokens.length === 0) return
+        uris.forEach(uri => droppedObjectUrls.current.add(uri))
+        setTask(current => ({
+            ...current,
+            description: appendTokensToDescription(current.description, tokens),
+        }))
+    }
+
+    const submitDraft = create =>
+        submitOnce(() => {
+            // Every local file URI generated by the attachment paths starts with `blob:`.
+            // Ordinary task creation remains synchronous and avoids loading the upload tree.
+            if (!task.description?.includes('blob:')) return create(task)
+            const {
+                hasDraftAttachments,
+                resolveDraftAttachments,
+            } = require('../../../TaskListView/TaskItem/TaskPresentation/taskFileDropHelper')
+            if (!hasDraftAttachments(task.description)) return create(task)
+
+            const { checkIsLimitedByTraffic } = require('../../../Premium/PremiumHelper')
+            if (checkIsLimitedByTraffic(projectId)) {
+                submitOnce.reset()
+                return
+            }
+
+            setUploadingDraft(true)
+            return resolveDraftAttachments(projectId, task.description)
+                .catch(() => ({ description: task.description, failedCount: 1 }))
+                .then(({ description, failedCount }) => {
+                    // Keep successfully uploaded words in the draft for a retry. A failed local
+                    // word must never reach Firestore, even when other uploads succeeded.
+                    if (failedCount > 0) {
+                        setTask(current => ({ ...current, description }))
+                        alert(translate('Task attachment upload failed'))
+                        submitOnce.reset()
+                        return
+                    }
+                    return create({ ...task, description })
+                })
+                .finally(() => setUploadingDraft(false))
+        })
 
     const saveRecurrence = recurrence => {
         setTask({ ...task, recurrence })
@@ -317,13 +386,31 @@ export default function RichCreateTaskModal({
         setShowMoreOptionsModal(false)
     }
 
-    const saveParentGoal = goal => {
+    const saveParentGoal = (goal, goalProjectId) => {
+        const goalScopeProjectId = goal ? goal.projectId || goalProjectId || projectId : projectId
+        const projectChanged = !!goal && (goalScopeProjectId !== projectId || automaticProject)
+        const { loggedUser, loggedUserProjectsMap } = store.getState()
+        const scopedTask = projectChanged ? applyProjectSwitchToDraft(task, loggedUser.uid) : task
         const parentGoalId = goal ? goal.id : null
         const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
         const lockKey = goal && goal.lockKey ? goal.lockKey : ''
-        setTask({ ...task, parentGoalId, parentGoalIsPublicFor, lockKey })
+        setTask({ ...scopedTask, parentGoalId, parentGoalIsPublicFor, lockKey })
         setActiveGoal(goal)
+
+        // A goal belongs to exactly one project. Selecting it therefore turns
+        // even the Automatic option into an explicit project scope and keeps
+        // the visible project row aligned with the Firestore path that will
+        // receive the task.
+        if (projectChanged) {
+            setAutomaticProject(false)
+            setProjectId(goalScopeProjectId)
+            setSelectedProject(
+                projects.find(project => project.id === goalScopeProjectId) ||
+                    loggedUserProjectsMap[goalScopeProjectId] || { id: goalScopeProjectId }
+            )
+        }
         setShowParentGoalModal(false)
+        return true
     }
 
     const savePrivacy = (isPrivate, isPublicFor) => {
@@ -375,12 +462,12 @@ export default function RichCreateTaskModal({
         automaticProject ? { projectRouting: buildPendingProjectRouting({ hostProjectId: projectId }) } : {}
 
     const assignAndComment = (user, observers) =>
-        submitOnce(() => {
+        submitDraft(preparedTask => {
             const { uid } = user
             const { loggedUser } = store.getState()
-            closeModal(task)
+            closeModal(preparedTask)
 
-            const updatedTask = { ...task }
+            const updatedTask = { ...preparedTask }
             if (uid) {
                 updatedTask.userId = uid
                 updatedTask.userIds = [uid]
@@ -434,32 +521,32 @@ export default function RichCreateTaskModal({
         // an empty popup does not consume the single allowed submission.
         if (task.name.trim().length === 0) return
 
-        return submitOnce(() => {
-            closeModal(task)
+        return submitDraft(preparedTask => {
+            closeModal(preparedTask)
             if (triggerWhenCreateTask) triggerWhenCreateTask()
 
             setShowInteractionBar && setShowInteractionBar(false)
-            if (expandTaskListIfNeeded) tryExpandTasksList(task)
-            if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(task)
+            if (expandTaskListIfNeeded) tryExpandTasksList(preparedTask)
+            if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(preparedTask)
 
             // Use unified TaskService instead of old uploadNewTask
             return createTaskWithService(
                 {
                     projectId,
-                    name: task.name,
-                    description: task.description || '',
-                    userId: task.userId,
-                    dueDate: task.dueDate,
-                    isPrivate: task.isPrivate,
-                    observersIds: task.observersIds || [],
-                    estimations: task.estimations,
-                    recurrence: task.recurrence,
-                    parentId: task.parentId,
-                    linkBack: task.linkBack || '',
-                    genericData: task.genericData,
-                    parentGoalId: task.parentGoalId,
+                    name: preparedTask.name,
+                    description: preparedTask.description || '',
+                    userId: preparedTask.userId,
+                    dueDate: preparedTask.dueDate,
+                    isPrivate: preparedTask.isPrivate,
+                    observersIds: preparedTask.observersIds || [],
+                    estimations: preparedTask.estimations,
+                    recurrence: preparedTask.recurrence,
+                    parentId: preparedTask.parentId,
+                    linkBack: preparedTask.linkBack || '',
+                    genericData: preparedTask.genericData,
+                    parentGoalId: preparedTask.parentGoalId,
                     // Pass through all other task properties
-                    ...task,
+                    ...preparedTask,
                     // Last on purpose: the draft task never carries a routing
                     // stamp, and only the picker's current state decides it.
                     ...automaticProjectRoutingFields(),
@@ -606,6 +693,26 @@ export default function RichCreateTaskModal({
         setActiveGoal(isPublic ? goal : null)
     }
 
+    // PT-4745: the draft's project-scoped ids cannot survive a project change —
+    // see projectSwitchDraft.js for which ones and why. Called BEFORE the new
+    // project is committed so it never runs against a half-updated draft, and
+    // only when the destination really differs: re-picking the project the popup
+    // already opened on must not quietly drop the user's goal or assignee.
+    const applyProjectSwitch = (nextProjectId, nextIsAutomatic) => {
+        if (submitOnce.isInFlight()) return
+        const unchanged = nextProjectId === projectId && !!nextIsAutomatic === !!automaticProject
+        if (unchanged) return
+
+        const { loggedUser } = store.getState()
+        const switchedTask = applyProjectSwitchToDraft(task, loggedUser.uid)
+        if (switchedTask === task) return
+
+        setTask(switchedTask)
+        // The goal chip is rendered from this, not from the draft, so it has to
+        // be cleared with it or a dropped goal keeps showing in the popup.
+        if (!switchedTask.parentGoalId) setActiveGoal(null)
+    }
+
     useEffect(() => {
         const { parentGoalId } = task
 
@@ -616,7 +723,7 @@ export default function RichCreateTaskModal({
                 Backend.unwatch(projectId, watcherKey)
             }
         }
-    }, [task.parentGoalId])
+    }, [task.parentGoalId, projectId])
 
     useEffect(() => {
         if (showProjectSelector) {
@@ -631,7 +738,16 @@ export default function RichCreateTaskModal({
             ]
 
             setProjects(sortedProjects)
-            setSelectedProject(automaticProject ? { id: AUTOMATIC_PROJECT_OPTION } : loggedUserProjectsMap[projectId])
+            // PT-4745: `MainModal` renders the switcher row only when it has a
+            // selected project, so an unresolvable id used to HIDE the switcher
+            // — the one outcome this task exists to remove. The popup was opened
+            // on this project and will create the task in it either way, so fall
+            // back to the bare id and keep the row (and the way out of it).
+            setSelectedProject(
+                automaticProject
+                    ? { id: AUTOMATIC_PROJECT_OPTION }
+                    : loggedUserProjectsMap[projectId] || (projectId ? { id: projectId } : null)
+            )
         }
     }, [showProjectSelector])
 
@@ -648,14 +764,19 @@ export default function RichCreateTaskModal({
                     projects={projects}
                     setSelectedProjectId={selectedProjectId => {
                         if (isAutomaticProjectOption(selectedProjectId)) {
+                            const hostProjectId = getAutomaticHostProjectId()
+                            applyProjectSwitch(hostProjectId, true)
                             setAutomaticProject(true)
-                            setProjectId(getAutomaticHostProjectId())
+                            setProjectId(hostProjectId)
                             setSelectedProject({ id: AUTOMATIC_PROJECT_OPTION })
                             return
                         }
+                        applyProjectSwitch(selectedProjectId, false)
                         setAutomaticProject(false)
                         setProjectId(selectedProjectId)
-                        setSelectedProject(projects.find(project => project.id === selectedProjectId))
+                        setSelectedProject(
+                            projects.find(project => project.id === selectedProjectId) || { id: selectedProjectId }
+                        )
                     }}
                     showGuideTab={true}
                     showAutomaticProject={true}
@@ -695,7 +816,7 @@ export default function RichCreateTaskModal({
                     projectId={projectId}
                     closeModal={delayClosePopup}
                     ownerId={task.userId}
-                    fromAddTaskSection={true}
+                    notDelayClose={true}
                 />
             ) : showMoreOptionsModal ? (
                 <TaskMoreOptionModal
@@ -733,7 +854,10 @@ export default function RichCreateTaskModal({
                     showSelectProject={showSelectProject}
                     createTask={createTask}
                     setTask={setTask}
+                    onFilesDropped={onFilesDropped}
+                    uploadingDraft={uploadingDraft}
                     selectedProject={selectedProject}
+                    activeGoal={activeGoal}
                     widthStyle={widthStyle}
                 />
             )}

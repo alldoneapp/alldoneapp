@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setDomAttributes } from '../../utils/setDomAttributes'
 
 import SubTasksView from './Subtask/SubTasksView'
+import { useTaskHierarchy, taskHierarchyStyles } from './TaskHierarchy'
 import { setFocusedTaskItem, unsetUploadedNewSubtask } from '../../redux/actions'
 import TaskIndicator from './TaskIndicator'
 import TaskItem from './TaskItem'
@@ -11,10 +12,12 @@ import store from '../../redux/store'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from './Utils/TasksHelper'
+import useProjectPostponePreview from '../../hooks/useProjectPostponePreview'
+import { projectTaskPreview } from '../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function ParentTaskContainer({
     projectId,
-    task,
+    task: sourceTask,
     isActiveOrganizeMode,
     expandOrContractSubtasks,
     isObservedTask,
@@ -26,8 +29,15 @@ export default function ParentTaskContainer({
     inParentGoal,
     containerStyle,
     isPending,
+    inTodayOpenList,
 }) {
     const dispatch = useDispatch()
+    const postponeEntry = useProjectPostponePreview(projectId)
+    const { task, hidden } = projectTaskPreview(
+        sourceTask,
+        isObservedTask || isToReviewTask || isSuggested || isPending ? null : postponeEntry
+    )
+    const taskHierarchy = useTaskHierarchy()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isFocusedTaskItem = useSelector(state => state.focusedTaskItem.id === task.id)
@@ -110,8 +120,12 @@ export default function ParentTaskContainer({
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View ref={parentRef} style={containerStyle}>
+        <View
+            ref={parentRef}
+            style={[containerStyle, taskHierarchy && showSubTaskList && taskHierarchyStyles.taskFamily]}
+        >
             {(loggedUserCanUpdateObject || subtaskList.length > 0) &&
+            !hidden &&
             !isMiddleScreen &&
             (subtaskList.length > 0 || showSubTaskIndicator) &&
             !isAssistant ? (
@@ -122,26 +136,29 @@ export default function ParentTaskContainer({
                     showSubTaskList={showSubTaskList}
                 />
             ) : null}
-            <TaskItem
-                projectId={projectId}
-                task={task}
-                isObservedTask={isObservedTask}
-                isToReviewTask={isToReviewTask}
-                isActiveOrganizeMode={isActiveOrganizeMode}
-                provided={provided}
-                dismissibleRef={dismissibleRef}
-                taskItemRef={taskItemRef}
-                toggleSubTaskList={toggleSubTaskList}
-                subtaskList={subtaskList}
-                isSuggested={isSuggested}
-                checked={checked}
-                showSubTaskList={showSubTaskList}
-                setInEditMode={setInEditMode}
-                setShowSubTaskIndicator={setShowSubTaskIndicator}
-                inParentGoal={inParentGoal}
-                isPending={isPending}
-                createSubtask={createSubtask}
-            />
+            {!hidden && (
+                <TaskItem
+                    projectId={projectId}
+                    task={task}
+                    isObservedTask={isObservedTask}
+                    isToReviewTask={isToReviewTask}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                    provided={provided}
+                    dismissibleRef={dismissibleRef}
+                    taskItemRef={taskItemRef}
+                    toggleSubTaskList={toggleSubTaskList}
+                    subtaskList={subtaskList}
+                    isSuggested={isSuggested}
+                    checked={checked}
+                    showSubTaskList={showSubTaskList}
+                    setInEditMode={setInEditMode}
+                    setShowSubTaskIndicator={setShowSubTaskIndicator}
+                    inParentGoal={inParentGoal}
+                    isPending={isPending}
+                    createSubtask={createSubtask}
+                    inTodayOpenList={inTodayOpenList}
+                />
+            )}
 
             {(!isActiveOrganizeMode && showSubTaskList) ||
             (isActiveOrganizeMode && subtaskList.length > 0 && draggingParentTaskId === task.id) ? (

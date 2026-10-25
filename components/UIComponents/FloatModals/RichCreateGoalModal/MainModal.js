@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, Dimensions } from 'react-native'
+import React from 'react'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import useWindowSize from '../../../../utils/useWindowSize'
 
 import { colors } from '../../../styles/global'
 import GoalEditForm from './GoalEditForm'
@@ -23,18 +24,7 @@ export default function MainModal({
     setGoal,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
-
-    const setDimensions = e => {
-        setScreenDimensions(e.window)
-    }
-
-    useEffect(() => {
-        Dimensions.addEventListener('change', setDimensions)
-        return () => {
-            Dimensions.removeEventListener('change', setDimensions)
-        }
-    })
+    const [, windowHeight] = useWindowSize()
 
     return (
         <View
@@ -42,7 +32,7 @@ export default function MainModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
-                { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
+                { maxHeight: getSafeAreaModalMaxHeight(windowHeight) },
             ]}
         >
             <ModalHeader closeModal={closeModal} title={translate('Add goal')} description="" />

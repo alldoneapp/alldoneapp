@@ -1,4 +1,5 @@
 import React from 'react'
+import { getFollowedFeedAmount } from '../../utils/notificationBadges'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -11,7 +12,7 @@ import Shortcut from '../UIControls/Shortcut'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
-import { ALL_PROJECTS_INDEX, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_PROJECTS_INDEX } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
 import NavigationService from '../../utils/NavigationService'
 import ChatsButton from './ChatsButton'
@@ -20,7 +21,7 @@ export default function NotificationArea() {
     const dispatch = useDispatch()
     const showShortcuts = useSelector(state => state.showShortcuts)
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const followedFeedsAmount = useSelector(state => state.followedFeedsAmount)
+    const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
@@ -33,7 +34,7 @@ export default function NotificationArea() {
     }
 
     const onPressUpdates = e => {
-        const { selectedProjectIndex, route } = store.getState()
+        const { route } = store.getState()
 
         dismissAllPopups(true, true, true)
 
@@ -41,9 +42,7 @@ export default function NotificationArea() {
             hideFloatPopup(),
             setReloadGlobalFeeds(true),
             navigateToUpdates({
-                selectedProjectIndex: checkIfSelectedProject(selectedProjectIndex)
-                    ? selectedProjectIndex
-                    : ALL_PROJECTS_INDEX,
+                selectedProjectIndex: ALL_PROJECTS_INDEX,
             }),
         ])
 

@@ -27,6 +27,7 @@ const {
     markMessagesRead,
     sweepLabel,
     getMessageStates,
+    getMessageContext,
 } = require('./microsoftEmailLine')
 
 const ACCOUNT = {
@@ -39,6 +40,27 @@ const ACCOUNT = {
 describe('microsoftEmailLine', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+    })
+
+    test('message context requests conversation identity, date, and preserves the full body', async () => {
+        getConnectedMicrosoftEmailAccounts.mockResolvedValue([ACCOUNT])
+        const body = 'Email text '.repeat(600)
+        mockRequest.mockResolvedValueOnce({
+            conversationId: 'conversation-1',
+            receivedDateTime: '2026-10-07T11:00:00Z',
+            body: { content: body },
+        })
+        const context = await getMessageContext('user-1', 'proj1', 'message-1')
+        expect(context).toEqual(
+            expect.objectContaining({
+                threadId: 'conversation-1',
+                date: '2026-10-07T11:00:00Z',
+                bodyText: body,
+                body: body.slice(0, 4000),
+            })
+        )
+        const url = new URL(mockRequest.mock.calls[0][0], 'https://graph.microsoft.com')
+        expect(url.searchParams.get('$select')).toContain('conversationId,receivedDateTime')
     })
 
     test('resolveAccountForProject prefers project match, then default, then first', () => {

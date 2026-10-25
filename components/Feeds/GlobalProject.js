@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import moment from 'moment'
@@ -29,6 +30,8 @@ function GlobalProject({
     globalActiveMode,
     feedsUserId,
     projectId,
+    trackInitialLoad = true,
+    onInitialSnapshot,
 }) {
     const dispatch = useDispatch()
 
@@ -36,11 +39,9 @@ function GlobalProject({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const allFeeds = useSelector(state => state.allFeeds[projectId])
     const followedFeeds = useSelector(state => state.followedFeeds[projectId])
-    // Read straight from the store rather than through props. `followedFeedsData` / `allFeedsData`
-    // are written by mutating the map in place (InitLoadView), so the map's identity never changes
-    // and a parent re-render was the only thing that ever delivered a fresh counter. Selecting the
-    // per-project slice here re-renders exactly the project whose counter moved - and makes the
-    // memoization below safe.
+    const activeTabFeeds = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
+    // Select the per-project counter so a global badge update only re-renders the project
+    // whose unread entries changed.
     const counterNewFeedsData = useSelector(
         state => (feedActiveTab === FOLLOWED_TAB ? state.followedFeedsData : state.allFeedsData)[projectId]
     )
@@ -64,14 +65,18 @@ function GlobalProject({
     const feedsLimit = feedsExpanded ? MAX_FEEDS_AMOUNT_TO_DISPLAY : baseFeedsAmount
     const watchedFeedsLimit = useRef(feedsLimit)
 
-    const reloadStoreFeeds = userId => {
+    const reloadStoreFeeds = (userId, trackLoad = trackInitialLoad) => {
         // Scoped to this project: `setFollowedFeeds()` / `setAllFeeds()` without a project id reset
         // the whole map, so with one GlobalProject mounted per project every mount used to throw
         // away every other project's already-loaded feeds.
         dispatch([setFollowedFeeds(projectId, undefined), setAllFeeds(projectId, undefined)])
         watchedFeedsLimit.current = feedsLimit
         Backend.unsubStoreFeedsTab(projectId)
-        Backend.watchNewFeedsAllTabsRedux(projectId, userId, feedsLimit)
+        Backend.watchNewFeedsAllTabsRedux(projectId, userId, feedsLimit, {
+            manageLoading: trackLoad,
+            trackConnectionHealth: trackLoad,
+            onInitialSnapshot,
+        })
     }
 
     const requestAllFeeds = useCallback(() => {
@@ -79,10 +84,10 @@ function GlobalProject({
     }, [])
 
     useEffect(() => {
-        if (allFeeds && followedFeeds && switchingBetweenUsers) {
+        if (activeTabFeeds && switchingBetweenUsers) {
             setSwitchingBetweenUsers(false)
         }
-    }, [allFeeds, followedFeeds])
+    }, [activeTabFeeds, switchingBetweenUsers])
 
     useEffect(() => {
         if (switchingBetweenUsers === null) {
@@ -110,7 +115,11 @@ function GlobalProject({
         if (watchedFeedsLimit.current === feedsLimit) return
         watchedFeedsLimit.current = feedsLimit
         Backend.unsubStoreFeedsTab(projectId)
-        Backend.watchNewFeedsAllTabsRedux(projectId, feedsUserId, feedsLimit)
+        Backend.watchNewFeedsAllTabsRedux(projectId, feedsUserId, feedsLimit, {
+            manageLoading: true,
+            trackConnectionHealth: true,
+            onInitialSnapshot,
+        })
     }, [feedsLimit])
 
     useEffect(() => {
@@ -142,10 +151,10 @@ function GlobalProject({
     }
 
     return (
-        <View>
+        <ProjectSection projectId={projectId} projectColor={project.color} style={{ marginBottom: 24 }}>
             <ProjectLabelFeed project={project} amountNewFeeds={amountNewFeeds} feedActiveTab={feedActiveTab} />
             {!switchingBetweenUsers && feedsUserId === activeUser && activeProjectId === projectId && (
-                <View>
+                <ProjectSectionBody>
                     <FeedsGlobalList
                         projectId={projectId}
                         currentDateFormated={currentDateFormated}
@@ -158,9 +167,9 @@ function GlobalProject({
                         followedFeeds={followedFeeds}
                         onRequestAllFeeds={requestAllFeeds}
                     />
-                </View>
+                </ProjectSectionBody>
             )}
-        </View>
+        </ProjectSection>
     )
 }
 

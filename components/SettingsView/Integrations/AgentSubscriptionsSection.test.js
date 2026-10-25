@@ -27,10 +27,17 @@ jest.mock('../../styles/global', () => ({
         Primary100: '#00f',
         UtilityGreen100: '#efe',
         UtilityGreen300: '#080',
+        UtilityRed100: '#fee',
         UtilityRed200: '#f00',
     },
 }))
-jest.mock('../../../i18n/TranslationService', () => ({ translate: value => value }))
+jest.mock('../../../i18n/TranslationService', () => ({
+    translate: (value, interpolations = {}) =>
+        Object.entries(interpolations).reduce(
+            (translated, [key, replacement]) => translated.replace(`%{${key}}`, replacement),
+            value
+        ),
+}))
 jest.mock('../../../utils/backends/firestore', () => ({
     connectVmSubscription: jest.fn(async () => ({})),
     disconnectVmSubscription: jest.fn(async () => ({})),
@@ -187,6 +194,28 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         })
         expect(input.props.value).toBe('')
         expect(onChanged).toHaveBeenCalled()
+    })
+
+    test('shows a prominent reconnect warning for a rejected subscription login', () => {
+        const tree = renderer.create(
+            <ProviderAuthCard
+                provider="codex"
+                connection={{
+                    connected: true,
+                    activeMode: 'subscription',
+                    authInvalid: true,
+                    authInvalidAt: 123,
+                    apiKey: { connected: false },
+                }}
+                onChanged={onChanged}
+            />
+        )
+
+        const output = JSON.stringify(tree.toJSON())
+        expect(tree.root.findAllByProps({ testID: 'subscription-auth-alert' })).toHaveLength(1)
+        expect(output).toContain('Subscription login rejected — reconnect required')
+        expect(output).toContain('The saved Codex subscription login was rejected')
+        expect(output).not.toContain('Subscription connected')
     })
 })
 

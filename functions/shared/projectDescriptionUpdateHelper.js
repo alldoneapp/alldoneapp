@@ -8,7 +8,14 @@ function normalizeProjectDescription(value) {
     return typeof value === 'string' ? value.trim() : ''
 }
 
-async function updateProjectDescription({ db, projectId, userId, description, feedUser: actorFeedUser = null }) {
+async function updateProjectDescription({
+    db,
+    projectId,
+    userId,
+    description,
+    feedUser: actorFeedUser = null,
+    completionWrite = null,
+}) {
     if (!db) {
         throw new Error('Database instance is required')
     }
@@ -38,6 +45,7 @@ async function updateProjectDescription({ db, projectId, userId, description, fe
     const projectName = projectData.name || projectId
 
     if (currentDescription === normalizedDescription) {
+        if (completionWrite) await completionWrite.ref.set(completionWrite.data, { merge: true })
         return {
             success: true,
             updated: false,
@@ -52,6 +60,7 @@ async function updateProjectDescription({ db, projectId, userId, description, fe
     const batch = new BatchWrapper(db)
 
     batch.update(db.doc(`projects/${projectId}`), { description: normalizedDescription })
+    if (completionWrite) batch.set(completionWrite.ref, completionWrite.data, { merge: true })
     await createProjectDescriptionChangedFeed(
         projectId,
         { ...projectData, description: normalizedDescription },

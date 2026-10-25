@@ -1,19 +1,16 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
+import React from 'react'
 import { Provider } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CommentTagFormatContainer from '../tags/CommentTagFormatContainer'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class CommentTagFormat extends Embed {
+export default class CommentTagFormat extends ReactEmbedBlot {
     static create(commentData) {
         const { text, editorId, projectId, parentObjectId, parentType, assistantId } = commentData
         const node = super.create(text)
-        const refs = CommentTagFormat.refs
         const id = v4()
 
         node.setAttribute('data-id', id)
@@ -26,12 +23,9 @@ export default class CommentTagFormat extends Embed {
         node.setAttribute('assistantId', assistantId)
 
         CommentTagFormat.data = text
-        CommentTagFormat.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <CommentTagFormatContainer
                     projectId={projectId}
@@ -39,8 +33,7 @@ export default class CommentTagFormat extends Embed {
                     parentType={parentType}
                     assistantId={assistantId}
                 />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

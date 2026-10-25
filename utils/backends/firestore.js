@@ -1,4 +1,8 @@
+import { runWithLoading, subscribeWithLoading } from '../redux/loadingOperation'
+
+import { readHappinessForSave } from './Projects/happinessRecoveryRead'
 // Config file
+import { runExclusiveFirestoreRestart } from './firestoreRestartLease'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import * as Y from 'yjs'
@@ -37,20 +41,40 @@ import {
     HOSTING_URL,
     CURRENT_ENVIORNMENT,
     NOTES_COLLABORATION_SERVER,
-    TYPESENSE_HOST,
-    TYPESENSE_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
+import { scheduleFirestoreWebStorageSweep } from './firestoreWebStorageSweep'
+import { installTaskWriteMonitor } from './taskWriteMonitor'
+import { installCommentOutbox } from './Chats/commentOutbox'
+import { subscribePageVisible as subscribeCommentOutboxVisible } from '../appResume'
+import {
+    subscribeConnectionHealth as subscribeCommentOutboxHealth,
+    isManualOfflineMode as isCommentOutboxOffline,
+} from '../connectionHealth'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
+import { startPerformanceTrace } from '../performance/performanceLogger'
+import { awaitWriteAck } from './offlineWriteAck'
 import { isBrowserOffline } from '../connectionState'
-import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
+import {
+    getIosShareExtensionPlugin,
+    getNativeGoogleAuthPlugin,
+    invalidateIosShareCredentialProvisioning,
+} from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
 import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
+import { buildBacklinkToken, getBacklinkIdsVisibleToField } from './firestoreAccess'
+import { handleOptionalSnapshotError } from './optionalSnapshotError'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
+import { withoutServerAccessProjection } from './accessProjection'
+import { applyVisibleFeedPrivacy, deleteVisibleFollowedFeeds, getFeedPrivacyReaders } from './Feeds/feedPrivacy'
+import { isUserAuthoredFeed, queueObjectActivityFeedUnreadClear } from './Feeds/activityFeedReadState'
+import { queueSummaryFeedTabClear, subscribeActivitySummary } from './Feeds/activityUnreadSummary'
+import { subscribeBacklinksCount } from './backlinksCountRegistry'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -60,6 +84,12 @@ import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
 import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from '../webFirebaseAuth'
 import {
+    getFirebaseAuthEmulatorUrl,
+    getFirebaseFunctionsEndpoint,
+    shouldUseFirebaseEmulators,
+} from '../firebaseEmulators'
+import {
+    FOLLOWER_ARTIFACTS_TYPE,
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
     FOLLOWER_GOALS_TYPE,
@@ -103,16 +133,20 @@ import {
     FEED_ASSISTANT_BACKLINK,
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
+import {
+    WIKI_FEED_OBJECTS_TYPE,
+    generateWikiFeedObjectModel,
+} from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
+import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
+import { DEFAULT_MAX_STORED_FEEDS } from './Feeds/feedCleanup'
 import {
     setAllFeeds,
     setFollowedFeeds,
     setHashtagsColors,
     setNewLocalFeedData,
     setShowNewDayNotification,
-    startLoadingData,
-    stopLoadingData,
     updateAllSelectedTasks,
     setTriggerGoldAnimation,
     setRegisteredNewUser,
@@ -140,6 +174,9 @@ import {
 
 import firebase from 'firebase/compat/app'
 import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
+import { readUserStatistics } from './Users/userStatisticsRead'
+import { initializeGoogleIdentity } from '../googleIdentityInitialization'
+import { resolveAdministratorUser } from './administratorUserResolver'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
 import { AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
@@ -156,7 +193,6 @@ import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
 import { SIDEBAR_NAVIGATION_SIMPLE } from '../SidebarNavigationModes'
 import GoogleApi from '../../apis/google/GoogleApi'
-import apiCalendar from '../../apis/google/calendar/apiCalendar'
 import { setServerTokenInGoogleApi, hasServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { updateQuotaTraffic } from './Premium/premiumFirestore'
 import {
@@ -285,6 +321,7 @@ import { createBotDailyTopic } from '../assistantHelper'
 import {
     addProjectInvitationToUser,
     addUserToProject,
+    fetchUserDataResult,
     getUserData,
     getUsersByEmail,
     getUsersInvitedToProject,
@@ -296,6 +333,7 @@ import {
     updateDefaultProjectIfNeeded,
     updateUserEditionData,
     updateUserData,
+    updateUserDataDirectly,
 } from './Users/usersFirestore'
 import { getContactData, updateContactEditionData, updateContactNote } from './Contacts/contactsFirestore'
 import { getAssistantData, updateAssistantEditionData, updateAssistantNote } from './Assistants/assistantsFirestore'
@@ -343,6 +381,11 @@ export let notesStorage
 let functions
 let messaging
 let db
+
+export const getLoggedUserAccessReaderId = () => {
+    const loggedUser = store.getState().loggedUser
+    return loggedUser?.isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUser?.uid
+}
 let firestoreSettingsApplied = false
 let firestorePersistenceRequested = false
 let firestoreNetworkRestartPromise = null
@@ -383,7 +426,7 @@ let noteRevisionHistoryCopiesUnsub = () => {}
 
 // Safari 16.1+ partitions the storage used by Firebase's cross-origin redirect helper. Firebase
 // Hosting exposes /__/auth/* on the app's custom domain, so use that same-origin handler on the
-// configured HTTPS deployment. The local HTTPS dev server proxies the same reserved paths.
+// configured HTTPS deployment. Local development uses a same-origin Auth emulator proxy.
 const firebaseAuthDomain = resolveFirebaseAuthDomain({
     location: typeof window === 'undefined' ? null : window.location,
     hostingUrl: HOSTING_URL,
@@ -400,61 +443,6 @@ const firebaseConfig = {
     appId: GOOGLE_FIREBASE_WEB_APP_ID,
 }
 
-// Helper function to determine if we should use Firebase Functions emulator
-function shouldUseEmulator() {
-    const forceEmulator = window.location.search.includes('emulator=true')
-
-    return forceEmulator
-}
-
-// Helper function to delete all Firebase IndexedDB databases
-async function clearAllFirebaseIndexedDB() {
-    if (!window.indexedDB) {
-        console.warn('IndexedDB not available')
-        return
-    }
-
-    try {
-        const databases = await window.indexedDB.databases()
-        const firebaseDBs = databases.filter(
-            db =>
-                db.name &&
-                (db.name.startsWith('firebaseLocalStorage') ||
-                    db.name.startsWith('firebase-heartbeat') ||
-                    db.name.startsWith('firebase-installations') ||
-                    db.name.includes('firestore'))
-        )
-
-        console.log(
-            '🗑️  Found Firebase IndexedDB databases to delete:',
-            firebaseDBs.map(db => db.name)
-        )
-
-        const deletePromises = firebaseDBs.map(db => {
-            return new Promise((resolve, reject) => {
-                const request = window.indexedDB.deleteDatabase(db.name)
-                request.onsuccess = () => {
-                    console.log('✅ Deleted IndexedDB:', db.name)
-                    resolve()
-                }
-                request.onerror = () => {
-                    console.warn('⚠️  Failed to delete IndexedDB:', db.name)
-                    resolve() // Still resolve to not block other deletions
-                }
-                request.onblocked = () => {
-                    console.warn('⚠️  Blocked from deleting IndexedDB:', db.name)
-                    resolve()
-                }
-            })
-        })
-
-        await Promise.all(deletePromises)
-        console.log('✅ Finished clearing Firebase IndexedDB databases')
-    } catch (error) {
-        console.warn('⚠️  Error clearing Firebase IndexedDB:', error.message)
-    }
-}
-
 // Resolves once getRedirectResult() has settled, i.e. once a sign-in that came back from the
 // Google redirect has been applied to firebase.auth(). Anything that would sign the user in as
 // somebody else must wait for this first — see loginWithGoogleWebAnonymously.
@@ -462,20 +450,17 @@ let redirectResultSettled = Promise.resolve(null)
 
 export async function initFirebase(onComplete) {
     // Determine if we should use Firebase emulators BEFORE initializing
-    const useEmulator = shouldUseEmulator()
-
-    // Clear ALL Firebase IndexedDB databases BEFORE initializing Firebase
-    if (useEmulator) {
-        console.log('🧹 Clearing ALL Firebase IndexedDB databases for emulator (BEFORE init)')
-        await clearAllFirebaseIndexedDB()
-    }
+    const useEmulator = shouldUseFirebaseEmulators()
 
     // Load only critical modules first for faster initialization
     require('firebase/compat/auth')
     require('firebase/compat/firestore')
 
     try {
-        firebase.initializeApp(firebaseConfig)
+        // Auth persistence is keyed by API key and app name. Keep emulator
+        // sessions separate from staging without deleting browser databases
+        // (which also destroys redirect state and can block other open tabs).
+        firebase.initializeApp(useEmulator ? { ...firebaseConfig, apiKey: 'local-emulator-only' } : firebaseConfig)
     } catch (error) {
         if (error.code !== 'app/duplicate-app') {
             console.error('Firebase initialization failed:', error)
@@ -484,13 +469,19 @@ export async function initFirebase(onComplete) {
         console.warn('Firebase app already initialized, reusing existing instance')
     }
     db = firebase.firestore()
+    if (useEmulator) {
+        // Configure before Auth or Firestore can make their first request. A
+        // configuration error must abort startup, never fall back to staging.
+        firebase.auth().useEmulator(getFirebaseAuthEmulatorUrl())
+        db.useEmulator('127.0.0.1', 8080)
+        require('firebase/compat/functions')
+        functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
+    }
     if (!firestoreSettingsApplied) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
             // which resets host and logs "You are overriding the original host".
-            // 100 MB cache with LRU GC: the feeds/chat collections are large, and
-            // unlimited would let the offline cache grow without bound.
-            db.settings({ ignoreUndefinedProperties: true, merge: true, cacheSizeBytes: 100 * 1024 * 1024 })
+            db.settings({ ignoreUndefinedProperties: true, merge: true })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
@@ -498,15 +489,13 @@ export async function initFirebase(onComplete) {
     }
     if (!firestorePersistenceRequested) {
         firestorePersistenceRequested = true
-        // Deliberately not awaited: the compat SDK queues every later Firestore call
-        // behind the enable, so correctness needs no await and boot stays fast. Must
-        // stay between db.settings() and the first real Firestore operation — see
-        // firestorePersistence.js for the failure modes and the emulator skip.
+        // Configure the persistent multi-tab cache before the first real Firestore
+        // operation. The helper is intentionally non-blocking and preserves the
+        // in-memory fallback for emulator and diagnostic sessions.
         enableFirestorePersistence(db, { useEmulator })
         // Offline is a designed state now, not an error: silence the SDK's WARN
-        // chatter (the enablePersistence deprecation notice, `WebChannelConnection
-        // RPC 'Listen' transport errored` on every reconnect attempt, BloomFilter
-        // warnings). Real errors still log at 'error'.
+        // chatter (`WebChannelConnection RPC 'Listen' transport errored` on every
+        // reconnect attempt, BloomFilter warnings). Real errors still log at 'error'.
         try {
             firebase.firestore.setLogLevel('error')
         } catch (error) {
@@ -516,10 +505,13 @@ export async function initFirebase(onComplete) {
         // reconnect attempts, no browser-level network error spam, no battery
         // burn in airplane mode. See firestoreNetworkGate.js.
         installFirestoreNetworkGate(db)
+        // Multi-tab mode leaks a localStorage entry per query on every page
+        // close; clear the orphans once the initial sync is out of the way.
+        if (!useEmulator) scheduleFirestoreWebStorageSweep(db)
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    const forceEmulator = window.location.search.includes('emulator=true')
+    const forceEmulator = new URLSearchParams(window.location.search).get('emulator') === 'true'
 
     if (__DEV__) {
         console.log('🔍 Firebase emulator connection check:', {
@@ -531,41 +523,6 @@ export async function initFirebase(onComplete) {
             useEmulator,
             environment: CURRENT_ENVIORNMENT,
         })
-    }
-
-    if (useEmulator) {
-        try {
-            // Connect to Firestore emulator AFTER clearing persistence
-            console.log('🔧 Connecting to Firestore emulator at 127.0.0.1:8080')
-            db.useEmulator('127.0.0.1', 8080)
-            console.log('✅ Connected to Firestore emulator')
-        } catch (error) {
-            console.warn('⚠️  Failed to connect to Firestore emulator:', error.message)
-        }
-        try {
-            // Connect to Functions emulator only
-            require('firebase/compat/functions')
-            // Initialize functions with the correct region for emulator
-            const functionsInstance = firebase.app().functions('europe-west1')
-
-            // Check if already connected to emulator
-            console.log('🔍 Functions instance before emulator setup:', functionsInstance)
-
-            functionsInstance.useEmulator('127.0.0.1', 5001)
-
-            console.log('🔧 Connected to Firebase Functions emulator at 127.0.0.1:5001 (europe-west1)')
-
-            // Set the global functions variable to the emulator instance
-            functions = functionsInstance
-
-            // Test the connection by getting a function reference
-            const testFunction = functionsInstance.httpsCallable('generatePreConfigTaskResultSecondGen')
-            console.log('🧪 Test function reference created:', typeof testFunction)
-        } catch (error) {
-            console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message, error)
-        }
-    } else if (__DEV__) {
-        console.log('🌐 Using production Firebase Functions')
     }
 
     // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
@@ -593,6 +550,16 @@ export async function initFirebase(onComplete) {
             console.error('❌ Error getting redirect result:', error.code, error.message)
         })
 
+    // Restore pending-write monitoring after persistence/emulator configuration,
+    // before the authenticated UI can create tasks.
+    installTaskWriteMonitor(db, firebase.auth())
+    installCommentOutbox(db, firebase.auth(), store, {
+        subscribeVisible: subscribeCommentOutboxVisible,
+        subscribeHealth: subscribeCommentOutboxHealth,
+        isOffline: () =>
+            navigator.onLine === false || isCommentOutboxOffline() || store.getState().connectionState === 'offline',
+    })
+
     firebase.auth().onAuthStateChanged(firebaseUser => {
         if (__DEV__) console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
         const result = onComplete(firebaseUser)
@@ -609,11 +576,12 @@ export async function initFirebase(onComplete) {
 
 function loadDeferredFirebaseModules() {
     try {
+        const useEmulator = shouldUseFirebaseEmulators()
         // Load functions (but don't overwrite if emulator is already set)
         require('firebase/compat/functions')
         if (!functions) {
-            functions = firebase.app().functions('europe-west1')
-            if (__DEV__) console.log('🌐 Using production Firebase Functions (europe-west1)')
+            functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
+            if (__DEV__) console.log('Firebase Functions configured', { useEmulator })
         } else if (__DEV__) {
             console.log('🔧 Functions already configured (emulator), not overwriting')
         }
@@ -621,6 +589,10 @@ function loadDeferredFirebaseModules() {
         // Load storage
         require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
+        if (useEmulator) {
+            firebase.storage().useEmulator('127.0.0.1', 9199)
+            notesStorage.useEmulator('127.0.0.1', 9199)
+        }
         // The Storage SDK retries failed network requests internally — by default
         // for up to 2 MINUTES per operation (and 10 minutes per upload). In
         // airplane mode that turned every note-content download into a silent
@@ -632,13 +604,17 @@ function loadDeferredFirebaseModules() {
         notesStorage.setMaxUploadRetryTime(60000)
 
         // Load messaging
-        require('firebase/compat/messaging')
-        if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
-            messaging = firebase.messaging()
+        // FCM has no emulator. Local sessions must not register staging tokens.
+        if (!useEmulator) {
+            require('firebase/compat/messaging')
+            if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+                messaging = firebase.messaging()
+            }
         }
 
         // Load database
         require('firebase/compat/database')
+        if (useEmulator) firebase.database().useEmulator('127.0.0.1', 9000)
 
         if (__DEV__) console.log('Deferred Firebase modules loaded')
     } catch (error) {
@@ -679,6 +655,7 @@ const logFcmTokenError = err => {
 }
 
 export function initFCM(userId) {
+    if (shouldUseFirebaseEmulators()) return
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
     if (
@@ -717,6 +694,7 @@ export function initFCM(userId) {
 
 // Helper function to request notification permission - must be called from a user gesture
 export async function requestNotificationPermission() {
+    if (shouldUseFirebaseEmulators()) return { success: false, reason: 'Messaging is unavailable in the emulator' }
     if (
         !firebase.messaging ||
         !firebase.messaging.isSupported ||
@@ -789,10 +767,10 @@ export function initGAPIWeb(handlerFunction) {
     // is loaded in the web/index.html file
     // as a script tag
     onload = () => {
-        window.google.accounts.id.initialize({
-            client_id: GOOGLE_FIREBASE_WEB_CLIENT_ID,
+        initializeGoogleIdentity({
+            accountsId: window.google.accounts.id,
+            clientId: GOOGLE_FIREBASE_WEB_CLIENT_ID,
             callback: handlerFunction || handleGSICredentialResponse,
-            itp_support: true,
         })
         window.google.accounts.id.prompt()
     }
@@ -809,12 +787,10 @@ export const getGoogleClientId = () => {
 export function loginWithGoogleWeb() {
     // window.google
     // from Google Identity Services ( GSI )
-    return new Promise(() => {
-        window.google.accounts.id.initialize({
-            client_id: GOOGLE_FIREBASE_WEB_CLIENT_ID,
-            callback: handleGSICredentialResponseOnLogin,
-            itp_support: true,
-        })
+    initializeGoogleIdentity({
+        accountsId: window.google.accounts.id,
+        clientId: GOOGLE_FIREBASE_WEB_CLIENT_ID,
+        callback: handleGSICredentialResponseOnLogin,
     })
 }
 
@@ -978,7 +954,14 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
     if (!db) return Promise.reject(new Error('Firebase db is not initialized'))
     if (firestoreNetworkRestartPromise) return firestoreNetworkRestartPromise
 
-    firestoreNetworkRestartPromise = (async () => {
+    // Mutual exclusion is delegated to the shared lease (PT-4660): the boot integrity
+    // healer and connection health restart this same transport, and interleaved
+    // disable/enable pairs resolve in SDK call order — one ordering parks the network
+    // for the rest of the session while every caller believes it restored it. A restart
+    // already in flight is joined rather than duplicated, which is what the local
+    // coalescing promise below still does for repeat callers of THIS function.
+    let capturedError = null
+    firestoreNetworkRestartPromise = runExclusiveFirestoreRestart(async () => {
         let networkDisabled = false
         try {
             await db.disableNetwork()
@@ -987,6 +970,7 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
             networkDisabled = false
             console.warn(`[Firestore] Restarted the realtime connection to ${reason}`)
         } catch (error) {
+            capturedError = error
             // Never leave the whole app intentionally offline just because the restart failed
             // halfway through. A second enable is harmless if the first one partially succeeded.
             if (networkDisabled) {
@@ -998,9 +982,16 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
             }
             throw error
         }
-    })().finally(() => {
-        firestoreNetworkRestartPromise = null
     })
+        .then(succeeded => {
+            // The lease resolves `false` instead of rejecting, because most of its
+            // callers treat a restart as best-effort. This one has always rejected and
+            // its caller logs the reason, so re-raise the original error.
+            if (!succeeded) throw capturedError || new Error(`Failed to restart the realtime connection to ${reason}`)
+        })
+        .finally(() => {
+            firestoreNetworkRestartPromise = null
+        })
 
     return firestoreNetworkRestartPromise
 }
@@ -1112,17 +1103,26 @@ export async function removeInvitedUserFromProject(user, projectId) {
     }
 }
 
-export async function getUserDataByUidOrEmail(uidOrEmail) {
+/**
+ * `options.absenceIsExpected` marks a probe — see `fetchUserDataResult`. Pass it when this id may
+ * legitimately belong to something other than a user (a contact, an assistant, a workstream) so
+ * the lookup does not pay a verification round trip, or log an ERROR, for an ordinary answer.
+ */
+export async function getUserDataByUidOrEmail(uidOrEmail, options) {
     let user = null
 
     const emailRegex =
         /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
     if (emailRegex.test(String(uidOrEmail).toLowerCase())) {
+        // An email with no account is the ordinary case here (this runs on the project-invitation
+        // path), and every caller already handles a null user. Dereferencing the empty query
+        // result instead threw `Cannot read properties of undefined (reading 'id')` and took the
+        // invitation flow down with it.
         const userObj = (await getUsersByEmail(uidOrEmail, true))[0]
 
-        user = mapUserData(userObj.id, userObj.data())
+        user = userObj ? mapUserData(userObj.id, userObj.data()) : null
     } else {
-        user = await getUserData(uidOrEmail, false)
+        user = await getUserData(uidOrEmail, false, options)
     }
 
     return user
@@ -1318,15 +1318,41 @@ export async function getUserOrContactBy(projectId, userId) {
         return ws
     }
 
+    // This races four collections precisely because the id may belong to any of them, so a missing
+    // or denied `users/` probe is an ordinary answer rather than an anomaly. Strict rules deny a
+    // speculative users/{id} read when the id actually belongs to a contact or assistant; that
+    // must not cost a verification round trip or log a production ERROR (AT-2428).
     const promises = [
-        getUserData(userId, false),
+        getUserData(userId, false, {
+            absenceIsExpected: true,
+            permissionDeniedIsExpected: true,
+        }),
         getContactData(projectId, userId),
         getAssistantData(projectId, userId),
         getAssistantData(GLOBAL_PROJECT_ID, userId),
     ]
-    const [user, contact, assistant, globalAssistant] = await Promise.all(promises)
+    // These are polymorphic probes, not four assertions that the same id must be readable in every
+    // collection. Under the least-privilege rules an id belonging to a user or assistant is not a
+    // readable contact document, so that deliberately speculative contact get can be denied. Do
+    // not let the expected miss reject a direct-link navigation after the real owner already
+    // resolved. Unexpected failures still surface when none of the candidate lookups succeeds.
+    const results = await Promise.allSettled(promises)
+    const [user, contact, assistant, globalAssistant] = results.map(result =>
+        result.status === 'fulfilled' ? result.value : null
+    )
 
-    return user || contact || assistant || globalAssistant
+    const resolved = user || contact || assistant || globalAssistant
+    if (resolved) return resolved
+
+    const unexpectedFailure = results.find(
+        result => result.status === 'rejected' && result.reason?.code !== 'permission-denied'
+    )
+    if (unexpectedFailure) throw unexpectedFailure.reason
+
+    // Nothing explained the absence, so the cheap answer is no longer good enough: escalate to the
+    // verified read. That is what still recovers a real user whose realtime read was wrong (the
+    // 2026-08-13 incident) and what still reports loudly when the document is genuinely gone.
+    return (await getUserData(userId, false)) || null
 }
 
 export async function watchLoggedUser(userId, callback) {
@@ -1407,33 +1433,43 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     const { idsField, id: objectId } = linkedParentObject
     const { loggedUser } = store.getState()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
+    const accessReaderId = allowUserIds[allowUserIds.length - 1]
+    const backlinkField = getBacklinkIdsVisibleToField(accessReaderId)
     const hasAccess = data => {
         const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
         return allowUserIds.some(userId => isPublicFor.includes(userId))
     }
 
-    backlinksCounterUnsub[watcherKey || objectId] = { tasks: null, notes: null }
+    // One query per project and collection for every object on screen; see backlinksCountRegistry.
+    const unsubscribe = subscribeBacklinksCount(projectId, buildBacklinkToken(idsField, objectId), callback, {
+        readerKey: String(accessReaderId),
+        readerField: {
+            read: data => {
+                const tokens = data?.backlinkIdsVisibleTo?.[String(accessReaderId)]
+                return Array.isArray(tokens) ? tokens : []
+            },
+        },
+        acceptTask: data => data.parentId === null && hasAccess(data),
+        acceptNote: data => hasAccess(data),
+        mapAlone: (collection, doc) =>
+            collection === 'tasks' ? mapTaskData(doc.id, doc.data()) : mapNoteData(doc.id, doc.data()),
+        subscribe: (collection, tokens, onDocs, onError) =>
+            db
+                .collection(collection === 'tasks' ? `items/${projectId}/tasks` : `noteItems/${projectId}/notes`)
+                .where(backlinkField, 'array-contains-any', tokens)
+                .onSnapshot(snapshot => onDocs(snapshot.docs), onError),
+        onError: (collection, error) =>
+            handleOptionalSnapshotError(
+                collection === 'tasks' ? 'goal task backlinks' : 'goal note backlinks',
+                error,
+                () => {}
+            ),
+    })
 
-    backlinksCounterUnsub[watcherKey || objectId].tasks = db
-        .collection(`items/${projectId}/tasks`)
-        .where(idsField, 'array-contains', objectId)
-        .where('parentId', '==', null)
-        .onSnapshot(snapshots => {
-            const tasksDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
-            const tasksAmount = tasksDocs.length
-            const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
-            callback('tasks', tasksAmount, aloneTask)
-        })
-
-    backlinksCounterUnsub[watcherKey || objectId].notes = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where(idsField, 'array-contains', objectId)
-        .onSnapshot(snapshots => {
-            const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
-            const notesAmount = notesDocs.length
-            const aloneNote = notesAmount === 1 ? mapNoteData(notesDocs[0].id, notesDocs[0].data()) : null
-            callback('notes', notesAmount, aloneNote)
-        })
+    // Keep the existing watcher-key contract: unwatchBacklinksCount(objectId, watcherKey).
+    const key = watcherKey || objectId
+    if (backlinksCounterUnsub[key]) unwatchBacklinksCount(objectId, watcherKey)
+    backlinksCounterUnsub[key] = { tasks: unsubscribe, notes: null }
 }
 
 export function unwatchBacklinksCount(objectId, watcherKey) {
@@ -1449,19 +1485,19 @@ export function unwatchBacklinksCount(objectId, watcherKey) {
 }
 
 export function watchLinkedTasks(projectId, linkedParentObject, callback) {
-    const unsub = db
-        .collection(`items/${projectId}/tasks`)
-        .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-        .where('parentId', '==', null)
-        .onSnapshot(() => {
-            db.collection(`items/${projectId}/tasks`)
-                .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-                .where('parentId', '==', null)
-                .get()
-                .then(res => {
-                    callback(res.docs)
-                })
-        })
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken(linkedParentObject.idsField, linkedParentObject.id)
+    const unsub = subscribeWithLoading(
+        'backlink_tasks',
+        (next, error) =>
+            db
+                .collection(`items/${projectId}/tasks`)
+                .where(backlinkField, 'array-contains', backlinkToken)
+                .onSnapshot(next, error),
+        snapshot => {
+            callback(snapshot.docs.filter(doc => doc.data().parentId === null))
+        }
+    )
     linkedTasksUnsub = unsub
 }
 
@@ -1492,7 +1528,7 @@ export async function setProjectDescription(projectId, newDescription, project, 
     }
     await tryAddFollower(projectId, followProjectData, batch)
     batch.update(db.doc(`projects/${projectId}`), { description: newDescription })
-    batch.commit()
+    return batch.commit()
 }
 
 export async function createDefaultProject(user) {
@@ -1529,10 +1565,10 @@ export const watchForceReload = async (userId, deleteOldData) => {
     })
 }
 
-export const forceUsersToReloadApp = async (userIds, externalBatch) => {
+export const forceUsersToReloadApp = async (userIds, externalBatch, projectId) => {
     const batch = externalBatch ? externalBatch : new BatchWrapper(db)
     userIds.forEach(uid => {
-        batch.set(db.doc(`userForceReloads/${uid}`), { reload: true })
+        batch.set(db.doc(`userForceReloads/${uid}`), { reload: true, ...(projectId ? { projectId } : {}) })
     })
     if (!externalBatch) await batch.commit()
 }
@@ -1567,7 +1603,7 @@ export async function removeProject(projectId) {
     URLTrigger.processUrl(NavigationService, '/projects/tasks/open')
 
     const userIdsToReload = project.userIds.filter(userId => userId !== loggedUser.uid)
-    forceUsersToReloadApp(userIdsToReload, batch)
+    forceUsersToReloadApp(userIdsToReload, batch, projectId)
     await batch.commit()
     setTimeout(() => {
         window.location.reload()
@@ -1595,6 +1631,12 @@ export async function unlinkDeletedProjectFromMembers(projectId, batch, userIds)
             [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.delete(),
             [`commentsData.${projectId}`]: firebase.firestore.FieldValue.delete(),
             [`lastAssistantCommentData.${projectId}`]: firebase.firestore.FieldValue.delete(),
+            projectMembershipMutation: {
+                projectId,
+                action: 'delete-project',
+                actorId: store.getState().loggedUser.uid,
+                updatedAt: Date.now(),
+            },
         }
 
         const user = TasksHelper.getUserInProject(projectId, uid)
@@ -1864,7 +1906,7 @@ const getAllTasksFromGoalInBoardInTodayOrOverdue = async (projectId, goalId, use
             .where('completed', '==', null)
             .where('isSubtask', '==', false)
             .where('currentReviewerId', '==', userId)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUser.uid])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('dueDate', '<=', endOfDay)
             .get()
     ).docs
@@ -1943,7 +1985,7 @@ export async function moveTasksinWorkflowFeedsChain(
         await createTaskMovedInWorkflowFeed(projectId, task, task.id, workflow, stepToMoveId, batch, null)
     }
 
-    batch.commit()
+    await batch.commit()
 }
 
 export async function spentGold(userId, goldToReduce, context = {}) {
@@ -2143,20 +2185,22 @@ export async function setTaskProjectFeedsChain(currentProject, newProject, task,
     }
     await tryAddFollower(currentProject.id, followCurrentTaskData, batchFeed)
     await tryAddFollower(newProject.id, followNewTaskData, batchFeed)
-    batchFeed.commit()
+    await awaitWriteAck(batchFeed.commit(), 'task project feed chain')
 }
 
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds, which is
 // project-scoped by path. When an object is moved to another project it keeps its id but lives under a new
 // project path, so its activity history would otherwise become unreachable from the new project. This copies
-// that history across (verbatim, preserving isPublicFor/lastChangeDate) so the moved object's Updates tab
-// keeps showing it. Mirrors moveChatOnMoveObjectFromProject for the feed side of a move.
+// that history across (preserving user-authored fields such as isPublicFor/lastChangeDate) so the moved
+// object's Updates tab keeps showing it. Server-owned access projections are deliberately omitted and
+// rebuilt for the destination project. Mirrors moveChatOnMoveObjectFromProject for the feed side of a move.
 export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newProjectId, objectType, objectId) {
     if (!oldProjectId || !newProjectId || !objectType || !objectId) return 0
     if (oldProjectId === newProjectId) return 0
 
     const feedsSnapshot = await db
         .collection(`projectsInnerFeeds/${oldProjectId}/${objectType}/${objectId}/feeds`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .get()
 
     if (feedsSnapshot.empty) return 0
@@ -2165,15 +2209,25 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
     feedsSnapshot.forEach(feedDoc => {
         batch.set(
             db.doc(`projectsInnerFeeds/${newProjectId}/${objectType}/${objectId}/feeds/${feedDoc.id}`),
-            feedDoc.data()
+            withoutServerAccessProjection(feedDoc.data()),
+            // A task can be moved back to a project that still has the same historical
+            // feed id. Merge preserves that destination document's server-owned access
+            // projection until its trigger recalculates it; an overwrite would delete
+            // the projection fields and is correctly rejected by strict rules.
+            { merge: true }
         )
     })
-    await batch.commit()
+    await awaitWriteAck(batch.commit(), 'moved object activity history')
 
     return feedsSnapshot.size
 }
 
 export async function setTaskParentGoalMultiple(tasks, goal) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'parent_goal',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(db)
     const goalId = goal ? goal.id : null
     const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
@@ -2186,8 +2240,10 @@ export async function setTaskParentGoalMultiple(tasks, goal) {
         task.lockKey = lockKey
     }
     await Promise.all(promises)
+    performanceTrace.mark('task_data_prepared')
     store.dispatch(updateAllSelectedTasks(tasks))
     await batch.commit()
+    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 export const setTaskParentGoalFeedsChain = async (projectId, taskId, newParentGoalId, oldParentGoalId, task) => {
@@ -2255,15 +2311,25 @@ export const setTaskAlertFeedsChain = async (projectId, taskId, alertEnabled, al
 }
 
 export async function setTaskDueDateMultiple(tasks, dueDate) {
-    const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
-    const batch = new BatchWrapper(db)
-    const promises = []
-    for (let task of sortedTasks) {
-        const newDueDate = dueDate ? dueDate : task.newDueDate
-        promises.push(setTaskDueDate(task.projectId, task.id, newDueDate, task, task.isObservedTask, batch))
-    }
-    await Promise.all(promises)
-    await batch.commit()
+    return runWithLoading('bulk_due_date', async () => {
+        const performanceTrace = startPerformanceTrace('bulk_task_update', {
+            object_type: 'task',
+            source: 'due_date',
+            task_count: tasks.length,
+            subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+        })
+        const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
+        const batch = new BatchWrapper(db)
+        const promises = []
+        for (let task of sortedTasks) {
+            const newDueDate = dueDate ? dueDate : task.newDueDate
+            promises.push(setTaskDueDate(task.projectId, task.id, newDueDate, task, task.isObservedTask, batch))
+        }
+        await Promise.all(promises)
+        performanceTrace.mark('task_data_prepared')
+        await batch.commit()
+        performanceTrace.end('server_acked', { outcome: 'success' })
+    })
 }
 
 export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObservedTask, didResetPriority = false) => {
@@ -2295,13 +2361,23 @@ export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObse
 }
 
 export async function setTaskToBacklogMultiple(tasks) {
-    const batch = new BatchWrapper(db)
-    const promises = []
-    for (let task of tasks) {
-        promises.push(setTaskToBacklog(task.projectId, task.id, task, task.isObservedTask, batch))
-    }
-    await Promise.all(promises)
-    await batch.commit()
+    return runWithLoading('bulk_backlog', async () => {
+        const performanceTrace = startPerformanceTrace('bulk_task_update', {
+            object_type: 'task',
+            source: 'backlog',
+            task_count: tasks.length,
+            subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+        })
+        const batch = new BatchWrapper(db)
+        const promises = []
+        for (let task of tasks) {
+            promises.push(setTaskToBacklog(task.projectId, task.id, task, task.isObservedTask, batch))
+        }
+        await Promise.all(promises)
+        performanceTrace.mark('task_data_prepared')
+        await batch.commit()
+        performanceTrace.end('server_acked', { outcome: 'success' })
+    })
 }
 
 /**
@@ -2358,8 +2434,10 @@ async function updateInnerTasksWhenRestoreNote(projectId, noteId, restoredConten
 }
 
 async function getNoteInnerTasks(projectId, noteId) {
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken('containerNotesIds', noteId)
     const tasksDocs = (
-        await db.collection(`items/${projectId}/tasks`).where('containerNotesIds', 'array-contains-any', [noteId]).get()
+        await db.collection(`items/${projectId}/tasks`).where(backlinkField, 'array-contains', backlinkToken).get()
     ).docs
 
     const tasks = []
@@ -2370,17 +2448,22 @@ async function getNoteInnerTasks(projectId, noteId) {
 }
 
 export function watchNoteInnerTasks(projectId, noteId, watcherKey, callback) {
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken('containerNotesIds', noteId)
     globalWatcherUnsub[watcherKey] = db
         .collection(`/items/${projectId}/tasks`)
-        .where('containerNotesIds', 'array-contains-any', [noteId])
-        .onSnapshot(tasksDocs => {
-            const tasks = {}
-            tasksDocs.forEach(doc => {
-                const task = mapTaskData(doc.id, doc.data())
-                tasks[task.id] = task
-            })
-            callback(tasks)
-        })
+        .where(backlinkField, 'array-contains', backlinkToken)
+        .onSnapshot(
+            tasksDocs => {
+                const tasks = {}
+                tasksDocs.forEach(doc => {
+                    const task = mapTaskData(doc.id, doc.data())
+                    tasks[task.id] = task
+                })
+                callback(tasks)
+            },
+            error => handleOptionalSnapshotError('note inner tasks', error, () => callback({}))
+        )
 }
 
 export async function setTaskContainerNotesIds(projectId, taskId, noteId, action, checkTaskExitenceWhenRemove) {
@@ -2425,21 +2508,25 @@ export async function getSubTasksListDirectly(projectId, taskId) {
 }
 
 export function watchGoalLinkedTasks(projectId, goalId, callback, watcherKey) {
-    store.dispatch(startLoadingData())
     const loggedUserId = store.getState().loggedUser.uid
-    globalWatcherUnsub[watcherKey] = db
-        .collection(`/items/${projectId}/tasks`)
-        .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .orderBy('created', 'desc')
-        .onSnapshot(snapshot => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'goal_linked_tasks',
+        (next, error) =>
+            db
+                .collection(`/items/${projectId}/tasks`)
+                .where('parentGoalId', '==', goalId)
+                .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
+                .orderBy('created', 'desc')
+                .onSnapshot(next, error),
+        snapshot => {
             const tasks = []
             for (let doc of snapshot.docs) {
                 tasks.push(mapTaskData(doc.id, doc.data()))
             }
-            store.dispatch(stopLoadingData())
+
             callback(tasks)
-        })
+        }
+    )
 }
 
 export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watcherKey) {
@@ -2447,30 +2534,37 @@ export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watc
     globalWatcherUnsub[watcherKey] = db
         .collection(`/items/${projectId}/tasks`)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('completed', '==', null)
         .where('isSubtask', '==', false)
-        .onSnapshot(snapshot => {
-            callback(snapshot.docs.length)
-        })
+        .onSnapshot(
+            snapshot => {
+                callback(snapshot.docs.length)
+            },
+            error => handleOptionalSnapshotError('goal open task count', error, () => callback(0))
+        )
 }
 
 export function watchSubtasksList(projectId, taskId, callback) {
-    store.dispatch(startLoadingData())
     const loggedUserId = store.getState().loggedUser.uid
-    watchSubtaskList[taskId] = db
-        .collection(`/items/${projectId}/tasks`)
-        .where('parentId', '==', taskId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .orderBy('sortIndex', 'desc')
-        .onSnapshot(snapshot => {
+    watchSubtaskList[taskId] = subscribeWithLoading(
+        'subtasks',
+        (next, error) =>
+            db
+                .collection(`/items/${projectId}/tasks`)
+                .where('parentId', '==', taskId)
+                .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
+                .orderBy('sortIndex', 'desc')
+                .onSnapshot(next, error),
+        snapshot => {
             const subTasksList = []
             for (let doc of snapshot.docs) {
                 subTasksList.push(mapTaskData(doc.id, doc.data()))
             }
-            store.dispatch(stopLoadingData())
+
             callback(subTasksList)
-        })
+        }
+    )
 }
 
 export function unwatchSubtasksList(taskId) {
@@ -2501,11 +2595,20 @@ export async function getTaskData(projectId, taskId) {
     return task ? mapTaskData(taskId, task) : null
 }
 
-export function watchUserData(userId, isLoggedUser, callback, watcherKey) {
-    globalWatcherUnsub[watcherKey] = db.doc(`users/${userId}`).onSnapshot(doc => {
-        const user = doc.exists ? mapUserData(userId, doc.data(), isLoggedUser) : null
-        if (user || !doc.metadata.fromCache) callback(user)
-    })
+export function watchUserData(userId, isLoggedUser, callback, watcherKey, onError) {
+    globalWatcherUnsub[watcherKey] = db.doc(`users/${userId}`).onSnapshot(
+        doc => {
+            const user = doc.exists ? mapUserData(userId, doc.data(), isLoggedUser) : null
+            if (user || !doc.metadata.fromCache) callback(user)
+        },
+        error => {
+            if (onError) {
+                onError(error)
+                return
+            }
+            console.error(`[UserData] Listener failed for /users/${userId}:`, error)
+        }
+    )
 }
 
 export async function getNote(projectId, noteId) {
@@ -2540,7 +2643,7 @@ export async function createUploadNewUserFeeds(user, uid, newProjectId, newProje
     await addFollower(newProjectId, followUserData, feedBatch)
     await createTaskCreatedFeed(newProjectId, firstTask, taskId, feedBatch, feedCreator)
     await addFollower(newProjectId, followTaskData, feedBatch)
-    feedBatch.commit()
+    await feedBatch.commit()
 }
 
 export const addWorkflowStepFeedChain = async (projectId, reviewerUid, userId, description) => {
@@ -2674,6 +2777,11 @@ export async function offOnUserChange() {
 }
 
 export async function setFutureEstimationsMultiple(tasks, estimation) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'estimation',
+        task_count: tasks.length,
+    })
     const taskBatch = new BatchWrapper(db)
 
     for (const task of tasks) {
@@ -2685,6 +2793,7 @@ export async function setFutureEstimationsMultiple(tasks, estimation) {
             })
     }
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     const batch = new BatchWrapper(db)
     for (const task of tasks) {
@@ -2701,6 +2810,7 @@ export async function setFutureEstimationsMultiple(tasks, estimation) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export function addUniqueInstanceTypeToArray(array, element) {
@@ -2990,15 +3100,21 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
     }
     if (project.isTemplate) updateData.templateProjectIds = firebase.firestore.FieldValue.arrayUnion(projectId)
     if (setLikeDefaultProject) updateData.defaultProjectId = projectId
-    updateUserData(user.uid, updateData, batch)
+    updateUserData(user.uid, updateData, batch, projectId)
 
     const defaultStream = getDefaultMainWorkstream(projectId, user.uid)
     uploadNewMainWorkstream(projectId, defaultStream, batch)
 
-    if (!setLikeDefaultProject) updateXpByCreateProject(user.uid, firebase, db, projectId)
-
     await batch.commit()
     project.id = projectId
+
+    // The XP callable verifies project membership on the server. Calling it before the batch
+    // exists races that verification and produced a real 403 during new-user provisioning.
+    if (!setLikeDefaultProject) {
+        updateXpByCreateProject(user.uid, firebase, db, projectId).catch(error =>
+            console.warn('[Project creation] Could not award project-creation XP:', error)
+        )
+    }
 
     if (addingTemplate) {
         store.dispatch(setChatNotificationsInProject(projectId, []))
@@ -3069,39 +3185,43 @@ export const addGuideToTemplateFeedsChain = async (template, guideId) => {
 }
 
 export const getAdministratorUser = async () => {
-    const userId = (await db.doc('roles/administrator').get()).data()?.userId
-    if (!userId) return {}
-    // The referenced user document can be absent (deleted account, or a roles/administrator
-    // pointer carried into an environment where that user was never created), which the app
-    // treats as optional rather than fatal — dereferencing the missing data used to throw out of
-    // the whole global-data load and send it into its five-attempt retry loop.
-    //
-    // It reads through getUserData so it inherits the server confirmation in
-    // `fetchUserDataResult`: a client read can report an existing user document as missing
-    // (production, 2026-08-13), and here that degrades in complete silence — `administratorUser`
-    // becomes `{}`, so `loggedUserId === administratorUserId` is false and the Admin entry
-    // disappears from the sidebar of the one person who is supposed to see it.
-    const administrator = await getUserData(userId, false)
-    if (!administrator) {
-        console.warn(
-            `[GlobalData] The administrator user document (/users/${userId}) could not be read. ` +
-                'Admin-only UI stays hidden for this session.'
-        )
-        return {}
-    }
-    return administrator
+    return resolveAdministratorUser({
+        readRoleFromClient: async () => {
+            const snapshot = await db.doc('roles/administrator').get()
+            return {
+                exists: snapshot.exists,
+                data: snapshot.data(),
+                fromCache: snapshot.metadata?.fromCache,
+            }
+        },
+        readRoleDirectly: () => readDocumentDirectlyFromServer('roles/administrator'),
+        readUserResult: userId =>
+            fetchUserDataResult(userId, false, {
+                // Most users do not share a project with the Administrator. Under strict rules
+                // that denial is expected; the resolver safely falls back to roles/administrator.
+                permissionDeniedIsExpected: firebase.auth().currentUser?.uid !== userId,
+            }),
+        recoverRealtimeConnection: restartFirestoreNetwork,
+        warn: (...args) => console.warn(...args),
+    })
 }
 
 const addProjectArchivedStatus = (projectId, userId, batch) => {
-    batch.update(db.doc(`users/${userId}`), {
-        archivedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { archivedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId) },
+        batch,
+        projectId
+    )
 }
 
 const removeProjectArchivedStatus = (projectId, userId, batch) => {
-    batch.update(db.doc(`users/${userId}`), {
-        archivedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { archivedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId) },
+        batch,
+        projectId
+    )
 }
 
 export async function convertToActiveProject(user, project) {
@@ -3197,6 +3317,12 @@ export async function deleteTask(task, projectId) {
 }
 
 export async function deleteTaskMultiple(tasks) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'delete',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const deleteBatch = new BatchWrapper(db)
     const batch = new BatchWrapper(db)
 
@@ -3225,6 +3351,7 @@ export async function deleteTaskMultiple(tasks) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function deleteSubTaskFromParent(projectId, subtaskId, subtask, batch) {
@@ -3312,9 +3439,26 @@ export async function loginWithGoogleWebAnonymously() {
 export function logoutWeb(onComplete) {
     // window.google.accounts.id.disableAutoSelect()
     setAnalyticsUser(null)
-    firebase
-        .auth()
-        .signOut()
+    invalidateIosShareCredentialProvisioning()
+    const plugin = getIosShareExtensionPlugin()
+    const clearShareCredential = async () => {
+        if (!plugin) return
+        try {
+            const credential = await plugin.getCredential()
+            if (credential?.installationId && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous) {
+                await runHttpsCallableFunction('revokeIosShareExtensionToken', {
+                    installationId: credential.installationId,
+                })
+            }
+        } catch (error) {
+            console.warn('Could not revoke the iOS share credential during logout', error)
+        } finally {
+            await plugin.clearCredential().catch(() => null)
+        }
+    }
+
+    clearShareCredential()
+        .finally(() => firebase.auth().signOut())
         .then(() => onComplete())
 }
 
@@ -3365,16 +3509,16 @@ export async function getRangeUserStatistics(projectId, estimationType, userId, 
     }, 0)
 }
 
-export async function getUserStatistics(projectId, userId, date, callback, callbackOffline) {
-    db.doc(`/statistics/${projectId}/${userId}/${date}`)
-        .get()
-        .then(doc => {
-            const statistics = doc.data()
-            callback(projectId, statistics ? statistics : {})
-        })
-        .catch(error => {
-            callbackOffline()
-        })
+export async function getUserStatistics(projectId, userId, date, callback, callbackOffline, options) {
+    let statistics
+    try {
+        statistics = await readUserStatistics(db, `/statistics/${projectId}/${userId}/${date}`, options)
+    } catch (error) {
+        callbackOffline(error)
+        return
+    }
+    // A rendering/consumer error is not evidence that the phone is offline.
+    callback(projectId, statistics)
 }
 
 export function watchAllUserStatisticsByRange(
@@ -3437,7 +3581,13 @@ export function watchAllUserStatisticsByRange(
 const getProjectHappinessCollection = (projectId, userId) =>
     db.collection(`projectHappiness/${projectId}/users/${userId}/days`)
 
-export async function setProjectHappiness(projectId, userId, date, rating, comment = '', project = null) {
+export async function setProjectHappiness(projectId, userId, date, rating, comment = '', project = null, options = {}) {
+    const feedCreator = store.getState().loggedUser
+    const assertAccount = () => {
+        if (feedCreator.uid !== userId || store.getState().loggedUser.uid !== userId)
+            throw new Error('Happiness account changed')
+    }
+    assertAccount()
     const timestamp = getHappinessTimestamp(date)
     const dateKey = getHappinessDateKey(timestamp)
     const day = getHappinessDay(timestamp)
@@ -3447,7 +3597,9 @@ export async function setProjectHappiness(projectId, userId, date, rating, comme
     const feedProject = project || ProjectHelper.getProjectById(projectId) || (await getProjectData(projectId))
 
     if (rating) {
-        const currentDoc = await docRef.get()
+        const currentDoc = await readHappinessForSave(db, docRef, options.recoverable, assertAccount)
+        const current = currentDoc.data()
+        if (current?.rating === rating && (current.comment || '') === cleanedComment) return
         const data = {
             projectId,
             userId,
@@ -3460,12 +3612,13 @@ export async function setProjectHappiness(projectId, userId, date, rating, comme
         }
         if (!currentDoc.exists) data.created = data.updated
         batch.set(docRef, data, { merge: true })
-        await createProjectHappinessFeed(projectId, feedProject, data, batch)
+        await createProjectHappinessFeed(projectId, feedProject, data, batch, feedCreator)
     } else {
         batch.delete(docRef)
-        await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch)
+        await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch, feedCreator)
     }
 
+    assertAccount()
     await batch.commit()
 }
 
@@ -3637,6 +3790,7 @@ export function mapNoteData(noteId, note) {
         linkedParentGoalsIds: note.linkedParentGoalsIds ? note.linkedParentGoalsIds : [],
         linkedParentSkillsIds: note.linkedParentSkillsIds ? note.linkedParentSkillsIds : [],
         linkedParentAssistantIds: note.linkedParentAssistantIds ? note.linkedParentAssistantIds : [],
+        linkedParentArtifactsIds: note.linkedParentArtifactsIds || [],
         linkedParentsInContentIds: note.linkedParentsInContentIds ? note.linkedParentsInContentIds : {},
         linkedParentsInTitleIds: note.linkedParentsInTitleIds ? note.linkedParentsInTitleIds : {},
         versionId: note.versionId ? note.versionId : CURRENT_DAY_VERSION_ID,
@@ -3648,6 +3802,8 @@ export function mapNoteData(noteId, note) {
         assistantId: note.assistantId ? note.assistantId : '',
         isAssistantEnabled: note.isAssistantEnabled,
         commentsData: note.commentsData ? note.commentsData : '',
+        projectMove: note.projectMove || null,
+        movingToOtherProjectId: note.movingToOtherProjectId || null,
     }
 }
 
@@ -3686,6 +3842,9 @@ export function mapGoalData(goalId, goal) {
         commentsData: goal.commentsData ? goal.commentsData : '',
         timesPostponed: goal.timesPostponed ?? 0,
         scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
+        focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
+        projectMove: goal.projectMove || null,
+        movingToOtherProjectId: goal.movingToOtherProjectId || null,
     }
 }
 
@@ -3764,11 +3923,25 @@ export function mapTaskData(taskId, task) {
         linkedParentGoalsIds: task.linkedParentGoalsIds ? task.linkedParentGoalsIds : [],
         linkedParentSkillsIds: task.linkedParentSkillsIds ? task.linkedParentSkillsIds : [],
         linkedParentAssistantIds: task.linkedParentAssistantIds ? task.linkedParentAssistantIds : [],
+        linkedParentArtifactsIds: task.linkedParentArtifactsIds || [],
         parentDone: task.parentDone ? task.parentDone : false,
         suggestedBy: task.suggestedBy ? task.suggestedBy : null,
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
         parentGoalIsPublicFor: task.parentGoalIsPublicFor ? task.parentGoalIsPublicFor : null,
         goalSuggestion: task.goalSuggestion ? task.goalSuggestion : null,
+        // AT-2381 — the "Automatic" project router's state machine (see
+        // `utils/automaticProjectRouting.js` and `functions/Tasks/taskProjectRouting.js`). It was
+        // write-only until now: the create popup stamped it and nothing on the client ever read it
+        // back. The task row needs it to show that classification is still running, and — because
+        // the router settles this map BEFORE moving the task — to recognise a task that has just
+        // arrived in a new project.
+        projectRouting: task.projectRouting ? task.projectRouting : null,
+        // AT-2533 — background project moves are completed by a worker after the picker closes.
+        // The open task DV watches the destination through mapTaskData and must see this metadata
+        // to distinguish the intermediate copy from the completed move. Keep the legacy marker too:
+        // it lets a DV discover moves initiated outside its own project picker.
+        projectMove: task.projectMove ? task.projectMove : null,
+        movingToOtherProjectId: task.movingToOtherProjectId || null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
@@ -3829,6 +4002,8 @@ export function mapSkillData(skillId, skill) {
         assistantId: skill.assistantId || '',
         isAssistantEnabled: skill.isAssistantEnabled,
         commentsData: skill.commentsData || '',
+        projectMove: skill.projectMove || null,
+        movingToOtherProjectId: skill.movingToOtherProjectId || null,
     }
 }
 
@@ -3934,6 +4109,13 @@ export function mapUserData(userId, user) {
         noticeAboutTheBotBehavior: user.noticeAboutTheBotBehavior ? user.noticeAboutTheBotBehavior : false,
         defaultProjectId: user.defaultProjectId ? user.defaultProjectId : '',
         apisConnected: user.apisConnected ? user.apisConnected : {},
+        // The account-level connection maps. Without them `listConnections` in
+        // utils/IntegrationProviders.js always falls back to synthesizing from
+        // `apisConnected`, which hardcodes `authInvalid: false` — so a connection the
+        // server had flagged as revoked rendered as perfectly healthy and the
+        // "Reconnect account" banner could never appear (AT-2491).
+        emailConnections: user.emailConnections ? user.emailConnections : {},
+        calendarConnections: user.calendarConnections ? user.calendarConnections : {},
         unlockedKeysByGuides: user.unlockedKeysByGuides ? user.unlockedKeysByGuides : {},
         inFocusTaskId: user.inFocusTaskId ? user.inFocusTaskId : '',
         inFocusTaskProjectId: user.inFocusTaskProjectId ? user.inFocusTaskProjectId : '',
@@ -3999,6 +4181,8 @@ export function mapContactData(contactId, contact) {
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
         contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
         linkedInUrl: contact.linkedInUrl ? contact.linkedInUrl : '',
+        projectMove: contact.projectMove || null,
+        movingToOtherProjectId: contact.movingToOtherProjectId || null,
     }
 }
 
@@ -4055,6 +4239,7 @@ export function mapProjectData(projectId, project, customData) {
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
+        focusAreas: project.focusAreas || {},
         contactStatuses: project.contactStatuses ? project.contactStatuses : {},
         gitlabRepoUrl: project.gitlabRepoUrl ? project.gitlabRepoUrl : '',
         gitlabBaseBranch: project.gitlabBaseBranch ? project.gitlabBaseBranch : '',
@@ -4066,6 +4251,27 @@ export function mapProjectData(projectId, project, customData) {
         githubApiBase: project.githubApiBase ? project.githubApiBase : '',
         githubConnectedAt: project.githubConnectedAt ? project.githubConnectedAt : null,
         vmGolden: project.vmGolden ? project.vmGolden : null,
+        // The `browser_automation` tool's per-project configuration (allowlist, on/off, limits).
+        // Normalized here so every reader gets the same shape and an absent field is an empty
+        // allowlist — which, being default-deny, means browsing is off.
+        browserAutomation: {
+            enabled: project.browserAutomation ? project.browserAutomation.enabled !== false : true,
+            // Anything that is not exactly 'all_public' is 'selected'. Same rule as the server's
+            // `normalizeAccessMode`, and for the same reason: an unknown value has to land on
+            // "only the hosts somebody listed", never on "the whole internet".
+            accessMode: project.browserAutomation?.accessMode === 'all_public' ? 'all_public' : 'selected',
+            allowedDomains: Array.isArray(project.browserAutomation?.allowedDomains)
+                ? project.browserAutomation.allowedDomains
+                : [],
+            deniedDomains: Array.isArray(project.browserAutomation?.deniedDomains)
+                ? project.browserAutomation.deniedDomains
+                : [],
+            allowSearchSubmit: project.browserAutomation ? project.browserAutomation.allowSearchSubmit !== false : true,
+            limits:
+                project.browserAutomation?.limits && typeof project.browserAutomation.limits === 'object'
+                    ? project.browserAutomation.limits
+                    : {},
+        },
         ...customData,
     }
 }
@@ -4215,54 +4421,49 @@ export async function loadFeedObject(projectId, objectId, objectTypes, dateForma
     return feedObject
 }
 
-async function updateInnerFeedsPrivacy(objectId, path, isPublicFor, batch) {
-    const feeds = (await db.collection(path).where('objectId', '==', objectId).get()).docs
-    feeds.forEach(feedDoc => {
-        const feed = feedDoc.data()
-        const usersWithAccess = [...isPublicFor]
-        if (feed.isCommentPublicFor) {
-            feed.isCommentPublicFor.forEach(userId => {
-                if (!usersWithAccess.includes(userId)) {
-                    usersWithAccess.push(userId)
-                }
-            })
-        }
-        batch.set(db.doc(`${path}/${feedDoc.id}`), { isPublicFor: usersWithAccess }, { merge: true })
-    })
-}
-
+/**
+ * Re-privatises the stored activity of an object after its privacy changed. This is the browser
+ * half: it rewrites what the signed-in user can read (own followed store, shared store, the
+ * object's history) and clears the unread counters of the members that lost access. The followed
+ * stores of OTHER members are unreachable from a browser under firestore.rules, and are reconciled
+ * by the object's own update trigger (`functions/Feeds/objectFeedPrivacy.js`). See
+ * `utils/backends/Feeds/feedPrivacy.js` for the rule constraints that shape this.
+ *
+ * Callers do not await this; the `feedObject` mutation is synchronous because they read the new
+ * privacy off it right away, and nothing here can reject — a feed that fails to update is
+ * reported, not surfaced as an uncaught rejection in the console.
+ */
 export async function addPrivacyForFeedObject(projectId, isPrivate, feedObject, objectId, objectTypes, isPublicFor) {
-    const batch = new BatchWrapper(db)
     feedObject.isPublicFor = isPublicFor
-    const usersIds = getProjectUsersIds(projectId)
+
+    const loggedUserId = store.getState().loggedUser?.uid
+    const batch = new BatchWrapper(db)
     if (isPrivate) {
-        const userIdsWithoutAccess = usersIds.filter(userId => !isPublicFor.includes(userId))
-        userIdsWithoutAccess.forEach(userId => {
+        const { usersWithoutAccess } = getFeedPrivacyReaders(isPublicFor, getProjectUsersIds(projectId))
+        usersWithoutAccess.forEach(userId => {
             deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, BOTH_TABS, batch)
-            deleteObjectFeedStore(projectId, userId, objectId, 'followed')
         })
     }
 
-    const promises = []
-    const followersWithAccessIds = isPublicFor[0] === FEED_PUBLIC_FOR_ALL ? usersIds : isPublicFor
-    followersWithAccessIds.forEach(userId => {
-        promises.push(
-            updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/${userId}/feeds/followed`, isPublicFor, batch)
-        )
-    })
-
-    promises.push(updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/all`, isPublicFor, batch))
-
-    promises.push(
-        updateInnerFeedsPrivacy(
+    try {
+        await applyVisibleFeedPrivacy(db, batch, {
+            projectId,
             objectId,
-            `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`,
+            objectTypes,
             isPublicFor,
-            batch
-        )
-    )
-    await Promise.all(promises)
-    batch.commit()
+            loggedUserId,
+            readerId: getLoggedUserAccessReaderId(),
+        })
+        await batch.commit()
+    } catch (error) {
+        console.warn('[feeds privacy] Could not re-privatise the visible activity of an object', {
+            projectId,
+            objectTypes,
+            objectId,
+            code: error?.code,
+            message: error?.message,
+        })
+    }
 }
 
 ///// LAST STATE FEED OBJECTS MODELS ///////////
@@ -4389,10 +4590,26 @@ export async function storeConvertedVideos(projectId, attachment) {
 }
 
 ////////////////////// NOTIFICATION EMAIL SYSTEM ////////////////////////
+/**
+ * Whether `userId` is a current member of the (mapped) project. Exported for the notification
+ * fan-out and its tests; the project document is the authority on membership (see firestore.rules).
+ */
+export function isCurrentProjectMember(project, userId) {
+    return !!userId && Array.isArray(project?.userIds) && project.userIds.includes(userId)
+}
+
 async function registerFeedEmail(projectId, userId, objectsType, objectId, feed, feedObject, notificationData) {
     const batch = new BatchWrapper(db)
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = await getProjectData(projectId)
+
+    // A feed recipient is not necessarily a user: a workflow task's assistant reviewer and a
+    // member who has since left both reach here through the followers list. Neither has a
+    // users/ document this client may read — the read rule dereferences resource.data, so a
+    // missing document is a rules evaluation ERROR (permission-denied) and getUserData reports
+    // it as an account anomaly. Only a current member can receive an email, so decide that from
+    // the project document already in hand instead of asserting the read (AT-2428).
+    if (!isCurrentProjectMember(project, userId)) return
 
     if (
         objectsType === 'customs' ||
@@ -4428,6 +4645,10 @@ async function sendPushNotifications(projectId, userId, objectsType, objectId, f
 
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = mapProjectData(projectId, (await db.doc(`projects/${projectId}`).get()).data())
+
+    // Same gate as registerFeedEmail: a follower that is not a current member (an assistant
+    // reviewer, a departed member) has no readable users/ document and gets no push either.
+    if (!isCurrentProjectMember(project, userId)) return
 
     if (followers && followers.usersFollowing && followers.usersFollowing.includes(userId)) {
         // this will allow to get the real data from DB
@@ -4900,7 +5121,7 @@ export async function createNoteFeedsChain(projectId, noteId, noteData) {
         batch
     )
 
-    batch.commit()
+    await batch.commit()
 }
 
 export async function createNoteUpdatedFeedsChain(projectId, noteId, noteData, oldNoteData) {
@@ -4922,7 +5143,7 @@ export async function createNoteUpdatedFeedsChain(projectId, noteId, noteData, o
         await updateNoteStickyDataFeedsChain(projectId, noteData.stickyData.days, noteId)
     }
 
-    batch.commit()
+    await batch.commit()
 }
 
 export const trackStickyNote = async (projectId, noteId, stickyEndDate) => {
@@ -4930,7 +5151,7 @@ export const trackStickyNote = async (projectId, noteId, stickyEndDate) => {
 }
 
 export const untrackStickyNote = noteId => {
-    db.doc(`stickyNotesData/${noteId}`).delete()
+    return db.doc(`stickyNotesData/${noteId}`).delete()
 }
 
 export async function updateNoteStickyDataFeedsChain(projectId, days, noteId) {
@@ -4943,7 +5164,7 @@ export async function updateNoteStickyDataFeedsChain(projectId, days, noteId) {
             feedCreator: store.getState().loggedUser,
         }
         await tryAddFollower(projectId, followNoteData, batch)
-        batch.commit()
+        await batch.commit()
     }
 }
 
@@ -4955,7 +5176,7 @@ export async function updateNoteTitleFeedsChain(projectId, note, title, noteId) 
     await processFollowersWhenEditTexts(projectId, FOLLOWER_NOTES_TYPE, noteId, note, mentionedUserIds, true, batch)
 
     await createNoteNameChangedFeed(projectId, note.title, title, noteId, batch)
-    batch.commit()
+    await batch.commit()
 }
 
 export function insertFollowersUserToFeedChain(
@@ -5018,57 +5239,51 @@ export async function getNotesByProject(projectId) {
     return notesList
 }
 
-export async function watchFollowedTabNotesExpanded(projectId, callback) {
+export async function watchFollowedTabNotesExpanded(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
+export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
+export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
-        db
-            .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
+        db.collection(`noteItems/${projectId}/notes`).where('followedReaderIds', 'array-contains', loggedUserId)
     )
 }
 
-export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
+export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5076,66 +5291,61 @@ export async function watchFollowedTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, true)
-    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+    stickyNotesUnsubs = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '>', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchAllTabNotesExpanded(projectId, callback) {
+export async function watchAllTabNotesExpanded(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
+export async function watchAllTabNotes(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchAllTabNotesExpandedInAllProjects(projectId, callback) {
+export async function watchAllTabNotesExpandedInAllProjects(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
     )
 }
 
-export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
+export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5143,32 +5353,42 @@ export async function watchAllTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, true)
-    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+    stickyNotesUnsubs = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '>', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
+const createNotesSnapshotHandler = (callback, isStickyWatcher, { trackConnectionHealth = true, onError } = {}) => {
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleSnapshot)
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'notes_snapshot',
+        onError,
+    })
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        {
+            object_type: isStickyWatcher ? 'sticky_notes' : 'notes',
+            scope: 'project',
+            source: 'notes_board',
+        },
+        { sampleRate: 0.02 }
+    )
     function handleSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
             return
         }
         const mergedChanges = [...cacheChanges, ...changes]
         callback(mergedChanges)
-        if (!isStickyWatcher) {
-            store.dispatch(stopLoadingData())
-        }
         cacheChanges = []
     }
-    return { handleSnapshot, wrapUnsubscribe: gate.wrapUnsubscribe }
+    return { subscribe: gate.subscribe }
 }
 
 export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, callback) {
@@ -5176,7 +5396,7 @@ export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, 
     unwatchNotesNeedShowMore(projectId)
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+        .where('followedReaderIds', 'array-contains', loggedUserId)
         .where('stickyData.days', '==', 0)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
@@ -5190,7 +5410,7 @@ export async function watchFollowedTabNotesNeedShowMoreInAllProjects(projectId, 
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+        .where('followedReaderIds', 'array-contains', loggedUserId)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
             callback(querySnapshot.docs.length)
@@ -5203,7 +5423,7 @@ export async function watchAllTabNotesNeedShowMore(projectId, notesToLoad, callb
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('stickyData.days', '==', 0)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
@@ -5217,7 +5437,7 @@ export async function watchAllTabNotesNeedShowMoreInAllProjects(projectId, notes
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
             callback(querySnapshot.docs.length)
@@ -5257,13 +5477,28 @@ export async function unwatchNotes(projectId, uid) {
 }
 
 export async function watchNote(objectId, noteId, callback) {
-    const unsub = db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(doc => {
-        let note = null
-        if (doc.data() !== undefined) {
-            note = mapNoteData(doc.id, doc.data())
+    const unsub = subscribeWithLoading(
+        'note_detail',
+        (next, error) => db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(next, error),
+        doc => {
+            let note = null
+            if (doc.data() !== undefined) {
+                note = mapNoteData(doc.id, doc.data())
+            }
+            callback(note)
+        },
+        {
+            onError: error => {
+                console.error('[note detail] Firestore listener failed', {
+                    projectId: objectId,
+                    noteId,
+                    code: error?.code,
+                    message: error?.message,
+                })
+                callback(null, error)
+            },
         }
-        callback(note)
-    })
+    )
 
     if (noteUnsub[objectId]) {
         noteUnsub[objectId][noteId] = unsub
@@ -5278,15 +5513,23 @@ export async function unwatchNote(projectId, noteId) {
     }
 }
 
-export async function watchObjectLTag(objectType, path, watchId, callback) {
+export async function watchObjectLTag(objectType, path, watchId, callback, onError) {
     if (!hasProperty(linkTagsUnsubs, [objectType, path, watchId])) {
-        const unsub = db.doc(path).onSnapshot(doc => {
-            const data = doc.data()
-            if (shouldProcessObjectLinkSnapshot(data, doc.metadata)) {
-                const objectData = data != null ? { ...data, id: doc.id, uid: doc.id } : null
-                callback(objectData, path, watchId)
+        const unsub = db.doc(path).onSnapshot(
+            doc => {
+                const data = doc.data()
+                if (shouldProcessObjectLinkSnapshot(data, doc.metadata)) {
+                    const objectData = data != null ? { ...data, id: doc.id, uid: doc.id } : null
+                    callback(objectData, path, watchId)
+                }
+            },
+            error => {
+                // A stale/deleted/private internal link must degrade like a missing document,
+                // not become an uncaught Firestore listener error for the whole page.
+                if (onError) onError(error, path, watchId)
+                else callback(null, path, watchId, error)
             }
-        })
+        )
 
         setProperty(linkTagsUnsubs, [objectType, path, watchId], unsub)
     }
@@ -5312,18 +5555,17 @@ export function unwatchFeedObjectLastState(watchId) {
 }
 
 export function watchLinkedNotes(projectId, uid, linkedParentObject, callback) {
-    const unsub = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-        .onSnapshot(querySnapshot => {
-            db.collection(`noteItems/${projectId}/notes`)
+    const unsub = subscribeWithLoading(
+        'backlink_notes',
+        (next, error) =>
+            db
+                .collection(`noteItems/${projectId}/notes`)
                 .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-                .get()
-                .then(res => {
-                    callback(res.docs)
-                })
-            // callback(querySnapshot.docChanges())
-        })
+                .onSnapshot(next, error),
+        querySnapshot => {
+            callback(querySnapshot.docs)
+        }
+    )
 
     linkedNotesUnsubs[projectId] = { [uid]: unsub }
 }
@@ -5399,6 +5641,9 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
         linkedParentAssistantsUrl,
+        // Artifacts have no backlink feed; they only need the ids, so every caller that does not
+        // collect them yet simply records none.
+        linkedParentArtifactsUrl = [],
     } = linkedParents
 
     if (
@@ -5436,7 +5681,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
             const userId = link.split('/')[6]
             if (TasksHelper.getUserInProject(projectId, userId)) {
                 createBacklinkUserFeed(projectId, linkedObject.id, linkedObject.type, userId)
-                updateUserEditionData(userId, loggedUser.uid)
+                updateUserEditionData(projectId, userId, loggedUser.uid)
             } else {
                 createBacklinkContactFeed(projectId, linkedObject.id, linkedObject.type, userId)
                 updateContactEditionData(projectId, userId, loggedUser.uid)
@@ -5486,6 +5731,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     const linkedParentGoalsIds = []
     const linkedParentSkillsIds = []
     const linkedParentAssistantIds = []
+    const linkedParentArtifactsIds = []
 
     const updateObject = {
         linkedParentNotesIds,
@@ -5495,6 +5741,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         linkedParentGoalsIds,
         linkedParentSkillsIds,
         linkedParentAssistantIds,
+        linkedParentArtifactsIds,
     }
 
     extractIdsInto(linkedParentNotesIds, linkedParentNotesUrl, 6)
@@ -5504,6 +5751,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     extractIdsInto(linkedParentGoalsIds, linkedParentGoalsUrl, 6)
     extractIdsInto(linkedParentSkillsIds, linkedParentSkillsUrl, 6)
     extractIdsInto(linkedParentAssistantIds, linkedParentAssistantsUrl, 6)
+    extractIdsInto(linkedParentArtifactsIds, linkedParentArtifactsUrl, 6)
 
     if (linkedObject.type === 'note') {
         const { notePartEdited } = linkedObject
@@ -5516,6 +5764,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
                   linkedParentGoalsIds: [],
                   linkedParentSkillsIds: [],
                   linkedParentAssistantIds: [],
+                  linkedParentArtifactsIds: [],
                   ...linkedObject.secondaryParentsIds,
               }
             : {
@@ -5526,6 +5775,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
                   linkedParentGoalsIds: [],
                   linkedParentSkillsIds: [],
                   linkedParentAssistantIds: [],
+                  linkedParentArtifactsIds: [],
               }
 
         if (notePartEdited === 'title') {
@@ -5555,6 +5805,9 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         const unduplicatedParentAssistantIds = secondaryParentsIds.linkedParentAssistantIds.filter(
             id => !linkedParentAssistantIds.includes(id)
         )
+        const unduplicatedParentArtifactsIds = (secondaryParentsIds.linkedParentArtifactsIds || []).filter(
+            id => !linkedParentArtifactsIds.includes(id)
+        )
         updateObject.linkedParentNotesIds = [...updateObject.linkedParentNotesIds, ...unduplicatedParentNotesIds]
         updateObject.linkedParentTasksIds = [...updateObject.linkedParentTasksIds, ...unduplicatedParentTasksIds]
         updateObject.linkedParentContactsIds = [
@@ -5570,6 +5823,10 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         updateObject.linkedParentAssistantIds = [
             ...updateObject.linkedParentAssistantIds,
             ...unduplicatedParentAssistantIds,
+        ]
+        updateObject.linkedParentArtifactsIds = [
+            ...updateObject.linkedParentArtifactsIds,
+            ...unduplicatedParentArtifactsIds,
         ]
     }
 
@@ -5597,14 +5854,17 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     // })
 }
 
-export function watchNotesCollab(noteId, callback) {
-    db.doc(`notesCollab/${noteId}`).onSnapshot(doc => {
-        callback(doc.data())
-    })
+export function watchNotesCollab(projectId, noteId, callback) {
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).onSnapshot(
+        doc => {
+            callback(doc.data())
+        },
+        error => handleOptionalSnapshotError('note collaboration presence', error, () => callback(null))
+    )
 }
 
-export function addNoteEditor(noteId, editor) {
-    db.doc(`notesCollab/${noteId}`).set(
+export function addNoteEditor(projectId, noteId, editor) {
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayUnion(editor),
         },
@@ -5612,8 +5872,8 @@ export function addNoteEditor(noteId, editor) {
     )
 }
 
-export function removeNoteEditor(noteId, editor) {
-    db.doc(`notesCollab/${noteId}`).set(
+export function removeNoteEditor(projectId, noteId, editor) {
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayRemove(editor),
         },
@@ -5681,6 +5941,10 @@ export async function listMenubarAppTokens() {
 
 export async function revokeMenubarAppToken(tokenId) {
     return asCallableEnvelope('revokeMenubarAppToken', { tokenId })
+}
+
+export async function mintIosShareExtensionToken(installationId) {
+    return runHttpsCallableFunction('mintIosShareExtensionToken', { installationId })
 }
 
 // Deliberately NOT routed through `runHttpsCallableFunction` (AT-2340): both use
@@ -5762,7 +6026,7 @@ const updateEditonForFollowUnfollowAnObject = async (projectId, objectId, type, 
     } else if (type === FOLLOWER_CONTACTS_TYPE) {
         await updateContactEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_USERS_TYPE) {
-        await updateUserEditionData(objectId, editorId)
+        await updateUserEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_SKILLS_TYPE) {
         await updateSkillEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_TASKS_TYPE) {
@@ -5821,18 +6085,21 @@ export async function addFollowerWithoutFeeds(
             })
         })
 
-    if (followObjectsType === 'notes' && actionType !== 'delete') {
-        const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
-        if (note) {
+    const followedListPath = getFollowedListObjectPath(projectId, followObjectsType, followObjectId)
+    if (followedListPath && actionType !== 'delete') {
+        const object = (await db.doc(followedListPath).get()).data()
+        if (object) {
+            const isPublicFor = Array.isArray(object.isPublicFor) ? object.isPublicFor : []
             const updateData = { followersIds: firebase.firestore.FieldValue.arrayUnion(userFollowingId) }
-            if (note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || note.isPublicFor.includes(userFollowingId)) {
+            if (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userFollowingId)) {
                 updateData.isVisibleInFollowedFor = firebase.firestore.FieldValue.arrayUnion(userFollowingId)
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`)
+            db.doc(followedListPath)
                 .set(updateData, { merge: true })
                 .catch(error => {
-                    console.error('[followers] Failed to update note follower state', {
+                    console.error('[followers] Failed to update follower state', {
                         projectId,
+                        followObjectsType,
                         followObjectId,
                         userFollowingId,
                         code: error?.code,
@@ -5841,6 +6108,14 @@ export async function addFollowerWithoutFeeds(
                 })
         }
     }
+}
+
+// Notes and artifacts carry their followers on the object itself, because their "Followed" list is
+// a query on that document rather than on the followers collection.
+function getFollowedListObjectPath(projectId, followObjectsType, followObjectId) {
+    if (followObjectsType === 'notes') return `noteItems/${projectId}/notes/${followObjectId}`
+    if (followObjectsType === FOLLOWER_ARTIFACTS_TYPE) return `artifactItems/${projectId}/artifacts/${followObjectId}`
+    return null
 }
 
 async function getObject(projectId, objectId, objectType) {
@@ -5862,6 +6137,9 @@ async function getObject(projectId, objectId, objectType) {
         return await getSkillData(projectId, objectId)
     } else if (objectType === 'assistants') {
         return await getAssistantData(projectId, objectId)
+    } else if (objectType === FOLLOWER_ARTIFACTS_TYPE) {
+        const artifact = (await db.doc(`artifactItems/${projectId}/artifacts/${objectId}`).get()).data()
+        return artifact ? { ...artifact, id: objectId } : null
     }
 }
 
@@ -5873,7 +6151,7 @@ export async function addFollower(projectId, followData, externalBatch) {
 
     updateEditonForFollowUnfollowAnObjectSafely(projectId, followObjectId, followObjectsType, userFollowingId)
     addFollowerWithoutFeeds(projectId, userFollowingId, followObjectsType, followObjectId, actionType, batch)
-    addFollowerToChat(projectId, followObjectId, userFollowingId)
+    await addFollowerToChat(projectId, followObjectId, userFollowingId)
 
     if (!followObject) followObject = await getObject(projectId, followObjectId, followObjectsType)
     if (
@@ -5947,14 +6225,15 @@ async function removeFollowerWithoutFeeds(projectId, userFollowingId, followObje
         { merge: true }
     )
 
-    if (followObjectsType === 'notes') {
-        const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
-        if (note) {
+    const followedListPath = getFollowedListObjectPath(projectId, followObjectsType, followObjectId)
+    if (followedListPath) {
+        const object = (await db.doc(followedListPath).get()).data()
+        if (object) {
             const updateData = {
                 followersIds: firebase.firestore.FieldValue.arrayRemove(userFollowingId),
                 isVisibleInFollowedFor: firebase.firestore.FieldValue.arrayRemove(userFollowingId),
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
+            db.doc(followedListPath).set(updateData, { merge: true })
         }
     }
 }
@@ -5995,7 +6274,7 @@ export async function removeFollower(projectId, followData, externalBatch) {
                 removeFollowerWithoutFeeds(projectId, userId, followObjectsType, subtaskId, batch)
                 removeFollowerFromChat(projectId, subtaskId, userId)
                 deleteObjectFeedCounter(projectId, userId, subtaskId, followObjectsType, BOTH_TABS, batch)
-                deleteObjectFeedStore(projectId, userId, subtaskId, 'followed')
+                deleteObjectFeedStore(projectId, userId, subtaskId)
             })
         }
     } else if (followObjectsType === 'notes') {
@@ -6016,14 +6295,16 @@ export async function removeFollower(projectId, followData, externalBatch) {
 }
 
 export async function watchFollowers(projectId, followObjectsType, followObjectId, callback, watchId = false) {
-    const unsub = db.doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`).onSnapshot(doc => {
-        const parsedDoc = doc.data()
-        callback(parsedDoc ? parsedDoc.usersFollowing : [])
-    })
+    const unsub = db.doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`).onSnapshot(
+        doc => {
+            const parsedDoc = doc.data()
+            callback(parsedDoc ? parsedDoc.usersFollowing : [])
+        },
+        error => handleOptionalSnapshotError('followers', error, () => callback([]))
+    )
 
     if (watchId && !hasProperty(followersUnsubsList, [projectId, followObjectsType, followObjectId, watchId])) {
         setProperty(followersUnsubsList, [projectId, followObjectsType, followObjectId, watchId], unsub)
-        followersUnsubsList = unsub
     } else {
         followersUnsubs = unsub
     }
@@ -6058,23 +6339,35 @@ export function watchNewFeedsAllTabs(projectId, userId, followedCallback, allCal
 
 function watchNewFeedsTab(projectId, userId, tab, callback) {
     const MAX_NEW_FEEDS_TO_SHOW = 99
-    feedsCountUnsub[tab][projectId] = db
-        .doc(`/feedsCount/${projectId}/${userId}/${tab}`)
-        .onSnapshot(notificationsData => {
-            const newFeedsData = selectNewFeeds(notificationsData.data(), MAX_NEW_FEEDS_TO_SHOW, userId)
-            callback(projectId, newFeedsData)
-        })
+    // Served from the user's one activity summary listener when it is live for this project; the
+    // direct per-project listener below is the fallback (see Feeds/activityUnreadSummary.js).
+    feedsCountUnsub[tab][projectId] = subscribeActivitySummary({
+        userId,
+        projectId,
+        kind: 'feeds',
+        tab,
+        onData: data => callback(projectId, selectNewFeeds(data || undefined, MAX_NEW_FEEDS_TO_SHOW, userId)),
+        legacySubscribe: deliver =>
+            db
+                .doc(`/feedsCount/${projectId}/${userId}/${tab}`)
+                .onSnapshot(notificationsData => deliver(notificationsData.data() ?? null)),
+    })
 }
 
 export function resetAllNewFeeds(projectId, feedActiveTab) {
     const loggedUserId = store.getState().loggedUser.uid
     const notificationPath = feedActiveTab === FOLLOWED_TAB ? 'followed' : 'all'
-    db.doc(`feedsCount/${projectId}/${loggedUserId}/${notificationPath}`).delete()
+    const batch = db.batch()
+    batch.delete(db.doc(`feedsCount/${projectId}/${loggedUserId}/${notificationPath}`))
+    queueSummaryFeedTabClear(batch, loggedUserId, projectId, notificationPath)
+    batch.commit()
 }
 
 export async function unsubStoreFeedsTab(projectId) {
     feedsReduxStoreUnsub.followed[projectId] ? feedsReduxStoreUnsub.followed[projectId]() : null
     feedsReduxStoreUnsub.all[projectId] ? feedsReduxStoreUnsub.all[projectId]() : null
+    delete feedsReduxStoreUnsub.followed[projectId]
+    delete feedsReduxStoreUnsub.all[projectId]
 }
 
 /**
@@ -6082,24 +6375,48 @@ export async function unsubStoreFeedsTab(projectId) {
  *                      query is capped at what is rendered instead of always pulling 200 documents
  *                      per project per tab (AT-2192).
  */
-export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
+export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount, options = {}) {
+    const deliveredTabs = new Set()
+    const markInitialSnapshot = tab => {
+        deliveredTabs.add(tab)
+        if (deliveredTabs.size === 2) options.onInitialSnapshot?.(projectId)
+    }
     const followedPath = `/feedsStore/${projectId}/${userId}/feeds/followed`
-    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount, {
+        ...options,
+        onInitialSnapshot: () => markInitialSnapshot('followed'),
+    })
 
     const allPath = `/feedsStore/${projectId}/all`
-    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount, {
+        ...options,
+        onInitialSnapshot: () => markInitialSnapshot('all'),
+    })
 }
 
 function storeFollowedFeeds(projectId, feeds) {
-    store.dispatch([setFollowedFeeds(projectId, feeds), stopLoadingData()])
+    store.dispatch(setFollowedFeeds(projectId, feeds))
 }
 
 function storeAllFeeds(projectId, feeds) {
-    store.dispatch([setAllFeeds(projectId, feeds), stopLoadingData()])
+    store.dispatch(setAllFeeds(projectId, feeds))
 }
 
-function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
-    store.dispatch(startLoadingData())
+function watchNewFeedsTabRedux(
+    projectId,
+    tab,
+    path,
+    callback,
+    visibleAmount,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
+    let initialSnapshotDelivered = false
+
+    const finishInitialSnapshot = () => {
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
     const { loggedUser, currentUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const currentUserId = currentUser.uid
@@ -6108,12 +6425,33 @@ function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
     // document while another user's feed is being viewed. In every other case the snapshot reaches
     // the list untouched and the query can be capped at exactly what the list can display.
     const needsClientSideFilter = currentUserId !== loggedUserId
-    feedsReduxStoreUnsub[tab][projectId] = db
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'feeds', scope: 'project', source: `updates_${tab}` },
+        { sampleRate: 0.02 }
+    )
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'updates_snapshot',
+        loadingSource: manageLoading ? `updates_${tab}` : undefined,
+        onError: error => {
+            snapshotPerformance.fail()
+            console.error('watchNewFeedsTabRedux: onSnapshot error', { projectId, tab, error })
+            callback(projectId, [])
+            finishInitialSnapshot()
+        },
+    })
+    const query = db
         .collection(path)
         .limit(getFeedsQueryLimit(visibleAmount, needsClientSideFilter))
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .orderBy('lastChangeDate', 'desc')
-        .onSnapshot(feedsData => {
+
+    function handleSnapshot(feedsData) {
+        const buffered = gate.shouldBuffer(feedsData)
+        snapshotPerformance.observe(feedsData, buffered)
+        if (buffered) return
+
+        try {
             const feeds = []
             feedsData.forEach(doc => {
                 const feed = doc.data()
@@ -6124,11 +6462,24 @@ function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
             })
             feeds.splice(MAX_NUMBER_OF_FEEDS_TO_SHOW)
             callback(projectId, feeds)
-        })
+            finishInitialSnapshot()
+        } catch (error) {
+            snapshotPerformance.fail()
+            console.error('watchNewFeedsTabRedux: snapshot handler error', { projectId, tab, error })
+            finishInitialSnapshot()
+        }
+    }
+
+    const unsubscribe = gate.subscribe(query)
+    feedsReduxStoreUnsub[tab][projectId] = unsubscribe
 }
 
 export async function getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
-    const object = (await db.doc(`projectsFeeds/${projectId}/${dateFormated}/${objectId}`).get()).data()
+    // The object may be filed under the UTC day rather than the local one - see feedObjectDate.js.
+    const { object, date } = await readFeedObjectFromCandidates(
+        getFeedObjectDateCandidates(dateFormated, lastChangeDate),
+        async candidateDate => (await db.doc(`projectsFeeds/${projectId}/${candidateDate}/${objectId}`).get()).data()
+    )
     if (object) {
         object.id = objectId
         return object
@@ -6136,11 +6487,13 @@ export async function getFeedObject(projectId, dateFormated, objectId, feedType,
         const objectType = getFeedObjectTypes(feedType)
         const feedObject = await generateMissingFeedObject(
             projectId,
-            dateFormated,
+            date || dateFormated,
             objectType,
             objectId,
             lastChangeDate
         )
+        // null: the object behind the feed is gone, so there is nothing to show for it.
+        if (!feedObject) return null
         feedObject.id = objectId
         return feedObject
     }
@@ -6163,9 +6516,11 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         feedObject = generateUserObjectModel(lastChangeDate, objectId, loggedUser.assistantId)
     } else if (objectType === 'notes') {
         const note = await getNote(projectId, objectId)
+        if (!note) return null
         feedObject = generateNoteObjectModel(lastChangeDate, note, objectId)
     } else if (objectType === 'goals') {
         const goal = await getGoalData(projectId, objectId)
+        if (!goal) return null
         feedObject = generateGoalObjectModel(lastChangeDate, goal, objectId)
     } else if (objectType === 'skills') {
         const skill = await getSkillData(projectId, objectId)
@@ -6173,11 +6528,18 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
     } else if (objectType === 'assistants') {
         const assistant = await getAssistantData(projectId, objectId)
         feedObject = generateAssistantObjectModel(lastChangeDate, assistant, objectId)
+    } else if (objectType === WIKI_FEED_OBJECTS_TYPE) {
+        feedObject = generateWikiFeedObjectModel(lastChangeDate)
     }
+    if (!feedObject) return null
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${objectId}`), feedObject)
     setFeedObjectLastState(projectId, objectType, objectId, feedObject, batch)
-    batch.commit()
+    // Best effort: the rebuilt object is displayed either way, and a refused write must not surface
+    // as an unhandled rejection from the Updates list.
+    batch.commit().catch(error => {
+        console.warn('Could not store rebuilt feed object', { projectId, objectType, objectId, error })
+    })
     return feedObject
 }
 
@@ -6210,23 +6572,35 @@ export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, cal
         return db
             .collection(`projectsInnerFeeds/${projectId}/${feedSource.objectTypes}/${feedSource.feedObjectId}/feeds/`)
             .limit(MAX_NUMBER_OF_FEEDS_TO_SHOW)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .orderBy('lastChangeDate', 'desc')
-            .onSnapshot(feedsData => {
-                const feeds = []
-                feedsData.forEach(doc => {
-                    const feed = doc.data()
-                    feed.id = doc.id
-                    feeds.push(feed)
-                })
-                feedsBySource[sourceKey] = feeds
-                callback(
-                    Object.values(feedsBySource)
-                        .flat()
-                        .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
-                        .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
-                )
-            })
+            .onSnapshot(
+                feedsData => {
+                    const feeds = []
+                    feedsData.forEach(doc => {
+                        const feed = doc.data()
+                        feed.id = doc.id
+                        feeds.push(feed)
+                    })
+                    feedsBySource[sourceKey] = feeds
+                    callback(
+                        Object.values(feedsBySource)
+                            .flat()
+                            .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
+                            .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
+                    )
+                },
+                error =>
+                    handleOptionalSnapshotError(`detailed feeds ${sourceKey}`, error, () => {
+                        feedsBySource[sourceKey] = []
+                        callback(
+                            Object.values(feedsBySource)
+                                .flat()
+                                .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
+                                .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
+                        )
+                    })
+            )
     })
     feedsDetailedViewUnsub = () => unsubs.forEach(unsub => unsub())
 }
@@ -6253,16 +6627,27 @@ function deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, tabsT
     }
 }
 
-async function deleteObjectFeedStore(projectId, userId, objectId, path) {
-    const feedsToDelete = (
-        await db.collection(`/feedsStore/${projectId}/${userId}/feeds/${path}`).where('objectId', '==', objectId).get()
-    ).docs
-
+// Only the signed-in user's own followed store is readable from a browser, and only through the
+// reader projection; a request for another member's store is a no-op here and the server's job.
+async function deleteObjectFeedStore(projectId, userId, objectId) {
     const batch = new BatchWrapper(db)
-    feedsToDelete.forEach(feedDoc => {
-        batch.delete(db.doc(`/feedsStore/${projectId}/${userId}/feeds/${path}/${feedDoc.id}`))
-    })
-    batch.commit()
+    try {
+        const deleted = await deleteVisibleFollowedFeeds(db, batch, {
+            projectId,
+            userId,
+            loggedUserId: store.getState().loggedUser?.uid,
+            objectId,
+            readerId: getLoggedUserAccessReaderId(),
+        })
+        if (deleted > 0) await batch.commit()
+    } catch (error) {
+        console.warn('[feeds privacy] Could not remove an object from the followed activity store', {
+            projectId,
+            objectId,
+            code: error?.code,
+            message: error?.message,
+        })
+    }
 }
 
 ////////// FEEDS COUNT //////////////////
@@ -6285,6 +6670,16 @@ export async function increaseFeedCount(
     notificationData
 ) {
     const loggedUserId = store.getState().loggedUser.uid
+
+    if (isUserAuthoredFeed(feed, loggedUserId)) {
+        queueObjectActivityFeedUnreadClear(db, batch, {
+            projectId,
+            userId: loggedUserId,
+            objectType: objectsType,
+            objectId,
+        })
+    }
+
     const followersIds = await getObjectFollowers(projectId, objectsType, objectId, batch)
 
     const usersWithAccessIds =
@@ -6397,48 +6792,31 @@ async function increaseNewFeedCount(
 
 //// ROBOT FOR CLEAN FEEDS
 
-const MAX_AMOUNT_OF_FEEDS_STORED = 200
+// Retention runs in the feed-create Cloud Functions. Maintenance must never
+// enqueue hundreds of deletions in the same persisted queue as user edits.
+export const cleanStoreFeeds = () => Promise.resolve()
+export const cleanInnerFeeds = () => Promise.resolve()
 
-export function cleanStoreFeeds(projectId, projectUsersIds) {
-    deleteOldFeeds(`feedsStore/${projectId}/all`)
+export function cleanNewFeeds(projectId) {
+    const loggedUserId = store.getState().loggedUser?.uid
+    if (!loggedUserId) return Promise.resolve()
 
-    projectUsersIds.forEach(userId => {
-        deleteOldFeeds(`feedsStore/${projectId}/${userId}/feeds/followed`)
-    })
-}
-
-export async function cleanInnerFeeds(projectId, objectId, objectTypes) {
-    deleteOldFeeds(`projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`)
-}
-
-async function deleteOldFeeds(path) {
-    const feedsDocs = (await db.collection(path).orderBy('lastChangeDate', 'desc').get()).docs
-    const feedsIds = []
-    feedsDocs.forEach(function (doc) {
-        feedsIds.push(doc.id)
-    })
-
-    feedsIds.splice(0, MAX_AMOUNT_OF_FEEDS_STORED)
-    feedsIds.forEach(id => {
-        db.doc(`${path}/${id}`).delete()
-    })
-}
-
-export function cleanNewFeeds(projectId, projectUsersIds) {
-    projectUsersIds.forEach(userId => {
-        cleanNewFeedsTab(projectId, userId, 'followed')
-        cleanNewFeedsTab(projectId, userId, 'all')
-    })
+    // feedsCount is also user-scoped. The old loop attempted to read and write
+    // every teammate's counter from this browser, which strict rules reject.
+    return Promise.all([
+        cleanNewFeedsTab(projectId, loggedUserId, 'followed'),
+        cleanNewFeedsTab(projectId, loggedUserId, 'all'),
+    ]).catch(error => reportFeedCleanupError(`counts:${projectId}:${loggedUserId}`, error))
 }
 
 async function cleanNewFeedsTab(projectId, userId, tab) {
     const newFeeds = (await db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).get()).data()
     const linealFeeds = parseNewFeeds(newFeeds)
 
-    const toLeftNewFeeds = linealFeeds.splice(0, MAX_AMOUNT_OF_FEEDS_STORED)
+    const toLeftNewFeeds = linealFeeds.splice(0, DEFAULT_MAX_STORED_FEEDS)
     const newFeedsObject = parseInvertedNewFeeds(toLeftNewFeeds)
 
-    db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).set(newFeedsObject)
+    await db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).set(newFeedsObject)
 }
 
 function parseNewFeeds(newFeeds) {
@@ -6608,6 +6986,18 @@ export function getObjectFromUrl(objectType, url, callback) {
                 callback({ object: null, objectName: `Doesn't exist` })
             }
         })
+    } else if (objectType === 'artifact') {
+        // An artifact the viewer cannot read is, for the tag, an artifact that is not there.
+        db.doc(`artifactItems/${urlParts[4]}/artifacts/${urlParts[6]}`)
+            .get()
+            .then(doc => {
+                if (doc.exists) {
+                    callback({ object: doc.data(), objectName: doc.data().title })
+                } else {
+                    callback({ object: null, objectName: `Doesn't exist` })
+                }
+            })
+            .catch(() => callback({ object: null, objectName: `Doesn't exist` }))
     }
 }
 
@@ -6619,12 +7009,11 @@ export async function sendPushNotification(data) {
     runHttpsCallableFunction('sendPushNotificationSecondGen', data).catch(() => {})
 }
 
-export async function callEnrichContactViaLinkedIn(data) {
-    return asCallableEnvelope('enrichContactViaLinkedIn', data)
-}
-
-export async function callSearchLinkedInProfile(data) {
-    return asCallableEnvelope('searchLinkedInProfile', data)
+// Hosts a full assistant research run in the contact's chat, so it can take minutes; the timeout
+// matches the other prompt-run callables. The result is informational — the visible outcome is
+// the assistant's comments in the contact chat.
+export async function callEnrichContactProfile(data) {
+    return runHttpsCallableFunction('enrichContactProfileSecondGen', data, { timeout: 540000 })
 }
 
 // --- GitLab repo connection (per-project repo + per-user token, used by the VM coding flow) ---
@@ -6811,16 +7200,20 @@ export async function completeMcpOAuth(data) {
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = db
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('parentId', '==', taskId)
-        .onSnapshot(subtasksData => {
-            const subtasks = []
-            subtasksData.forEach(doc => {
-                const subtask = doc.data()
-                subtask.id = doc.id
-                subtasks.push(subtask)
-            })
-            callback(subtasks)
-        })
+        .onSnapshot(
+            subtasksData => {
+                const subtasks = []
+                subtasksData.forEach(doc => {
+                    const subtask = doc.data()
+                    subtask.id = doc.id
+                    subtasks.push(subtask)
+                })
+                callback(subtasks)
+            },
+            error => handleOptionalSnapshotError('embedded task subtasks', error, () => callback([]))
+        )
 }
 
 export function unwatch(watcherKey) {
@@ -7179,11 +7572,15 @@ export async function updateHastagsColors(projectId, text, colorKey, updateColor
 
 export function watchHastagsColors(projectId, hashtagId, text, callback) {
     const parsedText = text.toLowerCase()
-    unsubHastagsColors[hashtagId] = db
-        .collection(`tagsColors/${projectId}/hashtags`)
-        .where('text', '==', parsedText)
-        .limit(1)
-        .onSnapshot(hashtagsDocs => {
+    unsubHastagsColors[hashtagId] = subscribeWithLoading(
+        'hashtag_color',
+        (next, error) =>
+            db
+                .collection(`tagsColors/${projectId}/hashtags`)
+                .where('text', '==', parsedText)
+                .limit(1)
+                .onSnapshot(next, error),
+        hashtagsDocs => {
             let colorKey
             hashtagsDocs.forEach(doc => {
                 const hashtagData = doc.data()
@@ -7196,7 +7593,9 @@ export function watchHastagsColors(projectId, hashtagId, text, callback) {
             }
             dispatchHashtagsColors(projectId, parsedText, colorKey)
             callback?.()
-        })
+        },
+        { enabled: !store.getState().hashtagsColors?.[projectId]?.[parsedText] }
+    )
 }
 
 function dispatchHashtagsColors(projectId, parsedText, colorKey) {
@@ -7217,6 +7616,10 @@ export function unwatchHastagsColors(hashtagId) {
     }
 }
 
+// NOTES_COLLABORATION_SERVER is injected at build time from the GitLab CI variable of the same name
+// (ci/replace-envs.sh), not from a file in the repo. Since 2026-09-02 it points at the Cloud Run
+// service `alldone-notes-collab-server` (europe-west1, one instance, session affinity) — the same
+// stock y-websocket server that ran on App Engine Flexible from 2021 at three times the cost.
 export function getNotesCollaborationServerData() {
     return { NOTES_COLLABORATION_SERVER }
 }
@@ -7238,8 +7641,12 @@ export const inStagingEnvironment = () => {
     return CURRENT_ENVIORNMENT === 'Staging'
 }
 
-export function getTypesenseSearchKeys() {
-    return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
+export function getTypesenseScopedSearchCredentials() {
+    return runHttpsCallableFunction('getTypesenseScopedSearchCredentialsSecondGen', {})
+}
+
+export function getCurrentUserId() {
+    return firebase.auth().currentUser?.uid || null
 }
 
 // The region every callable/onRequest function in this project is deployed to. It is a
@@ -7528,7 +7935,7 @@ export async function createNoteInObject(
         userId: creatorId,
         creatorId,
     }
-    const note = await uploadNewNote(projectId, noteData, false)
+    const note = await uploadNewNote(projectId, noteData)
 
     if (objectType === 'tasks') {
         await setTaskNote(projectId, objectId, noteId)
@@ -7620,15 +8027,15 @@ export async function checkIfCalendarConnected(projectId) {
             console.log('[Calendar Sync] 📡 Calling syncCalendarEventsSecondGen:', { projectId, daysAhead: 30 })
         }
 
-        store.dispatch(startLoadingData())
-
         const startTime = Date.now()
 
         // Call the new server-side sync function
-        const result = await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
-            projectId,
-            daysAhead: 30,
-        })
+        const result = await runWithLoading('calendar_sync', () =>
+            runHttpsCallableFunction('syncCalendarEventsSecondGen', {
+                projectId,
+                daysAhead: 30,
+            })
+        )
 
         if (__DEV__) {
             console.log(
@@ -7638,11 +8045,8 @@ export async function checkIfCalendarConnected(projectId) {
                 JSON.stringify(result, null, 2)
             )
         }
-
-        store.dispatch(stopLoadingData())
     } catch (error) {
         console.error('[Calendar Sync] Error syncing calendar events:', error?.message || error)
-        store.dispatch(stopLoadingData())
     }
 }
 
@@ -7850,37 +8254,59 @@ export const generateCustomInvoiceNumber = async userId => {
     return invoiceNumber
 }
 
+export const POST_LOGIN_FIRESTORE_CONCURRENCY = 3
+
+const mapWithBoundedConcurrency = async (items, worker, concurrency = POST_LOGIN_FIRESTORE_CONCURRENCY) => {
+    const values = Array.isArray(items) ? items : []
+    const results = new Array(values.length)
+    const errors = []
+    let nextIndex = 0
+
+    const runWorker = async () => {
+        while (nextIndex < values.length) {
+            const index = nextIndex++
+            try {
+                results[index] = await worker(values[index], index)
+            } catch (error) {
+                errors.push(error)
+            }
+        }
+    }
+
+    const workerCount = Math.min(Math.max(1, concurrency), values.length)
+    await Promise.all(Array.from({ length: workerCount }, runWorker))
+    if (errors.length > 0) throw errors[0]
+    return results
+}
+
 export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
     const { loggedUser } = store.getState()
     const { uid: userId, projectIds } = loggedUser
 
     const endOfToday = moment().endOf('day').valueOf()
 
-    let promises = []
-    projectIds.forEach(projectId => {
-        promises.push(
-            db
-                .collection(`items/${projectId}/tasks`)
-                .where('userId', '==', userId)
-                .where('completed', '==', null)
-                .where('recurrence', 'in', [
-                    RECURRENCE_DAILY,
-                    RECURRENCE_EVERY_WORKDAY,
-                    RECURRENCE_WEEKLY,
-                    RECURRENCE_EVERY_2_WEEKS,
-                    RECURRENCE_EVERY_3_WEEKS,
-                    RECURRENCE_MONTHLY,
-                    RECURRENCE_EVERY_3_MONTHS,
-                    RECURRENCE_EVERY_6_MONTHS,
-                    RECURRENCE_ANNUALLY,
-                ])
-                .where('timesDoneInExpectedDay', '>', 0)
-                .get()
-        )
-    })
-    const results = await Promise.all(promises)
+    const results = await mapWithBoundedConcurrency(projectIds, projectId =>
+        db
+            .collection(`items/${projectId}/tasks`)
+            .where('readerIds', 'array-contains', userId)
+            .where('userId', '==', userId)
+            .where('completed', '==', null)
+            .where('recurrence', 'in', [
+                RECURRENCE_DAILY,
+                RECURRENCE_EVERY_WORKDAY,
+                RECURRENCE_WEEKLY,
+                RECURRENCE_EVERY_2_WEEKS,
+                RECURRENCE_EVERY_3_WEEKS,
+                RECURRENCE_MONTHLY,
+                RECURRENCE_EVERY_3_MONTHS,
+                RECURRENCE_EVERY_6_MONTHS,
+                RECURRENCE_ANNUALLY,
+            ])
+            .where('timesDoneInExpectedDay', '>', 0)
+            .get()
+    )
 
-    promises = []
+    const promises = []
     results.forEach((tasksDocs, index) => {
         const projectId = projectIds[index]
         tasksDocs.forEach(doc => {
@@ -7896,6 +8322,22 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
         })
     })
     await Promise.all(promises)
+}
+
+/*
+ * Keep the old per-project semantics (one inaccessible historical project must not roll back
+ * every other project's activity marker), but cap the number of writes placed on Firestore's
+ * startup queue at once. Heavy accounts can retain more than a hundred archived/template ids.
+ */
+export function updateLastLoggedUserDate() {
+    const { projectIds, realArchivedProjectIds, realTemplateProjectIds } = store.getState().loggedUser
+    const uniqProjects = new Set([...projectIds, ...realArchivedProjectIds, ...realTemplateProjectIds])
+
+    const lastLoggedUserDate = Date.now()
+
+    return mapWithBoundedConcurrency([...uniqProjects], projectId =>
+        db.doc(`projects/${projectId}`).update({ lastLoggedUserDate, active: true })
+    )
 }
 
 export async function runHttpsCallableFunction(functionName, data, options = {}) {
@@ -7915,23 +8357,17 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
         require('firebase/compat/functions')
 
         // Use the same helper function for consistent environment detection
-        const useEmulator = shouldUseEmulator()
+        const useEmulator = shouldUseFirebaseEmulators()
 
-        if (useEmulator) {
-            functions = firebase.app().functions('europe-west1')
-            functions.useEmulator('127.0.0.1', 5001)
-            console.log('🔧 Emergency functions initialization completed with emulator (europe-west1)')
-        } else {
-            functions = firebase.app().functions('europe-west1')
-            console.log('🔧 Emergency functions initialization completed for production (europe-west1)')
-        }
+        functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
+        if (__DEV__) console.log('Emergency functions initialization completed', { useEmulator })
     }
 
     // Create callable function with custom timeout if specified
     const callableOptions = {}
     if (options.timeout) {
         callableOptions.timeout = options.timeout
-        console.log(`⏱️  Setting custom timeout for ${functionName}: ${options.timeout}ms`)
+        if (__DEV__) console.log(`⏱️  Setting custom timeout for ${functionName}: ${options.timeout}ms`)
     }
 
     const func = functions.httpsCallable(functionName, callableOptions)
@@ -8024,15 +8460,4 @@ export function watchTemplates(userId, watcherKey, callback) {
             })
             callback(templates)
         })
-}
-
-export function updateLastLoggedUserDate() {
-    const { projectIds, realArchivedProjectIds, realTemplateProjectIds } = store.getState().loggedUser
-    const uniqProjects = new Set([...projectIds, ...realArchivedProjectIds, ...realTemplateProjectIds])
-
-    const lastLoggedUserDate = Date.now()
-
-    uniqProjects.forEach(projectId => {
-        db.doc(`projects/${projectId}`).update({ lastLoggedUserDate, active: true })
-    })
 }

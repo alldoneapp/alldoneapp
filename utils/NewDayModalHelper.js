@@ -22,15 +22,8 @@ export function needToAcknowledgeNewDay(statisticsModalDate, now = Date.now()) {
 }
 
 /**
- * How long the new-day flow waits for its Firestore writes before reloading
- * the app (AT-2367).
- *
- * The wait exists only so the common online case reloads with the user
- * document already acked; it is never a correctness requirement, because
- * Firestore's IndexedDB persistence keeps an unacked mutation in the queue
- * across the reload. Offline the writes return immediately anyway
- * (`awaitWriteAck`), so this budget is only ever spent on a slow-but-alive
- * connection — exactly the mobile case that used to hang the popup.
+ * Give background writes a short head start. Reload safety is supplied by the
+ * durable recovery records and shared navigation lease, not by this timeout.
  */
 export const NEW_DAY_WRITE_GRACE_MS = 1200
 
@@ -101,12 +94,12 @@ export async function startNewDay({
         runAsync(() => persistAcknowledgement(statisticsModalDate), onError, 'persistAcknowledgement'),
     ])
 
+    await settleWithinBudget(writes, writeGraceMs, wait)
+
     if (typeof reloadApp !== 'function') {
-        await writes
         return { statisticsModalDate, reloaded: false }
     }
 
-    await settleWithinBudget(writes, writeGraceMs, wait)
     await runAsync(reloadApp, onError, 'reloadApp')
     return { statisticsModalDate, reloaded: true }
 }

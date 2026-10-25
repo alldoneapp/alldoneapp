@@ -8,15 +8,17 @@
  * apparent absence must be confirmed by an independent Firestore Lite direct read before it may
  * be reported as `missing`.
  */
+const mockGetIdToken = jest.fn(() => Promise.resolve('token'))
 jest.mock('firebase/compat/app', () => ({
     __esModule: true,
     default: {
-        auth: () => ({ currentUser: { uid: 'user-1' } }),
-        firestore: { FieldValue: { arrayRemove: jest.fn(), arrayUnion: jest.fn() } },
+        auth: () => ({ currentUser: { uid: 'user-1', getIdToken: (...args) => mockGetIdToken(...args) } }),
+        firestore: { FieldValue: { arrayRemove: jest.fn(), arrayUnion: jest.fn(), delete: () => 'delete-field' } },
     },
 }))
 
 const mockGetDb = jest.fn()
+const mockGlobalWatcherUnsub = {}
 const mockRestartFirestoreNetwork = jest.fn(() => Promise.resolve())
 const mockMapUserData = jest.fn((uid, data, isLoggedUser) => ({ uid, ...data, isLoggedUser }))
 jest.mock('../firestore', () => ({
@@ -33,7 +35,7 @@ jest.mock('../firestore', () => ({
     getObjectFollowersIds: jest.fn(),
     getProjectData: jest.fn(),
     getUserDataByUidOrEmail: jest.fn(),
-    globalWatcherUnsub: {},
+    globalWatcherUnsub: mockGlobalWatcherUnsub,
     inProductionEnvironment: jest.fn(),
 }))
 
@@ -43,7 +45,11 @@ jest.mock('../firestoreDirectRead', () => ({
 }))
 
 // Heavy transitive imports the module pulls in at load time but does not use in this path.
-jest.mock('../../../redux/store', () => ({ __esModule: true, default: { getState: () => ({}), dispatch: jest.fn() } }))
+const mockStoreGetState = jest.fn(() => ({}))
+jest.mock('../../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: (...args) => mockStoreGetState(...args), dispatch: jest.fn() },
+}))
 jest.mock('../../../redux/actions', () => ({}))
 jest.mock('../../../functions/BatchWrapper/batchWrapper', () => ({ BatchWrapper: class {} }))
 jest.mock('../../BackendBridge', () => ({ __esModule: true, default: {} }))
@@ -75,7 +81,15 @@ jest.mock('../../../components/SettingsView/SettingsHelper', () => ({}))
 jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({ __esModule: true, default: {} }))
 jest.mock('../../../components/Workstreams/WorkstreamHelper', () => ({ DEFAULT_WORKSTREAM_ID: 'ws' }))
 
-const { fetchUserDataResult } = require('./usersFirestore')
+const {
+    fetchUserDataResult,
+    resetSharedProjectUserWatchersForTests,
+    updateUserDataDirectly,
+    setUserOKRHiddenInAllProjectsToday,
+    clearUserOKRHiddenInAllProjectsToday,
+    clearUserOKRsHiddenInAllProjectsToday,
+    watchProjectUsers,
+} = require('./usersFirestore')
 
 const snapshot = ({ exists, data = null, fromCache = false, withMetadata = true }) => ({
     exists,
@@ -94,12 +108,210 @@ describe('fetchUserDataResult', () => {
     let consoleError
 
     beforeEach(() => {
+        resetSharedProjectUserWatchersForTests()
+        mockStoreGetState.mockReset()
+        mockStoreGetState.mockReturnValue({})
         mockGetDb.mockReset()
         mockMapUserData.mockClear()
         mockRestartFirestoreNetwork.mockClear()
+        mockGetIdToken.mockClear()
+        mockGetIdToken.mockResolvedValue('token')
         mockReadDocumentDirectlyFromServer.mockReset()
+        Object.keys(mockGlobalWatcherUnsub).forEach(key => delete mockGlobalWatcherUnsub[key])
         consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
         consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    it('does not read Redux state for a personal update without a project mutation', async () => {
+        const update = jest.fn(() => Promise.resolve())
+        mockGetDb.mockReturnValue({ doc: jest.fn(() => ({ update })) })
+
+        await updateUserDataDirectly('user-1', { activeTaskId: 'task-1' })
+
+        expect(mockStoreGetState).not.toHaveBeenCalled()
+        expect(update).toHaveBeenCalledWith({ activeTaskId: 'task-1' })
+    })
+
+    it.each([
+        ['hide', () => setUserOKRHiddenInAllProjectsToday('user-1', 'p1', 'o1', '2026-10-05'), '2026-10-05'],
+        ['restore', () => clearUserOKRHiddenInAllProjectsToday('user-1', 'p1', 'o1'), 'delete-field'],
+        ['restore all', () => clearUserOKRsHiddenInAllProjectsToday('user-1', 'p1', ['o1']), 'delete-field'],
+    ])('waits for Firestore acknowledgement and propagates %s failures', async (_name, write, value) => {
+        mockStoreGetState.mockReturnValue({ loggedUser: { uid: 'user-1' }, okrTodayOperations: {} })
+        let rejectWrite
+        const update = jest.fn(
+            () =>
+                new Promise((_resolve, reject) => {
+                    rejectWrite = reject
+                })
+        )
+        mockGetDb.mockReturnValue({ doc: jest.fn(() => ({ update })) })
+        let settled = false
+        const result = write()
+        const rejection = expect(result).rejects.toThrow('permission denied')
+        result.then(
+            () => {
+                settled = true
+            },
+            () => {
+                settled = true
+            }
+        )
+        await Promise.resolve()
+        expect(settled).toBe(false)
+        expect(update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                'okrsHiddenInAllProjectsTodayByProjectAndOkr.p1.o1': value,
+            })
+        )
+        rejectWrite(new Error('permission denied'))
+        await rejection
+    })
+
+    it('watches the authoritative project member ids without an unsafe users collection query', async () => {
+        const listeners = {}
+        const unsubscribers = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                unsubscribers[path] = jest.fn()
+                return unsubscribers[path]
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+        listeners['projects/project-1'].next({ exists: true, data: () => ({ userIds: ['user-1', 'user-2'] }) })
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).not.toHaveBeenCalled()
+
+        listeners['users/user-2'].next(snapshot({ exists: true, data: { displayName: 'Two' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One', isLoggedUser: false },
+            { uid: 'user-2', displayName: 'Two', isLoggedUser: false },
+        ])
+
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One updated' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One updated', isLoggedUser: false },
+            { uid: 'user-2', displayName: 'Two', isLoggedUser: false },
+        ])
+
+        listeners['projects/project-1'].next({ exists: true, data: () => ({ userIds: ['user-1', 'user-3'] }) })
+        expect(unsubscribers['users/user-2']).toHaveBeenCalledTimes(1)
+        listeners['users/user-3'].next(snapshot({ exists: true, data: { displayName: 'Three' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One updated', isLoggedUser: false },
+            { uid: 'user-3', displayName: 'Three', isLoggedUser: false },
+        ])
+
+        mockGlobalWatcherUnsub['project-1Users']()
+        expect(unsubscribers['projects/project-1']).toHaveBeenCalledTimes(1)
+        expect(unsubscribers['users/user-1']).toHaveBeenCalledTimes(1)
+        expect(unsubscribers['users/user-3']).toHaveBeenCalledTimes(1)
+        expect(doc).not.toHaveBeenCalledWith('users')
+    })
+
+    it('omits a stale unreadable member without stalling the project user list', async () => {
+        const listeners = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                return jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+        listeners['projects/project-1'].next({
+            exists: true,
+            data: () => ({ userIds: ['user-1', 'stale-user'] }),
+        })
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).not.toHaveBeenCalled()
+
+        listeners['users/stale-user'].error({ code: 'permission-denied' })
+
+        expect(callback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'One', isLoggedUser: false }])
+        expect(consoleWarn).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    it('starts member listeners from the project already loaded in redux', async () => {
+        const listeners = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                return jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        mockStoreGetState.mockReturnValue({
+            loggedUserProjectsMap: { 'project-1': { userIds: ['user-1'] } },
+        })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+
+        expect(listeners['users/user-1']).toBeDefined()
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'One', isLoggedUser: false }])
+    })
+
+    it('shares one user document listener across project sections', async () => {
+        const listeners = {}
+        const userUnsubscribe = jest.fn()
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = listeners[path] || []
+                listeners[path].push({ next, error })
+                return path === 'users/user-1' ? userUnsubscribe : jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        mockStoreGetState.mockReturnValue({
+            loggedUserProjectsMap: {
+                'project-1': { userIds: ['user-1'] },
+                'project-2': { userIds: ['user-1'] },
+            },
+        })
+        const firstCallback = jest.fn()
+        const secondCallback = jest.fn()
+
+        await watchProjectUsers('project-1', firstCallback, 'project-1Users')
+        await watchProjectUsers('project-2', secondCallback, 'project-2Users')
+
+        expect(listeners['users/user-1']).toHaveLength(1)
+        listeners['users/user-1'][0].next(snapshot({ exists: true, data: { displayName: 'Shared' } }))
+        expect(firstCallback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'Shared', isLoggedUser: false }])
+        expect(secondCallback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'Shared', isLoggedUser: false }])
+
+        mockGlobalWatcherUnsub['project-1Users']()
+        expect(userUnsubscribe).not.toHaveBeenCalled()
+        mockGlobalWatcherUnsub['project-2Users']()
+        expect(userUnsubscribe).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports an authoritative project-listener failure to the loader', async () => {
+        const listeners = {}
+        mockGetDb.mockReturnValue({
+            doc: jest.fn(path => ({
+                onSnapshot: (next, error) => {
+                    listeners[path] = { next, error }
+                    return jest.fn()
+                },
+            })),
+        })
+        const onError = jest.fn()
+
+        await watchProjectUsers('project-1', jest.fn(), 'project-1Users', { onError })
+        const error = { code: 'permission-denied' }
+        listeners['projects/project-1'].error(error)
+
+        expect(onError).toHaveBeenCalledWith(error)
+        expect(consoleError).not.toHaveBeenCalled()
     })
 
     afterEach(() => {
@@ -149,7 +361,7 @@ describe('fetchUserDataResult', () => {
 
         const result = await fetchUserDataResult('user-1', true)
 
-        expect(result).toEqual({ user: null, missing: true, error: null })
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: true })
         expect(db.get).toHaveBeenCalledTimes(1)
         expect(consoleError).toHaveBeenCalled()
     })
@@ -163,7 +375,7 @@ describe('fetchUserDataResult', () => {
         const result = await fetchUserDataResult('user-1', true)
 
         // missing:false is what keeps the caller retrying instead of overwriting users/{uid}.
-        expect(result).toEqual({ user: null, missing: false, error: offline })
+        expect(result).toEqual({ user: null, missing: false, error: offline, verified: false })
         expect(consoleError).not.toHaveBeenCalled()
     })
 
@@ -206,16 +418,234 @@ describe('fetchUserDataResult', () => {
         expect(result.missing).toBe(false)
     })
 
-    it('still reports a failed first read as an error rather than a missing account', async () => {
-        const denied = new Error('permission-denied')
+    it('still reports a non-permission read failure as an error rather than a missing account', async () => {
+        const unavailable = Object.assign(new Error('network unavailable'), { code: 'unavailable' })
+        mockGetDb.mockReturnValue({
+            doc: () => ({
+                get: () => Promise.reject(unavailable),
+            }),
+        })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result).toEqual({ user: null, missing: false, error: unavailable, verified: false })
+    })
+
+    it('keeps an expected unrelated-user permission denial quiet for role resolution', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
         mockGetDb.mockReturnValue({
             doc: () => ({
                 get: () => Promise.reject(denied),
             }),
         })
 
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    it('does not trust a cached unrelated-user profile that the server now denies', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        mockGetDb.mockReturnValue(
+            buildDb({
+                first: snapshot({
+                    exists: true,
+                    data: { email: 'private-admin@example.com' },
+                    fromCache: true,
+                }),
+            })
+        )
+        mockReadDocumentDirectlyFromServer.mockRejectedValue(denied)
+
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+        expect(mockMapUserData).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    it('uses server data when an unrelated cached user remains readable', async () => {
+        mockGetDb.mockReturnValue(
+            buildDb({
+                first: snapshot({
+                    exists: true,
+                    data: { email: 'stale@example.com' },
+                    fromCache: true,
+                }),
+            })
+        )
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { email: 'current@example.com' },
+        })
+
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result.user).toEqual({
+            uid: 'administrator',
+            email: 'current@example.com',
+            isLoggedUser: false,
+        })
+    })
+
+    it('refreshes the own-user token once when the first Firestore read is denied', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest
+            .fn()
+            .mockRejectedValueOnce(denied)
+            .mockResolvedValueOnce(snapshot({ exists: true, data: { email: 'a@b.c' } }))
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+
         const result = await fetchUserDataResult('user-1', true)
 
-        expect(result).toEqual({ user: null, missing: false, error: denied })
+        expect(result.user).toEqual({ uid: 'user-1', email: 'a@b.c', isLoggedUser: true })
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(1)
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(2, true)
+        expect(get).toHaveBeenCalledTimes(2)
+    })
+
+    it('uses the authenticated direct read when Firestore still denies the own user after token refresh', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest.fn().mockRejectedValue(denied)
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { email: 'a@b.c', defaultProjectId: 'project-1' },
+        })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result).toEqual({
+            user: { uid: 'user-1', email: 'a@b.c', defaultProjectId: 'project-1', isLoggedUser: true },
+            missing: false,
+            error: null,
+            verified: true,
+        })
+        expect(get).toHaveBeenCalledTimes(2)
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(2, true)
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledWith('users/user-1')
+        expect(mockRestartFirestoreNetwork).toHaveBeenCalledWith('adopt the authenticated user during login')
+    })
+
+    it('recognizes a genuinely new user when the direct read confirms no user document', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest.fn().mockRejectedValue(denied)
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: true })
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledTimes(1)
+        expect(mockRestartFirestoreNetwork).toHaveBeenCalledTimes(1)
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+})
+
+/**
+ * AT-2428. Resolving an id that may equally be a contact, an assistant or a workstream is a PROBE,
+ * and for a probe "not a user" is an ordinary answer. Production paid a REST round trip and logged
+ * `User document not found in Firestore: /users/...` as a console ERROR for every one of them,
+ * which is what made an ordinary contact navigation look like a broken account.
+ *
+ * The safety net must not be weakened by that: a probe may only answer cheaply, and a caller with
+ * nothing to explain the absence escalates to the verified read, which is still the only thing
+ * allowed to say `verified: true`.
+ */
+describe('fetchUserDataResult probes (absenceIsExpected)', () => {
+    let consoleWarn
+    let consoleError
+
+    beforeEach(() => {
+        mockGetDb.mockReset()
+        mockMapUserData.mockClear()
+        mockRestartFirestoreNetwork.mockClear()
+        mockReadDocumentDirectlyFromServer.mockReset()
+        consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        consoleWarn.mockRestore()
+        consoleError.mockRestore()
+    })
+
+    it('answers a missing document without the verification round trip or an error log', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+
+        const result = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: false })
+        expect(mockReadDocumentDirectlyFromServer).not.toHaveBeenCalled()
+        expect(mockRestartFirestoreNetwork).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+        expect(consoleWarn).not.toHaveBeenCalled()
+    })
+
+    it('marks the cheap answer unverified so an escalating caller can tell the two apart', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+        const probe = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        mockGetDb.mockReturnValue(buildDb({ first: snapshot({ exists: false }) }))
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+        const escalated = await fetchUserDataResult('contact-1', false)
+
+        expect(probe.verified).toBe(false)
+        expect(escalated.verified).toBe(true)
+        expect(escalated.missing).toBe(true)
+    })
+
+    it('still returns an existing user normally', async () => {
+        const db = buildDb({ first: snapshot({ exists: true, data: { email: 'a@b.c' } }) })
+        mockGetDb.mockReturnValue(db)
+
+        const result = await fetchUserDataResult('user-1', false, { absenceIsExpected: true })
+
+        expect(result.user).toEqual({ uid: 'user-1', email: 'a@b.c', isLoggedUser: false })
+        expect(result.missing).toBe(false)
+        expect(result.verified).toBe(true)
+    })
+
+    it('still reports a failed read as an error rather than a missing user', async () => {
+        const denied = new Error('permission-denied')
+        mockGetDb.mockReturnValue({ doc: () => ({ get: () => Promise.reject(denied) }) })
+
+        const result = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        // A probe is allowed to skip the CONFIRMATION of an absence, never to turn a broken read
+        // into one: `missing` stays false so the caller does not conclude "no such user".
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+    })
+
+    it('leaves the logged-user path fully verified and loud', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledWith('users/user-1')
+        expect(consoleError).toHaveBeenCalled()
+        expect(result.missing).toBe(true)
+        expect(result.verified).toBe(true)
     })
 })

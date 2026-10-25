@@ -12,7 +12,7 @@ const CI_CONFIG = yaml.load(fs.readFileSync(path.join(REPO_ROOT, '.gitlab-ci.yml
 const SUPERSEDED_EXIT_CODE = 75
 
 // A job "deploys" if it runs one of these. Read-only checks and endpoint pings do not count.
-const DEPLOY_COMMAND = /firebase deploy|deploy\.sh/
+const DEPLOY_COMMAND = /firebase deploy|deploy\.sh|runFunctionsDeployment\.js/
 const RUNS_ON_DEFAULT_BRANCH = /==\s*\$CI_DEFAULT_BRANCH/
 
 /**
@@ -68,6 +68,18 @@ const OLDER = 'b'.repeat(40)
 // No API fallback configured, so the fake git is the only probe the guard can use.
 const baseEnv = { CI_COMMIT_BRANCH: 'master', CI_COMMIT_SHA: OLDER }
 
+describe('dependency images used by jobs with explicit needs', () => {
+    // A needs list bypasses stage ordering. Without the producer edge, these jobs
+    // pulled Node 22.23.3 while the patched build_base image was still building.
+    const consumers = jobEntries().filter(
+        ([, job]) => typeof job.image === 'string' && job.image.includes('/build_base:') && Array.isArray(job.needs)
+    )
+
+    it.each(consumers)('%s waits for its optional dependency-image rebuild', (name, job) => {
+        expect(job.needs).toEqual(expect.arrayContaining([{ job: 'modules_cache', optional: true }]))
+    })
+})
+
 describe('production deploy jobs are protected against out-of-order pipelines', () => {
     // The 2026-08-10 incident: a stale master pipeline ran `firebase deploy --only functions
     // --force` after a newer one, deleting two just-shipped callables and reverting a third.
@@ -82,12 +94,20 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
         expect(unguarded).toEqual([])
     })
 
-    it('covers the three known production deploy jobs', () => {
+    // A ratchet, not a description: a NEW production deploy job has to be added here
+    // deliberately, which is the moment to check it carries the guard, the exit code, the
+    // resource group and `interruptible: false` that the other cases in this file assert.
+    it('covers the four known production deploy jobs', () => {
         expect(
             productionDeployJobs()
                 .map(([name]) => name)
                 .sort()
-        ).toEqual(['deploy:cloud:functions:production', 'deploy:cloud:runner:production', 'deploy:web'])
+        ).toEqual([
+            'deploy:cloud:functions:production',
+            'deploy:cloud:runner:production',
+            'deploy:firestore:rules:production',
+            'deploy:web',
+        ])
     })
 
     it('runs the guard before the deploy command in each guarded job', () => {
@@ -111,6 +131,14 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
             expect(`${name}:${exitCodes.includes(SUPERSEDED_EXIT_CODE)}`).toBe(`${name}:true`)
             expect(`${name}:${job.allow_failure === true}`).toBe(`${name}:false`)
         }
+    })
+
+    it('does not leave the Firestore rules release waiting for an operator', () => {
+        const job = CI_CONFIG['deploy:firestore:rules:production']
+        const productionRule = job.rules.find(rule => RUNS_ON_DEFAULT_BRANCH.test(JSON.stringify(rule.if || '')))
+
+        expect(productionRule.when).not.toBe('manual')
+        expect(productionRule.allow_failure).not.toBe(true)
     })
 
     // A guarded deploy must still be non-interruptible; otherwise a newer commit cancels a

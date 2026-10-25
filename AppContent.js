@@ -1,19 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 
-import { LogOut, setInitialUrl, setResolvingSharedResource } from './redux/actions'
+import {
+    LogOut,
+    setInitialUrl,
+    setPendingWebShareTarget,
+    setResolvingSharedResource,
+    storeLoggedUser,
+} from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
+import WorkspaceOverlayLayer from './components/UIComponents/WorkspaceOverlayLayer'
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { isBrowserOffline } from './utils/connectionState'
 import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
 import { scheduleNotesOfflineCatchUp } from './utils/NotesOfflineCatchUp'
+import {
+    endNamedPerformanceTrace,
+    markNamedPerformanceTrace,
+    schedulePerformanceAfterPaint,
+} from './utils/performance/performanceLogger'
+import { finishAppBootConnectionWait } from './utils/performance/userWaitConnection'
 import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
@@ -30,11 +43,21 @@ import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoa
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
 import UndoActionBar from './components/Undo/UndoActionBar'
+import { cleanWebShareTargetParamsFromCurrentUrl, loadPendingWebShareTarget } from './utils/webShareTarget'
+import { ensureIosShareExtensionCredential } from './utils/iosShareExtensionCredential'
+import { runBootIntegrityCheck } from './utils/InitialLoad/bootIntegrityHealer'
+import useDeferredStartupWork, { useInitialTaskDataPublished } from './hooks/useDeferredStartupWork'
+import { warmTypesenseSearchCredentials } from './utils/typesenseSearch'
 
 // A failing initial data load is retried a few times before the user is told about it - and the
 // session is kept in every case (see handleLoginFailure).
 const MAX_LOGIN_ATTEMPTS = 3
 const LOGIN_RETRY_DELAY_MS = 3000
+
+// Capture this synchronously, before the login screen or URL router can replace
+// the incoming share-target URL. The payload itself is consumed only after the
+// All Projects add-task popup has opened.
+const pendingWebShareTargetAtBoot = loadPendingWebShareTarget()
 
 const getCurrentUrl = () => `${window.location.pathname}${window.location.search}`
 
@@ -54,6 +77,7 @@ const resolvePublicPageUrl = () => {
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
     // NOTE: the dismissible-touch DOM capture listener that master's incident
     // fix installed here lives in AppNavigator's AppContainer on this branch —
     // one listener only, or every press dismisses twice.
@@ -64,6 +88,8 @@ export default function AppContent() {
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [publicPageUrl] = useState(resolvePublicPageUrl)
     const [connectingMessage] = useState(() => getConnectingMessage())
+    const initialTaskDataPublished = useInitialTaskDataPublished()
+    const deferredStartupWorkReady = useDeferredStartupWork({ enabled: loggedIn && processedInitialURL })
     // onAuthStateChanged can fire again while an initial load (incl. its retries) is still
     // running. Two concurrent loads race on the same watchers and redux state, so the second one
     // for the same user is ignored.
@@ -121,53 +147,24 @@ export default function AppContent() {
         } catch (error) {
             console.error('❌ Failed to recover user account:', error)
 
-            // Show error dialog with options
-            const userChoice = confirm(
-                `Your account is in an inconsistent state and automatic recovery failed.\n\n` +
-                    `Error: ${error.message || 'Unknown error'}\n\n` +
-                    `Would you like to:\n` +
-                    `• Click OK to delete your authentication and start fresh\n` +
-                    `• Click Cancel to try logging in again later\n\n` +
-                    `If this problem persists, please contact support with your email: ${email}`
-            )
-
-            if (userChoice) {
-                // User chose to delete auth and start fresh
-                try {
-                    console.log('User chose to delete auth - attempting to delete Firebase Auth user...')
-                    await firebaseUser.delete()
-                    console.log('✅ Firebase Auth user deleted successfully')
-                    alert(
-                        'Your authentication has been reset. You can now sign up again with a fresh account.\n\n' +
-                            'If you had important data, please contact support.'
-                    )
-                } catch (deleteError) {
-                    console.error('Failed to delete Firebase Auth user:', deleteError)
-                    // If delete fails, at least sign them out
-                    try {
-                        await new Promise(resolve => Backend.logout(resolve))
-                    } catch (e) {
-                        console.error('Logout failed:', e)
-                    }
-                    alert(
-                        'Could not delete your authentication. You have been logged out.\n\n' +
-                            'Please contact support with your email: ' +
-                            email
-                    )
-                }
-            } else {
-                // User chose to try again later
-                try {
-                    await new Promise(resolve => Backend.logout(resolve))
-                } catch (e) {
-                    console.error('Logout failed:', e)
-                }
-                alert(
-                    'You have been logged out. Please try logging in again or contact support if the problem persists.'
-                )
+            // Provisioning is multi-stage. If the authoritative user/project batch succeeded and
+            // a supplementary step failed afterwards, continue with that valid account instead of
+            // offering to delete its Auth identity and leaving orphaned Firestore data behind.
+            const recovered = await loadGlobalDataAndGetUserResult(userId)
+            if (recovered.user) {
+                await loadInitialDataForLoggedUser(recovered.user)
+                console.warn('Signup completed with a supplementary provisioning error; using the recovered account.')
+                return true
             }
 
-            return false
+            // Keep the Auth identity. A missing document can be retried safely on the next login;
+            // deleting Auth here is destructive and made partial signup failures unrecoverable.
+            const recoveryError = new Error(
+                `Account setup for ${email || userId} did not complete. The authentication was preserved; ` +
+                    'please retry the login.'
+            )
+            recoveryError.cause = error
+            throw recoveryError
         }
     }
 
@@ -241,10 +238,17 @@ export default function AppContent() {
             await processNewUser(firebaseUser)
         } else {
             try {
-                const { user, missing, error } = await loadGlobalDataAndGetUserResult(userId)
+                const { user, missing, error, deferredUserResult } = await loadGlobalDataAndGetUserResult(userId)
 
                 if (user) {
+                    markNamedPerformanceTrace('app_boot', 'user_loaded', {
+                        project_count: Array.isArray(user.projectIds) ? user.projectIds.length : 0,
+                        from_cache: !!deferredUserResult,
+                    })
                     await loadInitialDataForLoggedUser(user)
+                    markNamedPerformanceTrace('app_boot', 'initial_data_loaded', {
+                        project_count: Array.isArray(user.projectIds) ? user.projectIds.length : 0,
+                    })
                     // Warm the offline note-content cache once the session is idle
                     // (OFFLINE_SUPPORT_PLAN.md notes follow-ups); also re-runs on
                     // reconnect. Fire-and-forget by design.
@@ -258,6 +262,32 @@ export default function AppContent() {
                     // the first note save already has it. Fire-and-forget: every
                     // caller falls back to the client clock (AT-2340).
                     syncServerClock().catch(() => {})
+
+                    if (deferredUserResult) {
+                        deferredUserResult
+                            .then(async freshResult => {
+                                // A sign-out or account switch supersedes this boot's refresh.
+                                const currentState = store.getState()
+                                if (currentState.loggedUser?.uid !== userId) return
+
+                                if (freshResult.user) {
+                                    store.dispatch(storeLoggedUser({ ...currentState.loggedUser, ...freshResult.user }))
+                                    await runBootIntegrityCheck({ trigger: 'cached_user_refresh' })
+                                } else if (freshResult.missing) {
+                                    // Preserve the old authoritative-missing behavior. The cache
+                                    // accelerates rendering; it never masks a deleted user doc.
+                                    await handleMissingUserDocument(firebaseUser)
+                                } else if (freshResult.error) {
+                                    console.warn(
+                                        'Current user data could not be refreshed after cached startup.',
+                                        freshResult.error
+                                    )
+                                }
+                            })
+                            .catch(refreshError =>
+                                console.warn('Current user background refresh failed:', refreshError)
+                            )
+                    }
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.
@@ -279,6 +309,9 @@ export default function AppContent() {
     }
 
     const onInitFirabase = async firebaseUser => {
+        markNamedPerformanceTrace('app_boot', 'auth_resolved', {
+            outcome: firebaseUser && !firebaseUser.isAnonymous ? 'signed_in' : 'signed_out',
+        })
         if (firebaseUser && !firebaseUser.isAnonymous) {
             if (loginInProgressUid.current === firebaseUser.uid) {
                 console.log('Login already in progress for this user, ignoring the repeated auth event')
@@ -292,6 +325,7 @@ export default function AppContent() {
             }
         } else {
             loginInProgressUid.current = null
+            finishAppBootConnectionWait()
             await logoutUser()
         }
     }
@@ -306,19 +340,47 @@ export default function AppContent() {
     }
 
     useEffect(() => {
-        if (publicPageUrl) store.dispatch(setInitialUrl(publicPageUrl))
+        if (publicPageUrl) {
+            finishAppBootConnectionWait()
+            store.dispatch(setInitialUrl(publicPageUrl))
+        }
     }, [publicPageUrl])
 
     useEffect(() => {
+        if (pendingWebShareTargetAtBoot) {
+            store.dispatch(setPendingWebShareTarget(pendingWebShareTargetAtBoot))
+        }
+        cleanWebShareTargetParamsFromCurrentUrl()
+    }, [])
+
+    useEffect(() => {
+        if (!loggedIn || !loggedUserId) return
+        ensureIosShareExtensionCredential(loggedUserId).catch(error =>
+            console.warn('Could not prepare the iOS share extension', error)
+        )
+    }, [loggedIn, loggedUserId])
+
+    useEffect(() => {
+        // Public booking pages use only the unauthenticated /api/booking endpoints. Initializing
+        // Firebase Auth here injects Google's hidden gapi iframe even though the page has no login
+        // surface; that iframe registers a deprecated unload handler and makes Chrome report a
+        // permissions-policy violation. Keep the public page genuinely independent of Firebase.
+        if (publicPageUrl) {
+            finishAppBootConnectionWait()
+            return undefined
+        }
+
         initFirebase()
         // Initialize IP registry in background after Firebase auth
-        setTimeout(() => {
+        const ipRegistryTimer = setTimeout(() => {
             initIpRegistry()
         }, 100)
         return () => {
+            clearTimeout(ipRegistryTimer)
+            finishAppBootConnectionWait()
             unwatch('userProjectWatcherUnsubKey')
         }
-    }, [])
+    }, [publicPageUrl])
 
     // Once the anonymous visitor has been forwarded off the login screen (to the resource view or
     // the private-resource page), clear the resolving flag so the login UI can render normally if
@@ -329,20 +391,58 @@ export default function AppContent() {
         }
     }, [navigationRoute])
 
-    // Defer loading of heavy components for better initial performance
+    // My Day mirrors start several task listeners per active project. Keep them
+    // out of the first task board's network window and release them when the
+    // first task stream publishes (or the bounded non-task-route fallback).
     useEffect(() => {
-        if (loggedIn && processedInitialURL) {
+        if (loggedIn && processedInitialURL && deferredStartupWorkReady) {
             // Delay mounting heavy components by 100ms to allow UI to render first
             const timer = setTimeout(() => {
                 setHeavyComponentsLoaded(true)
             }, 100)
             return () => clearTimeout(timer)
         }
+        setHeavyComponentsLoaded(false)
+    }, [deferredStartupWorkReady, loggedIn, processedInitialURL])
+
+    // The first Typesense search otherwise has to wait for a cold callable request that creates a
+    // short-lived, user-scoped key. Start that handshake after foreground task data has settled;
+    // the Search modal repeats this best-effort warm-up and both paths share one in-flight request.
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL || !deferredStartupWorkReady) return
+        warmTypesenseSearchCredentials()
+    }, [deferredStartupWorkReady, loggedIn, processedInitialURL])
+
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL) return undefined
+        return schedulePerformanceAfterPaint(() => {
+            markNamedPerformanceTrace('app_boot', 'app_shell_ready', {
+                project_count: Array.isArray(store.getState().loggedUser?.projectIds)
+                    ? store.getState().loggedUser.projectIds.length
+                    : 0,
+            })
+            finishAppBootConnectionWait()
+        })
     }, [loggedIn, processedInitialURL])
+
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL || !deferredStartupWorkReady) return undefined
+        return schedulePerformanceAfterPaint(() => {
+            endNamedPerformanceTrace('app_boot', 'task_data_ready', {
+                outcome: 'success',
+                source: initialTaskDataPublished ? 'task_stream' : 'fallback',
+                project_count: Array.isArray(store.getState().loggedUser?.projectIds)
+                    ? store.getState().loggedUser.projectIds.length
+                    : 0,
+            })
+        })
+    }, [deferredStartupWorkReady, initialTaskDataPublished, loggedIn, processedInitialURL])
 
     return (
         <>
-            <AnalyticsConsentManager />
+            <WorkspaceOverlayLayer>
+                <AnalyticsConsentManager />
+            </WorkspaceOverlayLayer>
             {loggedIn === null && !publicPageUrl ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
@@ -354,8 +454,11 @@ export default function AppContent() {
                     {loggedIn && processedInitialURL && (
                         <>
                             <GlobalModalsContainerApp />
-                            <UndoActionBar />
-                            <EndDayStatisticsModal />
+                            <WorkspaceOverlayLayer>
+                                <UndoActionBar />
+                                {/* Keep the day lifecycle mounted across assistant layout changes. */}
+                                <EndDayStatisticsModal />
+                            </WorkspaceOverlayLayer>
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

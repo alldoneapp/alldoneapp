@@ -19,19 +19,30 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Provider } from 'react-redux'
 
+jest.mock('react-native-gesture-handler', () => require('react-native'))
+jest.mock('react-native-gesture-handler/Swipeable', () => ({
+    __esModule: true,
+    default: ({ children }) => children,
+}))
+jest.mock('../UIComponents/Spinner', () => () => null)
+
 import store from '../../redux/store'
 import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
-import { ScopeChip, ToggleChip, CREATED_BY_ME_CHIP_LABEL } from './Filter/SearchFilterChips'
+import { ScopeChip, ToggleChip, CREATED_BY_ME_CHIP_LABEL, OPEN_TASKS_CHIP_LABEL } from './Filter/SearchFilterChips'
 import { translate } from '../../i18n/TranslationService'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
+import ResultLists from './ResultLists/ResultLists'
+import { MENTION_MODAL_GOALS_TAB, MENTION_MODAL_TASKS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
+import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
 const searchCalls = []
 
-// The search batches all five tabs into one multi_search call; capturing each entry
-// separately keeps the assertions per-index.
+// The search batches the five original tabs into one multi_search call and searches
+// artifacts in a second one; capturing each entry separately keeps the assertions per-index.
 jest.mock('../../utils/typesenseSearch', () => ({
+    warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => {
         searches.forEach(({ collection, query, filterBy }) => {
             searchCalls.push({ indexName: collection, text: query, filters: filterBy })
@@ -47,9 +58,7 @@ const assistantExclusionConjunct = 'isAssistant:=false'
 const PROJECT = { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } }
 
 jest.mock('../../utils/backends/firestore', () => {
-    const actual = jest.requireActual('../../utils/backends/firestore')
     return {
-        ...actual,
         getAllUserProjects: jest.fn(async () => [
             { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } },
         ]),
@@ -86,6 +95,7 @@ const CREATOR_ATTRIBUTE_BY_INDEX = {
     dev_notes: 'userId',
     dev_contacts: 'recorderUserId',
     dev_updates: 'creatorId',
+    dev_artifacts: 'userId',
 }
 
 describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
@@ -93,7 +103,13 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
     const mount = async (storeOverrides = {}) => {
         store.dispatch(
-            overrideStore({ ...store.getState(), loggedUser, loggedUserProjects: [PROJECT], ...storeOverrides })
+            overrideStore({
+                ...store.getState(),
+                loggedUser,
+                loggedUserProjects: [PROJECT],
+                route: DV_TAB_ROOT_TASKS,
+                ...storeOverrides,
+            })
         )
         store.dispatch(showGlobalSearchPopup(false))
         await act(async () => {
@@ -125,6 +141,9 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
     const createdByMeChip = () =>
         component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-created-by-me')
 
+    const openTasksChip = () =>
+        component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-open-tasks')
+
     // Presses the chip the way the user does, rather than calling a state setter,
     // so the assertion covers the wiring and not just the reducer.
     const setCreatedByMe = async value => {
@@ -144,7 +163,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await mount()
         await search('invoice')
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).toContain(projectConjunct('project-1'))
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
@@ -193,7 +212,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(true)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         expect(Object.keys(CREATOR_ATTRIBUTE_BY_INDEX).sort()).toEqual(searchCalls.map(c => c.indexName).sort())
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
@@ -241,9 +260,54 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(false)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
+    })
+
+    it('shows the open-tasks chip only on Tasks and keeps its state across tab switches', async () => {
+        await mount()
+
+        expect(openTasksChip().props.selected).toBe(false)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(OPEN_TASKS_CHIP_LABEL))
+
+        await act(async () => openTasksChip().props.onPress())
+        expect(openTasksChip().props.selected).toBe(true)
+
+        await act(async () => component.root.findByType(ResultLists).props.setActiveTab(MENTION_MODAL_GOALS_TAB))
+        expect(openTasksChip()).toBeUndefined()
+
+        await act(async () => component.root.findByType(ResultLists).props.setActiveTab(MENTION_MODAL_TASKS_TAB))
+        expect(openTasksChip().props.selected).toBe(true)
+    })
+
+    it('immediately re-runs the current search with done=false only on the task index', async () => {
+        await mount()
+        await search('invoice')
+        searchCalls.length = 0
+
+        await act(async () => openTasksChip().props.onPress())
+
+        expect(searchCalls).toHaveLength(6)
+        searchCalls.forEach(call => {
+            expect(call.text).toBe('invoice')
+            if (call.indexName === 'dev_tasks') {
+                expect(call.filters).toContain('done:=false')
+            } else {
+                expect(call.filters).not.toContain('done:=false')
+            }
+        })
+    })
+
+    it('resets the open-tasks filter when the search popup is opened again', async () => {
+        await mount()
+        await act(async () => openTasksChip().props.onPress())
+        expect(openTasksChip().props.selected).toBe(true)
+
+        act(() => component.unmount())
+        await mount()
+
+        expect(openTasksChip().props.selected).toBe(false)
     })
 })

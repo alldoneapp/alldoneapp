@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import StopAssistantRunButton, { canStopAssistantRun } from './StopAssistantRunButton'
 import { resetStopRequests } from './stopAssistantRunRequests'
@@ -86,6 +86,10 @@ describe('StopAssistantRunButton', () => {
         const tree = renderButton({ objectType: 'goals', objectId: 'goal-9', commentId: 'comment-9' })
 
         expect(buttonLabel(tree)).toBe('Stop')
+        expect(stopButton(tree).props.accessibilityRole).toBe('button')
+        expect(stopButton(tree).props.accessibilityLabel).toBe('Stop assistant')
+        expect(stopButton(tree).props['aria-busy']).toBe(false)
+        expect(stopButton(tree).props.disabled).toBe(false)
 
         await act(async () => {
             await stopButton(tree).props.onPress()
@@ -102,6 +106,16 @@ describe('StopAssistantRunButton', () => {
         })
         expect(buttonLabel(tree)).toBe('Stopping…')
         expect(stopButton(tree).props.disabled).toBe(true)
+        expect(stopButton(tree).props.accessibilityLabel).toBe('Stopping…')
+        expect(stopButton(tree).props['aria-busy']).toBe(true)
+    })
+
+    test.each(['light', 'dark'])('provides a touch target that fits the %s activity card', appearance => {
+        const tree = renderButton({ variant: 'card', appearance })
+        expect(StyleSheet.flatten(stopButton(tree).props.style)).toEqual(
+            expect.objectContaining({ minHeight: 44, minWidth: 44, maxWidth: '100%', marginTop: 0 })
+        )
+        act(() => tree.unmount())
     })
 
     test('sends one cancel only, however often the button is pressed', async () => {

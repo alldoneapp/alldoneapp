@@ -3,8 +3,10 @@ const FOLLOWER_GOALS_TYPE = 'goals'
 const FOLLOWER_CONTACTS_TYPE = 'contacts'
 const FOLLOWER_NOTES_TYPE = 'notes'
 const FOLLOWER_ASSISTANTS_TYPE = 'assistants'
+const FOLLOWER_ARTIFACTS_TYPE = 'artifacts'
 
 module.exports = {
+    FOLLOWER_ARTIFACTS_TYPE,
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_TASKS_TYPE,
     FOLLOWER_GOALS_TYPE,

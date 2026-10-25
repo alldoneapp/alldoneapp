@@ -1,7 +1,8 @@
 import store from '../../redux/store'
 import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
-import { loadGlobalData, watchProjectData } from './initialLoadHelper'
+import { getActiveGlobalDataLoadPromise, loadGlobalData, watchProjectData } from './initialLoadHelper'
+import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
 import {
     resetBootIntegrityHealerForTests,
     runBootIntegrityCheck,
@@ -10,6 +11,7 @@ import {
 
 jest.mock('../../redux/store', () => ({
     getState: jest.fn(),
+    subscribe: jest.fn(),
 }))
 
 jest.mock('../backends/firestore', () => ({
@@ -22,8 +24,13 @@ jest.mock('./projectRecovery', () => ({
 }))
 
 jest.mock('./initialLoadHelper', () => ({
+    getActiveGlobalDataLoadPromise: jest.fn(),
     loadGlobalData: jest.fn(),
     watchProjectData: jest.fn(),
+}))
+
+jest.mock('../backends/firestoreDirectRead', () => ({
+    readDocumentDirectlyFromServer: jest.fn(),
 }))
 
 // The synchronous browser-level tell; the redux slice is still '' during early boot.
@@ -54,12 +61,21 @@ describe('runBootIntegrityCheck', () => {
             administratorUser: { uid: 'admin-1' },
         }
         store.getState.mockImplementation(() => state)
+        store.subscribe.mockReset()
+        store.subscribe.mockImplementation(() => jest.fn())
         getDb.mockReturnValue(buildDbMock())
+        readDocumentDirectlyFromServer.mockReset()
+        readDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { userId: 'admin-1' },
+        })
         recoverDroppedProject.mockReset()
         recoverDroppedProject.mockImplementation(async projectId => {
             state.loggedUserProjectsMap[projectId] = { id: projectId }
             return true
         })
+        getActiveGlobalDataLoadPromise.mockReset()
+        getActiveGlobalDataLoadPromise.mockReturnValue(null)
         loadGlobalData.mockReset()
         loadGlobalData.mockImplementation(async () => {
             state.administratorUser = { uid: 'admin-1' }
@@ -101,6 +117,40 @@ describe('runBootIntegrityCheck', () => {
         expect(recoverDroppedProject).not.toHaveBeenCalled()
         expect(loadGlobalData).not.toHaveBeenCalled()
         expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('stands down while connection health is stale or manually offline', async () => {
+        delete state.loggedUserProjectsMap.p2
+
+        state.connectionHealth = 'stale'
+        await runBootIntegrityCheck({ settleMs: 0 })
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+
+        state.connectionHealth = 'offline'
+        await runBootIntegrityCheck({ settleMs: 0 })
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+        expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('re-runs after manual offline is explicitly reconnected', async () => {
+        jest.useFakeTimers()
+        try {
+            state.connectionHealth = 'offline'
+            delete state.loggedUserProjectsMap.p2
+
+            await runBootIntegrityCheck({ settleMs: 0 })
+            const onStoreChange = store.subscribe.mock.calls[0][0]
+
+            state.connectionHealth = 'live'
+            onStoreChange()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(recoverDroppedProject).toHaveBeenCalledWith('p2')
+        } finally {
+            jest.useRealTimers()
+        }
     })
 
     // AT-2340. CHECK_DELAYS_MS are four ONE-SHOT timers armed once per user, and
@@ -186,14 +236,115 @@ describe('runBootIntegrityCheck', () => {
     it('reloads global data when the administrator user is empty but the role names one', async () => {
         state.administratorUser = {}
 
+        await runBootIntegrityCheck({ settleMs: 0, trigger: 'app_resume' })
+
+        expect(loadGlobalData).toHaveBeenCalledTimes(1)
+        expect(consoleWarn).toHaveBeenCalledWith(
+            '[BootIntegrity] Client state is missing expected data, repairing:',
+            expect.objectContaining({ administratorMissing: true, trigger: 'app_resume' })
+        )
+    })
+
+    it('does not report the Administrator missing while its global-data load is still running', async () => {
+        jest.useFakeTimers()
+        try {
+            state.administratorUser = {}
+            let finishGlobalDataLoad
+            const activeLoad = new Promise(resolve => {
+                finishGlobalDataLoad = resolve
+            })
+            getActiveGlobalDataLoadPromise.mockReturnValue(activeLoad)
+
+            await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+
+            expect(loadGlobalData).not.toHaveBeenCalled()
+            expect(consoleWarn).not.toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.anything()
+            )
+
+            state.administratorUser = { uid: 'admin-1' }
+            getActiveGlobalDataLoadPromise.mockReturnValue(null)
+            finishGlobalDataLoad()
+            await Promise.resolve()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(loadGlobalData).not.toHaveBeenCalled()
+            expect(consoleWarn).not.toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.anything()
+            )
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('still repairs missing projects immediately while the global-data load is running', async () => {
+        state.administratorUser = {}
+        delete state.loggedUserProjectsMap.p2
+        getActiveGlobalDataLoadPromise.mockReturnValue(new Promise(() => {}))
+
+        await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+
+        expect(recoverDroppedProject).toHaveBeenCalledWith('p2')
+        expect(loadGlobalData).not.toHaveBeenCalled()
+        expect(consoleWarn).toHaveBeenCalledWith(
+            '[BootIntegrity] Client state is missing expected data, repairing:',
+            expect.objectContaining({
+                missingProjectIds: ['p2'],
+                administratorMissing: false,
+                trigger: 'cached_user_refresh',
+            })
+        )
+    })
+
+    it('rechecks and repairs when the completed global-data load still left the Administrator missing', async () => {
+        jest.useFakeTimers()
+        try {
+            state.administratorUser = {}
+            let finishGlobalDataLoad
+            const activeLoad = new Promise(resolve => {
+                finishGlobalDataLoad = resolve
+            })
+            getActiveGlobalDataLoadPromise.mockReturnValue(activeLoad)
+
+            await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+            expect(loadGlobalData).not.toHaveBeenCalled()
+
+            getActiveGlobalDataLoadPromise.mockReturnValue(null)
+            finishGlobalDataLoad()
+            await Promise.resolve()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(loadGlobalData).toHaveBeenCalledTimes(1)
+            expect(consoleWarn).toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.objectContaining({ administratorMissing: true, trigger: 'global_data_refresh' })
+            )
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('detects the missing administrator when only the direct role read finds it', async () => {
+        state.administratorUser = {}
+        getDb.mockReturnValue(buildDbMock({ roleUserId: null }))
+
         await runBootIntegrityCheck({ settleMs: 0 })
 
+        expect(readDocumentDirectlyFromServer).toHaveBeenCalledWith('roles/administrator')
         expect(loadGlobalData).toHaveBeenCalledTimes(1)
     })
 
     it('does not treat a missing administrator as an anomaly when no role is configured', async () => {
         state.administratorUser = {}
         getDb.mockReturnValue(buildDbMock({ roleUserId: null }))
+        readDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
 
         await runBootIntegrityCheck({ settleMs: 0 })
 

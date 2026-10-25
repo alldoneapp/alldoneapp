@@ -1,14 +1,10 @@
 let mockArrayUnion
 
-jest.mock(
-    'firebase-admin/firestore',
-    () => ({
-        FieldValue: {
-            arrayUnion: (...values) => mockArrayUnion(...values),
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: {
+        arrayUnion: (...values) => mockArrayUnion(...values),
+    },
+}))
 
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskFollowedFeed: jest.fn().mockResolvedValue(undefined),
@@ -105,5 +101,64 @@ describe('followerHelper', () => {
 
         expect(mockArrayUnion).toHaveBeenCalledWith('user-1')
         expect(chatUpdate).toHaveBeenCalledWith({ usersFollowing: { arrayUnion: 'user-1' } })
+    })
+
+    test('adds an artifact follower to the artifact so it shows in their Followed list', async () => {
+        const artifactSet = jest.fn()
+        firestoreDoc.mockImplementation(path => {
+            if (path === 'followers/project-1/artifacts/artifact-1') {
+                return { get: jest.fn().mockResolvedValue({ data: () => undefined }) }
+            }
+            if (path === 'artifactItems/project-1/artifacts/artifact-1') return { set: artifactSet }
+            if (path === 'chatObjects/project-1/chats/artifact-1') {
+                return { get: jest.fn().mockResolvedValue({ exists: false }) }
+            }
+            return {}
+        })
+
+        await tryAddFollower(
+            'project-1',
+            {
+                followObjectsType: 'artifacts',
+                followObjectId: 'artifact-1',
+                followObject: { isPublicFor: [0, 'owner'] },
+                feedUser: { uid: 'user-2' },
+            },
+            batch,
+            true
+        )
+
+        expect(artifactSet).toHaveBeenCalledWith(
+            { followersIds: { arrayUnion: 'user-2' }, isVisibleInFollowedFor: { arrayUnion: 'user-2' } },
+            { merge: true }
+        )
+    })
+
+    test('never makes a private artifact visible to a follower who cannot read it', async () => {
+        const artifactSet = jest.fn()
+        firestoreDoc.mockImplementation(path => {
+            if (path === 'followers/project-1/artifacts/private-1') {
+                return { get: jest.fn().mockResolvedValue({ data: () => undefined }) }
+            }
+            if (path === 'artifactItems/project-1/artifacts/private-1') return { set: artifactSet }
+            if (path === 'chatObjects/project-1/chats/private-1') {
+                return { get: jest.fn().mockResolvedValue({ exists: false }) }
+            }
+            return {}
+        })
+
+        await tryAddFollower(
+            'project-1',
+            {
+                followObjectsType: 'artifacts',
+                followObjectId: 'private-1',
+                followObject: { isPublicFor: ['owner'] },
+                feedUser: { uid: 'user-2' },
+            },
+            batch,
+            true
+        )
+
+        expect(artifactSet).toHaveBeenCalledWith({ followersIds: { arrayUnion: 'user-2' } }, { merge: true })
     })
 })

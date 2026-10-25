@@ -182,6 +182,8 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
     }
 
     const calendarData = { link: htmlLink, start, end, email, provider: event.provider || 'google' }
+    const recurringEventId = event.recurringEventId || event.seriesMasterId || ''
+    if (recurringEventId) calendarData.recurringEventId = recurringEventId
 
     // Store the original project ID if this is a new task
     if (originalProjectId) {
@@ -227,6 +229,7 @@ const normalizeRoutingDecision = decision => {
         secondPassUsed: !!decision.tokenUsage?.auditModel,
         secondPassModel:
             typeof decision.tokenUsage?.auditModel === 'string' ? decision.tokenUsage.auditModel.trim() : '',
+        learnedFromFeedback: decision.learnedFromFeedback === true,
     }
 }
 
@@ -294,6 +297,7 @@ const addCalendarRoutingCommentIfNeeded = async ({
             tokenUsage: routingDecision.tokenUsage || null,
             secondPassUsed: routingDecision.secondPassUsed,
             secondPassModel: routingDecision.secondPassModel,
+            learnedFromFeedback: routingDecision.learnedFromFeedback,
         },
     })
 }
@@ -355,7 +359,7 @@ const addOrUpdateCalendarTask = async (
 
             // Merge existing task data with the latest calendar fields, omitting non-persisted props
             const { id, projectId: oldProjectId, ...persistableTask } = task
-            const newTaskData = { ...persistableTask, ...dataToUpdate }
+            const newTaskData = { ...persistableTask, ...dataToUpdate, projectId: targetProjectId }
 
             // AT-2351 - the task keeps whatever ordering it had; only a task with none at all needs
             // one. Its position among the meetings comes from the event start at render time, so
@@ -441,6 +445,7 @@ const addOrUpdateCalendarTask = async (
     } else {
         dataToUpdate.sortIndex = generateCalendarTaskSortIndex()
         const newTask = generateTask(dataToUpdate, userId)
+        newTask.projectId = targetProjectId
         await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
         await addCalendarRoutingCommentIfNeeded({
             userData,

@@ -4,6 +4,7 @@ const os = require('os')
 const path = require('path')
 
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+const mockMirrorAssistantResultToWhatsAppDailyTopic = jest.fn(async () => ({ mirrored: true, reason: 'stored' }))
 const originalCloudRunJob = process.env.CLOUD_RUN_JOB
 process.env.CLOUD_RUN_JOB = 'vm-job-runner'
 const mockDeductGold = jest.fn()
@@ -71,7 +72,7 @@ jest.mock('./vmJob', () => ({
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
-    DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
+    DEFAULT_CODEX_MODEL: 'gpt-6.1-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
     DEFAULT_CODEX_REASONING_EFFORT: 'medium',
 }))
@@ -81,6 +82,10 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
         sendWhatsAppMessageWithConversationLink: mockSendWhatsAppMessageWithConversationLink,
     }))
 )
+
+jest.mock('../WhatsApp/whatsAppResultMirror', () => ({
+    mirrorAssistantResultToWhatsAppDailyTopic: (...args) => mockMirrorAssistantResultToWhatsAppDailyTopic(...args),
+}))
 
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: mockDeductGold,
@@ -246,7 +251,7 @@ describe('VM runner prompt', () => {
     })
 
     test('an Alldone Gold header is unchanged and quotes no rate (the launch comment owns that)', () => {
-        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-5.6-sol' }, 'api')
+        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-6.1-sol' }, 'api')
         expect(header).toContain('Using Alldone API billing')
         // Re-deriving a rate here could print a number different from the one frozen on the job.
         expect(header).not.toContain('Sol rate')
@@ -315,7 +320,7 @@ describe('VM runner prompt', () => {
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
-            model: 'gpt-5.6-sol',
+            model: 'gpt-6.1-sol',
             effort: 'medium',
         })
     })
@@ -496,7 +501,7 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook: {},
             workdir: '/repo',
             prompt: 'Implement this',
-            runDetails: { model: 'gpt-5.6-sol', effort: 'medium' },
+            runDetails: { model: 'gpt-6.1-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
@@ -534,7 +539,7 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook,
             workdir: '/home/user/repo',
             prompt: 'Implement this',
-            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-5.6-sol', effort: 'medium' },
+            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-6.1-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: [' /home/user/git-metadata ', '/home/user/git-metadata', '', null],
         })
@@ -635,8 +640,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             prefix,
             lockPath: path.join(cliTestDir, 'claude-install.lock'),
         })
-        const wrappedCommand = `bash -lc '${command.replace(/'/g, `'\\''`)}'`
-        return childProcess.execFileSync('bash', ['-lc', wrappedCommand], {
+        return childProcess.execFileSync('bash', ['--noprofile', '--norc', '-c', command], {
             encoding: 'utf8',
             env: {
                 ...process.env,
@@ -847,10 +851,42 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(error.message).not.toContain('super-secret')
     })
 
+    test('keeps the transport cause ahead of long partial agent output', () => {
+        const partialOutput = `Work completed before disconnect ${'x'.repeat(2000)}`
+        const error = __private__.buildAgentExitError(
+            'Claude',
+            null,
+            { finalResult: partialOutput, assistantText: '', bridgeError: null },
+            '',
+            new Error('command channel closed unexpectedly')
+        )
+
+        expect(error.message).toBe('Claude exited. command channel closed unexpectedly')
+        expect(error.vmTransportError).toBe('command channel closed unexpectedly')
+        expect(error.vmPartialOutput).toContain('Work completed before disconnect')
+        expect(error.message).not.toContain('Work completed before disconnect')
+    })
+
+    test('only treats explicit durable terminal events as recoverable', () => {
+        expect(__private__.hasRecoverableVmAgentTerminalState({ bridgeCompleted: true })).toBe(true)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ providerCompleted: true })).toBe(true)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ interaction: { kind: 'clarification' } })).toBe(true)
+        expect(
+            __private__.hasRecoverableVmAgentTerminalState({ bridgeCompleted: true, bridgeError: 'provider failed' })
+        ).toBe(false)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ assistantText: 'partial response' })).toBe(false)
+    })
+
     test('recognizes provider-specific subscription authentication failures', () => {
         expect(
             __private__.isVmSubscriptionAuthError(
                 new Error('401 Unauthorized: {"code":"refresh_token_reused"}'),
+                'codex'
+            )
+        ).toBe(true)
+        expect(
+            __private__.isVmSubscriptionAuthError(
+                new Error('401 Unauthorized: {"code":"invalid_refresh_token"}'),
                 'codex'
             )
         ).toBe(true)
@@ -898,6 +934,20 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(warningOnlyError.vmAuthRetrySafe).toBe(true)
         expect(afterWorkError.vmAuthRetrySafe).toBe(false)
         expect(afterUsageError.vmAuthRetrySafe).toBe(false)
+    })
+
+    test('marks the exact failed subscription credential version for Settings', async () => {
+        const markInvalid = jest.fn(async () => true)
+
+        await expect(
+            __private__.markRejectedVmSubscriptionAuth(
+                'user-1',
+                { provider: 'codex', credentialVersion: 'credential-version-1' },
+                'correlation-1',
+                { markInvalid }
+            )
+        ).resolves.toBe(true)
+        expect(markInvalid).toHaveBeenCalledWith('user-1', 'codex', 'credential-version-1')
     })
 
     test('marks a zero-exit no-output subscription auth failure as safe to retry', () => {
@@ -1012,10 +1062,10 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
     })
 
     test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
-        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', undefined, true)
+        const command = __private__.buildCodexRunCommand(false, 'gpt-6.1-sol', 'medium', undefined, true)
 
         // Shell-quoted since AT-2230: an OpenRouter id carries `/` and may carry `:`.
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain(`--model 'gpt-6.1-sol'`)
         expect(command).toContain('-c model_reasoning_effort=medium')
         expect(command).toContain(`-c 'features.apps=false'`)
         expect(command).not.toContain('alldone_vm_proxy')
@@ -1044,10 +1094,15 @@ describe('VM Git checkout setup', () => {
         fs.mkdirSync(seed)
         fs.mkdirSync(home)
 
+        // A hosted VM may keep its checkout metadata outside the worktree. The
+        // fixture owns an independent repository, so discard those host pointers.
+        const fixtureEnv = { ...process.env }
+        delete fixtureEnv.GIT_DIR
+        delete fixtureEnv.GIT_WORK_TREE
         const run = (command, options = {}) =>
             childProcess.execFileSync('bash', ['-c', command], {
                 cwd: options.cwd || root,
-                env: { ...process.env, HOME: home, ...(options.env || {}) },
+                env: { ...fixtureEnv, HOME: home, ...(options.env || {}) },
                 stdio: 'pipe',
             })
 
@@ -1119,6 +1174,30 @@ describe('VM Git checkout setup', () => {
 })
 
 describe('VM runner runtime Gold monitor', () => {
+    test('resumed legacy Sol jobs execute on 6.1 with high reasoning', () => {
+        expect(
+            __private__.resolveAgentRunDetails({
+                agent: 'codex',
+                agentModel: 'gpt-6-sol',
+                agentReasoningEffort: 'none',
+            })
+        ).toEqual({ model: 'gpt-6.1-sol', effort: 'high' })
+    })
+    test('settlement uses cumulative Sol request costs and subtracts proxy charges exactly once', () => {
+        const { calculateSolUsageGold } = require('./vmTokenPricing')
+        const expected = calculateSolUsageGold(0.153, 240)
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 1000,
+            agentModel: 'gpt-6.1-sol',
+            tokensPerGold: 240,
+            usage: { totalTokens: 1000 },
+            proxyTokenUsage: { totalTokens: 110000, solPricedTokens: 110000, solCostUsd: 0.153 },
+            proxyTokenGoldCharged: expected - 2,
+        })
+        expect(charges.totalTokens).toBe(110000)
+        expect(charges.tokenGoldTotal).toBe(expected)
+        expect(charges.tokenGold).toBe(2)
+    })
     const pendingWebhook = {
         correlationId: 'correlation-1',
         userId: 'user-1',
@@ -1126,8 +1205,13 @@ describe('VM runner runtime Gold monitor', () => {
         projectId: 'project-1',
         objectType: 'topics',
         objectId: 'chat-1',
+        // The runner re-asserts the resolved credential route onto the pending doc, so this is
+        // the fresher of the two documents the billing dimensions are read from (AT-2487).
+        // `agentModel` is mirrored onto it at launch so the proxy can price its charges.
+        agentModel: 'opus',
+        tokenBillingExempt: true,
     }
-    const vmJob = { agent: 'claude' }
+    const vmJob = { agent: 'claude', agentModel: 'opus' }
 
     beforeEach(() => {
         jest.clearAllMocks()
@@ -1161,6 +1245,47 @@ describe('VM runner runtime Gold monitor', () => {
         )
         expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 10 })
         expect(commandHandle.kill).not.toHaveBeenCalled()
+    })
+
+    // AT-2487. Per-minute compute Gold is charged whether or not the model tokens were
+    // Gold-billed, so this is exactly the spend that used to be uninterpretable: without the
+    // dimension it is indistinguishable from an Alldone-billed run in `spendBySource`.
+    test('stamps the run model, its exemption and its run id on every runtime charge', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+        mockDeductGold.mockResolvedValue({ success: true, amount: 10, newBalance: 40 })
+
+        await __private__.checkAndChargeVmRuntimeGold({
+            pendingWebhook,
+            pendingRef,
+            commandHandle,
+            runStartMs: 0,
+            runtimeGoldCharged: 0,
+            vmJob,
+            now: () => 60000,
+            getCurrentGold: jest.fn(async () => 50),
+        })
+
+        expect(mockDeductGold).toHaveBeenCalledWith(
+            'user-1',
+            10,
+            expect.objectContaining({
+                source: 'vm_execution',
+                model: 'opus',
+                billingExempt: true,
+                correlationId: 'correlation-1',
+            })
+        )
+    })
+
+    test('a failure refund reverses the charge with the same dimensions attached', async () => {
+        await __private__.refundVmJob(pendingWebhook, 'VM task failed')
+
+        expect(mockRefundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ model: 'opus', billingExempt: true, correlationId: 'correlation-1' })
+        )
     })
 
     test('continues metering accumulated active runtime without charging time spent waiting for the user', async () => {
@@ -1269,20 +1394,20 @@ describe('VM runner runtime Gold monitor', () => {
     // sandbox and must NOT move with the model — only the token line does.
     test('each model settles token Gold at its own researched rate, with runtime Gold unchanged', () => {
         const args = { runtimeMs: 61000, usage: { totalTokens: 250_000 } }
-        const sol = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-sol' })
-        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-luna' })
+        const sol = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-6.1-sol' })
+        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-6-luna' })
         const deepSeekPro = __private__.calculateCompletionGoldCharges({
             ...args,
             agentModel: 'openrouter:deepseek/deepseek-v4-pro',
         })
 
-        expect(sol.tokensPerGold).toBe(100)
-        expect(luna.tokensPerGold).toBe(2500)
-        expect(deepSeekPro.tokensPerGold).toBe(1800)
+        expect(sol.tokensPerGold).toBe(240)
+        expect(luna.tokensPerGold).toBe(4000)
+        expect(deepSeekPro.tokensPerGold).toBe(1400)
 
-        expect(sol.tokenGoldTotal).toBe(2500)
-        expect(luna.tokenGoldTotal).toBe(100)
-        expect(deepSeekPro.tokenGoldTotal).toBe(139)
+        expect(sol.tokenGoldTotal).toBe(1042)
+        expect(luna.tokenGoldTotal).toBe(63)
+        expect(deepSeekPro.tokenGoldTotal).toBe(179)
 
         // Same sandbox, same compute cost, whichever model the agent talked to.
         for (const charges of [luna, deepSeekPro]) {
@@ -1330,8 +1455,8 @@ describe('VM runner runtime Gold monitor', () => {
             agentModel: 'openrouter:qwen/qwen3-coder',
         })
 
-        expect(charges.tokensPerGold).toBe(960)
-        expect(charges.tokenGoldTotal).toBe(260)
+        expect(charges.tokensPerGold).toBe(750)
+        expect(charges.tokenGoldTotal).toBe(333)
     })
 
     // Existing jobs carry no agentModel on their doc; they must settle exactly as before.
@@ -1587,6 +1712,355 @@ describe('VM runner timeout handling', () => {
         expect(supervision.result).toBe(resumedResult)
         expect(supervision.sliceCount).toBe(2)
     })
+
+    test('recovers a durable result when the command observer channel rejects', async () => {
+        const transportError = new Error('command channel closed unexpectedly')
+        const commandHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw transportError
+            }),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const durableResult = { exitCode: 0 }
+        const getCompletedResult = jest.fn(async () => durableResult)
+        const sandbox = { sandboxId: 'sandbox-1', commands: { connect: jest.fn() } }
+
+        const supervision = await __private__.superviseVmCommand({
+            Sandbox: {},
+            sandbox,
+            commandHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            getCompletedResult,
+            resolveSliceRuntime: () => 60000,
+        })
+
+        expect(supervision.result).toBe(durableResult)
+        expect(getCompletedResult).toHaveBeenCalledWith(sandbox)
+        expect(sandbox.commands.connect).not.toHaveBeenCalled()
+    })
+
+    test('reconnects once to the same PID after an observer-channel failure', async () => {
+        const transportError = new Error('command channel closed unexpectedly')
+        const firstHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw transportError
+            }),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const resumedResult = { exitCode: 0 }
+        const secondHandle = {
+            pid: 42,
+            wait: jest.fn(async () => resumedResult),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+        const getCompletedResult = jest.fn(async () => null)
+        const onCommandHandleChange = jest.fn()
+
+        const supervision = await __private__.superviseVmCommand({
+            Sandbox: {},
+            sandbox,
+            commandHandle: firstHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            getCompletedResult,
+            onCommandHandleChange,
+            resolveSliceRuntime: () => 60000,
+        })
+
+        expect(sandbox.commands.connect).toHaveBeenCalledTimes(1)
+        expect(sandbox.commands.connect).toHaveBeenCalledWith(42, expect.objectContaining({ timeoutMs: 0 }))
+        expect(onCommandHandleChange).toHaveBeenCalledWith(secondHandle)
+        expect(supervision.result).toBe(resumedResult)
+    })
+
+    test('stops after one unsuccessful observer-channel reconnect', async () => {
+        const firstError = new Error('first observer failure')
+        const secondError = new Error('second observer failure')
+        const firstHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw firstError
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const secondHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw secondError
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+
+        await expect(
+            __private__.superviseVmCommand({
+                Sandbox: {},
+                sandbox,
+                commandHandle: firstHandle,
+                e2bApiKey: 'test-key',
+                sandboxLeaseDeadlineMs: Date.now() + 60000,
+                getCompletedResult: jest.fn(async () => null),
+                resolveSliceRuntime: () => 60000,
+            })
+        ).rejects.toBe(firstError)
+        expect(sandbox.commands.connect).toHaveBeenCalledTimes(1)
+        expect(firstError.vmCommandReconnectAttempts).toBe(1)
+        expect(secondHandle.kill).toHaveBeenCalledTimes(1)
+        expect(firstError.vmUnobservedCommandStopped).toBe(true)
+    })
+})
+
+// A warm sandbox reused inside the keep-alive window does NOT get a fresh hour: E2B pins the
+// expiry to the start of the sandbox's current session (create or resume) and ignores the
+// `setTimeout()` the runner issues on reuse. Assuming a full hour scheduled the protective
+// lease rotation up to ~an hour after E2B had already killed the sandbox, so the agent died
+// mid-run and every following command 404'd. Measured in production on 7/7 sandbox deaths:
+// each landed 3598.7-3599.4s after that sandbox's last resume, never after its creation.
+describe('VM sandbox lease is measured, not assumed', () => {
+    const HOUR_MS = 60 * 60 * 1000
+
+    test('reads the real expiry E2B reports for the sandbox', async () => {
+        const now = 1_000_000
+        const endAt = new Date(now + 18 * 60 * 1000)
+        const sandbox = { getInfo: jest.fn(async () => ({ endAt, startedAt: new Date(now - 42 * 60 * 1000) })) }
+
+        await expect(__private__.readSandboxLeaseDeadlineMs(sandbox, now + HOUR_MS)).resolves.toBe(endAt.getTime())
+        expect(sandbox.getInfo).toHaveBeenCalledTimes(1)
+        // Bounded: it sits on the run's startup path.
+        expect(sandbox.getInfo).toHaveBeenCalledWith(expect.objectContaining({ requestTimeoutMs: expect.any(Number) }))
+    })
+
+    test('falls back to the caller assumption rather than failing a run', async () => {
+        const fallback = 5_000_000
+        // No getInfo at all (older SDK / injected test double).
+        await expect(__private__.readSandboxLeaseDeadlineMs({}, fallback)).resolves.toBe(fallback)
+        // getInfo throws.
+        await expect(
+            __private__.readSandboxLeaseDeadlineMs(
+                {
+                    getInfo: async () => {
+                        throw new Error('E2B unreachable')
+                    },
+                },
+                fallback
+            )
+        ).resolves.toBe(fallback)
+        // getInfo answers without a usable expiry.
+        await expect(
+            __private__.readSandboxLeaseDeadlineMs({ getInfo: async () => ({ endAt: undefined }) }, fallback)
+        ).resolves.toBe(fallback)
+        await expect(__private__.readSandboxLeaseDeadlineMs(null, fallback)).resolves.toBe(fallback)
+    })
+
+    // The guarantee: whatever state the thread left its sandbox in, and however much of its
+    // hour it already spent, a reused sandbox is handed to the run on a NEW session — so the
+    // run always starts on the full 60 minutes instead of an unknown remainder.
+    const buildFreshSessionDoubles = () => {
+        const connectedSandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            // What E2B reports once a resume has actually started a new session.
+            getInfo: jest.fn(async () => ({ endAt: new Date(Date.now() + HOUR_MS) })),
+        }
+        return {
+            connectedSandbox,
+            Sandbox: { connect: jest.fn(async () => connectedSandbox) },
+            pauseSandbox: jest.fn(async () => {}),
+            resumeSandbox: jest.fn(async () => true),
+            probeSandbox: jest.fn(async () => {}),
+        }
+    }
+
+    test.each([
+        ['a barely-used warm sandbox', 51 * 60 * 1000],
+        ['a warm sandbox deep into its hour', 18.4 * 60 * 1000],
+        ['a warm sandbox with seconds left', 20 * 1000],
+    ])('gives %s a full 60-minute lease by restarting its session', async (_label, inheritedRemainingMs) => {
+        const doubles = buildFreshSessionDoubles()
+        // The inherited remainder is deliberately never consulted: a running session is ended
+        // and restarted regardless, so there is no threshold to get wrong.
+        expect(inheritedRemainingMs).toBeLessThan(HOUR_MS)
+
+        const lease = await __private__.resumeVmSessionWithFreshLease({
+            Sandbox: doubles.Sandbox,
+            sandboxId: 'sandbox-1',
+            e2bApiKey: 'test-key',
+            wasPaused: false,
+            pauseSandbox: doubles.pauseSandbox,
+            resumeSandbox: doubles.resumeSandbox,
+            probeSandbox: doubles.probeSandbox,
+        })
+
+        // Pause is what ENDS the running session; the resume then starts a new one. Together
+        // they are the only calls that provably re-arm E2B's clock.
+        expect(doubles.pauseSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key')
+        expect(doubles.resumeSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key', 3600)
+        expect(doubles.Sandbox.connect).toHaveBeenCalledWith('sandbox-1', {
+            apiKey: 'test-key',
+            allowInternetAccess: true,
+        })
+        expect(doubles.connectedSandbox.setTimeout).toHaveBeenCalledWith(HOUR_MS)
+        // A resume can come back with a dead envd (E2B #884), so probe before committing.
+        expect(doubles.probeSandbox).toHaveBeenCalledWith(doubles.connectedSandbox)
+        expect(lease.sandbox).toBe(doubles.connectedSandbox)
+        expect(lease.sessionRestarted).toBe(true)
+        expect(lease.pauseError).toBeNull()
+        expect(lease.leaseDeadlineMs - Date.now()).toBeGreaterThan(59 * 60 * 1000)
+    })
+
+    test('does not pause a session that is already paused', async () => {
+        const doubles = buildFreshSessionDoubles()
+
+        const lease = await __private__.resumeVmSessionWithFreshLease({
+            Sandbox: doubles.Sandbox,
+            sandboxId: 'sandbox-1',
+            e2bApiKey: 'test-key',
+            wasPaused: true,
+            pauseSandbox: doubles.pauseSandbox,
+            resumeSandbox: doubles.resumeSandbox,
+            probeSandbox: doubles.probeSandbox,
+        })
+
+        // A paused sandbox gets its new session from the resume it needs anyway — pausing it
+        // again would only add a round trip.
+        expect(doubles.pauseSandbox).not.toHaveBeenCalled()
+        expect(doubles.resumeSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key', 3600)
+        expect(lease.leaseDeadlineMs - Date.now()).toBeGreaterThan(59 * 60 * 1000)
+    })
+
+    test('survives losing the pause race and keeps the run correctly budgeted', async () => {
+        const doubles = buildFreshSessionDoubles()
+        const inheritedEndAt = new Date(Date.now() + 12 * 60 * 1000)
+        // The idle pauser got there first, or the sandbox moved underneath us. The resume
+        // decides, and here it reports the sandbox was still running (E2B 409).
+        doubles.pauseSandbox = jest.fn(async () => {
+            throw new Error('E2B pause 409: sandbox is not running')
+        })
+        doubles.resumeSandbox = jest.fn(async () => false)
+        doubles.connectedSandbox.getInfo = jest.fn(async () => ({ endAt: inheritedEndAt }))
+
+        const lease = await __private__.resumeVmSessionWithFreshLease({
+            Sandbox: doubles.Sandbox,
+            sandboxId: 'sandbox-1',
+            e2bApiKey: 'test-key',
+            wasPaused: false,
+            pauseSandbox: doubles.pauseSandbox,
+            resumeSandbox: doubles.resumeSandbox,
+            probeSandbox: doubles.probeSandbox,
+        })
+
+        // The run is NOT failed over a lost race — it continues on the inherited lease, and
+        // because that deadline is measured rather than assumed it is still budgeted safely.
+        expect(lease.sandbox).toBe(doubles.connectedSandbox)
+        expect(lease.sessionRestarted).toBe(false)
+        expect(lease.pauseError).toBeInstanceOf(Error)
+        expect(lease.leaseDeadlineMs).toBe(inheritedEndAt.getTime())
+    })
+
+    test('budgets the agent slice inside a measured lease', () => {
+        const now = 4_000_000
+        // Whatever lease the run ends up on, the slice must end before E2B's own termination.
+        const leaseDeadlineMs = now + 40 * 60 * 1000
+        const totalDeadline = now + 5 * HOUR_MS
+        const slice = __private__.resolveVmAgentSliceRuntimeMs(leaseDeadlineMs, totalDeadline, now)
+
+        expect(slice).toBe(39.5 * 60 * 1000)
+        expect(now + slice).toBeLessThan(leaseDeadlineMs)
+    })
+
+    test('lets a failed resume surface so the caller starts a fresh sandbox', async () => {
+        const doubles = buildFreshSessionDoubles()
+
+        await expect(
+            __private__.resumeVmSessionWithFreshLease({
+                Sandbox: doubles.Sandbox,
+                sandboxId: 'sandbox-dead',
+                e2bApiKey: 'test-key',
+                wasPaused: false,
+                pauseSandbox: doubles.pauseSandbox,
+                resumeSandbox: jest.fn(async () => {
+                    throw new Error(`E2B resume 404: Sandbox "sandbox-dead" doesn't exist`)
+                }),
+                probeSandbox: doubles.probeSandbox,
+            })
+        ).rejects.toThrow(/resume 404/)
+        expect(doubles.Sandbox.connect).not.toHaveBeenCalled()
+    })
+
+    test('re-reads the lease after a mid-run slice rotation', async () => {
+        const rotatedDeadline = 9_999_999_999
+        const readLeaseDeadline = jest.fn(async () => rotatedDeadline)
+        const resolveSliceRuntime = jest.fn(() => 1)
+        const firstHandle = {
+            pid: 7,
+            wait: jest.fn(() => new Promise(() => {})),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const secondHandle = { pid: 7, wait: jest.fn(async () => ({ exitCode: 0 })), disconnect: jest.fn() }
+        const resumedSandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+
+        await __private__.superviseVmCommand({
+            Sandbox: { connect: jest.fn(async () => resumedSandbox) },
+            sandbox: { sandboxId: 'sandbox-1' },
+            commandHandle: firstHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            pauseSandbox: jest.fn(async () => {}),
+            resumeSandbox: jest.fn(async () => {}),
+            resolveSliceRuntime,
+            readLeaseDeadline,
+        })
+
+        expect(readLeaseDeadline).toHaveBeenCalledWith(resumedSandbox, expect.any(Number))
+        // The slice after the rotation is budgeted against E2B's reported expiry, not against
+        // the deadline the runner asked for.
+        expect(resolveSliceRuntime).toHaveBeenCalledTimes(2)
+        expect(resolveSliceRuntime.mock.calls[1][0]).toBe(rotatedDeadline)
+    })
+
+    test('treats a vanished sandbox as an unhealthy session', () => {
+        // Verbatim from the production incidents.
+        const vanished = new Error(`404: Sandbox "ixc8oy056mnc074n3gmyv" doesn't exist or you don't have access to it`)
+
+        expect(__private__.isE2bSandboxMissing(vanished)).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError(vanished)).toBe(true)
+        // A sandbox that is gone can never be kept alive, so it must not take the keep-alive
+        // branch and rely on the pause/kill cascade to discover that.
+        expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 1'))).toBe(false)
+        expect(__private__.isE2bSandboxMissing(new Error('repository not found'))).toBe(false)
+        expect(__private__.isE2bSandboxMissing(null)).toBe(false)
+        // An agent-exit error carries the assistant's own narration; the model writing about a
+        // sandbox must never cost the session.
+        expect(
+            __private__.isE2bSandboxMissing(
+                new Error('Claude exited. I checked whether the sandbox was not found and it is fine.')
+            )
+        ).toBe(false)
+        // Our own pause/resume wrapper surfaces the E2B body behind a status prefix.
+        expect(
+            __private__.isE2bSandboxMissing(
+                new Error(`E2B pause 404: Sandbox "iqx76qos2eb5xq2xjaq53" doesn't exist or you don't have access to it`)
+            )
+        ).toBe(true)
+    })
 })
 
 describe('VM session isolation', () => {
@@ -1636,6 +2110,7 @@ describe('VM session isolation', () => {
     test('treats command-channel timeouts and forced agent termination as unhealthy', () => {
         expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError({ vmCommandTerminationUncertain: true })).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 2.'))).toBe(false)
     })
 
@@ -1772,6 +2247,89 @@ describe('VM session isolation', () => {
             { merge: true }
         )
     })
+
+    test('preserves the thread queue when both keep-alive and pause fail', async () => {
+        const transaction = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    sandboxId: 'sandbox-1',
+                    activeLeaseOwner: 'this-execution',
+                    queue: ['queued-job'],
+                    queueLength: 1,
+                }),
+            })),
+            set: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+        const sessionRef = { delete: jest.fn() }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {
+                throw new Error('sandbox disappeared')
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 404,
+            text: async () => 'sandbox not found',
+        }))
+
+        try {
+            await expect(
+                __private__.keepVmSessionAlive(
+                    sessionRef,
+                    sandbox,
+                    {
+                        agent: 'claude',
+                        vmTemplate: 'claude-template',
+                        projectId: 'project-1',
+                        objectId: 'task-1',
+                        objectType: 'tasks',
+                        correlationId: 'failed-job',
+                    },
+                    'test-key',
+                    'this-execution',
+                    'failed'
+                )
+            ).resolves.toBe(false)
+        } finally {
+            global.fetch = originalFetch
+        }
+
+        expect(sessionRef.delete).not.toHaveBeenCalled()
+        expect(transaction.set).toHaveBeenCalledWith(
+            sessionRef,
+            expect.objectContaining({
+                sandboxId: null,
+                status: 'failed',
+                activeLeaseOwner: null,
+                activeCorrelationId: null,
+                lastRunStatus: 'failed',
+            }),
+            { merge: true }
+        )
+    })
+
+    test('does not clean up an old session while it still owns queued work', async () => {
+        const transaction = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ lastUsedAt: 1000, queue: ['queued-job'], queueLength: 1 }),
+            })),
+            delete: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+
+        await expect(__private__.deleteIdleVmSessionIfUnoccupied({}, 2000, 3000)).resolves.toBeNull()
+        expect(transaction.delete).not.toHaveBeenCalled()
+    })
 })
 
 describe('VM runner artifact presentation', () => {
@@ -1790,6 +2348,65 @@ describe('VM runner artifact presentation', () => {
 
     test('leaves text-only VM answers unchanged', () => {
         expect(__private__.buildVmFinalCommentText('Here is the summary.', [])).toBe('Here is the summary.')
+    })
+})
+
+describe('VM outputs as project artifacts', () => {
+    const OUT = '/home/user/output'
+    const RUN_START = 1_800_000_000_000
+    const file = (relativePath, text, { old = false } = {}) => ({
+        type: 'file',
+        name: relativePath.split('/').pop(),
+        path: `${OUT}/${relativePath}`,
+        size: Buffer.byteLength(text),
+        modifiedTime: new Date(old ? RUN_START - 3600000 : RUN_START + 1000).toISOString(),
+        text,
+    })
+    const sandboxWith = files => ({
+        files: {
+            list: jest.fn(async () => files),
+            read: jest.fn(async path => Buffer.from(files.find(entry => entry.path === path).text)),
+        },
+    })
+
+    test('publishes a touched bundle whole and reuses what was read for the chat attachments', async () => {
+        const files = [
+            file('dashboard/index.html', '<h1>v2</h1>'),
+            file('dashboard/style.css', 'h1{}', { old: true }),
+            file('old.pdf', '%PDF', { old: true }),
+        ]
+        const sandbox = sandboxWith(files)
+        const collected = await __private__.collectArtifacts(sandbox, 'job-1', RUN_START)
+        expect(collected.map(entry => entry.relativePath)).toEqual(['dashboard/index.html'])
+        sandbox.files.read.mockClear()
+
+        const groups = await __private__.collectOutputArtifactGroups(sandbox, 'job-1', RUN_START, collected)
+
+        expect(groups).toHaveLength(1)
+        expect(groups[0].outputPath).toBe('dashboard/')
+        expect(groups[0].files.map(entry => [entry.path, entry.bytes.toString()])).toEqual([
+            ['index.html', '<h1>v2</h1>'],
+            ['style.css', 'h1{}'],
+        ])
+        // Only the unchanged bundle file had to be read again.
+        expect(sandbox.files.read).toHaveBeenCalledTimes(1)
+        expect(sandbox.files.read).toHaveBeenCalledWith(`${OUT}/dashboard/style.css`, { format: 'bytes' })
+    })
+
+    test('never fails the run when the output cannot be listed or published', async () => {
+        const sandbox = { files: { list: jest.fn(async () => Promise.reject(new Error('gone'))) } }
+        await expect(__private__.collectOutputArtifactGroups(sandbox, 'job-1', RUN_START, [])).resolves.toEqual([])
+        await expect(
+            __private__.publishVmOutputs({ correlationId: 'job-1' }, {}, [
+                { outputPath: 'a.md', files: [{ relativePath: 'a.md', path: 'a.md', bytes: Buffer.from('#') }] },
+            ])
+        ).resolves.toEqual([])
+    })
+
+    test('tells the agent how its outputs become artifacts', () => {
+        const prompt = __private__.buildAgentPrompt({ objective: 'Build a dashboard', taskType: 'prototype' })
+        expect(prompt).toContain('a folder in /home/user/output/ that contains an index.html becomes one web artifact')
+        expect(prompt).toContain('write to the same folder or file name')
     })
 })
 
@@ -1864,10 +2481,12 @@ describe('VM completion chat metadata', () => {
                 members: ['user-2', 'user-1', 'assistant-1'],
                 lastEditorId: 'assistant-1',
                 lastAssistantComment: expect.any(Number),
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': 'Finished VM result',
-                'commentsData.lastCommentType': 2,
-                'commentsData.amount': { __op: 'increment', value: 1 },
+                commentsData: {
+                    lastCommentOwnerId: 'assistant-1',
+                    lastComment: 'Finished VM result',
+                    lastCommentType: 2,
+                    amount: { __op: 'increment', value: 1 },
+                },
             }),
             { merge: true }
         )
@@ -1892,16 +2511,20 @@ describe('VM completion chat metadata', () => {
         expect(transaction.set).toHaveBeenCalledWith(
             refs.get('users/user-1'),
             expect.objectContaining({
-                'lastAssistantCommentData.project-1': expect.objectContaining({
-                    objectType: 'tasks',
-                    objectId: 'task-1',
-                    creatorId: 'assistant-1',
-                    creatorType: 'assistant',
-                }),
-                'lastAssistantCommentData.allProjects': expect.objectContaining({
-                    projectId: 'project-1',
-                    objectId: 'task-1',
-                }),
+                lastAssistantCommentData: {
+                    'project-1': expect.objectContaining({
+                        objectType: 'tasks',
+                        objectId: 'task-1',
+                        creatorId: 'assistant-1',
+                        creatorType: 'assistant',
+                    }),
+                    allProjects: expect.objectContaining({ projectId: 'project-1', objectId: 'task-1' }),
+                },
+                lastAssistantCommentDataByAssistant: {
+                    'assistant-1': expect.objectContaining({
+                        allProjects: expect.objectContaining({ projectId: 'project-1', objectId: 'task-1' }),
+                    }),
+                },
             }),
             { merge: true }
         )
@@ -1913,6 +2536,27 @@ describe('VM completion chat metadata', () => {
                 projectId: 'project-1',
                 type: 'Chat Notification',
             })
+        )
+
+        // Exercise Firestore's real set(merge) serializer: a mock accepting dotted
+        // keys hid this bug. No credentials or network/commit are needed.
+        const { Firestore } = require('@google-cloud/firestore')
+        const db = new Firestore({ projectId: 'demo-preview' })
+        const batch = db.batch()
+        const [, data, options] = transaction.set.mock.calls.find(([ref]) => ref.path === 'users/user-1')
+        batch.set(db.doc('users/user-1'), data, options)
+        const write = batch._ops[0].op()
+        expect(Object.keys(write.update.fields).sort()).toEqual([
+            'lastAssistantCommentData',
+            'lastAssistantCommentDataByAssistant',
+        ])
+        expect(
+            write.update.fields.lastAssistantCommentData.mapValue.fields.allProjects.mapValue.fields.objectId
+        ).toEqual({ stringValue: 'task-1' })
+        // Leaf masks preserve pointers for other projects and other assistants.
+        expect(write.updateMask.fieldPaths).toContain('lastAssistantCommentData.allProjects.objectId')
+        expect(write.updateMask.fieldPaths).toContain(
+            'lastAssistantCommentDataByAssistant.`assistant-1`.allProjects.objectId'
         )
     })
 
@@ -2091,8 +2735,10 @@ describe('VM completion chat metadata', () => {
         expect(transaction.set).toHaveBeenCalledWith(
             refs.get('chatObjects/project-1/chats/task-1'),
             expect.objectContaining({
-                'commentsData.lastComment': failureText,
-                'commentsData.amount': { __op: 'increment', value: 1 },
+                commentsData: expect.objectContaining({
+                    lastComment: failureText,
+                    amount: { __op: 'increment', value: 1 },
+                }),
             }),
             { merge: true }
         )
@@ -2189,6 +2835,32 @@ describe('VM completion chat metadata', () => {
                 currentReviewerId: 'user-1',
                 vmInteractionWorkflowStep: expect.objectContaining({ reason: 'failure', failureReason: 'cancelled' }),
             })
+        })
+
+        test('also assigns an interrupted run back to the user with its distinct reason', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '⚠️ The VM connection was interrupted.', {
+                assistantRunStatus: 'interrupted',
+                failureReason: 'execution_interrupted',
+            })
+
+            expect(taskUpdate(transaction, refs)).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({
+                    reason: 'failure',
+                    failureReason: 'execution_interrupted',
+                }),
+            })
+            expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    assistantRun: expect.objectContaining({
+                        status: 'interrupted',
+                        interruptedAt: expect.any(Number),
+                    }),
+                }),
+                { merge: true }
+            )
         })
 
         test('leaves the reviewer alone when the run succeeds', async () => {
@@ -2322,6 +2994,7 @@ describe('VM completion chat metadata', () => {
                 objectId: 'task-1',
                 assistantId: 'assistant-1',
                 userId: 'user-1',
+                isPublicFor: [0],
                 statusCommentId: 'comment-1',
             },
             progressText
@@ -2345,8 +3018,45 @@ describe('VM completion chat metadata', () => {
         expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
             'commentsData.amount'
         )
+        for (const userId of ['user-1', 'user-2']) {
+            const [pointer, options] = refs.get(`users/${userId}`).set.mock.calls[0]
+            expect(options).toEqual({ merge: true })
+            expect(pointer.lastAssistantCommentData['project-1']).toMatchObject({
+                objectId: 'task-1',
+                objectType: 'tasks',
+                creatorId: 'assistant-1',
+                creatorType: 'assistant',
+            })
+            expect(pointer.lastAssistantCommentData.allProjects.projectId).toBe('project-1')
+            expect(pointer.lastAssistantCommentDataByAssistant['assistant-1']).toEqual(pointer.lastAssistantCommentData)
+        }
+        // Progress edits must not reorder the conversation or create more comments.
+        expect(
+            refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set.mock.calls[0][0]
+        ).not.toHaveProperty('created')
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test('limits live preview pointers to visible followers and excludes the assistant', async () => {
+        mockGetObjectFollowersIds.mockResolvedValue(['user-1', 'user-2', 'assistant-1'])
+        const { refs } = createFirestoreMock()
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                isPublicFor: ['user-1'],
+                statusCommentId: 'comment-1',
+            },
+            'Reading a private task'
+        )
+        expect(refs.get('users/user-1').set).toHaveBeenCalledTimes(1)
+        expect(refs.has('users/user-2')).toBe(false)
+        expect(refs.has('users/assistant-1')).toBe(false)
     })
 
     // The live thinking/working log is rewritten into the same comment many times per run. None of
@@ -2389,6 +3099,7 @@ describe('VM completion chat metadata', () => {
         ['the final result', { isFinal: true, output: 'Finished VM result' }],
         ['a failed run', { assistantRunStatus: 'failed' }],
         ['a cancelled run', { assistantRunStatus: 'cancelled' }],
+        ['an interrupted run', { assistantRunStatus: 'interrupted' }],
     ])('writes the unread notification for %s', async (_label, options) => {
         const { transaction } = createFirestoreMock()
 
@@ -2700,6 +3411,106 @@ describe('VM runner origin-conversation completion note', () => {
         expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
     })
 
+    // AT-2387: the result lands in the host task thread, but a WhatsApp follow-up is
+    // answered out of the daily WhatsApp topic — mirror it there too.
+    test('mirrors the delivered result into the daily WhatsApp topic', async () => {
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                assistantId: 'assistant-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            { notificationType: 'completed' }
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                assistantId: 'assistant-1',
+                // The exact text that went out over WhatsApp, artifact links included.
+                resultText: 'Final VM result',
+                sourceProjectId: 'project-1',
+                sourceObjectId: 'host-task-1',
+                sourceObjectType: 'tasks',
+                sourceLabel: 'From your VM task',
+                // Stable across runner retries and the reconciliation pass.
+                sourceCommentId: 'vmJob:correlation-1:completed',
+            })
+        )
+    })
+
+    test('does not mirror when the WhatsApp send failed', async () => {
+        mockSendWhatsAppMessageWithConversationLink.mockResolvedValueOnce({ success: false, error: 'twilio down' })
+
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            {}
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
+    })
+
+    test('lets the mirror stand down where the origin note already posts the outcome', async () => {
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-X',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectType: 'topics',
+                originObjectId: 'BotChat20260820user-1',
+                originAssistantId: 'anna-assistant',
+            },
+            'All done.',
+            { notificationType: 'completed' }
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alreadyDeliveredTo: [{ projectId: 'project-anna', objectId: 'BotChat20260820user-1' }],
+            })
+        )
+    })
+
+    test('a failing mirror never fails the notification that already went out', async () => {
+        mockMirrorAssistantResultToWhatsAppDailyTopic.mockRejectedValueOnce(new Error('firestore down'))
+
+        const result = await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            {}
+        )
+
+        expect(result.success).toBe(true)
+    })
+
     test('notifyVmResultChannels fans out to both WhatsApp and the origin note', async () => {
         mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true, sid: 'SM1', status: 'queued' })
 
@@ -2768,9 +3579,9 @@ describe('Codex OpenRouter routing', () => {
     })
 
     test('an OpenAI model still routes to the OpenAI upstream', () => {
-        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', PROXY)
+        const command = __private__.buildCodexRunCommand(false, 'gpt-6.1-sol', 'medium', PROXY)
 
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain(`--model 'gpt-6.1-sol'`)
         expect(command).toContain('/openai/v1')
         expect(command).not.toContain('/openrouter/v1')
     })
@@ -2786,7 +3597,7 @@ describe('Codex OpenRouter routing', () => {
             apiKey: 'vmpx_token',
             baseUrl: PROXY,
             mode: 'proxy',
-            agentModel: 'gpt-5.6-sol',
+            agentModel: 'gpt-6.1-sol',
         })
 
         expect(openRouterEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openrouter/v1')

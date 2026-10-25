@@ -88,3 +88,11 @@ describe('LastAssistantComment preview height (AT-2344)', () => {
         expect(longCompact.height).toBe(24)
     })
 })
+
+// Layout/status tests keep the tag/backend graph isolated; mention rendering is covered by
+// LastCommentText.test.js through the real pending and saved cards.
+jest.mock('./LastCommentText', () => {
+    const React = require('react')
+    const { Text } = require('react-native')
+    return ({ commentText, testID }) => <Text testID={testID}>{commentText}</Text>
+})

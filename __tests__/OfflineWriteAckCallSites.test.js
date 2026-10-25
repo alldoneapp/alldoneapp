@@ -30,12 +30,13 @@ const read = relativePath => fs.readFileSync(path.resolve(__dirname, '..', relat
 
 const TASKS = 'utils/backends/Tasks/tasksFirestore.js'
 const COMMENTS = 'utils/backends/Chats/chatsComments.js'
+const CHAT_COMMENT_READ = 'utils/backends/Chats/markChatCommentsAsRead.js'
 
 describe('offline write-ack call sites', () => {
     it('routes the task-completion commit through awaitWriteAck', () => {
         const source = read(TASKS)
 
-        expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/offlineWriteAck'/)
+        expect(source).toMatch(/import \{[^}]*\bawaitWriteAck\b[^}]*\} from '\.\.\/offlineWriteAck'/)
         expect(source).toMatch(/awaitWriteAck\(taskBatch\.commit\(\)/)
         // The bare await is what made XP / done feed / follower unreachable.
         expect(source).not.toMatch(/\n {4}await taskBatch\.commit\(\)/)
@@ -70,11 +71,27 @@ describe('offline write-ack call sites', () => {
         expect(source).toMatch(/awaitWriteAck\(\s*\n?\s*updateLastCommentData\(/)
     })
 
+    it('does not park the email-comment unread clear on an ack that cannot arrive', () => {
+        // AT-2424 moved this write onto the press itself: archiving an email comment
+        // clears its unread state FIRST and only then talks to the mailbox. A bare
+        // `await batch.commit()` there would park the archive — and, through it, the
+        // button's optimistic state — forever while offline, even though the delete is
+        // already durable in the local cache and the pending-write queue.
+        const source = read(CHAT_COMMENT_READ)
+
+        expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/offlineWriteAck'/)
+        expect(source).toMatch(/awaitWriteAck\(batch\.commit\(\), 'mark chat comments as read'\)/)
+        // The rollback writes too, and it runs on a failure path that must not hang.
+        expect(source).toMatch(/awaitWriteAck\(batch\.commit\(\), 'restore chat notifications'\)/)
+        expect(source).not.toMatch(/\n\s+await batch\.commit\(\)/)
+    })
+
     it('keeps the online path awaiting — durability there depends on it', () => {
-        // `awaitWriteAck` returns the write promise unchanged when online, so
-        // these call sites still await the real ack. Guarded here so a future
-        // "simplification" to a plain fire-and-forget is caught.
+        // `awaitWriteAck` settles from the real write acknowledgement while
+        // online. The wrapper only releases early if health later becomes
+        // stale/offline, so a plain fire-and-forget remains forbidden.
         const helper = read('utils/backends/offlineWriteAck.js')
-        expect(helper).toMatch(/if \(!isAppOffline\(\)\) return settled/)
+        expect(helper).toMatch(/if \(isAppOffline\(\)\) return continueWithoutServerAck\(settled, label\)/)
+        expect(helper).toMatch(/settled\.then\(/)
     })
 })

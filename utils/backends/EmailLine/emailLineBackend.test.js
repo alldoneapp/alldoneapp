@@ -15,8 +15,15 @@ jest.mock('../firestore', () => ({
     runHttpsCallableFunction: (...args) => mockRunHttpsCallableFunction(...args),
 }))
 
+const mockGetConnection = jest.fn()
+const mockGetConnectionsForProject = jest.fn()
 jest.mock('../../IntegrationProviders', () => ({
-    buildConnectionKeyPayload: jest.fn(key => ({ connectionId: key })),
+    CONNECTION_SERVICE_EMAIL: 'email',
+    buildConnectionKeyPayload: jest.fn(key =>
+        String(key).startsWith('email_') ? { connectionId: key } : { projectId: key }
+    ),
+    getConnection: (...args) => mockGetConnection(...args),
+    getConnectionsForProject: (...args) => mockGetConnectionsForProject(...args),
 }))
 
 jest.mock('../../../i18n/TranslationService', () => ({
@@ -24,6 +31,8 @@ jest.mock('../../../i18n/TranslationService', () => ({
 }))
 
 const {
+    fetchEmailLineSummary,
+    invalidateEmailLineSummaryCooldown,
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
@@ -43,6 +52,58 @@ const summaryWithLabel = {
         { labelId: 'L2', displayName: 'Other', threadCount: 2, unreadCount: 1 },
     ],
 }
+
+describe('fetchEmailLineSummary auth-invalid circuit breaker', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockGetConnection.mockReturnValue(null)
+        mockGetConnectionsForProject.mockReturnValue([])
+        mockGetState.mockReturnValue({ loggedUser: {}, emailLineSummaryByProject: {} })
+        invalidateEmailLineSummaryCooldown('email_google_deadbeef')
+        invalidateEmailLineSummaryCooldown('legacy-project')
+    })
+
+    it('accepts the summary callable authExpired response without an HTTP error', async () => {
+        mockRunHttpsCallableFunction.mockResolvedValue({ authExpired: true })
+
+        await expect(fetchEmailLineSummary('email_google_deadbeef')).resolves.toEqual({ authExpired: true })
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'SET_EMAIL_LINE_SUMMARY',
+            key: 'email_google_deadbeef',
+            summary: { authExpired: true },
+        })
+    })
+
+    it('does not poll an account-level connection marked authInvalid', async () => {
+        mockGetConnection.mockReturnValue({ connectionId: 'email_google_deadbeef', authInvalid: true })
+
+        const summary = await fetchEmailLineSummary('email_google_deadbeef')
+
+        expect(summary.authExpired).toBe(true)
+        expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('does not poll a legacy project whose materialized account is marked authInvalid', async () => {
+        mockGetConnectionsForProject.mockReturnValue([
+            { connectionId: 'email_google_deadbeef', defaultProjectId: 'legacy-project', authInvalid: true },
+        ])
+
+        const summary = await fetchEmailLineSummary('legacy-project')
+
+        expect(summary.authExpired).toBe(true)
+        expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('resumes fetching after reconnect clears authInvalid', async () => {
+        mockGetConnection.mockReturnValueOnce({ authInvalid: true }).mockReturnValue({ authInvalid: false })
+        mockRunHttpsCallableFunction.mockResolvedValue({ connected: true, labels: [] })
+
+        await fetchEmailLineSummary('email_google_deadbeef')
+        await fetchEmailLineSummary('email_google_deadbeef', { force: true })
+
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    })
+})
 
 describe('performEmailLineSweepInBackground', () => {
     beforeEach(() => {

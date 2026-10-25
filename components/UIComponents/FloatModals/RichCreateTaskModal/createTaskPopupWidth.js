@@ -1,20 +1,14 @@
 import useModalSizing from '../../../../hooks/useModalSizing'
 import { MODAL_WIDTH_L } from '../../../styles/modals'
 
-export const CREATE_TASK_WIDE_WIDTH = MODAL_WIDTH_L
+export const CREATE_TASK_POPUP_WIDTH = MODAL_WIDTH_L
 
 /**
- * Width of the add-task popup (AT-2364).
+ * Width of every add-task popup (AT-2582).
  *
- * The big "Add task" call to action on the All Projects empty inbox is the only
- * add-task entry point that is itself centered on the screen, and it is the
- * first thing a new user presses — so its popup opens WIDE (the modal system's
- * MODAL_WIDTH_L "large content" token) instead of the legacy 432px card. Every
- * other entry point keeps applyPopoverWidth() untouched.
- *
- * Returns `null` when the popup should keep its existing width — the consumers
- * apply this as an OVERRIDE on top of their own applyPopoverWidth(), so a null
- * result leaves every other add-task entry point byte-identical to before.
+ * Task creation needs more horizontal room than the legacy 368/432px popover
+ * width. Use the modal system's MODAL_WIDTH_L "large content" token for every
+ * creation entry point on desktop and tablet.
  *
  * Two things this deliberately does:
  * - it resolves through useModalSizing, so the width is clamped to the window
@@ -23,13 +17,13 @@ export const CREATE_TASK_WIDE_WIDTH = MODAL_WIDTH_L
  * - below MODAL_SHEET_BREAKPOINT it stands down: there AppPopover renders a
  *   full-width BottomSheet, where a desktop width scale is meaningless.
  *
- * The SAME style object is handed to the main form and to the in-place project
+ * The same style object is handed to the main form and to the in-place project
  * picker, so pressing "Select project" cannot make the popup jump width.
  */
-export default function useCreateTaskPopupWidth(wide) {
+export default function useCreateTaskPopupWidth(enabled = true) {
     const { width, isSheet } = useModalSizing({ size: 'L' })
 
-    if (!wide || isSheet || !width) return null
+    if (!enabled || isSheet || !width) return null
 
     return { width, minWidth: width, maxWidth: width }
 }

@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, TextInput } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
@@ -6,7 +7,7 @@ import styles from '../styles/global'
 import Icon from '../Icon'
 import AddButton from './AddButton'
 import ColorButton from './ColorButton'
-import { setAddProjectStatus, startLoadingData, stopLoadingData, setSidebarInputOpenType } from '../../redux/actions'
+import { setAddProjectStatus, setSidebarInputOpenType } from '../../redux/actions'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from '../SidebarMenu/Themes'
 import { PROJECT_COLOR_BLUE } from '../../Themes/Modern/ProjectColors'
@@ -89,10 +90,9 @@ export default function AddProjectForm({ closeForm, scrollToBottom, addingTempla
             project.templateCreatorId = loggedUser.uid
         }
 
-        dispatch(startLoadingData())
-        const creation = uploadNewProject(project, loggedUser, [], false, addingTemplate).then(() => {
-            dispatch(stopLoadingData())
-        })
+        const creation = runWithLoading('create_project', () =>
+            uploadNewProject(project, loggedUser, [], false, addingTemplate)
+        )
         closeForm()
         return creation
     })

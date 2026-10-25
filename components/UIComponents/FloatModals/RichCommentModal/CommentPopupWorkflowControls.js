@@ -1,12 +1,17 @@
+import { runWithLoading } from '../../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 
-import store from '../../../../redux/store'
-import { showTaskCompletionAnimation, startLoadingData } from '../../../../redux/actions'
+import { completeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 import { getWorkflowStepsIdsSorted } from '../../../../utils/HelperFunctions'
-import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../utils/backends/Tasks/tasksFirestore'
+import {
+    moveTasksFromDone,
+    moveTasksFromMiddleOfWorkflow,
+    moveTasksFromOpen,
+} from '../../../../utils/backends/Tasks/tasksFirestore'
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
+import { taskUsesWorkflowOutsideSteps } from './commentPopupWorkflowState'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
 import { getWorkflowStepName } from '../../../WorkflowModal/workflowNavigation'
@@ -55,25 +60,64 @@ function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppear
     )
 }
 
+/**
+ * AT-2501 — the popup shows the workflow in all three states a task can be in, not just the
+ * middle one. `currentStepId` is the id the step LIST highlights and the selector names, so it is
+ * the position itself (`OPEN_STEP` / `DONE_STEP`) rather than the last entry of `stepHistory`:
+ * a completed task's history still ends on the last step it was reviewed at, which is where it
+ * goes BACK to, not where it is.
+ *
+ * `forwardStepId` is null in exactly one case — Done, which is terminal — and that is what hides
+ * the forward button. Open has the mirror-image absence and has always expressed it as
+ * `backwardStepId: null`; `MainButtons` was already hiding the backward button there.
+ */
 export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
-    const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
-    const currentStepId = stepHistory[stepHistory.length - 1]
-    const isOpenWorkflowTask = task?.workflowTask === true && currentStepId === OPEN_STEP
-    const currentStep = isOpenWorkflowTask ? OPEN_STEP : stepIds.indexOf(currentStepId)
+    if (stepIds.length === 0) return null
 
-    if (task?.done || (currentStep < 0 && !isOpenWorkflowTask) || stepIds.length === 0) return null
+    const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
+    const lastStepId = stepHistory[stepHistory.length - 1]
+    const currentStep = stepIds.indexOf(lastStepId)
+
+    if (task?.done) {
+        if (!taskUsesWorkflowOutsideSteps(task)) return null
+
+        return {
+            currentStep: DONE_STEP,
+            currentStepId: DONE_STEP,
+            stepIds,
+            // One step back from Done is the step the task was last reviewed at — or Open, when it
+            // was completed without ever entering the workflow.
+            backwardStepId: currentStep >= 0 ? lastStepId : OPEN_STEP,
+            forwardStepId: null,
+        }
+    }
+
+    if (currentStep < 0) {
+        // Not standing on a step. Either the task has not entered the workflow yet (`OPEN_STEP`,
+        // which is what every task is created with) or it stands on a step that no longer exists,
+        // which stays unrepresentable exactly as it was before.
+        const isOpenTask = stepHistory.length === 0 || lastStepId === OPEN_STEP
+        if (!isOpenTask) return null
+        // An assistant workflow task is BORN into the workflow, so it is offered its steps
+        // regardless of the flags below — that is the AT-2146 behaviour and it stays untouched.
+        if (task?.workflowTask !== true && !taskUsesWorkflowOutsideSteps(task)) return null
+
+        return {
+            currentStep: OPEN_STEP,
+            currentStepId: OPEN_STEP,
+            stepIds,
+            backwardStepId: null,
+            forwardStepId: stepIds[0],
+        }
+    }
 
     return {
         currentStep,
-        currentStepId,
+        currentStepId: lastStepId,
         stepIds,
-        backwardStepId: isOpenWorkflowTask ? null : currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
-        forwardStepId: isOpenWorkflowTask
-            ? stepIds[0]
-            : currentStep + 1 < stepIds.length
-              ? stepIds[currentStep + 1]
-              : DONE_STEP,
+        backwardStepId: currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
+        forwardStepId: currentStep + 1 < stepIds.length ? stepIds[currentStep + 1] : DONE_STEP,
     }
 }
 
@@ -96,6 +140,13 @@ export default function CommentPopupWorkflowControls({
     onDirectionalTransitionSuccess,
     appearance,
     narrow = false,
+    /**
+     * AT-2495 — the row's completion animation, passed in by `TaskPresentation` when these
+     * controls sit under the comment-popup task header. Absent in `TaskChatWorkflowControls`
+     * (the task detailed view), where there is no row to animate and the write goes out
+     * immediately, exactly as it does today.
+     */
+    completionMotion,
 }) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
@@ -121,36 +172,50 @@ export default function CommentPopupWorkflowControls({
 
     const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
+        // Done has no forward destination (AT-2501). The button is hidden, so this only guards the
+        // keyboard/programmatic route into `moveTask`.
+        if (stepToMoveId === null || stepToMoveId === undefined) return
 
         submittingRef.current = true
         setSubmitting(true)
         setSelectorOpen(false)
 
-        store.dispatch(startLoadingData())
-        if (stepToMoveId === DONE_STEP) store.dispatch(showTaskCompletionAnimation())
-
         try {
-            if (task.userIds.length === 1) {
-                await moveTasksFromOpen(
-                    projectId,
-                    task,
-                    stepToMoveId,
-                    null,
-                    null,
-                    task.estimations,
-                    checkBoxIdRef.current
-                )
-            } else {
-                await moveTasksFromMiddleOfWorkflow(
-                    projectId,
-                    task,
-                    stepToMoveId,
-                    null,
-                    null,
-                    task.estimations,
-                    checkBoxIdRef.current
-                )
-            }
+            // AT-2495 — the popup header renders the real task row, so completing from here plays
+            // the same motion the checkbox does. The header row is RETAINED (there is no list to
+            // leave), so a plain step advance draws nothing and the hook answers a zero hold —
+            // the forward/backward buttons stay exactly as immediate as they are today.
+            await completeTaskWithMotion(completionMotion, { isCompletion: stepToMoveId === DONE_STEP }, async () => {
+                return runWithLoading('move_commented_task', async () => {
+                    // AT-2501 — reopening a completed task is its own transition, and it is the one
+                    // the other two movers cannot express: only `moveTasksFromDone` clears `done` /
+                    // `inDone`, restores the due date and reverses the completion statistics. Same
+                    // three-way split `StatusPickerStepItem` and `WorkflowEstimation` already use.
+                    if (task.done) {
+                        await moveTasksFromDone(projectId, task, stepToMoveId)
+                    } else if (task.userIds.length === 1) {
+                        await moveTasksFromOpen(
+                            projectId,
+                            task,
+                            stepToMoveId,
+                            null,
+                            null,
+                            task.estimations,
+                            checkBoxIdRef.current
+                        )
+                    } else {
+                        await moveTasksFromMiddleOfWorkflow(
+                            projectId,
+                            task,
+                            stepToMoveId,
+                            null,
+                            null,
+                            task.estimations,
+                            checkBoxIdRef.current
+                        )
+                    }
+                })
+            })
             return true
         } catch (error) {
             console.error('[CommentPopupWorkflowControls] Could not move task', {
@@ -249,9 +314,11 @@ export default function CommentPopupWorkflowControls({
                 disabled={controlsDisabled}
                 shortcutsEnabled={false}
                 compact
-                narrow={narrow}
+                // Keep task-detail actions side by side while the selector retains its narrow layout.
+                narrow={narrow && !chatAppearance}
                 backwardStepName={backwardStepName}
                 forwardStepName={forwardStepName}
+                hideForwardButton={targets.forwardStepId == null}
             />
         </View>
     )

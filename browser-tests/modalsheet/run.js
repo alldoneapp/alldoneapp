@@ -18,6 +18,9 @@
  *   Desktop (1280x900):
  *   6. The same trigger renders an anchored react-tiny-popover, no sheet, no
  *      scroll lock.
+ *   Responsive handoff:
+ *   7. Rotating an open form from portrait to landscape and back switches
+ *      shells without remounting the form or losing its local draft state.
  *
  * Requirements (this does NOT run in CI's Jest jobs):
  *   nvm use 22
@@ -97,6 +100,7 @@ const check = (name, ok, detail) => {
 }
 
 const SETTLE_MS = 250
+const HANDOFF_SETTLE_MS = 500
 // popupDismissGuard's touch grace is 750ms; stay well past it.
 const PAST_GRACE_MS = 1000
 
@@ -104,7 +108,7 @@ const state = page => page.evaluate(() => window.__state())
 
 async function runMobile(server, chromium) {
     const browser = await chromium.launch()
-    const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true })
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
     const page = await context.newPage()
     const cdp = await context.newCDPSession(page)
     const pageErrors = []
@@ -123,6 +127,36 @@ async function runMobile(server, chromium) {
         JSON.stringify(s.sheetRect)
     )
     check('mobile: the document scroller is locked while open', s.bodyOverflowY === 'hidden', s.bodyOverflowY)
+
+    // --- 1b. responsive handoff preserves the live content tree ------------
+    await page.fill('[data-testid="sheet-input"]', 'orientation draft')
+    const initialContentMountCount = (await state(page)).outerContentMountCount
+    await page.setViewportSize({ width: 844, height: 390 })
+    await page.waitForTimeout(HANDOFF_SETTLE_MS)
+    s = await state(page)
+    check(
+        'responsive: landscape switches the open sheet to a popover',
+        s.outerOpen && s.sheets === 0 && s.popoverContainers === 1,
+        JSON.stringify(s)
+    )
+    check(
+        'responsive: landscape preserves the local form draft and component instance',
+        s.inputValue === 'orientation draft' && s.outerContentMountCount === initialContentMountCount,
+        JSON.stringify(s)
+    )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.waitForTimeout(HANDOFF_SETTLE_MS)
+    s = await state(page)
+    check(
+        'responsive: portrait switches the open popover back to a sheet',
+        s.outerOpen && s.sheets === 1 && s.popoverContainers === 0,
+        JSON.stringify(s)
+    )
+    check(
+        'responsive: portrait still preserves the local form draft and component instance',
+        s.inputValue === 'orientation draft' && s.outerContentMountCount === initialContentMountCount,
+        JSON.stringify(s)
+    )
 
     // --- 2. AT-2236 mount grace --------------------------------------------
     // Tap the backdrop area (top of the screen, above the sheet) immediately:
@@ -304,6 +338,41 @@ async function runWidthMatrix(server, chromium) {
     await browser.close()
 }
 
+async function runRotation(server, chromium) {
+    const browser = await chromium.launch()
+    try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.evaluate(() => {
+            window.__rotationTrigger = document.querySelector('[data-testid="open-outer"]')
+        })
+        for (const isOpen of [false, true]) {
+            if (isOpen) await page.tap('[data-testid="open-outer"]')
+            for (const [width, height] of [
+                [844, 390],
+                [390, 844],
+            ]) {
+                await page.setViewportSize({ width, height })
+                await page.waitForTimeout(SETTLE_MS)
+                check(
+                    `rotation ${width}px (open=${isOpen}): original trigger survives`,
+                    await page.evaluate(
+                        () => document.querySelector('[data-testid="open-outer"]') === window.__rotationTrigger
+                    )
+                )
+                const s = await state(page)
+                check(
+                    `rotation ${width}px (open=${isOpen}): correct popup presentation`,
+                    s.outerOpen === isOpen && s.sheets === (isOpen && width < 640 ? 1 : 0)
+                )
+            }
+        }
+    } finally {
+        await browser.close()
+    }
+}
+
 async function main() {
     build()
     const server = await serve()
@@ -311,6 +380,7 @@ async function main() {
     await runMobile(server, chromium)
     await runDesktop(server, chromium)
     await runWidthMatrix(server, chromium)
+    await runRotation(server, chromium)
     server.close()
 
     console.log('')

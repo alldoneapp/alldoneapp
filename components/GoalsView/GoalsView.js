@@ -4,12 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
-import {
-    resetLoadingData,
-    setForceCloseGoalEditionId,
-    setGoalsActiveTab,
-    setNavigationRoute,
-} from '../../redux/actions'
+import { setForceCloseGoalEditionId, setGoalsActiveTab, setNavigationRoute } from '../../redux/actions'
 
 import {
     exitsOpenModals,
@@ -28,6 +23,7 @@ import GoalsViewAllProjects from './GoalsViewAllProjects'
 import store from '../../redux/store'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 
 export default function GoalsView() {
     const dispatch = useDispatch()
@@ -99,15 +95,6 @@ export default function GoalsView() {
     }, [forceCloseGoalEditionId])
 
     useEffect(() => {
-        setTimeout(() => {
-            dispatch(resetLoadingData())
-        })
-        return () => {
-            dispatch(resetLoadingData())
-        }
-    }, [loggedUserProjectsAmount, currentUserId, selectedProjectIndex, goalsActiveTab])
-
-    useEffect(() => {
         dispatch(setNavigationRoute(DV_TAB_ROOT_GOALS))
     }, [])
 
@@ -128,7 +115,8 @@ export default function GoalsView() {
                 activeDragGoalMode && { marginBottom: 48 },
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} />}
+            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
+            {inAllProjects && <AllProjectsAssistantLine />}
             <HashtagFiltersView />
 
             {inAllProjects ? (

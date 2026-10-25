@@ -3,15 +3,19 @@ import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } f
 
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
-import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './Tasks/optimisticTaskCreate'
+import { getRoleIdsVisibleToField } from './firestoreAccess'
+import {
+    confirmOptimisticTaskForSubscriber,
+    OPTIMISTIC_TASK_REMOVED,
+    OPTIMISTIC_TASK_SETTLED,
+    subscribeToOptimisticTaskCreates,
+} from './Tasks/optimisticTaskCreate'
 import store from '../../redux/store'
 import {
     setGlobalDataByProject,
     setOpenSubtasksMap,
     setOpenTasksMap,
     setTaskListWatchersVars,
-    startLoadingData,
-    stopLoadingData,
     updateSubtaskByTask,
     setLaterTasksExpanded,
     setTaskListSingleLoading,
@@ -40,6 +44,11 @@ import {
 import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
+import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
+import { registerOpenTasksServerSyncListener } from '../performance/openTasksServerSync'
+import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
+import { getRecentlyCompletedTasks, subscribeToRecentCompletions } from './Tasks/recentCompletionsPrefetch'
+import { scheduleTaskColdStartCachePersist } from '../InitialLoad/taskColdStartCache'
 
 export const TODAY_DATE = '0'
 
@@ -53,19 +62,145 @@ export const WORKFLOW_TASK_INDEX = 6
 export const OBSERVED_TASKS_INDEX = 7
 export const STREAM_AND_USER_TASKS_INDEX = 8
 export const ACTIVE_GOALS_INDEX = 9
-// AT-2252: calendar-derived and email-derived tasks used to own buckets 10 and 11 here, which is
-// what gave them their own sections in the task list. They now land in MAIN_TASK_INDEX like any
-// other task, so the buckets are gone and the day tuple is two slots shorter.
-export const EMPTY_SECTION_INDEX = 10
+// AT-2377: calendar-derived tasks own a bucket again, which is what gives them their own
+// "Calendar" section in the task list. AT-2252 had merged them into MAIN_TASK_INDEX; three
+// follow-up tickets (AT-2259, AT-2270, AT-2351) then fought to place a meeting sensibly inside
+// a priority-sorted list, so the merge is reverted for calendar tasks.
+//
+// Inbox-summary EMAIL tasks are deliberately NOT restored to a bucket of their own: their old
+// bucket (11) rendered nowhere on the open-tasks board, so they were invisible outside a goal.
+// They stay in MAIN_TASK_INDEX.
+export const CALENDAR_TASK_INDEX = 10
+export const EMPTY_SECTION_INDEX = 11
 
 export const NOT_PARENT_GOAL_INDEX = '0'
 
 let userOpenTasks = {}
 let userObservedTasks = {}
 let streamAndUserOpenTasks = {}
+const deferredSecondaryTaskStreamTimers = {}
+
+// All Projects needs to discover the logged user's own tasks across several projects before
+// secondary task sources are allowed to fill the Firestore connection. The assigned query is the
+// common morning path; observed tasks follow shortly afterwards, while workstream tasks and empty
+// goals wait until the first task rows have had time to commit.
+export const DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS = 1000
+export const DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS = 4500
+export const DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS = 750
+
+export const getForegroundOpenTasksLimit = ({
+    deferSecondaryStreams,
+    showLaterTasks,
+    showSomedayTasks,
+    assistantProfileMode,
+    numberTodayTasks,
+}) => {
+    if (
+        !deferSecondaryStreams ||
+        showLaterTasks ||
+        showSomedayTasks ||
+        assistantProfileMode ||
+        !Number.isFinite(numberTodayTasks) ||
+        numberTodayTasks <= 0
+    ) {
+        return null
+    }
+
+    return Math.max(1, Math.floor(numberTodayTasks))
+}
 
 export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
     observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
+
+const cachedItemAsSnapshotDocument = item => ({
+    id: item.id,
+    data: () => item,
+})
+
+/**
+ * A newly attached Firestore listener reports every matching document as `added`, even when the
+ * task board retained the same document from an earlier listener. Replaying those additions over
+ * retained mutable maps either leaves changed documents stale (parents de-dupe `added`) or can
+ * leave documents that disappeared while the board was closed in the list forever.
+ *
+ * Complete listeners therefore reconcile their first usable snapshot as an authoritative set:
+ * present cached documents become `modified`, new documents stay `added`, and cached documents
+ * absent from the snapshot become synthetic `removed` changes. Limited foreground listeners use
+ * `authoritative: false`; absence from a ten-document window says nothing about the remaining
+ * project, but documents that are present still refresh immediately.
+ */
+export const reconcileInitialSnapshotChanges = (
+    snapshotDocuments,
+    knownItemsById,
+    { authoritative = true, includeDocument = () => true } = {}
+) => {
+    const documents = snapshotDocuments || []
+    const knownItems = knownItemsById || {}
+    const snapshotIds = new Set()
+    const changes = []
+
+    documents.forEach(doc => {
+        snapshotIds.add(doc.id)
+        const knownItem = knownItems[doc.id]
+        if (includeDocument(doc)) {
+            changes.push({ type: knownItem ? 'modified' : 'added', doc })
+        } else if (knownItem) {
+            changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(knownItem) })
+        }
+    })
+
+    if (authoritative) {
+        Object.entries(knownItems).forEach(([itemId, item]) => {
+            if (!snapshotIds.has(itemId)) {
+                changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(item) })
+            }
+        })
+    }
+
+    return changes
+}
+
+/**
+ * Retained rows a watcher removed because `recentCompletionsPrefetch` reported the task completed,
+ * keyed `${projectId}${userId}`. Firestore still sends its own `removed` for such a task once the
+ * listener's view catches up, and `deleteTask` is not idempotent (it decrements the per-day count
+ * and estimation every time), so that echo has to be dropped. An `added`/`modified` for the id
+ * clears the entry: the task is back (reopened), and its next removal is a real one.
+ */
+const completionPrefetchRemovedIds = {}
+
+/**
+ * Removal changes for retained top-level tasks of this assigned-task watcher that the prefetch
+ * reported completed. Ids in `excludedIds` are skipped: a snapshot that still contains the task is
+ * reconciled by Firestore itself once the prefetched documents reach its view.
+ */
+export const buildCompletedElsewhereRemovals = (completedTasks, knownTasksById, excludedIds = null) => {
+    const changes = []
+    ;(completedTasks || []).forEach(({ id, data }) => {
+        if (excludedIds && excludedIds.has(id)) return
+        const retainedTask = knownTasksById?.[id]
+        if (!retainedTask || retainedTask.parentId || data?.inDone !== true) return
+        changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(retainedTask) })
+    })
+    return changes
+}
+
+/**
+ * Drops Firestore's own `removed` for tasks a watcher already removed through the prefetch (see
+ * `completionPrefetchRemovedIds`), unless the task was re-added in between and is known again.
+ */
+export const dropEchoedCompletionRemovals = (changes, removedIds, knownTasksById) => {
+    if (!removedIds || removedIds.size === 0) return changes
+    return changes.filter(change => {
+        const id = change.doc.id
+        if (!removedIds.has(id)) return true
+        if (change.type !== 'removed') {
+            removedIds.delete(id)
+            return true
+        }
+        return !!knownTasksById?.[id]
+    })
+}
 
 const activeMilestoneEmptyGoals = {}
 
@@ -83,15 +218,26 @@ export const WATCHER_VARS_DEFAULT = {
 }
 
 //OPEN TASKS WATCHERS
-export const unwatchOpenTasks = (projectId, currentUserId) => {
+export const unwatchOpenTasks = (projectId, currentUserId, { preserveData = false } = {}) => {
     const { globalDataByProject } = store.getState()
-    delete globalDataByProject[projectId]
-
-    batchDispatch(setGlobalDataByProject(globalDataByProject))
+    if (!preserveData) {
+        const nextGlobalDataByProject = { ...globalDataByProject }
+        delete nextGlobalDataByProject[projectId]
+        batchDispatch(setGlobalDataByProject(nextGlobalDataByProject))
+    }
 
     unwatch(projectId, currentUserId, userOpenTasks)
     unwatch(projectId, currentUserId, userObservedTasks)
     unwatch(projectId, currentUserId, streamAndUserOpenTasks)
+
+    const pendingTimers = deferredSecondaryTaskStreamTimers[projectId]?.[currentUserId] || []
+    pendingTimers.forEach(cancel => cancel())
+    if (deferredSecondaryTaskStreamTimers[projectId]) {
+        delete deferredSecondaryTaskStreamTimers[projectId][currentUserId]
+        if (Object.keys(deferredSecondaryTaskStreamTimers[projectId]).length === 0) {
+            delete deferredSecondaryTaskStreamTimers[projectId]
+        }
+    }
 
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 }
@@ -103,7 +249,8 @@ export const watchOpenTasks = (
     showSomedayTasks,
     keepMainDayData,
     instanceKey,
-    assistantProfileMode = false
+    assistantProfileMode = false,
+    { trackConnectionHealth = true, deferSecondaryStreams = false } = {}
 ) =>
     // AT-2337: mounting "All projects" calls this once per project (~78x) and each
     // call fired 4 separate store notifications before a single task had loaded.
@@ -117,7 +264,9 @@ export const watchOpenTasks = (
             showSomedayTasks,
             keepMainDayData,
             instanceKey,
-            assistantProfileMode
+            assistantProfileMode,
+            trackConnectionHealth,
+            deferSecondaryStreams
         )
     })
 
@@ -128,7 +277,9 @@ const watchOpenTasksInternal = (
     showSomedayTasks,
     keepMainDayData,
     instanceKey,
-    assistantProfileMode = false
+    assistantProfileMode = false,
+    trackConnectionHealth = true,
+    deferSecondaryStreams = false
 ) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
@@ -158,7 +309,7 @@ const watchOpenTasksInternal = (
         })
     )
 
-    if (keepMainDayData) {
+    if (keepMainDayData && globalDataByProject[projectId]) {
         const currentGlobalData = globalDataByProject[projectId]
         const mainDayDate = TODAY_DATE
 
@@ -182,7 +333,7 @@ const watchOpenTasksInternal = (
                         return task.dueDateByObserversIds[currentUser.uid] <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.observedTasksById),
+            ])(currentGlobalData.tasksMap?.observedTasksById || {}),
             userTasksById: flow([
                 Object.entries,
                 arr =>
@@ -190,7 +341,7 @@ const watchOpenTasksInternal = (
                         return task.dueDate <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.userTasksById),
+            ])(currentGlobalData.tasksMap?.userTasksById || {}),
             streamAndUserTasksById: flow([
                 Object.entries,
                 arr =>
@@ -198,7 +349,7 @@ const watchOpenTasksInternal = (
                         return task.dueDate <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.streamAndUserTasksById),
+            ])(currentGlobalData.tasksMap?.streamAndUserTasksById || {}),
         }
 
         goalsMap = flow([
@@ -211,67 +362,248 @@ const watchOpenTasksInternal = (
                     )
                 }),
             Object.fromEntries,
-        ])(currentGlobalData.goalsMap)
+        ])(currentGlobalData.goalsMap || {})
+
+        // The rendered snapshot keeps subtasks visible while this new listener reconnects. Keep
+        // the listener-owned subtask indexes alongside it so the first foreground parent snapshot
+        // cannot momentarily replace those rows with an empty subtask map.
+        subtasksByParentId = currentGlobalData.subtasksByParentId || {}
+        subtasksMap = currentGlobalData.subtasksMap || {
+            observedSubtasksById: {},
+            userSubtasksById: {},
+            streamAndUserSubtasksById: {},
+        }
     }
 
     unwatchOpenTasks(projectId, currentUser.uid)
-    const globalData = { storedTasks, estimationByDate, amountOfTasksByDate, tasksMap, goalsMap }
+    const globalData = {
+        storedTasks,
+        estimationByDate,
+        amountOfTasksByDate,
+        tasksMap,
+        goalsMap,
+        subtasksByParentId,
+        subtasksMap,
+    }
 
     batchDispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
 
-    watchUserOpenTasks(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        false,
-        instanceKey,
-        showLaterTasks,
-        showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap,
-        assistantProfileMode
-    )
-    watchUserOpenTasks(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        true,
-        instanceKey,
-        showLaterTasks,
-        showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap
-    )
+    const startObservedTasks = () => {
+        const unsubscribe = watchUserOpenTasks(
+            projectId,
+            callback,
+            storedTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            tasksMap,
+            true,
+            instanceKey,
+            showLaterTasks,
+            showSomedayTasks,
+            subtasksByParentId,
+            subtasksMap,
+            {
+                assistantProfileMode: false,
+                trackConnectionHealth,
+            }
+        )
+        setProperty(userObservedTasks, [projectId, currentUser.uid, 'observed'], unsubscribe)
+    }
 
-    watchStreamAndUserOpenTasksInBatches(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        showLaterTasks,
-        showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap
-    )
+    const startRemainingStreams = () => {
+        watchStreamAndUserOpenTasksInBatches(
+            projectId,
+            callback,
+            storedTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            tasksMap,
+            showLaterTasks,
+            showSomedayTasks,
+            subtasksByParentId,
+            subtasksMap,
+            trackConnectionHealth
+        )
 
-    watchEmptyGoals(
-        projectId,
-        callback,
-        storedTasks,
-        goalsMap,
+        watchEmptyGoals(
+            projectId,
+            callback,
+            storedTasks,
+            goalsMap,
+            showLaterTasks,
+            showSomedayTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            trackConnectionHealth
+        )
+    }
+
+    const deferredCancels = []
+    const rememberDeferredCancel = cancel => {
+        deferredCancels.push(cancel)
+        if (!deferredSecondaryTaskStreamTimers[projectId]) deferredSecondaryTaskStreamTimers[projectId] = {}
+        deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = deferredCancels
+        return cancel
+    }
+    const forgetDeferredCancel = cancel => {
+        const index = deferredCancels.indexOf(cancel)
+        if (index >= 0) deferredCancels.splice(index, 1)
+    }
+    const schedule = (streamStarter, delay) => {
+        let timer
+        let cancelled = false
+        const cancel = () => {
+            if (cancelled) return
+            cancelled = true
+            clearTimeout(timer)
+            forgetDeferredCancel(cancel)
+        }
+        timer = setTimeout(() => {
+            if (cancelled) return
+            cancelled = true
+            forgetDeferredCancel(cancel)
+            streamStarter()
+        }, delay)
+        return rememberDeferredCancel(cancel)
+    }
+
+    let secondaryStreamsScheduled = false
+    const scheduleSecondaryStreams = () => {
+        if (secondaryStreamsScheduled) return
+        secondaryStreamsScheduled = true
+        schedule(startObservedTasks, DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        schedule(startRemainingStreams, DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS)
+    }
+
+    // Keep one assigned-task owner in the watcher map even while its implementation transitions
+    // from a small top-level query to the complete realtime query. Unmounting the project cancels a
+    // queued hydration and every listener that has already started.
+    const assignedUnsubscribers = new Set()
+    let assignedWatchersDisposed = false
+    const registerAssignedUnsubscriber = unsubscribe => {
+        if (assignedWatchersDisposed) unsubscribe()
+        else assignedUnsubscribers.add(unsubscribe)
+        return unsubscribe
+    }
+    const stopAssignedUnsubscriber = unsubscribe => {
+        if (!assignedUnsubscribers.delete(unsubscribe)) return
+        unsubscribe()
+    }
+    const stopAssignedWatchers = () => {
+        if (assignedWatchersDisposed) return
+        assignedWatchersDisposed = true
+        assignedUnsubscribers.forEach(unsubscribe => unsubscribe())
+        assignedUnsubscribers.clear()
+    }
+    setProperty(userOpenTasks, [projectId, currentUser.uid, 'assigned'], stopAssignedWatchers)
+
+    const foregroundLimit = getForegroundOpenTasksLimit({
+        deferSecondaryStreams,
         showLaterTasks,
         showSomedayTasks,
-        estimationByDate,
-        amountOfTasksByDate
-    )
+        assistantProfileMode,
+        numberTodayTasks: store.getState().loggedUser.numberTodayTasks,
+    })
+
+    if (foregroundLimit) {
+        let foregroundUnsubscribe
+        let hydrationScheduled = false
+        const scheduleCompleteAssignedTasks = () => {
+            if (hydrationScheduled) return
+            hydrationScheduled = true
+            schedule(() => {
+                const cancelHydration = enqueueOpenTasksBackgroundHydration(releaseHydrationSlot => {
+                    const completeUnsubscribe = registerAssignedUnsubscriber(
+                        watchUserOpenTasks(
+                            projectId,
+                            callback,
+                            storedTasks,
+                            estimationByDate,
+                            amountOfTasksByDate,
+                            tasksMap,
+                            false,
+                            instanceKey,
+                            showLaterTasks,
+                            showSomedayTasks,
+                            subtasksByParentId,
+                            subtasksMap,
+                            {
+                                assistantProfileMode,
+                                trackConnectionHealth: false,
+                                affectsLoadingState: false,
+                                performanceSource: 'assigned_open_tasks_background',
+                                onInitialSnapshotFailed: () => {
+                                    releaseHydrationSlot()
+                                    scheduleSecondaryStreams()
+                                },
+                                onInitialSnapshotDelivered: () => {
+                                    releaseHydrationSlot()
+                                    stopAssignedUnsubscriber(foregroundUnsubscribe)
+                                    scheduleSecondaryStreams()
+                                },
+                            }
+                        )
+                    )
+                    return completeUnsubscribe
+                })
+                rememberDeferredCancel(cancelHydration)
+            }, DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        }
+
+        foregroundUnsubscribe = registerAssignedUnsubscriber(
+            watchUserOpenTasks(
+                projectId,
+                callback,
+                storedTasks,
+                estimationByDate,
+                amountOfTasksByDate,
+                tasksMap,
+                false,
+                instanceKey,
+                showLaterTasks,
+                showSomedayTasks,
+                subtasksByParentId,
+                subtasksMap,
+                {
+                    assistantProfileMode,
+                    trackConnectionHealth,
+                    onInitialSnapshotDelivered: scheduleCompleteAssignedTasks,
+                    onInitialSnapshotFailed: scheduleCompleteAssignedTasks,
+                    queryLimit: foregroundLimit,
+                    topLevelOnly: true,
+                    performanceSource: 'assigned_open_tasks_foreground',
+                }
+            )
+        )
+    } else {
+        registerAssignedUnsubscriber(
+            watchUserOpenTasks(
+                projectId,
+                callback,
+                storedTasks,
+                estimationByDate,
+                amountOfTasksByDate,
+                tasksMap,
+                false,
+                instanceKey,
+                showLaterTasks,
+                showSomedayTasks,
+                subtasksByParentId,
+                subtasksMap,
+                {
+                    assistantProfileMode,
+                    trackConnectionHealth,
+                    onInitialSnapshotDelivered: deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
+                    onInitialSnapshotFailed: deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
+                }
+            )
+        )
+
+        if (!deferSecondaryStreams) {
+            startObservedTasks()
+            startRemainingStreams()
+        }
+    }
 
     // Save vars at the end
     batchDispatch(
@@ -339,18 +671,24 @@ const getOpenTasksQuery = (
     currentUserId,
     loggedUser,
     endOfDay,
-    endOfTomorrow
+    endOfTomorrow,
+    { queryLimit = null, topLevelOnly = false } = {}
 ) => {
     const { uid: loggedUserId, isAnonymous } = loggedUser
-    let query = getDb().collection(`items/${projectId}/tasks`).where('inDone', '==', false)
+    const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+    const accessReaderId = allowUserIds[allowUserIds.length - 1]
+    let query = getDb().collection(`items/${projectId}/tasks`)
     if (areObservedTasks) {
-        query = query.where('observersIds', 'array-contains-any', [currentUserId])
+        query = query.where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', currentUserId)
     } else {
-        const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-
         query = query
+            .where('inDone', '==', false)
             .where('currentReviewerId', '==', currentUserId)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', accessReaderId)
+
+        // The foreground All Projects query needs rows, not child documents. Subtasks are loaded by
+        // the complete background listener and then appear underneath their already-visible parent.
+        if (topLevelOnly) query = query.where('parentId', '==', null)
 
         // Support three expand states:
         // State 0 (both false): only today (dueDate <= endOfDay)
@@ -370,6 +708,7 @@ const getOpenTasksQuery = (
         }
         // State 2 (both true): No date filter, fetch all tasks including someday
     }
+    if (Number.isInteger(queryLimit) && queryLimit > 0) query = query.limit(queryLimit)
     return query
 }
 
@@ -386,12 +725,17 @@ const watchUserOpenTasks = (
     showSomedayTasks,
     subtasksByParentId,
     subtasksMap,
-    assistantProfileMode = false
+    {
+        assistantProfileMode = false,
+        trackConnectionHealth = true,
+        onInitialSnapshotDelivered,
+        onInitialSnapshotFailed,
+        queryLimit = null,
+        topLevelOnly = false,
+        affectsLoadingState = true,
+        performanceSource,
+    } = {}
 ) => {
-    if (!areObservedTasks)
-        setTimeout(() => {
-            store.dispatch(startLoadingData())
-        })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const assistantOwner = !!currentUser.temperature
@@ -409,21 +753,114 @@ const watchUserOpenTasks = (
         currentUserId,
         loggedUser,
         endOfDay,
-        endOfTomorrow
+        endOfTomorrow,
+        { queryLimit, topLevelOnly }
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot)
+    let initialSnapshotDelivered = false
+    // AT-2500 - ids this watcher rendered from an optimistic publication and has NOT yet seen in a
+    // delivered query snapshot. Bounded by construction: an id is added when the row is inserted
+    // and removed when a non-buffered snapshot's result set names it, so in steady state this is
+    // empty and during a create it lives only through the projection round trip. Declared up here
+    // rather than beside the subscriber that fills it, because the snapshot handler reads it.
+    const unconfirmedOptimisticTaskIds = new Set()
+    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, {
+        trackConnectionHealth,
+        loadingSource: !areObservedTasks && affectsLoadingState ? 'open_tasks' : undefined,
+        onError: error => {
+            snapshotPerformance.fail()
+            if (!initialSnapshotDelivered) onInitialSnapshotFailed?.(error)
+        },
+    })
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        {
+            object_type: 'tasks',
+            scope: 'project',
+            source: performanceSource || (areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks'),
+        },
+        { sampleRate: 0.02 }
+    )
+    const serverSync = registerOpenTasksServerSyncListener()
+    const completionRemovalKey = `${projectId}${currentUserId}`
+    // Only the assigned-task stream filters on `inDone`; an observed task stays in its query when
+    // it is completed, so the prefetch has nothing to say to that stream.
+    const removeTasksCompletedElsewhere = (excludedIds = null) => {
+        if (areObservedTasks) return []
+        const changes = buildCompletedElsewhereRemovals(
+            getRecentlyCompletedTasks(projectId, currentUserId),
+            tasksMap.userTasksById,
+            excludedIds
+        )
+        if (changes.length > 0) {
+            if (!completionPrefetchRemovedIds[completionRemovalKey]) {
+                completionPrefetchRemovedIds[completionRemovalKey] = new Set()
+            }
+            changes.forEach(change => completionPrefetchRemovedIds[completionRemovalKey].add(change.doc.id))
+        }
+        return changes
+    }
     function handleOpenTasksSnapshot(querySnapshot) {
-        const changes = querySnapshot
+        const liveChanges = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-        if (gate.shouldBuffer(querySnapshot)) {
-            cacheChanges = [...cacheChanges, ...changes]
+
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (!querySnapshot.metadata?.fromCache) serverSync.serverReady()
+        if (buffered) {
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
+            // AT-2539 - only a snapshot this handler is actually delivering can take ownership of
+            // an optimistic row. A cached snapshot held behind the gate has not updated the list
+            // yet; confirming it here would stop document-level reconciliation while the UI still
+            // held the create-time copy. Read `docs`, not `docChanges()`, because the gate flush
+            // deliberately has an empty change list but carries the authoritative result set.
+            if (unconfirmedOptimisticTaskIds.size > 0) {
+                ;(querySnapshot.docs || []).forEach(doc => {
+                    unconfirmedOptimisticTaskIds.delete(doc.id)
+                    confirmOptimisticTaskForSubscriber(projectId, doc.id, handleOptimisticTaskChange)
+                })
+            }
+
+            const isInitialSnapshot = !initialSnapshotDelivered
+            const taskItems = areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById
+            const subtaskItems = areObservedTasks ? subtasksMap.observedSubtasksById : subtasksMap.userSubtasksById
+            const authoritativeInitialSnapshot = !Number.isInteger(queryLimit) || queryLimit <= 0
+            const changes = isInitialSnapshot
+                ? [
+                      ...reconcileInitialSnapshotChanges(
+                          querySnapshot.docs,
+                          { ...taskItems, ...subtaskItems },
+                          {
+                              // A limited foreground window can refresh documents it contains, but only the
+                              // subsequent complete listener may remove retained documents absent from it.
+                              authoritative: authoritativeInitialSnapshot,
+                              includeDocument: doc =>
+                                  taskBelongsInOpenBoard(
+                                      doc.data(),
+                                      assistantOwner,
+                                      areObservedTasks,
+                                      assistantProfileMode
+                                  ),
+                          }
+                      ),
+                      // ...except for rows the completion prefetch has already proven done: those
+                      // can leave now instead of waiting for the complete listener's queue slot.
+                      // An authoritative snapshot has removed every absent row on its own.
+                      ...(authoritativeInitialSnapshot
+                          ? []
+                          : removeTasksCompletedElsewhere(new Set((querySnapshot.docs || []).map(doc => doc.id)))),
+                  ]
+                : liveChanges
+            if (isInitialSnapshot) cacheChanges = []
             deliverOpenTasksChanges(changes)
+            if (isInitialSnapshot) {
+                initialSnapshotDelivered = true
+                onInitialSnapshotDelivered?.()
+            }
         }
     }
 
@@ -431,11 +868,8 @@ const watchUserOpenTasks = (
      * The delivery half of the snapshot handler, split out so AT-2342's optimistic insert can
      * reach it without impersonating a Firestore snapshot.
      *
-     * `optimistic` turns off the two things that belong to a real snapshot and only to it:
-     * flushing whatever `cachedSnapshotGate` has buffered (those changes are still waiting for
-     * a server snapshot to confirm them - a locally created task is no reason to render a
-     * half-synced list early), and `stopLoadingData()`, which decrements a *counter* and would
-     * corrupt the global spinner if called without a matching `startLoadingData()`.
+     * Optimistic publications neither flush buffered snapshots nor complete the
+     * initial read. Only the snapshot gate can release this listener's loading owner.
      */
     function deliverOpenTasksChanges(changes, { optimistic = false } = {}) {
         // AT-2337: one snapshot used to produce ~10 separate store notifications,
@@ -443,7 +877,13 @@ const watchUserOpenTasks = (
         // account). Collect them into a single array dispatch instead - same
         // actions, same order, same resulting state, one subscriber pass.
         runInDispatchBatch(() => {
-            const mergedChanges = optimistic ? changes : [...cacheChanges, ...changes]
+            const mergedChanges = optimistic
+                ? changes
+                : dropEchoedCompletionRemovals(
+                      [...cacheChanges, ...changes],
+                      areObservedTasks ? null : completionPrefetchRemovedIds[completionRemovalKey],
+                      tasksMap.userTasksById
+                  )
 
             let subtasks = { ...subtasksByParentId }
 
@@ -471,13 +911,17 @@ const watchUserOpenTasks = (
                 callback(openTasksArray, !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]], !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
                 batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+            } else {
+                // The observed stream may populate storedTasks before the assigned
+                // stream delivers an empty first snapshot. That empty assigned
+                // stream is still ready; without this flag a staged project waits
+                // for the five-second safety timeout despite already having data.
+                batchDispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
             }
-
-            if (!optimistic) batchDispatch(stopLoadingData())
 
             batchDispatch(
                 setOpenSubtasksMap(projectId, {
@@ -509,32 +953,129 @@ const watchUserOpenTasks = (
 
     const knownTaskIds = () => (areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById)
 
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+    // Absence from a LIMITED foreground window says nothing - the task may simply be outside the
+    // ten documents it asked for. Only a complete listener may conclude "not in this query", the
+    // same rule `reconcileInitialSnapshotChanges` applies to its own synthetic removals.
+    const isAuthoritativeListener = !Number.isInteger(queryLimit) || queryLimit <= 0
+
+    /**
+     * The settlement handler. The server has accepted the create and `change.doc.data()` is the
+     * document as it stands now, so this is a re-evaluation of a row we put on screen ourselves -
+     * NOT a report that Firestore has nothing to say about it.
+     *
+     * The distinction is the whole of the AT-2500 follow-up. This used to retire the row purely
+     * because no snapshot had mentioned the task yet, on the reasoning that a local `added` always
+     * beats the server ack. It never does here: every query this watcher runs filters on
+     * `readerIds` / `roleIdsVisibleTo.<reader>`, which the access rules forbid a client to write,
+     * so a locally created task matches NOTHING locally and is first seen only once
+     * `synchronizeAccessProjection` has stamped the projection server-side and it has travelled
+     * back. The ack therefore won that race on every create, and the row blinked out for the
+     * duration of a round trip before reappearing.
+     *
+     * Deciding on the document instead has no race in it:
+     *   - still in this view  -> keep it, updating in place through the normal pipeline so the row
+     *                            picks up whatever changed (a rename, a postpone to later today)
+     *                            without ever leaving the list;
+     *   - no longer in view   -> remove it, which is the original AT-2500 case (postponed straight
+     *                            out of `dueDate <= endOfDay`, so no echo is ever coming);
+     *   - no document at all  -> no verdict, so leave the row exactly as it is.
+     *
+     * Removal reuses the retained copy as the change payload, because `deleteTask` derives the
+     * bucket to clear from the change's own data and the retained copy is precisely what decided
+     * the bucket the row sits in.
+     */
+    const settleOptimisticTask = (taskId, latestTaskData) => {
+        if (!unconfirmedOptimisticTaskIds.has(taskId)) return
+
+        const retainedTask = knownTaskIds()[taskId]
+        if (!retainedTask) {
+            unconfirmedOptimisticTaskIds.delete(taskId)
+            confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
+            return
+        }
+
+        // No verdict: the cache could not say what the task looks like. Keep the row and keep it
+        // unconfirmed, so the real snapshot still reconciles it when the projection lands.
+        if (!latestTaskData) return
+
+        if (isTaskInThisView(latestTaskData)) {
+            // The row stays; it is refreshed in place. `modified` is a delete-then-add inside ONE
+            // delivery, i.e. a single recompute and a single callback - the list never renders a
+            // frame without the task. Still unconfirmed: only a real snapshot confirms.
+            deliverOpenTasksChanges([{ type: 'modified', doc: { id: taskId, data: () => latestTaskData } }], {
+                optimistic: true,
+            })
+            return
+        }
+
+        if (!isAuthoritativeListener) return
+        unconfirmedOptimisticTaskIds.delete(taskId)
+        deliverOpenTasksChanges([{ type: 'removed', doc: { id: taskId, data: () => retainedTask } }], {
+            optimistic: true,
+        })
+        confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
+    }
+
+    function handleOptimisticTaskChange(change) {
+        if (change.type === OPTIMISTIC_TASK_SETTLED) {
+            settleOptimisticTask(change.doc.id, change.doc.data())
+            return false
+        }
+
         const taskData = change.doc.data()
-        if (!isTaskInThisView(taskData)) return
+        if (!isTaskInThisView(taskData)) return false
 
         // Removal must be idempotent: a rejected write is rolled back twice over - once by the
         // explicit publication and once by Firestore reverting its own local mutation - and
         // `deleteTask` decrements the per-day task count and estimation total every time it runs.
         // A subtask lives in `subtasksMap`, not here, so let the pipeline judge that case itself.
-        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) return
+        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) {
+            return false
+        }
+
+        change.type === OPTIMISTIC_TASK_REMOVED
+            ? unconfirmedOptimisticTaskIds.delete(change.doc.id)
+            : unconfirmedOptimisticTaskIds.add(change.doc.id)
 
         deliverOpenTasksChanges([change], { optimistic: true })
-    })
+        return change.type !== OPTIMISTIC_TASK_REMOVED
+    }
 
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
-    const unsubAll = () => {
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
+    // A prefetch that lands before the first delivery is applied by that delivery itself.
+    const unsubCompletions = areObservedTasks
+        ? () => {}
+        : subscribeToRecentCompletions(projectId, () => {
+              if (!initialSnapshotDelivered) return
+              const changes = removeTasksCompletedElsewhere()
+              if (changes.length > 0) deliverOpenTasksChanges(changes, { optimistic: true })
+          })
+
+    let unsub
+    try {
+        unsub = gate.subscribe(query)
+    } catch (error) {
         unsubOptimistic()
+        unsubCompletions()
+        serverSync.dispose()
+        throw error
+    }
+    let unsubscribed = false
+    const unsubAll = () => {
+        if (unsubscribed) return
+        unsubscribed = true
+        unsubOptimistic()
+        unsubCompletions()
+        serverSync.dispose()
+        snapshotPerformance.cancel()
         unsub()
     }
 
-    areObservedTasks
-        ? (userObservedTasks[projectId] = { [currentUserId]: [unsubAll] })
-        : (userOpenTasks[projectId] = { [currentUserId]: [unsubAll] })
+    return unsubAll
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
-    const { genericData, suggestedBy, userIds } = task
+    const { genericData, suggestedBy, userIds, calendarData } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
     // The assistant page intentionally has one timeline. A workflow task that is currently being
@@ -544,9 +1085,9 @@ export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, 
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    // AT-2252: calendar events and inbox-summary emails are ordinary tasks. They deliberately fall
-    // through to MAIN_TASK_INDEX so they are grouped by goal, priority-sorted, draggable and
-    // filterable exactly like everything else instead of being pushed into their own section.
+    // AT-2377: a synced meeting belongs in the Calendar section, not in the priority-sorted list.
+    if (calendarData) return CALENDAR_TASK_INDEX
+    // Inbox-summary email tasks stay here on purpose - see the EMAIL note by the constants.
     return MAIN_TASK_INDEX
 }
 
@@ -636,7 +1177,7 @@ const processTaskChange = (
     const sortListKey = `${date}+${taskTypeIndex}+${innerGroupKey}+${taskParentGoalId}`
     const sortListValue = { date, taskTypeIndex, innerGroupKey, taskParentGoalId }
 
-    let needToProcessTheTask = true
+    let needToProcessTheTask = task.inDone === false
     if (taskTypeIndex === OBSERVED_TASKS_INDEX) {
         if (!Array.isArray(isPublicFor)) {
             console.warn('[OpenTasks] isPublicFor missing/invalid on task', { taskId: task && task.id, isPublicFor })
@@ -649,11 +1190,11 @@ const processTaskChange = (
             (!loggedUser.isAnonymous && safeIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
-        needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
+        needToProcessTheTask = task.inDone === false && isPublicForLoggedUser && needToBeListedInThisDate
     }
 
     if (areStreamAndUserTasks) {
-        needToProcessTheTask = userIds.length === 1
+        needToProcessTheTask = task.inDone === false && userIds.length === 1
     }
 
     const addTask = () => {
@@ -747,7 +1288,20 @@ const processTaskChange = (
     }
 
     //PROCESS THE CHANGE
-    if (changeType === 'modified') {
+    // AT-2500: `added` is reconciled exactly like `modified`, never de-duped away. An `added` for a
+    // task this watcher already holds is not a duplicate to discard - it is the authoritative
+    // document arriving for a row that was put on screen from somewhere else, i.e. AT-2342's
+    // optimistic insert. The two payloads are only byte-identical while nobody edits the task in
+    // the gap between `publishOptimisticTaskCreated` and the echo; postponing a task the instant
+    // it is created lands squarely in that gap, and the old `if (notExistTask) addTask()` guard
+    // then threw the corrected document away and left the row in today's bucket for ever.
+    //
+    // Reconciling instead cannot duplicate the row: `wasNeedToProcessTheTask` is false for a task
+    // that is genuinely new, so this collapses to the plain `addTask()` the `added` branch used to
+    // do, and for a known task it is a delete-then-add, which is exactly one entry either way.
+    // `reconcileInitialSnapshotChanges` already rewrites known `added`s to `modified` for this very
+    // reason - this makes the live path agree with the initial-snapshot path.
+    if (changeType === 'modified' || changeType === 'added') {
         const oldTask = areObservedTasks
             ? tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
@@ -825,13 +1379,6 @@ const processTaskChange = (
             )
         }
         addTask()
-    } else if (changeType === 'added') {
-        const notExistTask = areObservedTasks
-            ? !tasksMap.observedTasksById[task.id]
-            : areStreamAndUserTasks
-              ? !tasksMap.streamAndUserTasksById[task.id]
-              : !tasksMap.userTasksById[task.id]
-        if (notExistTask) addTask()
     } else {
         if (needToProcessTheTask) deleteTask(date, taskTypeIndex, innerGroupKey, taskParentGoalId, estimation, false)
     }
@@ -855,14 +1402,19 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
                 taskTypeIndex === WORKFLOW_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         } else {
             const taskList = orderBy(storedTasks[date][taskTypeIndex][taskParentGoalId], 'sortIndex', 'desc')
-            storedTasks[date][taskTypeIndex][taskParentGoalId] = sortTasksByPriority(taskList)
+            // AT-2377: the Calendar section orders its own tasks chronologically by event start, so
+            // priority must not reshuffle them here.
+            storedTasks[date][taskTypeIndex][taskParentGoalId] =
+                taskTypeIndex === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         }
     }
 }
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
-    const openTasksArray = storedTasks[dayDateFormated] ? [] : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]]
+    const openTasksArray = storedTasks[dayDateFormated]
+        ? []
+        : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]]
 
     for (let i = 0; i < tasksByDateAndStep.length; i++) {
         const dateElement = tasksByDateAndStep[i]
@@ -912,7 +1464,13 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             }
         }
 
-        const emptyGoals = activeGoals.filter(goal => !mainTasks.map(data => data[0]).includes(goal.id))
+        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
+
+        // A goal counts as empty only when NOTHING renders under it. Calendar tasks are grouped by
+        // goal inside the Calendar section, so a goal holding only meetings has visible content and
+        // must not also be listed as an empty goal - it would render its header twice.
+        const goalIdsWithTasks = new Set([...mainTasks, ...calendarTasks].map(data => data[0]))
+        const emptyGoals = activeGoals.filter(goal => !goalIdsWithTasks.has(goal.id))
 
         openTasksArray.push([
             date,
@@ -925,6 +1483,7 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             observedTasks,
             streamAndUserTasks,
             activeGoals,
+            calendarTasks,
             emptyGoals,
         ])
     }
@@ -950,7 +1509,7 @@ const processSubtaskChange = (
 
     const { parentId, dueDateByObserversIds, isPublicFor } = subtask
 
-    let needToProcessTheTask = true
+    let needToProcessTheTask = subtask.inDone === false
     if (areObservedTasks) {
         const taskInBacklog = dueDateByObserversIds[currentUserId] === BACKLOG_DATE_NUMERIC
         const taskIsTodayOrOverdue = dueDateByObserversIds[currentUserId] <= endOfDay
@@ -968,7 +1527,7 @@ const processSubtaskChange = (
             (!loggedUser.isAnonymous && safeObservedIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
-        needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
+        needToProcessTheTask = subtask.inDone === false && isPublicForLoggedUser && needToBeListedInThisDate
     }
 
     const addSubtask = () => {
@@ -1180,7 +1739,8 @@ const watchStreamAndUserOpenTasksInBatches = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    trackConnectionHealth = true
 ) => {
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
@@ -1205,7 +1765,8 @@ const watchStreamAndUserOpenTasksInBatches = (
             loggedUser,
             userIdList[i],
             subtasksByParentId,
-            subtasksMap
+            subtasksMap,
+            trackConnectionHealth
         )
     }
 }
@@ -1226,7 +1787,7 @@ const getOpenStreamAndUserTasksQuery = (
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('userId', '==', assigneeUserId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     // Support three expand states (same as getOpenTasksQuery)
     if (!showLaterTasks && !showSomedayTasks) {
@@ -1258,7 +1819,8 @@ const watchStreamAndUserOpenTasks = (
     loggedUser,
     assigneeUserId,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    trackConnectionHealth = true
 ) => {
     const { taskListWatchersVars } = store.getState()
     const currentUserId = currentUser.uid
@@ -1279,16 +1841,39 @@ const watchStreamAndUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot)
+    let initialSnapshotDelivered = false
+    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot, { trackConnectionHealth })
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'tasks', scope: 'project', source: 'workstream_open_tasks' },
+        { sampleRate: 0.02 }
+    )
     function handleStreamAndUserTasksSnapshot(querySnapshot) {
-        const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
-            cacheChanges = [...cacheChanges, ...changes]
+        const liveChanges = querySnapshot.docChanges()
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
             // AT-2337: see the note in watchUserOpenTasks - coalesce this snapshot's
             // dispatches into one store notification.
             runInDispatchBatch(() => {
-                const mergedChanges = [...cacheChanges, ...changes]
+                const isInitialSnapshot = !initialSnapshotDelivered
+                const knownItems = {
+                    ...Object.fromEntries(
+                        Object.entries(tasksMap.streamAndUserTasksById).filter(
+                            ([, task]) => task.userId === assigneeUserId
+                        )
+                    ),
+                    ...Object.fromEntries(
+                        Object.entries(subtasksMap.streamAndUserSubtasksById).filter(
+                            ([, task]) => task.userId === assigneeUserId
+                        )
+                    ),
+                }
+                const mergedChanges = isInitialSnapshot
+                    ? reconcileInitialSnapshotChanges(querySnapshot.docs, knownItems)
+                    : [...cacheChanges, ...liveChanges]
+                if (isInitialSnapshot) initialSnapshotDelivered = true
 
                 let subtasks = { ...subtasksByParentId }
 
@@ -1321,7 +1906,7 @@ const watchStreamAndUserOpenTasks = (
                         })
                     )
                 } else if (Object.keys(storedTasks).length === 0) {
-                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
+                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
                     batchDispatch(setOpenTasksMap(projectId, {}))
                 }
 
@@ -1375,7 +1960,8 @@ export const addWatchersForOneStreamAndUser = (
     subtasksMap,
     showLaterTasks,
     showSomedayTasks,
-    assigneeUserId
+    assigneeUserId,
+    trackConnectionHealth = true
 ) => {
     const { currentUser, loggedUser } = store.getState()
 
@@ -1392,7 +1978,8 @@ export const addWatchersForOneStreamAndUser = (
         loggedUser,
         assigneeUserId,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        trackConnectionHealth
     )
 }
 
@@ -1406,7 +1993,8 @@ function watchEmptyGoals(
     showLaterTasks,
     showSomedayTasks,
     estimationByDate,
-    amountOfTasksByDate
+    amountOfTasksByDate,
+    trackConnectionHealth = true
 ) {
     // AT-2337: this used to read `currentUserId` one line ABOVE its own `const`
     // declaration. Babel's block-scoping transform rewrites `const` to `var`, so
@@ -1415,8 +2003,10 @@ function watchEmptyGoals(
     // is always falsy. It is currently harmless only because `watchOpenTasks` already
     // unwatched this same watcher correctly a few lines earlier; hoist the read so the
     // guard actually does what it says.
-    const { currentUser } = store.getState()
+    const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
+    const loggedUserId = loggedUser.uid
+    const accessReaderId = loggedUser.isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 
@@ -1428,20 +2018,29 @@ function watchEmptyGoals(
 
     const ownerId = getOwnerId(projectId, currentUserId)
     let cacheChanges = []
+    let initialSnapshotDelivered = false
 
     let query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('progress', '!=', 100)
-        .where('assigneesIds', 'array-contains-any', [currentUserId])
-        .where('ownerId', '==', ownerId)
+        .where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', currentUserId)
 
-    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot)
+    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot, { trackConnectionHealth })
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'goals', scope: 'project', source: 'empty_goals_in_tasks' },
+        { sampleRate: 0.02 }
+    )
     function handleEmptyGoalsSnapshot(querySnapshot) {
-        const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
-            cacheChanges = [...cacheChanges, ...changes]
+        const liveChanges = querySnapshot.docChanges()
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
-            const mergedChanges = [...cacheChanges, ...changes]
+            const isInitialSnapshot = !initialSnapshotDelivered
+            const mergedChanges = isInitialSnapshot
+                ? reconcileInitialSnapshotChanges(querySnapshot.docs, goalsMap)
+                : [...cacheChanges, ...liveChanges]
+            if (isInitialSnapshot) initialSnapshotDelivered = true
             if (mergedChanges.length > 0) {
                 const openTasksArray = processEmptyGoalChanges(
                     mergedChanges,
@@ -1454,7 +2053,8 @@ function watchEmptyGoals(
                     goalsMap,
                     dayDateFormated,
                     showLaterTasks,
-                    showSomedayTasks
+                    showSomedayTasks,
+                    ownerId
                 )
                 // Empty goals update the combined board, but they are not the
                 // observed-task stream and must not complete its loading flag.
@@ -1466,7 +2066,7 @@ function watchEmptyGoals(
                     if (progress === DYNAMIC_PERCENT && dynamicProgress === 100) return
                 })
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
             }
             cacheChanges = []
         }
@@ -1487,7 +2087,8 @@ const processEmptyGoalChanges = (
     goalsMap,
     dayDateFormated,
     showLaterTasks,
-    showSomedayTasks
+    showSomedayTasks,
+    expectedOwnerId
 ) => {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
 
@@ -1495,7 +2096,7 @@ const processEmptyGoalChanges = (
         const goalId = change.id ? change.id : change.doc.id
         const type = change.type
         const goal = change.data ? change.data : mapGoalData(goalId, change.doc.data())
-        const { assigneesReminderDate, isPublicFor, progress, dynamicProgress } = goal
+        const { assigneesReminderDate, isPublicFor, progress, dynamicProgress, ownerId } = goal
         const userReminderDate = assigneesReminderDate[currentUserId]
         const goalInBacklog = userReminderDate === BACKLOG_DATE_NUMERIC
         const goalIsTodayOrOverdue = userReminderDate <= endOfDay
@@ -1518,7 +2119,7 @@ const processEmptyGoalChanges = (
         const isPublic =
             safeGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
             (!isAnonymous && safeGoalIsPublicFor.includes(loggedUserId))
-        const isNotDynamicCompleted = progress !== DYNAMIC_PERCENT || dynamicProgress !== 100
+        const isNotCompleted = progress !== 100 && (progress !== DYNAMIC_PERCENT || dynamicProgress !== 100)
 
         // Support three expand states:
         // State 0 (both false): only today/overdue
@@ -1529,7 +2130,7 @@ const processEmptyGoalChanges = (
             (showLaterTasks && !showSomedayTasks && goalIsTomorrow) ||
             (showLaterTasks && showSomedayTasks && goalIsLater) ||
             (showSomedayTasks && goalInBacklog)
-        let needToProcessTheGoal = isPublic && isNotDynamicCompleted && needToBeListedInThisDate
+        let needToProcessTheGoal = isPublic && ownerId === expectedOwnerId && isNotCompleted && needToBeListedInThisDate
         const addTask = () => {
             if (needToProcessTheGoal) {
                 if (!storedTasks[date]) {
@@ -1704,6 +2305,11 @@ export const updateOpTasks = (
         return openTasks
     })
 
+    // Persist only after the Redux batch has flushed. This records the render-ready projection,
+    // not Firestore's mutable listener internals, and debounces the many per-project callbacks into
+    // one idle IndexedDB write.
+    scheduleTaskColdStartCachePersist(store.getState)
+
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
@@ -1792,10 +2398,22 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             ? originalTasksByDate[EMPTY_SECTION_INDEX].length
             : 0
 
+        // AT-2377: calendar tasks live in their own bucket again, so they need their own count -
+        // a day holding nothing but meetings must still show up in All projects.
+        let currentCalendarTasksCount = 0
+        if (originalTasksByDate[CALENDAR_TASK_INDEX]) {
+            originalTasksByDate[CALENDAR_TASK_INDEX].forEach(tasksByGoal => {
+                if (tasksByGoal && Array.isArray(tasksByGoal[1])) {
+                    currentCalendarTasksCount += tasksByGoal[1].length
+                }
+            })
+        }
+
         // Check if this date should be included in the output
         const shouldInclude =
             currentMainTasksCount > 0 ||
             currentSuggestedTasksCount > 0 ||
+            currentCalendarTasksCount > 0 ||
             currentWorkflowTasksCount > 0 ||
             currentEmptyGoalsCount > 0
 
@@ -1804,13 +2422,22 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             const newTasksByDateEntry = [...originalTasksByDate] // Start with a shallow copy
 
             // Count every visible task type so projects containing only one of these sections remain visible.
-            // AT-2252: calendar and email tasks are part of MAIN_TASK_INDEX now, so they are already
-            // included in currentMainTasksCount and need no separate count or flag.
+            // Inbox-summary email tasks are part of MAIN_TASK_INDEX and need no separate count.
             newTasksByDateEntry[AMOUNT_TASKS_INDEX] =
+                currentMainTasksCount +
+                currentSuggestedTasksCount +
+                currentCalendarTasksCount +
+                currentWorkflowTasksCount
+
+            // AT-2377: the show-more arrow must not appear on a day that hides nothing but meetings,
+            // which always render in full inside the Calendar section.
+            newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount > 0
+            newTasksByDateEntry.nonCalendarTasksCount =
                 currentMainTasksCount + currentSuggestedTasksCount + currentWorkflowTasksCount
 
             // Preserve task types that should be VISIBLE in "All Projects" view
             newTasksByDateEntry[MAIN_TASK_INDEX] = originalTasksByDate[MAIN_TASK_INDEX] || []
+            newTasksByDateEntry[CALENDAR_TASK_INDEX] = originalTasksByDate[CALENDAR_TASK_INDEX] || []
             newTasksByDateEntry[SUGGESTED_TASK_INDEX] = originalTasksByDate[SUGGESTED_TASK_INDEX] || [] // Display suggested tasks
             newTasksByDateEntry[WORKFLOW_TASK_INDEX] = originalTasksByDate[WORKFLOW_TASK_INDEX] || [] // Display workflow tasks
 
@@ -1863,6 +2490,7 @@ export function watchAllMilestones(projectId, watcherKey) {
                 setOpenMilestonesInProjectInTasks(projectId, openMilestones),
                 setDoneMilestonesInProjectInTasks(projectId, doneMilestone),
             ])
+            scheduleTaskColdStartCachePersist(store.getState)
         })
 }
 
@@ -1876,7 +2504,7 @@ export function watchAllGoals(projectId, watcherKey) {
 
     const query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(goalsData => {
@@ -1890,6 +2518,7 @@ export function watchAllGoals(projectId, watcherKey) {
             goalsById[goal.id] = goal
         })
         store.dispatch(setGoalsInProjectInTasks(projectId, goalsById))
+        scheduleTaskColdStartCachePersist(store.getState)
     })
 }
 

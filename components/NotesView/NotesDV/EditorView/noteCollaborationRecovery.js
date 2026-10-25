@@ -4,13 +4,14 @@ import { isBrowserOffline } from '../../../../utils/connectionState'
 
 const SYNC_TIMEOUT = 10000
 
-export const waitForProviderSync = (provider, timeout = SYNC_TIMEOUT) => {
+export const waitForProviderSync = (provider, timeout = SYNC_TIMEOUT, signal) => {
     if (provider.synced) return Promise.resolve()
 
     return new Promise((resolve, reject) => {
         const cleanup = () => {
             clearTimeout(timeoutHandle)
             provider.off('synced', onSynced)
+            signal?.removeEventListener('abort', onAbort)
         }
         const onSynced = synced => {
             if (synced) {
@@ -18,11 +19,20 @@ export const waitForProviderSync = (provider, timeout = SYNC_TIMEOUT) => {
                 resolve()
             }
         }
+        const onAbort = () => {
+            cleanup()
+            reject(new Error('Note sync wait cancelled'))
+        }
         const timeoutHandle = setTimeout(() => {
             cleanup()
             reject(new Error('Timed out while synchronizing note content'))
         }, timeout)
 
+        signal?.addEventListener('abort', onAbort, { once: true })
+        if (signal?.aborted) {
+            onAbort()
+            return
+        }
         provider.on('synced', onSynced)
         if (provider.synced) onSynced(true)
     })

@@ -27,15 +27,33 @@ export default function DoneStateWrapper({ projectId, milestone }) {
         dispatch(hideFloatPopup())
     }
 
-    const moveMilestoneToDone = () => {
+    const moveMilestoneToDone = async () => {
         setShowModal(false)
         dispatch(hideFloatPopup())
-        Backend.updateMilestoneDoneState(projectId, milestone)
+        try {
+            await Backend.updateMilestoneDoneState(projectId, milestone)
+        } catch (error) {
+            setChecked(milestone.done)
+            console.error('[Milestone transition] Could not mark milestone as done', {
+                projectId,
+                milestoneId: milestone.id,
+                error,
+            })
+        }
     }
 
-    const moveMilestoneToOpen = () => {
+    const moveMilestoneToOpen = async () => {
         setChecked(!milestone.done)
-        Backend.updateMilestoneDoneState(projectId, milestone)
+        try {
+            await Backend.updateMilestoneDoneState(projectId, milestone)
+        } catch (error) {
+            setChecked(milestone.done)
+            console.error('[Milestone transition] Could not reopen milestone', {
+                projectId,
+                milestoneId: milestone.id,
+                error,
+            })
+        }
     }
 
     return (

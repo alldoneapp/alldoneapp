@@ -551,8 +551,8 @@ function useShimmer() {
         if (process.env.NODE_ENV === 'test') return undefined
         const animation = Animated.loop(
             Animated.sequence([
-                Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
-                Animated.timing(pulse, { toValue: 0, duration: 850, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: false }),
+                Animated.timing(pulse, { toValue: 0, duration: 850, useNativeDriver: false }),
             ])
         )
         animation.start()
@@ -620,12 +620,12 @@ function AvailabilityLoadingCard() {
                 Animated.timing(pulse, {
                     toValue: 1,
                     duration: 700,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(pulse, {
                     toValue: 0,
                     duration: 700,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         )

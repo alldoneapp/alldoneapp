@@ -23,9 +23,15 @@ const MAX_VM_RUNTIME_MS = resolveMaxVmRuntimeMs()
 // E2B's free tier rejects any sandbox timeout above exactly one hour. The
 // runner derives the agent-command budget from this lease and fires its typed
 // timeout before E2B's generic sandbox termination.
+//
+// This lease is granted by the START of a sandbox session — the create call or a
+// POST /sandboxes/{id}/resume — and a later `sandbox.setTimeout()` does not move
+// it (it reports success and changes nothing). So a sandbox is only ever handed
+// to a run through a fresh session: see `resumeVmSessionWithFreshLease`.
 const E2B_SANDBOX_TERMINATION_GRACE_MS = 30 * 1000
 const E2B_SANDBOX_TIMEOUT_MS = 60 * 60 * 1000
 const E2B_SANDBOX_SLICE_MS = 55 * 60 * 1000
+
 // E2B command timeout is independent of the sandbox lease. Disable it so the
 // original process survives lease rotations; the runner's five-hour supervisor
 // remains the authoritative execution limit.

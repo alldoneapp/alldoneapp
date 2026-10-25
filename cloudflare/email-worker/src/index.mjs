@@ -37,7 +37,9 @@ export async function buildNormalizedPayload(message, env = {}) {
     // Use only the SMTP envelope sender for authorization. Header From can be spoofed independently.
     const parsedFrom = extractMailboxAddress(message.from || '')
     const parsedReplyTo = extractMailboxAddress(rawHeaders['reply-to'] || rawHeaders['Reply-To'] || '')
-    const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || message.to || '')
+    // The SMTP envelope includes BCC delivery targets; it must never masquerade as
+    // a visible To header, or Anna could expose a blind copy by replying to everyone.
+    const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || '')
     const ccEmails = extractMailboxAddresses(rawHeaders.cc || rawHeaders.Cc || '')
     const parsedEmail = await parseMimeMessage(message)
     const { textBody, htmlBody } = await readBodyParts(message, parsedEmail)

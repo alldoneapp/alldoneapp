@@ -3,17 +3,20 @@
 // engines.node in package.json. firebase-tools skips a function whose source
 // hash is unchanged, and the runtime is not part of that hash, so moving the
 // runtime alone deploys nothing - it needs a source change to land.
-// CI gotcha: deploy:cloud:functions:production only runs when the pushed
-// commits diff under functions/** (or firebase.json). If that pipeline fails
-// before deploy, a follow-up fix that touches only root files goes green
-// WITHOUT redeploying functions - the next functions/** push carries both.
-// This also applies when the deploy jobs were created but skipped because an
-// earlier stage failed: the fix push needs its own functions/** diff.
+// CI selects exports and transitive local dependencies against the last verified
+// deployment. Partial failures force reconciliation; runtime-only changes receive
+// a generated source stamp. See ci/selectFunctionsDeployment.js and deployScope.sh.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
+const { setGlobalOptions } = require('firebase-functions/v2')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onTaskDispatched } = require('firebase-functions/v2/tasks')
 const { log } = require('firebase-functions/logger')
-const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('firebase-functions/v2/firestore')
+const {
+    onDocumentCreated,
+    onDocumentUpdated,
+    onDocumentDeleted,
+    onDocumentWritten,
+} = require('firebase-functions/v2/firestore')
 
 const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
@@ -26,8 +29,33 @@ const {
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+    WRITING_FUNCTION_TIMEOUT_SECONDS,
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
 const { Timestamp } = require('firebase-admin/firestore')
+const { completeOnDemandAssistantTaskAfterRun } = require('./Assistant/generatedAssistantTaskCompletion')
+
+function getDeploymentProjectId() {
+    if (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) {
+        return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    }
+    try {
+        return process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG).projectId : null
+    } catch (_) {
+        return null
+    }
+}
+
+const ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS = {
+    alldonestaging: 'firebase-adminsdk-9idaq@alldonestaging.iam.gserviceaccount.com',
+    alldonealeph: 'firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com',
+}
+const adminSdkRuntimeServiceAccount = ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS[getDeploymentProjectId()]
+if (adminSdkRuntimeServiceAccount) setGlobalOptions({ serviceAccount: adminSdkRuntimeServiceAccount })
+
+// No function keeps a warm instance. Fourteen of them did until 2026-09-02 (EUR 123/month, half of
+// it on staging); the last two, the assistant entry points, were dropped by decision the same day.
+// Cold-start latency is the price; measure it from the request logs before ever adding one back.
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -80,17 +108,159 @@ function getAccessibleProjectIdsFromUserData(userData = {}) {
 }
 
 async function assertProjectAccess(userId, projectId) {
-    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-    if (!userDoc.exists) {
-        throw new HttpsError('permission-denied', 'User not found')
-    }
+    const [userDoc, projectDoc] = await Promise.all([
+        admin.firestore().doc(`users/${userId}`).get(),
+        admin.firestore().doc(`projects/${projectId}`).get(),
+    ])
+    if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
 
-    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userDoc.data() || {})
-    if (!accessibleProjectIds.includes(projectId)) {
+    const projectUserIds =
+        projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
+    if (!projectUserIds.includes(userId)) {
         throw new HttpsError('permission-denied', 'No access to project')
     }
 
     return userDoc.data() || {}
+}
+
+async function synchronizeAccessProjection(event, roleField, followerField, includeProjectId = false) {
+    const { synchronizeObjectAccessProjection } = require('./shared/objectAccessProjection')
+    return synchronizeObjectAccessProjection({
+        db: admin.firestore(),
+        documentSnapshot: event.data.after || event.data,
+        projectId: event.params.projectId,
+        roleField,
+        followerField,
+        includeProjectId,
+    })
+}
+
+function accessProjectionOnly(event, additionalProjectionFields) {
+    const { isAccessProjectionOnlyChange } = require('./shared/objectAccessProjection')
+    return isAccessProjectionOnlyChange(
+        event.data.before.data() || {},
+        event.data.after.data() || {},
+        additionalProjectionFields
+    )
+}
+
+// A privacy change has to reach the object's stored activity (the Updates stores and its
+// history), and a browser can only rewrite the part of it that it may read. The rest is
+// reconciled here, from the object's own update. Never fails the trigger: the object update
+// has already happened, and the reconcile converges on a retry or the next privacy change.
+function reconcileFeedPrivacy(event, objectType) {
+    const { reconcileObjectFeedPrivacyOnUpdate } = require('./Feeds/objectFeedPrivacy')
+    const { projectId } = event.params
+    const objectId = event.data.after.id
+    return reconcileObjectFeedPrivacyOnUpdate({
+        projectId,
+        objectType,
+        objectId,
+        before: event.data.before.data() || {},
+        after: event.data.after.data() || {},
+    }).catch(error =>
+        console.error('[feeds privacy] Could not reconcile the activity of a re-privatised object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
+// A project wiki page compiled from an object that has since been made private or deleted must not
+// keep showing what it learned from it: the pages citing it are hidden until a rebuild has run.
+// Never fails the trigger, for the same reason as reconcileFeedPrivacy above.
+function invalidateKnowledgeSourcesOnUpdate(event, objectType) {
+    const { invalidateKnowledgeSourcesOnUpdate: invalidate } = require('./KnowledgeBase/knowledgeSourceInvalidation')
+    const { projectId } = event.params
+    const objectId = event.data.after.id
+    return invalidate({
+        db: admin.firestore(),
+        projectId,
+        objectType,
+        objectId,
+        before: event.data.before.data() || {},
+        after: event.data.after.data() || {},
+    }).catch(error =>
+        console.error('[knowledge base] Could not invalidate wiki pages of a re-privatised object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
+function invalidateKnowledgeSourcesOnDelete(event, objectType) {
+    const { invalidateKnowledgeSourcesOnDelete: invalidate } = require('./KnowledgeBase/knowledgeSourceInvalidation')
+    const { projectId } = event.params
+    const objectId = event.data.id
+    return invalidate({
+        db: admin.firestore(),
+        projectId,
+        objectType,
+        objectId,
+        data: event.data.data() || {},
+    }).catch(error =>
+        console.error('[knowledge base] Could not invalidate wiki pages of a deleted object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
+const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
+const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
+const ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION = 'firestoreAccessProjectionMigrations'
+const ACCESS_PROJECTION_SCHEMA_VERSION = 2
+const ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE = 25
+const ACCESS_PROJECTION_SCHEMA_MIGRATION_LEASE_MS = 9 * 60 * 1000
+
+async function queueProjectAccessProjectionSync(db, projectId, projectUserIds, generation) {
+    const { getInitialProjectionCursor } = require('./shared/objectAccessProjection')
+    await db.doc(`${ACCESS_PROJECTION_JOBS_COLLECTION}/${projectId}`).set({
+        projectId,
+        projectUserIds: Array.isArray(projectUserIds) ? projectUserIds : [],
+        generation,
+        status: 'pending',
+        cursor: getInitialProjectionCursor(),
+        scanned: 0,
+        updated: 0,
+        queuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+}
+
+async function acquireAccessProjectionJob(db, jobRef, leaseId) {
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(jobRef)
+        if (!snapshot.exists || snapshot.data()?.status !== 'pending') return null
+        const job = snapshot.data() || {}
+        transaction.update(jobRef, {
+            status: 'processing',
+            leaseId,
+            leaseExpiresAt: Timestamp.fromMillis(Date.now() + ACCESS_PROJECTION_JOB_LEASE_MS),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        return job
+    })
+}
+
+async function releaseAccessProjectionJob(db, jobRef, leaseId, update) {
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(jobRef)
+        if (!snapshot.exists || snapshot.data()?.leaseId !== leaseId) return false
+        transaction.update(jobRef, {
+            ...update,
+            leaseId: admin.firestore.FieldValue.delete(),
+            leaseExpiresAt: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        return true
+    })
 }
 
 exports.setDefaultProjectSecondGen = onCall(
@@ -108,6 +278,327 @@ exports.setDefaultProjectSecondGen = onCall(
             return await setDefaultProjectForUser(admin.firestore(), request.auth.uid, request.data?.projectId)
         } catch (error) {
             if (error instanceof DefaultProjectError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.copyProjectMoveChatSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { sourceProjectId, targetProjectId, objectType, objectId } = request.data || {}
+        await Promise.all([
+            assertProjectAccess(request.auth.uid, sourceProjectId),
+            assertProjectAccess(request.auth.uid, targetProjectId),
+        ])
+
+        const { ProjectMoveChatError, copyProjectMoveChat } = require('./Chats/copyProjectMoveChat')
+        try {
+            return await copyProjectMoveChat({
+                adminRef: admin,
+                actorId: request.auth.uid,
+                sourceProjectId,
+                targetProjectId,
+                objectType,
+                objectId,
+            })
+        } catch (error) {
+            if (error instanceof ProjectMoveChatError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.copyFollowUpTaskChatSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { projectId, sourceTaskId, targetTaskId } = request.data || {}
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { FollowUpTaskChatError, copyFollowUpTaskChat } = require('./Chats/copyFollowUpTaskChat')
+        try {
+            return await copyFollowUpTaskChat({
+                adminRef: admin,
+                actorId: request.auth.uid,
+                projectId,
+                sourceTaskId,
+                targetTaskId,
+            })
+        } catch (error) {
+            if (error instanceof FollowUpTaskChatError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+// Queue manual cross-project task moves so the project picker can close as soon
+// as the server accepts the request. The task worker below owns the long-running
+// task/subtask/chat/feed fan-out and retries independently of the browser.
+exports.moveTaskToProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { sourceProjectId, targetProjectId, taskId } = request.data || {}
+        if (!sourceProjectId || !targetProjectId || !taskId) {
+            throw new HttpsError('invalid-argument', 'sourceProjectId, targetProjectId and taskId are required')
+        }
+        const database = admin.firestore()
+        try {
+            await Promise.all([
+                assertObjectAccess(database, request.auth.uid, sourceProjectId, 'tasks', taskId),
+                assertProjectAccess(request.auth.uid, targetProjectId),
+            ])
+        } catch (error) {
+            throw new HttpsError('permission-denied', error.message)
+        }
+
+        const { enqueueManualTaskProjectMove } = require('./Tasks/manualTaskProjectMove')
+        return enqueueManualTaskProjectMove({
+            sourceProjectId,
+            targetProjectId,
+            taskId,
+            actorId: request.auth.uid,
+        })
+    }
+)
+
+// AT-2572: every object exposed by the shared project picker uses the same
+// authenticated, durable move contract. The callable marks the source before
+// returning, so every mounted list can render progress immediately; the task
+// object queue worker owns the cross-project fan-out after the browser goes away.
+exports.moveObjectToProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { sourceProjectId, targetProjectId, objectType, objectId } = request.data || {}
+        const { getProjectMoveCollectionType, normalizeProjectMoveType } = require('./shared/projectMoveContract')
+        const normalizedType = normalizeProjectMoveType(objectType)
+        if (!sourceProjectId || !targetProjectId || !normalizedType || !objectId) {
+            throw new HttpsError('invalid-argument', 'A supported object type, project ids and object id are required')
+        }
+        const database = admin.firestore()
+        try {
+            await Promise.all([
+                assertObjectAccess(
+                    database,
+                    request.auth.uid,
+                    sourceProjectId,
+                    getProjectMoveCollectionType(normalizedType),
+                    objectId
+                ),
+                assertProjectAccess(request.auth.uid, targetProjectId),
+            ])
+        } catch (error) {
+            throw new HttpsError('permission-denied', error.message)
+        }
+
+        const { enqueueManualObjectProjectMove } = require('./Objects/manualObjectProjectMove')
+        return enqueueManualObjectProjectMove({
+            sourceProjectId,
+            targetProjectId,
+            objectType: normalizedType,
+            objectId,
+            actorId: request.auth.uid,
+        })
+    }
+)
+
+exports.markChatNotificationsReadSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const projectId = typeof request.data?.projectId === 'string' ? request.data.projectId.trim() : ''
+        const chatId = typeof request.data?.chatId === 'string' ? request.data.chatId.trim() : ''
+        if (!projectId) throw new HttpsError('invalid-argument', 'Project id is required')
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { markChatNotificationsRead } = require('./Chats/markChatNotificationsRead')
+        return markChatNotificationsRead({
+            db: admin.firestore(),
+            FieldValue: admin.firestore.FieldValue,
+            userId: request.auth.uid,
+            projectId,
+            chatId: chatId || null,
+            followedOnly: !chatId && request.data?.followedOnly === true,
+        })
+    }
+)
+
+exports.createBotQuickTopicSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { projectId, chatId, assistantId, quickDateId, titlePrefix, isAssistantEnabled } = request.data || {}
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { BotQuickTopicError, createBotQuickTopic } = require('./Chats/createBotQuickTopic')
+        try {
+            return await createBotQuickTopic({
+                db: admin.firestore(),
+                actorId: request.auth.uid,
+                projectId,
+                chatId,
+                assistantId,
+                quickDateId,
+                titlePrefix,
+                isAssistantEnabled: isAssistantEnabled === true,
+            })
+        } catch (error) {
+            if (error instanceof BotQuickTopicError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.getAnnaConversationSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to talk with Anna.')
+        const { ensureAnnaConversation, listAnnaConversations } = require('./Assistant/annaWorkspace')
+        try {
+            if (request.data?.historyOnly === true || (request.data?.before && typeof request.data.before === 'object'))
+                return await listAnnaConversations({
+                    db: admin.firestore(),
+                    userId: request.auth.uid,
+                    before: request.data.before || null,
+                    recentOnly: request.data.recentOnly === true,
+                })
+            const reference = await ensureAnnaConversation({
+                db: admin.firestore(),
+                userId: request.auth.uid,
+                resolveAssistantId: async (user, projectId) => {
+                    // Match the app's default assistant preference before its project fallback.
+                    const defaults = await admin
+                        .firestore()
+                        .collection(`assistants/${projectId}/items`)
+                        .where('isDefault', '==', true)
+                        .limit(1)
+                        .get()
+                    if (!defaults.empty) return defaults.docs[0].id
+                    const { getDefaultAssistantId } = require('./WhatsApp/whatsAppIncomingHandler')
+                    return getDefaultAssistantId(user, projectId)
+                },
+            })
+            // New clients display today's conversation before fetching history.
+            // Keep the combined response for already-deployed clients.
+            if (request.data?.includeHistory === false) return reference
+            return {
+                ...reference,
+                ...(await listAnnaConversations({ db: admin.firestore(), userId: request.auth.uid })),
+            }
+        } catch (error) {
+            if (['unauthenticated', 'not-found', 'failed-precondition', 'permission-denied'].includes(error.code))
+                throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.awardXpSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+        const { projectId, userId, xpEarned, increaseProjectQuota } = request.data || {}
+        const { awardUserXp, validateXpAward } = require('./Users/userXpService')
+        try {
+            validateXpAward({ projectId, userId, xpEarned, increaseProjectQuota })
+        } catch (error) {
+            throw new HttpsError('invalid-argument', error.message)
+        }
+
+        await assertProjectAccess(request.auth.uid, projectId)
+        try {
+            return await awardUserXp({
+                db: admin.firestore(),
+                // The modular statics (CLAUDE.md): the Functions emulator replaces admin.firestore and
+                // drops its static FieldValue, which failed every XP award locally.
+                FieldValue: require('firebase-admin/firestore').FieldValue,
+                projectId,
+                userId,
+                xpEarned,
+                increaseProjectQuota,
+            })
+        } catch (error) {
+            if (error.message === 'XP recipient is not a project member') {
+                throw new HttpsError('permission-denied', error.message)
+            }
+            if (error.message === 'Project not found' || error.message === 'User not found') {
+                throw new HttpsError('not-found', error.message)
+            }
+            throw error
+        }
+    }
+)
+
+exports.getTypesenseScopedSearchCredentialsSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const {
+            TypesenseSearchCredentialsError,
+            createTypesenseScopedSearchCredentials,
+        } = require('./Typesense/scopedSearchCredentials')
+
+        try {
+            return await createTypesenseScopedSearchCredentials({
+                db: admin.firestore(),
+                userId: request.auth.uid,
+                isAnonymous: request.auth.token?.firebase?.sign_in_provider === 'anonymous',
+            })
+        } catch (error) {
+            if (error instanceof TypesenseSearchCredentialsError) {
+                throw new HttpsError(error.code, error.message)
+            }
             throw error
         }
     }
@@ -174,14 +665,17 @@ async function assertAssistantProjectAccess(userId, projectId, assistantId) {
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
     if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
     const userData = userDoc.data() || {}
-    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
-
     if (projectId !== 'globalProject') {
-        if (!accessibleProjectIds.includes(projectId)) {
-            throw new HttpsError('permission-denied', 'No access to project')
-        }
+        await assertProjectAccess(userId, projectId)
         return
     }
+
+    const memberProjects = await admin
+        .firestore()
+        .collection('projects')
+        .where('userIds', 'array-contains', userId)
+        .get()
+    const accessibleProjectIds = memberProjects.docs.map(doc => doc.id)
 
     const assistantDoc = await admin.firestore().doc(`assistants/globalProject/items/${assistantId}`).get()
     if (!assistantDoc.exists) throw new HttpsError('not-found', 'Assistant not found')
@@ -381,6 +875,21 @@ exports.openInBrowserTab = onRequest(
     (req, res) => {
         const { handleOpenInBrowserTab } = require('./WebApp/openInBrowserTab')
         handleOpenInBrowserTab(req, res)
+    }
+)
+
+// Serves artifact files on this function's own origin, never the app's: an HTML artifact is code,
+// and on my.alldone.app it would run with the viewer's session. Do not add a Hosting rewrite to it
+// on any alldone.app host. See functions/Artifacts/serveArtifact.js.
+exports.serveArtifact = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleServeArtifactRequest } = require('./Artifacts/serveArtifact')
+        await handleServeArtifactRequest(req, res)
     }
 )
 
@@ -883,9 +1392,40 @@ exports.importAssistantSkillsFromRepo = onCall(
         try {
             return await importAssistantSkillsFromRepo({
                 userId: auth.uid,
+                projectId: data && data.projectId,
                 repoUrl: data && data.repoUrl,
                 ref: data && data.ref,
                 jobId: data && data.jobId,
+            })
+        } catch (error) {
+            if (error.code === 'permission-denied') throw new HttpsError('permission-denied', error.message)
+            throw new HttpsError('invalid-argument', error.message)
+        }
+    }
+)
+
+// One bundled file per call: a skill bundle can reach 20 MB in total, which is
+// well past the 10 MB callable request limit once base64-encoded, so the client
+// streams the files one at a time.
+exports.uploadAssistantSkillFile = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { uploadAssistantSkillFile } = require('./Assistant/assistantSkillUpload')
+        try {
+            return await uploadAssistantSkillFile({
+                userId: auth.uid,
+                projectId: data && data.projectId,
+                skillId: data && data.skillId,
+                version: data && data.version,
+                relativePath: data && data.relativePath,
+                contentBase64: data && data.contentBase64,
             })
         } catch (error) {
             if (error.code === 'permission-denied') throw new HttpsError('permission-denied', error.message)
@@ -1002,6 +1542,178 @@ exports.rebuildProjectVmGolden = onCall(
     }
 )
 
+// Project wiki settings (on/off, instructions, model, monthly Gold cap). The tree is server-written
+// only, so this is the one way a client changes it. See KnowledgeBase/knowledgeBaseModel.js.
+exports.setKnowledgeBaseSettings = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setKnowledgeBaseSettings } = require('./KnowledgeBase/knowledgeBaseSettings')
+        return await setKnowledgeBaseSettings({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            settings: data && data.settings,
+        })
+    }
+)
+
+exports.requestKnowledgeBaseRefresh = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { requestKnowledgeBaseRefresh } = require('./KnowledgeBase/knowledgeBaseSettings')
+        return await requestKnowledgeBaseRefresh({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+        })
+    }
+)
+
+// Every version of an artifact, and every byte of it, is written here and never by a client. The
+// files arrive base64-encoded in the request, which is why an upload is capped at 20 MB.
+exports.commitArtifactVersion = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { commitArtifactVersion } = require('./Artifacts/artifactStore')
+        return await commitArtifactVersion({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: (data && data.artifactId) || null,
+            files: data && data.files,
+            title: data && data.title,
+            description: data && data.description,
+            isPrivate: !!(data && data.isPrivate),
+            changeSummary: data && data.changeSummary,
+        })
+    }
+)
+
+// "Save as artifact" on a chat or note attachment: the server copies the file it already stores,
+// after checking that the URL is an attachment of this app carrying the file's own download token.
+exports.saveAttachmentAsArtifact = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { saveAttachmentAsArtifact } = require('./Artifacts/attachmentPromotion')
+        return await saveAttachmentAsArtifact({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            url: data && data.url,
+            fileName: data && data.fileName,
+        })
+    }
+)
+
+exports.restoreArtifactVersion = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { restoreArtifactVersion } = require('./Artifacts/artifactStore')
+        return await restoreArtifactVersion({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+            versionId: data && data.versionId,
+        })
+    }
+)
+
+// "Live project data" on or off for a web artifact; only its owner may (artifactDataBridge.js).
+exports.setArtifactDataAccess = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setArtifactDataAccess } = require('./Artifacts/artifactStore')
+        return await setArtifactDataAccess({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+            enabled: data && data.enabled,
+        })
+    }
+)
+
+// "Reset link": a new serve secret, so every address copied before stops working.
+exports.resetArtifactLink = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { resetArtifactLink } = require('./Artifacts/artifactStore')
+        return await resetArtifactLink({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+        })
+    }
+)
+
+// Undo of a wiki correction from the page history. The assistant's undo_knowledge_correction tool
+// runs the same function; see KnowledgeBase/knowledgeBaseAssistant.js.
+exports.undoKnowledgeCorrection = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { undoKnowledgeCorrection } = require('./KnowledgeBase/knowledgeBaseAssistant')
+        const result = await undoKnowledgeCorrection({
+            db: admin.firestore(),
+            projectId: data && data.projectId,
+            userId: auth.uid,
+            correctionId: data && data.correctionId,
+        })
+        if (!result.success) throw new HttpsError('failed-precondition', result.error)
+        return result
+    }
+)
+
 exports.connectGcpProject = onCall(
     {
         timeoutSeconds: 60,
@@ -1055,6 +1767,104 @@ exports.getVmSubscriptionStatus = onCall(
     }
 )
 
+// Rage mode (components/RageMode): the player's owned weapons, highscore and raid progress, and
+// the Gold weapon shop. The profile lives in a server-only collection; see functions/RageMode/rageModeProfile.js.
+exports.getRageModeProfile = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getRageModeProfile } = require('./RageMode/rageModeProfile')
+        return await getRageModeProfile({ userId: auth.uid })
+    }
+)
+
+exports.purchaseRageModeItem = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { purchaseRageModeItem } = require('./RageMode/rageModeProfile')
+        return await purchaseRageModeItem({ userId: auth.uid, itemId: data && data.itemId })
+    }
+)
+
+exports.submitRageModeScore = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { submitRageModeScore } = require('./RageMode/rageModeProfile')
+        return await submitRageModeScore({
+            userId: auth.uid,
+            score: data && data.score,
+            final: !(data && data.final === false),
+        })
+    }
+)
+
+// The global leaderboard (functions/RageMode/rageModeLeaderboard.js): the top five and the caller's
+// rank, and the name the caller wants to appear under.
+exports.getRageModeLeaderboard = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getRageModeLeaderboard } = require('./RageMode/rageModeLeaderboard')
+        return await getRageModeLeaderboard({ userId: auth.uid })
+    }
+)
+
+exports.setRageModeName = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setRageModeName } = require('./RageMode/rageModeLeaderboard')
+        return await setRageModeName({ userId: auth.uid, name: data && data.name })
+    }
+)
+
+exports.saveRageModeProgress = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { saveRageModeProgress } = require('./RageMode/rageModeProfile')
+        return await saveRageModeProgress({ userId: auth.uid, checkpoint: data ? data.checkpoint : undefined })
+    }
+)
+
 exports.getVmAgentSettings = onCall(
     {
         timeoutSeconds: 30,
@@ -1082,6 +1892,135 @@ exports.setDefaultVmAgent = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { setDefaultVmAgent } = require('./Assistant/vmAgentSettings')
         return await setDefaultVmAgent({ userId: auth.uid, agent: data && data.agent })
+    }
+)
+
+// --- Browser tool approvals -------------------------------------------------------------------
+// A sensitive browser action (login, upload, booking, payment, submit/publish, delete) is refused
+// until the person who started the run answers here. `respondToBrowserApproval` is the ONLY way a
+// grant is created — nothing on the model's side of the wire can produce one — and the ownership
+// check lives in `respondToBrowserApproval` itself so the callable cannot forget it.
+exports.listBrowserApprovalRequestsSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { listPendingBrowserApprovals } = require('./Assistant/browser/browserApprovals')
+        const admin = require('firebase-admin')
+        const approvals = await listPendingBrowserApprovals(admin.firestore(), {
+            userId: auth.uid,
+            projectId: (data && data.projectId) || null,
+        })
+        return { approvals }
+    }
+)
+
+exports.respondToBrowserApprovalSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { respondToBrowserApproval } = require('./Assistant/browser/browserApprovals')
+        const admin = require('firebase-admin')
+        try {
+            return await respondToBrowserApproval(admin.firestore(), {
+                approvalId: data && data.approvalId,
+                userId: auth.uid,
+                action: data && data.action,
+                scope: data && data.scope,
+            })
+        } catch (error) {
+            throw new HttpsError('failed-precondition', error.message)
+        }
+    }
+)
+
+exports.listActiveVmJobsSecondGen = onCall(
+    { timeoutSeconds: 30, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to view your VMs.')
+        const { listActiveVmJobs } = require('./Assistant/vmWorkspace')
+        return listActiveVmJobs({
+            db: admin.firestore(),
+            userId: request.auth.uid,
+            selectedRunId: request.data?.selectedRunId,
+        })
+    }
+)
+
+// The browser workspace forwards each human gesture to the IAM-private browser worker.
+exports.annaBrowserWorkspaceSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to view the browser.')
+        const { browserWorkspace } = require('./Assistant/browser/browserWorkspace')
+        const { getEnvFunctions } = require('./envFunctionsHelper')
+        try {
+            return await browserWorkspace({
+                db: admin.firestore(),
+                env: getEnvFunctions(),
+                userId: request.auth.uid,
+                runId: request.data?.runId,
+                action: request.data?.action,
+                input: request.data?.input || {},
+            })
+        } catch (error) {
+            throw new HttpsError(
+                ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(error.code)
+                    ? error.code
+                    : 'internal',
+                error.message || 'The browser is unavailable.',
+                error.details
+            )
+        }
+    }
+)
+
+exports.browserTakeoverSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const admin = require('firebase-admin')
+        const { getEnvFunctions } = require('./envFunctionsHelper')
+        const { executeBrowserTakeover, finishBrowserTakeover } = require('./Assistant/browser/browserTakeover')
+        try {
+            if (data && (data.action === 'finish' || data.action === 'cancel')) {
+                return await finishBrowserTakeover(admin.firestore(), {
+                    approvalId: data.approvalId,
+                    userId: auth.uid,
+                    cancelled: data.action === 'cancel',
+                })
+            }
+            return await executeBrowserTakeover({
+                db: admin.firestore(),
+                env: getEnvFunctions(),
+                approvalId: data && data.approvalId,
+                userId: auth.uid,
+                action: data && data.action,
+                input: (data && data.input) || {},
+            })
+        } catch (error) {
+            const code = ['not_owner', 'not_login'].includes(error.reason) ? 'permission-denied' : 'failed-precondition'
+            throw new HttpsError(code, error.message)
+        }
     }
 )
 
@@ -1413,38 +2352,98 @@ exports.giphyRandomGif = onCall(
     }
 )
 
-exports.enrichContactViaLinkedIn = onCall(
+// "Enrich profile" on a contact (replaces the Apify LinkedIn scraper). Hosts a full assistant
+// prompt run inside the contact's chat, so it carries the prompt-run timeout and the per-request run
+// lock: a laptop that sleeps mid-run makes the browser replay the identical POST on wake, and without
+// the lock that replay would post a second request comment, charge the fee twice and run twice.
+exports.enrichContactProfileSecondGen = onCall(
     {
-        timeoutSeconds: 300,
-        memory: '512MiB',
+        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
     async request => {
+        const functionEntryTime = Date.now()
         const { data, auth } = request
-        if (auth) {
-            const { enrichContactViaLinkedIn } = require('./Apify/enrichContactViaLinkedIn')
-            return await enrichContactViaLinkedIn(data, auth.uid)
-        } else {
+        if (!auth) {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
-    }
-)
+        const userId = auth.uid
+        const projectId = typeof data?.projectId === 'string' ? data.projectId.trim() : ''
+        const contactId = typeof data?.contactId === 'string' ? data.contactId.trim() : ''
+        const assistantId = typeof data?.assistantId === 'string' ? data.assistantId.trim() : ''
+        const requestId = typeof data?.requestId === 'string' ? data.requestId.trim() : ''
+        const objectType = 'contacts'
+        if (!projectId || !contactId || !requestId) {
+            throw new HttpsError('invalid-argument', 'projectId, contactId and requestId are required')
+        }
+        try {
+            await assertObjectAccess(admin.firestore(), userId, projectId, objectType, contactId)
+        } catch (error) {
+            console.warn('enrichContactProfileSecondGen: access denied', {
+                userId,
+                projectId,
+                contactId,
+                error: error.message,
+            })
+            throw new HttpsError('permission-denied', 'No access to the requested contact')
+        }
 
-exports.searchLinkedInProfile = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { searchLinkedInProfile } = require('./Apify/enrichContactViaLinkedIn')
-            return await searchLinkedInProfile(data, auth.uid)
-        } else {
-            throw new HttpsError('permission-denied', 'Authentication required')
+        const {
+            acquireAssistantRunLock,
+            completeAssistantRunLock,
+            failAssistantRunLock,
+        } = require('./Assistant/assistantRunIdempotency')
+        // The client-generated requestId doubles as the id of the request comment, so a replayed
+        // request keys the same lock and lands on the same comment.
+        const messageId = requestId
+        const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
+            userId,
+            messageId,
+            projectId,
+            objectType,
+            objectId: contactId,
+            assistantId,
+        })
+        if (!assistantRunLock.acquired) {
+            console.warn('enrichContactProfileSecondGen: duplicate enrichment run skipped', {
+                userId,
+                messageId,
+                projectId,
+                contactId,
+                lockId: assistantRunLock.lockId,
+                reason: assistantRunLock.reason,
+            })
+            return {
+                success: true,
+                duplicate: true,
+                status: assistantRunLock.reason,
+                messageId,
+            }
+        }
+
+        try {
+            const { startContactProfileEnrichment } = require('./Contacts/contactProfileEnrichment')
+            const result = await startContactProfileEnrichment({
+                userId,
+                projectId,
+                contactId,
+                assistantId,
+                requestId,
+                functionEntryTime,
+            })
+            await completeAssistantRunLock(assistantRunLock.lockRef)
+            return result
+        } catch (error) {
+            await failAssistantRunLock(assistantRunLock.lockRef, error)
+            console.error('enrichContactProfileSecondGen: enrichment failed', {
+                userId,
+                projectId,
+                contactId,
+                error: error.message,
+            })
+            throw new HttpsError('internal', error.message || 'Contact enrichment failed')
         }
     }
 )
@@ -1585,21 +2584,6 @@ exports.resetUserFreePlanSecondGen = onSchedule(
         const { resetWarningsAndQuotas } = require('./Payment/QuotaWarnings')
         await resetWarningsAndQuotas(admin)
         log('Server Time', { hour: new Date().getHours(), minute: new Date().getMinutes() })
-    }
-)
-
-// "Every Day at 00:00."
-exports.autoCancelSubscriptionsSecondGen = onSchedule(
-    {
-        schedule: '0 0 * * *',
-        timeZone: 'UTC',
-        region: 'europe-west1',
-        timeoutSeconds: 540,
-        memory: '512MiB',
-    },
-    async event => {
-        const { autoCancelSubscription } = require('./Payment/CancelSubscriptions')
-        await autoCancelSubscription()
     }
 )
 
@@ -2062,6 +3046,67 @@ exports.menubarAssistantThread = onRequest(
     }
 )
 
+// Writing requests are queued; the native app polls its exact private revision.
+exports.menubarWritingStart = onRequest(
+    { timeoutSeconds: 60, memory: '512MiB', region: 'europe-west1' },
+    async (req, res) => require('./MenubarApp/menubarWriting').handleMenubarWritingStart(req, res)
+)
+exports.menubarWritingSession = onRequest(
+    { timeoutSeconds: 120, memory: '512MiB', region: 'europe-west1' },
+    async (req, res) => require('./MenubarApp/menubarWriting').handleMenubarWritingSession(req, res)
+)
+exports.processMenubarWritingRunSecondGen = onDocumentWritten(
+    {
+        document: 'menubarWritingRuns/{runId}',
+        timeoutSeconds: WRITING_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async event => require('./MenubarApp/menubarWriting').processMenubarWritingRun(event)
+)
+
+// IOS SHARE EXTENSION
+
+exports.mintIosShareExtensionToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+        const { mintIosShareExtensionToken } = require('./IosShareExtension/iosShareExtension')
+        return await mintIosShareExtensionToken(request.auth.uid, request.data?.installationId)
+    }
+)
+
+exports.revokeIosShareExtensionToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+        const { revokeIosShareExtensionToken } = require('./IosShareExtension/iosShareExtension')
+        return await revokeIosShareExtensionToken(request.auth.uid, request.data?.installationId)
+    }
+)
+
+exports.iosShareTask = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleIosShareTask } = require('./IosShareExtension/iosShareExtension')
+        return await handleIosShareTask(req, res)
+    }
+)
+
 // MENUBAR ASSISTANT RUN QUEUE PROCESSOR - generates the assistant reply for
 // messages sent from the menubar app (queued by menubarAssistantMessage).
 exports.processMenubarAssistantRunSecondGen = onDocumentCreated(
@@ -2157,7 +3202,6 @@ exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
         cors: true,
@@ -2387,7 +3431,7 @@ exports.cancelAssistantRunSecondGen = onCall(
                     const pending = snapshot.data() || {}
                     if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
                     if (pending.userId !== userId) return { success: false, reason: 'permission_denied' }
-                    if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
+                    if (['completed', 'failed', 'cancelled', 'interrupted'].includes(pending.status)) {
                         return { success: false, reason: 'already_settled', status: pending.status }
                     }
                     // A queued job has no running execution to interrupt — settle it as cancelled now.
@@ -2771,7 +3815,6 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
         cors: true,
@@ -2831,21 +3874,100 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 })
                 throw new HttpsError('permission-denied', 'No access to requested task context')
             }
-            const result = await generatePreConfigTaskResult(
+            // A callable is not idempotent on its own, and a 30-second assistant run is exactly the
+            // window in which a client loses its response: a laptop whose lid closed 16s after the
+            // POST slept through the whole run, and Chrome retransmitted the identical request on
+            // wake 4m35s later — a second answer in the thread and a second Gold charge, from one
+            // user action. `askToBotSecondGen` has been guarded by the per-message run lock for
+            // exactly this; this path already receives the same `messageId` (it passes it down as
+            // `triggerMessageId`) and now takes the same lock. A request carrying no messageId --
+            // an empty prompt -- acquires nothing and behaves as before.
+            const {
+                acquireAssistantRunLock,
+                completeAssistantRunLock,
+                failAssistantRunLock,
+            } = require('./Assistant/assistantRunIdempotency')
+            const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
                 userId,
+                messageId,
+                projectId,
+                objectType,
+                objectId: taskId,
+                assistantId,
+            })
+            if (!assistantRunLock.acquired) {
+                console.warn('generatePreConfigTaskResultSecondGen: duplicate assistant run skipped', {
+                    userId,
+                    messageId,
+                    projectId,
+                    objectType,
+                    taskId,
+                    assistantId,
+                    lockId: assistantRunLock.lockId,
+                    reason: assistantRunLock.reason,
+                })
+                // The original invocation owns the answer. Reconcile the task completion anyway once
+                // that run is settled: it is idempotent (`alreadyCompleted`) and covers the window
+                // where the first invocation died between releasing its lock and completing the
+                // task. While the other run is still going we report no outcome and rely on
+                // `duplicate` to stop the client completing the task under it.
+                const duplicateTaskCompletion =
+                    assistantRunLock.reason === 'already_completed'
+                        ? await completeOnDemandAssistantTaskAfterRun({
+                              taskResult: { success: true },
+                              projectId,
+                              taskId,
+                              userId,
+                              assistantId,
+                              taskMetadata,
+                          })
+                        : null
+
+                return {
+                    success: true,
+                    duplicate: true,
+                    status: assistantRunLock.reason,
+                    messageId: messageId || null,
+                    ...(duplicateTaskCompletion ? { taskCompletion: duplicateTaskCompletion } : {}),
+                }
+            }
+
+            let result
+            try {
+                result = await generatePreConfigTaskResult(
+                    userId,
+                    projectId,
+                    taskId,
+                    userIdsToNotify,
+                    isPublicFor,
+                    assistantId,
+                    prompt,
+                    language,
+                    aiSettings,
+                    taskMetadata,
+                    functionEntryTime, // Pass entry time for time-to-first-token tracking
+                    objectType,
+                    { triggerMessageId: messageId }
+                )
+                // Released before the task completion below so a crash in between leaves a settled
+                // lock the duplicate branch can reconcile, rather than a running one that would make
+                // a legitimate retry wait out the 65-minute lease.
+                await completeAssistantRunLock(assistantRunLock.lockRef)
+            } catch (error) {
+                // Also releases the coarse per-task slot; leaving it held would block workflow AI
+                // steps on this task for the rest of the lease.
+                await failAssistantRunLock(assistantRunLock.lockRef, error)
+                throw error
+            }
+
+            const taskCompletion = await completeOnDemandAssistantTaskAfterRun({
+                taskResult: result,
                 projectId,
                 taskId,
-                userIdsToNotify,
-                isPublicFor,
+                userId,
                 assistantId,
-                prompt,
-                language,
-                aiSettings,
                 taskMetadata,
-                functionEntryTime, // Pass entry time for time-to-first-token tracking
-                objectType,
-                { triggerMessageId: messageId }
-            )
+            })
 
             const totalFunctionTime = Date.now() - functionEntryTime
             console.log('🎯 [TIMING] generatePreConfigTaskResultSecondGen COMPLETE', {
@@ -2854,7 +3976,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 completionTime: Date.now(),
             })
 
-            return result
+            return taskCompletion ? { ...result, taskCompletion } : result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -3149,7 +4271,213 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
         const projectId = event.params.projectId
         const oldProject = mapProjectData(projectId, event.data.before.data())
         const newProject = mapProjectData(projectId, event.data.after.data())
-        await onUpdateProject(projectId, oldProject, newProject)
+        const work = [onUpdateProject(projectId, oldProject, newProject)]
+        if (JSON.stringify(oldProject.userIds || []) !== JSON.stringify(newProject.userIds || [])) {
+            work.push(
+                queueProjectAccessProjectionSync(admin.firestore(), projectId, newProject.userIds || [], event.id)
+            )
+        }
+        await Promise.all(work)
+    }
+)
+
+exports.reconcileDayRateStatisticsSecondGen = onDocumentWritten(
+    {
+        document: 'statistics/{projectId}/{userId}/{dateKey}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        retry: true,
+    },
+    async event => {
+        const { reconcileDayRateStatisticsOnWrite } = require('./Tasks/dayRateStatistics')
+        return reconcileDayRateStatisticsOnWrite({
+            db: admin.firestore(),
+            ...event.params,
+            before: event.data.before.data(),
+            after: event.data.after.data(),
+        })
+    }
+)
+
+// Unread badges: mirror each user's per-project counters into one document the client watches
+// (functions/Feeds/activityUnreadSummary.js). Small and idempotent, so no retries and a short timeout.
+exports.mirrorFeedsCountToUnreadSummarySecondGen = onDocumentWritten(
+    { document: 'feedsCount/{projectId}/{userId}/{tab}', timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1' },
+    async event => {
+        const { mirrorFeedsCount } = require('./Feeds/activityUnreadSummary')
+        await mirrorFeedsCount(event.params)
+    }
+)
+
+exports.mirrorChatNotificationToUnreadSummarySecondGen = onDocumentWritten(
+    {
+        document: 'chatNotifications/{projectId}/{userId}/{commentId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { mirrorChatNotification } = require('./Feeds/activityUnreadSummary')
+        await mirrorChatNotification(event.params)
+    }
+)
+
+exports.processFirestoreAccessProjectionJobSecondGen = onDocumentWritten(
+    {
+        document: `${ACCESS_PROJECTION_JOBS_COLLECTION}/{projectId}`,
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const after = event.data?.after
+        if (!after?.exists || after.data()?.status !== 'pending') return
+
+        const db = admin.firestore()
+        const leaseId = `${event.id}:${Date.now()}`
+        const job = await acquireAccessProjectionJob(db, after.ref, leaseId)
+        if (!job) return
+
+        try {
+            const { synchronizeProjectAccessProjectionPage } = require('./shared/objectAccessProjection')
+            const result = await synchronizeProjectAccessProjectionPage(
+                db,
+                job.projectId || event.params.projectId,
+                job.projectUserIds || [],
+                job.cursor
+            )
+            await releaseAccessProjectionJob(db, after.ref, leaseId, {
+                status: result.done ? 'complete' : 'pending',
+                cursor: result.cursor,
+                scanned: admin.firestore.FieldValue.increment(result.scanned),
+                updated: admin.firestore.FieldValue.increment(result.updated),
+                completedAt: result.done ? admin.firestore.FieldValue.serverTimestamp() : null,
+                lastError: admin.firestore.FieldValue.delete(),
+            })
+        } catch (error) {
+            await releaseAccessProjectionJob(db, after.ref, leaseId, {
+                status: 'pending',
+                lastError: String(error?.message || error).slice(0, 1000),
+            })
+            throw error
+        }
+    }
+)
+
+exports.resumeStalledFirestoreAccessProjectionJobsSecondGen = onSchedule(
+    {
+        schedule: '*/10 * * * *',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const db = admin.firestore()
+        const snapshot = await db
+            .collection(ACCESS_PROJECTION_JOBS_COLLECTION)
+            .where('leaseExpiresAt', '<=', Timestamp.now())
+            .limit(25)
+            .get()
+        if (snapshot.empty) return
+
+        const writer = db.bulkWriter()
+        snapshot.docs.forEach(jobDoc => {
+            if (jobDoc.data()?.status !== 'processing') return
+            writer.update(jobDoc.ref, {
+                status: 'pending',
+                leaseId: admin.firestore.FieldValue.delete(),
+                leaseExpiresAt: admin.firestore.FieldValue.delete(),
+                lastError: 'Projection page lease expired and was resumed',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
+        await writer.close()
+    }
+)
+
+// Projection schema changes need to repair existing objects as well as new writes. This durable,
+// paged migration queues every project through the same projection worker used for membership
+// changes. It becomes a cheap no-op after the current schema version is complete.
+exports.queueFirestoreAccessProjectionSchemaMigrationSecondGen = onSchedule(
+    {
+        schedule: '*/10 * * * *',
+        timeoutSeconds: 300,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const db = admin.firestore()
+        const migrationId = `schema-v${ACCESS_PROJECTION_SCHEMA_VERSION}`
+        const migrationRef = db.doc(`${ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION}/${migrationId}`)
+        const leaseId = `${event.id}:${Date.now()}`
+        const now = Date.now()
+
+        const migration = await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(migrationRef)
+            const data = snapshot.data() || {}
+            if (data.status === 'complete') return null
+            if (data.leaseExpiresAt?.toMillis?.() > now) return null
+
+            transaction.set(
+                migrationRef,
+                {
+                    schemaVersion: ACCESS_PROJECTION_SCHEMA_VERSION,
+                    status: 'processing',
+                    projectCursor: data.projectCursor || null,
+                    queuedProjects: data.queuedProjects || 0,
+                    leaseId,
+                    leaseExpiresAt: Timestamp.fromMillis(now + ACCESS_PROJECTION_SCHEMA_MIGRATION_LEASE_MS),
+                    startedAt: data.startedAt || admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            )
+            return data
+        })
+        if (!migration) return
+
+        let projectsQuery = db
+            .collection('projects')
+            .orderBy(admin.firestore.FieldPath.documentId())
+            .limit(ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE)
+        if (migration.projectCursor) projectsQuery = projectsQuery.startAfter(migration.projectCursor)
+
+        const projectsSnapshot = await projectsQuery.get()
+        const { getInitialProjectionCursor } = require('./shared/objectAccessProjection')
+        const writer = db.bulkWriter()
+        projectsSnapshot.docs.forEach(projectDoc => {
+            const projectData = projectDoc.data() || {}
+            writer.set(db.doc(`${ACCESS_PROJECTION_JOBS_COLLECTION}/${projectDoc.id}`), {
+                projectId: projectDoc.id,
+                projectUserIds: Array.isArray(projectData.userIds) ? projectData.userIds : [],
+                generation: `${migrationId}:${projectDoc.id}`,
+                status: 'pending',
+                cursor: getInitialProjectionCursor(),
+                scanned: 0,
+                updated: 0,
+                queuedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
+        await writer.close()
+
+        const lastProjectId =
+            projectsSnapshot.docs[projectsSnapshot.docs.length - 1]?.id || migration.projectCursor || null
+        const done = projectsSnapshot.size < ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE
+        await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(migrationRef)
+            if (snapshot.data()?.leaseId !== leaseId) return
+            transaction.update(migrationRef, {
+                status: done ? 'complete' : 'pending',
+                projectCursor: lastProjectId,
+                queuedProjects: admin.firestore.FieldValue.increment(projectsSnapshot.size),
+                completedAt: done ? admin.firestore.FieldValue.serverTimestamp() : null,
+                leaseId: admin.firestore.FieldValue.delete(),
+                leaseExpiresAt: admin.firestore.FieldValue.delete(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
     }
 )
 
@@ -3226,7 +4554,7 @@ exports.onCreateChatSecondGen = onDocumentCreated(
         const { onCreateChat } = require('./Chats/onCreateChatFunctions')
         const { projectId, chatId } = event.params
         const chat = { ...event.data.data(), id: chatId }
-        await onCreateChat(projectId, chat)
+        await Promise.all([onCreateChat(projectId, chat), synchronizeAccessProjection(event, null, 'usersFollowing')])
     }
 )
 
@@ -3235,14 +4563,17 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
         document: 'chatObjects/{projectId}/chats/{chatId}',
         timeoutSeconds: 540,
         memory: '256MB',
-        minInstances: 1,
         maxInstances: 100,
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateChat } = require('./Chats/onUpdateChatFunctions')
         const { projectId, chatId } = event.params
-        await onUpdateChat(projectId, chatId, event.data)
+        await Promise.all([
+            onUpdateChat(projectId, chatId, event.data),
+            synchronizeAccessProjection(event, null, 'usersFollowing'),
+        ])
     }
 )
 
@@ -3274,9 +4605,75 @@ exports.onCreateTaskSecondGen = onDocumentCreated(
         const { onCreateTask } = require('./Tasks/onCreateTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await onCreateTask(task, projectId)
+        await Promise.all([
+            onCreateTask(task, projectId),
+            synchronizeAccessProjection(event, 'observersIds', null, true),
+        ])
     }
 )
+
+// Manual calendar-task project and Goal moves carry durable feedback markers on the copied task.
+// A separate idempotent trigger turns those markers into learned routing rules without delaying or
+// endangering the move itself. `retry` is safe because each feedback document and config revision
+// is committed transactionally.
+exports.onCreateCalendarProjectRoutingFeedbackSecondGen = onDocumentCreated(
+    {
+        document: 'items/{projectId}/tasks/{taskId}',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+        retry: true,
+    },
+    async event => {
+        const taskData = event.data.data() || {}
+        const hasProjectFeedback = !!taskData?.calendarData?.projectRoutingFeedback
+        const hasGoalFeedback = !!taskData?.calendarData?.goalRoutingFeedback
+        if (!hasProjectFeedback && !hasGoalFeedback) return
+
+        const { projectId, taskId } = event.params
+        const task = { ...taskData, id: taskId }
+        const captures = []
+        if (hasProjectFeedback) {
+            const { captureCalendarProjectRoutingFeedback } = require('./GoogleCalendar/calendarProjectRoutingFeedback')
+            captures.push(captureCalendarProjectRoutingFeedback({ task, taskProjectId: projectId }))
+        }
+        if (hasGoalFeedback) {
+            const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
+            captures.push(captureCalendarGoalRoutingFeedback({ task, taskProjectId: projectId }))
+        }
+        await Promise.all(captures)
+    }
+)
+
+// Same-project Goal picker actions update an existing task rather than creating a copy. Consume a
+// new marker only when its feedback id changes; other task updates can safely pass through.
+// Calendar goal-routing feedback used to be its own onDocumentUpdated trigger on the same
+// `items/{projectId}/tasks/{taskId}` path, so every task update paid for two invocations
+// (387k and 464k in August 2026) and the second one returned immediately almost every time.
+// It now rides along inside onUpdateTaskSecondGen; the capture itself is unchanged.
+async function captureCalendarGoalRoutingFeedbackIfChanged(event) {
+    const previousTaskData = event.data.before.data() || {}
+    const taskData = event.data.after.data() || {}
+    const previousFeedbackId = previousTaskData?.calendarData?.goalRoutingFeedback?.feedbackId
+    const feedbackId = taskData?.calendarData?.goalRoutingFeedback?.feedbackId
+    if (!feedbackId || feedbackId === previousFeedbackId) return
+
+    const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
+    const { projectId, taskId } = event.params
+    try {
+        await captureCalendarGoalRoutingFeedback({
+            task: { ...taskData, id: taskId },
+            previousTask: { ...previousTaskData, id: taskId },
+            taskProjectId: projectId,
+        })
+    } catch (error) {
+        console.error('[onUpdateTask] calendar goal routing feedback capture failed', {
+            projectId,
+            taskId,
+            error: error?.message || error,
+        })
+    }
+}
 
 exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
@@ -3286,36 +4683,50 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event, ['projectId'])) return
         const { onUpdateTask } = require('./Tasks/onUpdateTaskFunctions')
         const { projectId, taskId } = event.params
-        await onUpdateTask(taskId, projectId, event.data)
+        await Promise.all([
+            onUpdateTask(taskId, projectId, event.data, event.id),
+            synchronizeAccessProjection(event, 'observersIds', null, true),
+            captureCalendarGoalRoutingFeedbackIfChanged(event),
+            reconcileFeedPrivacy(event, 'tasks'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
+        ])
     }
 )
 
-exports.onCreateTaskCommentSecondGen = onDocumentCreated(
+exports.onCreateObjectCommentSecondGen = onDocumentCreated(
     {
-        document: 'chatComments/{projectId}/tasks/{taskId}/comments/{commentId}',
+        document: 'chatComments/{projectId}/{objectType}/{objectId}/comments/{commentId}',
+        retry: true,
         timeoutSeconds: 120,
         memory: '256MB',
         region: 'europe-west1',
     },
     async event => {
-        const { captureTaskPriorityCommentFeedback } = require('./Assistant/taskPriorityLearning')
-        const { projectId, taskId, commentId } = event.params
-        try {
-            await captureTaskPriorityCommentFeedback({
-                projectId,
-                taskId,
-                commentId,
-                commentData: event.data.data() || {},
-            })
-        } catch (error) {
-            console.warn('Task priority learning comment feedback capture failed', {
-                projectId,
-                taskId,
-                commentId,
-                error: error.message,
-            })
+        const { projectId, objectType, objectId, commentId } = event.params
+        if (objectType === 'tasks') {
+            const { captureTaskPriorityCommentFeedback } = require('./Assistant/taskPriorityLearning')
+            try {
+                await captureTaskPriorityCommentFeedback({
+                    projectId,
+                    taskId: objectId,
+                    commentId,
+                    commentData: event.data.data() || {},
+                })
+            } catch (error) {
+                console.warn('Task priority learning comment feedback capture failed', {
+                    projectId,
+                    taskId: objectId,
+                    commentId,
+                    error: error.message,
+                })
+            }
+        }
+        const { isReplyCandidate, enqueueAssistantCommentReply } = require('./Assistant/assistantCommentReply')
+        if (isReplyCandidate(event.data.data())) {
+            await enqueueAssistantCommentReply({ projectId, objectType, objectId, commentId })
         }
     }
 )
@@ -3331,7 +4742,7 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
         const { onDeleteTask } = require('./Tasks/onDeleteTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await onDeleteTask(projectId, task)
+        await Promise.all([onDeleteTask(projectId, task), invalidateKnowledgeSourcesOnDelete(event, 'tasks')])
     }
 )
 
@@ -3529,7 +4940,7 @@ exports.onCreateContactSecondGen = onDocumentCreated(
         const { onCreateContact } = require('./Contacts/onCreateContactFunctions')
         const { projectId, contactId } = event.params
         const contact = { ...event.data.data(), uid: contactId }
-        await onCreateContact(projectId, contact)
+        await Promise.all([onCreateContact(projectId, contact), synchronizeAccessProjection(event)])
     }
 )
 
@@ -3541,9 +4952,15 @@ exports.onUpdateContactSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateContact } = require('./Contacts/onUpdateContactFunctions')
         const { projectId, contactId } = event.params
-        await onUpdateContact(projectId, contactId, event.data)
+        await Promise.all([
+            onUpdateContact(projectId, contactId, event.data),
+            synchronizeAccessProjection(event),
+            reconcileFeedPrivacy(event, 'contacts'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'contacts'),
+        ])
     }
 )
 
@@ -3558,7 +4975,7 @@ exports.onDeleteContactSecondGen = onDocumentDeleted(
         const { onDeleteContact } = require('./Contacts/onDeleteContactFunctions')
         const { projectId, contactId } = event.params
         const contact = { ...event.data.data(), uid: contactId }
-        await onDeleteContact(projectId, contact)
+        await Promise.all([onDeleteContact(projectId, contact), invalidateKnowledgeSourcesOnDelete(event, 'contacts')])
     }
 )
 
@@ -3575,7 +4992,7 @@ exports.onCreateGoalSecondGen = onDocumentCreated(
         const { onCreateGoal } = require('./Goals/onCreateGoalFunctions')
         const { projectId, goalId } = event.params
         const goal = { ...event.data.data(), id: goalId }
-        await onCreateGoal(projectId, goal)
+        await Promise.all([onCreateGoal(projectId, goal), synchronizeAccessProjection(event, 'assigneesIds')])
     }
 )
 
@@ -3587,9 +5004,15 @@ exports.onUpdateGoalSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateGoal } = require('./Goals/onUpdateGoalFunctions')
         const { projectId, goalId } = event.params
-        await onUpdateGoal(projectId, goalId, event.data)
+        await Promise.all([
+            onUpdateGoal(projectId, goalId, event.data),
+            synchronizeAccessProjection(event, 'assigneesIds'),
+            reconcileFeedPrivacy(event, 'goals'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'goals'),
+        ])
     }
 )
 
@@ -3604,11 +5027,161 @@ exports.onDeleteGoalSecondGen = onDocumentDeleted(
         const { onDeleteGoal } = require('./Goals/onDeleteGoalFunctions')
         const { projectId, goalId } = event.params
         const goal = { ...event.data.data(), id: goalId }
-        await onDeleteGoal(projectId, goal)
+        await Promise.all([onDeleteGoal(projectId, goal), invalidateKnowledgeSourcesOnDelete(event, 'goals')])
     }
 )
 
 //SKILLS
+
+exports.onCreateSkillAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'skills/{projectId}/items/{skillId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateSkillAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'skills/{projectId}/items/{skillId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await Promise.all([synchronizeAccessProjection(event), reconcileFeedPrivacy(event, 'skills')])
+    }
+)
+
+exports.onCreateOkrAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'okrs/{projectId}/projectOkrs/{okrId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateOkrAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'okrs/{projectId}/projectOkrs/{okrId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateProjectFeedAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'projectsFeeds/{projectId}/{dateId}/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateProjectFeedAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'projectsFeeds/{projectId}/{dateId}/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateInnerFeedAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
+)
+
+exports.onUpdateInnerFeedAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateAllFeedStoreAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'feedsStore/{projectId}/all/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
+)
+
+exports.onUpdateAllFeedStoreAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'feedsStore/{projectId}/all/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateFollowedFeedStoreAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'feedsStore/{projectId}/{userId}/feeds/followed/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
+)
+
+exports.onUpdateFollowedFeedStoreAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'feedsStore/{projectId}/{userId}/feeds/followed/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
 
 exports.onDeleteSkillSecondGen = onDocumentDeleted(
     {
@@ -3638,7 +5211,10 @@ exports.onCreateNoteSecondGen = onDocumentCreated(
         const { onCreateNote } = require('./Notes/onCreateNoteFunctions')
         const { projectId, noteId } = event.params
         const note = { ...event.data.data(), id: noteId }
-        await onCreateNote(projectId, note)
+        await Promise.all([
+            onCreateNote(projectId, note),
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+        ])
     }
 )
 
@@ -3650,9 +5226,15 @@ exports.onUpdateNoteSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateNote } = require('./Notes/onUpdateNoteFunctions')
         const { projectId, noteId } = event.params
-        await onUpdateNote(projectId, noteId, event.data)
+        await Promise.all([
+            onUpdateNote(projectId, noteId, event.data),
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+            reconcileFeedPrivacy(event, 'notes'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'notes'),
+        ])
     }
 )
 
@@ -3667,7 +5249,115 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
         const { onDeleteNote } = require('./Notes/onDeleteNoteFunctions')
         const { projectId, noteId } = event.params
         const note = { ...event.data.data(), id: noteId }
-        await onDeleteNote(projectId, note)
+        await Promise.all([onDeleteNote(projectId, note), invalidateKnowledgeSourcesOnDelete(event, 'notes')])
+    }
+)
+
+//ARTIFACTS
+
+// Artifacts are created server-side with their access projection already written (see
+// Artifacts/artifactStore.js), so the create trigger only makes them findable in search. An update
+// keeps the projection in step, rotates the serve secret whenever somebody loses read access and
+// re-indexes the artifact when something search shows changed.
+exports.onCreateArtifactSecondGen = onDocumentCreated(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { indexArtifactForSearch } = require('./Artifacts/artifactSearch')
+        const { projectId, artifactId } = event.params
+        await indexArtifactForSearch({ projectId, artifactId, artifact: event.data.data() || {} }).catch(error =>
+            console.error('[artifacts] Could not index the artifact for search', {
+                projectId,
+                artifactId,
+                error: error.message,
+            })
+        )
+    }
+)
+
+exports.onUpdateArtifactSecondGen = onDocumentUpdated(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const admin = require('firebase-admin')
+        const { rotateServeSecretOnLostReaders } = require('./Artifacts/artifactStore')
+        const { artifactSearchUpdateNeeded, indexArtifactForSearch } = require('./Artifacts/artifactSearch')
+        const { recordMetadataHistory } = require('./Artifacts/artifactHistory')
+        const { projectId, artifactId } = event.params
+        const before = event.data.before.data() || {}
+        const after = event.data.after.data() || {}
+        await Promise.all([
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+            recordMetadataHistory({
+                db: admin.firestore(),
+                projectId,
+                artifactId,
+                before,
+                after,
+                eventId: event.id,
+            }).catch(error =>
+                console.error('[artifacts] Could not record the artifact history', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
+            artifactSearchUpdateNeeded(before, after)
+                ? indexArtifactForSearch({ projectId, artifactId, artifact: after }).catch(error =>
+                      console.error('[artifacts] Could not re-index the artifact for search', {
+                          projectId,
+                          artifactId,
+                          error: error.message,
+                      })
+                  )
+                : null,
+            rotateServeSecretOnLostReaders({
+                projectId,
+                artifactId,
+                before,
+                after,
+            }).catch(error =>
+                console.error('[artifacts] Could not rotate the serve secret', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
+        ])
+    }
+)
+
+exports.onDeleteArtifactSecondGen = onDocumentDeleted(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 300,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const admin = require('firebase-admin')
+        const { deleteArtifactData } = require('./Artifacts/artifactStore')
+        const { removeArtifactFromSearch } = require('./Artifacts/artifactSearch')
+        const { removeObjectFromBacklinks } = require('./Backlinks/backlinksHelper')
+        const { deleteChat } = require('./Chats/chatsFirestoreCloud')
+        const { projectId, artifactId } = event.params
+        await Promise.all([
+            deleteArtifactData({ projectId, artifactId }),
+            removeArtifactFromSearch({ projectId, artifactId }),
+            // Tasks and notes that linked to it stop listing it as a backlink.
+            removeObjectFromBacklinks(projectId, 'linkedParentArtifactsIds', artifactId, admin),
+            // Its conversation goes with it, as a skill's does; the chat's own delete trigger
+            // removes the comments.
+            deleteChat(admin, projectId, artifactId),
+        ])
     }
 )
 
@@ -3675,8 +5365,8 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
 
 exports.deleteUserSecondGen = onCall(
     {
-        timeoutSeconds: 30,
-        memory: '512MiB',
+        timeoutSeconds: 540,
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -3685,11 +5375,26 @@ exports.deleteUserSecondGen = onCall(
         if (auth) {
             const admin = require('firebase-admin')
             try {
-                const { userId } = data
-                await admin.auth().deleteUser(userId)
-                console.log('Successfully deleted user')
+                const userId = data?.userId
+                if (!userId || typeof userId !== 'string') {
+                    throw new HttpsError('invalid-argument', 'userId is required')
+                }
+                if (auth.uid !== userId) await assertAdministrator(auth.uid)
+                const { deleteUserAccount } = require('./Users/deleteUserAccount')
+                const { STRIPE_SECRET_KEY } = require('./envFunctionsHelper').getEnvFunctions()
+                const result = await deleteUserAccount({
+                    db: admin.firestore(),
+                    auth: admin.auth(),
+                    FieldValue: admin.firestore.FieldValue,
+                    stripe: STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null,
+                    userId,
+                })
+                console.log('Successfully deleted user account', { userId, ...result })
+                return result
             } catch (e) {
-                console.log('Error deleting user:', e.message)
+                console.error('Error deleting user:', { userId: data?.userId, code: e.code, message: e.message })
+                if (e instanceof HttpsError) throw e
+                throw new HttpsError('internal', 'Unable to delete user')
             }
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -3959,14 +5664,17 @@ exports.getEmailLineSummarySecondGen = onCall(
         const { includeNeedsReply } = data || {}
 
         try {
-            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
-            const { getEmailLineSummary } = require('./Email/emailLine/emailLineService')
-            return await getEmailLineSummary(auth.uid, key, { userData, includeNeedsReply: !!includeNeedsReply })
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
+            const { getEmailLineSummaryResponse } = require('./Email/emailLine/emailLineSummaryResponse')
+            return await getEmailLineSummaryResponse({
+                userId: auth.uid,
+                key,
+                userData,
+                connection,
+                includeNeedsReply: !!includeNeedsReply,
+            })
         } catch (error) {
             if (error instanceof HttpsError) throw error
-            if (error?.code === 'EMAIL_AUTH_EXPIRED') {
-                throw new HttpsError('failed-precondition', 'EMAIL_AUTH_EXPIRED')
-            }
             console.error('[getEmailLineSummarySecondGen] Error:', error)
             throw new HttpsError('internal', error.message || 'Failed to load email summary')
         }
@@ -4148,18 +5856,6 @@ exports.resetInvoiceNumbersSecondGen = onSchedule(
     }
 )
 
-exports.scheduledFirestoreBackupSecondGen = onSchedule(
-    {
-        schedule: 'every 24 hours',
-        region: 'europe-west1',
-    },
-    event => {
-        const { scheduledFirestoreBackup } = require('./Utils/firestoreBackup.js')
-        const firebaseProjectId = process.env.GCLOUD_PROJECT
-        return scheduledFirestoreBackup(firebaseProjectId)
-    }
-)
-
 exports.checkForDemoteStickyNotesSecondGen = onSchedule(
     {
         schedule: 'every 30 minutes',
@@ -4246,6 +5942,22 @@ exports.checkAssistantHeartbeats = onSchedule(
     }
 )
 
+// Comment creation only dispatches work; the existing reply pipeline runs within the
+// same 25-minute budget as heartbeats, below Cloud Tasks' 30-minute deadline.
+exports.runAssistantCommentReply = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
+    },
+    async req => {
+        const { runAssistantCommentReply } = require('./Assistant/assistantCommentReply')
+        return await runAssistantCommentReply(req.data || {})
+    }
+)
+
 exports.runAssistantHeartbeat = onTaskDispatched(
     {
         region: 'europe-west1',
@@ -4257,6 +5969,58 @@ exports.runAssistantHeartbeat = onTaskDispatched(
     async req => {
         const { executeScheduledHeartbeat } = require('./Assistant/assistantHeartbeat')
         await executeScheduledHeartbeat(req.data || {})
+    }
+)
+
+// PROJECT WIKI
+// One ingest run per project wiki: rebuilds pages that lost a source, then folds in what changed.
+// Delivered through Cloud Tasks, so it shares the heartbeat's 25-minute budget.
+exports.runKnowledgeBaseIngest = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 3, maxDispatchesPerSecond: 1 },
+    },
+    async req => {
+        const { runKnowledgeBaseIngest } = require('./KnowledgeBase/knowledgeBaseIngest')
+        const data = req.data || {}
+        return await runKnowledgeBaseIngest({ projectId: data.projectId, trigger: data.trigger })
+    }
+)
+
+// Every new page revision, whoever wrote it, becomes one line in the project's Updates feed. The
+// entry carries no page text; see KnowledgeBase/knowledgeWikiFeedModel.js.
+exports.onCreateKnowledgePageRevisionSecondGen = onDocumentCreated(
+    {
+        document: 'knowledgeBases/{projectId}/pages/{pageId}/revisions/{revisionId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { onKnowledgePageRevisionCreated } = require('./KnowledgeBase/knowledgeWikiFeed')
+        await onKnowledgePageRevisionCreated({
+            db: admin.firestore(),
+            projectId: event.params.projectId,
+            slug: event.params.pageId,
+            revision: event.data?.data() || {},
+        })
+    }
+)
+
+// Only enqueues due wiki runs; the run itself lives in runKnowledgeBaseIngest.
+exports.dispatchKnowledgeBaseIngests = onSchedule(
+    {
+        schedule: '*/15 * * * *',
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { dispatchDueKnowledgeBaseIngests } = require('./KnowledgeBase/knowledgeBaseDispatcher')
+        await dispatchDueKnowledgeBaseIngests()
     }
 )
 
@@ -4304,6 +6068,22 @@ exports.autoReminderTasksSecondGen = onCall(
     }
 )
 
+exports.postponeProjectTasksWithUndoSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
+        try {
+            const { executeProjectPostpone } = require('./Tasks/projectPostponeService')
+            return await executeProjectPostpone({ actorUserId: request.auth.uid, data: request.data })
+        } catch (error) {
+            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'failed-precondition'])
+            const code = supportedCodes.has(error.code) ? error.code : 'internal'
+            console.error('[postponeProjectTasksWithUndoSecondGen] Failed', { code, error: error.message })
+            throw new HttpsError(code, code === 'internal' ? 'Failed to postpone project tasks' : error.message)
+        }
+    }
+)
+
 exports.postponeGoalWithUndoSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -4334,6 +6114,41 @@ exports.postponeGoalWithUndoSecondGen = onCall(
                 error: error.message,
             })
             throw new HttpsError(code, code === 'internal' ? 'Failed to postpone goal' : error.message)
+        }
+    }
+)
+
+exports.updateMilestoneDoneStateSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+
+        try {
+            const { executeMilestoneDoneTransition } = require('./Goals/milestoneDoneService')
+            return await executeMilestoneDoneTransition({ actorUserId: auth.uid, data })
+        } catch (error) {
+            const supportedCodes = new Set([
+                'invalid-argument',
+                'permission-denied',
+                'not-found',
+                'failed-precondition',
+            ])
+            const code = supportedCodes.has(error.code) ? error.code : 'internal'
+            console.error('[updateMilestoneDoneStateSecondGen] Failed', {
+                userId: auth.uid,
+                projectId: data?.projectId,
+                milestoneId: data?.milestoneId,
+                targetDone: data?.targetDone,
+                code,
+                error: error.message,
+            })
+            throw new HttpsError(code, code === 'internal' ? 'Failed to update milestone state' : error.message)
         }
     }
 )
@@ -4417,6 +6232,42 @@ exports.autoArchiveInactiveProjectsSecondGen = onSchedule(
     async () => {
         const { checkAndAutoArchiveProjects } = require('./Projects/autoArchiveProjectsCloud')
         return await checkAndAutoArchiveProjects()
+    }
+)
+
+// AT-2480: pulls each recently active user's calendar ONCE per their own local day, so a day's
+// meetings exist as tasks before anyone opens the app. Hourly rather than daily because "the day"
+// is the user's, not UTC: a single fixed hour would fire before local midnight for everyone west
+// of it and sync the wrong day. The once-per-local-day gate lives in `scheduledCalendarSync`.
+exports.syncActiveUsersCalendarsSecondGen = onSchedule(
+    {
+        schedule: '13 * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { syncCalendarsForActiveUsers } = require('./GoogleCalendar/scheduledCalendarSync')
+        return await syncCalendarsForActiveUsers()
+    }
+)
+
+// Tells a user, in the app, that a connected email/calendar account stopped working.
+// Nothing did before AT-2491: the breakage was recorded on the user document and only
+// Settings > Integrations ever read it, so a dead Gmail connection went unnoticed for four
+// days in production. Offset from the calendar sweep so the two do not contend.
+exports.notifyBrokenConnectionsSecondGen = onSchedule(
+    {
+        schedule: '37 * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { sweepBrokenConnectionNotices } = require('./Integrations/connectionBrokenNotice')
+        return await sweepBrokenConnectionNotices()
     }
 )
 
@@ -4603,6 +6454,43 @@ exports.runGoldenBuild = onTaskDispatched(
     }
 )
 
+// Manual task moves fan out over both projects and their linked chat/feed data.
+// Running them in Cloud Tasks makes the operation durable after the initiating
+// project picker has closed or the browser navigates away.
+exports.runManualTaskProjectMove = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        // The callable runs as this Admin SDK service account and uses it for
+        // the Cloud Task's OIDC token. Declaring it here lets Firebase manage
+        // both queue-enqueuer and worker-invoker IAM when the function is
+        // deployed, instead of relying on an out-of-band per-service grant.
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
+        retryConfig: { maxAttempts: 3, minBackoffSeconds: 5, maxBackoffSeconds: 60 },
+        rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
+    },
+    async req => {
+        const { handleManualTaskProjectMoveDispatch } = require('./Tasks/manualTaskProjectMove')
+        await handleManualTaskProjectMoveDispatch(req)
+    }
+)
+
+exports.runManualObjectProjectMove = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
+        retryConfig: { maxAttempts: 3, minBackoffSeconds: 5, maxBackoffSeconds: 60 },
+        rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
+    },
+    async req => {
+        const { handleManualObjectProjectMoveDispatch } = require('./Objects/manualObjectProjectMove')
+        await handleManualObjectProjectMoveDispatch(req)
+    }
+)
+
 // PAUSE IDLE VM SESSIONS - pause running E2B sandboxes idle past the keep-alive window
 exports.pauseIdleVmSessions = onSchedule(
     {
@@ -4678,12 +6566,26 @@ exports.reconcileVmCloudRunLaunches = onSchedule(
     async () => {
         const { reconcileUnknownVmCloudRunLaunches } = require('./Assistant/vmJob')
         const { reconcileVmWorkerTerminations } = require('./Assistant/vmJobReconciliation')
-        const [launches, workers] = await Promise.all([
+        const { reconcileOrphanedQueuedVmJobs } = require('./Assistant/vmThreadQueue')
+        const [launches, workers, orphanedQueues] = await Promise.all([
             reconcileUnknownVmCloudRunLaunches(),
             reconcileVmWorkerTerminations(),
+            reconcileOrphanedQueuedVmJobs(),
         ])
-        if (launches.checked || launches.errors || workers.checked || workers.reconciled || workers.errors) {
-            console.log('🖥️ VM JOB: Cloud Run reconciliation complete', { launches, workers })
+        if (
+            launches.checked ||
+            launches.errors ||
+            workers.checked ||
+            workers.reconciled ||
+            workers.errors ||
+            orphanedQueues.reconciled ||
+            orphanedQueues.errors
+        ) {
+            console.log('🖥️ VM JOB: Cloud Run reconciliation complete', {
+                launches,
+                workers,
+                orphanedQueues,
+            })
         }
     }
 )
@@ -4871,6 +6773,48 @@ exports.googleOAuthCheckCredentials = onCall(
             console.error('Error checking credentials:', error)
             throw new HttpsError('internal', `Failed to check credentials: ${error.message}`)
         }
+    }
+)
+
+// Verifies that a connected email/calendar account still works, by forcing a token refresh
+// rather than re-reading the stored flag. `googleOAuthCheckCredentials` above only reports
+// what is already recorded, and that recording happens only when something tried to USE the
+// account — so an untouched account whose grant died reads as healthy until some background
+// job stumbles on it. Settings > Integrations calls this on open (AT-2491).
+exports.checkConnectionHealthSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        const connectionIds = Array.isArray(data?.connectionIds) ? data.connectionIds.slice(0, 20) : []
+        if (connectionIds.length === 0) return { results: [] }
+
+        const { checkConnectionHealth } = require('./Integrations/connectionHealthCheck')
+        const userId = auth.uid
+
+        // One user-document read shared by every connection instead of one per account.
+        const userDoc = await admin.firestore().collection('users').doc(userId).get()
+        const userData = userDoc.exists ? userDoc.data() || {} : {}
+
+        const results = await Promise.all(
+            connectionIds.map(connectionId =>
+                // A single unverifiable account must not fail the whole page's check.
+                checkConnectionHealth(userId, connectionId, { userData }).catch(error => {
+                    console.warn(`[connectionHealth] ${connectionId} failed: ${error?.message || error}`)
+                    return { connectionId, status: 'unknown', healthy: false, authInvalid: false }
+                })
+            )
+        )
+
+        return { results }
     }
 )
 
@@ -5462,9 +7406,6 @@ exports.whatsAppIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        // Keep one instance warm: this is the Twilio entry point for a live phone call, so a
-        // cold start here adds seconds of dead air before the caller can be connected to Anna.
-        minInstances: 1,
     },
     async (req, res) => {
         const { handleIncomingWhatsAppCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -5489,7 +7430,6 @@ exports.phoneIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        minInstances: 1,
     },
     async (req, res) => {
         const { handleIncomingPhoneCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -5507,6 +7447,23 @@ exports.phoneCallStatusCallback = onRequest(
         const { handlePhoneCallStatus } = require('./WhatsApp/whatsAppCallTwilioWebhook')
         await handlePhoneCallStatus(req, res)
     }
+)
+
+exports.endAssistantBrowserCallSecondGen = onCall(
+    { region: 'europe-west1', timeoutSeconds: 30, memory: '512MiB' },
+    async request => require('./WhatsApp/assistantBrowserCall').endAssistantBrowserCall(request.data, request.auth)
+)
+
+exports.updateAssistantBrowserCallContextSecondGen = onCall(
+    { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
+    async request =>
+        require('./WhatsApp/assistantBrowserCall').updateAssistantBrowserCallContext(request.data, request.auth)
+)
+
+exports.getAssistantBrowserCallSummarySecondGen = onCall(
+    { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
+    async request =>
+        require('./WhatsApp/assistantBrowserCall').getAssistantBrowserCallSummary(request.data, request.auth)
 )
 
 exports.startAssistantBrowserCallSecondGen = onCall(
@@ -5527,9 +7484,6 @@ exports.openAIRealtimeCallWebhook = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        // Keep one instance warm: OpenAI calls this to accept the live SIP call, and a cold
-        // start delays the accept (observed ~7.7s), which the caller experiences as silence.
-        minInstances: 1,
     },
     async (req, res) => {
         const { handleOpenAIRealtimeCallWebhook } = require('./WhatsApp/whatsAppCallOpenAIWebhook')
@@ -5544,10 +7498,6 @@ exports.runWhatsAppRealtimeCall = onTaskDispatched(
         memory: '1GiB',
         retryConfig: { maxAttempts: 1 },
         rateLimits: { maxConcurrentDispatches: 5 },
-        // Keep one instance warm: this is the sideband controller that connects to OpenAI
-        // Realtime. A cold start here was observed to push setup latency to ~14.5s, long
-        // enough that the caller hangs up before Anna can greet (the call "doesn't connect").
-        minInstances: 1,
     },
     async req => {
         const sessionId = req.data && req.data.sessionId
@@ -5574,13 +7524,26 @@ exports.cleanupStaleWhatsAppCalls = onSchedule(
 exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
     {
         document: 'whatsAppInboundQueue/{userId}/items/{messageSid}',
-        timeoutSeconds: 540,
+        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
         const { processWhatsAppInboundQueueItem } = require('./WhatsApp/whatsAppInboundQueueProcessor')
         await processWhatsAppInboundQueueItem(event)
+    }
+)
+
+exports.recoverWhatsAppInboundQueues = onSchedule(
+    {
+        schedule: 'every 2 minutes',
+        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { recoverWhatsAppInboundQueues } = require('./WhatsApp/whatsAppQueueRecovery')
+        return await recoverWhatsAppInboundQueues()
     }
 )
 

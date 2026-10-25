@@ -1,6 +1,23 @@
 import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from './webFirebaseAuth'
 
 describe('webFirebaseAuth', () => {
+    test('uses same-origin auth for Anna only with the production backend', () => {
+        const location = { host: 'anna.alldone.app', hostname: 'anna.alldone.app', protocol: 'https:' }
+        expect(
+            resolveFirebaseAuthDomain({
+                location,
+                hostingUrl: 'https://my.alldone.app',
+                fallbackAuthDomain: 'alldonealeph.firebaseapp.com',
+            })
+        ).toBe('anna.alldone.app')
+        expect(
+            resolveFirebaseAuthDomain({
+                location,
+                hostingUrl: 'https://mystaging.alldone.app',
+                fallbackAuthDomain: 'alldonestaging.firebaseapp.com',
+            })
+        ).toBe('alldonestaging.firebaseapp.com')
+    })
     const productionLocation = {
         host: 'my.alldone.app',
         hostname: 'my.alldone.app',

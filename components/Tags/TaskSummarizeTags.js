@@ -4,9 +4,9 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 
-export default function TaskSummarizeTags({ amountTags, style, onPress }) {
+export default function TaskSummarizeTags({ amountTags, style, onPress, accessibilityLabel, expanded }) {
     return (
-        <TouchableOpacity onPress={onPress}>
+        <TouchableOpacity onPress={onPress} accessibilityLabel={accessibilityLabel} aria-expanded={expanded}>
             <View style={[localStyles.container, style]}>
                 <Icon name={'tag'} size={16} color={colors.Text03} style={localStyles.icon} />
                 <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{`${amountTags}`}</Text>

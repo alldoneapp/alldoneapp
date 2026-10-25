@@ -1,9 +1,28 @@
+const {
+    compactionArgumentError,
+    readWorkflowState,
+    recordProjectCatalog,
+    projectCompletionWrite,
+    reconcileProjectWorkflow,
+    getWorkflowProgress,
+    getPendingWorkflowProgress,
+    workflowContinuationMessage,
+    createWorkflowContinuationGuard,
+    executeWithCompactionRepair,
+} = require('./assistantWorkflowProgress')
 const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
+const { executeToolCallBatch, canRunToolInParallel } = require('./toolCallBatch')
+const {
+    prepareResearchRequest,
+    compactResearchConversation,
+    FINAL_REPLY_INSTRUCTION,
+} = require('./assistantResearchGuard')
 const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
+const { encodeOrdinaryText, sanitizeAssistantResponseText } = require('./assistantTextSafety')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 const { getAccessibleProjectIdsFromUserData, getDelegationScopeProjectIdsFromUserData } = require('./projectScope')
 
@@ -36,10 +55,11 @@ const {
     getAttachmentData,
     extractMediaContextFromText,
 } = require('../Utils/parseTextUtils')
-const { getObjectFollowersIds, copyInnerFeedsToOtherProject } = require('../Feeds/globalFeedsHelper')
+const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
-const { getChat, copyChatToOtherProject } = require('../Chats/chatsFirestoreCloud')
+const { getChat } = require('../Chats/chatsFirestoreCloud')
 const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
+const { moveTaskToDifferentProject } = require('../shared/moveTaskToDifferentProject')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { DEFAULT_EMAIL_SIGNATURE } = require('../Email/emailChannelHelpers')
@@ -51,6 +71,7 @@ const {
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
+    withEmailAttachmentToolDescriptions,
 } = require('./attachmentToolHandoff')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const {
@@ -96,6 +117,8 @@ const { addProjectRoutingReasonComment } = require('../shared/projectRoutingComm
 const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const { resolveThreadAssistantModel } = require('./threadAssistantModel')
+const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
 const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
 const {
     buildInitialAssistantRunStatusMessage,
@@ -103,6 +126,7 @@ const {
     buildToolActivityDescriptor,
     rememberDelegationDisplayName,
 } = require('./assistantProgressStatus')
+const { advanceAssistantActivity } = require('../shared/assistantActivityHistory')
 const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
@@ -122,9 +146,9 @@ const MODEL_GPT4O = 'MODEL_GPT4O'
 const MODEL_GPT5 = 'MODEL_GPT5' // Deprecated, maps to MODEL_GPT5_1
 const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 const MODEL_GPT5_5 = 'MODEL_GPT5_5'
-const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
+const MODEL_GPT6_SOL = 'MODEL_GPT6_SOL'
 const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
-const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
+const MODEL_GPT6_LUNA = 'MODEL_GPT6_LUNA'
 const MODEL_GPT5_4_MINI = 'MODEL_GPT5_4_MINI'
 const MODEL_GPT5_4_NANO = 'MODEL_GPT5_4_NANO'
 const MODEL_GPT5_2 = 'MODEL_GPT5_2'
@@ -168,8 +192,7 @@ const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per tok
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
-// Largest get_tasks listing that still reaches the model intact. Above this, enforceToolResultContextCeiling
-// compacts the tasks array to a handful of items, so a bigger "limit" returns less usable information, not more.
+// Bound retrieval cost. Context compaction separately preserves counts and labels partial listings.
 const GET_TASKS_MAX_CONTEXT_SAFE_LIMIT = 150
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
@@ -228,6 +251,13 @@ const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 // name so we can route a call back to the right server + remote tool.
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MCP_TOOL_PREFIX = 'mcp_'
+// Browsing. One Tools Access key (`browser_automation`) fans out to the six `browser_*` tool names;
+// the names, the policy and the audit trail all live under ./browser.
+const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./browser/browserToolContract')
+const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
+const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
+// Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
+const { ARTIFACT_TOOL_KEY, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
 const MAX_MCP_TOOLS = 60
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
@@ -306,7 +336,9 @@ function getToolResultFollowUpPrompt(options = {}) {
     } = options
 
     const intro = usePlural ? 'Based on the tool results above' : 'Based on the tool result above'
-    const responseInstruction = finalReply ? 'provide the final email reply.' : 'provide your response to the user.'
+    const responseInstruction = finalReply
+        ? 'provide the final email reply.'
+        : 'continue the original user request until all requested work is complete; only then provide your final response.'
     const toolSentence = allowAdditionalTools
         ? ` If needed, call ${toolPhrase}${finalReply ? ' before finalizing the reply' : ''}.`
         : ''
@@ -435,6 +467,13 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
+    if (toolRuntimeContext?.writingDraft) {
+        const { writingReadTools } = require('./assistantWritingTools')
+        allowedTools = writingReadTools(allowedTools)
+    }
+    // Presentation is an Anna surface capability, not a change to the saved assistant's tools.
+    allowedTools = allowedTools.filter(name => !['show_workspace', 'highlight_workspace'].includes(name))
+    if (toolRuntimeContext?.annaConversation) allowedTools = [...allowedTools, 'show_workspace', 'highlight_workspace']
     if (!allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) return [...allowedTools]
     if (hasValidCompactThreadRuntimeContext(toolRuntimeContext)) return [...allowedTools]
 
@@ -443,8 +482,15 @@ function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = 
 
 function normalizeCompactThreadContextInteger(value, fieldName) {
     const numericValue = Number(value)
-    if (!Number.isInteger(numericValue) || numericValue < 0) {
-        throw new Error(`${fieldName} must be a non-negative integer for compact_thread_context.`)
+    if (
+        value === null ||
+        value === undefined ||
+        value === '' ||
+        typeof value === 'boolean' ||
+        !Number.isInteger(numericValue) ||
+        numericValue < 0
+    ) {
+        throw compactionArgumentError(`${fieldName} must be a non-negative integer for compact_thread_context.`)
     }
     return numericValue
 }
@@ -483,6 +529,8 @@ function buildCompactThreadContextMessage(compactedState) {
         )
     }
 
+    const progress = getWorkflowProgress(compactedState)
+    if (progress && progress.completed < progress.total) lines.push(workflowContinuationMessage(progress))
     lines.push('- Summary:', compactedState.summary.trim())
 
     return lines.join('\n')
@@ -539,8 +587,9 @@ async function loadAssistantThreadState(db, projectId, objectType, objectId, ass
 
     return {
         summary,
-        progressCompleted,
-        progressTotal,
+        progressCompleted: getWorkflowProgress(data)?.completed ?? progressCompleted,
+        progressTotal: getWorkflowProgress(data)?.total ?? progressTotal,
+        ...(data.projectWorkflow ? { projectWorkflow: data.projectWorkflow } : {}),
         currentProjectId: normalizeOptionalCompactThreadContextText(data.currentProjectId),
         currentProjectName: normalizeOptionalCompactThreadContextText(data.currentProjectName),
         nextProjectId: normalizeOptionalCompactThreadContextText(data.nextProjectId),
@@ -568,16 +617,17 @@ async function persistAssistantThreadState({
     currentProjectName = '',
     nextProjectId = '',
     nextProjectName = '',
+    projectIds = null,
 }) {
     const normalizedSummary = normalizeOptionalCompactThreadContextText(summary)
     if (!normalizedSummary) {
-        throw new Error('summary is required for compact_thread_context.')
+        throw compactionArgumentError('summary is required for compact_thread_context.')
     }
 
     const normalizedProgressCompleted = normalizeCompactThreadContextInteger(progressCompleted, 'progressCompleted')
     const normalizedProgressTotal = normalizeCompactThreadContextInteger(progressTotal, 'progressTotal')
     if (normalizedProgressCompleted > normalizedProgressTotal) {
-        throw new Error('progressCompleted cannot exceed progressTotal for compact_thread_context.')
+        throw compactionArgumentError('progressCompleted cannot exceed progressTotal for compact_thread_context.')
     }
 
     const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
@@ -590,20 +640,30 @@ async function persistAssistantThreadState({
         const snapshot = await transaction.get(stateRef)
         const currentState = snapshot?.exists ? snapshot.data() || {} : {}
         const currentRevision = Number(currentState.compactionRevision)
+        const projectWorkflow = reconcileProjectWorkflow(currentState, {
+            progressTotal: normalizedProgressTotal,
+            projectIds,
+        })
+        const verifiedProgress = projectWorkflow ? getWorkflowProgress({ projectWorkflow }) : null
         const nextState = {
             summary: normalizedSummary,
-            progressCompleted: normalizedProgressCompleted,
-            progressTotal: normalizedProgressTotal,
+            progressCompleted: verifiedProgress?.completed ?? normalizedProgressCompleted,
+            progressTotal: verifiedProgress?.total ?? normalizedProgressTotal,
+            ...(projectWorkflow ? { projectWorkflow } : {}),
             currentProjectId: normalizeOptionalCompactThreadContextText(currentProjectId),
             currentProjectName: normalizeOptionalCompactThreadContextText(currentProjectName),
-            nextProjectId: normalizeOptionalCompactThreadContextText(nextProjectId),
-            nextProjectName: normalizeOptionalCompactThreadContextText(nextProjectName),
+            nextProjectId: verifiedProgress
+                ? verifiedProgress.next
+                : normalizeOptionalCompactThreadContextText(nextProjectId),
+            nextProjectName: verifiedProgress
+                ? projectWorkflow.catalog.find(project => project.id === verifiedProgress.next)?.name || ''
+                : normalizeOptionalCompactThreadContextText(nextProjectName),
             trimHistoryBeforeMs: Math.max(Number(currentState.trimHistoryBeforeMs) || 0, trimHistoryBeforeMs),
             trimHistoryBeforeMessageId: '',
             compactionRevision: Number.isInteger(currentRevision) && currentRevision >= 0 ? currentRevision + 1 : 1,
             updatedAt: Timestamp.now(),
         }
-        transaction.set(stateRef, nextState)
+        transaction.set(stateRef, nextState, { merge: true })
         return nextState
     })
 
@@ -611,7 +671,7 @@ async function persistAssistantThreadState({
         success: true,
         compactedState,
         compactedContextMessage: buildCompactThreadContextMessage(compactedState),
-        message: `Thread context compacted at ${normalizedProgressCompleted}/${normalizedProgressTotal}.`,
+        message: `Thread context compacted at ${compactedState.progressCompleted}/${compactedState.progressTotal}.`,
     }
 }
 
@@ -673,7 +733,7 @@ function buildConversationAfterToolExecution({
         ...currentConversation,
         {
             role: 'assistant',
-            content: responseText,
+            content: sanitizeAssistantResponseText(responseText),
             tool_calls: [
                 {
                     id: toolCallId,
@@ -713,11 +773,32 @@ function buildConversationAfterToolExecutions({
         })
     }
 
+    const compaction = executions.findLast(
+        execution =>
+            execution.toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY &&
+            typeof execution.conversationSafeToolResult?.compactedContextMessage === 'string' &&
+            execution.conversationSafeToolResult.compactedContextMessage.trim()
+    )
+    if (compaction) {
+        const latestUserMessage = buildLatestUserMessageForContinuation(currentConversation, userContext)
+        currentConversation = [
+            ...currentConversation
+                .map(cloneConversationEntry)
+                .filter(message => message?.role === 'system' && !isCompactThreadContextMessage(message.content)),
+            ...(latestUserMessage ? [latestUserMessage] : []),
+            {
+                role: 'system',
+                content: parseTextForUseLiKePrompt(compaction.conversationSafeToolResult.compactedContextMessage),
+            },
+        ]
+        responseText = ''
+    }
+
     return [
         ...currentConversation,
         {
             role: 'assistant',
-            content: responseText,
+            content: sanitizeAssistantResponseText(responseText),
             tool_calls: executions.map(execution => ({
                 id: execution.toolCallId,
                 type: 'function',
@@ -864,6 +945,8 @@ function mapAssistantContactForToolResponse(contact) {
         phone: contact?.phone || '',
         linkedInUrl: contact?.linkedInUrl || '',
         description: contact?.description || '',
+        contactStatusId: contact?.contactStatusId || null,
+        contactStatusName: contact?.contactStatusName || null,
         lastEditedAt: Number.isFinite(lastEditedAt) ? lastEditedAt : 0,
     }
 }
@@ -883,6 +966,8 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
 
     return {
         origin: GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
+        provider: 'google',
+        accountUserId: toolRuntimeContext.requestUserId || '',
         gmailEmail: typeof gmailContext.gmailEmail === 'string' ? gmailContext.gmailEmail.trim().toLowerCase() : '',
         connectionId: typeof gmailContext.connectionId === 'string' ? gmailContext.connectionId.trim() : '',
         projectId: connectionProjectId || targetProjectId || '',
@@ -890,6 +975,7 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
         selectedProjectId: matchedProjectId,
         messageId,
         threadId: typeof gmailContext.threadId === 'string' ? gmailContext.threadId.trim() : '',
+        receivedAt: Number(gmailContext.emailContext?.internalDate) || Date.parse(gmailContext.emailContext?.date) || 0,
         webUrl: typeof gmailContext.webUrl === 'string' ? gmailContext.webUrl.trim() : '',
         archiveOnComplete: gmailContext.archiveOnComplete !== false,
         archiveStatus: null,
@@ -1003,6 +1089,7 @@ async function getExternalToolUserIdentity(userId) {
  * @returns {boolean} True if model supports native tool calling
  */
 const modelSupportsNativeTools = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // Only GPT models support native tool calling
     return (
         modelKey === MODEL_GPT3_5 ||
@@ -1010,9 +1097,9 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT4O ||
         modelKey === MODEL_GPT5_1 ||
         modelKey === MODEL_GPT5_5 ||
-        modelKey === MODEL_GPT5_6_SOL ||
+        modelKey === MODEL_GPT6_SOL ||
         modelKey === MODEL_GPT5_6_TERRA ||
-        modelKey === MODEL_GPT5_6_LUNA ||
+        modelKey === MODEL_GPT6_LUNA ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2 ||
@@ -1029,33 +1116,25 @@ const modelSupportsToolSearch = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
     return (
         normalizedKey === MODEL_GPT5_5 ||
-        normalizedKey === MODEL_GPT5_6_SOL ||
+        normalizedKey === MODEL_GPT6_SOL ||
         normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA ||
+        normalizedKey === MODEL_GPT6_LUNA ||
         normalizedKey === MODEL_GPT5_4_MINI ||
         normalizedKey === MODEL_GPT5_4_NANO
     )
 }
 
 // The complete product effort set, including max, is an API contract of the
-// selectable GPT-5.6 family. Keep this separate from tool-search support so a
+// selectable GPT-6 and GPT-5.6 families. Keep this separate from tool-search support so a
 // capability added to older models cannot accidentally receive unsupported values.
 const modelSupportsAssistantReasoningEffort = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
-    return (
-        normalizedKey === MODEL_GPT5_6_SOL ||
-        normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA
-    )
+    return normalizedKey === MODEL_GPT6_SOL || normalizedKey === MODEL_GPT5_6_TERRA || normalizedKey === MODEL_GPT6_LUNA
 }
 
 const modelSupportsExplicitPromptCaching = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
-    return (
-        normalizedKey === MODEL_GPT5_6_SOL ||
-        normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA
-    )
+    return normalizedKey === MODEL_GPT6_SOL || normalizedKey === MODEL_GPT5_6_TERRA || normalizedKey === MODEL_GPT6_LUNA
 }
 
 /**
@@ -1064,13 +1143,14 @@ const modelSupportsExplicitPromptCaching = modelKey => {
  * @returns {boolean} True if model supports custom temperature
  */
 const modelSupportsCustomTemperature = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // GPT-5.1 and some newer models only support default temperature (1.0)
     if (
         modelKey === MODEL_GPT5_1 ||
         modelKey === MODEL_GPT5_5 ||
-        modelKey === MODEL_GPT5_6_SOL ||
+        modelKey === MODEL_GPT6_SOL ||
         modelKey === MODEL_GPT5_6_TERRA ||
-        modelKey === MODEL_GPT5_6_LUNA ||
+        modelKey === MODEL_GPT6_LUNA ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
@@ -1081,6 +1161,7 @@ const modelSupportsCustomTemperature = modelKey => {
 }
 
 const getTokensPerGold = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // The shared selectable-model list is also the pricing authority for every model exposed in the
     // UI. That keeps assistant, heartbeat, scheduled-task, Gmail and calendar pickers identical to
     // what this billing path actually charges.
@@ -1107,6 +1188,7 @@ const getTokensPerGold = modelKey => {
 }
 
 const getMaxTokensForModel = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // Legacy/Low context models
     if (modelKey === MODEL_GPT3_5) return 16000
     if (modelKey === MODEL_GPT4) return 8000
@@ -1115,9 +1197,9 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT4O) return 128000
     if (modelKey === MODEL_GPT5_1) return 128000
     if (modelKey === MODEL_GPT5_5) return 128000
-    if (modelKey === MODEL_GPT5_6_SOL) return 1050000
+    if (modelKey === MODEL_GPT6_SOL) return 1050000
     if (modelKey === MODEL_GPT5_6_TERRA) return 1050000
-    if (modelKey === MODEL_GPT5_6_LUNA) return 400000
+    if (modelKey === MODEL_GPT6_LUNA) return 1050000
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
@@ -1138,8 +1220,11 @@ const normalizeModelKey = modelKey => {
     if (modelKey === MODEL_GPT5 || modelKey === 'MODEL_GPT5') return MODEL_GPT5_1
     // Map deprecated MODEL_GPT5_4 to MODEL_GPT5_5
     if (modelKey === 'MODEL_GPT5_4') return MODEL_GPT5_5
-    // Default to GPT-5.6 Sol if no model is specified.
-    if (!modelKey) return MODEL_GPT5_6_SOL
+    // Existing assistant settings follow the replacement models without a Firestore migration.
+    if (modelKey === 'MODEL_GPT5_6_SOL') return MODEL_GPT6_SOL
+    if (modelKey === 'MODEL_GPT5_6_LUNA') return MODEL_GPT6_LUNA
+    // Default to GPT-6 Sol if no model is specified.
+    if (!modelKey) return MODEL_GPT6_SOL
     return modelKey
 }
 
@@ -1152,9 +1237,9 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (normalizedKey === MODEL_GPT5_5) return 'gpt-5.5'
-    if (normalizedKey === MODEL_GPT5_6_SOL) return 'gpt-5.6-sol'
+    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6.1-sol'
     if (normalizedKey === MODEL_GPT5_6_TERRA) return 'gpt-5.6-terra'
-    if (normalizedKey === MODEL_GPT5_6_LUNA) return 'gpt-5.6-luna'
+    if (normalizedKey === MODEL_GPT6_LUNA) return 'gpt-6-luna'
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
     if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
     if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
@@ -1167,8 +1252,8 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_SONAR_REASONING_PRO) return 'sonar-reasoning-pro'
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
-    // Default fallback to the explicit GPT-5.6 Sol tier.
-    return 'gpt-5.6-sol'
+    // Default fallback to the explicit GPT-6 Sol tier.
+    return 'gpt-6.1-sol'
 }
 
 const getTemperature = temperatureKey => {
@@ -1661,6 +1746,18 @@ async function getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext = 
     return targets.map(buildExternalIntegrationToolSchema)
 }
 
+async function getExternalIntegrationToolName({ projectId, assistantId, requestUserId, integrationId, toolKey }) {
+    const normalizedIntegrationId = normalizeToolNameToken(integrationId)
+    const normalizedToolKey = normalizeToolNameToken(toolKey)
+    const targets = await getReachableExternalIntegrationTools({ projectId, assistantId, requestUserId })
+    const target = targets.find(
+        item =>
+            normalizeToolNameToken(item.integrationId) === normalizedIntegrationId &&
+            normalizeToolNameToken(item.toolKey) === normalizedToolKey
+    )
+    return target?.toolName || null
+}
+
 async function resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeContext = null) {
     if (!isExternalIntegrationToolName(toolName)) return null
 
@@ -2051,13 +2148,21 @@ function emitToolSchemasCacheMetric(eventName, contextVersion, details = {}) {
 }
 
 function normalizeDynamicToolSchemasCacheData(data) {
-    if (!data || !Array.isArray(data.delegationToolSchemas) || !Array.isArray(data.externalToolSchemas)) {
+    // Older persisted entries omitted MCP tools. Rebuild those entries instead of treating
+    // an incomplete tool list as a valid cache hit (including after a cold start).
+    if (
+        !data ||
+        !Array.isArray(data.delegationToolSchemas) ||
+        !Array.isArray(data.externalToolSchemas) ||
+        !Array.isArray(data.mcpToolSchemas)
+    ) {
         return null
     }
 
     return {
         delegationToolSchemas: data.delegationToolSchemas,
         externalToolSchemas: data.externalToolSchemas,
+        mcpToolSchemas: data.mcpToolSchemas,
     }
 }
 
@@ -2275,9 +2380,18 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
 }
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
+    if (['show_workspace', 'highlight_workspace'].includes(toolName)) {
+        const { loadAnnaContext } = require('./annaWorkspace')
+        return !!(await loadAnnaContext(require('firebase-admin').firestore(), toolRuntimeContext))
+    }
     if (!Array.isArray(assistantAllowedTools)) return false
     if (toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY) {
         return assistantAllowedTools.includes(toolName) && hasValidCompactThreadRuntimeContext(toolRuntimeContext)
+    }
+    // The wiki tools have no per-assistant toggle either: the project's wiki and the run decide.
+    if (KNOWLEDGE_BASE_TOOL_NAMES.includes(toolName)) {
+        const { isKnowledgeBaseToolAllowed } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        return isKnowledgeBaseToolAllowed({ db: admin.firestore(), toolName, toolRuntimeContext })
     }
     // load_skill has no per-assistant toggle — it is allowed exactly when the
     // assistant has chat-usable skills enabled (mirrors interactWithChatStream).
@@ -2291,6 +2405,15 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     }
     if (toolName === 'list_recent_chat_media' && assistantAllowedTools.includes('get_chat_attachment')) {
         return true
+    }
+    // The six browser tools are gated by the single `browser_automation` toggle. Being permitted
+    // here only means the assistant MAY browse; whether this particular action runs is decided by
+    // the allowlist and the approval policy in ./browser, which no toggle can relax.
+    if (isBrowserToolName(toolName)) {
+        return assistantAllowedTools.includes(BROWSER_TOOL_KEY)
+    }
+    if (isArtifactToolName(toolName)) {
+        return assistantAllowedTools.includes(ARTIFACT_TOOL_KEY)
     }
 
     const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
@@ -2322,6 +2445,11 @@ async function collectAssistantTextWithToolCalls({
     allowedTools,
     toolRuntimeContext,
     userContext = null,
+    localTools = {},
+    toolExecutor = executeToolNatively,
+    onRoundComplete = null,
+    onToolBatchState = undefined,
+    assertActive = null,
 }) {
     let responseText = ''
     let currentConversation = conversationHistory
@@ -2365,6 +2493,10 @@ async function collectAssistantTextWithToolCalls({
                 assistantText += chunk.content
             }
         }
+        assistantText = sanitizeAssistantResponseText(assistantText)
+        responseText = sanitizeAssistantResponseText(responseText)
+        if (onRoundComplete)
+            await onRoundComplete({ assistantText, conversation: currentConversation, round: toolCallRound })
         return { toolCalls: nextToolCalls, assistantText }
     }
 
@@ -2373,81 +2505,104 @@ async function collectAssistantTextWithToolCalls({
 
     while (currentToolCalls && currentToolCalls.length > 0 && toolCallRound < maxToolCallRounds) {
         toolCallRound++
-        const toolExecutions = []
+        const toolExecutions = await executeToolCallBatch(
+            currentToolCalls,
+            async toolCall => {
+                if (assertActive) await assertActive()
+                const toolName = toolCall?.function?.name
+                const toolCallId = toolCall?.id
+                let toolArgs = {}
 
-        // A Responses turn may emit several independent function calls. Execute every
-        // authorized call and return all outputs in one follow-up request; previously only
-        // index 0 survived, forcing extra rounds or silently dropping requested work.
-        for (const toolCall of currentToolCalls) {
-            const toolName = toolCall?.function?.name
-            const toolCallId = toolCall?.id
-            let toolArgs = {}
+                try {
+                    toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                } catch (error) {
+                    throw new Error(`Failed to parse tool arguments for ${toolName}`)
+                }
 
-            try {
-                toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
-            } catch (error) {
-                throw new Error(`Failed to parse tool arguments for ${toolName}`)
+                const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+                    toolName,
+                    toolArgs,
+                    pendingAttachmentPayload
+                )
+                toolArgs = enrichedToolArgs.toolArgs
+                if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+
+                const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                    toolName,
+                    toolArgs,
+                    userContext
+                )
+                toolArgs = createTaskImageArgs.toolArgs
+
+                const localTool = Object.prototype.hasOwnProperty.call(localTools, toolName)
+                    ? localTools[toolName]
+                    : null
+                const isAllowed =
+                    localTool || (await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext))
+                if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
+
+                const toolResult = await executeWithCompactionRepair(toolRuntimeContext, toolName, async () =>
+                    localTool
+                        ? await localTool.execute(toolArgs)
+                        : await toolExecutor(
+                              toolName,
+                              toolArgs,
+                              toolRuntimeContext?.projectId,
+                              toolRuntimeContext?.assistantId,
+                              toolRuntimeContext?.requestUserId,
+                              userContext,
+                              toolRuntimeContext
+                          )
+                )
+                executedToolCallsCount++
+                executedToolNames.push(toolName)
+                if (
+                    toolName === 'create_task' &&
+                    toolResult?.success !== false &&
+                    toolResult?.taskId &&
+                    toolResult?.projectId
+                ) {
+                    createdTaskResults.push({
+                        taskId: toolResult.taskId,
+                        projectId: toolResult.projectId,
+                        projectName: toolResult.projectName || '',
+                        task: toolResult.task || null,
+                    })
+                }
+                if (toolName === 'create_note' && toolResult?.success !== false) {
+                    const createdNote = normalizeCreatedNote(toolResult)
+                    if (createdNote) createdNoteResults.push(createdNote)
+                }
+                // The Gmail labeling sync stamps these onto the message's audit record so its
+                // server-side read sync knows which chat comment belongs to which Gmail message
+                // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
+                // way, and whether it is still unread is decided from its notification doc, not here.
+                if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
+                    createdChatCommentResults.push({
+                        projectId: toolResult.projectId || '',
+                        chatId: toolResult.chatId || '',
+                        commentId: toolResult.commentId,
+                    })
+                }
+                collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+                const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+                pendingAttachmentPayload =
+                    buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                return {
+                    toolName,
+                    toolArgs,
+                    toolCallId,
+                    conversationSafeToolResult,
+                }
+            },
+            {
+                // A locally overridden read name need not be stateless.
+                canRunInParallel: call =>
+                    !Object.prototype.hasOwnProperty.call(localTools, call?.function?.name) &&
+                    canRunToolInParallel(call),
+                onState: onToolBatchState,
             }
-
-            const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
-            toolArgs = enrichedToolArgs.toolArgs
-            if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
-
-            const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
-            toolArgs = createTaskImageArgs.toolArgs
-
-            const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
-            if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
-
-            const toolResult = await executeToolNatively(
-                toolName,
-                toolArgs,
-                toolRuntimeContext?.projectId,
-                toolRuntimeContext?.assistantId,
-                toolRuntimeContext?.requestUserId,
-                userContext,
-                toolRuntimeContext
-            )
-            executedToolCallsCount++
-            executedToolNames.push(toolName)
-            if (
-                toolName === 'create_task' &&
-                toolResult?.success !== false &&
-                toolResult?.taskId &&
-                toolResult?.projectId
-            ) {
-                createdTaskResults.push({
-                    taskId: toolResult.taskId,
-                    projectId: toolResult.projectId,
-                    projectName: toolResult.projectName || '',
-                    task: toolResult.task || null,
-                })
-            }
-            if (toolName === 'create_note' && toolResult?.success !== false) {
-                const createdNote = normalizeCreatedNote(toolResult)
-                if (createdNote) createdNoteResults.push(createdNote)
-            }
-            // The Gmail labeling sync stamps these onto the message's audit record so its
-            // server-side read sync knows which chat comment belongs to which Gmail message
-            // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
-            // way, and whether it is still unread is decided from its notification doc, not here.
-            if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
-                createdChatCommentResults.push({
-                    projectId: toolResult.projectId || '',
-                    chatId: toolResult.chatId || '',
-                    commentId: toolResult.commentId,
-                })
-            }
-            collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
-            const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
-            pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
-            toolExecutions.push({
-                toolName,
-                toolArgs,
-                toolCallId,
-                conversationSafeToolResult,
-            })
-        }
+        )
 
         currentConversation = buildConversationAfterToolExecutions({
             currentConversation,
@@ -2456,6 +2611,7 @@ async function collectAssistantTextWithToolCalls({
             userContext,
         })
 
+        if (assertActive) await assertActive()
         const resumedStream = await interactWithChatStream(
             currentConversation,
             modelKey,
@@ -2486,12 +2642,19 @@ async function collectAssistantTextWithToolCalls({
         createdChatCommentResults,
         startedVmJobResults,
         reachedMaxToolIterations,
+        finalResponseText: reachedMaxToolIterations
+            ? 'Maximum tool call iterations reached.'
+            : collectedStream.assistantText,
         finalConversation: currentConversation,
     }
 }
 
-async function spentGold(userId, goldToReduce, linkContext = {}) {
-    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext })
+// `model` is the pricing key the charge was computed from (getTokensPerGold), recorded on the
+// ledger so `goldStats.spendByModel` can attribute assistant spend without a join (AT-2487).
+// It is the second-largest spend line after the VM, and a model switch moves its Gold cost by
+// an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
+async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
+    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
     const { deductGold } = require('../Gold/goldHelper')
 
     return await deductGold(userId, goldToReduce, {
@@ -2500,6 +2663,7 @@ async function spentGold(userId, goldToReduce, linkContext = {}) {
         projectId: linkContext.projectId,
         objectId: linkContext.objectId,
         objectType: linkContext.objectType,
+        model,
     })
 }
 
@@ -2557,7 +2721,7 @@ const reduceGoldWhenChatWithAI = async (
         cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
     })
 
-    await spentGold(userId, goldToReduce, linkContext)
+    await spentGold(userId, goldToReduce, linkContext, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
 }
 
@@ -2608,13 +2772,13 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     // For other models, use token encoding
     // Reuse provided encoder or create a new one
     const encoding = encoder || new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-    let aiTokens = encoding.encode(aiText).length
+    let aiTokens = encodeOrdinaryText(encoding, aiText).length
     let contextTokens = 0
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
 
     contextMessages.forEach(msg => {
         const msgText = getMessageTextForTokenCounting(msg[1])
-        const msgTokens = encoding.encode(msgText).length
+        const msgTokens = encodeOrdinaryText(encoding, msgText).length
         contextTokens += msgTokens
         gapTokens += ENCODE_MESSAGE_GAP
         // Per-message token counts are not logged: this loop runs once per context message on every
@@ -2667,8 +2831,14 @@ async function interactWithChatStream(
     allowedTools = [],
     toolRuntimeContext = null
 ) {
+    toolRuntimeContext?.whatsAppRunGuard?.assertActive()
     const streamStartTime = Date.now()
+    const researchRequest = prepareResearchRequest(formattedPrompt)
+    formattedPrompt = researchRequest.messages
+    const finalizeResearch = !!researchRequest.stopReason
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
+    // Server-authored channel controls (for example voice hangup), never supplied by model arguments.
+    const additionalToolSchemas = toolRuntimeContext?.additionalToolSchemas || []
     // load_skill is implicit (no per-assistant toggle): it becomes available whenever the
     // assistant has chat-usable skills enabled. The skill list itself is the access control.
     if (
@@ -2685,6 +2855,15 @@ async function interactWithChatStream(
             console.warn('🧩 SKILLS: load_skill availability check failed', { error: error.message })
         }
     }
+    // The project wiki's tools, offered to members of a project that has a wiki (see
+    // KnowledgeBase/knowledgeBaseAssistant.js for which runs may read and which may correct).
+    try {
+        const { getKnowledgeBaseToolNamesForRun } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        const wikiToolNames = await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
+        wikiToolNames.forEach(toolName => !runtimeAllowedTools.includes(toolName) && runtimeAllowedTools.push(toolName))
+    } catch (error) {
+        console.warn('[knowledge base] Wiki tool availability check failed', { error: error.message })
+    }
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
         modelKey,
@@ -2694,7 +2873,7 @@ async function interactWithChatStream(
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-5.6-sol'
+    const model = getModel(modelKey) || 'gpt-6.1-sol'
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
@@ -2717,7 +2896,11 @@ async function interactWithChatStream(
         const { streamOpenRouterChat } = require('./openRouterChatClient')
 
         let openRouterTools = null
-        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
+        if (
+            !finalizeResearch &&
+            modelSupportsNativeTools(modelKey) &&
+            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+        ) {
             const { getToolSchemas } = require('./toolSchemas')
             const staticAllowedTools = runtimeAllowedTools.filter(
                 toolName =>
@@ -2732,12 +2915,16 @@ async function interactWithChatStream(
             } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
             // Full schemas, always: hosted tool-search is a Responses-API feature and has no
             // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
-            openRouterTools = [
-                ...getToolSchemas(staticAllowedTools),
-                ...delegationToolSchemas,
-                ...externalToolSchemas,
-                ...mcpToolSchemas,
-            ]
+            openRouterTools = withEmailAttachmentToolDescriptions(
+                [
+                    ...additionalToolSchemas,
+                    ...getToolSchemas(staticAllowedTools),
+                    ...delegationToolSchemas,
+                    ...externalToolSchemas,
+                    ...mcpToolSchemas,
+                ],
+                toolRuntimeContext
+            )
         }
 
         return await streamOpenRouterChat({
@@ -2756,6 +2943,7 @@ async function interactWithChatStream(
                     toolRuntimeContext?.objectType ||
                     'assistant',
             },
+            ...(toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : {}),
         })
     }
 
@@ -2784,7 +2972,9 @@ async function interactWithChatStream(
 
             const client = new PerplexityClient(PERPLEXITY_API_KEY, model)
             console.log('PerplexityClient created successfully')
-            return await client.stream(formattedMessages)
+            return await (toolRuntimeContext?.abortSignal
+                ? client.stream(formattedMessages, { signal: toolRuntimeContext.abortSignal })
+                : client.stream(formattedMessages))
         } catch (error) {
             console.error('Error creating PerplexityClient:', error)
             throw error
@@ -2835,7 +3025,9 @@ async function interactWithChatStream(
             : formattedPrompt
         console.log(`📊 [TIMING] Message formatting: ${Date.now() - formatStart}ms`)
 
-        const includePromptCacheBreakpoints = modelSupportsExplicitPromptCaching(modelKey)
+        const supportsExplicitPromptCaching = modelSupportsExplicitPromptCaching(modelKey)
+        const disablePromptCaching = toolRuntimeContext?.disablePromptCaching === true
+        const includePromptCacheBreakpoints = supportsExplicitPromptCaching && !disablePromptCaching
         const responsesInput = convertMessagesToResponsesInput(messages, {
             includePromptCacheBreakpoints,
         })
@@ -2847,7 +3039,7 @@ async function interactWithChatStream(
         }
         let responsesToolConfig = null
 
-        const reasoningEffort = toolRuntimeContext?.openAiReasoningEffort
+        const reasoningEffort = normalizeAssistantReasoningEffort(toolRuntimeContext?.openAiReasoningEffort, model)
         if (modelSupportsAssistantReasoningEffort(modelKey) && isValidAssistantReasoningEffort(reasoningEffort)) {
             requestParams.reasoning = { effort: reasoningEffort }
         }
@@ -2857,9 +3049,14 @@ async function interactWithChatStream(
         if (promptCacheKey && modelSupportsToolSearch(modelKey)) {
             requestParams.prompt_cache_key = promptCacheKey
         }
-        if (includePromptCacheBreakpoints && responsesInputHasPromptCacheBreakpoint(responsesInput)) {
+        if (supportsExplicitPromptCaching && disablePromptCaching) {
+            // Explicit mode without breakpoints avoids paying to cache one-off summaries.
+            requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
+        } else if (includePromptCacheBreakpoints && responsesInputHasPromptCacheBreakpoint(responsesInput)) {
             requestParams.prompt_cache_options = {
-                mode: 'explicit',
+                // Keep the reusable instructions breakpoint and also cache the growing
+                // conversation when tool calls can produce another round in this run.
+                mode: runtimeAllowedTools.length > 0 ? 'implicit' : 'explicit',
                 ttl: '30m',
             }
         }
@@ -2876,7 +3073,11 @@ async function interactWithChatStream(
         }
 
         // Add tools if model supports native tools and tools are allowed
-        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
+        if (
+            !finalizeResearch &&
+            modelSupportsNativeTools(modelKey) &&
+            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+        ) {
             const { getToolSchemas } = require('./toolSchemas')
             const staticAllowedTools = runtimeAllowedTools.filter(
                 toolName =>
@@ -2897,12 +3098,16 @@ async function interactWithChatStream(
                 assistantId: toolRuntimeContext?.assistantId || null,
                 requestUserId: toolRuntimeContext?.requestUserId || null,
             })
-            const toolSchemas = [
-                ...staticToolSchemas,
-                ...delegationToolSchemas,
-                ...externalToolSchemas,
-                ...mcpToolSchemas,
-            ]
+            const toolSchemas = withEmailAttachmentToolDescriptions(
+                [
+                    ...additionalToolSchemas,
+                    ...staticToolSchemas,
+                    ...delegationToolSchemas,
+                    ...externalToolSchemas,
+                    ...mcpToolSchemas,
+                ],
+                toolRuntimeContext
+            )
 
             console.log('🔧 TOOL SCHEMAS: Assembled for request', {
                 staticAllowedToolsCount: staticAllowedTools.length,
@@ -2943,14 +3148,21 @@ async function interactWithChatStream(
                     'Using native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
+                const promptReferencedToolNames = collectPromptReferencedToolNames(
+                    messages,
+                    toolSchemas.map(schema => schema.function.name)
+                )
                 responsesToolConfig = buildResponsesTools(toolSchemas, modelKey, {
                     disableToolSearch: toolRuntimeContext?.disableToolSearch === true,
+                    alwaysDirectToolNames: promptReferencedToolNames,
                 })
                 requestParams.tools = responsesToolConfig.tools
                 console.log('🔎 TOOL SEARCH: Request tool loading strategy', {
                     enabled: responsesToolConfig.toolSearchEnabled,
                     namespaceCount: responsesToolConfig.namespaceCount,
                     deferredFunctionCount: responsesToolConfig.deferredFunctionCount,
+                    alwaysDirectCount: responsesToolConfig.alwaysDirectCount,
+                    promptReferencedTools: Array.from(promptReferencedToolNames),
                     directToolCount: requestParams.tools.length,
                     model,
                 })
@@ -3004,6 +3216,11 @@ async function interactWithChatStream(
         const apiCallStart = Date.now()
         console.log('📞 [TIMING] Calling OpenAI API...')
         let activeRequestParams = requestParams
+        const requestOptions = toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : null
+        const dispatchResponsesRequest = () =>
+            requestOptions
+                ? openai.responses.create(activeRequestParams, requestOptions)
+                : openai.responses.create(activeRequestParams)
         const createResponsesStream = async () => {
             try {
                 enforceOpenAiInputTokenPreflight(activeRequestParams, {
@@ -3014,7 +3231,7 @@ async function interactWithChatStream(
                         'assistant',
                     model,
                 })
-                return await openai.responses.create(activeRequestParams)
+                return await dispatchResponsesRequest()
             } catch (error) {
                 if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
 
@@ -3039,10 +3256,41 @@ async function interactWithChatStream(
                         'assistant',
                     model,
                 })
-                return openai.responses.create(activeRequestParams)
+                return dispatchResponsesRequest()
             }
         }
-        const stream = await createResponsesStream()
+        let stream
+        try {
+            stream = await createResponsesStream()
+        } catch (error) {
+            if (
+                error.code !== 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' ||
+                !messages.some(message => message.role === 'tool')
+            ) {
+                throw error
+            }
+            console.warn('Assistant: Recovering oversized research request with partial findings', {
+                route: toolRuntimeContext?.sourceChannel || toolRuntimeContext?.objectType || 'assistant',
+            })
+            const recoveryMessages = [
+                ...compactResearchConversation(messages, true),
+                { role: 'system', content: FINAL_REPLY_INSTRUCTION },
+            ]
+            activeRequestParams = {
+                ...requestParams,
+                input: convertMessagesToResponsesInput(recoveryMessages),
+            }
+            delete activeRequestParams.tools
+            responsesToolConfig = null
+            try {
+                stream = await createResponsesStream()
+            } catch (recoveryError) {
+                if (recoveryError.code !== 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT') throw recoveryError
+                return (async function* () {
+                    yield { content: researchRequest.fallback(), additional_kwargs: {} }
+                })()
+            }
+        }
         const apiCallDuration = Date.now() - apiCallStart
         console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
 
@@ -3067,7 +3315,10 @@ async function interactWithChatStream(
                 'assistant',
             model,
             cacheKey: requestParams.prompt_cache_key || '',
-            cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
+            cacheMode:
+                disablePromptCaching && supportsExplicitPromptCaching
+                    ? 'explicit-no-breakpoint'
+                    : requestParams.prompt_cache_options?.mode || 'automatic',
         }
         return convertResponsesStreamWithEmptyRetry(
             stream,
@@ -3112,6 +3363,14 @@ async function* convertResponsesStream(stream, usageContext = {}) {
     for await (const chunk of stream) {
         chunkCount++
         const logData = { chunkNumber: chunkCount, eventType: chunk.type }
+
+        if (chunk.type === 'response.created') {
+            console.log('📊 OPENAI RESPONSE: Stream started', {
+                responseId: chunk.response?.id || null,
+                route: usageContext.route || 'assistant',
+                model: chunk.response?.model || usageContext.model || null,
+            })
+        }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
@@ -3194,6 +3453,7 @@ async function* convertResponsesStream(stream, usageContext = {}) {
                     model: chunk.response?.model || usageContext.model || '',
                     cacheKey: usageContext.cacheKey,
                     cacheMode: usageContext.cacheMode,
+                    serviceTier: chunk.response?.service_tier || 'default',
                 })
                 console.log('📊 OPENAI USAGE: Responses request completed', {
                     route: usageContext.route || 'assistant',
@@ -3307,6 +3567,9 @@ const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type
         await updateGoalLastCommentData(projectId, objectId, cleanedComment, commentType)
     } else if (type === 'notes') {
         await updateNoteLastCommentData(projectId, objectId, cleanedComment, commentType)
+    } else if (type === 'artifacts') {
+        const { updateArtifactLastCommentData } = require('../Artifacts/artifactsFirestoreCloud')
+        await updateArtifactLastCommentData(projectId, objectId, cleanedComment, commentType)
     }
 }
 
@@ -3593,6 +3856,55 @@ const updateLastAssistantCommentData = async (projectId, objectType, objectId, c
 
 const normalizeProjectNameForLookup = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
 
+const MIN_RECOVERABLE_PROJECT_ID_LENGTH = 12
+
+function areProjectIdsOneEditApart(projectIdA, projectIdB) {
+    if (typeof projectIdA !== 'string' || typeof projectIdB !== 'string' || projectIdA === projectIdB) return false
+    if (
+        projectIdA.length < MIN_RECOVERABLE_PROJECT_ID_LENGTH ||
+        projectIdB.length < MIN_RECOVERABLE_PROJECT_ID_LENGTH
+    ) {
+        return false
+    }
+    if (Math.abs(projectIdA.length - projectIdB.length) > 1) return false
+
+    if (projectIdA.length === projectIdB.length) {
+        let differences = 0
+        for (let index = 0; index < projectIdA.length; index++) {
+            if (projectIdA[index] !== projectIdB[index]) differences++
+            if (differences > 1) return false
+        }
+        return differences === 1
+    }
+
+    const longerId = projectIdA.length > projectIdB.length ? projectIdA : projectIdB
+    const shorterId = projectIdA.length > projectIdB.length ? projectIdB : projectIdA
+    let longerIndex = 0
+    let shorterIndex = 0
+    let skippedCharacters = 0
+
+    while (longerIndex < longerId.length && shorterIndex < shorterId.length) {
+        if (longerId[longerIndex] === shorterId[shorterIndex]) {
+            longerIndex++
+            shorterIndex++
+            continue
+        }
+
+        skippedCharacters++
+        if (skippedCharacters > 1) return false
+        longerIndex++
+    }
+
+    return true
+}
+
+function findUniqueSingleEditProjectIdMatch(projects, requestedProjectId) {
+    const matches = (Array.isArray(projects) ? projects : []).filter(project =>
+        areProjectIdsOneEditApart(project?.id, requestedProjectId)
+    )
+    return matches.length === 1 ? matches[0] : null
+}
+
 const projectNamesMatch = (projectNameA, projectNameB) => {
     const a = normalizeProjectNameForLookup(projectNameA)
     const b = normalizeProjectNameForLookup(projectNameB)
@@ -3651,7 +3963,13 @@ function resolveAssistantTaskProject(projects, contextProjectId, requestedProjec
     )
 }
 
-async function resolveMoveTargetProject(database, userId, moveToProjectId, moveToProjectName) {
+async function resolveMoveTargetProject(
+    database,
+    userId,
+    moveToProjectId,
+    moveToProjectName,
+    { projectIdArgName = 'moveToProjectId' } = {}
+) {
     const requestedProjectId = typeof moveToProjectId === 'string' ? moveToProjectId.trim() : ''
     const requestedProjectName = typeof moveToProjectName === 'string' ? moveToProjectName.trim() : ''
 
@@ -3698,7 +4016,7 @@ async function resolveMoveTargetProject(database, userId, moveToProjectId, moveT
 
     if (exactMatches.length > 1) {
         throw new Error(
-            `Multiple projects match "${requestedProjectName}". Please use moveToProjectId to choose one target project.`
+            `Multiple projects match "${requestedProjectName}". Please use ${projectIdArgName} to choose one target project.`
         )
     }
 
@@ -3717,7 +4035,7 @@ async function resolveMoveTargetProject(database, userId, moveToProjectId, moveT
             .map(project => `"${project.name}" (${project.id})`)
             .join(', ')
         throw new Error(
-            `Multiple projects partially match "${requestedProjectName}": ${options}. Please use moveToProjectId.`
+            `Multiple projects partially match "${requestedProjectName}": ${options}. Please use ${projectIdArgName}.`
         )
     }
 
@@ -3745,9 +4063,17 @@ async function resolveProjectTargetForDescriptionUpdate(
     const projectsById = new Map(projects.map(project => [project.id, project]))
 
     if (normalizedRequestedProjectId) {
-        const projectFromId = projectsById.get(normalizedRequestedProjectId)
+        let projectFromId = projectsById.get(normalizedRequestedProjectId)
         if (!projectFromId) {
-            throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
+            projectFromId = findUniqueSingleEditProjectIdMatch(projects, normalizedRequestedProjectId)
+            if (!projectFromId) {
+                throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
+            }
+            console.warn('PROJECT DESCRIPTION UPDATE: Corrected a unique one-character projectId mismatch', {
+                requestedProjectId: normalizedRequestedProjectId,
+                resolvedProjectId: projectFromId.id,
+                resolvedProjectName: projectFromId.name || null,
+            })
         }
         if (normalizedRequestedProjectName && !projectNamesMatch(projectFromId.name, normalizedRequestedProjectName)) {
             throw new Error(
@@ -3955,6 +4281,7 @@ async function addChatCommentFromAssistantTool({
     userId,
     createIfMissing = false,
     gmailContext = null,
+    suppressAssistantReply = false,
 }) {
     const db = admin.firestore()
     const resolvedComment = normalizeChatCommentToolText(comment, 'comment')
@@ -4000,6 +4327,8 @@ async function addChatCommentFromAssistantTool({
         creatorId: assistantId,
         fromAssistant: true,
         source: gmailContext?.origin === 'gmail_label_follow_up' ? 'gmail_label_follow_up' : 'assistant_tool',
+        requestUserId: userId,
+        ...(suppressAssistantReply ? { suppressAssistantReply: true } : {}),
     }
 
     if (gmailContext?.origin === 'gmail_label_follow_up') {
@@ -4369,164 +4698,6 @@ async function resolveTargetAssistantForSettingsUpdate({
     throw new Error(`Current assistant "${contextAssistantId}" not found in project "${candidateProjectIds[0]}".`)
 }
 
-async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
-    const taskTree = new Map()
-    const queue = [rootTaskId]
-
-    while (queue.length > 0) {
-        const taskId = queue.shift()
-        if (!taskId || taskTree.has(taskId)) continue
-
-        const taskDoc = await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).get()
-        if (!taskDoc.exists) {
-            if (taskId === rootTaskId) {
-                throw new Error(`Task ${rootTaskId} not found in source project ${sourceProjectId}`)
-            }
-            continue
-        }
-
-        const taskData = taskDoc.data() || {}
-        taskTree.set(taskId, taskData)
-
-        const subtaskIds = Array.isArray(taskData.subtaskIds) ? taskData.subtaskIds : []
-        subtaskIds.forEach(subtaskId => {
-            if (typeof subtaskId === 'string' && subtaskId.trim() && !taskTree.has(subtaskId)) {
-                queue.push(subtaskId)
-            }
-        })
-    }
-
-    return taskTree
-}
-
-async function moveTaskToDifferentProject(params) {
-    const { database, sourceProjectId, targetProjectId, taskId, editorId, editorName } = params
-
-    if (!sourceProjectId || !targetProjectId || !taskId) {
-        throw new Error('sourceProjectId, targetProjectId and taskId are required for task move')
-    }
-    if (sourceProjectId === targetProjectId) {
-        return {
-            moved: false,
-            reason: 'already_in_target_project',
-            sourceProjectId,
-            targetProjectId,
-            taskId,
-            movedTaskCount: 1,
-        }
-    }
-
-    const taskTree = await collectTaskTreeForMove(database, sourceProjectId, taskId)
-    const taskIdsToMove = Array.from(taskTree.keys())
-    const timestamp = Date.now()
-
-    // Protect against accidental overwrite in the target project.
-    for (const id of taskIdsToMove) {
-        const targetTaskDoc = await database.doc(`items/${targetProjectId}/tasks/${id}`).get()
-        if (targetTaskDoc.exists) {
-            throw new Error(
-                `Cannot move task ${taskId}: task ID ${id} already exists in target project ${targetProjectId}.`
-            )
-        }
-    }
-
-    for (const [id, sourceTask] of taskTree.entries()) {
-        const isRootTask = id === taskId
-        const movedTask = {
-            ...sourceTask,
-            lastEditionDate: timestamp,
-        }
-
-        if (editorId) movedTask.lastEditorId = editorId
-        if (editorName) movedTask.lastEditorName = editorName
-
-        // Remove move marker/internal path hints from the copied task.
-        delete movedTask.movingToOtherProjectId
-        delete movedTask.projectId
-
-        // Goals are project-local, so the moved task should no longer point to an old project goal.
-        movedTask.parentGoalId = null
-        movedTask.parentGoalIsPublicFor = null
-        movedTask.lockKey = ''
-
-        // Root subtasks become root tasks after moving project, matching app move behavior.
-        if (isRootTask && movedTask.parentId) {
-            movedTask.parentId = null
-            movedTask.isSubtask = false
-            movedTask.parentDone = false
-            movedTask.inDone = !!movedTask.done
-            if (movedTask.done && !movedTask.completed) movedTask.completed = timestamp
-        }
-
-        if (movedTask.calendarData && typeof movedTask.calendarData === 'object') {
-            movedTask.calendarData = {
-                ...movedTask.calendarData,
-                pinnedToProjectId: targetProjectId,
-            }
-        }
-
-        await database.doc(`items/${targetProjectId}/tasks/${id}`).set(movedTask)
-    }
-
-    const sourceMoveMarkerUpdate = {
-        movingToOtherProjectId: targetProjectId,
-        lastEditionDate: timestamp,
-    }
-    if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
-    if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
-
-    // Mark all source tasks as moved so delete triggers can preserve linked content (notes/backlinks).
-    for (const id of taskIdsToMove) {
-        try {
-            await database.doc(`items/${sourceProjectId}/tasks/${id}`).update(sourceMoveMarkerUpdate)
-        } catch (error) {
-            console.warn('Task move: failed to set move marker on source task', {
-                taskId: id,
-                sourceProjectId,
-                error: error.message,
-            })
-        }
-    }
-
-    // Copy each moved task's chat (conversation + comments) and Updates feed (activity history) into the
-    // target project BEFORE deleting the source. Both live in project-scoped paths keyed by the old project,
-    // so without this the moved task would show up with an empty Chat and Updates tab and the original
-    // history would be lost (the source chat is also wiped by the delete cascade).
-    for (const id of taskIdsToMove) {
-        try {
-            await copyChatToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
-        } catch (error) {
-            console.warn('Task move: failed to copy chat to target project', {
-                taskId: id,
-                sourceProjectId,
-                targetProjectId,
-                error: error.message,
-            })
-        }
-        try {
-            await copyInnerFeedsToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
-        } catch (error) {
-            console.warn('Task move: failed to copy updates feed to target project', {
-                taskId: id,
-                sourceProjectId,
-                targetProjectId,
-                error: error.message,
-            })
-        }
-    }
-
-    // Delete only root task; existing delete triggers cascade source subtasks cleanup.
-    await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).delete()
-
-    return {
-        moved: true,
-        sourceProjectId,
-        targetProjectId,
-        taskId,
-        movedTaskCount: taskIdsToMove.length,
-    }
-}
-
 async function executeDelegatedAssistantRequest({
     target,
     toolArgs,
@@ -4561,7 +4732,7 @@ async function executeDelegatedAssistantRequest({
 
     const targetAssistant = targetAssistantDoc.data() || {}
     const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
-    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_6_SOL)
+    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT6_SOL)
     const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
     const targetReasoningEffort = targetAssistant.reasoningEffort || null
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
@@ -4604,12 +4775,19 @@ async function executeDelegatedAssistantRequest({
             ? callerToolRuntimeContext.userTimezoneOffset
             : null
     const delegatedToolRuntimeContext = {
+        automaticCommentReply: callerToolRuntimeContext?.automaticCommentReply === true,
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
         openAiReasoningEffort: targetReasoningEffort,
         sourceChannel: callerToolRuntimeContext?.sourceChannel || '',
         whatsappFromNumber: callerToolRuntimeContext?.whatsappFromNumber || '',
+        ...(callerToolRuntimeContext?.whatsAppRunGuard
+            ? {
+                  abortSignal: callerToolRuntimeContext.abortSignal,
+                  whatsAppRunGuard: callerToolRuntimeContext.whatsAppRunGuard,
+              }
+            : {}),
         language: delegatedLanguage,
         userTimezoneOffset: delegatedTimezoneOffset,
         // Origin conversation (where the user is actually talking) for async-result continuity.
@@ -4655,6 +4833,9 @@ async function executeDelegatedAssistantRequest({
         allowedTools: targetAllowedTools,
         toolRuntimeContext: delegatedToolRuntimeContext,
         userContext: delegatedUserContext,
+        assertActive: callerToolRuntimeContext?.whatsAppRunGuard
+            ? () => callerToolRuntimeContext.whatsAppRunGuard.assertActive()
+            : null,
     })
     const assistantResponse = delegationRun?.assistantResponse || ''
     const executedToolCallsCount = Number(delegationRun?.executedToolCallsCount) || 0
@@ -4951,6 +5132,7 @@ async function ensureVmJobThread({
     deliverable = '',
     originatingRequestText = '',
     originatingImageUrls = [],
+    trackAssistantWork = false,
     projectId,
     assistantId,
     creatorId,
@@ -4994,7 +5176,16 @@ async function ensureVmJobThread({
         {
             name: buildVmJobTaskName(objective),
             description: '',
-            userId: creatorId,
+            userId: trackAssistantWork ? assistantId : creatorId,
+            ...(trackAssistantWork
+                ? {
+                      assigneeType: 'assistant',
+                      assistantId,
+                      creatorId,
+                      executionMode: 'direct',
+                      taskMetadata: { annaWorkspace: { ownerId: creatorId, assistantId } },
+                  }
+                : {}),
             projectId: targetProjectId,
             isPrivate: false,
             feedUser,
@@ -5090,13 +5281,26 @@ function buildVmRequestImageMediaContext(imageUrls) {
  * its id as a trigger message, which is what makes getOptimizedContextMessages ground it in the
  * full task and thread context instead of the bare prompt.
  */
-async function postUserRequestComment({ projectId, objectType, objectId, creatorId, text, imageUrls }) {
+async function postUserRequestComment({
+    projectId,
+    objectType,
+    objectId,
+    creatorId,
+    text,
+    imageUrls,
+    commentId: requestedCommentId,
+}) {
     const cleanText = typeof text === 'string' ? text.trim() : ''
     const images = normalizeCreateTaskImageUrls(imageUrls)
     if (!cleanText && !images.length) return null
 
     const db = admin.firestore()
-    const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+    // A caller may supply the id (the contact enrichment callable keys its run lock on it, so a
+    // replayed request must land on the same comment); everything else gets a fresh one.
+    const commentId =
+        typeof requestedCommentId === 'string' && requestedCommentId.trim()
+            ? requestedCommentId.trim()
+            : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
     const now = Date.now()
     const commentText = mergeTaskDescriptionWithImages(cleanText, images)
     const mediaContext = buildVmRequestImageMediaContext(images)
@@ -5146,6 +5350,41 @@ async function executeToolNatively(
     userContext,
     toolRuntimeContext = null
 ) {
+    toolRuntimeContext?.whatsAppRunGuard?.assertActive()
+    const result = await executeToolNativelyImpl(
+        toolName,
+        toolArgs,
+        projectId,
+        assistantId,
+        requestUserId,
+        userContext,
+        toolRuntimeContext
+    )
+    if (toolRuntimeContext?.annaConversation) {
+        try {
+            const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
+            await recordAnnaWorkspaceChange({
+                db: require('firebase-admin').firestore(),
+                runtime: toolRuntimeContext,
+                toolName,
+                result,
+            })
+        } catch (error) {
+            console.warn('[anna workspace] Could not publish change cue', { toolName, code: error?.code })
+        }
+    }
+    return result
+}
+
+async function executeToolNativelyImpl(
+    toolName,
+    toolArgs,
+    projectId,
+    assistantId,
+    requestUserId,
+    userContext,
+    toolRuntimeContext = null
+) {
     console.log(
         '🔧 executeToolNatively:',
         toolRuntimeContext?.sourceChannel === 'whatsapp_call'
@@ -5158,6 +5397,39 @@ async function executeToolNatively(
     // Keep the requesting user for access/search context, but use the assistant as actor
     // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
+
+    if (KNOWLEDGE_BASE_TOOL_NAMES.includes(toolName)) {
+        const { executeKnowledgeBaseTool } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        return executeKnowledgeBaseTool({
+            db: admin.firestore(),
+            toolName,
+            args: toolArgs,
+            assistantId,
+            toolRuntimeContext: { projectId, requestUserId, assistantId, ...(toolRuntimeContext || {}) },
+            // A document added to the wiki is always a file of THIS conversation, whichever project's
+            // wiki it goes to.
+            readChatAttachment: ({ messageId, fileName }) =>
+                readChatAttachmentFile({
+                    projectId: toolRuntimeContext?.projectId || projectId || '',
+                    objectType: toolRuntimeContext?.objectType || '',
+                    objectId: toolRuntimeContext?.objectId || '',
+                    messageId: messageId || toolRuntimeContext?.messageId || '',
+                    expectedFileName: fileName,
+                    explicitMessageIdProvided: !!messageId,
+                    userMessageText: userContext?.message || '',
+                }),
+        })
+    }
+
+    if (toolName === 'highlight_workspace') {
+        const { requestAnnaHighlight } = require('./annaHighlight')
+        return requestAnnaHighlight({ db: admin.firestore(), runtime: toolRuntimeContext, args: toolArgs })
+    }
+
+    if (toolName === 'show_workspace') {
+        const { requestAnnaPresentation } = require('./annaWorkspace')
+        return requestAnnaPresentation({ db: admin.firestore(), runtime: toolRuntimeContext, args: toolArgs })
+    }
 
     if (isTalkToAssistantToolName(toolName)) {
         const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
@@ -5267,8 +5539,42 @@ async function executeToolNatively(
         return result
     }
 
+    // Browsing. Everything about a browser action — allowlist, limits, the observe-then-classify
+    // ordering, approvals, evidence and the audit trail — lives behind this one call, so every
+    // entry point that reaches `executeToolNatively` (chat, WhatsApp bridge, MCP) is gated
+    // identically. Note the MCP surface calls in with `assistantId === null`; the run is then
+    // attributed to the requesting user, which is what the audit record needs anyway.
+    if (isBrowserToolName(toolName)) {
+        const { executeBrowserTool } = require('./browser/browserSession')
+        return executeBrowserTool({
+            toolName,
+            toolArgs,
+            projectId,
+            assistantId,
+            requestUserId,
+            toolRuntimeContext,
+        })
+    }
+
+    // Every artifact write goes through commitArtifactVersion like an upload from the app, and acts
+    // for the requesting user: an artifact needs a project member as its owner.
+    if (isArtifactToolName(toolName)) {
+        const { executeArtifactTool } = require('../Artifacts/artifactAssistant')
+        return executeArtifactTool({
+            toolName,
+            args: toolArgs,
+            projectId,
+            requestUserId,
+            assistantId,
+            toolRuntimeContext: { projectId, ...(toolRuntimeContext || {}) },
+        })
+    }
+
     switch (toolName) {
         case 'create_task': {
+            if (toolArgs.parentGoalId !== undefined && !requestUserId) {
+                throw new Error('Authenticated user is required to assign a parent goal')
+            }
             const { TaskService } = require('../shared/TaskService')
             const moment = require('moment-timezone')
             const db = admin.firestore()
@@ -5295,16 +5601,16 @@ async function executeToolNatively(
             const taskComment =
                 providedTaskComment ||
                 (isGmailLabelFollowUp
-                    ? gmailSuggestionComment ||
-                      'I suggest this task because an automatically processed email appears to require follow-up.'
+                    ? gmailSuggestionComment || 'An automatically processed email appears to require follow-up.'
                     : '')
             const isAssistantSuggestion = taskOrigin === 'assistant_suggestion'
 
-            if (taskComment && !assistantId) {
-                throw new Error('Assistant task comments require an assistant identity')
-            }
+            // Without an Alldone assistant (the MCP surface calls in with assistantId === null) the
+            // comment is posted in the requesting user's name, exactly as update_task already does
+            // over MCP. It used to be refused outright, so an MCP client following this tool's own
+            // instruction to explain every task it adds could not create a task at all.
             if (isAssistantSuggestion && !taskComment) {
-                throw new Error('Assistant-suggested tasks require a comment explaining why they are suggested')
+                throw new Error('Assistant-inferred tasks require a comment explaining why they were added')
             }
 
             const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
@@ -5322,8 +5628,28 @@ async function executeToolNatively(
                 assistantProjectRoutingReason: assistantProvidedProjectReasoning,
                 assistantProjectRoutingConfidence: projectRoutingConfidence,
             })
-            const targetProjectId = createTaskProjectSelection.targetProjectId
+            let targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
+
+            const { resolveTaskParentGoal, buildTaskParentGoalFields } = require('../shared/taskParentGoal')
+            const parentGoal = await resolveTaskParentGoal(
+                db,
+                creatorId,
+                targetProjectId,
+                toolArgs.parentGoalId,
+                toolArgs.parentGoalProjectId
+            )
+            if (parentGoal && parentGoal.projectId !== targetProjectId) {
+                targetProjectId = parentGoal.projectId
+                targetProjectName = null
+            }
+            const parentGoalFields =
+                parentGoal === undefined
+                    ? {}
+                    : {
+                          ...buildTaskParentGoalFields(parentGoal),
+                          skipAutomaticGoalRouting: parentGoal === null,
+                      }
 
             console.log('📝 CREATE_TASK TOOL: Project selection', {
                 toolArgsProjectId: toolArgs.projectId,
@@ -5414,6 +5740,16 @@ async function executeToolNatively(
             try {
                 const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
                 const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
+                const trackAssistantWork =
+                    toolRuntimeContext?.annaConversation === true &&
+                    toolArgs.trackAssistantWork === true &&
+                    !isAssistantSuggestion
+                const creationComment =
+                    assistantId && !trackAssistantWork
+                        ? `${feedUser.displayName || 'Assistant'} added this task for you. ${
+                              taskComment || 'You asked me to create this task.'
+                          }`
+                        : taskComment
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
@@ -5421,22 +5757,63 @@ async function executeToolNatively(
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
-                        executionMode: toolArgs.executionMode,
-                        userId: creatorId,
+                        executionMode: trackAssistantWork ? 'direct' : toolArgs.executionMode,
+                        userId: trackAssistantWork ? assistantId : creatorId,
+                        assigneeType: trackAssistantWork ? 'assistant' : 'USER',
                         projectId: targetProjectId,
                         isPrivate: false,
+                        ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
-                        creatorId: isAssistantSuggestion ? assistantId : creatorId,
-                        suggestedBy: isAssistantSuggestion ? assistantId : null,
-                        assistantId: '',
-                        taskMetadata: isAssistantSuggestion ? { assistantSuggestion: { assistantId } } : null,
+                        // A suggestion is credited to the assistant that made it; with no
+                        // assistant (MCP) the requesting user stays the creator.
+                        creatorId: isAssistantSuggestion && assistantId ? assistantId : creatorId,
+                        suggestedBy: null,
+                        assistantId: trackAssistantWork ? assistantId : '',
+                        taskMetadata: trackAssistantWork
+                            ? { annaWorkspace: { ownerId: creatorId, assistantId } }
+                            : null,
                     },
                     {
                         userId: creatorId,
                         projectId: targetProjectId,
-                    }
+                    },
+                    ...(gmailTaskData
+                        ? [
+                              {
+                                  emailThread: {
+                                      userId: creatorId,
+                                      projectIds:
+                                          require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(
+                                              userData
+                                          ),
+                                  },
+                              },
+                          ]
+                        : [])
                 )
+                if (gmailTaskData && result.existing) {
+                    const { continueEmailThread } = require('../Email/emailThreadContinuation')
+                    const continued = await continueEmailThread({
+                        database: db,
+                        userId: creatorId,
+                        userData,
+                        gmailData: gmailTaskData,
+                        context: toolRuntimeContext.gmailContext.emailContext || {},
+                        actor: { uid: assistantId, displayName: feedUser.displayName || 'Assistant' },
+                        fromAssistant: true,
+                    })
+                    if (!continued || continued.ambiguous)
+                        throw new Error('Email thread selection changed; retry processing')
+                    return {
+                        success: true,
+                        ...continued,
+                        task: result.task,
+                        suggested: !!result.task.suggestedBy,
+                        taskOrigin: result.task.suggestedBy ? 'assistant_suggestion' : 'user_request',
+                        message: 'Continued the existing email task',
+                    }
+                }
 
                 // Enforce strict create_task result contract to prevent undefined IDs leaking to user messages
                 const creationSucceeded = result?.success !== false
@@ -5557,16 +5934,28 @@ async function executeToolNatively(
                 }
 
                 let taskCommentResult = null
-                if (taskComment) {
+                if (creationComment && assistantId) {
                     taskCommentResult = await addAssistantTaskComment({
                         projectId: resolvedProjectId,
                         taskId: resolvedTaskId,
                         assistantId,
-                        comment: taskComment,
+                        comment: creationComment,
+                        requestUserId: creatorId,
+                        suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
                     })
                     if (!taskCommentResult) {
                         throw new Error('Task was created, but its assistant comment could not be added')
                     }
+                } else if (creationComment) {
+                    const { TaskCommentService } = require('../shared/TaskCommentService')
+                    taskCommentResult = await new TaskCommentService({ database: db }).addComment({
+                        projectId: resolvedProjectId,
+                        taskId: resolvedTaskId,
+                        task: result.task,
+                        comment: creationComment,
+                        actor: feedUser,
+                        fromAssistant: false,
+                    })
                 }
 
                 return {
@@ -5577,7 +5966,7 @@ async function executeToolNatively(
                     message: result.message,
                     task: result.task,
                     taskOrigin,
-                    suggested: isAssistantSuggestion,
+                    suggested: false,
                     commentId: taskCommentResult?.commentId || null,
                     projectSelection: {
                         source: createTaskProjectSelection.source,
@@ -5598,7 +5987,20 @@ async function executeToolNatively(
             const { NoteService } = require('../shared/NoteService')
             const db = admin.firestore()
 
-            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
+            // An explicit target must be a project the requesting user belongs to. NoteService
+            // writes through the Admin SDK and checks no membership itself; the MCP surface checks
+            // an explicit projectId too, but the in-app assistant reaches this with only the model's
+            // arguments, so the check has to live here as well.
+            const targetProject = await resolveMoveTargetProject(
+                db,
+                creatorId,
+                toolArgs.projectId,
+                toolArgs.projectName,
+                { projectIdArgName: 'projectId' }
+            )
+            const noteProjectId = targetProject ? targetProject.id : projectId
+
+            const feedUser = await getAssistantFeedUserForTool(db, noteProjectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
@@ -5661,21 +6063,21 @@ async function executeToolNatively(
                         userId: creatorId,
                         ownerId: noteOwnerId,
                         creatorId: creatorId,
-                        projectId: projectId,
+                        projectId: noteProjectId,
                         isPrivate: false,
                         feedUser,
                     },
                     {
                         userId: creatorId,
-                        projectId: projectId,
+                        projectId: noteProjectId,
                     }
                 )
 
                 return {
                     success: result.success,
                     noteId: result.noteId,
-                    projectId: result.note?.projectId || projectId,
-                    url: buildNoteUrl(result.note?.projectId || projectId, result.noteId, getBaseUrl()),
+                    projectId: result.note?.projectId || noteProjectId,
+                    url: buildNoteUrl(result.note?.projectId || noteProjectId, result.noteId, getBaseUrl()),
                     message: result.message,
                     note: result.note,
                 }
@@ -5686,6 +6088,7 @@ async function executeToolNatively(
         }
 
         case 'get_tasks': {
+            const { withTaskListingMetadata } = require('./taskListingContext')
             const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
             const { ProjectService } = require('../shared/ProjectService')
 
@@ -5830,9 +6233,11 @@ async function executeToolNatively(
                     tasksFound: matchedTasks.length,
                 })
 
-                return {
+                return withTaskListingMetadata({
                     tasks: matchedTasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
                     count: matchedTasks.length,
+                    totalCount: matchedTasks.length,
+                    totalCountIsExact: failedLookups.length === 0,
                     humanReadableId: humanReadableIdQuery,
                     projectsSearched: lookupProjects.length,
                     ...(failedLookups.length > 0
@@ -5847,7 +6252,7 @@ async function executeToolNatively(
                               },
                           }
                         : {}),
-                }
+                })
             }
 
             // Initialize TaskRetrievalService with database
@@ -5858,14 +6263,15 @@ async function executeToolNatively(
             })
             await retrievalService.initialize()
 
-            // Cap the listing at what actually survives the conversation context ceiling. A larger result
-            // is compacted to ~20 array items before the model ever sees it (see enforceToolResultContextCeiling),
-            // which silently turns "here are your 1000 tasks" into an unrepresentative fragment.
+            // Bound the listing independently of the uncapped matching count.
             const taskLimit = Math.min(toolArgs.limit || 100, GET_TASKS_MAX_CONTEXT_SAFE_LIMIT)
             const effectiveDate = recentHours !== null ? null : toolArgs.date || null
             const taskScope = normalizeAssistantTaskScope(toolArgs.scope)
             let tasks = []
             let retrievalIssues = null
+            let totalCount = 0
+            let totalCountIsExact = false
+            let hasMore = false
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
                 const result = await retrievalService.getTasksFromMultipleProjects(
@@ -5887,6 +6293,9 @@ async function executeToolNatively(
                     }, {})
                 )
                 tasks = result.tasks || []
+                totalCount = result.totalAcrossProjects ?? tasks.length
+                totalCountIsExact = result.totalCountIsExact === true
+                hasMore = result.query?.hasMore === true
 
                 // A per-project query can fail (missing index, permissions, transient error) while the
                 // aggregate still resolves "successfully" with an empty task list. Never let that reach
@@ -5939,10 +6348,16 @@ async function executeToolNatively(
                     taskScope,
                 })
                 tasks = result.tasks || []
+                totalCount = result.totalAvailable ?? tasks.length
+                totalCountIsExact = result.totalCountIsExact === true
+                hasMore = result.query?.hasMore === true
             }
 
             if (recentHours !== null) {
+                // Filtering a capped all-time listing cannot establish an exact recent total.
+                totalCountIsExact = totalCountIsExact && !hasMore && totalCount === tasks.length
                 tasks = filterTasksByRecentHours(tasks, recentHours)
+                totalCount = tasks.length
             }
 
             tasks = tasks.slice(0, taskLimit)
@@ -5952,6 +6367,8 @@ async function executeToolNatively(
 
             console.log('📋 GET_TASKS TOOL: Results', {
                 tasksReturned: tasks.length,
+                totalCount,
+                totalCountIsExact,
                 limit: taskLimit,
                 requestedLimit,
                 limitWasCapped,
@@ -5961,9 +6378,12 @@ async function executeToolNatively(
                 firstProjectError: retrievalIssues ? retrievalIssues.failedProjects[0].error : null,
             })
 
-            return {
+            return withTaskListingMetadata({
                 tasks: tasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
                 count: tasks.length,
+                totalCount,
+                totalCountIsExact,
+                hasMore,
                 recentHours: recentHours || null,
                 scope: taskScope,
                 ...(retrievalIssues ? { retrieval: retrievalIssues } : {}),
@@ -5973,8 +6393,8 @@ async function executeToolNatively(
                               requestedLimit,
                               appliedLimit: taskLimit,
                               note:
-                                  `Only ${taskLimit} tasks were returned because a larger listing does not fit the conversation ` +
-                                  `context and would be truncated before you read it. This is a partial listing - do not conclude ` +
+                                  `The requested limit was capped at ${taskLimit}. Use totalCount for the matching total ` +
+                                  `and listingComplete to check whether all matches are shown. Do not conclude ` +
                                   `anything from a task being absent. To find one specific task use the search tool, or get_tasks ` +
                                   `with humanReadableId for an exact task ID; to narrow a listing use date, status, or project filters.`,
                           },
@@ -5991,7 +6411,7 @@ async function executeToolNatively(
                     historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
                     emptyResultIsOnlyAuthoritativeWithoutRetrievalIssues: true,
                 },
-            }
+            })
         }
 
         case 'get_chats': {
@@ -6088,6 +6508,7 @@ async function executeToolNatively(
                 userId: creatorId,
                 createIfMissing: !!gmailTopicChatTitle || toolArgs.createIfMissing === true,
                 gmailContext: toolRuntimeContext?.gmailContext || null,
+                suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
             })
 
             console.log('💬 ADD_CHAT_COMMENT TOOL: Result', {
@@ -6432,6 +6853,7 @@ async function executeToolNatively(
 
         case 'get_user_projects': {
             const { ProjectService } = require('../shared/ProjectService')
+            const { listContactStatuses } = require('../shared/contactStatusToolHelper')
 
             const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
             if (!userDoc.exists) {
@@ -6452,12 +6874,14 @@ async function executeToolNatively(
                 includeCommunity,
             })
 
+            await recordProjectCatalog(admin.firestore(), toolRuntimeContext, projects)
             return {
                 projects: projects.map(p => ({
                     id: p.id,
                     name: p.name,
                     type: p.type,
                     description: p.description,
+                    contactStatuses: listContactStatuses(p),
                 })),
                 count: projects.length,
             }
@@ -6507,6 +6931,9 @@ async function executeToolNatively(
         }
 
         case 'update_task': {
+            if (toolArgs.parentGoalId !== undefined && !requestUserId) {
+                throw new Error('Authenticated user is required to change a parent goal')
+            }
             const updateTaskPatchVersion = '2026-07-03-priority-and-comments-v5'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
@@ -6544,6 +6971,11 @@ async function executeToolNatively(
                         ? normalizedToolArgs.moveToProjectName.trim()
                         : ''
                 const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
+                if (hasMoveRequest && normalizedToolArgs.parentGoalId !== undefined) {
+                    throw new Error(
+                        'Use parentGoalId with optional parentGoalProjectId to automatically move to the goal project; omit explicit move fields'
+                    )
+                }
                 const mutationFields = [
                     'completed',
                     'focus',
@@ -6558,6 +6990,7 @@ async function executeToolNatively(
                     'userId',
                     'targetUserId',
                     'parentId',
+                    'parentGoalId',
                 ]
                 const hasTaskMutation = mutationFields.some(field => normalizedToolArgs[field] !== undefined)
                 const hasComment = Object.prototype.hasOwnProperty.call(normalizedToolArgs, 'comment')
@@ -6704,6 +7137,8 @@ async function executeToolNatively(
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                         feedUser,
                         commentFromAssistant: !!assistantId,
+                        commentRequestUserId: creatorId,
+                        suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
                         assistantId,
                         assistantRunId: toolRuntimeContext?.runId || toolRuntimeContext?.assistantRunLockId || null,
                         messageId: toolRuntimeContext?.messageId || null,
@@ -7321,14 +7756,30 @@ async function executeToolNatively(
         case 'update_contact': {
             const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
             const { updateContactFields } = require('../shared/contactUpdateHelper')
+            const { buildContactUpdatesFromToolArgs } = require('../shared/contactEnrichmentFields')
+            const { hasContactStatusUpdate, resolveContactStatusUpdate } = require('../shared/contactStatusToolHelper')
             const db = admin.firestore()
             const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
             const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
             const contactEmail = typeof toolArgs.contactEmail === 'string' ? toolArgs.contactEmail.trim() : ''
             const targetEmail = typeof toolArgs.email === 'string' ? toolArgs.email.trim() : ''
 
-            if (!targetEmail) {
-                throw new Error('email is required for update_contact.')
+            const fieldUpdates = buildContactUpdatesFromToolArgs(toolArgs)
+            if (fieldUpdates.errors.length > 0) {
+                return { success: false, message: fieldUpdates.errors.join(' ') }
+            }
+            const hasFieldUpdates = Object.keys(fieldUpdates.updates).length > 0
+            const hasStatusUpdate = hasContactStatusUpdate(toolArgs)
+            if (
+                !targetEmail &&
+                !hasFieldUpdates &&
+                !fieldUpdates.photoUrl &&
+                !fieldUpdates.clearPhoto &&
+                !hasStatusUpdate
+            ) {
+                throw new Error(
+                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description, photoUrl or Kontaktstatus).'
+                )
             }
 
             const targetProject = await resolveProjectForContactNote({
@@ -7343,6 +7794,12 @@ async function executeToolNatively(
             if (!targetProjectId) {
                 throw new Error('projectId is required when updating a contact.')
             }
+
+            // Validate against the resolved project's statuses before creating a missing
+            // contact. An unknown or ambiguous status must not cause a partial write.
+            const statusProject = hasStatusUpdate ? await db.doc(`projects/${targetProjectId}`).get() : null
+            const statusUpdate = resolveContactStatusUpdate(toolArgs, statusProject?.data() || {})
+            if (!statusUpdate.success) return statusUpdate
 
             const contactResolution = await resolveContactTarget({
                 db,
@@ -7363,6 +7820,37 @@ async function executeToolNatively(
                 }
             }
 
+            const updates = { ...fieldUpdates.updates, ...statusUpdate.updates }
+            if (targetEmail) updates.email = targetEmail
+
+            const warnings = []
+            if (fieldUpdates.photoUrl) {
+                // The photo is copied into our own storage first: a hot-linked avatar changes or
+                // disappears under the contact, and the app expects the three size fields to exist.
+                try {
+                    const { uploadContactPhotoFromUrl } = require('../shared/contactPhotoUpload')
+                    const storedPhotoUrl = await uploadContactPhotoFromUrl(
+                        fieldUpdates.photoUrl,
+                        targetProjectId,
+                        contactResolution.contact.uid
+                    )
+                    updates.photoURL = storedPhotoUrl
+                    updates.photoURL50 = storedPhotoUrl
+                    updates.photoURL300 = storedPhotoUrl
+                } catch (photoError) {
+                    console.warn('update_contact: photo upload failed', {
+                        projectId: targetProjectId,
+                        contactId: contactResolution.contact.uid,
+                        error: photoError.message,
+                    })
+                    warnings.push(`The photo could not be stored: ${photoError.message}`)
+                }
+            } else if (fieldUpdates.clearPhoto) {
+                updates.photoURL = ''
+                updates.photoURL50 = ''
+                updates.photoURL300 = ''
+            }
+
             const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
             const updateResult = await updateContactFields({
                 db,
@@ -7370,25 +7858,36 @@ async function executeToolNatively(
                 contact: contactResolution.contact,
                 userId: feedUser?.uid || creatorId,
                 feedUser,
-                updates: { email: targetEmail },
+                updates,
             })
 
             const finalContact = updateResult.contact
             let message = `Contact "${finalContact.displayName || 'Untitled'}" updated successfully`
             if (updateResult.changes.length > 0) {
                 message += ` (${updateResult.changes.join(', ')})`
+            } else {
+                message = `Contact "${finalContact.displayName || 'Untitled'}" already had these values`
             }
             message += ` in project "${targetProjectName}"`
+            if (warnings.length > 0) message += `. ${warnings.join(' ')}`
 
             return {
                 success: true,
                 message,
                 project: { id: targetProjectId, name: targetProjectName },
                 changes: updateResult.changes,
+                warnings,
                 contact: {
                     contactId: finalContact.uid,
                     displayName: finalContact.displayName || '',
                     email: finalContact.email || '',
+                    company: finalContact.company || '',
+                    role: finalContact.role || '',
+                    phone: finalContact.phone || '',
+                    linkedInUrl: finalContact.linkedInUrl || '',
+                    contactStatusId: finalContact.contactStatusId || null,
+                    ...(hasStatusUpdate ? { contactStatusName: statusUpdate.status?.name || null } : {}),
+                    hasPhoto: !!finalContact.photoURL,
                     created: !!contactResolution.contactCreated,
                     updated: !!updateResult.updated,
                     matchType: contactResolution.matchType || null,
@@ -7449,7 +7948,20 @@ async function executeToolNatively(
                 creatorId
             )
 
+            if (toolRuntimeContext?.resumeScheduledWorkflow) {
+                const state = await readWorkflowState(db, toolRuntimeContext)
+                if (state.projectWorkflow?.completedIds?.includes(targetProject.id)) {
+                    return {
+                        success: true,
+                        updated: false,
+                        alreadyCompleted: true,
+                        project: { id: targetProject.id },
+                        message: 'Already updated in this workflow. Continue with the next unfinished project.',
+                    }
+                }
+            }
             return await updateProjectDescription({
+                completionWrite: projectCompletionWrite(db, toolRuntimeContext, targetProject.id),
                 db,
                 projectId: targetProject.id,
                 userId: creatorId,
@@ -7919,6 +8431,7 @@ async function executeToolNatively(
                 currentProjectName: toolArgs.currentProjectName,
                 nextProjectId: toolArgs.nextProjectId,
                 nextProjectName: toolArgs.nextProjectName,
+                projectIds: toolArgs.projectIds,
             })
 
             return {
@@ -8239,6 +8752,57 @@ async function executeToolNatively(
                     query: toolArgs.query,
                 }
             }
+        }
+
+        case 'fetch_url': {
+            const { fetchWebPage, DEFAULT_MAX_TEXT_CHARS } = require('./webPageFetcher')
+            const requestedUrl = typeof toolArgs.url === 'string' ? toolArgs.url.trim() : ''
+            if (!requestedUrl) {
+                return { success: false, error: 'url is required for fetch_url.' }
+            }
+            const requestedMax = Number(toolArgs.maxChars)
+            const maxChars =
+                Number.isFinite(requestedMax) && requestedMax > 0
+                    ? Math.min(Math.floor(requestedMax), 40000)
+                    : DEFAULT_MAX_TEXT_CHARS
+            console.log('🌐 FETCH_URL TOOL: reading page', { url: requestedUrl, maxChars })
+            const page = await fetchWebPage(requestedUrl, {
+                maxChars,
+                tavilyApiKey: getCachedEnvFunctions().TAVILY_API_KEY || '',
+            })
+            console.log('🌐 FETCH_URL TOOL: done', {
+                url: requestedUrl,
+                success: page.success,
+                source: page.source || null,
+                status: page.status || null,
+                textLength: page.text ? page.text.length : 0,
+                error: page.error || null,
+            })
+            return page
+        }
+
+        case 'find_profile_photo': {
+            const { findProfilePhotoCandidates } = require('./profilePhotoFinder')
+            const pageUrls = Array.isArray(toolArgs.pageUrls) ? toolArgs.pageUrls : []
+            const email = typeof toolArgs.email === 'string' ? toolArgs.email.trim() : ''
+            const githubUsername = typeof toolArgs.githubUsername === 'string' ? toolArgs.githubUsername.trim() : ''
+            if (!email && !githubUsername && pageUrls.length === 0) {
+                return {
+                    success: false,
+                    error: 'find_profile_photo needs an email, a GitHub username or at least one page URL.',
+                }
+            }
+            console.log('🖼️ FIND_PROFILE_PHOTO TOOL: looking up candidates', {
+                hasEmail: !!email,
+                hasGithub: !!githubUsername,
+                pageUrlCount: pageUrls.length,
+            })
+            const result = await findProfilePhotoCandidates(
+                { email, githubUsername, pageUrls },
+                { tavilyApiKey: getCachedEnvFunctions().TAVILY_API_KEY || '' }
+            )
+            console.log('🖼️ FIND_PROFILE_PHOTO TOOL: done', { candidates: result.candidates.length })
+            return result
         }
 
         case 'get_route_info': {
@@ -9467,6 +10031,7 @@ async function executeToolNatively(
                     location: toolArgs.location,
                     attendees: toolArgs.attendees,
                     calendarId: toolArgs.calendarId,
+                    recurrence: toolArgs.recurrence,
                 })
 
                 console.log('📅 CREATE_CALENDAR_EVENT TOOL: Create completed', {
@@ -9519,6 +10084,8 @@ async function executeToolNatively(
                     timeZone: toolArgs.timeZone,
                     location: toolArgs.location,
                     attendees: toolArgs.attendees,
+                    recurrence: toolArgs.recurrence,
+                    scope: toolArgs.scope,
                 })
 
                 console.log('📅 UPDATE_CALENDAR_EVENT TOOL: Update completed', {
@@ -9562,6 +10129,7 @@ async function executeToolNatively(
                     userId: targetUserId,
                     eventId: toolArgs.eventId,
                     calendarId: toolArgs.calendarId,
+                    scope: toolArgs.scope,
                 })
 
                 console.log('📅 DELETE_CALENDAR_EVENT TOOL: Delete completed', {
@@ -9623,11 +10191,16 @@ async function executeToolNatively(
                 // and therefore its own VM session — while the work can be continued later by
                 // talking to the assistant inside that created task.
                 let effectiveProjectId = projectId
-                let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
-                let effectiveObjectId = toolRuntimeContext?.objectId || ''
+                let effectiveObjectType = toolRuntimeContext?.annaConversation
+                    ? 'tasks'
+                    : toolRuntimeContext?.objectType || 'tasks'
+                let effectiveObjectId = toolRuntimeContext?.annaConversation ? '' : toolRuntimeContext?.objectId || ''
 
                 const requestedTargetTaskId =
                     typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
+                if (toolArgs.target_project_id && !requestedTargetTaskId) {
+                    return { success: false, message: 'target_project_id requires target_task_id.' }
+                }
 
                 // Explicit continuation wins over the ambient thread: the assistant is telling us
                 // to carry on an earlier VM run, which means hosting this job on that thread so the
@@ -9678,12 +10251,19 @@ async function executeToolNatively(
                     const target = await resolveVmTargetTask({
                         db: admin.firestore(),
                         projectId: effectiveProjectId,
+                        targetProjectId: toolArgs.target_project_id,
+                        preferredProjectId:
+                            toolRuntimeContext?.originObjectType === 'tasks' &&
+                            toolRuntimeContext?.originObjectId === requestedTargetTaskId
+                                ? toolRuntimeContext.originProjectId
+                                : null,
                         taskId: requestedTargetTaskId,
                         requestUserId,
                     })
                     if (!target.ok) {
                         return { success: false, message: target.message }
                     }
+                    effectiveProjectId = target.projectId
                     effectiveObjectType = target.objectType
                     effectiveObjectId = target.objectId
 
@@ -9722,6 +10302,7 @@ async function executeToolNatively(
                         deliverable: toolArgs.deliverable,
                         originatingRequestText,
                         originatingImageUrls,
+                        trackAssistantWork: toolRuntimeContext?.annaConversation === true,
                         projectId,
                         assistantId,
                         creatorId,
@@ -9740,8 +10321,9 @@ async function executeToolNatively(
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
-                const threadContext = await buildVmThreadContext({
+                let threadContext = await buildVmThreadContext({
                     projectId: effectiveProjectId,
+                    assistantProjectId: projectId,
                     objectType: effectiveObjectType,
                     objectId: effectiveObjectId,
                     assistantId,
@@ -9755,6 +10337,10 @@ async function executeToolNatively(
                     return ''
                 })
 
+                if (toolRuntimeContext?.annaConversation && effectiveObjectType === 'tasks') {
+                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished. For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
+                }
+
                 // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/
                 // `approvalPolicy` outrank the saved Settings → Integrations defaults, so startVmJob
                 // only honors them when this text asks for them (AT-2224). Model-authored fields
@@ -9767,7 +10353,7 @@ async function executeToolNatively(
                 )
 
                 const { startVmJob } = require('./vmJob')
-                return await startVmJob({
+                const vmResult = await startVmJob({
                     objective: toolArgs.objective,
                     taskType: toolArgs.task_type,
                     agent: toolArgs.agent,
@@ -9792,11 +10378,37 @@ async function executeToolNatively(
                     // Origin conversation (set when this job was delegated from another thread,
                     // e.g. a WhatsApp chat with a different assistant) so the worker can post a
                     // completion note back where the user is actually talking.
-                    originProjectId: toolRuntimeContext?.originProjectId || '',
-                    originObjectType: toolRuntimeContext?.originObjectType || '',
-                    originObjectId: toolRuntimeContext?.originObjectId || '',
-                    originAssistantId: toolRuntimeContext?.originAssistantId || '',
+                    originProjectId:
+                        toolRuntimeContext?.originProjectId ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.projectId || projectId : ''),
+                    originObjectType:
+                        toolRuntimeContext?.originObjectType ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectType : ''),
+                    originObjectId:
+                        toolRuntimeContext?.originObjectId ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectId : ''),
+                    originAssistantId:
+                        toolRuntimeContext?.originAssistantId ||
+                        (toolRuntimeContext?.annaConversation ? assistantId : ''),
                 })
+                // Persist the workflow handoff before requesting another model response. That
+                // response can hang even though the VM has already started and will finish.
+                if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {
+                    try {
+                        await toolRuntimeContext.onVmJobStarted({
+                            correlationId: vmResult.correlationId,
+                            projectId: effectiveProjectId,
+                            objectType: effectiveObjectType,
+                            objectId: effectiveObjectId,
+                        })
+                    } catch (error) {
+                        console.warn('VM workflow handoff failed; retaining successful launch result', {
+                            correlationId: vmResult.correlationId,
+                            error: error.message,
+                        })
+                    }
+                }
+                return vmResult
             } catch (error) {
                 console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {
                     error: error.message,
@@ -9869,7 +10481,10 @@ async function storeChunks(
                       },
                   }
                 : null
-        if (assistantRun) comment.assistantRun = assistantRun
+        if (assistantRun) {
+            Object.assign(assistantRun, advanceAssistantActivity(assistantRun, assistantRun.activity))
+            comment.assistantRun = assistantRun
+        }
         comment.isLoading = true
         comment.isThinking = false
 
@@ -9878,6 +10493,7 @@ async function storeChunks(
         let thinkingContent = ''
         let answerContent = ''
         let toolAlreadyExecuted = false
+        let fatalToolExecutionError = null
         const createdNoteResults = []
         const startedVmJobResults = []
 
@@ -9913,7 +10529,7 @@ async function storeChunks(
         // Stamp the comment coordinates onto the lock so the watchdog can finalize this exact
         // comment if the run's process dies before it can clean up after itself.
         if (assistantRunLockRef) {
-            recordAssistantRunComment(assistantRunLockRef, {
+            await recordAssistantRunComment(assistantRunLockRef, {
                 projectId,
                 objectType,
                 objectId,
@@ -9936,7 +10552,7 @@ async function storeChunks(
         let cachedRunAssistant = null
         const getRunAssistant = async () => {
             if (!cachedRunAssistant) {
-                cachedRunAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+                cachedRunAssistant = getAssistantForChat(projectId, assistantId, requestUserId, {
                     forceRefresh: true,
                 })
             }
@@ -9958,7 +10574,9 @@ async function storeChunks(
         // is not the silent marker. ensureCommitted() writes the deferred comment on demand.
         const ensureCommitted = async () => {
             if (committed) return
-            comment.commentText = typeof commentText === 'string' ? commentText : comment.commentText
+            comment.commentText = sanitizeAssistantResponseText(
+                typeof commentText === 'string' ? commentText : comment.commentText
+            )
             await commentRef.set(comment)
             if (streamOutput && typeof streamOutput === 'object') {
                 streamOutput.commentId = commentId
@@ -9984,7 +10602,7 @@ async function storeChunks(
             committed = true
         }
 
-        const [currentFollowerIds] = await Promise.all(promises)
+        let [currentFollowerIds] = await Promise.all(promises)
         const step1Duration = Date.now() - step1Start
 
         console.log(`📊 [TIMING] Initial setup: ${step1Duration}ms`, {
@@ -9997,6 +10615,12 @@ async function storeChunks(
             assistantId,
             requestUserId,
         }
+
+        // The assistant's OWN answer comment, which the context built by the caller cannot know
+        // (it carries `messageId`, the user's triggering message). A browser approval request is
+        // rendered under the comment in which the assistant says it needs one, so without this the
+        // request exists server-side with nowhere on screen to appear.
+        runtimeContextForTools.assistantCommentId = commentId
 
         // Recent user-authored turns, so a per-run VM override the user asked for a message or two
         // ago ("do the next one with codex" → "go ahead") is still corroborated. Assistant turns are
@@ -10020,7 +10644,47 @@ async function storeChunks(
 
         // Low-level write that assumes the doc already exists. Callers must have
         // awaited ensureCommitted() before invoking this.
-        const commentRefRawUpdate = data => commentRef.update(data)
+        const { updateAssistantRunComment } = require('./assistantRunLocation')
+        const commentRefRawUpdate = async data => {
+            const location = await updateAssistantRunComment(
+                admin.firestore(),
+                assistantRunLockRef,
+                { projectId, objectType, objectId, commentId },
+                data
+            )
+            if (location.projectId !== projectId) {
+                projectId = location.projectId
+                runtimeContextForTools.projectId = projectId
+                if (streamOutput) streamOutput.projectId = projectId
+                chatLink = getLinkedParentChatUrl(projectId, objectType, objectId)
+                const { project, chat } = await getCommonData(projectId, objectType, objectId)
+                projectname = project.name
+                objectName = chat.title
+                // Refresh recipients against the destination, rather than notifying source-only members.
+                const targetMembers = new Set(project.userIds || [])
+                userIdsToNotify = userIdsToNotify.filter(id => targetMembers.has(id))
+                currentFollowerIds = currentFollowerIds.filter(id => targetMembers.has(id))
+            }
+        }
+
+        // Firestore updates can resolve out of order. A timer-triggered batch write may still be
+        // in flight when the stream finishes and flushes its final few tokens; if the older write
+        // lands last, it silently replaces the complete answer with its shorter snapshot. Keep all
+        // writes to this comment in one chain so the newest accumulated text always wins.
+        let commentUpdateWriteChain = Promise.resolve()
+        const queueCommentUpdate = updateData => {
+            if (typeof updateData.commentText === 'string') {
+                updateData = { ...updateData, commentText: sanitizeAssistantResponseText(updateData.commentText) }
+            }
+            const writePromise = commentUpdateWriteChain
+                .catch(() => {})
+                .then(async () => {
+                    await ensureCommitted()
+                    await commentRefRawUpdate(updateData)
+                })
+            commentUpdateWriteChain = writePromise
+            return writePromise
+        }
 
         // In silent mode, decide whether the current state should still be hidden from
         // Firestore. We defer ANY write while:
@@ -10054,7 +10718,10 @@ async function storeChunks(
         }
 
         const flushPendingUpdate = async () => {
-            if (!pendingUpdate) return
+            if (!pendingUpdate) {
+                await commentUpdateWriteChain
+                return
+            }
             if (shouldDeferSilentWrite()) {
                 // Keep the timeout and pendingUpdate in place so it fires again later;
                 // actually, we drop it — the next chunk will reschedule if needed.
@@ -10071,16 +10738,14 @@ async function storeChunks(
                 clearTimeout(updateTimeout)
                 updateTimeout = null
             }
-            await ensureCommitted()
-            await commentRefRawUpdate(updateData)
+            await queueCommentUpdate(updateData)
         }
 
         // Wrapper that guarantees the Firestore comment doc exists before updating.
         // Safe to use even outside silent mode (in which case `ensureCommitted()` is a no-op).
         const safeCommentUpdate = async updateData => {
             if (shouldDeferSilentWrite()) return
-            await ensureCommitted()
-            await commentRefRawUpdate(updateData)
+            await queueCommentUpdate(updateData)
         }
 
         finalizeCancelledComment = async () => {
@@ -10090,8 +10755,7 @@ async function storeChunks(
             }
             pendingUpdate = null
             commentText = 'Stopped.'
-            await ensureCommitted()
-            await commentRefRawUpdate({
+            await queueCommentUpdate({
                 commentText,
                 isLoading: false,
                 isThinking: false,
@@ -10128,7 +10792,6 @@ async function storeChunks(
             }
             pendingUpdate = null
             if (failureMessage) commentText = failureMessage
-            await ensureCommitted()
             const updateData = {
                 isLoading: false,
                 isThinking: false,
@@ -10141,7 +10804,7 @@ async function storeChunks(
                     failedAt: Date.now(),
                 }
             }
-            await commentRefRawUpdate(updateData).catch(() => {})
+            await queueCommentUpdate(updateData).catch(() => {})
         }
 
         const scheduleUpdate = async (updateData, immediate = false) => {
@@ -10266,10 +10929,16 @@ async function storeChunks(
                 let currentToolCalls = chunk.additional_kwargs.tool_calls
                 let toolCallIteration = 0
                 let pendingAttachmentPayload = null
+                let pendingContinuation = null
+                const continuationGuard = createWorkflowContinuationGuard()
+                // A failed tool call is handed back to the model as its result instead of ending
+                // the run (see toolCallFailure.js); only a model that keeps failing is stopped.
+                const toolCallFailure = require('./toolCallFailure')
+                let consecutiveFailedToolRounds = 0
 
                 while (
                     currentToolCalls &&
-                    currentToolCalls.length > 0 &&
+                    (currentToolCalls.length > 0 || pendingContinuation) &&
                     toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS &&
                     Date.now() - runWallClockStart < maxRunWallClockMs
                 ) {
@@ -10281,256 +10950,236 @@ async function storeChunks(
                         })
                     }
 
-                    // Process first tool call (OpenAI typically sends one at a time)
                     await throwIfCancelled(true)
-                    const toolCall = currentToolCalls[0]
-                    const toolName = toolCall.function.name
-                    const toolCallId = toolCall.id
-
-                    // Parse arguments
-                    let toolArgs = {}
-                    try {
-                        toolArgs = JSON.parse(toolCall.function.arguments)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
-                        }
-                    } catch (e) {
-                        console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
-                        commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
-                        await safeCommentUpdate({ commentText, isLoading: false })
-                        toolAlreadyExecuted = true
-                        break // Exit the while loop
-                    }
-
-                    const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
-                        toolName,
-                        toolArgs,
-                        pendingAttachmentPayload
-                    )
-                    toolArgs = enrichedToolArgs.toolArgs
-                    if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
-
-                    const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
-                        toolName,
-                        toolArgs,
-                        userContext
-                    )
-                    toolArgs = createTaskImageArgs.toolArgs
-
-                    // Check permissions
-                    await throwIfCancelled(true)
-                    const assistant = await getRunAssistant()
-                    const allowed = await isToolAllowedForExecution(
-                        Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
-                        toolName,
-                        runtimeContextForTools
-                    )
-
-                    if (!allowed) {
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
-                        }
-                        await flushPendingUpdate() // Flush any pending updates first
-                        commentText = appendStatusBlock(commentText, `Tool not permitted: ${toolName}`)
-                        await safeCommentUpdate({ commentText, isLoading: false })
-                        toolAlreadyExecuted = true
-                        break // Exit the while loop
-                    }
-
-                    // Show loading indicator
-                    await flushPendingUpdate() // Flush any pending updates first
+                    await flushPendingUpdate()
                     const toolExecutionStartedAt = Date.now()
-                    // What the user sees while this runs: an i18n key plus an already
-                    // sanitized subject (whitelisted per tool). Both null when the tool
-                    // exposes nothing safe, which makes the client keep its generic story.
-                    const toolActivityDescriptor = buildToolActivityDescriptor({ toolName, toolArgs })
-                    if (assistantRun) {
-                        assistantRun.activity = {
-                            phase: 'tool',
-                            toolName,
-                            startedAt: toolExecutionStartedAt,
-                            iteration: toolCallIteration,
-                            actionKey: toolActivityDescriptor.actionKey || null,
-                            subject: toolActivityDescriptor.subject || null,
-                        }
-                    }
-                    let toolStatusMessage = buildToolProgressStatusMessage({
-                        toolName,
-                        toolArgs,
-                        toolCallIteration,
-                        elapsedMs: 0,
-                    })
-                    commentText = appendStatusBlock(commentText, toolStatusMessage)
-                    await safeCommentUpdate({
-                        commentText,
-                        isLoading: true,
-                        ...(assistantRun
-                            ? {
-                                  assistantRun: {
-                                      ...assistantRun,
-                                      status: 'running',
-                                  },
-                              }
-                            : {}),
-                    })
-
+                    let batchState = { total: currentToolCalls.length, completed: 0, active: [0] }
+                    let toolStatusMessage = ''
                     let stopToolProgressUpdates = false
-                    const updateToolProgressStatus = async () => {
-                        if (stopToolProgressUpdates) return
-
-                        const nextStatusMessage = buildToolProgressStatusMessage({
-                            toolName,
-                            toolArgs,
-                            toolCallIteration,
-                            elapsedMs: Date.now() - toolExecutionStartedAt,
-                        })
-                        if (nextStatusMessage === toolStatusMessage || stopToolProgressUpdates) return
-
-                        // Function replacement: the status text now embeds a user-supplied
-                        // subject, and `$&` / `$$` in a string replacement are special.
-                        commentText = commentText.replace(toolStatusMessage, () => nextStatusMessage)
-                        toolStatusMessage = nextStatusMessage
-                        if (stopToolProgressUpdates) return
-
-                        await safeCommentUpdate({ commentText, isLoading: true })
-                    }
-
-                    const toolProgressInterval = setInterval(() => {
-                        updateToolProgressStatus().catch(error => {
-                            console.warn('🔧 NATIVE TOOL CALL: Failed updating tool progress status', {
-                                toolName,
-                                error: error.message,
-                            })
-                        })
-                    }, TOOL_PROGRESS_UPDATE_INTERVAL_MS)
-
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
-                    }
-
-                    // Execute tool and get result
-                    let toolResult
-                    try {
-                        await throwIfCancelled(true)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
-                        }
-                        toolResult = await executeToolNatively(
-                            toolName,
-                            toolArgs,
-                            projectId,
-                            assistantId,
-                            runtimeContextForTools.requestUserId || requestUserId,
-                            userContext,
-                            runtimeContextForTools
-                        )
-                        await throwIfCancelled(true)
-                        if (toolName === 'create_note' && toolResult?.success !== false) {
-                            const createdNote = normalizeCreatedNote(toolResult)
-                            if (createdNote && !createdNoteResults.some(note => note.noteId === createdNote.noteId)) {
-                                createdNoteResults.push(createdNote)
-                                if (assistantRun) {
-                                    const existingCreatedEntities = Array.isArray(assistantRun.createdEntities)
-                                        ? assistantRun.createdEntities
-                                        : []
-                                    assistantRun.createdEntities = [...existingCreatedEntities, createdNote]
-                                    await safeCommentUpdate({
-                                        assistantRun: {
-                                            ...assistantRun,
-                                            status: 'running',
-                                        },
-                                    }).catch(error => {
-                                        console.warn('CREATE_NOTE TOOL: Failed persisting created-note metadata', {
-                                            noteId: createdNote.noteId,
-                                            error: error.message,
+                    let progressWrites = Promise.resolve()
+                    const updateToolProgressStatus = () => {
+                        progressWrites = progressWrites
+                            .then(async () => {
+                                if (stopToolProgressUpdates) return
+                                const activeCall = currentToolCalls[batchState.active[0] ?? 0]
+                                const toolName = activeCall?.function?.name
+                                let toolArgs = {}
+                                try {
+                                    toolArgs = JSON.parse(activeCall?.function?.arguments || '{}')
+                                } catch (_) {}
+                                const multiple = batchState.total > 1
+                                const descriptor = multiple
+                                    ? {
+                                          actionKey: 'assistant_activity_multiple_steps',
+                                          subject: `${batchState.completed}/${batchState.total}`,
+                                      }
+                                    : buildToolActivityDescriptor({ toolName, toolArgs })
+                                const nextStatusMessage = multiple
+                                    ? `Working through your request: ${batchState.completed}/${batchState.total} steps returned a result; ${batchState.active.length} running.`
+                                    : buildToolProgressStatusMessage({
+                                          toolName,
+                                          toolArgs,
+                                          elapsedMs: Date.now() - toolExecutionStartedAt,
+                                      })
+                                if (nextStatusMessage === toolStatusMessage) return
+                                commentText = toolStatusMessage
+                                    ? commentText.replace(toolStatusMessage, () => nextStatusMessage)
+                                    : appendStatusBlock(commentText, nextStatusMessage)
+                                toolStatusMessage = nextStatusMessage
+                                if (assistantRun)
+                                    Object.assign(
+                                        assistantRun,
+                                        advanceAssistantActivity(assistantRun, {
+                                            phase: 'tool',
+                                            toolName: multiple ? 'parallel_reads' : toolName,
+                                            startedAt: toolExecutionStartedAt,
+                                            iteration: toolCallIteration,
+                                            actionKey: descriptor.actionKey || null,
+                                            subject: descriptor.subject || null,
+                                            total: batchState.total,
+                                            completed: batchState.completed,
+                                            active: batchState.active.length,
                                         })
-                                    })
-                                }
-                            }
-                        }
-                        collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
-                        const toolResultString = JSON.stringify(toolResult, null, 2)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
-                                toolName,
-                                resultLength: toolResultString.length,
-                                resultPreview: toolResultString.substring(0, 500),
-                                fullResult:
-                                    toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
+                                    )
+                                await safeCommentUpdate({
+                                    commentText,
+                                    isLoading: true,
+                                    ...(assistantRun ? { assistantRun: { ...assistantRun, status: 'running' } } : {}),
+                                })
                             })
+                            .catch(error => console.warn('Tool progress update failed', { error: error.message }))
+                        return progressWrites
+                    }
+                    await updateToolProgressStatus()
+                    const toolProgressInterval = setInterval(updateToolProgressStatus, TOOL_PROGRESS_UPDATE_INTERVAL_MS)
+                    let toolExecutions
+                    try {
+                        toolExecutions = await executeToolCallBatch(
+                            currentToolCalls,
+                            async toolCall => {
+                                const toolName = toolCall?.function?.name
+                                try {
+                                    await throwIfCancelled(true)
+                                    if (Date.now() - runWallClockStart >= maxRunWallClockMs) {
+                                        const error = new Error('This run reached its time limit before finishing.')
+                                        error.code = 'ASSISTANT_TOOL_TIME_BUDGET'
+                                        throw error
+                                    }
+                                    let toolArgs
+                                    try {
+                                        toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                                    } catch (error) {
+                                        if (toolName !== COMPACT_THREAD_CONTEXT_TOOL_KEY) throw error
+                                        toolArgs = {}
+                                    }
+                                    const enriched = injectPendingAttachmentIntoToolArgs(
+                                        toolName,
+                                        toolArgs,
+                                        pendingAttachmentPayload
+                                    )
+                                    toolArgs = enriched.toolArgs
+                                    if (enriched.usedPendingAttachment) pendingAttachmentPayload = null
+                                    toolArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                                        toolName,
+                                        toolArgs,
+                                        userContext
+                                    ).toolArgs
+                                    const assistant = await getRunAssistant()
+                                    const { resolveRunAllowedTools } = require('./runToolGrants')
+                                    if (
+                                        !(await isToolAllowedForExecution(
+                                            resolveRunAllowedTools(assistant.allowedTools, runtimeContextForTools),
+                                            toolName,
+                                            runtimeContextForTools
+                                        ))
+                                    )
+                                        throw new Error(`Tool not permitted: ${toolName}`)
+                                    await throwIfCancelled(true)
+                                    const toolResult = await executeWithCompactionRepair(
+                                        runtimeContextForTools,
+                                        toolName,
+                                        () =>
+                                            executeToolNatively(
+                                                toolName,
+                                                toolArgs,
+                                                projectId,
+                                                assistantId,
+                                                runtimeContextForTools.requestUserId || requestUserId,
+                                                userContext,
+                                                runtimeContextForTools
+                                            )
+                                    )
+                                    await throwIfCancelled(true)
+                                    if (toolName === 'create_note' && toolResult?.success !== false) {
+                                        const createdNote = normalizeCreatedNote(toolResult)
+                                        if (
+                                            createdNote &&
+                                            !createdNoteResults.some(note => note.noteId === createdNote.noteId)
+                                        ) {
+                                            createdNoteResults.push(createdNote)
+                                            if (assistantRun) {
+                                                const existingCreatedEntities = Array.isArray(
+                                                    assistantRun.createdEntities
+                                                )
+                                                    ? assistantRun.createdEntities
+                                                    : []
+                                                assistantRun.createdEntities = [...existingCreatedEntities, createdNote]
+                                                await safeCommentUpdate({
+                                                    assistantRun: {
+                                                        ...assistantRun,
+                                                        status: 'running',
+                                                    },
+                                                }).catch(error => {
+                                                    console.warn(
+                                                        'CREATE_NOTE TOOL: Failed persisting created-note metadata',
+                                                        {
+                                                            noteId: createdNote.noteId,
+                                                            error: error.message,
+                                                        }
+                                                    )
+                                                })
+                                            }
+                                        }
+                                    }
+                                    collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+
+                                    const conversationSafeToolResult = buildConversationSafeToolResult(
+                                        toolName,
+                                        toolResult
+                                    )
+                                    pendingAttachmentPayload =
+                                        buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                                    return { toolName, toolArgs, toolCallId: toolCall.id, conversationSafeToolResult }
+                                } catch (error) {
+                                    error.toolName ||= toolName
+                                    throw error
+                                }
+                            },
+                            {
+                                onState: state => {
+                                    batchState = state
+                                },
+                                recoverError: (error, toolCall) => {
+                                    if (!toolCallFailure.isRecoverableToolError(error)) return undefined
+                                    console.warn('🔧 TOOL CALL FAILED: returning the error to the model', {
+                                        toolName: toolCall?.function?.name,
+                                        error: error?.message,
+                                        iteration: toolCallIteration,
+                                    })
+                                    return toolCallFailure.buildFailedToolExecution(toolCall, error)
+                                },
+                                skippedResult: toolCall => toolCallFailure.buildSkippedToolExecution(toolCall),
+                            }
+                        )
+                        consecutiveFailedToolRounds = toolCallFailure.countConsecutiveFailedRounds(
+                            consecutiveFailedToolRounds,
+                            toolExecutions
+                        )
+                        if (consecutiveFailedToolRounds >= toolCallFailure.MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS) {
+                            throw (
+                                toolCallFailure.getRoundFailure(toolExecutions) || new Error('Tool calls kept failing.')
+                            )
                         }
                     } catch (error) {
+                        if (error instanceof AssistantRunCancelledError) throw error
+                        await progressWrites
+                        const errorMsg = `Error executing ${error.toolName || 'tool'}: ${error.message}`
+                        commentText = commentText.replace(toolStatusMessage, () => errorMsg)
+                        await safeCommentUpdate({ commentText, isLoading: false })
+                        if (runtimeContextForTools.failOnToolExecutionError === true) {
+                            fatalToolExecutionError = error
+                            if (!fatalToolExecutionError.code)
+                                fatalToolExecutionError.code = 'ASSISTANT_TOOL_EXECUTION_FAILED'
+                        }
+                        toolAlreadyExecuted = true
+                        break
+                    } finally {
                         stopToolProgressUpdates = true
                         clearInterval(toolProgressInterval)
-                        console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
-                            toolName,
-                            error: error.message,
-                            stack: error.stack,
-                        })
-                        await flushPendingUpdate() // Flush any pending updates first
-                        const errorMsg = `Error executing ${toolName}: ${error.message}`
-                        commentText = commentText.replace(toolStatusMessage, errorMsg)
-                        await safeCommentUpdate({ commentText, isLoading: false })
-                        toolAlreadyExecuted = true
-                        break // Exit the while loop
+                        await progressWrites
                     }
-                    stopToolProgressUpdates = true
-                    clearInterval(toolProgressInterval)
-                    const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
-                    pendingAttachmentPayload =
-                        buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                    const updatedConversation = pendingContinuation
+                        ? [...currentConversation, { role: 'user', content: pendingContinuation }]
+                        : buildConversationAfterToolExecutions({
+                              currentConversation,
+                              responseText: commentText.replace(toolStatusMessage, '').trim(),
+                              toolExecutions,
+                              userContext,
+                          })
 
-                    // Build new conversation history with tool result
-                    // Need to add: assistant's message with tool call, then tool result message
-
-                    // Collect all assistant content before tool call
-                    const assistantMessageContent = commentText.replace(toolStatusMessage, '').trim()
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
-                            assistantMessageContentLength: assistantMessageContent.length,
-                            assistantMessageContent: assistantMessageContent.substring(0, 200),
-                        })
-                    }
-
-                    // Build updated conversation with plain objects
-                    const updatedConversation = buildConversationAfterToolExecution({
-                        currentConversation,
-                        responseText: assistantMessageContent,
-                        toolName,
-                        toolArgs,
-                        toolCallId,
-                        conversationSafeToolResult,
-                        userContext,
-                    })
-
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
-                            conversationLength: updatedConversation.length,
-                            originalHistoryLength: currentConversation.length,
-                            toolResultLength: JSON.stringify(toolResult).length,
-                            toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
-                            iteration: toolCallIteration,
-                            lastThreeMessages: updatedConversation.slice(-3).map(m => ({
-                                role: m.role,
-                                hasContent: !!m.content,
-                                contentLength: m.content?.length,
-                                contentPreview: m.content?.substring(0, 150),
-                                hasToolCalls: !!m.tool_calls,
-                                toolCallsCount: m.tool_calls?.length,
-                                hasToolCallId: !!m.tool_call_id,
-                            })),
-                        })
-                    }
-
+                    pendingContinuation = null
                     // Update currentConversation for next iteration
                     currentConversation = updatedConversation
 
                     if (assistantRun) {
-                        assistantRun.activity = {
-                            phase: 'composing',
-                            startedAt: Date.now(),
-                            iteration: toolCallIteration,
-                        }
+                        Object.assign(
+                            assistantRun,
+                            advanceAssistantActivity(assistantRun, {
+                                phase: 'composing',
+                                startedAt: Date.now(),
+                                iteration: toolCallIteration,
+                            })
+                        )
                     }
 
                     // Replace the tool status with a friendly composing phase before waiting on
@@ -10675,7 +11324,35 @@ async function storeChunks(
                         currentToolCalls = nextToolCalls
                         // Continue the while loop
                     } else {
-                        // No more tool calls, we're done
+                        if (runtimeContextForTools.trackWorkflowProgress) {
+                            const progress = getPendingWorkflowProgress(
+                                await readWorkflowState(admin.firestore(), runtimeContextForTools),
+                                runtimeContextForTools
+                            )
+                            try {
+                                pendingContinuation = continuationGuard(progress)
+                            } catch (error) {
+                                fatalToolExecutionError = error
+                            }
+                            if (pendingContinuation) {
+                                console.log('ASSISTANT WORKFLOW: Continuing unfinished work', {
+                                    completed: progress.completed,
+                                    total: progress.total,
+                                    next: progress.next,
+                                })
+                                // Keep the model's early response as context, but remove it from the
+                                // visible final answer before the next round resumes actual work.
+                                const earlyReply = commentText.slice(commentText.length - totalContentReceived)
+                                currentConversation = [
+                                    ...currentConversation,
+                                    { role: 'assistant', content: earlyReply },
+                                ]
+                                commentText = commentText.slice(0, commentText.length - totalContentReceived)
+                                currentToolCalls = []
+                                continue
+                            }
+                        }
+                        // No more tool calls, and no unfinished tracked workflow.
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: No more tool calls, exiting loop', {
                                 totalIterations: toolCallIteration,
@@ -10693,7 +11370,7 @@ async function storeChunks(
                 const hitTimeBudget =
                     !hitMaxIterations &&
                     !!currentToolCalls &&
-                    currentToolCalls.length > 0 &&
+                    (currentToolCalls.length > 0 || pendingContinuation) &&
                     Date.now() - runWallClockStart >= maxRunWallClockMs
                 if (hitMaxIterations || hitTimeBudget) {
                     await flushPendingUpdate() // Flush any pending updates first
@@ -10821,6 +11498,21 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
+        const sanitizedCommentText = sanitizeAssistantResponseText(commentText)
+        if (sanitizedCommentText !== commentText) {
+            console.warn('Assistant transcript artifacts removed', { projectId, objectType, objectId, commentId })
+            if (!sanitizedCommentText.trim()) {
+                const error = new Error(
+                    'The assistant returned an invalid transcript instead of an answer. Please try again.'
+                )
+                error.code = 'INVALID_ASSISTANT_RESPONSE'
+                throw error
+            }
+            commentText = sanitizedCommentText
+            answerContent = sanitizeAssistantResponseText(answerContent)
+            await safeCommentUpdate({ commentText, isThinking: false, isLoading: false })
+        }
+
         if (createdNoteResults.length > 0 || startedVmJobResults.length > 0) {
             await flushPendingUpdate()
             const responseWithLinks = ensureVmHostThreadLinksInResponse(
@@ -10904,7 +11596,7 @@ async function storeChunks(
                     completedAt: Date.now(),
                 }
             }
-            await commentRefRawUpdate(finalUpdate)
+            await queueCommentUpdate(finalUpdate)
         }
 
         if (ENABLE_DETAILED_LOGGING) {
@@ -11014,6 +11706,15 @@ async function storeChunks(
         await Promise.all(promises)
         const finalOpsDuration = Date.now() - finalOpsStart
 
+        if (fatalToolExecutionError) {
+            console.error('🔧 NATIVE TOOL CALL: Propagating background tool execution failure', {
+                toolName: fatalToolExecutionError.toolName || null,
+                code: fatalToolExecutionError.code || null,
+                error: fatalToolExecutionError.message,
+            })
+            throw fatalToolExecutionError
+        }
+
         const streamProcessDuration = Date.now() - streamProcessStart
         const totalDuration = Date.now() - chunksStartTime
 
@@ -11047,7 +11748,11 @@ async function storeChunks(
             }
         } else if (typeof finalizeFailedAssistantRunComment === 'function') {
             await finalizeFailedAssistantRunComment(
-                isEmptyOpenAiResponseError(error) ? EMPTY_ASSISTANT_RESPONSE_TEXT : null
+                isEmptyOpenAiResponseError(error)
+                    ? EMPTY_ASSISTANT_RESPONSE_TEXT
+                    : error.code === 'INVALID_ASSISTANT_RESPONSE'
+                      ? error.message
+                      : null
             )
         }
         console.error('❌ [TIMING] Error in storeChunks:', {
@@ -11216,9 +11921,12 @@ const primeDefaultAssistantCache = async () => {
         if (defaultAssistant?.uid) {
             const normalizedAssistant = {
                 ...defaultAssistant,
-                model: normalizeModelKey(defaultAssistant.model || MODEL_GPT5_6_SOL),
+                model: normalizeModelKey(defaultAssistant.model || MODEL_GPT6_SOL),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
-                reasoningEffort: normalizeAssistantReasoningEffort(defaultAssistant.reasoningEffort),
+                reasoningEffort: normalizeAssistantReasoningEffort(
+                    defaultAssistant.reasoningEffort,
+                    defaultAssistant.model || MODEL_GPT6_SOL
+                ),
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
                 emailSignature:
                     typeof defaultAssistant.emailSignature === 'string'
@@ -11329,9 +12037,9 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     }
     // Provide fallback defaults for missing fields
     assistant = assistant || {}
-    assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT5_6_SOL)
+    assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT6_SOL)
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
-    assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort)
+    assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort, assistant.model)
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
     assistant.emailSignature =
         typeof assistant?.emailSignature === 'string' ? assistant.emailSignature : DEFAULT_EMAIL_SIGNATURE
@@ -11365,15 +12073,26 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
 }
 
 // New function to get task-level settings or fall back to assistant settings
-async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
+async function getTaskOrAssistantSettings(projectId, taskId, assistantId, threadContext = null) {
     const settingsStart = Date.now()
     console.log('⚙️ ASSISTANT SETTINGS: Getting task or assistant settings:', { projectId, taskId, assistantId })
 
     // Fetch task data and assistant settings in parallel
     const parallelStart = Date.now()
-    const [taskDoc, assistant] = await Promise.all([
+    // `threadContext` names the conversation this prompt runs in, so its model pin (AT-2502) can
+    // be read in the same round trip. Callers that have no thread pass nothing and behave exactly
+    // as they did before.
+    const [taskDoc, assistant, threadModelOverride] = await Promise.all([
         admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get(),
         getAssistantForChat(projectId, assistantId, null, { forceRefresh: true }),
+        threadContext?.objectId
+            ? readThreadAssistantModelOverride(
+                  admin.firestore(),
+                  projectId,
+                  threadContext.objectType,
+                  threadContext.objectId
+              )
+            : Promise.resolve(null),
     ])
     const parallelDuration = Date.now() - parallelStart
     console.log('⚙️ ASSISTANT SETTINGS: Parallel fetch completed', {
@@ -11400,8 +12119,16 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
 
     // Return task settings if they exist, otherwise use assistant settings with defaults
     const taskModelOverride = getPreConfigTaskModelOverride(task)
+    // A model configured on the pre-configured task itself was chosen for THAT prompt and keeps
+    // outranking the thread it happens to be run from; the thread pin only replaces the
+    // assistant's own default.
+    const { model: resolvedModel, source: resolvedModelSource } = resolveThreadAssistantModel({
+        explicitModel: taskModelOverride,
+        threadOverride: threadModelOverride,
+        assistantModel: assistant.model,
+    })
     const settings = {
-        model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
+        model: normalizeModelKey(resolvedModel || MODEL_GPT6_SOL),
         temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
         reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant.reasoningEffort),
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
@@ -11418,7 +12145,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         allowedTools: settings.allowedTools,
         modelTokensPerGold: getTokensPerGold(settings.model),
         settingsSource: {
-            model: taskModelOverride ? 'task_override' : 'assistant',
+            model: resolvedModelSource === 'explicit' ? 'task_override' : resolvedModelSource,
             temperature: 'assistant',
             reasoningEffort:
                 task && Object.prototype.hasOwnProperty.call(task, 'aiReasoningEffort') ? 'task' : 'assistant',
@@ -11669,6 +12396,7 @@ function formatVmTimezoneLabel(offsetMinutes) {
  */
 async function buildVmThreadContext({
     projectId,
+    assistantProjectId = projectId,
     objectType = 'tasks',
     objectId,
     assistantId,
@@ -11731,7 +12459,11 @@ async function buildVmThreadContext({
     // than the settings-editing framing of getAssistantSettingsContextMessage.
     if (opts.assistantPersona && assistantId) {
         try {
-            const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
+            const resolved = await resolveCurrentAssistantDocForToolExecution(
+                assistantProjectId,
+                assistantId,
+                requestUserId
+            )
             const assistant = resolved?.assistant || {}
             const personaLines = ['Assistant persona (act as this assistant):']
             if (assistant.displayName) personaLines.push(`- Name: ${assistant.displayName}`)
@@ -11779,7 +12511,8 @@ async function buildVmThreadContext({
             const attachments = []
             for (const doc of docs) {
                 const data = doc.data() || {}
-                const text = typeof data.commentText === 'string' ? data.commentText.trim() : ''
+                const rawText = typeof data.commentText === 'string' ? data.commentText.trim() : ''
+                const text = data.fromAssistant ? sanitizeAssistantResponseText(rawText) : rawText
                 if (opts.conversationHistory && text) {
                     const role = data.fromAssistant ? 'assistant' : 'user'
                     transcriptLines.push(`[${role}]: ${parseTextForUseLiKePrompt(text)}`)
@@ -11933,6 +12666,26 @@ async function addBaseInstructions(
         }
     }
 
+    // The project wiki's index, right after the manual briefing it complements. Kept in the stable
+    // prefix: it changes about once a day.
+    if (assistantContext?.projectId && assistantContext?.requestUserId) {
+        try {
+            const { getKnowledgeBaseContextMessage } = require('../KnowledgeBase/knowledgeBaseAssistant')
+            const knowledgeBaseContextMessage = await getKnowledgeBaseContextMessage({
+                db: admin.firestore(),
+                context: assistantContext,
+            })
+            if (knowledgeBaseContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(knowledgeBaseContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load project wiki context', {
+                projectId: assistantContext.projectId,
+                error: error.message,
+            })
+        }
+    }
+
     // Add emphasis on immediate action for tool-enabled assistants
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         messages.push([
@@ -11944,6 +12697,24 @@ async function addBaseInstructions(
                 (allowedTools.includes('web_search')
                     ? `The only exception is the limited, occasional proactive web_search behavior described in your conversational style instructions.`
                     : ''),
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.length) {
+        messages.push([
+            'system',
+            'TOOL EXECUTION: Request independent read-only lookups and research calls together in the same response; the server runs approved stateless reads with bounded parallelism. Wait for results before requesting dependent steps or choosing arguments for writes. Never guess identifiers or outputs from unfinished calls. Browser sessions, attachments, external tools and changes are executed in order. Use every returned result when answering; a returned error is not success.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('fetch_url') && allowedTools.includes(BROWSER_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'WEB READING ROUTING: Use fetch_url for static, server-rendered HTML that only needs a read. Use browser_navigate for JavaScript-rendered pages, SPA or "#/..." fragment routes, current page state, login or interaction, when the user explicitly asks to browse/open the actual page, or whenever fetch_url succeeds technically but does not contain the requested information. A fetch result containing only navigation or an app shell is not evidence that the detail is unavailable. Switch to browser_navigate instead of attempting repeated web_search queries while the original page can be opened. Browser results already include a fresh snapshot and element refs; call browser_inspect only if the page may have changed independently or the needed element/ref is missing or stale.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(BROWSER_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'BROWSER PAGE ACCESS: Whenever you visit a website, clear cookie and privacy consent banners before reading or interacting with its content. Use browser_click on the visible "Accept all", "Allow all", "Alle akzeptieren" or equivalent consent control; routine cookie consent does not need a separate user confirmation. Prefer accepting all cookies over rejecting them or leaving the banner open. Also dismiss obstructing newsletter, promotion and app-install overlays using their close or "Not now" control; do not subscribe or install anything just to dismiss them. Use the latest browser refs, then check the returned snapshot to confirm the overlay is gone and the requested content is visible. If content loads asynchronously, use browser_wait or browser_inspect before drawing conclusions. Repeat when a banner appears on another page. Do not treat a cookie banner or obscured page as evidence that the content is unavailable. Login, payment, booking and other sensitive actions still follow the browser approval policy; never bypass an approval or an access restriction.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('search')) {
@@ -11964,7 +12735,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything.',
+            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything. Email and Calendar integrations belong to the user account and are available across projects. Never claim that an integration must be connected separately to the current project; if an account-selection tool error occurs, report its actual missing/default/ambiguity condition.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('update_gmail_email')) {
@@ -11987,7 +12758,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
+            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. For recurring calendar events, clarify the cadence, end condition, and whether an edit or deletion should affect one occurrence or the whole series before writing; pass scope explicitly. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
@@ -12022,7 +12793,7 @@ async function addBaseInstructions(
         ])
         messages.push([
             'system',
-            'For every create_task call, classify the origin of that specific task. Set taskOrigin to user_request only when the end user explicitly asked to create/add/remind them about that task. A system or automation instruction, scheduled run, email content, tool result, or your own inference does not by itself establish an explicit end-user task request; look for the request in the underlying end-user content. If you decide a task would be useful without that explicit request—for example, you infer a follow-up from an important email—you must set taskOrigin to assistant_suggestion. For assistant_suggestion, include a concise, non-empty, visible comment with the concrete context-specific reason the task is worth doing; do not merely restate the title or give a generic reason. The comment is shown in the task thread and the user must accept or reject the suggestion.',
+            'For every create_task call, classify the origin of that specific task. Set taskOrigin to user_request only when the end user explicitly asked to create/add/remind them about that task. A system or automation instruction, scheduled run, email content, tool result, or your own inference does not by itself establish an explicit end-user task request; look for the request in the underlying end-user content. If you decide a task would be useful without that explicit request—for example, you infer a follow-up from an important email—you must set taskOrigin to assistant_suggestion. Tasks created on behalf of the user are assigned directly to the user. Include a concise, non-empty, visible comment with the concrete context-specific reason the task is worth doing; do not merely restate the title or give a generic reason. The server identifies you as the assistant who added the task in that comment. taskOrigin records the source and does not require the user to accept or reject the task.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('add_chat_comment')) {
@@ -12041,6 +12812,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'After create_note succeeds, include the exact canonical URL returned by the tool in your response. If the user later asks where the note is or requests its link, reuse the exact note URL from the recent conversation or created-entity metadata. Never call create_note again merely to provide a link. If no prior link or note ID is available, retrieve the existing note with get_notes or search instead of creating a replacement.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(ARTIFACT_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'ARTIFACTS: When the user asks for a dashboard, an HTML page, a report, a visual or another deliverable to look at or share, build it as an artifact with create_artifact instead of pasting long code into the chat. To change an existing artifact, find it with get_artifacts, read it with read_artifact and save a new version with update_artifact; never create a second copy. After create_artifact or update_artifact succeeds, include the exact url from the result in your answer.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_goals')) {
@@ -12072,6 +12849,10 @@ async function addBaseInstructions(
             'system',
             'When using get_tasks, the default scope is personal: only tasks owned by the requesting user. Use scope="visible" only when the user explicitly asks for all/shared/team/project tasks. If scope="visible", do not call a task "yours" unless isOwnedByRequestingUser is true; otherwise refer to ownerUserId or say it belongs to another user if the name is unavailable.',
         ])
+        messages.push([
+            'system',
+            'For task totals use get_tasks.totalCount, never the length of the tasks array or count (the returned page size). Only call the total exact when totalCountIsExact is true. If listingComplete is false, explicitly describe the shown tasks as a partial list. Context compaction may omit task details or rows without changing the true total.',
+        ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_updates')) {
         messages.push([
@@ -12082,7 +12863,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
-            'When the user asks to update a project description, use update_project_description. The project description is added as shared context to every chat and thread in that project, so edit it carefully. Treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
+            "When the user asks to update a project description, use update_project_description. The project description is the project's stable profile: what the project is, what belongs in it and what does not, and standing rules. It is added as shared context to every chat and thread in that project and routing reads it to place tasks, calendar events and emails, so keep it short and durable. Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them; the project's tasks, notes and wiki hold the current state. Treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.",
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
@@ -12146,7 +12927,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory.',
+            'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory. Compaction is an intermediate step: immediately continue the original request while units remain. For project-description batches, read get_user_projects first and supply the full intended projectIds on the first compaction; keep that scope fixed. Server-verified progress takes precedence over counts in the summary.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
@@ -12285,6 +13066,9 @@ function inferMimeTypeFromFileName(fileName = '') {
     if (normalized.endsWith('.xlsx')) {
         return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     }
+    if (normalized.endsWith('.pptx')) {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    }
     if (normalized.endsWith('.png')) return 'image/png'
     if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
     return 'application/octet-stream'
@@ -12374,6 +13158,7 @@ function normalizeCommentMediaContext(messageData = {}) {
             previewUrl: previewUrl || (kind === 'image' ? storageUrl : ''),
             extractedText: String(media?.extractedText || '').substring(0, MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH),
             extractionStatus: String(media?.extractionStatus || '').trim(),
+            ...(media?.extractionTruncated === true ? { extractionTruncated: true } : {}),
         })
     })
 
@@ -12390,7 +13175,10 @@ function buildFileContextFromMediaContext(mediaContext = []) {
         const mimeType = media.mimeType || 'unknown'
         const extractedText = String(media.extractedText || '').trim()
         if (extractedText) {
-            parts.push(`[FILE: ${fileName}, type=${mimeType}]\n${extractedText}`)
+            // The model must know it sees only the beginning of a long file, or it answers about the
+            // whole document from its first pages.
+            const scope = media.extractionTruncated ? `, only the first ${extractedText.length} characters` : ''
+            parts.push(`[FILE: ${fileName}, type=${mimeType}${scope}]\n${extractedText}`)
         } else {
             parts.push(`[FILE ATTACHED: ${fileName}, type=${mimeType}]`)
         }
@@ -12542,7 +13330,9 @@ function shouldExtractTextFromMedia(media = {}) {
         fileName.endsWith('.csv') ||
         fileName.endsWith('.json') ||
         fileName.endsWith('.md') ||
-        fileName.endsWith('.docx')
+        fileName.endsWith('.docx') ||
+        isPptxFile(mimeType, fileName) ||
+        isXlsxFile(mimeType, fileName)
     )
 }
 
@@ -12578,6 +13368,7 @@ async function enrichCommentMediaContext(commentRef, messageData = {}) {
                     MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH
                 ),
                 extractionStatus: extraction?.status || (extraction?.extractedText ? 'extracted' : 'unsupported'),
+                ...(extraction?.truncated === true ? { extractionTruncated: true } : {}),
             }
             updated = true
         } catch (error) {
@@ -12596,7 +13387,10 @@ async function enrichCommentMediaContext(commentRef, messageData = {}) {
     return nextMediaContext
 }
 
-async function getChatAttachmentForAssistantRequest({
+// Which attachment a tool call means: the one on the given message, or — when the model passed no
+// message id — the most plausible recent upload in the thread. Shared by get_chat_attachment, which
+// hands the bytes to another tool, and add_knowledge_document, which reads the file into the wiki.
+async function resolveRequestedChatAttachment({
     projectId,
     objectType,
     objectId,
@@ -12632,7 +13426,7 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
-    let attachments = selectRequestedChatAttachments(
+    const attachments = selectRequestedChatAttachments(
         mediaContext.filter(isFetchableChatAttachment),
         normalizedExpectedFileName
     )
@@ -12647,26 +13441,7 @@ async function getChatAttachmentForAssistantRequest({
             userMessageText,
         })
 
-        if (fallbackAttachment) {
-            attachments = [fallbackAttachment.media]
-            return {
-                ...(await (async () => {
-                    const fileData = await fetchBinaryFileAsBase64(
-                        fallbackAttachment.media.storageUrl,
-                        fallbackAttachment.media.fileName
-                    )
-                    return {
-                        success: true,
-                        fileName: fallbackAttachment.media.fileName,
-                        fileBase64: fileData.fileBase64,
-                        fileMimeType: fileData.fileMimeType,
-                        fileSizeBytes: fileData.fileSizeBytes,
-                        source: 'chat',
-                        messageId: fallbackAttachment.messageId,
-                    }
-                })()),
-            }
-        }
+        if (fallbackAttachment) return { media: fallbackAttachment.media, messageId: fallbackAttachment.messageId }
     }
 
     if (attachments.length === 0) {
@@ -12685,15 +13460,39 @@ async function getChatAttachmentForAssistantRequest({
         )
     }
 
-    const fileData = await fetchBinaryFileAsBase64(attachment.storageUrl, attachment.fileName)
+    return { media: attachment, messageId: normalizedMessageId }
+}
+
+async function getChatAttachmentForAssistantRequest(request) {
+    const { media, messageId } = await resolveRequestedChatAttachment(request)
+    const fileData = await fetchBinaryFileAsBase64(media.storageUrl, media.fileName)
     return {
         success: true,
-        fileName: attachment.fileName,
+        fileName: media.fileName,
         fileBase64: fileData.fileBase64,
         fileMimeType: fileData.fileMimeType,
         fileSizeBytes: fileData.fileSizeBytes,
         source: 'chat',
-        messageId: normalizedMessageId,
+        messageId,
+    }
+}
+
+// The same attachment as raw bytes, for reading its text on the server. Nothing of it reaches the
+// conversation.
+async function readChatAttachmentFile(request) {
+    const { media, messageId } = await resolveRequestedChatAttachment(request)
+    const { buffer, fileMimeType, fileSizeBytes } = await fetchBinaryFileBuffer(
+        media.storageUrl,
+        media.fileName,
+        MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES
+    )
+    return {
+        fileName: media.fileName,
+        mimeType: fileMimeType || media.mimeType || inferMimeTypeFromFileName(media.fileName),
+        kind: media.kind || 'file',
+        buffer,
+        fileSizeBytes,
+        messageId,
     }
 }
 
@@ -12875,24 +13674,24 @@ const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
     gmail: 'Search Gmail, inspect attachments, manage messages and drafts, and correct email classification.',
     calendar: 'Find availability and search, create, update, or delete calendar events.',
     chats_and_media: 'Read chats, comments, attachments, recent media, and conversation updates.',
-    notes: 'Find, create, and update notes and note content.',
+    alldone_notes: 'Find, create, and update notes and note content.',
     people_and_projects: 'Work with contacts, users, projects, project health, and project objectives.',
     assistant_settings: 'Manage assistant settings, memory, heartbeat behavior, skills, and thread context.',
     research: 'Search the web and get weather, routes, places, and other external information.',
+    browsing: 'Open a web page in a real browser, read it, interact with it, and capture screenshots.',
     integrations: 'Use delegated assistants, configured integrations, and remote MCP tools.',
     other: 'Additional tools available to this assistant.',
 }
 
+// The prefixed tool families are matched FIRST and deliberately so. Their names are built from
+// user-authored assistant, project and server names, so they collide with every keyword below:
+// `talk_to_assistant_*` matches /assistant/, and a delegate whose project is called "MediAgents"
+// matches /media/. With the keyword tests running first, `integrations` was unreachable dead code
+// and every delegation tool was advertised to the model under "Manage assistant settings, memory,
+// heartbeat behavior, skills, and thread context" — which is exactly what makes tool search miss
+// them, and it also pushed the real settings tools into an `assistant_settings_2` overflow chunk.
 function getToolSearchNamespaceName(toolName = '') {
     const name = String(toolName || '').toLowerCase()
-    if (/gmail|email/.test(name)) return 'gmail'
-    if (/calendar|availability/.test(name)) return 'calendar'
-    if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
-    if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
-    if (/note/.test(name)) return 'notes'
-    if (/contact|project|user/.test(name)) return 'people_and_projects'
-    if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
-    if (/search|weather|route|recommendation|local/.test(name)) return 'research'
     if (
         name.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) ||
         name.startsWith(EXTERNAL_TOOL_PREFIX) ||
@@ -12900,17 +13699,78 @@ function getToolSearchNamespaceName(toolName = '') {
     ) {
         return 'integrations'
     }
+    // Same reason the three above are matched first: `browser_navigate` matches /search|route/ only
+    // by accident, and splitting the six across `research` and `other` would advertise half a
+    // workflow — the model would find `browser_navigate` and never look for `browser_click`.
+    if (name.startsWith(BROWSER_TOOL_PREFIX)) return 'browsing'
+    // Before the keyword rules: `update_artifact` would otherwise land in chats_and_media on /update/
+    // while its three siblings fell through to `other`.
+    if (/artifact/.test(name)) return 'artifacts'
+    if (/gmail|email/.test(name)) return 'gmail'
+    if (/calendar|availability/.test(name)) return 'calendar'
+    if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
+    if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
+    // The API reserves `notes`; a namespace with that name rejects `notes.update_note`.
+    if (/note/.test(name)) return 'alldone_notes'
+    if (/contact|project|user/.test(name)) return 'people_and_projects'
+    if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
+    if (/search|weather|route|recommendation|local|fetch_url|profile_photo/.test(name)) return 'research'
     return 'other'
 }
 
-function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}) {
+// A tool the prompt names in writing must never be hidden behind tool search.
+// `addBaseInstructions` injects lines like "use update_user_description", and an assistant's own
+// instructions name their tools too — so the model is told a tool exists by name while the schema
+// for it is deferred. When it then fails to search for that exact name it does not retry, it
+// reports the tool as unavailable and stops, after having done all the surrounding work. Scanning
+// is limited to `system` messages: those carry our base instructions and the assistant's
+// configured instructions, and are the only place a tool name is an instruction rather than
+// conversational noise or the echo of an earlier tool result.
+function collectPromptReferencedToolNames(messages = [], toolNames = []) {
+    const candidateNames = Array.from(new Set((toolNames || []).filter(name => typeof name === 'string' && name)))
+    if (candidateNames.length === 0) return new Set()
+
+    const systemText = (Array.isArray(messages) ? messages : [])
+        .filter(message => (Array.isArray(message) ? message[0] : message?.role) === 'system')
+        .map(message => {
+            const content = Array.isArray(message) ? message[1] : message?.content
+            return typeof content === 'string' ? content : getMessageTextForTokenCounting(content)
+        })
+        .join('\n')
+    if (!systemText) return new Set()
+
+    // One pass over the prompt rather than one regex test per tool: the longest names are tried
+    // first so `web_search` cannot be reported as a bare `search` match.
+    const alternation = candidateNames
+        .slice()
+        .sort((first, second) => second.length - first.length)
+        .map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|')
+    const referenced = new Set()
+    const matcher = new RegExp(`\\b(?:${alternation})\\b`, 'g')
+    let match = matcher.exec(systemText)
+    const candidateSet = new Set(candidateNames)
+    while (match) {
+        if (candidateSet.has(match[0])) referenced.add(match[0])
+        match = matcher.exec(systemText)
+    }
+    return referenced
+}
+
+function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alwaysDirectToolNames = null } = {}) {
     const convertedTools = convertToolsToResponsesFormat(tools).sort((firstTool, secondTool) => {
         const firstName = firstTool?.name || firstTool?.type || ''
         const secondName = secondTool?.name || secondTool?.type || ''
         return firstName.localeCompare(secondName)
     })
-    const functionTools = convertedTools.filter(tool => tool?.type === 'function' && tool.name)
-    const directTools = convertedTools.filter(tool => tool?.type !== 'function' || !tool.name)
+    const alwaysDirect =
+        alwaysDirectToolNames instanceof Set ? alwaysDirectToolNames : new Set(alwaysDirectToolNames || [])
+    const functionTools = convertedTools.filter(
+        tool => tool?.type === 'function' && tool.name && !alwaysDirect.has(tool.name)
+    )
+    const directTools = convertedTools.filter(
+        tool => tool?.type !== 'function' || !tool.name || alwaysDirect.has(tool.name)
+    )
 
     if (disableToolSearch || !modelSupportsToolSearch(modelKey) || functionTools.length < TOOL_SEARCH_MIN_FUNCTIONS) {
         return {
@@ -12919,6 +13779,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}
             toolSearchEnabled: false,
             namespaceCount: 0,
             deferredFunctionCount: 0,
+            alwaysDirectCount: 0,
         }
     }
 
@@ -12951,6 +13812,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}
         toolSearchEnabled: true,
         namespaceCount: namespaces.length,
         deferredFunctionCount: functionTools.length,
+        alwaysDirectCount: directTools.filter(tool => tool?.type === 'function' && tool.name).length,
     }
 }
 
@@ -13008,13 +13870,31 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
         tools: requestParams.tools || [],
     })
     const payloadBytes = Buffer.byteLength(serializedPayload, 'utf8')
+    let imageCount = 0
+    const tokenCountingInput = JSON.stringify(requestParams.input || [], (_key, value) => {
+        if (value && typeof value === 'object' && value.type === 'input_image') {
+            imageCount++
+            // Images are encoded as visual tokens. Their URL/Base64 bytes are transport data,
+            // not text tokens. Only replace the counting representation; never mutate the request.
+            return { type: 'input_image', detail: value.detail || 'auto', image_url: '[Image]' }
+        }
+        return value
+    })
+    const tokenCountingPayload = `{"input":${tokenCountingInput},"tools":${JSON.stringify(requestParams.tools || [])}}`
+    const tokenCountingBytes = Buffer.byteLength(tokenCountingPayload, 'utf8')
+    // Conservative reserve, not a billing calculation. The documented vision families can use
+    // up to 36K patch tokens or 48,169 tile tokens per image. Keep headroom without tokenizing
+    // Base64 text: https://developers.openai.com/api/docs/guides/images-vision#calculating-costs
+    const imageTokenReserve = imageCount * 50000
 
-    // Every token contains at least one source byte. Small payloads therefore cannot reach the
-    // hard limit and do not need the more expensive tokenizer pass on every request.
-    if (payloadBytes < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) {
+    // Every text token contains at least one source byte. Small text plus the image reserve
+    // cannot reach the hard limit, so it does not need the more expensive tokenizer pass.
+    if (tokenCountingBytes + imageTokenReserve < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) {
         return {
-            estimatedInputTokens: Math.ceil(payloadBytes / 4),
+            estimatedInputTokens: Math.ceil(tokenCountingBytes / 4) + imageTokenReserve,
             payloadBytes,
+            imageCount,
+            imageTokenReserve,
             usedTokenizer: false,
         }
     }
@@ -13022,8 +13902,10 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
     const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
     try {
         return {
-            estimatedInputTokens: encoder.encode(serializedPayload).length,
+            estimatedInputTokens: encodeOrdinaryText(encoder, tokenCountingPayload).length + imageTokenReserve,
             payloadBytes,
+            imageCount,
+            imageTokenReserve,
             usedTokenizer: true,
         }
     } finally {
@@ -13050,7 +13932,14 @@ function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', mo
     throw error
 }
 
-function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = '', cacheMode = '' } = {}) {
+function logOpenAiCacheUsage({
+    usage,
+    route = 'unknown',
+    model = '',
+    cacheKey = '',
+    cacheMode = '',
+    serviceTier = 'default',
+} = {}) {
     if (!usage) return null
     const cacheUsage = getOpenAiCacheUsage(usage)
     const cacheKeyFingerprint = cacheKey
@@ -13063,6 +13952,9 @@ function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = 
         cacheKeyFingerprint,
         cacheMode: cacheMode || 'automatic',
         ...cacheUsage,
+        ...(model === 'gpt-6.1-sol'
+            ? { pricing: require('./solModelPricing').getSolRequestCost(usage, serviceTier) }
+            : {}),
     })
     if (cacheUsage.inputTokens >= OPENAI_INPUT_TOKEN_ALERT_THRESHOLD) {
         console.warn('🚨 OPENAI INPUT TOKEN ALERT: Request approaching 200K input tokens', {
@@ -13317,10 +14209,30 @@ function buildCurrentObjectContextMessage({
     parentGoalData,
     chatData,
 }) {
+    if (objectType === 'artifacts' && objectData) {
+        const artifact = objectData
+        const lines = [
+            'The current conversation is attached to the project artifact below. When the user says "this artifact", "this page", "this dashboard" or "this report", they mean this exact artifact.',
+            `Project: ${projectData?.name || projectId || '(unknown)'} (ID: ${projectId || '(unknown)'})`,
+            `Artifact ID: ${objectId || artifact.id || '(unknown)'}`,
+            `Artifact title: ${artifact.title || '(untitled)'}`,
+        ]
+        if (artifact.description) lines.push(`Artifact description: ${artifact.description}`)
+        lines.push(
+            `Kind: ${artifact.kind || 'file'}; entry file: ${artifact.entryPath || '(none)'}; files: ${
+                Number(artifact.fileCount) || 0
+            }; current version: ${Number(artifact.versionCount) || 0}`
+        )
+        lines.push(
+            'To change it, read it with read_artifact and save the change as a new version with update_artifact using this artifact ID; earlier versions stay restorable. Do not create a second artifact for a change to this one.'
+        )
+        return lines.join('\n')
+    }
     if (objectType !== 'tasks') {
         if (!chatData?.title) return ''
         const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '')
-        return `This conversation is about a ${objectTypeLabel} titled: "${chatData.title}"`
+        const article = /^[aeiou]/.test(objectTypeLabel) ? 'an' : 'a'
+        return `This conversation is about ${article} ${objectTypeLabel} titled: "${chatData.title}"`
     }
 
     const task = objectData || {}
@@ -13350,6 +14262,16 @@ function buildCurrentObjectContextMessage({
 }
 
 async function getCurrentObjectContextData(projectId, objectType, objectId) {
+    if (objectType === 'artifacts') {
+        const [projectDoc, artifactDoc] = await Promise.all([
+            admin.firestore().doc(`projects/${projectId}`).get(),
+            admin.firestore().doc(`artifactItems/${projectId}/artifacts/${objectId}`).get(),
+        ])
+        return {
+            projectData: projectDoc.exists ? { id: projectDoc.id || projectId, ...(projectDoc.data() || {}) } : null,
+            objectData: artifactDoc.exists ? { id: artifactDoc.id || objectId, ...(artifactDoc.data() || {}) } : null,
+        }
+    }
     if (objectType !== 'tasks') return { projectData: null, objectData: null }
 
     const [projectDoc, taskDoc] = await Promise.all([
@@ -13397,7 +14319,8 @@ async function getOptimizedContextMessages(
     allowedTools,
     userTimezoneOffset,
     userId,
-    assistantId
+    assistantId,
+    options = {}
 ) {
     const compactedThreadState = assistantId
         ? await loadAssistantThreadState(admin.firestore(), projectId, objectType, objectId, assistantId).catch(
@@ -13468,12 +14391,17 @@ async function getOptimizedContextMessages(
     let amountOfCommentsInContext = 0
 
     for (let i = 0; i < commentDocs.length; i++) {
-        if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
+        if (options.includeAllRecent === true || amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
+            // Live calls supply their revision-bound transcript directly. Its
+            // asynchronously stored copy can lag behind or duplicate spoken answers.
+            if (options.excludeCallSessionId && messageData.callSessionId === options.excludeCallSessionId) continue
             const { commentText, fromAssistant } = messageData
 
             if (commentText) {
-                const role = fromAssistant ? 'assistant' : 'user'
+                const isIncomingAssistant =
+                    fromAssistant && assistantId && messageData.creatorId && messageData.creatorId !== assistantId
+                const role = fromAssistant && !isIncomingAssistant ? 'assistant' : 'user'
                 const messageTimestamp = Number(messageData.created || messageData.lastChangeDate || 0)
                 const trimHistoryBeforeMessageId = compactedThreadState?.trimHistoryBeforeMessageId || ''
                 const isBeforeCutoff =
@@ -13486,7 +14414,7 @@ async function getOptimizedContextMessages(
                 if (isBeforeCutoff) {
                     continue
                 }
-                if (!fromAssistant) {
+                if (!fromAssistant || isIncomingAssistant) {
                     const mediaContext = await enrichCommentMediaContext(commentDocs[i].ref, messageData)
                     messages.push([
                         role,
@@ -13498,7 +14426,7 @@ async function getOptimizedContextMessages(
                     ])
                 } else {
                     const assistantCommentText = ensureCreatedNoteLinksInResponse(
-                        commentText,
+                        sanitizeAssistantResponseText(commentText),
                         messageData?.assistantRun?.createdEntities || []
                     )
                     // Assistant turns are the assistant's own prior output. They need the
@@ -13525,6 +14453,8 @@ async function getOptimizedContextMessages(
         projectId,
         assistantId,
         requestUserId: userId,
+        // Only a run answering a member directly may correct the project wiki.
+        allowKnowledgeCorrections: options.allowKnowledgeCorrections === true,
     })
 
     const compactedThreadContextMessage = compactedThreadState
@@ -13750,6 +14680,7 @@ module.exports = {
     isToolAllowedForExecution,
     filterAllowedToolsForRuntimeContext,
     getDynamicToolSchemasWithCache,
+    getExternalIntegrationToolName,
     getSilentModeFinalResponseText,
     // Optimized functions with caching
     getCachedEnvFunctions,
@@ -13767,6 +14698,8 @@ module.exports = {
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
     buildResponsesTools,
+    collectPromptReferencedToolNames,
+    getToolSearchNamespaceName,
     buildAssistantPromptCacheKey,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
@@ -13788,6 +14721,7 @@ module.exports = {
     injectCurrentMessageImagesIntoCreateTaskArgs,
     postUserRequestComment,
     collectAssistantTextWithToolCalls,
+    storeChunks,
     buildConversationAfterToolExecution,
     buildConversationAfterToolExecutions,
     buildConversationSafeToolResult,
@@ -13795,6 +14729,7 @@ module.exports = {
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
     getChatAttachmentForAssistantRequest,
+    readChatAttachmentFile,
     listRecentChatMediaForAssistantRequest,
     isFetchableChatAttachment,
     selectRequestedChatAttachments,

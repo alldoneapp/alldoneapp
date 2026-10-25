@@ -1,6 +1,12 @@
 const admin = require('firebase-admin')
 
-const { isValidSkillName } = require('./assistantSkills')
+const {
+    isValidSkillName,
+    requireSkillWriteAccess,
+    getSkillsCollectionPath,
+    getSkillStoragePrefix,
+    isGlobalSkillCatalog,
+} = require('./assistantSkills')
 
 const MAX_SKILLS_PER_IMPORT = 100
 const MAX_BODY_BYTES = 256 * 1024 // SKILL.md body cap per spec recommendation (<5k tokens) with headroom
@@ -79,6 +85,8 @@ async function fetchRaw(owner, repo, sha, filePath) {
 
 // Minimal YAML frontmatter parser for the two spec-required fields. Handles
 // plain and quoted single-line values plus indented continuation lines.
+const BLOCK_SCALAR_INDICATORS = new Set(['>', '|', '>-', '|-', '>+', '|+'])
+
 function parseSkillFrontmatter(markdown) {
     const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
     if (!match) return { frontmatter: null, body: markdown }
@@ -89,7 +97,14 @@ function parseSkillFrontmatter(markdown) {
         const keyMatch = rawLine.match(/^([A-Za-z][\w-]*):\s?(.*)$/)
         if (keyMatch) {
             currentKey = keyMatch[1]
-            frontmatter[currentKey] = keyMatch[2].trim()
+            const value = keyMatch[2].trim()
+            // A block scalar indicator introduces the value, it is not the
+            // value — and it has to be cleared here, before any continuation
+            // line is folded in. Doing it afterwards (as this did until
+            // AT-2431) never matched, because the string is no longer exactly
+            // ">" by then, so `description: >` shipped every imported skill's
+            // description with a literal "> " glued to the front.
+            frontmatter[currentKey] = BLOCK_SCALAR_INDICATORS.has(value) ? '' : value
         } else if (currentKey && /^\s+\S/.test(rawLine)) {
             // Continuation of a folded multi-line value.
             frontmatter[currentKey] = `${frontmatter[currentKey]} ${rawLine.trim()}`.trim()
@@ -98,7 +113,6 @@ function parseSkillFrontmatter(markdown) {
     for (const key of Object.keys(frontmatter)) {
         const value = frontmatter[key]
         if (/^".*"$/.test(value) || /^'.*'$/.test(value)) frontmatter[key] = value.slice(1, -1)
-        else if (value === '>' || value === '|' || value === '>-' || value === '|-') frontmatter[key] = ''
     }
     return { frontmatter, body }
 }
@@ -108,16 +122,6 @@ function toDisplayName(name) {
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
-}
-
-async function requireAdministrator(userId) {
-    const roleDoc = await admin.firestore().doc('roles/administrator').get()
-    const adminUserId = roleDoc.exists ? roleDoc.data().userId : null
-    if (!adminUserId || adminUserId !== userId) {
-        const error = new Error('Only the administrator can import skills')
-        error.code = 'permission-denied'
-        throw error
-    }
 }
 
 // Fetches a GitHub repo at a pinned commit, finds every */SKILL.md, and stages
@@ -138,19 +142,33 @@ function getImportJobRef(jobId) {
     return admin.firestore().doc(`assistantSkillImportJobs/${jobId}`)
 }
 
-async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken, jobId }) {
+/**
+ * `projectId` selects the catalog the import stages into (AT-2450). Omitted or
+ * 'globalProject' means the administrator's curated catalog and behaves exactly
+ * as it always has, including the flat `assistantSkillImports` staging
+ * collection that holds live documents in production. A real project id stages
+ * under that project instead and is authorized by project membership.
+ */
+async function importAssistantSkillsFromRepo({ userId, projectId, repoUrl, ref, githubToken, jobId }) {
     const jobRef = getImportJobRef(jobId)
+    // `createdBy` goes on EVERY write, not just the first: it is what the
+    // progress doc's read rule keys on (AT-2450), and the failure paths — an
+    // unauthorized caller above all — write a doc that no first write ever
+    // created. Without it the requester cannot read why their own import failed.
     const updateJob = async data => {
         if (!jobRef) return
         try {
-            await jobRef.set({ ...data, updatedAt: Date.now() }, { merge: true })
+            await jobRef.set(
+                { createdBy: userId, projectId: projectId || null, ...data, updatedAt: Date.now() },
+                { merge: true }
+            )
         } catch (error) {
             console.warn('🧩 SKILL IMPORT: progress update failed', { jobId, error: error.message })
         }
     }
 
     try {
-        await requireAdministrator(userId)
+        await requireSkillWriteAccess(userId, projectId)
 
         const parsed = parseRepoUrl(repoUrl)
         if (!parsed) throw new Error('Could not parse the repository URL. Use "owner/repo" or a github.com URL.')
@@ -161,6 +179,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
             status: 'running',
             repoUrl: sourceRepoUrl,
             createdBy: userId,
+            projectId: projectId || null,
             startedAt: Date.now(),
             processed: 0,
             total: null,
@@ -187,7 +206,13 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
 
         const db = admin.firestore()
         const bucket = admin.storage().bucket()
-        const batchId = db.collection('assistantSkillImports').doc().id
+        // The administrator's staging area is the flat collection it has always
+        // been; a project stages under its own path so the pending-review listing
+        // stays a legal query for a non-administrator (see firestore.rules).
+        const importsCollection = isGlobalSkillCatalog(projectId)
+            ? db.collection('assistantSkillImports')
+            : db.collection(`assistantSkillImports/${projectId}/items`)
+        const batchId = importsCollection.doc().id
         const importedAt = Date.now()
         const staged = []
         const skipped = []
@@ -209,7 +234,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
                     return dirPath
                 }
 
-                const proposedSkillId = db.collection(`assistantSkills/globalProject/items`).doc().id
+                const proposedSkillId = db.collection(getSkillsCollectionPath(projectId)).doc().id
                 const bundledBlobs = dirPath
                     ? blobs.filter(node => node.path.startsWith(`${dirPath}/`) && node.path !== manifest.path)
                     : []
@@ -237,7 +262,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
                         while (nextFileIndex < eligibleFiles.length) {
                             const { blobPath, relativePath } = eligibleFiles[nextFileIndex++]
                             const content = await fetchRaw(owner, repo, sha, blobPath)
-                            const storagePath = `assistantSkills/${proposedSkillId}/1/${relativePath}`
+                            const storagePath = `${getSkillStoragePrefix(projectId, proposedSkillId, 1)}${relativePath}`
                             await bucket.file(storagePath).save(content)
                             files.push({ relativePath, storagePath, size: content.length })
                         }
@@ -265,7 +290,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
                     importedBy: userId,
                     importedAt,
                 }
-                await db.collection('assistantSkillImports').add(stagedDoc)
+                await importsCollection.add(stagedDoc)
                 staged.push({ name, fileCount: files.length })
                 return name
             } catch (error) {

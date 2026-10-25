@@ -1,8 +1,9 @@
+import { runWithLoading } from './redux/loadingOperation'
 import moment from 'moment'
 
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import store from '../redux/store'
-import { getDb, getId, getProjectUsersIds, getTaskData, runHttpsCallableFunction } from './backends/firestore'
+import { getDb, getId, getProjectUsersIds, getTaskData, logEvent, runHttpsCallableFunction } from './backends/firestore'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import URLTrigger from '../URLSystem/URLTrigger'
 import NavigationService from './NavigationService'
@@ -12,13 +13,12 @@ import {
     setSelectedNavItem,
     setTriggerBotSpinner,
     setPreConfigTaskExecuting,
-    startLoadingData,
-    stopLoadingData,
 } from '../redux/actions'
 import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../i18n/TranslationService'
 import {
+    getAssistantInProject,
     getAssistantInProjectObject,
     getAssistantProjectId,
 } from '../components/AdminPanel/Assistants/assistantsHelper'
@@ -29,13 +29,20 @@ import { setSkillAssistant } from './backends/Skills/skillsFirestore'
 import TasksHelper, { DONE_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../components/TaskListView/Utils/TasksHelper'
 import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
+import { createBotQuickTopicChat } from './backends/Chats/createBotQuickTopic'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
-import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
+import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
+import { getThreadAssistantModelOverride } from '../functions/Assistant/threadAssistantModel'
+import { readThreadAssistantModelOverride } from './backends/Assistants/threadAssistantModel'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
-import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from './assistantWorkflow'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID, resolveAssistantWorkflowExecutionMode } from './assistantWorkflow'
+import {
+    buildOnDemandAssistantTaskMetadata,
+    shouldUseClientTaskCompletionFallback,
+} from '../functions/shared/assistantTaskCompletionContract'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -52,6 +59,7 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
             user: 'users',
             skill: 'skills',
             goal: 'goals',
+            artifact: 'artifacts',
         }[objectType] || objectType
 
     let collectionPath = ''
@@ -67,17 +75,20 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
             collectionPath = `noteItems/${projectId}/notes`
             break
         case 'contacts':
-            collectionPath = `contactsObjects/${projectId}/contacts`
+            collectionPath = `projectsContacts/${projectId}/contacts`
             break
         case 'users':
         case 'assistants':
             collectionPath = `users`
             break
         case 'skills':
-            collectionPath = `skillsObjects/${projectId}/skills`
+            collectionPath = `skills/${projectId}/items`
             break
         case 'goals':
             collectionPath = `goals/${projectId}/items`
+            break
+        case 'artifacts':
+            collectionPath = `artifactItems/${projectId}/artifacts`
             break
         default:
             return
@@ -102,157 +113,163 @@ export const generateUserIdsToNotifyForNewComments = (projectId, isPublicFor, cr
 }
 
 export const createBotDailyTopic = async (projectId, summaryDate) => {
-    console.log('Local part of createBotDailyTopic... there is also a cloud function which sets the follower')
-    if (!projectId) return
+    return runWithLoading('create_daily_topic', async () => {
+        console.log('Local part of createBotDailyTopic... there is also a cloud function which sets the follower')
+        if (!projectId) return
 
-    store.dispatch(startLoadingData())
-    const { loggedUser, defaultAssistant } = store.getState()
+        const { loggedUser, defaultAssistant } = store.getState()
 
-    const chatId = `BotChat${moment().format('YYYYMMDD')}${loggedUser.uid}`
+        const chatId = `BotChat${moment().format('YYYYMMDD')}${loggedUser.uid}`
 
-    const alreadyCreated = (await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).get()).exists
+        const alreadyCreated = (await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).get()).exists
 
-    if (!alreadyCreated) {
-        const isPublicFor = [FEED_PUBLIC_FOR_ALL]
+        if (!alreadyCreated) {
+            const isPublicFor = [FEED_PUBLIC_FOR_ALL]
 
-        const title = `${translate('Daily Recap')} <> ${HelperFunctions.getFirstName(
-            loggedUser.displayName
-        )} ${moment().format(getDateFormat())}`
+            const title = `${translate('Daily Recap')} <> ${HelperFunctions.getFirstName(
+                loggedUser.displayName
+            )} ${moment().format(getDateFormat())}`
 
-        await createChat(
-            chatId,
-            projectId,
-            loggedUser.uid,
-            '',
-            'topics',
-            title,
-            isPublicFor,
-            '#ffffff',
-            null,
-            null,
-            '',
-            '',
-            STAYWARD_COMMENT,
-            loggedUser.uid
-        )
+            await createChat(
+                chatId,
+                projectId,
+                loggedUser.uid,
+                '',
+                'topics',
+                title,
+                isPublicFor,
+                '#ffffff',
+                null,
+                null,
+                '',
+                '',
+                STAYWARD_COMMENT,
+                loggedUser.uid
+            )
 
-        const startDate = moment(summaryDate).startOf('day').valueOf()
-        const endDate = moment(summaryDate).endOf('day').valueOf()
-        const todayDate = new Date().toLocaleDateString('en-us', { month: 'long', day: 'numeric' })
-        const lastSessionDate = new Date(summaryDate).toLocaleDateString('en-us', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-        })
+            const startDate = moment(summaryDate).startOf('day').valueOf()
+            const endDate = moment(summaryDate).endOf('day').valueOf()
+            const todayDate = new Date().toLocaleDateString('en-us', { month: 'long', day: 'numeric' })
+            const lastSessionDate = new Date(summaryDate).toLocaleDateString('en-us', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+            })
 
-        await runHttpsCallableFunction('generateBotDailyTopicCommentSecondGen', {
-            userId: loggedUser.uid,
-            startDate,
-            endDate,
-            todayDate,
-            lastSessionDate,
-            objectId: chatId,
-            userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, ''),
-            language: window.navigator.language,
-            assistantId: defaultAssistant.uid,
-        })
-    }
-
-    store.dispatch(stopLoadingData())
+            await runHttpsCallableFunction('generateBotDailyTopicCommentSecondGen', {
+                userId: loggedUser.uid,
+                startDate,
+                endDate,
+                todayDate,
+                lastSessionDate,
+                objectId: chatId,
+                userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, ''),
+                language: window.navigator.language,
+                assistantId: defaultAssistant.uid,
+            })
+        }
+    })
 }
 
 export const createBotQuickTopic = async (assistant, initialMessage = '', options = {}) => {
-    store.dispatch(startLoadingData())
-    const { loggedUser, selectedProjectIndex } = store.getState()
+    return runWithLoading('create_assistant_topic', async () => {
+        const { loggedUser, selectedProjectIndex } = store.getState()
 
-    const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
+        const {
+            enableAssistant = true,
+            skipNavigation = false,
+            projectId: customProjectId = null,
+            onAssistantRunSettled = null,
+        } = options
 
-    try {
-        const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
-            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
-            : loggedUser.defaultProjectId
-        const assistantProjectId =
-            assistant && assistant.uid ? getAssistantProjectId(assistant.uid, selectedProjectId) : null
-        const projectId = customProjectId || assistantProjectId || selectedProjectId || loggedUser.defaultProjectId
+        try {
+            const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
+                ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+                : loggedUser.defaultProjectId
+            const assistantProjectId =
+                assistant && assistant.uid ? getAssistantProjectId(assistant.uid, selectedProjectId) : null
+            const projectId = customProjectId || assistantProjectId || selectedProjectId || loggedUser.defaultProjectId
 
-        if (!projectId) {
-            store.dispatch(stopLoadingData())
-            return
+            if (!projectId) {
+                return
+            }
+
+            const chatId = getId()
+            const quickDateId = moment().format('YYYYMMDD')
+
+            const titlePrefix = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
+                loggedUser.displayName
+            )} ${moment().format(getDateFormat())}`
+
+            // Creating the chat and then immediately updating it races the server-owned access projection:
+            // until that projection exists, the canonical rules correctly deny the follow-up update/read.
+            // The callable creates the chat with its projection and follower state in one authenticated batch.
+            const topicData = await createBotQuickTopicChat({
+                projectId,
+                chatId,
+                quickDateId,
+                assistantId: assistant.uid,
+                titlePrefix,
+                isAssistantEnabled: enableAssistant,
+            })
+            logEvent('new_chat', { id: chatId })
+
+            // Enable assistant BEFORE creating the message so the trigger condition is met.
+            // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
+            // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
+            // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
+            // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
+            // into the next Chat DV they open (AT-2084).
+            if (enableAssistant) {
+                store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
+                console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
+            }
+
+            const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
+            let assistantRunSettled = false
+            if (trimmedMessage) {
+                await createObjectMessage(
+                    projectId,
+                    chatId,
+                    trimmedMessage,
+                    'topics',
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    outcome => {
+                        assistantRunSettled = true
+                        onAssistantRunSettled?.(outcome)
+                    }
+                )
+            }
+
+            const postCreateActions = []
+            // Only arm the spinner when we actually take the user to this thread. With
+            // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
+            // picked up by whatever Chat DV the user opens next (AT-2084).
+            if (enableAssistant && trimmedMessage && !skipNavigation && !assistantRunSettled) {
+                postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
+            }
+            store.dispatch(postCreateActions)
+
+            if (!skipNavigation) {
+                const url = `/projects/${projectId}/chats/${chatId}/chat`
+                URLTrigger.processUrl(NavigationService, url)
+            }
+
+            return {
+                ...topicData,
+                assistantId: topicData.assistantId || assistant.uid,
+            }
+        } catch (error) {
+            console.error('Error creating bot quick topic:', error)
+
+            throw error
         }
-
-        const chatId = getId()
-        const quickDateId = moment().format('YYYYMMDD')
-
-        const quickDateNumber =
-            (await getDb().collection(`chatObjects/${projectId}/chats/`).where('quickDateId', '==', quickDateId).get())
-                .docs.length + 1
-
-        const isPublicFor = [FEED_PUBLIC_FOR_ALL]
-
-        const title = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
-            loggedUser.displayName
-        )} ${moment().format(getDateFormat())} ${quickDateNumber}`
-
-        await createChat(
-            chatId,
-            projectId,
-            loggedUser.uid,
-            '',
-            'topics',
-            title,
-            isPublicFor,
-            '#ffffff',
-            null,
-            null,
-            quickDateId,
-            assistant.uid,
-            STAYWARD_COMMENT,
-            loggedUser.uid
-        )
-
-        // Enable assistant BEFORE creating the message so the trigger condition is met.
-        // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
-        // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
-        // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
-        // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
-        // into the next Chat DV they open (AT-2084).
-        if (enableAssistant) {
-            await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).update({ isAssistantEnabled: true })
-            store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
-            console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
-        }
-
-        const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
-        if (trimmedMessage) {
-            await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
-        }
-
-        const postCreateActions = [stopLoadingData()]
-        // Only arm the spinner when we actually take the user to this thread. With
-        // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
-        // picked up by whatever Chat DV the user opens next (AT-2084).
-        if (enableAssistant && trimmedMessage && !skipNavigation) {
-            postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
-        }
-        store.dispatch(postCreateActions)
-
-        if (!skipNavigation) {
-            const url = `/projects/${projectId}/chats/${chatId}/chat`
-            URLTrigger.processUrl(NavigationService, url)
-        }
-
-        return {
-            projectId,
-            chatId,
-            assistantId: assistant.uid,
-            isPublicFor,
-            title,
-        }
-    } catch (error) {
-        console.error('Error creating bot quick topic:', error)
-        store.dispatch(stopLoadingData())
-        throw error
-    }
+    })
 }
 
 const createTopicForPreConfigTask = async (
@@ -373,7 +390,7 @@ const createTopicForPreConfigTask = async (
 
         try {
             const functionCallStartTime = Date.now()
-            await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
+            const result = await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
                 timeout: 540000, // 9 minutes (540 seconds) to match backend timeout
             })
             const clientCallCompleteTime = Date.now()
@@ -393,6 +410,7 @@ const createTopicForPreConfigTask = async (
                 })
             }
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
+            return result
         } catch (error) {
             console.error('Error in generatePreConfigTaskResultSecondGen:', {
                 error,
@@ -419,14 +437,25 @@ const createTopicForPreConfigTask = async (
 
 const activePreConfigPromptTaskExecutions = new Set()
 
-const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
+/**
+ * `threadModel` is the model pinned on the thread this prompt is being run IN (AT-2502), or null.
+ *
+ * It is applied here rather than on the server because this is the only place that still knows
+ * the difference between "the prompt was configured for this model" and "nobody chose, so the
+ * assistant's default was filled in" — by the time the request reaches
+ * `generatePreConfigTaskResult` both arrive as the same `aiSettings.model` and the complete
+ * client-settings branch takes it as given. So the precedence is spelled out once, here:
+ * the prompt's own model, then the thread's pin, then the assistant. (The ordinary chat path
+ * sends no model at all and is resolved entirely server-side.)
+ */
+const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings, threadModel = null) => {
     const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
     if (!aiSettings && !assistantDetails) return null
 
     const overrides = aiSettings || {}
     return {
         ...overrides,
-        model: overrides.model || assistantDetails?.model,
+        model: overrides.model || threadModel || assistantDetails?.model,
         temperature: overrides.temperature || assistantDetails?.temperature,
         reasoningEffort: resolvePreConfigTaskReasoningEffort(
             { aiReasoningEffort: overrides.reasoningEffort },
@@ -460,7 +489,6 @@ export const executePreConfigPromptForTask = ({
     activePreConfigPromptTaskExecutions.add(executionKey)
     store.dispatch(setPreConfigTaskExecuting(name))
 
-    const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     const isPublicFor = task?.isPublicFor || [FEED_PUBLIC_FOR_ALL]
     const mergedTaskMetadata = {
         ...(taskMetadata || {}),
@@ -470,6 +498,14 @@ export const executePreConfigPromptForTask = ({
 
     return Promise.resolve()
         .then(async () => {
+            // This prompt runs INSIDE the task's own thread, so the thread's pinned model applies
+            // to it exactly as it would to a message typed there (AT-2502). Read from the task we
+            // were handed when it carries the field, so the ordinary case costs no extra read.
+            const threadModel =
+                getThreadAssistantModelOverride(task) ||
+                (await readThreadAssistantModelOverride(projectId, taskId, 'tasks'))
+            const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings, threadModel)
+
             await Promise.all([
                 task?.assistantId !== assistantId
                     ? setTaskAssistant(projectId, taskId, assistantId, !!task?.assistantId)
@@ -477,7 +513,7 @@ export const executePreConfigPromptForTask = ({
                 setObjectAssistantEnabled(projectId, taskId, 'tasks', true),
             ])
 
-            await createTopicForPreConfigTask(
+            return await createTopicForPreConfigTask(
                 projectId,
                 taskId,
                 isPublicFor,
@@ -486,7 +522,6 @@ export const executePreConfigPromptForTask = ({
                 resolvedAiSettings,
                 mergedTaskMetadata
             )
-            return true
         })
         .catch(error => {
             console.error('Failed to execute pre-config prompt for current task:', error)
@@ -510,15 +545,34 @@ export const generateTaskFromPreConfig = async (
     const { skipNavigation = false, waitForDirectRun = true } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     // Preconfigured prompts created before execution modes existed always ran directly.
-    const executionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const requestedExecutionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const executionMode = resolveAssistantWorkflowExecutionMode(
+        getAssistantInProject(projectId, assistantId),
+        projectId,
+        requestedExecutionMode
+    )
+    const modeAdjustedTaskMetadata =
+        taskMetadata && executionMode !== requestedExecutionMode ? { ...taskMetadata, executionMode } : taskMetadata
+    const effectiveTaskMetadata =
+        executionMode === TASK_EXECUTION_MODE_DIRECT
+            ? buildOnDemandAssistantTaskMetadata(modeAdjustedTaskMetadata)
+            : modeAdjustedTaskMetadata
     const { loggedUser } = store.getState()
+
+    if (executionMode !== requestedExecutionMode) {
+        console.warn('Assistant has no configured workflow step; running pre-configured task directly', {
+            projectId,
+            assistantId,
+            name,
+        })
+    }
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,
         name,
         assistantId,
         aiSettings: resolvedAiSettings,
-        taskMetadata,
+        taskMetadata: effectiveTaskMetadata,
         skipNavigation,
     })
 
@@ -560,9 +614,10 @@ export const generateTaskFromPreConfig = async (
         generatedTask.aiSystemMessage = resolvedAiSettings.systemMessage
     }
 
-    // Add taskMetadata to the task if provided (for webhook tasks)
-    if (taskMetadata) {
-        generatedTask.taskMetadata = taskMetadata
+    // Persist completion provenance with direct generated tasks so the callable can safely
+    // distinguish them from existing tasks that merely run an assistant prompt.
+    if (effectiveTaskMetadata) {
+        generatedTask.taskMetadata = effectiveTaskMetadata
     }
 
     console.log('Creating task with settings:', {
@@ -573,7 +628,7 @@ export const generateTaskFromPreConfig = async (
             reasoningEffort: generatedTask.aiReasoningEffort,
             systemMessage: generatedTask.aiSystemMessage,
         },
-        taskMetadata,
+        taskMetadata: effectiveTaskMetadata,
     })
 
     const task = await uploadNewTask(projectId, generatedTask, null, true, false, false, false)
@@ -598,24 +653,24 @@ export const generateTaskFromPreConfig = async (
             isPublicFor: taskWithPublicFor.isPublicFor,
             assistantId: taskWithPublicFor.assistantId,
             aiSettings: resolvedAiSettings,
-            taskMetadata,
+            taskMetadata: effectiveTaskMetadata,
             taskWithPublicForSendWhatsApp: taskWithPublicFor.sendWhatsApp,
             taskWithPublicForTaskMetadata: taskWithPublicFor.taskMetadata,
         })
 
         // Merge provided taskMetadata with task-specific metadata
         const mergedMetadata = {
-            ...(taskMetadata || {}),
-            sendWhatsApp: taskWithPublicFor.sendWhatsApp ?? taskMetadata?.sendWhatsApp,
+            ...(effectiveTaskMetadata || {}),
+            sendWhatsApp: taskWithPublicFor.sendWhatsApp ?? effectiveTaskMetadata?.sendWhatsApp,
             name: taskWithPublicFor.name,
             recurrence: taskWithPublicFor.recurrence,
         }
 
         console.log('Merged metadata for backend:', {
             mergedMetadata,
-            taskMetadataInput: taskMetadata,
+            taskMetadataInput: effectiveTaskMetadata,
             taskSendWhatsApp: taskWithPublicFor.sendWhatsApp,
-            taskMetadataSendWhatsApp: taskMetadata?.sendWhatsApp,
+            taskMetadataSendWhatsApp: effectiveTaskMetadata?.sendWhatsApp,
             taskTaskMetadataSendWhatsApp: taskWithPublicFor.taskMetadata?.sendWhatsApp,
         })
 
@@ -634,12 +689,12 @@ export const generateTaskFromPreConfig = async (
             store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
         }
 
-        if (taskMetadata?.isWebhookTask) {
+        if (effectiveTaskMetadata?.isWebhookTask) {
             await new Promise(resolve => setTimeout(resolve, 1000))
         }
 
         const runAndCompleteDirectTask = async () => {
-            const succeeded = await executePreConfigPromptForTask({
+            const executionResult = await executePreConfigPromptForTask({
                 projectId,
                 taskId: taskWithPublicFor.id,
                 task: taskWithPublicFor,
@@ -650,7 +705,19 @@ export const generateTaskFromPreConfig = async (
                 taskMetadata: mergedMetadata,
             })
 
-            if (succeeded) {
+            // Old Functions deployments do not return taskCompletion, while a transient server
+            // completion failure can still be recovered by the live client. The server is the
+            // authoritative owner once it reports success, avoiding duplicate completion writes.
+            // A `duplicate` response reports no outcome of its own — another invocation of this very
+            // request (a retransmitted POST after the machine slept) owns the run and will complete
+            // the task itself, so completing it here would be a second completion write.
+            const shouldCompleteOnClient = !executionResult
+                ? false
+                : executionResult.taskCompletion
+                  ? shouldUseClientTaskCompletionFallback(executionResult.taskCompletion)
+                  : !executionResult.duplicate
+
+            if (shouldCompleteOnClient) {
                 await moveTasksFromOpen(
                     projectId,
                     taskWithPublicFor,
@@ -663,10 +730,17 @@ export const generateTaskFromPreConfig = async (
             }
         }
 
+        // The callable returns once the run is over or was refused; nothing more is coming, so the
+        // chat's "assistant is preparing" placeholder must not wait out its 5-minute timeout.
+        const runDirectTask = () =>
+            runAndCompleteDirectTask().finally(() => {
+                if (!skipNavigation) endBotSpinnerWait(projectId, taskWithPublicFor.id)
+            })
+
         if (waitForDirectRun) {
-            await runAndCompleteDirectTask()
+            await runDirectTask()
         } else {
-            runAndCompleteDirectTask().catch(error => {
+            runDirectTask().catch(error => {
                 console.error('Could not finish direct assistant task in the background:', error)
             })
         }

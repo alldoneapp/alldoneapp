@@ -4,6 +4,16 @@ const mockQueueEnqueue = jest.fn(async () => ({
     operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
 }))
 const mockResolveVmCredentialMode = jest.fn(async () => 'api')
+const mockGetModelCatalog = jest.fn(async provider => ({
+    families:
+        provider === 'claude'
+            ? [
+                  { id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-5' },
+                  { id: 'sonnet', resolvedModel: 'sonnet', latestModel: 'claude-sonnet-5' },
+                  { id: 'haiku', resolvedModel: 'haiku', latestModel: 'claude-haiku-4-5' },
+              ]
+            : [],
+}))
 // A stored personal key, looked up by credential provider slot (AT-2230 BYOK).
 const mockLoadVmApiKey = jest.fn(async () => 'sk-or-v1-0123456789abcdef0123456789abcdef')
 const mockCollectionQuery = {
@@ -69,6 +79,7 @@ jest.mock('./vmAgentModelCatalog', () => ({
     // Live Gold pricing is a network-backed catalog read; stub it so these tests never reach
     // openrouter.ai, and so a test can assert the live price actually wins when there is one.
     getOpenRouterUpstreamPrice: jest.fn(async () => null),
+    getModelCatalog: mockGetModelCatalog,
     resolveFamilyToModel: jest.fn(async (provider, family) => {
         // An OpenRouter selection resolves to itself, prefix intact — see vmAgentModelCatalog.
         if (typeof family === 'string' && family.startsWith('openrouter:')) {
@@ -76,7 +87,7 @@ jest.mock('./vmAgentModelCatalog', () => ({
         }
         const catalog = {
             claude: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'claude-fable-5' },
-            codex: { sol: 'gpt-5.6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-5.6-luna' },
+            codex: { sol: 'gpt-6.1-sol', terra: 'gpt-5.6-terra', luna: 'gpt-6-luna' },
         }
         return (catalog[provider] || {})[family] || null
     }),
@@ -84,18 +95,26 @@ jest.mock('./vmAgentModelCatalog', () => ({
 
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
-const { deductGold } = require('../Gold/goldHelper')
+const { deductGold, refundGold } = require('../Gold/goldHelper')
 const {
     startVmJob,
     launchQueuedVmJob,
+    settleOrphanedQueuedVmJob,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     DEFAULT_CLAUDE_MODEL,
+    VM_ORPHANED_QUEUE_FAILURE_REASON,
     formatAgentModelLabel,
 } = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 const { getOpenRouterUpstreamPrice } = require('./vmAgentModelCatalog')
+const { VM_QUEUED_ORPHAN_GRACE_MS } = require('./vmThreadQueue')
 
 describe('startVmJob', () => {
+    test('a saved concrete Sol 6.0 model upgrades without rewriting its selection', () => {
+        expect(require('./vmJob').__private__.normalizeAgentModel('codex', 'gpt-6-sol')).toEqual({
+            value: 'gpt-6.1-sol',
+        })
+    })
     beforeEach(() => {
         Object.keys(mockDocs).forEach(key => delete mockDocs[key])
         jest.clearAllMocks()
@@ -106,6 +125,13 @@ describe('startVmJob', () => {
         })
         mockResolveVmCredentialMode.mockResolvedValue('api')
         mockLoadVmApiKey.mockResolvedValue('sk-or-v1-0123456789abcdef0123456789abcdef')
+        mockGetModelCatalog.mockResolvedValue({
+            families: [
+                { id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-5' },
+                { id: 'sonnet', resolvedModel: 'sonnet', latestModel: 'claude-sonnet-5' },
+                { id: 'haiku', resolvedModel: 'haiku', latestModel: 'claude-haiku-4-5' },
+            ],
+        })
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
@@ -158,27 +184,37 @@ describe('startVmJob', () => {
                 data: () => ({ defaultVmAgent: 'codex', defaultVmAgentModel: { codex: family } }),
             })
 
-        test('a Codex Luna run is priced at 1/25 of the Sol rate on both documents', async () => {
+        test('a Codex Luna run is priced at 1/16.7 of the Sol rate on both documents', async () => {
             saveCodexDefault('luna')
 
             await launch({})
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
+                expect.objectContaining({ agentModel: 'gpt-6-luna', tokensPerGold: 4000 })
             )
             // The proxy reads its rate from the pendingWebhooks mirror, so the two must agree.
             expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
+                expect.objectContaining({ agentModel: 'gpt-6-luna', tokensPerGold: 4000 })
             )
         })
 
-        test('a Sol run keeps the unchanged baseline rate', async () => {
+        test('a new model behind a Claude alias gets a conservative release-day rate', async () => {
+            mockGetModelCatalog.mockResolvedValueOnce({
+                families: [{ id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-6' }],
+            })
+
+            const rate = await require('./vmJob').__private__.resolveTokensPerGoldForRun('opus')
+
+            expect(rate).toBeLessThan(80)
+        })
+
+        test('a Sol run freezes the updated cache-aware estimated rate', async () => {
             saveCodexDefault('sol')
 
             await launch({})
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 100 })
+                expect.objectContaining({ tokensPerGold: 240 })
             )
         })
 
@@ -195,7 +231,7 @@ describe('startVmJob', () => {
 
             expect(getOpenRouterUpstreamPrice).toHaveBeenCalledWith('deepseek/deepseek-brand-new')
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 4900 })
+                expect.objectContaining({ tokensPerGold: 3800 })
             )
         })
 
@@ -211,7 +247,7 @@ describe('startVmJob', () => {
             // A pricing hiccup must never fail the run.
             expect(result.success).toBe(true)
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 1800 })
+                expect.objectContaining({ tokensPerGold: 1400 })
             )
         })
 
@@ -222,7 +258,7 @@ describe('startVmJob', () => {
             await launch({})
 
             const statusText = createInitialStatusMessage.mock.calls[0][4]
-            expect(statusText).toContain('1/25 of the Sol rate')
+            expect(statusText).toContain('1/16.7 of the Sol rate')
         })
     })
 
@@ -314,13 +350,13 @@ describe('startVmJob', () => {
             requestUserId: 'user-1',
         })
 
-        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 5.6 · medium).
+        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 6.1 · medium).
         expect(createInitialStatusMessage).toHaveBeenCalledWith(
             'project-1',
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 6.1 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -353,7 +389,7 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({
                 agent: 'codex',
-                agentModel: 'gpt-5.6-sol',
+                agentModel: 'gpt-6.1-sol',
                 agentReasoningEffort: 'xhigh',
             })
         )
@@ -385,7 +421,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 3x the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -409,7 +445,7 @@ describe('startVmJob', () => {
                 objective: 'Implement the task in the connected repository',
                 taskType: 'prototype',
                 agent: 'codex',
-                agentModel: 'gpt-5.6-sol',
+                agentModel: 'gpt-6.1-sol',
                 requestText: workflowStepPrompt,
                 projectId: 'project-1',
                 objectType: 'tasks',
@@ -442,7 +478,7 @@ describe('startVmJob', () => {
             })
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'high' })
+                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-6.1-sol', agentReasoningEffort: 'high' })
             )
         })
 
@@ -573,7 +609,7 @@ describe('startVmJob', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'medium' })
+            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-6.1-sol', agentReasoningEffort: 'medium' })
         )
     })
 
@@ -698,7 +734,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1/2.5 of the Sol rate.',
+            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1.2x the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -752,9 +788,9 @@ describe('startVmJob', () => {
         ['claude-sonnet-4-6', 'Sonnet 4.6'],
         ['claude-haiku-4-5', 'Haiku 4.5'],
         ['claude-fable-5', 'Fable 5.0'],
-        ['gpt-5.6-sol', 'Sol 5.6'],
+        ['gpt-6.1-sol', 'Sol 6.1'],
         ['gpt-5.6-terra', 'Terra 5.6'],
-        ['gpt-5.6-luna', 'Luna 5.6'],
+        ['gpt-6-luna', 'Luna 6.0'],
     ])('names the model tier for %s', (model, expectedLabel) => {
         expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
@@ -846,7 +882,7 @@ describe('startVmJob', () => {
 
             await startVmJob({ ...baseArgs, agent: 'codex' })
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
+                expect.objectContaining({ agentModel: 'gpt-6.1-sol' })
             )
         })
     })
@@ -1086,7 +1122,7 @@ describe('startVmJob', () => {
             await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
+                expect.objectContaining({ agentModel: 'gpt-6.1-sol' })
             )
         })
     })
@@ -1110,7 +1146,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 6.1 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -1477,20 +1513,98 @@ describe('startVmJob', () => {
         expect(holdUpdate).toEqual(expect.not.objectContaining({ stepHistory: expect.anything() }))
     })
 
-    test('launchQueuedVmJob is a no-op for a job cancelled while queued', async () => {
-        mockDocs['pendingWebhooks/cancelled-1'] = {
+    test.each(['cancelled', 'interrupted'])('launchQueuedVmJob is a no-op for a %s job', async status => {
+        mockDocs[`pendingWebhooks/${status}-1`] = {
             get: jest.fn(async () => ({
                 exists: true,
-                data: () => ({ kind: 'vm_job', status: 'cancelled' }),
+                data: () => ({ kind: 'vm_job', status }),
             })),
             set: jest.fn(async () => {}),
             update: jest.fn(async () => {}),
         }
 
-        const result = await launchQueuedVmJob('cancelled-1')
+        const result = await launchQueuedVmJob(`${status}-1`)
 
-        expect(result).toEqual({ success: false, reason: 'settled', status: 'cancelled' })
+        expect(result).toEqual({ success: false, reason: 'settled', status })
         expect(mockQueueEnqueue).not.toHaveBeenCalled()
+    })
+})
+
+describe('orphaned queued VM settlement', () => {
+    beforeEach(() => {
+        Object.keys(mockDocs).forEach(key => delete mockDocs[key])
+        jest.clearAllMocks()
+    })
+
+    test('transactionally fails the orphan, refunds once, and finalizes its loading comment', async () => {
+        const now = 10_000_000
+        const pending = {
+            correlationId: 'orphan-1',
+            kind: 'vm_job',
+            userId: 'user-1',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            status: 'queued',
+            queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            goldCharged: 20,
+            statusCommentId: 'comment-1',
+        }
+        mockGetDoc('pendingWebhooks/orphan-1').get.mockResolvedValue({
+            exists: true,
+            data: () => pending,
+        })
+        mockGetDoc('vmSessions/project-1__task-1').get.mockResolvedValue({ exists: false, data: () => ({}) })
+
+        await expect(settleOrphanedQueuedVmJob('orphan-1', now)).resolves.toBe(true)
+
+        expect(mockGetDoc('pendingWebhooks/orphan-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: 'failed',
+                failureReason: VM_ORPHANED_QUEUE_FAILURE_REASON,
+                failedAt: now,
+                orphanedQueueReconciledAt: now,
+            }),
+            { merge: true }
+        )
+        expect(refundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ idempotencyKey: 'vm_job_refund:orphan-1' })
+        )
+        expect(mockGetDoc('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                isLoading: false,
+                assistantRun: expect.objectContaining({ runId: 'orphan-1', status: 'failed' }),
+            }),
+            { merge: true }
+        )
+    })
+
+    test('does nothing when the queued job still belongs to its session FIFO', async () => {
+        const now = 20_000_000
+        mockGetDoc('pendingWebhooks/queued-1').get.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                correlationId: 'queued-1',
+                kind: 'vm_job',
+                userId: 'user-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                status: 'queued',
+                queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            }),
+        })
+        mockGetDoc('vmSessions/project-1__task-1').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ queue: ['queued-1'], queueLength: 1 }),
+        })
+
+        await expect(settleOrphanedQueuedVmJob('queued-1', now)).resolves.toBe(false)
+        expect(mockGetDoc('pendingWebhooks/queued-1').set).not.toHaveBeenCalled()
+        expect(refundGold).not.toHaveBeenCalled()
     })
 })
 
@@ -1543,5 +1657,111 @@ describe('packageContextObjects', () => {
         const packaged = await packageContextObjects('project-1', ['task-2'])
 
         expect(packaged).toBe('### task: Empty task\n(no text description available)')
+    })
+})
+
+// AT-2487: the ledger is what `goldStats` rolls up, so the dimensions have to be on the
+// CONTEXT the charge sites pass — not merely available on the job document. These assert the
+// wiring, which is the half a unit test of buildVmGoldBillingDimensions cannot see.
+describe('VM Gold billing dimensions (AT-2487)', () => {
+    beforeEach(() => {
+        Object.keys(mockDocs).forEach(key => delete mockDocs[key])
+        jest.clearAllMocks()
+        mockCollectionQuery.get.mockResolvedValue({ size: 0 })
+        mockQueueEnqueue.mockResolvedValue({
+            executionName: 'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/execution-1',
+            operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
+        })
+        mockResolveVmCredentialMode.mockResolvedValue('api')
+        mockLoadVmApiKey.mockResolvedValue('sk-or-v1-0123456789abcdef0123456789abcdef')
+        jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
+    })
+
+    afterEach(() => {
+        crypto.randomUUID.mockRestore()
+    })
+
+    const launch = extra =>
+        startVmJob({
+            objective: 'Change the code',
+            taskType: 'prototype',
+            agent: 'codex',
+            requestText: 'please run this one with codex',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+            ...extra,
+        })
+
+    test('an Alldone-billed run stamps model, billingExempt=false and the run id on the base reserve', async () => {
+        await launch()
+
+        expect(deductGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({
+                source: 'vm_execution',
+                model: 'gpt-6.1-sol',
+                billingExempt: false,
+                correlationId: 'correlation-1',
+            })
+        )
+    })
+
+    // The whole point: this run still spends the 20-Gold reserve (and 10/minute after it), so
+    // it is invisible in `spendBySource.vm_execution` unless the exemption is recorded.
+    test('a subscription run spends Gold and is recorded as token-billing exempt', async () => {
+        mockResolveVmCredentialMode.mockResolvedValue('subscription')
+
+        await launch()
+
+        expect(deductGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ source: 'vm_execution', billingExempt: true })
+        )
+    })
+
+    test('a BYOK run is exempt too — the user pays their own provider for the tokens', async () => {
+        mockResolveVmCredentialMode.mockResolvedValue('byok')
+
+        await launch({ agentModel: 'openrouter:deepseek/deepseek-chat', requestText: 'use deepseek via openrouter' })
+
+        expect(deductGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ billingExempt: true, model: 'openrouter:deepseek/deepseek-chat' })
+        )
+    })
+
+    // A refund that dropped the dimensions would leave refundBySource.vm_execution_refund
+    // unattributable while the matching charge was attributed, so NET VM cost stops adding up.
+    test('the launch-failure refund carries the same dimensions as the charge it reverses', async () => {
+        mockQueueEnqueue.mockRejectedValue(new Error('cloud run unavailable'))
+
+        await launch()
+
+        expect(refundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({
+                source: 'vm_execution_refund',
+                model: 'gpt-6.1-sol',
+                billingExempt: false,
+                correlationId: 'correlation-1',
+            })
+        )
+    })
+
+    // The run id had to be minted before the charge, not after it: before AT-2487 the ledger
+    // carried nothing joinable to vmJobs at all, which is what made this a manual join.
+    test('the very first ledger entry of a run already carries its correlationId', async () => {
+        await launch()
+
+        const [, , context] = deductGold.mock.calls[0]
+        expect(context.correlationId).toBe('correlation-1')
+        expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalled()
     })
 })

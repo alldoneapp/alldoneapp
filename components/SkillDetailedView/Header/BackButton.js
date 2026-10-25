@@ -14,7 +14,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 export default function BackButton({ projectId }) {
     const dispatch = useDispatch()
     const lastVisitedScreen = useSelector(state => state.lastVisitedScreen)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const skillId = useSelector(state => state.skillInDv.id)
     const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
 
@@ -34,8 +34,8 @@ export default function BackButton({ projectId }) {
         <TouchableOpacity
             style={[
                 localStyles.container,
-                isMiddleScreen ? localStyles.mobileContainer : localStyles.desktopContainer,
-                !isMiddleScreen && !sidebarExpanded && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                inlineBackButton ? localStyles.mobileContainer : localStyles.desktopContainer,
+                !inlineBackButton && !sidebarExpanded && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
             ]}
             onPress={onPress}
         >

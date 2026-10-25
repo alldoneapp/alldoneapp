@@ -1,4 +1,12 @@
+jest.mock('../connectionHealth', () => ({
+    markServerContact: jest.fn(),
+    startConnectionLatencySample: jest.fn(),
+}))
+
 import { createCachedSnapshotGate, CACHED_SNAPSHOT_GRACE_MS } from './cachedSnapshotGate'
+import * as connectionHealth from '../connectionHealth'
+
+let finishLatencySample
 
 const makeSnapshot = ({ fromCache, docs = [], hasPendingWrites = false } = {}) => ({
     docs,
@@ -10,17 +18,32 @@ const makeSnapshot = ({ fromCache, docs = [], hasPendingWrites = false } = {}) =
 })
 
 describe('createCachedSnapshotGate', () => {
+    it('keeps online cached-data latency below one second', () => {
+        expect(CACHED_SNAPSHOT_GRACE_MS).toBeLessThan(1000)
+    })
+
     beforeEach(() => {
         jest.useFakeTimers()
+        jest.clearAllMocks()
+        finishLatencySample = jest.fn()
+        connectionHealth.startConnectionLatencySample.mockReturnValue(finishLatencySample)
     })
 
     afterEach(() => {
         jest.useRealTimers()
     })
 
-    const createHarness = ({ isOffline = () => false } = {}) => {
+    const createHarness = ({
+        isOffline = () => false,
+        trackConnectionHealth = true,
+        connectionSource = 'server_snapshot',
+    } = {}) => {
         const delivered = []
-        const gate = createCachedSnapshotGate(() => handler, { isOffline })
+        const gate = createCachedSnapshotGate(() => handler, {
+            isOffline,
+            trackConnectionHealth,
+            connectionSource,
+        })
         function handler(querySnapshot) {
             if (gate.shouldBuffer(querySnapshot)) return
             delivered.push(querySnapshot)
@@ -32,12 +55,35 @@ describe('createCachedSnapshotGate', () => {
         const { handler, delivered } = createHarness()
         handler(makeSnapshot({ fromCache: false }))
         expect(delivered).toHaveLength(1)
+        expect(connectionHealth.startConnectionLatencySample).toHaveBeenCalledWith('server_snapshot')
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
+        expect(connectionHealth.markServerContact).toHaveBeenCalledWith('snapshot')
     })
 
     it('buffers cached snapshots while online (unchanged online behavior)', () => {
         const { handler, delivered } = createHarness()
         handler(makeSnapshot({ fromCache: true }))
         expect(delivered).toHaveLength(0)
+    })
+
+    it('does not turn background listeners into slow-connection latency samples', () => {
+        const { handler, delivered } = createHarness({ trackConnectionHealth: false })
+
+        handler(makeSnapshot({ fromCache: true }))
+        handler(makeSnapshot({ fromCache: false }))
+
+        expect(delivered).toHaveLength(1)
+        expect(connectionHealth.startConnectionLatencySample).not.toHaveBeenCalled()
+        // A real server snapshot is still useful positive transport evidence.
+        expect(connectionHealth.markServerContact).toHaveBeenCalledWith('snapshot')
+    })
+
+    it('labels an interactive listener with its specific connection source', () => {
+        const { handler } = createHarness({ connectionSource: 'notes_snapshot' })
+
+        handler(makeSnapshot({ fromCache: false }))
+
+        expect(connectionHealth.startConnectionLatencySample).toHaveBeenCalledWith('notes_snapshot')
     })
 
     it('delivers cached snapshots immediately while offline', () => {
@@ -115,6 +161,7 @@ describe('createCachedSnapshotGate', () => {
         jest.advanceTimersByTime(CACHED_SNAPSHOT_GRACE_MS)
 
         expect(unsubscribe).toHaveBeenCalledTimes(1)
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
         expect(delivered).toHaveLength(0)
     })
 

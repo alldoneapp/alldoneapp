@@ -123,7 +123,12 @@ describe('GlobalProject feeds subscription', () => {
 
         expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledTimes(1)
         // Without this third argument the listener downloads 200 documents per project per tab.
-        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledWith(PROJECT_ID, USER_ID, 5)
+        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledWith(
+            PROJECT_ID,
+            USER_ID,
+            5,
+            expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
+        )
     })
 
     it('caps it at the 20 feeds a single-project view displays', () => {
@@ -131,7 +136,12 @@ describe('GlobalProject feeds subscription', () => {
 
         renderView()
 
-        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledWith(PROJECT_ID, USER_ID, 20)
+        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledWith(
+            PROJECT_ID,
+            USER_ID,
+            20,
+            expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
+        )
     })
 
     it('re-subscribes with the show-more ceiling when the list asks for every feed', () => {
@@ -143,7 +153,12 @@ describe('GlobalProject feeds subscription', () => {
         })
 
         expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledTimes(2)
-        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenLastCalledWith(PROJECT_ID, USER_ID, 99)
+        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenLastCalledWith(
+            PROJECT_ID,
+            USER_ID,
+            99,
+            expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
+        )
         // The previous listener has to go, otherwise both stay live on the same project/tab.
         expect(Backend.unsubStoreFeedsTab).toHaveBeenLastCalledWith(PROJECT_ID)
     })
@@ -159,6 +174,17 @@ describe('GlobalProject feeds subscription', () => {
         })
 
         expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps background project admission out of page loading and connection health', () => {
+        renderView({ trackInitialLoad: false })
+
+        expect(Backend.watchNewFeedsAllTabsRedux).toHaveBeenCalledWith(
+            PROJECT_ID,
+            USER_ID,
+            5,
+            expect.objectContaining({ manageLoading: false, trackConnectionHealth: false })
+        )
     })
 
     it('resets only its own project when it (re)subscribes', () => {

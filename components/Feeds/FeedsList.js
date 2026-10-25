@@ -10,6 +10,8 @@ import NoteObject from './FeedsObjects/NoteObject'
 import DateLine from './Commons/DateLine'
 import SkillObject from './FeedsObjects/SkillObject'
 import AssistantObject from './FeedsObjects/AssistantObject'
+import WikiObject from './FeedsObjects/WikiObject'
+import { WIKI_FEED_OBJECT_TYPE } from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 
 // `customIndex` used to embed `JSON.stringify(feedObjectData.object)`. That serialized every feed
 // object on every render, and because any field change produced a different key React unmounted and
@@ -118,6 +120,17 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
+                            feedActiveTab={feedActiveTab}
+                            style={style}
+                        />
+                    )
+                } else if (type === WIKI_FEED_OBJECT_TYPE) {
+                    customIndex = `wiki_${object.id}`
+                    feedComponent = (
+                        <WikiObject
+                            key={customIndex}
+                            feedObjectData={feedObjectData}
+                            projectId={projectId}
                             feedActiveTab={feedActiveTab}
                             style={style}
                         />

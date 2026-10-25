@@ -2,35 +2,21 @@
 
 exports[`Detailed Project Indicator component Detailed Project Indicator snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flexDirection-18u37iz r-justifyContent-1777fci r-marginTop-jv1ppg"
+  className="css-view-g5y9jx r-marginTop-138ynw3"
   dir={null}
 >
   <div
-    className="css-text-146c3p1"
-    dir="auto"
-    style={
-      {
-        "color": "rgba(138,148,166,1.00)",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": "16px",
-        "letterSpacing": "0.16px",
-        "lineHeight": "24px",
-      }
-    }
-  >
-    PROJECT
-  </div>
-  <div
-    className="css-view-g5y9jx"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1pexk7n"
     dir={null}
-    style={
-      {
-        "marginLeft": "12px",
-      }
-    }
   >
     <div
-      className="css-view-g5y9jx"
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1enofrn r-lineHeight-1f529hi"
+      dir="auto"
+    >
+      PROJECT
+    </div>
+    <div
+      className="css-view-g5y9jx r-marginLeft-1jkjb"
       dir={null}
     >
       <div
@@ -40,7 +26,7 @@ exports[`Detailed Project Indicator component Detailed Project Indicator snapsho
           {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": "24px",
+            "fontSize": "14px",
             "opacity": 1,
           }
         }

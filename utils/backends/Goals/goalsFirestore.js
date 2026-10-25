@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
 import { forEach, intersection, isEqual, sortBy, uniq } from 'lodash'
 import moment from 'moment'
@@ -55,11 +56,11 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
 } from '../../../redux/actions'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
+import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
+import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 
 import { createGoalAssistantChangedFeed } from './goalUpdates'
 import { createGenericTaskWhenMention, setTaskProjectWithGoal } from '../Tasks/tasksFirestore'
@@ -84,6 +85,9 @@ import {
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
 } from '../../GoalMilestonesHelper'
+import { handleOptionalSnapshotError } from '../optionalSnapshotError'
+import { withoutServerAccessProjection } from '../accessProjection'
+import { resolveFocusAreaForProjectMove } from './goalFocusAreas'
 
 //ACCESS FUNCTIONS
 
@@ -109,16 +113,19 @@ export function watchGoalsInDateRange(projectId, date1, date2, watcherKey, callb
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
         .where('completionMilestoneDate', '>=', date1)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
-        .onSnapshot(goalsDocs => {
-            const goals = []
-            goalsDocs.forEach(doc => {
-                const goal = mapGoalData(doc.id, doc.data())
-                if (goal.startingMilestoneDate <= date2) goals.push(goal)
-            })
-            callback(goals)
-        })
+        .onSnapshot(
+            goalsDocs => {
+                const goals = []
+                goalsDocs.forEach(doc => {
+                    const goal = mapGoalData(doc.id, doc.data())
+                    if (goal.startingMilestoneDate <= date2) goals.push(goal)
+                })
+                callback(goals)
+            },
+            error => handleOptionalSnapshotError('goals in date range', error, () => callback([]))
+        )
 }
 
 export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, watcherKey, callback) {
@@ -127,7 +134,7 @@ export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .onSnapshot(goalsDocs => {
             const entries = []
 
@@ -157,35 +164,62 @@ export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2
         })
 }
 
-export function watchAllGoals(projectId, watcherKey, ownerId) {
+export function watchAllGoals(
+    projectId,
+    watcherKey,
+    ownerId,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
     const query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
-
-    globalWatcherUnsub[watcherKey] = query.onSnapshot(
-        goalsData => {
-            try {
-                const goals = []
-                goalsData.forEach(doc => {
-                    const goal = mapGoalData(doc.id, doc.data())
-                    goals.push(goal)
-                })
-                store.dispatch([setGoalsInProject(projectId, goals), stopLoadingData()])
-            } catch (err) {
-                console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
-                // Ensure spinner decrements on unexpected handler errors
-                store.dispatch(stopLoadingData())
-            }
-        },
-        err => {
-            console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
-            // Ensure spinner decrements on snapshot errors
-            store.dispatch(stopLoadingData())
-        }
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'goals', scope: 'project', source: 'goals_board' },
+        { sampleRate: 0.02 }
     )
+    let initialSnapshotDelivered = false
+
+    const finishInitialSnapshot = () => {
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'goals_snapshot',
+        loadingSource: manageLoading ? 'goals' : undefined,
+        onError: err => {
+            snapshotPerformance.fail()
+            console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        },
+    })
+
+    function handleSnapshot(goalsData) {
+        const buffered = gate.shouldBuffer(goalsData)
+        snapshotPerformance.observe(goalsData, buffered)
+        if (buffered) return
+
+        try {
+            const goals = []
+            goalsData.forEach(doc => {
+                const goal = mapGoalData(doc.id, doc.data())
+                goals.push(goal)
+            })
+            store.dispatch(setGoalsInProject(projectId, goals))
+            finishInitialSnapshot()
+        } catch (err) {
+            snapshotPerformance.fail()
+            console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        }
+    }
+
+    const unsubscribe = gate.subscribe(query)
+    globalWatcherUnsub[watcherKey] = unsubscribe
 }
 
 async function getGoalsInDoneMilestone(projectId, milestoneId, idsOfGoalsToExclude) {
@@ -259,32 +293,17 @@ async function getBaseGoalsInOpenMilestone(
     return goals
 }
 
-async function getGoalsWithoutParentsOpenMilestonesWhenMoveToOpen(projectId, goals) {
-    const goalsOutOfBacklog = goals.filter(
-        goal =>
-            goal.startingMilestoneDate !== BACKLOG_DATE_NUMERIC && goal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC
-    )
-    const promises = []
-    goalsOutOfBacklog.forEach(goal => {
-        promises.push(getOpenMilestonesFromGoal(projectId, goal))
-    })
-    const milestonesResult = await Promise.all(promises)
-    const goalsWithoutParentsOpenMilestones = []
-    for (let i = 0; i < milestonesResult.length; i++) {
-        const milestones = milestonesResult[i]
-        if (milestones.length === 0) goalsWithoutParentsOpenMilestones.push(goalsOutOfBacklog[i])
-    }
-    return goalsWithoutParentsOpenMilestones
-}
-
 export async function watchBaseGoalsAmountInOpenMilestone(projectId, milestoneDate, callback, watcherKey, ownerId) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
         .where('completionMilestoneDate', '==', milestoneDate)
         .where('ownerId', '==', ownerId)
-        .onSnapshot(goalsDocs => {
-            callback(goalsDocs.docs.length)
-        })
+        .onSnapshot(
+            goalsDocs => {
+                callback(goalsDocs.docs.length)
+            },
+            error => handleOptionalSnapshotError('goals in milestone count', error, () => callback(0))
+        )
 }
 
 export const getPreviousMilestone = async (projectId, ownerId, date) => {
@@ -317,41 +336,68 @@ async function getOpenMilestonesFromGoal(projectId, goal) {
     return milestones
 }
 
-export function watchAllMilestones(projectId, watcherKey, ownerId) {
-    globalWatcherUnsub[watcherKey] = getDb()
+export function watchAllMilestones(
+    projectId,
+    watcherKey,
+    ownerId,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'milestones', scope: 'project', source: 'goals_board' },
+        { sampleRate: 0.02 }
+    )
+    let initialSnapshotDelivered = false
+
+    const finishInitialSnapshot = () => {
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'milestones_snapshot',
+        loadingSource: manageLoading ? 'milestones' : undefined,
+        onError: err => {
+            snapshotPerformance.fail()
+            console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        },
+    })
+    const query = getDb()
         .collection(`goalsMilestones/${projectId}/milestonesItems`)
         .where('ownerId', '==', ownerId)
         .orderBy('date', 'asc')
-        .onSnapshot(
-            milestonesData => {
-                try {
-                    const milestones = []
-                    const openMilestones = []
-                    let doneMilestone = []
-                    milestonesData.forEach(doc => {
-                        const milestone = mapMilestoneData(doc.id, doc.data())
-                        milestones.push(milestone)
-                        milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
-                    })
 
-                    doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
-                    doneMilestone.reverse()
+    function handleSnapshot(milestonesData) {
+        const buffered = gate.shouldBuffer(milestonesData)
+        snapshotPerformance.observe(milestonesData, buffered)
+        if (buffered) return
 
-                    store.dispatch([
-                        setOpenMilestonesInProject(projectId, openMilestones),
-                        setDoneMilestonesInProject(projectId, doneMilestone),
-                        stopLoadingData(),
-                    ])
-                } catch (err) {
-                    console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
-                    store.dispatch(stopLoadingData())
-                }
-            },
-            err => {
-                console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
-                store.dispatch(stopLoadingData())
-            }
-        )
+        try {
+            const openMilestones = []
+            let doneMilestone = []
+            milestonesData.forEach(doc => {
+                const milestone = mapMilestoneData(doc.id, doc.data())
+                milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
+            })
+
+            doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
+            doneMilestone.reverse()
+
+            store.dispatch([
+                setOpenMilestonesInProject(projectId, openMilestones),
+                setDoneMilestonesInProject(projectId, doneMilestone),
+            ])
+            finishInitialSnapshot()
+        } catch (err) {
+            snapshotPerformance.fail()
+            console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        }
+    }
+
+    const unsubscribe = gate.subscribe(query)
+    globalWatcherUnsub[watcherKey] = unsubscribe
 }
 
 export function watchMilestones(projectId, callback, milestonesInDone, watcherKey, ownerId) {
@@ -383,47 +429,34 @@ export function watchMilestoneTasksStatistics(
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', loggedUserId)
         .where('dueDate', '>', milestoneInitalDate)
         .where('dueDate', '<=', milestoneEndDate)
         .where('done', '==', inDone)
         .where('parentId', '==', null)
-        .onSnapshot(tasksData => {
-            let amountOfTasks = 0
-            let amountOfPoints = 0
-            tasksData.forEach(doc => {
-                const task = mapTaskData(doc.id, doc.data())
-                const { isPublicFor, estimations } = task
-                const loggedUserHaveAccess =
-                    !isPublicFor ||
-                    isPublicFor.length === 0 ||
-                    isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
-                    isPublicFor.includes(loggedUserId)
-                if (loggedUserHaveAccess) {
-                    amountOfTasks++
-                    if (estimations && estimations[OPEN_STEP]) {
-                        amountOfPoints += estimations[OPEN_STEP]
+        .onSnapshot(
+            tasksData => {
+                let amountOfTasks = 0
+                let amountOfPoints = 0
+                tasksData.forEach(doc => {
+                    const task = mapTaskData(doc.id, doc.data())
+                    const { isPublicFor, estimations } = task
+                    const loggedUserHaveAccess =
+                        !isPublicFor ||
+                        isPublicFor.length === 0 ||
+                        isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+                        isPublicFor.includes(loggedUserId)
+                    if (loggedUserHaveAccess) {
+                        amountOfTasks++
+                        if (estimations && estimations[OPEN_STEP]) {
+                            amountOfPoints += estimations[OPEN_STEP]
+                        }
                     }
-                }
-            })
-            callback(amountOfTasks, amountOfPoints)
-        })
-}
-
-async function getNextMilestoneAfterDate(projectId, milestoneDate, ownerId, milestoneType = null) {
-    const milestoneDocs = (
-        await getDb()
-            .collection(`goalsMilestones/${projectId}/milestonesItems`)
-            .where('done', '==', false)
-            .where('date', '>', milestoneDate)
-            .where('ownerId', '==', ownerId)
-            .orderBy('date', 'asc')
-            .get()
-    ).docs
-    const normalizedType = milestoneType ? normalizeMilestoneType(milestoneType) : null
-    const milestoneDoc = normalizedType
-        ? milestoneDocs.find(doc => normalizeMilestoneType(doc.data().milestoneType) === normalizedType)
-        : milestoneDocs[0]
-    return milestoneDoc ? mapMilestoneData(milestoneDoc.id, milestoneDoc.data()) : null
+                })
+                callback(amountOfTasks, amountOfPoints)
+            },
+            error => handleOptionalSnapshotError('milestone task statistics', error, () => callback(0, 0))
+        )
 }
 
 export async function getMilestoneData(projectId, milestoneId) {
@@ -601,14 +634,17 @@ export function watchOpenMilestonesInDateRange(projectId, date1, date2, watcherK
         .where('done', '==', false)
         .where('ownerId', '==', ownerId)
         .orderBy('date', 'asc')
-        .onSnapshot(milestoneDocs => {
-            const milestones = []
-            milestoneDocs.forEach(doc => {
-                const milestone = mapMilestoneData(doc.id, doc.data())
-                milestones.push(milestone)
-            })
-            callback(milestones)
-        })
+        .onSnapshot(
+            milestoneDocs => {
+                const milestones = []
+                milestoneDocs.forEach(doc => {
+                    const milestone = mapMilestoneData(doc.id, doc.data())
+                    milestones.push(milestone)
+                })
+                callback(milestones)
+            },
+            error => handleOptionalSnapshotError('open milestones in date range', error, () => callback([]))
+        )
 }
 
 //EDTION AND ADITION FUNCTIONS
@@ -690,7 +726,7 @@ export async function uploadNewGoal(
         goal.completionMilestoneDate
     )
 
-    const goalToStore = { ...goal }
+    const goalToStore = withoutServerAccessProjection(goal)
     delete goalToStore.id
     getDb().doc(`goals/${projectId}/items/${goal.id}`).set(goalToStore, { merge: true })
 
@@ -1157,11 +1193,13 @@ export async function updateGoalAssigneeReminderDate(
         logEvent('goal_postponed')
     }
 
-    updateGoalData(projectId, goalId, updates, null)
+    const goalWrite = updateGoalData(projectId, goalId, updates, null)
 
     // Cascade to child tasks if requested
     if (cascadeToTasks) {
-        await updateChildTasksDueDate(projectId, goalId, date)
+        await Promise.all([goalWrite, updateChildTasksDueDate(projectId, goalId, date)])
+    } else {
+        await goalWrite
     }
 }
 
@@ -1216,29 +1254,30 @@ const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
 }
 
 export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true, { background = false } = {}) {
-    if (!background) store.dispatch(startLoadingData())
-    try {
-        const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-        const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-        // Routed through the offline-aware funnel (AT-2340): offline this now
-        // fails immediately with `code: 'offline'` instead of hanging for the
-        // SDK's ~70s timeout with the loading indicator up. The postpone is
-        // server-side (it writes the undo action too), so there is nothing
-        // useful to do locally — failing fast is the correct behaviour.
-        const result = await runHttpsCallableFunction('postponeGoalWithUndoSecondGen', {
-            projectId,
-            goalId: goal.id,
-            targetUserId: userId,
-            date: dateTimestamp,
-            endOfToday: moment().endOf('day').valueOf(),
-            cascadeToTasks,
-            requestId: getId(),
-        })
-        logEvent('goal_postponed')
-        return result?.date ?? dateTimestamp
-    } finally {
-        if (!background) store.dispatch(stopLoadingData())
-    }
+    return runWithLoading(
+        'postpone_goal',
+        async () => {
+            const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
+            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            // Routed through the offline-aware funnel (AT-2340): offline this now
+            // fails immediately with `code: 'offline'` instead of hanging for the
+            // SDK's ~70s timeout with the loading indicator up. The postpone is
+            // server-side (it writes the undo action too), so there is nothing
+            // useful to do locally — failing fast is the correct behaviour.
+            const result = await runHttpsCallableFunction('postponeGoalWithUndoSecondGen', {
+                projectId,
+                goalId: goal.id,
+                targetUserId: userId,
+                date: dateTimestamp,
+                endOfToday: moment().endOf('day').valueOf(),
+                cascadeToTasks,
+                requestId: getId(),
+            })
+            logEvent('goal_postponed')
+            return result?.date ?? dateTimestamp
+        },
+        { enabled: !background }
+    )
 }
 
 export const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCommentType) => {
@@ -1281,7 +1320,7 @@ export async function updateGoalProgress(projectId, progress, goal) {
 }
 
 export async function setGoalDescription(projectId, goalId, description, goal, oldDescription) {
-    updateGoalData(projectId, goal.id, { description }, null)
+    await updateGoalData(projectId, goal.id, { description }, null)
 
     createGenericTaskWhenMentionInTitleEdition(
         projectId,
@@ -1334,6 +1373,7 @@ export async function updateGoalProject(oldProject, newProject, goal) {
 
     const updatedGoal = {
         ...goal,
+        focusAreaId: await resolveFocusAreaForProjectMove(oldProjectId, newProjectId, goal),
         assigneesIds,
         assigneesCapacity,
         assigneesReminderDate,
@@ -1730,10 +1770,6 @@ async function deleteMilestone(projectId, milestoneId) {
     await getDb().doc(`goalsMilestones/${projectId}/milestonesItems/${milestoneId}`).delete()
 }
 
-async function updateMilestoneProperty(projectId, milestoneId, updateData) {
-    await getDb().doc(`goalsMilestones/${projectId}/milestonesItems/${milestoneId}`).update(updateData)
-}
-
 export async function updateGoalMilestoneAssigneesCapacity(projectId, milestoneId, newCapacity, assigneeId) {
     getDb()
         .doc(`goalsMilestones/${projectId}/milestonesItems/${milestoneId}`)
@@ -1743,160 +1779,11 @@ export async function updateGoalMilestoneAssigneesCapacity(projectId, milestoneI
 }
 
 export async function updateMilestoneDoneState(projectId, milestone) {
-    const toDone = !milestone.done
-    const milestoneType = normalizeMilestoneType(milestone.milestoneType)
-    const scheduleModeForMilestone =
-        milestoneType === MILESTONE_TYPE_LINEAR ? GOAL_SCHEDULE_MODE_DYNAMIC : GOAL_SCHEDULE_MODE_FIXED
-
-    let promises = []
-    promises.push(getMilestoneUsingDate(projectId, milestone.date, toDone, milestone.ownerId, milestoneType))
-    promises.push(
-        getBaseGoalsInOpenMilestone(projectId, milestone.date, [], milestone.ownerId, scheduleModeForMilestone)
-    )
-    if (!toDone) promises.push(getGoalsInDoneMilestone(projectId, milestone.id, []))
-
-    const results = await Promise.all(promises)
-    const milestoneInSameDate = results[0]
-    const goalsInOpen = results[1]
-    const goalsInDone = results[2]
-
-    const batch = new BatchWrapper(getDb())
-
-    if (toDone) {
-        const newDoneDate = Date.now()
-        if (milestoneType === MILESTONE_TYPE_LINEAR) {
-            const fixedGoalsInSameDate = await getBaseGoalsInOpenMilestone(
-                projectId,
-                milestone.date,
-                [],
-                milestone.ownerId,
-                GOAL_SCHEDULE_MODE_FIXED
-            )
-            if (fixedGoalsInSameDate.length > 0) {
-                await uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, milestone.date, milestone.ownerId)
-            }
-        }
-        if (milestoneInSameDate) {
-            const goalsFromMilestoneInSameDate = await getGoalsInDoneMilestone(projectId, milestoneInSameDate.id, [])
-            removeGoalsFromDoneMilestone(projectId, milestoneInSameDate.id, goalsFromMilestoneInSameDate, batch)
-            addGoalsToDoneMilestone(
-                projectId,
-                milestone.id,
-                milestone.date,
-                newDoneDate,
-                goalsFromMilestoneInSameDate,
-                batch
-            )
-            deleteMilestone(projectId, milestoneInSameDate.id)
-            addOpenMilestoneSortIndexToGoals(
-                projectId,
-                milestone.id,
-                null,
-                goalsFromMilestoneInSameDate,
-                milestone.ownerId
-            )
-        }
-        addGoalsToDoneMilestone(projectId, milestone.id, milestone.date, newDoneDate, goalsInOpen, batch)
-        updateMilestoneProperty(projectId, milestone.id, { doneDate: newDoneDate, done: toDone })
-        moveIncompleteGoalsToNextMilestoneWhenMoveACompletionMilestoneToDone(
-            projectId,
-            goalsInOpen,
-            milestone.date,
-            milestone.ownerId,
-            milestoneType
-        )
-    } else {
-        const goalsInDoneToMove = goalsInDone.filter(
-            goal =>
-                goal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC ||
-                goal.progress !== DYNAMIC_PERCENT ||
-                goal.dynamicProgress !== 100
-        )
-        const goalsWithoutMilestones = await getGoalsWithoutParentsOpenMilestonesWhenMoveToOpen(
-            projectId,
-            goalsInDoneToMove
-        )
-
-        goalsInDoneToMove.forEach(goal => {
-            if (goal.progress === 100) updateGoalProgress(projectId, 80, goal)
-        })
-        removeGoalsFromDoneMilestone(projectId, milestone.id, goalsInDoneToMove, batch)
-
-        const updateDate = (milestone, goal) => {
-            const date = milestone.date
-            updateGoalData(
-                projectId,
-                goal.id,
-                {
-                    startingMilestoneDate: date,
-                    completionMilestoneDate: date,
-                    assigneesReminderDate: updateAssigneesReminderDate(goal.assigneesIds, date),
-                },
-                null
-            )
-        }
-
-        const updateSortIndex = (milestoneId, goals) => {
-            addOpenMilestoneSortIndexToGoals(projectId, milestoneId, null, goals, milestone.ownerId)
-        }
-
-        if (milestoneInSameDate) {
-            if (goalsInDone.length === goalsInDoneToMove.length) deleteMilestone(projectId, milestone.id)
-            if (goalsWithoutMilestones.length > 0) {
-                goalsWithoutMilestones.forEach(goal => {
-                    updateDate(milestoneInSameDate, goal)
-                })
-                updateSortIndex(milestoneInSameDate.id, goalsWithoutMilestones)
-            }
-        } else {
-            if (goalsInOpen.length === 0 && goalsWithoutMilestones.length === 0) {
-                if (goalsInDone.length === goalsInDoneToMove.length) deleteMilestone(projectId, milestone.id)
-            } else {
-                if (goalsInOpen.length > 0) {
-                    updateSortIndex(milestone.id, goalsInOpen)
-                }
-                if (goalsWithoutMilestones.length > 0) {
-                    goalsWithoutMilestones.forEach(goal => {
-                        updateDate(milestone, goal)
-                    })
-                    updateSortIndex(milestone.id, goalsWithoutMilestones)
-                }
-                goalsInDone.length === goalsInDoneToMove.length
-                    ? updateMilestoneProperty(projectId, milestone.id, { done: toDone })
-                    : uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, milestone.date, milestone.ownerId)
-            }
-        }
-    }
-
-    batch.commit()
-}
-
-async function moveIncompleteGoalsToNextMilestoneWhenMoveACompletionMilestoneToDone(
-    projectId,
-    goals,
-    milestoneDate,
-    ownerId,
-    milestoneType = MILESTONE_TYPE_FIXED
-) {
-    const goalsToUpdateCompletionDate = goals.filter(goal => {
-        const { completionMilestoneDate, progress, dynamicProgress } = goal
-        return (
-            completionMilestoneDate === milestoneDate &&
-            progress !== 100 &&
-            (progress !== DYNAMIC_PERCENT || dynamicProgress !== 100)
-        )
+    return runHttpsCallableFunction('updateMilestoneDoneStateSecondGen', {
+        projectId,
+        milestoneId: milestone.id,
+        targetDone: !milestone.done,
     })
-    if (goalsToUpdateCompletionDate.length > 0) {
-        const project = ProjectHelper.getProjectById(projectId)
-        if (milestoneType === MILESTONE_TYPE_LINEAR && project) {
-            await ensureLinearMilestonesForProject(projectId, ownerId, project.goalMilestonesConfig, milestoneDate)
-        }
-        const nextMilestone = await getNextMilestoneAfterDate(projectId, milestoneDate, ownerId, milestoneType)
-        const newDate = nextMilestone ? nextMilestone.date : BACKLOG_DATE_NUMERIC
-        goalsToUpdateCompletionDate.forEach(goal => {
-            updateGoalDateRange(projectId, goal, newDate, 'completionMilestoneDate', true, milestoneType)
-        })
-    }
 }
 
 const updatePrivacyInChildrenTasks = (projectId, goalId, isPublicFor) => {

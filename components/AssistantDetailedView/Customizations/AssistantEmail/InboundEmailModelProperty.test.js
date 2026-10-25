@@ -29,7 +29,7 @@ describe('InboundEmailModelProperty', () => {
             <InboundEmailModelProperty
                 disabled={false}
                 projectId="project-1"
-                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' }}
+                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT6_SOL' }}
             />
         )
         const labels = component.root.findAllByType(Text).map(node => node.props.children)
@@ -38,20 +38,15 @@ describe('InboundEmailModelProperty', () => {
             expect.arrayContaining(['Inherit assistant model (Sol)', 'Inherit assistant model', 'Sol', 'Terra', 'Luna'])
         )
         expect(labels).toEqual(
-            expect.arrayContaining([
-                '1 Gold = 100 tokens',
-                '1 Gold = 200 tokens',
-                '1 Gold = 500 tokens',
-                '1 Gold = 2,000 tokens',
-            ])
+            expect.arrayContaining(['1 Gold = 200 tokens', '1 Gold = 1,000 tokens', '1 Gold = 2,000 tokens'])
         )
     })
 
     test('stores an explicit override and clears it when inheritance is selected', () => {
         const assistant = {
             uid: 'assistant-1',
-            model: 'MODEL_GPT5_6_SOL',
-            emailModel: 'MODEL_GPT5_6_LUNA',
+            model: 'MODEL_GPT6_SOL',
+            emailModel: 'MODEL_GPT6_LUNA',
         }
         const component = renderer.create(
             <InboundEmailModelProperty disabled={false} projectId="project-1" assistant={assistant} />

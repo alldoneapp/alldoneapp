@@ -1,9 +1,17 @@
+import { runWithLoading } from '../../redux/loadingOperation'
+import { celebrateTaskEarnings } from '../../../components/RootView/GoldCoins/cashReward'
 import { chunk, cloneDeep, intersection, isEqual, uniq } from 'lodash'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import { preserveAutoAssignedGoal } from './autoAssignedGoalGuard'
 import { publishOptimisticTaskCreateFailed, publishOptimisticTaskCreated } from './optimisticTaskCreate'
+import { settleOptimisticTaskRow } from './optimisticTaskSettlement'
+import { getTaskFromLoadedTaskMaps } from './taskSnapshotCache'
+import {
+    buildCrossUserTaskStatisticsMarker as buildTaskStatisticsMarker,
+    shouldClientWriteTaskTransitionStatistics,
+} from './taskTransitionStatistics'
 
 import {
     addUniqueInstanceTypeToArray,
@@ -47,7 +55,10 @@ import {
     uploadNewSubTaskFeedsChain,
 } from '../firestore'
 import store from '../../../redux/store'
-import { awaitWriteAck } from '../offlineWriteAck'
+import { awaitWriteAck, isAppOffline } from '../offlineWriteAck'
+import { trackTaskWrite } from '../taskWriteMonitor'
+import { queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
+import { startPerformanceTrace } from '../../performance/performanceLogger'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
     createSubtaskPromotedFeed,
@@ -74,8 +85,6 @@ import {
     setSelectedSidebarTab,
     setSelectedTasks,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
     setOptimisticFocusTask,
     clearOptimisticFocusTask,
@@ -125,10 +134,14 @@ import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../Day
 import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
 import { compareTasksByCalendarPlacement } from '../../CalendarTaskOrder'
 import {
+    compareCalendarFocusCandidacy,
+    getCalendarFocusCandidacy,
+    getCalendarFocusDueDateWindow,
+} from '../../CalendarFocusWindow'
+import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
     buildTaskUpdateOperation,
-    MAX_UNDO_OPERATIONS,
     queueUndoAction,
 } from '../../undo/undoActions'
 import { buildTaskStateUndoOperation, buildTaskStateUndoOperations } from '../../undo/taskStateUndo'
@@ -145,17 +158,18 @@ import {
     updateChatPrivacy,
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, createObjectMessage } from '../Chats/chatsComments'
+import { createObjectMessage } from '../Chats/chatsComments'
+import { updateUserDataDirectly } from '../Users/usersFirestore'
 import NavigationService from '../../NavigationService'
 import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../TabNavigationConstants'
 import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
-import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
 import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
+import { buildCalendarGoalRoutingFeedback, buildCalendarProjectRoutingFeedback } from '../../CalendarRoutingFeedback'
 import {
     buildFocusCandidateExclusions,
     finishFocusHandoff,
@@ -167,6 +181,10 @@ import {
     supersedeFocusHandoffs,
 } from './focusHandoffRace'
 import { isTaskOnUserPlate } from './focusTaskEligibility'
+import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
+import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
+import { captureTaskUndoStates } from './taskUndoCapture'
+import { buildFollowUpTask, resolveFollowUpGoalLink } from './followUpTaskBuilder'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -180,33 +198,21 @@ const getTaskTransitionUndoLabel = (task, stepToMoveId) => {
     return `Moved “${task.name}” to another workflow step`
 }
 
-const loadTaskUndoStates = async (projectId, taskIds) => {
-    const uniqueTaskIds = uniq(taskIds.filter(Boolean))
-    if (uniqueTaskIds.length === 0) return {}
-    if (uniqueTaskIds.length > MAX_UNDO_OPERATIONS) {
-        throw new Error('This task transition affects too many tasks to be safely undoable')
-    }
-
-    try {
-        const snapshots = await Promise.all(
-            uniqueTaskIds.map(taskId => getDb().doc(`items/${projectId}/tasks/${taskId}`).get())
-        )
-        const states = snapshots.reduce((result, snapshot, index) => {
-            if (snapshot.exists) result[uniqueTaskIds[index]] = snapshot.data()
-            return result
-        }, {})
-        if (Object.keys(states).length !== uniqueTaskIds.length) {
-            throw new Error('A task changed before its undo state could be captured')
-        }
-        return states
-    } catch (error) {
-        console.warn('[task undo] Could not capture the state before the task transition', {
-            projectId,
-            error: error.message,
-        })
-        throw error
-    }
+// Best-effort by contract (see taskUndoCapture.js): resolves to the captured states, or to
+// null when they could not be read even through the server, in which case the transition
+// simply is not undoable. It never throws and never blocks the move.
+const readTaskDocumentFromClient = async path => {
+    const snapshot = await getDb().doc(path).get()
+    return { exists: snapshot.exists, data: snapshot.exists ? snapshot.data() : undefined }
 }
+
+const loadTaskUndoStates = (projectId, taskIds) =>
+    captureTaskUndoStates({
+        projectId,
+        taskIds,
+        readFromClient: readTaskDocumentFromClient,
+        readFromServer: readDocumentDirectlyFromServer,
+    })
 
 const getParentRemovalChanges = (parentState, taskId) => {
     if (!parentState || !Array.isArray(parentState.subtaskIds)) return null
@@ -220,16 +226,45 @@ const getParentRemovalChanges = (parentState, taskId) => {
     return { subtaskIds, subtaskNames }
 }
 
+// Returns the queued undo action, or null when the transition goes ahead without one: the
+// capture failed (already reported by captureTaskUndoStates) or produced nothing to restore.
+// Undo is a convenience layered on the move, never a precondition of it (AT-2484).
 const queueTaskTransitionUndo = ({ projectId, task, stepToMoveId, beforeStates, taskChanges, batch }) => {
+    if (!beforeStates) return null
     const operations = buildTaskStateUndoOperations(projectId, beforeStates, taskChanges)
-    if (operations.length === 0) throw new Error('Could not capture the task transition for undo')
+    if (operations.length === 0) {
+        console.warn('[task undo] Nothing to record for the task transition; continuing without undo', {
+            projectId,
+            taskId: task.id,
+        })
+        return null
+    }
     const action = queueUndoAction({
         label: getTaskTransitionUndoLabel(task, stepToMoveId),
         operations,
         batch,
     })
-    if (!action) throw new Error('Could not queue the task transition for undo')
+    if (!action) {
+        console.warn('[task undo] Could not queue the task transition for undo; continuing without undo', {
+            projectId,
+            taskId: task.id,
+        })
+    }
     return action
+}
+
+// Statistics documents are user-scoped by the rules. Keep an owner's own update in the task
+// batch, but let onUpdateTaskSecondGen apply reviewer/teammate transitions with Admin SDK access.
+// This avoids either weakening statistics rules or rejecting the entire task transition batch.
+const updateTaskTransitionStatistics = (projectId, taskOwnerUid, ...args) => {
+    if (!shouldClientWriteTaskTransitionStatistics(taskOwnerUid, store.getState().loggedUser.uid)) return false
+    updateStatistics(projectId, taskOwnerUid, ...args)
+    return true
+}
+
+const buildCrossUserTaskStatisticsMarker = (taskOwnerUid, completed) => {
+    const actorId = store.getState().loggedUser.uid
+    return buildTaskStatisticsMarker(taskOwnerUid, actorId, completed, getId)
 }
 
 async function updateLinkedContactsEditionData(projectId, task, editionDate) {
@@ -247,14 +282,20 @@ async function updateLinkedContactsEditionData(projectId, task, editionDate) {
     )
 }
 
-export async function watchTask(projectId, taskId, watcherKey, callback) {
+export async function watchTask(projectId, taskId, watcherKey, callback, onError) {
     globalWatcherUnsub[watcherKey] = getDb()
         .doc(`items/${projectId}/tasks/${taskId}`)
-        .onSnapshot(doc => {
-            const taskData = doc.data()
-            const task = taskData ? mapTaskData(doc.id, taskData) : null
-            callback(task)
-        })
+        .onSnapshot(
+            doc => {
+                const taskData = doc.data()
+                const task = taskData ? mapTaskData(doc.id, taskData) : null
+                callback(task)
+            },
+            error => {
+                if (onError) onError(error)
+                else console.error(`[watchTask] Listener failed for ${projectId}/${taskId}`, error)
+            }
+        )
 }
 
 export const updateTaskEditionData = async (projectId, taskId, editorId) => {
@@ -279,6 +320,48 @@ const updateEditionData = data => {
     const { loggedUser } = store.getState()
     data.lastEditionDate = Date.now()
     data.lastEditorId = loggedUser.uid
+}
+
+const buildManuallyPinnedCalendarData = (task, sourceProjectId, targetProjectId, requestedByUserId) => {
+    if (!task?.calendarData) return null
+
+    const projectRoutingFeedback = buildCalendarProjectRoutingFeedback({
+        task,
+        sourceProjectId,
+        targetProjectId,
+        requestedByUserId,
+        feedbackId: getId(),
+    })
+
+    return {
+        ...task.calendarData,
+        pinnedToProjectId: targetProjectId,
+        ...(projectRoutingFeedback ? { projectRoutingFeedback } : {}),
+    }
+}
+
+const buildCalendarDataWithGoalRoutingFeedback = (
+    task,
+    projectId,
+    previousGoalId,
+    selectedGoalId,
+    requestedByUserId
+) => {
+    const goalRoutingFeedback = buildCalendarGoalRoutingFeedback({
+        task,
+        projectId,
+        previousGoalId,
+        selectedGoalId,
+        requestedByUserId,
+        feedbackId: getId(),
+    })
+
+    return goalRoutingFeedback
+        ? {
+              ...task.calendarData,
+              goalRoutingFeedback,
+          }
+        : null
 }
 
 const isPlainObject = value => {
@@ -518,7 +601,7 @@ export async function uploadNewTask(
         taskCopy.dueDateByObserversIds = dueDateByObserversIds
         taskCopy.estimationsByObserverIds = estimationsByObserverIds
 
-        delete taskCopy.projectId
+        taskCopy.projectId = projectId
 
         if (!notGenerateUpdates) creatTaskFeedChain(projectId, taskId, taskCopy)
 
@@ -554,6 +637,15 @@ export async function uploadNewTask(
         publishOptimisticTaskCreated(projectId, taskId, safeTaskCopy)
 
         const onTaskWritten = isAwaited => () => {
+            // AT-2500 - the server has the document, so each list can now settle the optimistic row
+            // it published above against what the task ACTUALLY looks like now, rather than against
+            // the create-time payload. `settleOptimisticTaskRow` opens a settlement WINDOW rather
+            // than publishing once: the ack is only its start, and the row stays unconfirmed until
+            // the access projection lands, which production measures in seconds - long enough for
+            // the user to postpone the task with nobody listening. See optimisticTaskSettlement.js.
+            // Offline this whole callback never runs, because `set()` only resolves on the server
+            // ack, which is correct: offline the local cache holds the document and the row stands.
+            settleOptimisticTaskRow(projectId, taskId)
             queueUndoAction({
                 label: `Created task “${taskCopy.name}”`,
                 operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
@@ -574,14 +666,13 @@ export async function uploadNewTask(
             throw error
         }
 
+        const taskWrite = trackTaskWrite(getDb().doc(`items/${projectId}/tasks/${taskId}`).set(safeTaskCopy), {
+            userId: loggedUser.uid,
+            taskId,
+        })
         awaitForTaskCreation
-            ? await getDb()
-                  .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(safeTaskCopy)
-                  .then(onTaskWritten(true), onTaskWriteFailed)
-            : getDb()
-                  .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(safeTaskCopy)
+            ? await taskWrite.then(onTaskWritten(true), onTaskWriteFailed)
+            : taskWrite
                   .then(onTaskWritten(false), onTaskWriteFailed)
                   // The non-awaited branch has no caller to reject to; without this the rollback
                   // above would surface as an unhandled rejection.
@@ -623,15 +714,17 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
         subTask.parentGoalIsPublicFor = task.parentGoalIsPublicFor
         subTask.lockKey = task.lockKey
         subTask.assistantId = task.assistantId
+        subTask.projectId = projectId
 
         // Human readable ID will be generated asynchronously in onCreate trigger
         // This improves subtask creation performance by removing the blocking transaction
         subTask.humanReadableId = null
 
         updateEditionData(subTask)
+        const subTaskToStore = withoutServerAccessProjection(subTask)
         batch.set(getDb().collection(`items/${projectId}/tasks`).doc(newTaskId), {
-            ...subTask,
-            name: subTask.name.toLowerCase(),
+            ...subTaskToStore,
+            name: subTaskToStore.name.toLowerCase(),
         })
 
         updateTaskData(
@@ -891,103 +984,56 @@ export function createGenericTaskWhenMention(
     }
 }
 
-const updateLastAssistantCommentData = (projectId, newTaskId, creatorId, batch) => {
-    const { loggedUser } = store.getState()
-
-    const updateDate = {
-        objectType: 'tasks',
-        objectId: newTaskId,
-        creatorId,
-        creatorType: getAssistant(creatorId) ? 'assistant' : 'user',
-        date: moment().utc().valueOf(),
-    }
-
-    batch.update(getDb().doc(`users/${loggedUser.uid}`), {
-        [`lastAssistantCommentData.${projectId}`]: updateDate,
-        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-            ...updateDate,
-            projectId,
-        },
-    })
-}
-
-async function copyChatsForFolloupTaskAndGenerateCommentsData(projectId, oldTaskId, newTaskId) {
-    let commentsData = null
-
-    const oldChat = (await getDb().doc(`chatObjects/${projectId}/chats/${oldTaskId}`).get()).data()
-
-    if (oldChat) {
-        let lastCommentOwnerId = ''
-
-        const commentDocs = await getDb().collection(`chatComments/${projectId}/tasks/${oldTaskId}/comments`).get()
-
-        commentsData =
-            commentDocs.docs.length > 0
-                ? {
-                      lastComment: '',
-                      lastCommentType: STAYWARD_COMMENT,
-                      amount: 0,
-                  }
-                : null
-
-        const batch = new BatchWrapper(getDb())
-
-        commentDocs.forEach(doc => {
-            const comment = doc.data()
-            if (!comment.commentText.includes('Follow up task created')) {
-                commentsData.lastComment = comment.commentText
-                commentsData.amount++
-                lastCommentOwnerId = comment.creatorId
-                batch.set(getDb().doc(`chatComments/${projectId}/tasks/${newTaskId}/comments/${doc.id}`), comment)
-            }
-        })
-
-        updateLastAssistantCommentData(projectId, newTaskId, lastCommentOwnerId, batch)
-
-        batch.set(getDb().doc(`chatObjects/${projectId}/chats/${newTaskId}`), {
-            ...oldChat,
-            commentsData: { ...commentsData, lastCommentOwnerId },
-        })
-        await batch.commit()
-    }
-
-    return commentsData
-}
-
 export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation) {
     const { loggedUser } = store.getState()
 
     const newTaskId = getId()
+    const goalLink = await resolveFollowUpGoalLink({
+        projectId,
+        sourceTask: task,
+        loadGoal: getGoalData,
+        onGoalReadError: error =>
+            console.warn('[FollowUp] Could not recover the linked Goal visibility', {
+                projectId,
+                sourceTaskId: task.id,
+                parentGoalId: task.parentGoalId,
+                error,
+            }),
+    })
 
-    const commentsData = await copyChatsForFolloupTaskAndGenerateCommentsData(projectId, task.id, newTaskId)
-
-    const followUpTask = {
-        ...TasksHelper.getNewDefaultTask(),
-        id: newTaskId,
+    const followUpTask = buildFollowUpTask({
+        defaultTask: TasksHelper.getNewDefaultTask(),
+        sourceTask: task,
+        taskId: newTaskId,
         creatorId: loggedUser.uid,
-        dueDate: dueDate,
-        hasStar: task.hasStar,
-        isPrivate: task.isPrivate,
-        isPublicFor: task.isPublicFor,
-        name: `#FollowUp ${task.name.replace(/#FollowUp/g, '')}`.toLowerCase(),
-        extendedName: `#FollowUp ${(task.extendedName || task.name).replace(/#FollowUp/g, '')}`,
-        userId: task.userId,
-        userIds: [task.userId],
-        currentReviewerId: task.userId,
-        observersIds: task.observersIds,
-        dueDateByObserversIds: task.dueDateByObserversIds,
-        estimationsByObserverIds: task.estimationsByObserverIds,
-        linkedParentTasksIds: task.linkedParentTasksIds,
-        linkedParentNotesIds: task.linkedParentNotesIds,
-        parentGoalId: task.parentGoalId,
-        parentGoalIsPublicFor: task.parentGoalIsPublicFor,
-        lockKey: task.lockKey,
-        timesFollowed: task.timesFollowed ? task.timesFollowed + 1 : 1,
-        commentsData,
-        ...(task.noteId && { noteId: task.noteId }),
-    }
+        dueDate,
+        goalLink,
+    })
 
-    await uploadNewTask(projectId, followUpTask, null, null, true, true, true)
+    // The target task must exist before its conversation can be copied: comment rules verify the
+    // stored parent document, and chat access projections are server-owned. The old client-side
+    // batch did the copy first, so any source task that already had a conversation failed before
+    // the follow-up task was ever written.
+    await uploadNewTask(projectId, followUpTask, null, true, true, true)
+
+    if (!isAppOffline()) {
+        try {
+            await runHttpsCallableFunction('copyFollowUpTaskChatSecondGen', {
+                projectId,
+                sourceTaskId: task.id,
+                targetTaskId: newTaskId,
+            })
+        } catch (error) {
+            // Conversation history is useful, but it must never make an already-created follow-up
+            // disappear. This also keeps mixed client/function rollouts backward compatible.
+            console.warn('[FollowUp] Follow-up task was created, but its conversation could not be copied', {
+                projectId,
+                sourceTaskId: task.id,
+                targetTaskId: newTaskId,
+                error,
+            })
+        }
+    }
 
     updateTaskData(projectId, task.id, { timesFollowed: firebase.firestore.FieldValue.increment(1) }, null)
 
@@ -1013,9 +1059,9 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
 
 export async function updateTask(projectId, task, oldTask, oldAssignee, comment, commentMentions, isObservedTask) {
     // AT-2277 - every editor saves the whole task document from the copy it took when it opened, so
-    // a copy older than a background goal assignment would write `parentGoalId: null` straight over
-    // it. Restore the goal fields from the live task when this payload never saw the assignment;
-    // deliberate goal changes are untouched. See autoAssignedGoalGuard.js.
+    // a copy older than background Goal routing could remove an assignment or put `classifying`
+    // back after the classifier settled. Restore the Goal fields from the live task when this
+    // payload never saw the result; deliberate Goal changes are untouched. See autoAssignedGoalGuard.js.
     task = preserveAutoAssignedGoal(task, oldTask)
 
     const taskId = task.id
@@ -1344,6 +1390,11 @@ export async function setTaskHighlight(projectId, taskId, highlightColor, task) 
 }
 
 export async function setTaskHighlightMultiple(highlightColor, tasks) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'highlight',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(getDb())
     const taskBatch = new BatchWrapper(getDb())
     const isHighlight = highlightColor.toLowerCase() !== '#ffffff'
@@ -1366,6 +1417,7 @@ export async function setTaskHighlightMultiple(highlightColor, tasks) {
         updateTaskData(task.projectId, task.id, { hasStar: highlightColor }, taskBatch)
     }
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     for (let task of tasks) {
         await createTaskHighlightedChangedFeed(task.projectId, task, task.id, isHighlight, batch)
@@ -1378,6 +1430,7 @@ export async function setTaskHighlightMultiple(highlightColor, tasks) {
         await tryAddFollower(task.projectId, followTaskData, batch)
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function setTaskObserverEstimations(projectId, taskId, oldEstimation, newEstimation, observerId) {
@@ -1570,7 +1623,7 @@ export async function setTaskDescription(projectId, taskId, description, task, o
     await createTaskDescriptionChangedFeed(projectId, task, oldDescription, description, taskId, batch)
     await processFollowersWhenEditTexts(projectId, FOLLOWER_TASKS_TYPE, taskId, task, mentionedUserIds, true, batch)
 
-    batch.commit()
+    return batch.commit()
 }
 
 export async function setTaskAutoEstimation(projectId, task, autoEstimation, batch) {
@@ -1589,11 +1642,17 @@ export async function setTaskAutoEstimation(projectId, task, autoEstimation, bat
 }
 
 export async function setTaskAutoEstimationMultiple(tasks, autoEstimation) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'auto_estimation',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(getDb())
     for (const task of tasks) {
         setTaskAutoEstimation(task.projectId, task, autoEstimation, batch)
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export function unfocusTaskInUsers(projectId, unfocusData, externalBatch) {
@@ -1717,10 +1776,15 @@ export async function updateFocusedTask(
         // Always provide valid string values for these fields
         // REMOVE LOGGING HERE
         // console.log(`[updateFocusedTask] Updating user ${userId} focus state: inFocusTaskId=${taskToSetFocusOn ? taskToSetFocusOn.id : ''}`)
-        batch.update(getDb().doc(`users/${userId}`), {
-            inFocusTaskId: taskToSetFocusOn ? taskToSetFocusOn.id : '',
-            inFocusTaskProjectId: taskToSetFocusOn ? projectId : '', // Use projectId of taskToSetFocusOn
-        })
+        updateUserDataDirectly(
+            userId,
+            {
+                inFocusTaskId: taskToSetFocusOn ? taskToSetFocusOn.id : '',
+                inFocusTaskProjectId: taskToSetFocusOn ? projectId : '', // Use projectId of taskToSetFocusOn
+            },
+            batch,
+            projectId
+        )
 
         if (!externalBatch) {
             try {
@@ -2021,6 +2085,12 @@ export async function setTaskAssigneeAndObservers(
 }
 
 export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'assignee',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const batch = new BatchWrapper(getDb())
     const taskBatch = new BatchWrapper(getDb())
 
@@ -2097,7 +2167,9 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
     }
 
     await Promise.all(promises)
+    performanceTrace.mark('parent_reads_complete')
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     for (let task of tasks) {
         const { loggedUser: feedCreator } = store.getState()
@@ -2120,9 +2192,79 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
+}
+
+/**
+ * Mark the source task as moving, and stamp the edition data in the same write.
+ *
+ * The marker has to reach the server on its own commit — `onDeleteTask` reads it
+ * to tell a move apart from a real deletion, and so preserve the task's linked
+ * notes and backlinks. The edition stamp used to ride in the DELETE batch
+ * instead, which meant a second round trip to a document that the very next
+ * operation in that batch removed: a write that can only ever fail, never be
+ * observed. Folding it in here writes the same fields, touches the source once
+ * and leaves the delete on its own.
+ */
+const markSourceTaskAsMoving = async (sourceProjectId, taskId, targetProjectId) => {
+    const moveMarker = { movingToOtherProjectId: targetProjectId }
+    updateEditionData(moveMarker)
+    await awaitWriteAck(
+        getDb().doc(`items/${sourceProjectId}/tasks/${taskId}`).update(moveMarker),
+        'mark source task as moving'
+    )
+}
+
+/**
+ * Delete the source task, tolerating a source that somebody else already moved.
+ *
+ * Under the strict rules a MISSING document is indistinguishable from a
+ * forbidden one: `canAccessObjectWhileProjectionIsPending` dereferences
+ * `resource.data`, so every access to a task that is not there — the delete, an
+ * update, even a plain `get()` or an id-equality query — comes back as
+ * `permission-denied`, never `not-found`. There is therefore no probe that can
+ * answer "is it gone or am I not allowed?"; the only sound discriminator is
+ * within the run itself. The move marker was accepted moments ago, which proves
+ * the document existed and that this user could write it, and nothing since has
+ * changed its shape — so a refusal now can only mean the document has since
+ * disappeared, and the move it belonged to is complete.
+ *
+ * That is not a rare race. Two runs of the same move produce it (a slow move
+ * leaves the project picker on screen, so a second click starts one), and so
+ * does `addOrUpdateCalendarTask` in the scheduled calendar sync, which moves a
+ * calendar task between projects with the same create-then-`oldRef.delete()`
+ * shape while the user's own move is in flight.
+ */
+const removeMovedSourceTask = async (sourceProjectId, taskId) => {
+    try {
+        await awaitWriteAck(
+            getDb().doc(`items/${sourceProjectId}/tasks/${taskId}`).delete(),
+            'delete task from source project'
+        )
+    } catch (error) {
+        if (error?.code !== 'permission-denied') throw error
+        console.warn('[setTaskProject] source task was already removed by a concurrent move', {
+            sourceProjectId,
+            taskId,
+            code: error.code,
+        })
+    }
+}
+
+export function queueTaskProjectMove(sourceProjectId, targetProjectId, taskId) {
+    return runHttpsCallableFunction('moveTaskToProjectSecondGen', {
+        sourceProjectId,
+        targetProjectId,
+        taskId,
+    })
 }
 
 export async function setTaskProject(currentProject, newProject, task, oldAssignee, newAssignee) {
+    const performanceTrace = startPerformanceTrace('move_task_project', {
+        object_type: 'task',
+        task_count: 1,
+        subtask_count: task.subtaskIds?.length || 0,
+    })
     const { loggedUser, projectUsers, route } = store.getState()
 
     const newProjectUsers = projectUsers[newProject.id]
@@ -2150,10 +2292,12 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
-        taskCopy.calendarData = {
-            ...taskCopy.calendarData,
-            pinnedToProjectId: newProject.id,
-        }
+        taskCopy.calendarData = buildManuallyPinnedCalendarData(
+            taskCopy,
+            currentProject.id,
+            newProject.id,
+            loggedUser.uid
+        )
     }
 
     taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
@@ -2174,8 +2318,17 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     updateEditionData(taskCopy)
 
     delete taskCopy.time
-    delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
+    taskCopy.projectId = newProject.id
+    // A stale move marker must never survive into the destination copy, and a
+    // merge cannot remove a field it does not name.
+    taskCopy.movingToOtherProjectId = null
+    await awaitWriteAck(
+        getDb()
+            .doc(`items/${newProject.id}/tasks/${task.id}`)
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy)), CROSS_PROJECT_DESTINATION_WRITE),
+        'create task in target project'
+    )
+    performanceTrace.mark('target_task_created')
 
     if (route === 'TaskDetailedView') {
         NavigationService.navigate('TaskDetailedView', {
@@ -2195,17 +2348,19 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     promises.push(
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
-    promises.push(
-        getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
-    )
+    promises.push(markSourceTaskAsMoving(currentProject.id, task.id, newProject.id))
     await Promise.all(promises)
+    performanceTrace.mark('subtasks_copied')
 
-    batch = new BatchWrapper(getDb())
-    updateTaskData(currentProject.id, task.id, {}, batch)
-    batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    batch.commit()
+    await removeMovedSourceTask(currentProject.id, task.id)
+    performanceTrace.mark('source_task_deleted')
 
-    setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
+    await setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
+    performanceTrace.mark('feed_chain_committed')
+    const queuedOffline = isAppOffline()
+    performanceTrace.end(queuedOffline ? 'queued_offline' : 'server_acked', {
+        outcome: queuedOffline ? 'queued_offline' : 'success',
+    })
 }
 
 export async function setTaskProjectWithGoal(currentProject, newProject, task, goal) {
@@ -2246,10 +2401,15 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
-        taskCopy.calendarData = {
-            ...taskCopy.calendarData,
-            pinnedToProjectId: newProject.id,
-        }
+        taskCopy.calendarData = buildManuallyPinnedCalendarData(
+            taskCopy,
+            currentProject.id,
+            newProject.id,
+            loggedUser.uid
+        )
+        taskCopy.calendarData =
+            buildCalendarDataWithGoalRoutingFeedback(taskCopy, newProject.id, null, goal.id, loggedUser.uid) ||
+            taskCopy.calendarData
     }
 
     taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
@@ -2270,24 +2430,25 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     updateEditionData(taskCopy)
 
     delete taskCopy.time
-    delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
+    taskCopy.projectId = newProject.id
+    taskCopy.movingToOtherProjectId = null
+    await awaitWriteAck(
+        getDb()
+            .doc(`items/${newProject.id}/tasks/${task.id}`)
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy)), CROSS_PROJECT_DESTINATION_WRITE),
+        'create goal task in target project'
+    )
 
     const promises = []
     promises.push(
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
-    promises.push(
-        getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
-    )
+    promises.push(markSourceTaskAsMoving(currentProject.id, task.id, newProject.id))
     await Promise.all(promises)
 
-    const batch = new BatchWrapper(getDb())
-    updateTaskData(currentProject.id, task.id, {}, batch)
-    batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    await batch.commit()
+    await removeMovedSourceTask(currentProject.id, task.id)
 
-    setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
+    await setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
 }
 
 export async function setTaskParentGoal(projectId, taskId, task, goal, externalBatch, options = {}) {
@@ -2317,6 +2478,14 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
         sortIndex,
         ...(resolvedGoalSuggestion ? { goalSuggestion: resolvedGoalSuggestion } : {}),
     }
+    const calendarDataWithGoalRoutingFeedback = buildCalendarDataWithGoalRoutingFeedback(
+        task,
+        projectId,
+        task.parentGoalId,
+        goalId,
+        store.getState().loggedUser.uid
+    )
+    if (calendarDataWithGoalRoutingFeedback) updateData.calendarData = calendarDataWithGoalRoutingFeedback
 
     if (task.parentId) {
         await deleteSubTaskFromParent(projectId, taskId, task, batch)
@@ -2376,11 +2545,20 @@ export function dismissTaskGoalSuggestion(projectId, task) {
 }
 
 /**
- * AT-2160: read a task doc from Firestore's local cache, falling back to the server when it is not
- * cached. Used on paths where the read is only needed to build an undo record and must not delay
- * the write that the user is waiting to see.
+ * AT-2160: read a task from the already-rendered Redux maps, then Firestore's local cache, falling
+ * back to the server only when neither has it. Used where the read only builds an undo record and
+ * must not delay the write that the user is waiting to see.
  */
 export async function getTaskSnapshotCacheFirst(projectId, taskId) {
+    const loadedTask = getTaskFromLoadedTaskMaps(store.getState(), projectId, taskId)
+    if (loadedTask) {
+        return {
+            exists: true,
+            id: taskId,
+            data: () => loadedTask,
+        }
+    }
+
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
     try {
         return await ref.get({ source: 'cache' })
@@ -2677,65 +2855,91 @@ export async function stopObservingTask(
     selectedNextStepIndex,
     checkBoxId
 ) {
-    store.dispatch(startLoadingData())
-    const { loggedUser } = store.getState()
-    const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
+    return runWithLoading('stop_observing_task', async () => {
+        const { loggedUser } = store.getState()
+        const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
 
-    const taskIsMovedInWorkflow = selectedNextStepIndex !== null
+        const taskIsMovedInWorkflow = selectedNextStepIndex !== null
 
-    if (taskIsMovedInWorkflow && ownerIsWorkstream) {
-        const taskOwner = TasksHelper.getTaskOwner(task.userId, projectId)
-        await setTaskAssignee(projectId, task.id, loggedUser.uid, taskOwner, loggedUser, { ...task }, false)
-    }
-
-    if (taskIsMovedInWorkflow) {
-        const { stepHistory } = task
-        const stepsIds = getWorkflowStepsIdsSorted(workflow)
-        const stepToMoveId = getWorkflowStepId(selectedNextStepIndex, stepsIds)
-        const commentType =
-            comment && comment.length > 0
-                ? getCommentDirectionWhenMoveTaskInTheWorklfow(selectedNextStepIndex, stepsIds, stepHistory)
-                : STAYWARD_COMMENT
-        const estimations = { ...task.estimations, [OPEN_STEP]: assigneeEstimation }
-
-        if (task.userIds.length === 1) {
-            const taskToProcess = ownerIsWorkstream
-                ? { ...task, userId: loggedUser.uid, userIds: [loggedUser.uid], currentReviewerId: loggedUser.uid }
-                : task
-            moveTasksFromOpen(projectId, taskToProcess, stepToMoveId, comment, commentType, estimations, checkBoxId)
-        } else {
-            moveTasksFromMiddleOfWorkflow(projectId, task, stepToMoveId, comment, commentType, estimations, checkBoxId)
+        if (taskIsMovedInWorkflow && ownerIsWorkstream) {
+            const taskOwner = TasksHelper.getTaskOwner(task.userId, projectId)
+            await setTaskAssignee(projectId, task.id, loggedUser.uid, taskOwner, loggedUser, { ...task }, false)
         }
-    }
 
-    const updateData = {}
+        if (taskIsMovedInWorkflow) {
+            const { stepHistory } = task
+            const stepsIds = getWorkflowStepsIdsSorted(workflow)
+            const stepToMoveId = getWorkflowStepId(selectedNextStepIndex, stepsIds)
+            const commentType =
+                comment && comment.length > 0
+                    ? getCommentDirectionWhenMoveTaskInTheWorklfow(selectedNextStepIndex, stepsIds, stepHistory)
+                    : STAYWARD_COMMENT
+            const estimations = { ...task.estimations, [OPEN_STEP]: assigneeEstimation }
 
-    const updateEstimation = !taskIsMovedInWorkflow && assigneeEstimation !== task.estimations[OPEN_STEP]
-    if (updateEstimation) {
-        updateData[`estimations.${OPEN_STEP}`] = assigneeEstimation
-    }
+            if (task.userIds.length === 1) {
+                const taskToProcess = ownerIsWorkstream
+                    ? { ...task, userId: loggedUser.uid, userIds: [loggedUser.uid], currentReviewerId: loggedUser.uid }
+                    : task
+                await moveTasksFromOpen(
+                    projectId,
+                    taskToProcess,
+                    stepToMoveId,
+                    comment,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            } else {
+                await moveTasksFromMiddleOfWorkflow(
+                    projectId,
+                    task,
+                    stepToMoveId,
+                    comment,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            }
+        }
 
-    if (userIdStopingObserving) {
-        updateData.observersIds = firebase.firestore.FieldValue.arrayRemove(userIdStopingObserving)
-        updateData[`dueDateByObserversIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
-        updateData[`estimationsByObserverIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
-    }
+        const updateData = {}
 
-    const batch = new BatchWrapper(getDb())
-    updateTaskData(projectId, task.id, { ...updateData }, batch)
-    updateSubtasksState(projectId, task.subtaskIds, updateData, batch)
-    batch.commit()
+        const updateEstimation = !taskIsMovedInWorkflow && assigneeEstimation !== task.estimations[OPEN_STEP]
+        if (updateEstimation) {
+            updateData[`estimations.${OPEN_STEP}`] = assigneeEstimation
+        }
 
-    store.dispatch(stopLoadingData())
+        if (userIdStopingObserving) {
+            updateData.observersIds = firebase.firestore.FieldValue.arrayRemove(userIdStopingObserving)
+            updateData[`dueDateByObserversIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
+            updateData[`estimationsByObserverIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
+        }
 
-    if (!taskIsMovedInWorkflow && comment) {
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-            createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', STAYWARD_COMMENT, null, null)
-        })
-    }
+        const batch = new BatchWrapper(getDb())
+        updateTaskData(projectId, task.id, { ...updateData }, batch)
+        updateSubtasksState(projectId, task.subtaskIds, updateData, batch)
+        await batch.commit()
 
-    feedsChainInStopObservingTask(projectId, task, userIdStopingObserving, assigneeEstimation, updateEstimation)
+        if (!taskIsMovedInWorkflow && comment) {
+            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
+            await createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', STAYWARD_COMMENT, null, null)
+        }
+
+        feedsChainInStopObservingTask(projectId, task, userIdStopingObserving, assigneeEstimation, updateEstimation)
+    })
 }
+
+// Root task Done/Open activity is persisted later by onUpdateTaskSecondGen, so those transitions do
+// not pass through the client feed counter path that normally acknowledges older Updates entries.
+// Clear on every task transition in the authoritative task batch; a later server feed excludes the
+// actor from its recipients and therefore cannot make the object unread again.
+const queueTaskTransitionActivityFeedUnreadClear = (projectId, taskId, batch) =>
+    queueObjectActivityFeedUnreadClear(getDb(), batch, {
+        projectId,
+        userId: store.getState().loggedUser.uid,
+        objectType: 'tasks',
+        objectId: taskId,
+    })
 
 export async function moveTasksFromMiddleOfWorkflow(
     projectId,
@@ -2746,7 +2950,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     estimations,
     checkBoxId
 ) {
-    const { loggedUser } = store.getState()
+    const { loggedUser, loggedUserProjectsMap } = store.getState()
     const { parentId, subtaskIds = [], userId, stepHistory, userIds } = task
     const transitionDate = Date.now()
     const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
@@ -2840,14 +3044,30 @@ export async function moveTasksFromMiddleOfWorkflow(
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     if (stepToMoveId === DONE_STEP) {
         const taskEstimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
         if (!task.parentId) {
-            updateXpByDoneTask(userId, taskEstimation, firebase, getDb(), projectId)
-            if (workflow) updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId)
+            awardTaskCompletionXp({
+                projectId,
+                taskId: task.id,
+                ownerId: userId,
+                taskEstimation,
+                estimations,
+                workflow,
+                projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
+            })
         }
-        updateStatistics(projectId, userId, taskEstimation, false, false, null, batch)
+        updateTaskTransitionStatistics(projectId, userId, taskEstimation, false, false, null, batch)
+        celebrateTaskEarnings({
+            project: loggedUserProjectsMap?.[projectId],
+            userId,
+            loggedUserId: loggedUser.uid,
+            estimationMinutes: taskEstimation,
+            checkBoxId,
+            generatedTimeLog: isDayRateTimeLogTask(task),
+        })
 
         logDoneTasks(task.userId, loggedUser.uid, true)
     }
@@ -2858,6 +3078,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(userId, updateData.completed),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         done: stepToMoveId === DONE_STEP,
@@ -2871,7 +3092,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = {
@@ -2900,7 +3121,11 @@ export async function moveTasksFromMiddleOfWorkflow(
     // chain after it) must still run (AT-2340).
     await awaitWriteAck(batch.commit(), 'moveTasksInWorkflow batch')
 
-    if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
+    if (
+        stepToMoveId === DONE_STEP &&
+        shouldClientWriteTaskTransitionStatistics(userId, loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed),
             'moveTasksInWorkflow day-rate time log'
@@ -2909,7 +3134,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
 
 const getTaskCompletedTime = task => {
@@ -2952,6 +3177,54 @@ const getTaskCompletedTime = task => {
     }
 }
 
+const reportTaskXpAwardError = (scope, projectId, taskId, error) => {
+    console.warn('[task XP] Could not award completion XP', {
+        scope,
+        projectId,
+        taskId,
+        code: error?.code,
+        message: error?.message,
+    })
+}
+
+const awardTaskCompletionXp = ({
+    projectId,
+    taskId,
+    ownerId,
+    taskEstimation,
+    estimations,
+    workflow,
+    projectMemberIds,
+}) => {
+    if (!Array.isArray(projectMemberIds) || projectMemberIds.includes(ownerId)) {
+        updateXpByDoneTask(ownerId, taskEstimation, firebase, getDb(), projectId).catch(error =>
+            reportTaskXpAwardError('owner', projectId, taskId, error)
+        )
+    }
+    if (workflow) {
+        updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId, projectMemberIds).catch(
+            error => reportTaskXpAwardError('reviewers', projectId, taskId, error)
+        )
+    }
+}
+
+const persistClientOwnedWorkflowFeed = (projectId, task, stepToMoveId, workflow, estimations, undoActionId) => {
+    // Done/Open activity is generated from the authoritative task update by onUpdateTaskSecondGen.
+    // Keeping those events server-owned avoids a second, browser-authenticated fan-out after the
+    // task commit. Intermediate workflow moves still use the legacy client feed chain for now.
+    if (stepToMoveId === DONE_STEP || stepToMoveId === OPEN_STEP) return
+
+    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoActionId).catch(error => {
+        console.error('[task workflow feeds] Could not persist workflow activity', {
+            projectId,
+            taskId: task.id,
+            stepToMoveId,
+            code: error?.code,
+            message: error?.message,
+        })
+    })
+}
+
 export async function moveTasksFromOpen(
     projectId,
     task,
@@ -2962,7 +3235,7 @@ export async function moveTasksFromOpen(
     checkBoxId,
     recurrenceBaseDateOverride = null
 ) {
-    const { loggedUser } = store.getState()
+    const { loggedUser, loggedUserProjectsMap } = store.getState()
     const loggedUserId = loggedUser.uid
     const completionDate = Date.now()
     const { parentId, subtaskIds = [], userId } = task
@@ -3027,15 +3300,31 @@ export async function moveTasksFromOpen(
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     if (stepToMoveId === DONE_STEP) {
         if (ownerIsTeamMeber) {
             const taskEstimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
             if (!task.parentId) {
-                updateXpByDoneTask(newUserId, taskEstimation, firebase, getDb(), projectId)
-                if (workflow) updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId)
+                awardTaskCompletionXp({
+                    projectId,
+                    taskId: task.id,
+                    ownerId: newUserId,
+                    taskEstimation,
+                    estimations,
+                    workflow,
+                    projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
+                })
             }
-            updateStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
+            updateTaskTransitionStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
+            celebrateTaskEarnings({
+                project: loggedUserProjectsMap?.[projectId],
+                userId: newUserId,
+                loggedUserId: loggedUser.uid,
+                estimationMinutes: taskEstimation,
+                checkBoxId,
+                generatedTimeLog: isDayRateTimeLogTask(task),
+            })
         }
 
         logDoneTasks(task.userId, loggedUser.uid, workflow ? true : false)
@@ -3052,6 +3341,7 @@ export async function moveTasksFromOpen(
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(newUserId, completionDate),
         ...(task.suggestedBy ? { suggestedBy: null } : {}),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
@@ -3067,7 +3357,7 @@ export async function moveTasksFromOpen(
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = {
@@ -3095,7 +3385,12 @@ export async function moveTasksFromOpen(
     await awaitWriteAck(batch.commit(), 'moveTasksToDone batch')
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
 
-    if (stepToMoveId === DONE_STEP && ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+    if (
+        stepToMoveId === DONE_STEP &&
+        ownerIsTeamMeber &&
+        shouldClientWriteTaskTransitionStatistics(newUserId, loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, newUserId, completionDate),
             'moveTasksToDone day-rate time log'
@@ -3109,7 +3404,7 @@ export async function moveTasksFromOpen(
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
 
 export async function moveTasksFromDone(projectId, task, stepToMoveId) {
@@ -3166,11 +3461,12 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
     if (ownerIsTeamMeber) {
-        updateStatistics(projectId, userId, estimations[OPEN_STEP], true, false, task.completed, batch)
+        updateTaskTransitionStatistics(projectId, userId, estimations[OPEN_STEP], true, false, task.completed, batch)
     }
 
     // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
@@ -3179,6 +3475,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(userId, task.completed),
         // Reopening a completed task has no transition-popup comment. Explicitly clear any old
         // handoff so landing on an AI step runs its configured prompt.
         workflowAiPromptOverride: null,
@@ -3192,7 +3489,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = { ...updateData, parentDone: false, inDone: false }
@@ -3216,7 +3513,11 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     await awaitWriteAck(batch.commit(), 'moveTasksFromDone batch')
 
-    if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+    if (
+        ownerIsTeamMeber &&
+        shouldClientWriteTaskTransitionStatistics(userId, store.getState().loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, userId, task.completed),
             'moveTasksFromDone day-rate time log'
@@ -3225,7 +3526,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
 }
 
 export async function setTaskStatus(
@@ -3252,6 +3553,7 @@ export async function setTaskStatus(
         done: isDone,
         inDone: task.parentId ? task.inDone : isDone,
         recurrence: task.recurrence,
+        ...buildCrossUserTaskStatisticsMarker(taskOwnerUid, isDone ? completedDate : task.completed),
         ...(isDone && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
     }
 
@@ -3295,9 +3597,17 @@ export async function setTaskStatus(
     const taskRealOwner = TasksHelper.getTaskOwner(taskOwnerUid, projectId)
     const statisticUserUid = taskRealOwner.recorderUserId ? store.getState().loggedUser.uid : taskOwnerUid
     if (isDone) {
-        updateStatistics(projectId, statisticUserUid, task.estimations[OPEN_STEP], false, false, null, taskBatch)
+        updateTaskTransitionStatistics(
+            projectId,
+            statisticUserUid,
+            task.estimations[OPEN_STEP],
+            false,
+            false,
+            null,
+            taskBatch
+        )
     } else {
-        updateStatistics(
+        updateTaskTransitionStatistics(
             projectId,
             statisticUserUid,
             task.estimations[OPEN_STEP],
@@ -3361,7 +3671,10 @@ export async function setTaskStatus(
     // keep going (AT-2340).
     await awaitWriteAck(taskBatch.commit(), 'setTaskStatus task batch')
 
-    if (!isDayRateTimeLogTask(task)) {
+    if (
+        shouldClientWriteTaskTransitionStatistics(statisticUserUid, store.getState().loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, statisticUserUid, isDone ? completedDate : task.completed),
             'setTaskStatus day-rate time log'
@@ -3608,7 +3921,7 @@ const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
 
         const goalsSnapshot = await getDb()
             .collection(`goals/${projectId}/items`)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .where('ownerId', '==', ownerId)
             .get()
 
@@ -3837,32 +4150,33 @@ const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, do
 }
 
 async function callAutoPostponeTasks(tasks, targetUserId, clearSelectedTasks, background) {
-    if (!background) store.dispatch(startLoadingData())
-    try {
-        const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
-        const taskRequests = sortedTasks.map(task => ({
-            projectId: task.projectId,
-            taskId: task.id,
-            isObservedTask: !!task.isObservedTask,
-        }))
-        const result = { requestedCount: 0, updatedCount: 0, updated: [], skipped: [] }
+    return runWithLoading(
+        'postpone_tasks',
+        async () => {
+            const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
+            const taskRequests = sortedTasks.map(task => ({
+                projectId: task.projectId,
+                taskId: task.id,
+                isObservedTask: !!task.isObservedTask,
+            }))
+            const result = { requestedCount: 0, updatedCount: 0, updated: [], skipped: [] }
 
-        for (const taskChunk of chunk(taskRequests, 500)) {
-            const chunkResult = await runHttpsCallableFunction('autoReminderTasksSecondGen', {
-                targetUserId,
-                tasks: taskChunk,
-            })
-            result.requestedCount += chunkResult.requestedCount || 0
-            result.updatedCount += chunkResult.updatedCount || 0
-            result.updated.push(...(chunkResult.updated || []))
-            result.skipped.push(...(chunkResult.skipped || []))
-        }
+            for (const taskChunk of chunk(taskRequests, 500)) {
+                const chunkResult = await runHttpsCallableFunction('autoReminderTasksSecondGen', {
+                    targetUserId,
+                    tasks: taskChunk,
+                })
+                result.requestedCount += chunkResult.requestedCount || 0
+                result.updatedCount += chunkResult.updatedCount || 0
+                result.updated.push(...(chunkResult.updated || []))
+                result.skipped.push(...(chunkResult.skipped || []))
+            }
 
-        if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
-        return result
-    } finally {
-        if (!background) store.dispatch(stopLoadingData())
-    }
+            if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
+            return result
+        },
+        { enabled: !background }
+    )
 }
 
 export async function autoPostponeMultipleTasks(
@@ -3870,7 +4184,23 @@ export async function autoPostponeMultipleTasks(
     targetUserId = store.getState().currentUser.uid,
     { background = false } = {}
 ) {
-    return callAutoPostponeTasks(tasks, targetUserId, true, background)
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'auto_postpone',
+        task_count: tasks.length,
+        batch_count: Math.ceil(tasks.length / 500),
+    })
+    try {
+        const result = await callAutoPostponeTasks(tasks, targetUserId, true, background)
+        performanceTrace.end('server_acked', {
+            outcome: 'success',
+            document_count: result.updatedCount || 0,
+        })
+        return result
+    } catch (error) {
+        performanceTrace.fail('operation_failed')
+        throw error
+    }
 }
 
 export async function autoPostponeTask(projectId, task, isObservedTask, targetUserId, { background = false } = {}) {
@@ -3886,14 +4216,18 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
 /**
  * AT-2251 — the imminent-calendar rule, mirrored for the optimistic pick.
  *
- * Both authoritative pickers run this phase FIRST and let it beat everything else: a meeting that
- * starts within the next 15 minutes becomes the focus task, and it is searched for across every
- * project rather than just the one the completed task lived in (findAndSetNewFocusedTask above,
- * and FocusTaskService's Phase 1 in the Cloud Function). The optimistic pick did the opposite — it
- * filtered calendar tasks out entirely and never left the current project — so completing a focus
- * task 10 minutes before a meeting showed an ordinary task and then visibly flipped to the meeting
- * a moment later. That flip is the same class of bug as the random pick this ticket started with:
- * two pickers, one answer expected.
+ * Both authoritative pickers run this phase FIRST and let it beat everything else, and it is
+ * searched for across every project rather than just the one the completed task lived in
+ * (findAndSetNewFocusedTask above, and FocusTaskService's Phase 1 in the Cloud Function). The
+ * optimistic pick did the opposite — it filtered calendar tasks out entirely and never left the
+ * current project — so completing a focus task 10 minutes before a meeting showed an ordinary task
+ * and then visibly flipped to the meeting a moment later. That flip is the same class of bug as the
+ * random pick this ticket started with: two pickers, one answer expected.
+ *
+ * AT-2496 — which meetings qualify now lives in `utils/CalendarFocusWindow.js`, shared by all
+ * three pickers, and covers a meeting already under way as well as one about to start. Writing the
+ * rule out by hand in each picker is what let the other two rot: they keyed it on `sortIndex`, and
+ * went silently dead when AT-2259 stopped storing the event start there.
  *
  * Scanning every project in `openTasksMap` is cheap because it is already in Redux. A project the
  * client has not loaded is invisible here, which is the one case that can still flip — the
@@ -3903,11 +4237,10 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
  * just lost its focus task, and the optimistic slice is read per project.
  */
 function pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserId }) {
-    const now = moment()
-    const fifteenMinutesFromNow = moment().add(15, 'minutes')
+    const nowMs = moment().valueOf()
 
-    let earliest = null
-    let earliestStart = null
+    let best = null
+    let bestCandidacy = null
 
     Object.keys(openTasksMap || {}).forEach(candidateProjectId => {
         Object.values(openTasksMap[candidateProjectId] || {}).forEach(task => {
@@ -3916,22 +4249,20 @@ function pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserI
             if (task.done || task.isSubtask) return
             if (!isTaskOnUserPlate(task, focusUserId)) return
 
-            const start = task.calendarData && task.calendarData.start
-            if (!start) return
+            // AT-2496: the rule itself lives in utils/CalendarFocusWindow.js so this pick and the
+            // two authoritative ones cannot disagree — which is exactly what they did while the
+            // authoritative pair's `sortIndex` pre-filter silently matched nothing.
+            const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
+            if (!candidacy) return
 
-            const startDateTime = start.dateTime || start.date
-            if (!startDateTime) return
+            if (compareCalendarFocusCandidacy(candidacy, bestCandidacy) >= 0) return
 
-            const taskStartTime = moment(startDateTime)
-            if (!taskStartTime.isBetween(now, fifteenMinutesFromNow, undefined, '[)')) return
-            if (earliestStart && !taskStartTime.isBefore(earliestStart)) return
-
-            earliest = { task, projectId: candidateProjectId }
-            earliestStart = taskStartTime
+            best = { task, projectId: candidateProjectId }
+            bestCandidacy = candidacy
         })
     })
 
-    return earliest
+    return best
 }
 
 /**
@@ -4221,17 +4552,31 @@ async function findAndSetNewFocusedTask(
     }
 
     const currentTime = moment()
-    const fifteenMinutesFromNow = moment().add(15, 'minutes')
+    const nowMs = currentTime.valueOf()
+    // AT-2496: a `dueDate` window in place of the dead `sortIndex` one — see the query below.
+    const calendarDueDateWindow = getCalendarFocusDueDateWindow(nowMs)
     let earliestUpcomingCalendarTask = null
     let earliestUpcomingCalendarTaskProject = null
-    let earliestStartTime = moment().add(16, 'minutes') // Initialize to be later than any valid upcoming task
+    let bestCalendarCandidacy = null
 
     // Declare Redux state variables once at a higher scope
     const { projectUsers, loggedUserProjects, loggedUser } = store.getState() // Added loggedUser here
 
+    // AT-2386: `projectUsers[pid]` is loaded on demand now, so an EMPTY slice means "not requested
+    // yet", not "the user is not a member". Deciding membership from it alone would silently drop
+    // projects from the focus-task hunt for as long as their members had not arrived. The project
+    // DOCUMENT carries the same membership list and is always loaded at login, so it is the
+    // authority whenever the members slice is not populated.
+    const isMemberOfProject = pid => {
+        const members = projectUsers[pid]
+        if (members && members.length > 0) return members.some(member => member.uid === userId)
+        const project = loggedUserProjects.find(p => p.id === pid)
+        return Array.isArray(project?.userIds) && project.userIds.includes(userId)
+    }
+
     // --- NEW PRE-PRIORITIZATION: Check for upcoming calendar tasks across ALL projects ---
     const allUserProjectIds = Object.keys(projectUsers)
-        .filter(pid => projectUsers[pid]?.some(member => member.uid === userId)) // Projects user is a member of
+        .filter(isMemberOfProject) // Projects user is a member of
         .map(pid => loggedUserProjects.find(p => p.id === pid))
         .filter(project => project) // Ensure project exists
         .map(p => p.id)
@@ -4239,13 +4584,24 @@ async function findAndSetNewFocusedTask(
     for (const pid of allUserProjectIds) {
         const tasksCollectionRef = getDb().collection(`items/${pid}/tasks`)
         let calendarQuery = tasksCollectionRef
+            // The reader projection is what makes this query PROVABLE to firestore.rules: since the
+            // access hardening (6009eabd85) a task query with no readerIds / roleIdsVisibleTo
+            // constraint is denied outright, which surfaced as "workflow focus handoff:
+            // permission-denied" on every checkbox that released the user's focus task.
+            .where('readerIds', 'array-contains', userId)
             .where('userId', '==', userId)
-            .where('done', '==', false)
             .where('inDone', '==', false)
-            .where('isSubtask', '==', false)
-            .where('sortIndex', '>=', currentTime.valueOf())
-            .where('sortIndex', '<', fifteenMinutesFromNow.valueOf())
-            .orderBy('sortIndex', 'asc')
+            // AT-2496: this used to pre-filter on `sortIndex >= now && sortIndex < now + 15min`,
+            // which stopped selecting anything the day AT-2259 took the event start out of
+            // `sortIndex` (it is the sync-time arrival index now, always in the past), leaving the
+            // whole imminent-meeting exception dead. A calendar task's `dueDate` IS its event day,
+            // so this window is a cheap superset of the candidates and rides the existing
+            // `readerIds | inDone | userId | dueDate` index. `done`/`isSubtask` are filtered in
+            // memory rather than in the query so no new composite index is needed — this repo
+            // deploys those by hand. What actually decides is getCalendarFocusCandidacy.
+            .where('dueDate', '>=', calendarDueDateWindow.from)
+            .where('dueDate', '<=', calendarDueDateWindow.to)
+            .orderBy('dueDate', 'asc')
 
         const snapshot = await calendarQuery.get()
 
@@ -4253,21 +4609,17 @@ async function findAndSetNewFocusedTask(
             for (const doc of snapshot.docs) {
                 const task = { id: doc.id, ...doc.data() }
                 if (excludedTaskIds.has(task.id)) continue // AT-2191: never re-pick a just-released task
+                if (task.done || task.isSubtask) continue
                 // AT-2193: skip tasks already handed on to another reviewer's workflow step.
                 if (!isTaskOnUserPlate(task, userId)) continue
-                // Verify it IS a calendar task and its explicit start time is within the window
-                if (task.calendarData && task.calendarData.start) {
-                    const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
-                    const taskStartTime = moment(taskStartTimeString)
 
-                    if (
-                        taskStartTime.isBetween(currentTime, fifteenMinutesFromNow, undefined, '[)') &&
-                        taskStartTime.isBefore(earliestStartTime)
-                    ) {
-                        earliestUpcomingCalendarTask = task
-                        earliestUpcomingCalendarTaskProject = pid
-                        earliestStartTime = taskStartTime
-                    }
+                const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
+                if (!candidacy) continue
+
+                if (compareCalendarFocusCandidacy(candidacy, bestCalendarCandidacy) < 0) {
+                    earliestUpcomingCalendarTask = task
+                    earliestUpcomingCalendarTaskProject = pid
+                    bestCalendarCandidacy = candidacy
                 }
             }
         }
@@ -4298,6 +4650,7 @@ async function findAndSetNewFocusedTask(
     // --- Phase 1, 2 & 3: Try to find a task in the current project using display order ---
     const tasksRef = getDb().collection(`items/${currentProjectId}/tasks`)
     let query = tasksRef
+        .where('readerIds', 'array-contains', userId) // rules proof, see the calendar query above
         .where('userId', '==', userId)
         .where('done', '==', false)
         .where('inDone', '==', false)
@@ -4446,10 +4799,7 @@ async function findAndSetNewFocusedTask(
     // const { projectUsers, loggedUserProjects } = store.getState(); // This line will be removed as it's declared above
     const userProjects = Object.keys(projectUsers)
         .filter(pid => pid !== currentProjectId) // Exclude current project
-        .filter(pid => {
-            const projectMembers = projectUsers[pid] || []
-            return projectMembers.some(member => member.uid === userId)
-        })
+        .filter(isMemberOfProject) // AT-2386: falls back to the project doc while members load
 
     // Sort projects by sortIndexByUser (descending)
     const projectsBeforeFilter = userProjects.map(pid => loggedUserProjects.find(p => p.id === pid))
@@ -4485,6 +4835,7 @@ async function findAndSetNewFocusedTask(
         try {
             const otherProjectTasksRef = getDb().collection(`items/${pid}/tasks`)
             const otherProjectTasks = await otherProjectTasksRef
+                .where('readerIds', 'array-contains', userId) // rules proof, see the calendar query above
                 .where('userId', '==', userId)
                 .where('done', '==', false)
                 .where('inDone', '==', false)
@@ -4588,10 +4939,15 @@ async function findAndSetNewFocusedTask(
         }
     }
 
-    batch.update(getDb().doc(`users/${userId}`), {
-        inFocusTaskId: '',
-        inFocusTaskProjectId: '',
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            inFocusTaskId: '',
+            inFocusTaskProjectId: '',
+        },
+        batch,
+        currentProjectId
+    )
     await batch.commit()
     if (__DEV__) {
         console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
@@ -4659,10 +5015,15 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     })
 
     // Update user's focused task
-    batch.update(getDb().doc(`users/${userId}`), {
-        inFocusTaskId: task.id,
-        inFocusTaskProjectId: projectId,
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            inFocusTaskId: task.id,
+            inFocusTaskProjectId: projectId,
+        },
+        batch,
+        projectId
+    )
 
     // AT-2191: re-checked because assembling the batch above awaits. A postpone that arrived in the
     // meantime has already dispatched its own optimistic pick, and this write would overwrite it.

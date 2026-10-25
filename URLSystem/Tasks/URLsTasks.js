@@ -1,3 +1,4 @@
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
@@ -104,6 +105,13 @@ export const URL_TASK_DETAILS_BACKLINKS_TASKS = 'TASK_DETAILS_BACKLINKS_TASKS'
  */
 export const URL_TASK_DETAILS_BACKLINKS_NOTES = 'TASK_DETAILS_BACKLINKS_NOTES'
 
+// A project-move handoff replaces the current (now inaccessible) source-task
+// URL before remounting the DV. Every DV tab writes its URL again on mount; this
+// one-shot marker makes that first identical write a replace too, so the
+// browser Back button never lands on the deleted source and does not need an
+// extra press through a duplicate destination entry.
+export const REPLACE_NEXT_TASK_DETAIL_PUSH = '__replaceNextTaskDetailPush'
+
 /**
  * URL System for Tasks
  */
@@ -115,13 +123,11 @@ class URLsTasks {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsTasks.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsTasks.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('replace', data, urlPath, () => URLsTasks.setTitle(urlConstant, false, ...params))
     }
 
     /**
@@ -131,15 +137,23 @@ class URLsTasks {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsTasks.getPath(urlConstant, ...params)
+
+        if (history.state?.[REPLACE_NEXT_TASK_DETAIL_PUSH] && window.location.pathname === `/${urlPath}`) {
+            const replacementData = { ...(data || {}) }
+            delete replacementData[REPLACE_NEXT_TASK_DETAIL_PUSH]
+            URLSystem.setLastNavigationScreen(urlPath, true)
+            writeBrowserHistory('replace', replacementData, urlPath, () =>
+                URLsTasks.setTitle(urlConstant, false, ...params)
+            )
+            return
+        }
 
         if (!data || !data.noHistory) {
             URLSystem.setLastNavigationScreen(urlPath)
         }
 
-        URLsTasks.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('push', data, urlPath, () => URLsTasks.setTitle(urlConstant, false, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {

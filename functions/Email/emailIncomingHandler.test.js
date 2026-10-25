@@ -17,7 +17,10 @@ jest.mock('./emailReplyService', () => ({
 }))
 
 jest.mock('./emailUserRouting', () => ({
-    findVerifiedUserByEmailIdentity: jest.fn().mockResolvedValue(null),
+    SENDER_STATUS_AMBIGUOUS: 'ambiguous',
+    SENDER_STATUS_MATCHED: 'matched',
+    SENDER_STATUS_UNKNOWN: 'unknown',
+    resolveEmailSenderIdentity: jest.fn().mockResolvedValue({ status: 'unknown', user: null, candidates: [] }),
     getDefaultAssistantIdForUser: jest.fn(),
 }))
 
@@ -27,14 +30,15 @@ jest.mock('./emailGuestMeetingGrant', () => ({
 
 const admin = require('firebase-admin')
 const { sendAnnaEmailReply } = require('./emailReplyService')
-const { findVerifiedUserByEmailIdentity } = require('./emailUserRouting')
+const { resolveEmailSenderIdentity } = require('./emailUserRouting')
 const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
 const { handleIncomingAnnaEmail } = require('./emailIncomingHandler')
 
 describe('emailIncomingHandler authorization', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        findVerifiedUserByEmailIdentity.mockResolvedValue(null)
+        resolveEmailSenderIdentity.mockResolvedValue({ status: 'unknown', user: null, candidates: [] })
+        admin.firestore.mockReturnValue({ doc: jest.fn(() => ({ set: jest.fn().mockResolvedValue(undefined) })) })
         tryHandleGuestMeetingReply.mockResolvedValue({ matched: false })
     })
 
@@ -61,7 +65,7 @@ describe('emailIncomingHandler authorization', () => {
 
         await handleIncomingAnnaEmail(req, res)
 
-        expect(findVerifiedUserByEmailIdentity).toHaveBeenCalledWith('outsider@example.com')
+        expect(resolveEmailSenderIdentity).toHaveBeenCalledWith('outsider@example.com')
         expect(sendAnnaEmailReply).toHaveBeenCalledWith(
             expect.objectContaining({
                 toEmail: 'outsider@example.com',
@@ -72,9 +76,10 @@ describe('emailIncomingHandler authorization', () => {
     })
 
     test('does not execute email requests when the matched user has not enabled assistant email', async () => {
-        findVerifiedUserByEmailIdentity.mockResolvedValue({
-            uid: 'user-1',
-            assistantEmailEnabled: false,
+        resolveEmailSenderIdentity.mockResolvedValue({
+            status: 'matched',
+            user: { uid: 'user-1', assistantEmailEnabled: false },
+            candidates: [],
         })
         const req = {
             method: 'POST',
@@ -104,6 +109,81 @@ describe('emailIncomingHandler authorization', () => {
         )
         expect(sendAnnaEmailReply.mock.calls[0][0].toEmails).toBeUndefined()
         expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'email_disabled', userId: 'user-1' })
+    })
+
+    // The reply used to blame verification for an ambiguity, and the early return wrote no
+    // audit record at all — so a sender that could not be routed left no trace anywhere.
+    test('tells an ambiguous sender the truth and records why (AT-2483)', async () => {
+        const auditSet = jest.fn().mockResolvedValue(undefined)
+        admin.firestore.mockReturnValue({ doc: jest.fn(() => ({ set: auditSet })) })
+        resolveEmailSenderIdentity.mockResolvedValue({
+            status: 'ambiguous',
+            user: null,
+            candidates: [
+                { userId: 'user-main', primaryVerified: false, connectedMailbox: true, rank: 2 },
+                { userId: 'user-new', primaryVerified: true, connectedMailbox: false, rank: 3 },
+            ],
+        })
+
+        const req = {
+            method: 'POST',
+            headers: { authorization: 'Bearer secret' },
+            body: {
+                messageId: 'msg-ambiguous',
+                fromEmail: 'shared@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                subject: 'Fwd: invoice',
+                textBody: 'Please file this',
+            },
+        }
+        const res = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis(),
+            send: jest.fn().mockReturnThis(),
+        }
+
+        await handleIncomingAnnaEmail(req, res)
+
+        expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'ambiguous_sender' })
+        expect(sendAnnaEmailReply.mock.calls[0][0].replyText).toContain('more than one Alldone account')
+        expect(sendAnnaEmailReply.mock.calls[0][0].replyText).not.toContain("couldn't match")
+        expect(auditSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: 'ambiguous_sender',
+                fromEmail: 'shared@example.com',
+                senderCandidates: expect.arrayContaining([expect.objectContaining({ userId: 'user-main' })]),
+            }),
+            { merge: true }
+        )
+    })
+
+    test('records an unknown sender in the audit trail as well', async () => {
+        const auditSet = jest.fn().mockResolvedValue(undefined)
+        admin.firestore.mockReturnValue({ doc: jest.fn(() => ({ set: auditSet })) })
+
+        const req = {
+            method: 'POST',
+            headers: { authorization: 'Bearer secret' },
+            body: {
+                messageId: 'msg-unknown',
+                fromEmail: 'stranger@example.com',
+                subject: 'Hello',
+                textBody: 'Hi',
+            },
+        }
+        const res = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis(),
+            send: jest.fn().mockReturnThis(),
+        }
+
+        await handleIncomingAnnaEmail(req, res)
+
+        expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'unknown_sender' })
+        expect(auditSet).toHaveBeenCalledWith(
+            expect.objectContaining({ status: 'unknown_sender', fromEmail: 'stranger@example.com' }),
+            { merge: true }
+        )
     })
 
     test('uses an exact scoped guest meeting grant before ordinary account routing', async () => {
@@ -149,7 +229,7 @@ describe('emailIncomingHandler authorization', () => {
                 }),
             })
         )
-        expect(findVerifiedUserByEmailIdentity).not.toHaveBeenCalled()
+        expect(resolveEmailSenderIdentity).not.toHaveBeenCalled()
         expect(sendAnnaEmailReply).not.toHaveBeenCalled()
         expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'guest_meeting_booked' })
         expect(auditSet).toHaveBeenCalledWith(

@@ -169,8 +169,14 @@ async function updateGmailEmailForAssistantRequest({
 
     const candidateAccounts = normalizedProjectId
         ? [
-              ...accounts.filter(account => account.projectId === normalizedProjectId),
-              ...accounts.filter(account => account.projectId !== normalizedProjectId),
+              ...accounts.filter(
+                  account =>
+                      account.projectId === normalizedProjectId || account.connectionProjectId === normalizedProjectId
+              ),
+              ...accounts.filter(
+                  account =>
+                      account.projectId !== normalizedProjectId && account.connectionProjectId !== normalizedProjectId
+              ),
           ]
         : accounts
 

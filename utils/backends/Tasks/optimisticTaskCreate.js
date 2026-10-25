@@ -45,12 +45,60 @@
  * rollback deterministic for lists whose watcher is not currently mounted. Subscribers must
  * therefore treat removal as IDEMPOTENT - see the existence check in `openTasks.js`, without
  * which the two removals would decrement the per-day task/estimation counters twice.
+ *
+ * Settlement (AT-2500). The two events above are not enough on their own, because they only ever
+ * describe the task as it looked at the moment it was created. A user who postpones the task
+ * before the echo arrives changes the document underneath the published row, and a watcher can
+ * then be left holding a row that Firestore will never mention again: the task no longer matches
+ * the list's query (`dueDate <= endOfDay` for today's board and for My Day), so there is no
+ * `added` to correct it and no `removed` to take it away. The row stays in today's list, showing
+ * a date it no longer has, until the whole watcher restarts.
+ *
+ * `publishOptimisticTaskSettled` closes that hole with the one fact only the writer knows: the
+ * `set()` has been acknowledged by the SERVER, plus the document as the local cache holds it at
+ * that moment - which is the create as amended by every local edit made since, the postpone
+ * included.
+ *
+ * It carries that document because the FIRST version of this event did not, and the difference is
+ * the whole of AT-2500's follow-up. That version treated settlement itself as proof that the echo
+ * had already been delivered ("Firestore raises the local `added` as soon as the mutation is
+ * applied locally, well before the round trip"), so a subscriber that had not seen the document by
+ * then concluded it was not in its query and dropped the row. The premise is false in this
+ * codebase, and not marginally so: every one of these watchers filters on `readerIds` (or
+ * `roleIdsVisibleTo.<reader>`), which is a SERVER-DERIVED projection field - the access hardening
+ * rules reject a client write that so much as mentions it, see `accessProjection.js`. A locally
+ * created task therefore carries no `readerIds` at all, matches none of those queries locally, and
+ * gets NO local echo. The first snapshot naming it is the one produced after `onCreateTask` ->
+ * `synchronizeAccessProjection` has written the projection server-side and it has come back down.
+ *
+ * So the ack always won that race, on every single create: the row appeared, was dropped a few
+ * hundred milliseconds later at settlement, and reappeared a beat afterwards when the projection
+ * landed - "it shows up, blinks out for a second, and comes back".
+ *
+ * Carrying the document turns the decision from a race into a question the subscriber can answer
+ * outright: re-check the settled document against the very predicate that admitted the row, and
+ * KEEP (updating in place), or REMOVE, accordingly. No timer, no inference from absence, and the
+ * ordinary create never blinks because its document still matches. `null` data means "could not
+ * be read", which is deliberately the KEEP case - a stale row corrects itself on the next
+ * snapshot, whereas a wrongly removed one looks like the task was lost.
+ *
+ * Deliberately NOT published when the write is still in flight offline: `set()` only resolves on
+ * the server ack, so an offline create keeps its optimistic row (the local cache holds the
+ * document and the row is correct), which is exactly what should happen.
  */
 
 const subscribersByProject = new Map()
+const pendingSubscribersByProject = new Map()
+const confirmationListenersByProject = new Map()
 
 export const OPTIMISTIC_TASK_ADDED = 'added'
 export const OPTIMISTIC_TASK_REMOVED = 'removed'
+/**
+ * Carries the document as the local cache held it at the moment the server acknowledged the
+ * create, or `null` when it could not be read. Subscribers must branch on this type BEFORE using
+ * `doc.data()` as a create payload: this is a re-evaluation, not an insert.
+ */
+export const OPTIMISTIC_TASK_SETTLED = 'settled'
 
 /**
  * Shapes a published task exactly like a Firestore `docChanges()` entry, so a subscriber can
@@ -72,6 +120,8 @@ export const buildOptimisticTaskChange = (type, taskId, taskData) => ({
 
 /**
  * @param handler receives a change shaped like a Firestore `docChanges()` entry.
+ *                It must return `true` when it accepts an `added` row; that keeps the short-lived
+ *                settlement listener open until this subscriber confirms the real query result.
  * @returns an unsubscribe function. Watchers must call it from their own unsubscribe so a
  *          publication can never reach a list nobody is watching any more.
  */
@@ -90,6 +140,85 @@ export const subscribeToOptimisticTaskCreates = (projectId, handler) => {
         if (!current) return
         current.delete(handler)
         if (current.size === 0) subscribersByProject.delete(projectId)
+
+        const pendingByTask = pendingSubscribersByProject.get(projectId)
+        if (!pendingByTask) return
+        pendingByTask.forEach((pendingSubscribers, taskId) => {
+            if (!pendingSubscribers.delete(handler) || pendingSubscribers.size > 0) return
+            pendingByTask.delete(taskId)
+            notifyOptimisticTaskConfirmed(projectId, taskId)
+        })
+        if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
+    }
+}
+
+const notifyOptimisticTaskConfirmed = (projectId, taskId) => {
+    const listenersByTask = confirmationListenersByProject.get(projectId)
+    const listeners = listenersByTask?.get(taskId)
+    if (!listeners) return
+    listenersByTask.delete(taskId)
+    if (listenersByTask.size === 0) confirmationListenersByProject.delete(projectId)
+    Array.from(listeners).forEach(listener => listener())
+}
+
+const trackOptimisticTaskSubscriber = (projectId, taskId, handler) => {
+    let pendingByTask = pendingSubscribersByProject.get(projectId)
+    if (!pendingByTask) {
+        pendingByTask = new Map()
+        pendingSubscribersByProject.set(projectId, pendingByTask)
+    }
+    let pendingSubscribers = pendingByTask.get(taskId)
+    if (!pendingSubscribers) {
+        pendingSubscribers = new Set()
+        pendingByTask.set(taskId, pendingSubscribers)
+    }
+    pendingSubscribers.add(handler)
+}
+
+/**
+ * A real query has now named this task (or the subscriber has deliberately removed its pending
+ * copy), so this particular list no longer needs the document-level settlement safety net.
+ */
+export const confirmOptimisticTaskForSubscriber = (projectId, taskId, handler) => {
+    const pendingByTask = pendingSubscribersByProject.get(projectId)
+    const pendingSubscribers = pendingByTask?.get(taskId)
+    if (!pendingSubscribers?.delete(handler)) return
+    if (pendingSubscribers.size > 0) return
+    pendingByTask.delete(taskId)
+    if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
+    notifyOptimisticTaskConfirmed(projectId, taskId)
+}
+
+/** Drop confirmation bookkeeping when the bounded settlement window can no longer reconcile it. */
+export const discardOptimisticTaskSubscribers = (projectId, taskId) => {
+    const pendingByTask = pendingSubscribersByProject.get(projectId)
+    if (!pendingByTask?.delete(taskId)) return
+    if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
+    notifyOptimisticTaskConfirmed(projectId, taskId)
+}
+
+/**
+ * Listen until every list which accepted the optimistic create has confirmed or removed it.
+ * Returns `null` when no list is holding the task, so the writer need not open a document listener.
+ */
+export const onOptimisticTaskSubscribersConfirmed = (projectId, taskId, listener) => {
+    if (!pendingSubscribersByProject.get(projectId)?.get(taskId)?.size) return null
+    let listenersByTask = confirmationListenersByProject.get(projectId)
+    if (!listenersByTask) {
+        listenersByTask = new Map()
+        confirmationListenersByProject.set(projectId, listenersByTask)
+    }
+    let listeners = listenersByTask.get(taskId)
+    if (!listeners) {
+        listeners = new Set()
+        listenersByTask.set(taskId, listeners)
+    }
+    listeners.add(listener)
+    return () => {
+        listeners.delete(listener)
+        if (listeners.size > 0) return
+        listenersByTask.delete(taskId)
+        if (listenersByTask.size === 0) confirmationListenersByProject.delete(projectId)
     }
 }
 
@@ -100,13 +229,24 @@ const publish = (projectId, change) => {
     // Snapshot the set first: a subscriber is free to unsubscribe (or subscribe) while handling.
     Array.from(subscribers).forEach(handler => {
         try {
-            handler(change)
+            const accepted = handler(change)
+            if (
+                change.type === OPTIMISTIC_TASK_ADDED &&
+                accepted === true &&
+                subscribersByProject.get(projectId)?.has(handler)
+            ) {
+                trackOptimisticTaskSubscriber(projectId, change.doc.id, handler)
+            }
         } catch (error) {
             // One broken list must never take down task creation itself - the write is already
             // on its way and the real snapshot will render the task regardless.
             console.warn('[AT-2342] optimistic task subscriber failed', error)
         }
     })
+
+    if (change.type === OPTIMISTIC_TASK_REMOVED) {
+        discardOptimisticTaskSubscribers(projectId, change.doc.id)
+    }
 }
 
 export const publishOptimisticTaskCreated = (projectId, taskId, taskData) => {
@@ -119,5 +259,37 @@ export const publishOptimisticTaskCreateFailed = (projectId, taskId, taskData) =
     publish(projectId, buildOptimisticTaskChange(OPTIMISTIC_TASK_REMOVED, taskId, taskData))
 }
 
+/**
+ * AT-2500 - `taskData` is the document as the local cache holds it now: the create plus every local
+ * edit made since, which is exactly the postpone this event exists to notice.
+ *
+ * A subscriber holding an unconfirmed optimistic row for this id re-checks `taskData` against its
+ * own query and keeps (updating the row in place) or removes accordingly. `taskData` is `null`
+ * when the cache could not be read, which means "no verdict" and must leave the row standing -
+ * see the module header for why removal is never the safe default here.
+ *
+ * This is published MORE THAN ONCE per create - see `optimisticTaskSettlement.js`. The ack is only
+ * the start of the window in which a row can be orphaned; it stays open until every accepting list
+ * confirms that its own query has taken over, which can occur after the access projection lands.
+ * Subscribers must therefore treat every settlement as an idempotent re-evaluation of the current
+ * row, never as a one-shot "the create is done" signal.
+ */
+export const publishOptimisticTaskSettled = (projectId, taskId, taskData = null) => {
+    if (!projectId || !taskId) return
+    publish(projectId, {
+        type: OPTIMISTIC_TASK_SETTLED,
+        doc: {
+            id: taskId,
+            exists: !!taskData,
+            data: () => taskData || null,
+            metadata: { fromCache: true, hasPendingWrites: false },
+        },
+    })
+}
+
 /** Test-only: the bus is module state, so suites must be able to start from a clean one. */
-export const resetOptimisticTaskCreates = () => subscribersByProject.clear()
+export const resetOptimisticTaskCreates = () => {
+    subscribersByProject.clear()
+    pendingSubscribersByProject.clear()
+    confirmationListenersByProject.clear()
+}

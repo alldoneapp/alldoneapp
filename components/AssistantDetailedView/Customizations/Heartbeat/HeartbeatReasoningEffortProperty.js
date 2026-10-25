@@ -10,9 +10,12 @@ import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Ass
 import { translate } from '../../../../i18n/TranslationService'
 import {
     getAssistantReasoningEffortLabelKey,
-    SELECTABLE_ASSISTANT_REASONING_EFFORTS,
+    getAssistantReasoningEffortOptions,
 } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
-import { getEffectiveHeartbeatReasoningEffort } from '../../../../functions/Assistant/heartbeatSettingsHelper'
+import {
+    getEffectiveHeartbeatReasoningEffort,
+    getEffectiveHeartbeatModel,
+} from '../../../../functions/Assistant/heartbeatSettingsHelper'
 
 export default function HeartbeatReasoningEffortProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -47,7 +50,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                             <Text style={[styles.body2, localStyles.helpText]}>
                                 {translate('Choose how much reasoning heartbeat executions should use.')}
                             </Text>
-                            {SELECTABLE_ASSISTANT_REASONING_EFFORTS.map(option => {
+                            {getAssistantReasoningEffortOptions(getEffectiveHeartbeatModel(assistant)).map(option => {
                                 const selected = option.value === currentEffort
                                 return (
                                     <TouchableOpacity

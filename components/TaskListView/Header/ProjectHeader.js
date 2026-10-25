@@ -12,10 +12,21 @@ import {
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_UPDATES,
     DV_TAB_ROOT_CHATS,
+    DV_TAB_ROOT_WIKI,
+    DV_TAB_ROOT_ARTIFACTS,
 } from '../../../utils/TabNavigationConstants'
 import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
 import RootSectionNavigation from '../../RootView/RootSectionNavigation'
+import { useContext } from 'react'
+import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
+import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
+import ProjectPostponeSwipe from './ProjectPostponeSwipe'
+
+/**
+ * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
+ * The full-card sweep is rendered by `ProjectSection`; this header only renders the line itself.
+ */
 
 export default function ProjectHeader({
     projectIndex,
@@ -23,13 +34,14 @@ export default function ProjectHeader({
     showWorkflowTag = false,
     badge,
     customRight,
-    showAddTask,
-    showAddGoal,
-    setPressedShowMoreMainSection,
+    showTaskMore,
+    showGoalMore,
     showRootSectionNavigation = false,
     showEmailLabels = false,
+    allowProjectPostpone = false,
 }) {
     const dispatch = useDispatch()
+    const inProjectSection = useContext(ProjectSectionContext)
 
     const currentUser = useSelector(state => state.currentUser)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -41,7 +53,9 @@ export default function ProjectHeader({
         selectedTab === DV_TAB_ROOT_CONTACTS ||
         selectedTab === DV_TAB_ROOT_NOTES ||
         selectedTab === DV_TAB_ROOT_CHATS ||
-        selectedTab === DV_TAB_ROOT_UPDATES
+        selectedTab === DV_TAB_ROOT_UPDATES ||
+        selectedTab === DV_TAB_ROOT_WIKI ||
+        selectedTab === DV_TAB_ROOT_ARTIFACTS
             ? loggedUser
             : currentUser
 
@@ -65,29 +79,48 @@ export default function ProjectHeader({
 
     const showWorkflow = showWorkflowTag && haveWorkflow()
 
+    const projectColor = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.color)
+    // Match the soft active-project surface used by the sidebar.
+    const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
+        .PROJECT_ITEM_ACTIVE
+    const headerTextColor = colors.Text01
+    const line = (
+        <View testID="project-line">
+            <View
+                style={[
+                    localStyles.borderContainer,
+                    taskHierarchyStyles.projectHeader,
+                    inProjectSection && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+                    { backgroundColor: headerBackgroundColor },
+                ]}
+            >
+                <HeaderActionsContext.Provider value={true}>
+                    <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
+                        <ProjectAndUserData
+                            projectIndex={projectIndex}
+                            projectId={projectId}
+                            badge={badge}
+                            userInHeader={userInHeader}
+                            showEmailLabels={showEmailLabels}
+                            headerTextColor={headerTextColor}
+                        />
+                        <TagsArea
+                            projectId={projectId}
+                            mobile={mobile || mobileCollapsed}
+                            onClickWorkflowIndicator={onClickWorkflowIndicator}
+                            showWorkflow={showWorkflow}
+                            showTaskMore={showTaskMore}
+                            showGoalMore={showGoalMore}
+                        />
+                        {customRight}
+                    </View>
+                </HeaderActionsContext.Provider>
+            </View>
+        </View>
+    )
     return (
         <>
-            <View style={localStyles.borderContainer}>
-                <View style={localStyles.container}>
-                    <ProjectAndUserData
-                        projectIndex={projectIndex}
-                        projectId={projectId}
-                        badge={badge}
-                        userInHeader={userInHeader}
-                        showEmailLabels={showEmailLabels}
-                    />
-                    <TagsArea
-                        projectId={projectId}
-                        mobile={mobile || mobileCollapsed}
-                        onClickWorkflowIndicator={onClickWorkflowIndicator}
-                        showWorkflow={showWorkflow}
-                        showAddTask={showAddTask}
-                        showAddGoal={showAddGoal}
-                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                    />
-                    {customRight}
-                </View>
-            </View>
+            {allowProjectPostpone ? <ProjectPostponeSwipe projectId={projectId}>{line}</ProjectPostponeSwipe> : line}
             {showRootSectionNavigation && <RootSectionNavigation useOuterMargins={false} />}
         </>
     )

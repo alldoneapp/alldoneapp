@@ -30,6 +30,7 @@ import {
 } from '../../utils/TabNavigationConstants'
 import store from '../../redux/store'
 import SharedHelper from '../../utils/SharedHelper'
+import { readContactStatusFromUrl } from './contactStatusUrl'
 
 class URLsPeopleTrigger {
     static getRegexList = () => {
@@ -76,7 +77,7 @@ class URLsPeopleTrigger {
         const regexList = URLsPeopleTrigger.getRegexList()
 
         for (let key in regexList) {
-            const matchObj = pathname.match(regexList[key])
+            const matchObj = pathname.split(/[?#]/)[0].match(regexList[key])
 
             if (matchObj) {
                 return { key: key, matches: matchObj }
@@ -97,6 +98,11 @@ class URLsPeopleTrigger {
     static trigger = (navigation, pathname) => {
         const matchedObj = URLsPeopleTrigger.match(pathname)
         const params = matchedObj.matches.groups
+        const pathWithQuery =
+            !pathname.includes('?') && pathname === window.location.pathname
+                ? `${pathname}${window.location.search}`
+                : pathname
+        const contactStatus = readContactStatusFromUrl(pathWithQuery)
 
         // This Switch will have CASEs as elements have the "regexList" const
         switch (matchedObj.key) {
@@ -105,9 +111,21 @@ class URLsPeopleTrigger {
             case URL_ALL_PROJECTS_PEOPLE_FOLLOWED:
                 return ContactsHelper.processURLAllProjectsPeople(navigation, FOLLOWED_TAB)
             case URL_PROJECT_PEOPLE_ALL:
-                return ContactsHelper.processURLProjectPeople(navigation, params.projectId, params.userId, ALL_TAB)
+                return ContactsHelper.processURLProjectPeople(
+                    navigation,
+                    params.projectId,
+                    params.userId,
+                    ALL_TAB,
+                    contactStatus
+                )
             case URL_PROJECT_PEOPLE_FOLLOWED:
-                return ContactsHelper.processURLProjectPeople(navigation, params.projectId, params.userId, FOLLOWED_TAB)
+                return ContactsHelper.processURLProjectPeople(
+                    navigation,
+                    params.projectId,
+                    params.userId,
+                    FOLLOWED_TAB,
+                    contactStatus
+                )
             case URL_PEOPLE_DETAILS:
                 return ContactsHelper.processURLPeopleDetails(navigation, params.projectId, params.userId)
             case URL_PEOPLE_DETAILS_FEED:

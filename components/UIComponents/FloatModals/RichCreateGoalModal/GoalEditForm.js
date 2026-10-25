@@ -6,6 +6,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import InputArea from './InputArea'
 import ButtonsArea from './ButtonsArea/ButtonsArea'
+import FocusAreaProperty from '../../../GoalDetailedView/GoalProperties/FocusAreaProperty'
 
 export default function GoalEditForm({
     projectId,
@@ -44,6 +45,13 @@ export default function GoalEditForm({
                 onChangeInputText={onChangeInputText}
                 enterKeyAction={enterKeyAction}
                 setMentionsModalActive={setMentionsModalActive}
+            />
+            <FocusAreaProperty
+                compact
+                dark
+                projectId={projectId}
+                goal={goal}
+                onChange={focusAreaId => setGoal(previous => ({ ...previous, focusAreaId }))}
             />
             <ButtonsArea
                 projectId={projectId}

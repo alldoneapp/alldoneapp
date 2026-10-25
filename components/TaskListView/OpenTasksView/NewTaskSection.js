@@ -14,6 +14,18 @@ import { DATE_TASK_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
 import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
+import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
+
+function AddTaskEditor(props) {
+    const taskEditorLock = useTaskEditorLock()
+
+    useEffect(() => {
+        taskEditorLock.acquire()
+        return taskEditorLock.release
+    }, [taskEditorLock])
+
+    return <EditTask {...props} />
+}
 
 export default function NewTaskSection({
     projectId,
@@ -24,6 +36,7 @@ export default function NewTaskSection({
     dateIndex,
     expandTasksList,
     isLocked,
+    suspendShortcut = false,
 }) {
     const dispatch = useDispatch()
     const dateFormated = useSelector(
@@ -38,7 +51,7 @@ export default function NewTaskSection({
     const date = dateIsToday ? moment() : moment(dateFormated, 'YYYYMMDD')
 
     const onKeyDown = e => {
-        if (store.getState().blockShortcuts || isLocked) {
+        if (store.getState().blockShortcuts || isLocked || suspendShortcut) {
             return
         }
         const { lastAddNewTaskDate } = store.getState()
@@ -132,7 +145,7 @@ export default function NewTaskSection({
                     )
                 }
                 modalComponent={
-                    <EditTask
+                    <AddTaskEditor
                         adding={true}
                         projectId={projectId}
                         onCancelAction={forceAction => {

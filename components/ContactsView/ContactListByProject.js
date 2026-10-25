@@ -1,4 +1,5 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
+import React, { memo, useEffect, useMemo, useRef } from 'react'
 import { View } from 'react-native'
 
 import store from '../../redux/store'
@@ -10,6 +11,7 @@ import { setLastAddNewContact } from '../../redux/actions'
 import { dismissAllPopups, isInputsFocused } from '../../utils/HelperFunctions'
 import ShowMoreButton from '../UIControls/ShowMoreButton'
 import ProjectHeader from '../TaskListView/Header/ProjectHeader'
+import ProjectAssistantLine from '../MyDayView/AssistantLine/ProjectAssistantLine'
 import ContactsHelper, { isSomeContactEditOpen } from './Utils/ContactsHelper'
 import { useDispatch, useSelector } from 'react-redux'
 import useSelectorHashtagFilters from '../HashtagFilters/UseSelectorHashtagFilters'
@@ -20,15 +22,29 @@ import NewContactSection from './NewContactSection'
 import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Contacts/ContactMoreButton'
 import ContactsHeader from './ContactsHeader'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
+import ContactsListSkeleton from './ContactsListSkeleton'
+import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
+import usePagedReveal from '../../hooks/usePagedReveal'
+import useProjectData from '../../hooks/useProjectData'
+import { PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader'
+import PendingContactItem from './PendingContactItem'
+import { isPendingContact } from '../../utils/backends/Contacts/pendingContact'
 
 const EMPTY_PROJECT_CONTACTS = {}
 
-function ContactListByProject({ members, contacts, onlyMembers, projectIndex, firstProject, maxContactsToRender }) {
-    const [pressedShowMore, setPressedShowMore] = useState(false)
+function ContactListByProject({
+    members,
+    contacts,
+    onlyMembers,
+    projectIndex,
+    firstProject,
+    maxContactsToRender,
+    requestProjectData = true,
+}) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const handlesAddContactShortcut = inSelectedProject || firstProject
-    const loggedUser = useSelector(state => (inSelectedProject ? state.loggedUser : null))
+    const loggedUser = useSelector(state => state.loggedUser)
     const projectContacts = useSelector(state => (inSelectedProject ? state.projectContacts : EMPTY_PROJECT_CONTACTS))
     const lastAddNewContact = useSelector(state => (handlesAddContactShortcut ? state.lastAddNewContact : null))
     const [, filtersArray] = useSelectorHashtagFilters()
@@ -36,6 +52,10 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
     const dispatch = useDispatch()
 
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
+
+    // Standalone consumers still request their own data. ContactsView passes false because its
+    // admission queue owns the request and must attach loading/connection tracking before it starts.
+    useProjectData(requestProjectData ? project?.id : null, PROJECT_DATA_CONTACTS)
 
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef({}).current
@@ -74,6 +94,18 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
         return list.sort((a, b) => ContactsHelper.sortContactsFn(a, b, project.id))
     }, [filtersArray, contactStatusFilter, members, contacts, onlyMembers, project.id])
 
+    // AT-2385 - the whole project contact set is already in redux, so "show more" never
+    // waited on the network; it flipped a boolean that mounted EVERY remaining contact in
+    // one press. Each of those rows opens its own backlinks watcher and subscribes to the
+    // store, so that press was the expensive operation. Reveal one page at a time instead,
+    // and ghost the page while it mounts - the same affordance the other lists got in
+    // AT-2382, driven by a signal that fits an in-memory list. See hooks/usePagedReveal.js.
+    const { visibleAmount, incomingCount, loadingMore, expanded, canExpand, expand, collapse } = usePagedReveal(
+        contactsList.length,
+        maxContactsToRender,
+        { initialAmount: maxContactsToRender }
+    )
+
     const onKeyDown = e => {
         if (!store.getState().blockShortcuts) {
             const { projectId: lastPId } = lastAddNewContact ? lastAddNewContact : { projectId: null }
@@ -89,82 +121,102 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
     }
 
     return contactsList.length > 0 || inSelectedProject ? (
-        <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
+        <ProjectSection
+            projectId={project.id}
+            projectColor={project.color}
+            selected={inSelectedProject}
+            style={{ marginBottom: inSelectedProject ? 32 : 25 }}
+        >
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 customRight={
-                    inSelectedProject ? (
-                        <ContactMoreButton
-                            projectId={project.id}
-                            user={loggedUser}
-                            wrapperStyle={localStyles.moreButtonWrapper}
-                            buttonStyle={localStyles.moreButton}
-                            iconSize={16}
-                        />
-                    ) : null
+                    <ContactMoreButton
+                        projectId={project.id}
+                        user={loggedUser}
+                        wrapperStyle={localStyles.moreButtonWrapper}
+                        buttonStyle={localStyles.moreButton}
+                        iconSize={16}
+                    />
                 }
                 showRootSectionNavigation={inSelectedProject}
             />
-            {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
-            {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
+            <ProjectSectionBody>
+                {inSelectedProject && <ProjectAssistantLine project={project} />}
+                {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
+                {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
 
-            <NewContactSection projectIndex={projectIndex} newItemRef={newItemRef} dismissibleRefs={dismissibleRefs} />
-
-            {contactsList.length > 0 &&
-                contactsList.map((contact, index) => {
-                    return (
-                        contact &&
-                        (pressedShowMore || index < maxContactsToRender) && (
-                            <DismissibleItem
-                                key={contact.uid}
-                                ref={ref => {
-                                    if (ref) {
-                                        dismissibleRefs[`${contact.uid}`] = ref
-                                    }
-                                }}
-                                defaultComponent={
-                                    <ContactItem
-                                        projectIndex={projectIndex}
-                                        key={contact.uid}
-                                        contact={contact}
-                                        isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
-                                        onPress={() => {
-                                            if (!isSomeContactEditOpen()) {
-                                                for (let key in dismissibleRefs) {
-                                                    dismissibleRefs[key].closeModal()
-                                                }
-                                                newItemRef.current?.closeModal()
-                                                dismissibleRefs[`${contact.uid}`].openModal()
-                                            } else {
-                                                dismissAllPopups()
-                                            }
-                                        }}
-                                    />
-                                }
-                                modalComponent={
-                                    <EditContact
-                                        isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
-                                        projectId={project.id}
-                                        projectIndex={projectIndex}
-                                        onCancelAction={() => dismissibleRefs[`${contact.uid}`].toggleModal()}
-                                        contact={contact}
-                                        dismissibleRef={dismissibleRefs[`${contact.uid}`]}
-                                    />
-                                }
-                            />
-                        )
-                    )
-                })}
-
-            {maxContactsToRender < contactsList.length && (
-                <ShowMoreButton
-                    expanded={pressedShowMore}
-                    contract={() => setPressedShowMore(false)}
-                    expand={() => setPressedShowMore(true)}
+                <NewContactSection
+                    projectIndex={projectIndex}
+                    newItemRef={newItemRef}
+                    dismissibleRefs={dismissibleRefs}
                 />
-            )}
-        </View>
+
+                {contactsList.length > 0 &&
+                    contactsList.map((contact, index) => {
+                        return (
+                            contact &&
+                            index < visibleAmount &&
+                            // AT-2508 - a contact that is still being written has no document to
+                            // open, swipe or edit, so it gets an inert row that says it is on its
+                            // way instead of the interactive one. It is replaced by the real row in
+                            // the same snapshot delivery that retires it, so nothing moves.
+                            (isPendingContact(contact) ? (
+                                <PendingContactItem key={contact.uid} contact={contact} />
+                            ) : (
+                                <DismissibleItem
+                                    key={contact.uid}
+                                    ref={ref => {
+                                        if (ref) {
+                                            dismissibleRefs[`${contact.uid}`] = ref
+                                        }
+                                    }}
+                                    defaultComponent={
+                                        <ContactItem
+                                            projectIndex={projectIndex}
+                                            key={contact.uid}
+                                            contact={contact}
+                                            isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
+                                            onPress={() => {
+                                                if (!isSomeContactEditOpen()) {
+                                                    for (let key in dismissibleRefs) {
+                                                        dismissibleRefs[key].closeModal()
+                                                    }
+                                                    newItemRef.current?.closeModal()
+                                                    dismissibleRefs[`${contact.uid}`].openModal()
+                                                } else {
+                                                    dismissAllPopups()
+                                                }
+                                            }}
+                                        />
+                                    }
+                                    modalComponent={
+                                        <EditContact
+                                            isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
+                                            projectId={project.id}
+                                            projectIndex={projectIndex}
+                                            onCancelAction={() => dismissibleRefs[`${contact.uid}`].toggleModal()}
+                                            contact={contact}
+                                            dismissibleRef={dismissibleRefs[`${contact.uid}`]}
+                                        />
+                                    }
+                                />
+                            ))
+                        )
+                    })}
+
+                {loadingMore && (
+                    <ContactsListSkeleton
+                        rowCount={resolveGhostRowCount(incomingCount)}
+                        contactKeys={contactsList.slice(visibleAmount, visibleAmount + incomingCount).map(c => c.uid)}
+                    />
+                )}
+
+                {(canExpand || expanded) && (
+                    <ShowMoreButton expanded={expanded} contract={collapse} expand={expand} loading={loadingMore} />
+                )}
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 

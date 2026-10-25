@@ -6,7 +6,7 @@ import useFollowingDataListener from '../UIComponents/FloatModals/MorePopupsOfEd
 import { FOLLOWER_NOTES_TYPE } from '../Followers/FollowerConstants'
 import Button from '../UIControls/Button'
 import Backend from '../../utils/BackendBridge'
-import { setSelectedNote, startLoadingData, stopLoadingData } from '../../redux/actions'
+import { setSelectedNote } from '../../redux/actions'
 import { useDispatch, useSelector } from 'react-redux'
 import { createNoteInObject } from '../../utils/backends/firestore'
 import {
@@ -19,7 +19,6 @@ import {
     DV_TAB_USER_NOTE,
 } from '../../utils/TabNavigationConstants'
 import URLsTasks, { URL_TASK_DETAILS_NOTE } from '../../URLSystem/Tasks/URLsTasks'
-import LoadingNoteData from '../UIComponents/LoadingNoteData'
 import URLsGoals, { URL_GOAL_DETAILS_NOTE } from '../../URLSystem/Goals/URLsGoals'
 import URLsPeople, { URL_PEOPLE_DETAILS_NOTE } from '../../URLSystem/People/URLsPeople'
 import URLsContacts, { URL_CONTACT_DETAILS_NOTE } from '../../URLSystem/Contacts/URLsContacts'
@@ -79,9 +78,8 @@ const NoteIntegration = ({
 
     useEffect(() => {
         if (noteId) {
-            dispatch(startLoadingData())
             Backend.watchNote(project.id, noteId, note => {
-                dispatch([stopLoadingData(), setSelectedNote(note)])
+                dispatch([setSelectedNote(note)])
                 setNote(note)
                 if (note && viewCountedRef.current !== noteId) {
                     viewCountedRef.current = noteId
@@ -141,7 +139,6 @@ const NoteIntegration = ({
 
     return (
         <View style={{ marginHorizontal: mobile || mobileCollapsed ? 0 : isMiddleScreen ? -56 : -104, flex: 1 }}>
-            <LoadingNoteData />
             {!noteId && !note ? (
                 <View style={localStyles.container}>
                     <Text style={localStyles.title}>

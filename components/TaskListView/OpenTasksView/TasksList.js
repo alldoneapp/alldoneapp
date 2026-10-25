@@ -9,13 +9,16 @@ import {
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
+    DATE_TASK_INDEX,
+    TODAY_DATE,
 } from '../../../utils/backends/openTasks'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
-import TaskListSkeleton from '../TaskListSkeleton'
 import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
+import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
+import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function TasksList({
     projectId,
@@ -34,11 +37,23 @@ export default function TasksList({
     focusedTaskId,
 }) {
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
+    const dateFormatted = useSelector(
+        state => state.filteredOpenTasksStore?.[instanceKey]?.[dateIndex]?.[DATE_TASK_INDEX]
+    )
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
-    const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
-    const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
-
+    const postponeEntry = useProjectPostponePreview(projectId)
+    const displayedTasks =
+        !postponeEntry || isObservedTask || isToReviewTask || isSuggested
+            ? taskList
+            : taskList.flatMap(task => {
+                  const preview = projectTaskPreview(task, postponeEntry)
+                  // Keep a mixed family mounted: postponing a parent must not hide somebody else's
+                  // or a future subtask. ParentTaskContainer hides just the parent's own row there.
+                  const hasUnchangedChild = (subtaskByTask[task.id] || []).some(
+                      child => !projectTaskPreview(child, postponeEntry).hidden
+                  )
+                  return preview.hidden && !hasUnchangedChild ? [] : [preview.task]
+              })
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
@@ -74,8 +89,8 @@ export default function TasksList({
     const shouldSortByPriority = priorityTaskListIndexes.includes(taskListIndex)
     const sortedTaskList = holdTaskOrder(
         shouldSortByPriority
-            ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
-            : [...taskList],
+            ? sortTasksByPriority(displayedTasks, isActiveOrganizeMode ? null : effectiveFocusTaskId)
+            : [...displayedTasks],
         isUserEditing,
         heldTaskOrderRef
     )
@@ -83,18 +98,9 @@ export default function TasksList({
     const visibleTasks = sortedTaskList.filter(
         (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
     )
-    const initialTaskDataIsLoading =
-        !singleTaskIsLoading && (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
-
     return (
         <View style={[taskPresentationLayout.listContainer, containerStyle]}>
-            {initialTaskDataIsLoading && visibleTasks.length > 0 ? (
-                <TaskListSkeleton
-                    rowCount={visibleTasks.length}
-                    taskKeys={visibleTasks.map(task => task.id)}
-                    embedded
-                />
-            ) : isActiveOrganizeMode ? (
+            {isActiveOrganizeMode ? (
                 <DroppableTaskList
                     projectId={projectId}
                     taskList={sortedTaskList}
@@ -118,6 +124,7 @@ export default function TasksList({
                             isToReviewTask={isToReviewTask}
                             isSuggested={isSuggested}
                             inParentGoal={inParentGoal}
+                            inTodayOpenList={dateFormatted === TODAY_DATE}
                         />
                     )
                 })

@@ -271,6 +271,27 @@ describe('emailGuestMeetingGrant', () => {
         expect(mockCreateCalendarEvent).toHaveBeenCalledTimes(1)
     })
 
+    test('sends a BCC guest meeting confirmation only to the guest sender', async () => {
+        await createGrant()
+        mockFindCalendarAvailability.mockResolvedValue({ success: true, options: [SAFE_CONTEXT.options[2]] })
+        mockCreateCalendarEvent.mockResolvedValue({
+            success: true,
+            calendarId: 'primary',
+            event: { eventId: 'event-bcc' },
+        })
+        const result = await tryHandleGuestMeetingReply(
+            buildGuestPayload({
+                toEmails: ['owner@example.com'],
+                ccEmails: ['observer@example.com'],
+            })
+        )
+        expect(result.status).toBe('guest_meeting_booked')
+        expect(mockSendAnnaEmailReply).toHaveBeenCalledWith(
+            expect.objectContaining({ toEmails: ['guest@example.com'] })
+        )
+        expect(mockSendAnnaEmailReply.mock.calls[0][0].ccEmails).toBeUndefined()
+    })
+
     test('keeps a successfully created event consumed when the confirmation email fails', async () => {
         const created = await createGrant()
         mockFindCalendarAvailability.mockResolvedValue({

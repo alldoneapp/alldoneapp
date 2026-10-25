@@ -57,7 +57,9 @@ import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
 import { taskEditorLayout } from './TaskEditorLayout'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
 import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
+import { postponeTaskWithMotion } from './TaskPresentation/taskPostponeMotion'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -111,6 +113,7 @@ export default function EditTask({
     createSubtask,
 }) {
     const dispatch = useDispatch()
+    useTaskEditorLock(!adding)
     let currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -130,6 +133,7 @@ export default function EditTask({
         linkedParentGoalsUrl: [],
         linkedParentSkillsUrl: [],
         linkedParentAssistantsUrl: [],
+        linkedParentArtifactsUrl: [],
     })
     const [linkedObjects, setLinkedObjects] = useState({
         initialLinkedTasksUrl: [],
@@ -249,42 +253,63 @@ export default function EditTask({
     const setDueDateBeforeSave = (dueDate, updateObservedDueDate) => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
-            editTask(finalTask, true, false, null, '')
-        } else {
-            if (updateObservedDueDate) {
-                const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-                const finalTask = { ...tmpTask, dueDateByObserversIds }
-                editTask(finalTask, true, false, null, '')
-            } else {
-                const finalTask = { ...tmpTask, dueDate }
-                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task,
+                targetDate: dueDate,
+                updatesDueDate: moveObservedDateAndDueDate || !updateObservedDueDate,
+                updatesObservedDate: moveObservedDateAndDueDate || updateObservedDueDate,
+            },
+            () => {
+                if (moveObservedDateAndDueDate) {
+                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
+                    return editTask(finalTask, true, false, null, '')
+                } else if (updateObservedDueDate) {
+                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+                    const finalTask = { ...tmpTask, dueDateByObserversIds }
+                    return editTask(finalTask, true, false, null, '')
+                } else {
+                    const finalTask = { ...tmpTask, dueDate }
+                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+                }
             }
-        }
+        )
     }
 
     const setToBacklogBeforeSave = updateObservedBacklog => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: BACKLOG_DATE_NUMERIC }
-            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
-            editTask(finalTask, true, false, null, '')
-        } else {
-            if (updateObservedBacklog) {
-                const dueDateByObserversIds = {
-                    ...tmpTask.dueDateByObserversIds,
-                    [currentUserId]: BACKLOG_DATE_NUMERIC,
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task,
+                targetDate: BACKLOG_DATE_NUMERIC,
+                updatesDueDate: moveObservedDateAndDueDate || !updateObservedBacklog,
+                updatesObservedDate: moveObservedDateAndDueDate || updateObservedBacklog,
+            },
+            () => {
+                if (moveObservedDateAndDueDate) {
+                    const dueDateByObserversIds = {
+                        ...tmpTask.dueDateByObserversIds,
+                        [currentUserId]: BACKLOG_DATE_NUMERIC,
+                    }
+                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
+                    return editTask(finalTask, true, false, null, '')
+                } else if (updateObservedBacklog) {
+                    const dueDateByObserversIds = {
+                        ...tmpTask.dueDateByObserversIds,
+                        [currentUserId]: BACKLOG_DATE_NUMERIC,
+                    }
+                    const finalTask = { ...tmpTask, dueDateByObserversIds }
+                    return editTask(finalTask, true, false, null)
+                } else {
+                    const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
+                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
                 }
-                const finalTask = { ...tmpTask, dueDateByObserversIds }
-                editTask(finalTask, true, false, null)
-            } else {
-                const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
-                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
             }
-        }
+        )
     }
 
     const setPrivacyBeforeSave = (isPrivate, isPublicFor) => {
@@ -347,7 +372,8 @@ export default function EditTask({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         const extendedName = text.replace(/\r?\n|\r/g, '')
 
@@ -359,6 +385,7 @@ export default function EditTask({
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
+            linkedParentArtifactsUrl,
         })
 
         setTmpTask({ ...tmpTask, extendedName, name: TasksHelper.getTaskNameWithoutMeta(extendedName) })

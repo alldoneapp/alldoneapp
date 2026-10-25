@@ -11,15 +11,17 @@ const {
     COMPLETION_MAX_TOKENS,
     ENCODE_MESSAGE_GAP,
     getMessageTextForTokenCounting,
-    getAssistantThreadStateDocRef,
 } = require('./assistantHelper')
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
-const { maybeCompactAssistantThread } = require('./rollingThreadCompaction')
+const { runAutomaticThreadCompaction } = require('./automaticThreadCompaction')
+const { resolveThreadAssistantModel } = require('./threadAssistantModel')
+const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
 
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
+const { encodeOrdinaryText } = require('./assistantTextSafety')
 
 const ENCODE_INITIAL_GAP = 3
 const {
@@ -41,67 +43,6 @@ function getEncoder() {
     return encoder // Always return pre-initialized encoder
 }
 
-async function generateRollingThreadSummary(prompt, model, toolRuntimeContext) {
-    const stream = await interactWithChatStream(prompt, model, 'TEMPERATURE_LOW', [], {
-        ...toolRuntimeContext,
-        sourceChannel: 'automatic_thread_compaction',
-        promptCacheScope: 'automatic_thread_compaction',
-        disableToolSearch: true,
-    })
-    let summary = ''
-    for await (const chunk of stream) {
-        if (chunk?.content) summary += chunk.content
-    }
-    return summary.trim()
-}
-
-async function runAutomaticThreadCompaction({
-    projectId,
-    objectType,
-    objectId,
-    assistantId,
-    triggeringMessageId,
-    model,
-    hardOnly,
-    toolRuntimeContext,
-}) {
-    const db = admin.firestore()
-    const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
-    if (!stateRef) return { compacted: false, hard: false, reason: 'invalid_thread' }
-
-    const retryDeadline = Date.now() + 30 * 1000
-    let result
-    do {
-        result = await maybeCompactAssistantThread({
-            db,
-            stateRef,
-            projectId,
-            objectType,
-            objectId,
-            triggeringMessageId,
-            hardOnly,
-            summarize: prompt => generateRollingThreadSummary(prompt, model, toolRuntimeContext),
-        })
-        if (!hardOnly || !['in_progress', 'stale'].includes(result.reason) || Date.now() >= retryDeadline) break
-        await new Promise(resolve => setTimeout(resolve, 1000))
-    } while (Date.now() < retryDeadline)
-
-    console.log('🧹 AUTOMATIC THREAD COMPACTION:', {
-        projectId,
-        objectType,
-        objectId,
-        assistantId,
-        triggeringMessageId,
-        hardOnly,
-        compacted: result.compacted,
-        hard: result.hard,
-        reason: result.reason,
-        compactedMessageCount: result.compactedMessageCount || 0,
-        retainedMessageCount: result.retainedMessageCount || 0,
-    })
-    return result
-}
-
 async function askToOpenAIBotOptimized(
     userId,
     messageId,
@@ -114,7 +55,8 @@ async function askToOpenAIBotOptimized(
     assistantId,
     followerIds,
     functionEntryTime = null, // Optional entry time from HTTP function entry point
-    assistantRunLockId = null
+    assistantRunLockId = null,
+    runOptions = {}
 ) {
     const functionStartTime = Date.now()
     // Use entry time if provided, otherwise use function start time
@@ -141,9 +83,13 @@ async function askToOpenAIBotOptimized(
 
         // Step 1: Fetch user and assistant data in parallel
         const step1Start = Date.now()
-        const [user, assistant] = await Promise.all([
+        // The thread's own model pin (AT-2502) is read alongside the other two, so honouring it
+        // costs no wall clock. It is best-effort: a failed read answers null and the run uses the
+        // assistant's model exactly as it did before the feature existed.
+        const [user, assistant, threadModelOverride] = await Promise.all([
             getUserData(userId),
             getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
+            readThreadAssistantModelOverride(admin.firestore(), projectId, objectType, objectId),
         ])
         const step1Duration = Date.now() - step1Start
 
@@ -152,6 +98,7 @@ async function askToOpenAIBotOptimized(
             hasAssistant: !!assistant,
             userGold: user?.gold,
             assistantModel: assistant?.model,
+            threadModelOverride,
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
 
@@ -165,7 +112,23 @@ async function askToOpenAIBotOptimized(
         }
         await throwIfAssistantRunCancelled(assistantRunLockRef)
 
-        const { model, temperature, instructions, displayName } = assistant
+        const { temperature, instructions, displayName } = assistant
+        // Resolve the effective model WITHOUT touching `assistant`. `getAssistantForChat` hands
+        // back a cached object keyed on (projectId, assistantId), so assigning the thread's model
+        // onto it would leak this one conversation's pin into every other thread the same warm
+        // instance serves next.
+        const { model, source: modelSource } = resolveThreadAssistantModel({
+            threadOverride: threadModelOverride,
+            assistantModel: assistant.model,
+        })
+        console.log('🤖 [MODEL] Resolved chat model', {
+            model,
+            modelSource,
+            assistantModel: assistant.model,
+            projectId,
+            objectType,
+            objectId,
+        })
 
         // Extract user timezone
         const userTimezoneOffset = resolveUserTimezoneOffset(user)
@@ -180,7 +143,16 @@ async function askToOpenAIBotOptimized(
             messageId,
             userTimezoneOffset,
             language,
-            maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
+            maxRunWallClockMs: runOptions.maxRunWallClockMs || INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
+            automaticCommentReply: runOptions.automaticCommentReply === true,
+            // A member is talking to the assistant, so it may correct the project wiki for them.
+            allowKnowledgeCorrections: true,
+        }
+        const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
+        const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })
+        if (annaContext) {
+            baseToolRuntimeContext.annaConversation = true
+            annaContext.history = await loadAnnaHistoryContext(admin.firestore(), baseToolRuntimeContext)
         }
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
@@ -216,11 +188,13 @@ async function askToOpenAIBotOptimized(
                 allowedTools,
                 userTimezoneOffset,
                 userId,
-                runtimeAssistantId
+                runtimeAssistantId,
+                { allowKnowledgeCorrections: true }
             ),
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),
         ])
+        if (annaContext) messages.push(['system', annaInstructions(annaContext)])
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {
@@ -400,7 +374,7 @@ function generateContextOptimized(messages, model) {
     try {
         for (let i = messages.length - 1; i >= 0; i--) {
             const messageText = getMessageTextForTokenCounting(messages[i][1])
-            const encodedMessage = encoder.encode(messageText)
+            const encodedMessage = encodeOrdinaryText(encoder, messageText)
             const messageTokens = encodedMessage.length + ENCODE_MESSAGE_GAP
 
             if (unusedTokens - messageTokens >= ENCODE_INITIAL_GAP) {

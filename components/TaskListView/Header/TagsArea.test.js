@@ -22,8 +22,6 @@ jest.mock('../../styles/global', () => ({
 }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: jest.fn(() => true) }))
-jest.mock('../../Tags/AddTaskTag', () => 'AddTaskTag')
-jest.mock('../../Tags/AddGoalTag', () => 'AddGoalTag')
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: { checkIfLoggedUserIsNormalUserInGuide: () => false },
@@ -116,5 +114,47 @@ describe('TagsArea workflow indicator', () => {
 
         expect(getIconNames(tree)).toEqual([])
         expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
+    })
+})
+
+describe('TagsArea task actions (AT-2575)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        SharedHelper.accessGranted.mockReturnValue(true)
+    })
+
+    it('removes add-task creation from the project line but keeps the more action', () => {
+        const tree = renderTagsArea({ showTaskMore: true })
+
+        expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(0)
+        expect(tree.root.findByType('TaskHeaderMoreButton').props.projectIdOverride).toBe('project-1')
+    })
+
+    it('keeps the project-line more action limited to the Open tab', () => {
+        state.taskViewToggleSection = 'Done'
+        const tree = renderTagsArea({ showTaskMore: true })
+
+        expect(tree.root.findAllByType('TaskHeaderMoreButton')).toHaveLength(0)
+        state.taskViewToggleSection = 'Open'
+    })
+})
+
+describe('TagsArea goal actions (AT-2577)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        SharedHelper.accessGranted.mockReturnValue(true)
+    })
+
+    it('removes add-goal creation from the project line but keeps the more action', () => {
+        const tree = renderTagsArea({ showGoalMore: true })
+
+        expect(tree.root.findAllByType('AddGoalTag')).toHaveLength(0)
+        expect(tree.root.findByType('GoalMoreButton').props.projectId).toBe('project-1')
+    })
+
+    it('does not show the more action outside the open goals tab', () => {
+        const tree = renderTagsArea({ showGoalMore: false })
+
+        expect(tree.root.findAllByType('GoalMoreButton')).toHaveLength(0)
     })
 })

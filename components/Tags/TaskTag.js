@@ -1,15 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Image, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
+import { subscribeSharedNoteData } from '../../utils/Notes/sharedNoteSubscriptions'
 
 import Icon from '../Icon'
-import styles, { colors, windowTagStyle } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ReactDOM from 'react-dom'
-import useWindowSize from '../../utils/useWindowSize'
-import { usePrevious } from '../../utils/UsePrevious'
-import { handleNestedLinks } from '../../utils/LinkingHelper'
+import useWorkspaceViewport from '../../hooks/useWorkspaceViewport'
 import TasksHelper, {
     OPEN_STEP,
     RECURRENCE_NEVER,
@@ -31,12 +30,21 @@ import LoadingTag from './LoadingTag'
 import { getEstimationRealValue } from '../../utils/EstimationHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
-import { cleanTextMetaData } from '../../functions/Utils/parseTextUtils'
 import { setTaskDescription } from '../../utils/backends/Tasks/tasksFirestore'
+import TaskTagTitle from './TaskTagTitle'
+
+// The row keeps at least this much space for the icon + title. A task row that has been
+// squeezed to nothing is indistinguishable from a task that vanished (AT-2454), so the
+// label truncates instead of disappearing, however wrong the measured width is.
+export const MIN_TASK_TAG_LABEL_WIDTH = 64
+
+// A task with neither `extendedName` nor `name` maps to an empty string (mapTaskData), and
+// an empty title used to render the whole row as `null` — an invisible 150px hole in the
+// note. Name it instead so the row is always reachable.
+export const UNNAMED_TASK_LABEL = 'Untitled task'
 
 export default function TaskTag({
     editorId,
-    activeNoteId,
     projectId,
     isLoading,
     taskId,
@@ -48,58 +56,84 @@ export default function TaskTag({
 }) {
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const loggedUser = useSelector(state => state.loggedUser)
-    const [width, height] = useWindowSize()
-    const previousWidth = usePrevious(width)
+    const workspaceViewport = useWorkspaceViewport()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreen)
     const [maxWidth, setMaxWidth] = useState(0)
     const [tagsWidth, setTagsWidth] = useState(0)
     const containerRef = useRef()
-    const [icon, setIcon] = useState('')
-    const [name, setName] = useState('')
-    const [photoUrl, setPhotoUrl] = useState('')
     const [subtasks, setSubtasks] = useState([])
     const [sumEstimation, setSumEstimation] = useState(0)
     const commentsData = task?.commentsData
     let ownerEstimation = task?.estimations ? task.estimations[OPEN_STEP] : 0
     const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
 
-    useEffect(() => {
-        if (!isLoading) {
-            setName(getName(task))
-            setIcon(getIco(task))
-            setPhotoUrl(getPhotoUrl(projectId, task))
-
-            if (task) {
-                const watcherKey = v4()
-                Backend.watchSubtasks(projectId, taskId, watcherKey, subtasks => {
-                    setSubtasks(subtasks)
-                    setSumEstimation(
-                        subtasks.reduce((sum, subTask) => {
-                            return sum + getEstimationRealValue(projectId, subTask.estimations[OPEN_STEP])
-                        }, 0)
-                    )
-                })
-
-                return () => Backend.unwatch(watcherKey)
-            }
-        }
-    }, [isLoading, task])
+    // Derived, not state (AT-2454). These used to be three useState values written from an
+    // effect keyed on [isLoading, task], so the first commit after a task arrived rendered
+    // with `name === ''` — and `name` is what gated the whole row. Any commit that reached
+    // that branch without the effect running again left the row permanently blank. The memo
+    // keeps the work on exactly the inputs the old effect was keyed on.
+    const { name, icon, photoUrl } = useMemo(
+        () =>
+            isLoading
+                ? { name: '', icon: '', photoUrl: '' }
+                : { name: getName(task), icon: getIco(task), photoUrl: getPhotoUrl(projectId, task) },
+        [isLoading, task, projectId]
+    )
 
     useEffect(() => {
-        if (!isLoading && !virtualQuillLoaded) {
-            if (width < previousWidth) {
-                setMaxWidth(maxWidth - (previousWidth - width) - 50)
-            } else {
-                onLayout()
-            }
+        if (!isLoading && task) {
+            return subscribeSharedNoteData(
+                `subtasks/${loggedUser.uid}/${projectId}/${taskId}`,
+                callback => {
+                    const watcherKey = v4()
+                    Backend.watchSubtasks(projectId, taskId, watcherKey, callback)
+                    return watcherKey
+                },
+                watcherKey => Backend.unwatch(watcherKey),
+                setSubtasks
+            )
         }
-    }, [isLoading, width])
+    }, [isLoading, !!task, projectId, taskId, loggedUser.uid])
 
-    const onLayout = () => {
-        const el = ReactDOM.findDOMNode(containerRef.current)
+    useEffect(() => {
+        setSumEstimation(
+            subtasks.reduce(
+                (sum, subTask) => sum + getEstimationRealValue(projectId, subTask.estimations?.[OPEN_STEP]),
+                0
+            )
+        )
+    }, [subtasks, projectId])
+
+    // AT-2454: this used to subtract `(previousWidth - width) + 50` from a stale-closure
+    // `maxWidth` on every narrowing step and never gave the 50 back, so dragging the window
+    // narrower (which fires dozens of resize events) drove the row's width deeply negative.
+    // Always re-measure from the DOM instead — the measurement is the only trustworthy input.
+    useEffect(() => {
+        if (isLoading || virtualQuillLoaded) return
+        measureAvailableWidth()
+    }, [isLoading, workspaceViewport, virtualQuillLoaded, mobile, tablet])
+
+    const measureAvailableWidth = () => {
+        const el = containerRef.current ? ReactDOM.findDOMNode(containerRef.current) : null
+        if (!el || typeof el.getBoundingClientRect !== 'function') return
         const { left } = el.getBoundingClientRect()
-        setMaxWidth(width - left - (mobile ? 16 : tablet ? 32 : 72) - 50)
+        // Both edges must use browser coordinates. Subtracting this absolute
+        // left from the pane's WIDTH deducted the assistant sidebar twice.
+        const available = workspaceViewport.right - left - (mobile ? 16 : tablet ? 32 : 72) - 50
+        // A measurement taken while the row is detached, off-screen, mid-reflow or at the far
+        // right of the line answers with a useless (often negative) number. Record it as
+        // "unknown" and leave the row unconstrained rather than freezing a width that hides it.
+        setMaxWidth(available > 0 ? available : 0)
+    }
+
+    // Always hand react-native-web a function: `useElementLayout` decides ONCE, on mount,
+    // whether to observe the node (its observing effect only depends on [ref, observer]), so
+    // passing `null` while the row is still loading meant the row was never observed again
+    // and its width was frozen at whatever the single manual measurement produced.
+    const onLayout = () => {
+        if (isLoading || virtualQuillLoaded) return
+        measureAvailableWidth()
     }
 
     const onChangeTagsArea = ({
@@ -118,27 +152,35 @@ export default function TaskTag({
     const loggedUserCanUpdateObject =
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
+    // `maxWidth === 0` means "not measured yet / measurement unusable", never "zero pixels
+    // wide" (AT-2454). Applying it as a real width is what made a task row vanish.
+    const hasMeasuredWidth = maxWidth > 0
+    const labelMaxWidth = hasMeasuredWidth ? Math.max(MIN_TASK_TAG_LABEL_WIDTH, maxWidth - tagsWidth) : undefined
+
     return (
         <View
             ref={containerRef}
-            onLayout={!isLoading ? onLayout : null}
+            onLayout={onLayout}
             style={[
                 isLoading ? localStyles.loadingContainer : localStyles.container,
-                !isLoading && { maxWidth: maxWidth },
+                !isLoading && hasMeasuredWidth && { maxWidth: maxWidth },
             ]}
         >
-            {isLoading && editorId === activeNoteId && <LoadingTag />}
-            {!isLoading && (name || isDeleted) ? (
+            {isLoading && <LoadingTag />}
+            {!isLoading ? (
                 <View style={localStyles.subContainer}>
                     <TouchableOpacity
-                        style={[localStyles.button, { maxWidth: Math.max(0, maxWidth - tagsWidth) }]}
+                        style={[localStyles.button, labelMaxWidth != null && { maxWidth: labelMaxWidth }]}
                         onPress={onPress}
                         disabled={disabled || !loggedUserCanUpdateObject}
                     >
                         <Icon name={icon} color={colors.Primary100} size={16} />
-                        <Text style={[localStyles.name, windowTagStyle()]} numberOfLines={1}>
-                            {name}
-                        </Text>
+                        <TaskTagTitle
+                            text={name || UNNAMED_TASK_LABEL}
+                            projectId={projectId}
+                            disabled={disabled || !loggedUserCanUpdateObject}
+                            style={localStyles.name}
+                        />
                     </TouchableOpacity>
 
                     <View onLayout={onChangeTagsArea} style={localStyles.tagsContainer}>
@@ -153,6 +195,7 @@ export default function TaskTag({
                                         userGettingKarmaId={task.userId}
                                         outline={true}
                                         objectName={task.name}
+                                        object={task}
                                         assistantId={task.assistantId}
                                     />
                                 )}
@@ -276,8 +319,8 @@ const getIco = task => {
 
 const getName = task => {
     if (task) {
-        const cleanedText = cleanTextMetaData(task.extendedName)
-        return handleNestedLinks(cleanedText)
+        // Keep mention IDs and media metadata for the same parser used by task titles.
+        return task.extendedName || task.name || ''
     }
     return 'Task removed'
 }

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { setDomAttributes } from '../../../utils/setDomAttributes'
+import { useTaskHierarchy, taskHierarchyStyles } from '../TaskHierarchy'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
 import TaskPresentation from '../TaskItem/TaskPresentation/TaskPresentation'
@@ -14,6 +15,8 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import EditTask from '../TaskItem/EditTask'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
+import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
+import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function SubTasksView({
     projectId,
@@ -27,6 +30,7 @@ export default function SubTasksView({
     isPending,
     createSubtaskRequest,
 }) {
+    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const checkTaskItem = useSelector(state => state.checkTaskItem)
     const focusedTaskItem = useSelector(state => state.focusedTaskItem)
@@ -43,7 +47,17 @@ export default function SubTasksView({
     const parentRefsList = useRef([])
 
     const parentInTaskOutOfOpen = isPending || isToReviewTask || parentTask.inDone
-    const renderedSubtaskList = parentInTaskOutOfOpen ? subtaskList : sortTasksByPriority(subtaskList, focusedTaskId)
+    const postponeEntry = useProjectPostponePreview(projectId)
+    const displayedSubtasks =
+        !postponeEntry || parentInTaskOutOfOpen || isObservedTask
+            ? subtaskList
+            : subtaskList.flatMap(task => {
+                  const preview = projectTaskPreview(task, postponeEntry)
+                  return preview.hidden ? [] : [preview.task]
+              })
+    const renderedSubtaskList = parentInTaskOutOfOpen
+        ? displayedSubtasks
+        : sortTasksByPriority(displayedSubtasks, focusedTaskId)
 
     const setAriaTaskId = () => {
         for (let index in renderedSubtaskList) {
@@ -119,7 +133,7 @@ export default function SubTasksView({
         loggedUserIsParentTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View style={{ marginLeft: 34 }}>
+        <View style={taskHierarchy ? taskHierarchyStyles.subtasks : { marginLeft: 34 }}>
             {renderedSubtaskList.length > 0
                 ? isActiveOrganizeMode
                     ? renderedSubtaskList.map(subTask => {

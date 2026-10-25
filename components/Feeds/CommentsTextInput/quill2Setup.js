@@ -1,11 +1,14 @@
 import Quill from 'quill'
 
-import { getPlaceholderData, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
+import { getPlaceholderData, isEncodedPlaceholder, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
+import { isolatePasteInHistory, isQuillHistoryEntry, transformHistoryStack } from './quillHistoryEntries'
 
 const Module = Quill.import('core/module')
 const Clipboard = Quill.import('modules/clipboard')
+const CodeBlock = Quill.import('formats/code-block')
 const History = Quill.import('modules/history')
 const SnowTheme = Quill.import('themes/snow')
+const Uploader = Quill.import('modules/uploader')
 
 // The chevron the old patched dist used for picker labels (replaces quill's sort-arrows icon).
 export const PICKER_CHEVRON_SVG = `<svg
@@ -35,7 +38,51 @@ class EditorMeta extends Module {
         // Quill writes options.placeholder into the root's data-placeholder attribute
         // after module init, so stripping the metadata here keeps the visible text clean.
         quill.options.placeholder = meta.placeholderText || ''
+        keepPlaceholderAttributeDecoded(quill)
     }
+}
+
+// AT-2438. Decoding at construction is NOT enough, because this module is not the only
+// writer of the attribute the placeholder is actually rendered from
+// (`.ql-editor.ql-blank::before { content: attr(data-placeholder) }`): react-quill-new's
+// componentDidUpdate does
+//
+//     if (this.editor && prevProps.placeholder !== this.props.placeholder)
+//         this.editor.root.dataset.placeholder = this.props.placeholder || ''
+//
+// which puts the RAW app-encoded prop (`text#editorType#editorId#…`) straight into the
+// DOM, behind this module's back — the constructor never runs again for a live editor.
+// So any change of the placeholder prop made the encoding visible to the user, e.g.
+// "Type to add new comment#0#d53db6ac-e144-4fee-8fab-…". The chat composer changes it on
+// every login whose device locale differs from the account language: `translate()` is
+// resolved at render time against `i18n.locale`, which starts as the DEVICE language and
+// is switched to `loggedUser.language` by `useTranslator` once the user doc arrives — so
+// a German browser signed in to an English account re-renders the composer with a
+// different placeholder string, and it leaked from that moment on.
+//
+// The encoding has to stay on the React prop: `EditorToolbar` and `getQuillEditorRef`
+// read `<ReactQuill>.props.placeholder` to recover the editorId. So own the attribute
+// instead — this module already owns "the encoding never becomes visible".
+const decodePlaceholderAttribute = root => {
+    const raw = root.getAttribute('data-placeholder')
+    // Idempotent by construction: a decoded value is no longer encoded, so the write this
+    // makes cannot re-trigger the observer into a loop.
+    if (!isEncodedPlaceholder(raw)) return
+    root.setAttribute('data-placeholder', getPlaceholderData(raw).placeholderText || '')
+}
+
+const keepPlaceholderAttributeDecoded = quill => {
+    const root = quill.root
+    if (!root || typeof root.getAttribute !== 'function') return
+    decodePlaceholderAttribute(root)
+    if (typeof MutationObserver === 'undefined') return
+    // Scoped to the one attribute, and unreachable once the editor's DOM is dropped (the
+    // observer is referenced only by this module, which hangs off the quill instance that
+    // hangs off the detached node), so there is nothing to tear down — quill 2 gives a
+    // module no destroy hook anyway.
+    const observer = new MutationObserver(() => decodePlaceholderAttribute(root))
+    observer.observe(root, { attributes: true, attributeFilter: ['data-placeholder'] })
+    quill.placeholderAttributeObserver = observer
 }
 
 // Reads editor metadata whether or not the editorMeta module ran (headless editors
@@ -57,22 +104,131 @@ class GatedClipboard extends Clipboard {
         if (this.quill.enablePasteListener === false) return
         super.onCapturePaste(e)
     }
+
+    // AT-2416. `Clipboard.convert` short-circuits to a verbatim `insert(text)` whenever the
+    // clipboard carries no text/html, so quill 2 never runs the app's TEXT_NODE matcher over a
+    // plain-text paste — quill 1 did, because it pushed the text through the DOM first. The
+    // app's own "Copy link" button uses navigator.clipboard.writeText (text/plain ONLY), so a
+    // copied task link pasted as raw URL text and only became a chip once a space was typed.
+    // The autoformat module installs `convertPastedPlainText` on every text-input editor
+    // (notes keep quill's own paste pipeline and never set it); routing through it also makes
+    // the chip part of `pastedDelta`, so quill's own caret arithmetic is right by construction.
+    convert({ html, text }, formats = {}) {
+        const convertPlainText = this.quill.convertPastedPlainText
+        const pastingIntoCodeBlock = formats[CodeBlock.blotName] != null
+        if (!html && text && !pastingIntoCodeBlock && typeof convertPlainText === 'function') {
+            return convertPlainText(text, formats)
+        }
+        return super.convert({ html, text }, formats)
+    }
+
+    // AT-2416. Quill places the post-paste caret at `delta.length() - range.length`, i.e. it
+    // derives the position from the delta it was ABOUT to apply. That is only correct while
+    // nothing else edits the document during the same update — and in this app something
+    // always might: the autoformat module listens for `text-change` and rewrites a pasted
+    // task/note/goal URL into a one-character embed (plus a leading space when the link opens
+    // the line). A 46-character URL collapsing to one character leaves quill's index ~45
+    // characters too far to the right, so pasting a task link mid-sentence dropped the caret
+    // at the end of the line instead of behind the link. It only looked correct when the paste
+    // happened at the end of the text, where quill clamps the overshoot to the last index.
+    //
+    // Everything a paste inserts lands at `range.index`, so the honest measure of how much was
+    // inserted is how much the document actually grew, taken AFTER the update (and therefore
+    // after every synchronous `text-change` listener has had its turn). For a paste nothing
+    // rewrites, this resolves to exactly the index quill would have chosen.
+    //
+    // AT-2440: the update is wrapped so the paste is its own undo step. Quill coalesces
+    // everything inside `history.delay` (1s) into one entry, which is right for typing and
+    // wrong for a paste — "undo the paste" would also swallow the words typed just before it.
+    onPaste(range, { text, html }) {
+        const lengthBefore = this.quill.getLength()
+        isolatePasteInHistory(this.quill, () => super.onPaste(range, { text, html }))
+        const inserted = this.quill.getLength() - lengthBefore + range.length
+        this.quill.setSelection(range.index + inserted, Quill.sources.SILENT)
+        this.quill.scrollSelectionIntoView()
+    }
+}
+
+// AT-2441. Quill 2 sends a PASTED image file through the uploader as well — see
+// `Clipboard.onCapturePaste`, which calls `quill.uploader.upload(range, files)` whenever the
+// clipboard carries files — and the uploader's default handler inserts a base64 data-URL
+// `image` embed. The app's editors do not know that embed: `CustomTextInput3.updateText`
+// serializes `attachment` / `customImageFormat` / `videoFormat` and nothing else, so a pasted
+// screenshot appeared in the composer and was then silently dropped when the comment was
+// posted. (Quill 1 had no such interception: the browser's own paste put an <img> in the
+// contenteditable, which the autoformat matcher turned into a real attachment. This regressed
+// at the quill 2 migration.)
+//
+// An editor that owns its attachments declares `quill.appManagedFileUpload` and gets the same
+// named attachment a dropped file produces. Everything else — headless editors, the notes
+// editor (which switches the module off entirely) — keeps quill's behaviour untouched.
+class GatedUploader extends Uploader {
+    upload(range, files) {
+        const handleFiles = this.quill.appManagedFileUpload
+        if (typeof handleFiles !== 'function') {
+            super.upload(range, files)
+            return
+        }
+        // Deliberately not filtered by `options.mimetypes` (png/jpeg): the app supports every
+        // image type it can name plus arbitrary files, and a pasted pdf currently inserts
+        // nothing at all because quill drops it here.
+        handleFiles(range, files)
+    }
 }
 
 // History with the beforeUndoRedo hook from the retired dist patch: the hook may consume
 // the top stack entry itself (hashtag color changes push non-delta entries) and return
 // false to cancel quill's own undo/redo.
+//
+// AT-2440: every method here now assumes the stack can hold BOTH quill's `{ delta, range }`
+// entries and the app's delta-less marker entries, because quill's own code does not — see
+// quillHistoryEntries.js. Before this, a single app entry could throw from three different
+// places (the hook, quill's merge inside `record`, quill's `transformStack`), and a throw out
+// of `undo()` is not a no-op: it skips the `preventDefault()` that quill's keydown and
+// `beforeinput` handlers make afterwards, so the browser's native contenteditable undo runs
+// instead and reverts something the user never asked it to.
 class HookedHistory extends History {
     undo() {
-        const hook = this.options.beforeUndoRedo
-        if (hook && hook(this.stack, 'undo', 'redo') === false) return
+        if (this.consumeAppHistoryEntry('undo', 'redo')) return
         super.undo()
     }
 
     redo() {
-        const hook = this.options.beforeUndoRedo
-        if (hook && hook(this.stack, 'redo', 'undo') === false) return
+        if (this.consumeAppHistoryEntry('redo', 'undo')) return
         super.redo()
+    }
+
+    // Returns true when the app claimed the top entry and quill must not act on it.
+    consumeAppHistoryEntry(startAction, endAction) {
+        const hook = this.options.beforeUndoRedo
+        if (typeof hook === 'function') {
+            try {
+                if (hook(this.stack, startAction, endAction) === false) return true
+            } catch (error) {
+                // Swallowed on purpose: whatever the hook wanted to do is less important than
+                // undo staying in quill's hands. Letting this escape is what AT-2440 was.
+                console.error('[quill history] beforeUndoRedo failed', error)
+            }
+        }
+        // Never hand quill an entry it cannot invert. Anything still on top that the hook did
+        // not claim carries no delta, so quill's `change()` would throw on it forever, wedging
+        // the whole stack behind it.
+        const stack = this.stack[startAction]
+        while (stack.length > 0 && !isQuillHistoryEntry(stack[stack.length - 1])) stack.pop()
+        return false
+    }
+
+    record(changeDelta, oldDelta) {
+        // Inside `options.delay` quill merges by popping the previous entry and composing the
+        // two deltas. An app entry has none, so cut the merge window instead.
+        const topEntry = this.stack.undo[this.stack.undo.length - 1]
+        if (topEntry && !isQuillHistoryEntry(topEntry)) this.cutoff()
+        super.record(changeDelta, oldDelta)
+    }
+
+    transform(delta) {
+        transformHistoryStack(this.stack.undo, delta)
+        transformHistoryStack(this.stack.redo, delta)
     }
 }
 
@@ -211,4 +367,5 @@ Quill.prototype.scrollRectIntoView = confineScrollRectIntoView(Quill.prototype.s
 Quill.register('modules/editorMeta', EditorMeta, true)
 Quill.register('modules/clipboard', GatedClipboard, true)
 Quill.register('modules/history', HookedHistory, true)
+Quill.register('modules/uploader', GatedUploader, true)
 Quill.register('themes/snow', CustomSnowTheme, true)

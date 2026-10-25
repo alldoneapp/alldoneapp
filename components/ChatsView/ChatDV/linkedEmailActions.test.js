@@ -6,11 +6,11 @@ import {
     groupLinkedEmailsByConnection,
 } from './linkedEmailActions'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
-import { markAlldoneChatsReadForLinkedEmails } from '../../../utils/backends/Chats/markChatCommentsAsRead'
+import { clearChatCommentsForLinkedEmails } from '../../../utils/backends/Chats/markChatCommentsAsRead'
 
 jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 jest.mock('../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
-    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    clearChatCommentsForLinkedEmails: jest.fn(),
 }))
 
 describe('linkedEmailActions', () => {
@@ -139,10 +139,23 @@ describe('linkedEmailActions', () => {
 })
 
 describe('archiveAndMarkReadLinkedEmails', () => {
+    // Order matters more than anything else in this block (AT-2424), so every call both sides make
+    // is recorded onto one timeline.
+    let calls
+    let restoreUnreadState
+
     beforeEach(() => {
         jest.clearAllMocks()
-        performEmailLineAction.mockResolvedValue({})
-        markAlldoneChatsReadForLinkedEmails.mockResolvedValue()
+        calls = []
+        restoreUnreadState = jest.fn(async () => calls.push('restore'))
+        performEmailLineAction.mockImplementation(async () => {
+            calls.push('mailbox')
+            return {}
+        })
+        clearChatCommentsForLinkedEmails.mockImplementation(async () => {
+            calls.push('clear-unread')
+            return restoreUnreadState
+        })
     })
 
     test('archives the mailbox emails and marks the Alldone chats as read', async () => {
@@ -167,10 +180,36 @@ describe('archiveAndMarkReadLinkedEmails', () => {
             expect.anything(),
             expect.objectContaining({ action: 'markRead' })
         )
-        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith(linkedEmails)
+        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledWith(linkedEmails)
     })
 
-    test('does not mark Alldone chats as read when mailbox archive fails', async () => {
+    // The regression this whole change exists for. Clearing the unread state used to be the LAST
+    // step, behind an archive callable (~1s) that itself awaits a forced email-line summary
+    // refresh (3-7s in production) - so the email comment sat there, unread, for 4-8 seconds
+    // after the press.
+    test('clears the unread state before it touches the mailbox (AT-2424)', async () => {
+        await archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1', messageId: 'message-1' }])
+
+        expect(calls).toEqual(['clear-unread', 'mailbox'])
+    })
+
+    test('does not wait for the mailbox before clearing the unread state (AT-2424)', async () => {
+        // A mailbox call that never settles stands in for the slow one. The unread state must
+        // already be gone by then, which is exactly what the user is waiting to see.
+        performEmailLineAction.mockImplementation(() => {
+            calls.push('mailbox')
+            return new Promise(() => {})
+        })
+
+        archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1', messageId: 'message-1' }])
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledTimes(1)
+        expect(calls).toEqual(['clear-unread', 'mailbox'])
+    })
+
+    test('puts the unread state back when the mailbox archive fails, and still reports the failure', async () => {
         performEmailLineAction.mockRejectedValueOnce(new Error('offline'))
 
         await expect(
@@ -178,13 +217,22 @@ describe('archiveAndMarkReadLinkedEmails', () => {
         ).rejects.toThrow('offline')
 
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
-        expect(markAlldoneChatsReadForLinkedEmails).not.toHaveBeenCalled()
+        // Cleared optimistically, then restored: a failed archive reads as "nothing happened,
+        // try again" rather than a comment that went read while the mail is still in the inbox.
+        expect(restoreUnreadState).toHaveBeenCalledTimes(1)
+        expect(calls).toEqual(['clear-unread', 'restore'])
+    })
+
+    test('keeps the unread state cleared when the mailbox archive succeeds', async () => {
+        await archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1', messageId: 'message-1' }])
+
+        expect(restoreUnreadState).not.toHaveBeenCalled()
     })
 
     test('ignores empty or incomplete links', async () => {
         await archiveAndMarkReadLinkedEmails([])
         await archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1' }])
         expect(performEmailLineAction).not.toHaveBeenCalled()
-        expect(markAlldoneChatsReadForLinkedEmails).not.toHaveBeenCalled()
+        expect(clearChatCommentsForLinkedEmails).not.toHaveBeenCalled()
     })
 })

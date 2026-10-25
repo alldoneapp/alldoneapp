@@ -1,3 +1,4 @@
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -48,13 +49,11 @@ class URLsChats {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsChats.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsChats.setTitle(urlConstant, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('replace', data, urlPath, () => URLsChats.setTitle(urlConstant, ...params))
     }
 
     /**
@@ -64,13 +63,11 @@ class URLsChats {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsChats.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        URLsChats.setTitle(urlConstant, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('push', data, urlPath, () => URLsChats.setTitle(urlConstant, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {

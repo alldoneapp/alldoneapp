@@ -16,8 +16,10 @@ const {
 const {
     DEFAULT_PUBLIC_EMAIL,
     buildReplyAllRecipients,
+    isAssistantBlindCopied,
     buildEmailCommentText,
     pickActionableAttachment,
+    shouldAutoAttachInvoice,
     summarizeAttachments,
 } = require('./emailChannelHelpers')
 const { FieldValue } = require('firebase-admin/firestore')
@@ -106,7 +108,9 @@ async function processQueueItem(userId, item) {
                 subject: buildReplySubject(data.subject),
                 messageId,
                 initialPendingAttachmentPayload,
+                autoAttachInvoice: shouldAutoAttachInvoice(actionableAttachment, messageText),
                 hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
+                replyToSenderOnly: replyDelivery.replyToSenderOnly,
                 isParticipantScopedTopic,
                 skipCurrentMessageAppend: true,
                 returnExecutionMetadata: true,
@@ -290,6 +294,11 @@ function getReplyDeliveryForQueueItem(data) {
     })
     return {
         fromEmail,
+        replyToSenderOnly: isAssistantBlindCopied({
+            toEmails: data.toEmails || [],
+            ccEmails: data.ccEmails || [],
+            assistantEmailAddresses: [fromEmail],
+        }),
         ...recipients,
     }
 }

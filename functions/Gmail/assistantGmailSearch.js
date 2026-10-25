@@ -5,6 +5,7 @@ const { google } = require('googleapis')
 
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { normalizeGmailMessage } = require('./gmailMessageParser')
+const { EMAIL_PROVIDER_GOOGLE, listEmailConnections } = require('../Integrations/providerConnections')
 const {
     getConnectedMicrosoftEmailAccounts,
     getMicrosoftEmailAttachmentForAssistantRequest,
@@ -27,22 +28,6 @@ const SPECIAL_FLAG_LABELS = {
     isTrash: 'TRASH',
 }
 
-function getActiveProjectIds(userData = {}) {
-    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
-    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
-    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
-    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
-    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
-
-    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
-    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
-    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
-        activeProjectIds.unshift(defaultProjectId)
-    }
-
-    return activeProjectIds
-}
-
 function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
     if (!Number.isFinite(parsed)) return DEFAULT_SEARCH_LIMIT
@@ -61,6 +46,7 @@ async function getConnectedGmailAccountMap(userId) {
 
     accounts.forEach(account => {
         byProjectId.set(account.projectId, account)
+        if (account.connectionProjectId) byProjectId.set(account.connectionProjectId, account)
     })
 
     return { accounts, byProjectId }
@@ -167,46 +153,19 @@ async function getConnectedGmailAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    const apisConnected = userData.apisConnected || {}
-    const activeProjectIds = getActiveProjectIds(userData)
-    const accountIndexByKey = new Map()
-    const accounts = []
-
-    activeProjectIds.forEach(projectId => {
-        const connection = apisConnected?.[projectId]
-        if (!connection?.gmail) return
-
-        const gmailEmail = typeof connection.gmailEmail === 'string' ? connection.gmailEmail.trim().toLowerCase() : ''
-        const dedupeKey = gmailEmail || projectId
-        const gmailDefault = connection.gmailDefault === true
-
-        if (accountIndexByKey.has(dedupeKey)) {
-            if (!gmailDefault) return
-
-            const existingIndex = accountIndexByKey.get(dedupeKey)
-            accounts[existingIndex] = {
-                provider: 'google',
-                projectId,
-                gmailEmail: gmailEmail || null,
-                emailAddress: gmailEmail || null,
-                gmailDefault,
-                emailDefault: gmailDefault,
-            }
-            return
-        }
-
-        accountIndexByKey.set(dedupeKey, accounts.length)
-        accounts.push({
-            provider: 'google',
-            projectId,
-            gmailEmail: gmailEmail || null,
-            emailAddress: gmailEmail || null,
-            gmailDefault,
-            emailDefault: gmailDefault,
-        })
-    })
-
-    return accounts
+    return listEmailConnections(userData)
+        .filter(connection => connection.provider === EMAIL_PROVIDER_GOOGLE)
+        .map(connection => ({
+            provider: EMAIL_PROVIDER_GOOGLE,
+            // Assistant tools pass this value back for exact account targeting. Keep it on
+            // the historical `projectId` field until the public tool contract is renamed.
+            projectId: connection.connectionId,
+            connectionProjectId: connection.defaultProjectId || '',
+            gmailEmail: connection.emailAddress || null,
+            emailAddress: connection.emailAddress || null,
+            gmailDefault: connection.isDefaultAccount,
+            emailDefault: connection.isDefaultAccount,
+        }))
 }
 
 async function searchConnectedAccount({ userId, account, query, limit, includeBodies }) {

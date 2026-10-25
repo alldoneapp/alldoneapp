@@ -34,6 +34,11 @@
 
 import { MODAL_EDGE_GAP } from '../components/styles/modals'
 import { getSafeAreaInsets } from './safeAreaInsets'
+import { getWorkspaceInsets, getWorkspaceViewport } from './workspaceViewport'
+
+const getModalInsets = () => getWorkspaceInsets(getSafeAreaInsets())
+const getModalHeight = height => getWorkspaceViewport({ height }).height
+const getModalWidth = width => getWorkspaceViewport({ width }).width
 
 const ZERO_INSETS = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 })
 
@@ -92,10 +97,10 @@ export const computeSafeAreaModalMaxWidth = ({ windowWidth, insets = ZERO_INSETS
  * useWindowSize consumer) stays correct with no extra subscription.
  */
 export const getSafeAreaModalMaxHeight = (windowHeight, extraGap = 0) =>
-    computeSafeAreaModalMaxHeight({ windowHeight, insets: getSafeAreaInsets(), extraGap })
+    computeSafeAreaModalMaxHeight({ windowHeight: getModalHeight(windowHeight), insets: getModalInsets(), extraGap })
 
 export const getSafeAreaModalMaxWidth = windowWidth =>
-    computeSafeAreaModalMaxWidth({ windowWidth, insets: getSafeAreaInsets() })
+    computeSafeAreaModalMaxWidth({ windowWidth: getModalWidth(windowWidth), insets: getModalInsets() })
 
 /**
  * Pure form: the room left BELOW an already-decided top offset — the mentions
@@ -122,7 +127,11 @@ export const computeSafeAreaModalMaxHeightBelow = ({
 }
 
 export const getSafeAreaModalMaxHeightBelow = (windowHeight, topOffset) =>
-    computeSafeAreaModalMaxHeightBelow({ windowHeight, topOffset, insets: getSafeAreaInsets() })
+    computeSafeAreaModalMaxHeightBelow({
+        windowHeight: getModalHeight(windowHeight),
+        topOffset: topOffset - getWorkspaceViewport().top,
+        insets: getModalInsets(),
+    })
 
 /**
  * Pure form: the drop-in for a `maxHeight: '80vh'` style cap.
@@ -158,7 +167,12 @@ export const computeSafeAreaViewportHeightCap = ({
  * left below it rather than the whole screen.
  */
 export const getSafeAreaViewportHeightCap = (windowHeight, fraction, topOffset) =>
-    computeSafeAreaViewportHeightCap({ windowHeight, fraction, topOffset, insets: getSafeAreaInsets() })
+    computeSafeAreaViewportHeightCap({
+        windowHeight: getModalHeight(windowHeight),
+        fraction,
+        topOffset,
+        insets: getModalInsets(),
+    })
 
 /**
  * Pure form of the padding a full-viewport `position: fixed` overlay needs so
@@ -206,11 +220,11 @@ export const computeSafeAreaOverlayPadding = ({ insets = ZERO_INSETS, minimum = 
  * instead of moving it out from under the status bar.
  */
 export const getSafeAreaOverlayPadding = (minimum = {}) =>
-    computeSafeAreaOverlayPadding({ insets: getSafeAreaInsets(), minimum })
+    computeSafeAreaOverlayPadding({ insets: getModalInsets(), minimum })
 
 /**
  * Live form for edge-anchored floating chrome (toasts, undo bars, banners)
  * that positions itself with `top`/`bottom`/`left`/`right` rather than by
  * centering in an overlay. Returns the offsets to ADD to the existing gaps.
  */
-export const getSafeAreaEdgeOffsets = () => normalizeInsets(getSafeAreaInsets())
+export const getSafeAreaEdgeOffsets = () => normalizeInsets(getModalInsets())

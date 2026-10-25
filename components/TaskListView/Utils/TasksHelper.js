@@ -2,6 +2,11 @@ import moment from 'moment'
 import { findIndex, uniq } from 'lodash'
 
 import store from '../../../redux/store'
+import {
+    PROJECT_DATA_CONTACTS,
+    PROJECT_DATA_USERS,
+    requestProjectDataOnLookupMiss,
+} from '../../../utils/InitialLoad/projectDataLoader'
 import { TASK_EXECUTION_MODE_WORKFLOW } from '../../../utils/taskExecutionMode'
 import { shouldBlockPressAfterPopupDismiss } from '../../../utils/popupDismissGuard'
 import {
@@ -1057,7 +1062,14 @@ class TasksHelper {
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
         console.log('TasksHelper: Project index:', projectIndex)
 
-        let user = task != null ? await Backend.getUserOrContactBy(projectId, task.userId) : null
+        // The shared-task boot has already checked public project and task access.
+        // Anonymous visitors cannot read the assignee's private /users document.
+        let user =
+            task != null
+                ? loggedUser.isAnonymous
+                    ? SharedHelper.createAnonymousResourceUser(task.userId)
+                    : await Backend.getUserOrContactBy(projectId, task.userId)
+                : null
         // If user not found and task has an assistantId, try finding the assistant across all projects
         // This handles cases where the assistant is from another project
         if (!user && task != null && task.userId) {
@@ -1177,7 +1189,9 @@ class TasksHelper {
         if (goal && inSelectedProject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             const selectedUser =
-                projectType === PROJECT_TYPE_SHARED ? await Backend.getUserDataByUidOrEmail(goal.creatorId) : loggedUser
+                !loggedUser.isAnonymous && projectType === PROJECT_TYPE_SHARED
+                    ? await Backend.getUserDataByUidOrEmail(goal.creatorId)
+                    : loggedUser
             let data = {
                 goalId,
                 goal,
@@ -1231,7 +1245,9 @@ class TasksHelper {
         if (skill != null && checkIfSelectedProject(projectIndex) /*&& user != null*/) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             const selectedUser =
-                projectType === PROJECT_TYPE_SHARED ? await Backend.getUserDataByUidOrEmail(skill.userId) : loggedUser
+                !loggedUser.isAnonymous && projectType === PROJECT_TYPE_SHARED
+                    ? await Backend.getUserDataByUidOrEmail(skill.userId)
+                    : loggedUser
             let data = {
                 skillId,
                 skill,
@@ -1271,7 +1287,7 @@ class TasksHelper {
     static getNoteDVUserContext = async (projectId, note) => {
         const { loggedUser } = store.getState()
 
-        if (!note || !note.userId) return loggedUser
+        if (!note || !note.userId || loggedUser.isAnonymous) return loggedUser
 
         const owner = (await Backend.getUserOrContactBy(projectId, note.userId)) || getAssistant(note.userId)
 
@@ -1434,17 +1450,29 @@ class TasksHelper {
     static getUsersInProject = projectId => {
         const { projectUsers } = store.getState()
         const users = projectUsers[projectId]
+        if (!users || users.length === 0) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_USERS)
         return users || []
     }
 
+    // AT-2386: these three are THE synchronous name/photo funnels - roughly thirty render sites
+    // resolve a person through them. Since the per-project collections are no longer loaded at
+    // login, a miss here can mean "that project's data has not been requested yet" rather than
+    // "no such person", so the funnel reports it and the loader arms the watcher; the row fills in
+    // on the next render. Reporting from the funnel rather than from each of the thirty call sites
+    // is deliberate - the failure mode is silent (a row renders `getUnknownUserData()`), so one
+    // forgotten call site would never be noticed. The cost on the hot path is a single `Map.has`.
     static getUserInProject = (projectId, userId) => {
         const { projectUsers } = store.getState()
-        return projectUsers[projectId]?.find(user => user.uid === userId)
+        const user = projectUsers[projectId]?.find(user => user.uid === userId)
+        if (!user) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_USERS)
+        return user
     }
 
     static getContactInProject = (projectId, contactId) => {
         const { projectContacts } = store.getState()
-        return projectContacts[projectId]?.find(contact => contact.uid === contactId)
+        const contact = projectContacts[projectId]?.find(contact => contact.uid === contactId)
+        if (!contact) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_CONTACTS)
+        return contact
     }
 
     static getPeopleInProject = (projectId, peopleId, projectPeoples) => {

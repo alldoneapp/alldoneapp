@@ -28,11 +28,10 @@ export default function TaskSuggestedComment({ task, projectId }) {
 
     const isWorkstream = assignee.uid.startsWith(WORKSTREAM_ID_PREFIX)
 
-    const onSubmit = comment => {
+    const onSubmit = async comment => {
         if (!isQuillTagEditorOpen && !isMentionModalOpen && comment) {
-            updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-                createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', FORDWARD_COMMENT, null, null)
-            })
+            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
+            await createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', FORDWARD_COMMENT, null, null)
         }
     }
     const closeModal = () => {

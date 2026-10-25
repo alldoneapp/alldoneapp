@@ -64,12 +64,14 @@ const getEnvFunctions = () => {
             ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
-            APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
             OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+            BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+            BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+            BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             MENUBAR_APP_WEBHOOK_SECRET: process.env.MENUBAR_APP_WEBHOOK_SECRET || '',
             EXTERNAL_TOOLS_SIGNING_SECRET: process.env.EXTERNAL_TOOLS_SIGNING_SECRET || '',
         }
@@ -113,7 +115,6 @@ const getEnvFunctions = () => {
                     ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: envJson.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
-                    APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
                     // AT-2230. This map is an explicit allowlist, NOT a passthrough of the JSON: a
                     // key added to GOOGLE_FUNCTIONS_ENV_DEV/_PROD but missing here is silently
@@ -123,6 +124,9 @@ const getEnvFunctions = () => {
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
+                    BROWSER_WORKER_URL: envJson.BROWSER_WORKER_URL || '',
+                    BROWSER_WORKER_SIGNING_SECRET: envJson.BROWSER_WORKER_SIGNING_SECRET || '',
+                    BROWSER_ALLOWED_DOMAINS: envJson.BROWSER_ALLOWED_DOMAINS || '',
                     MENUBAR_APP_WEBHOOK_SECRET: envJson.MENUBAR_APP_WEBHOOK_SECRET || '',
                     EXTERNAL_TOOLS_SIGNING_SECRET: envJson.EXTERNAL_TOOLS_SIGNING_SECRET || '',
                     OPENAI_PROJECT_ID: envJson.OPENAI_PROJECT_ID || '',
@@ -138,6 +142,7 @@ const getEnvFunctions = () => {
                     GOOGLE_MAPS_API_KEY: envJson.GOOGLE_MAPS_API_KEY || '',
                     TYPESENSE_HOST: envJson.TYPESENSE_HOST || '',
                     TYPESENSE_ADMIN_API_KEY: envJson.TYPESENSE_ADMIN_API_KEY || '',
+                    TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: envJson.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -177,11 +182,13 @@ const getEnvFunctions = () => {
                         ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
-                        APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
                         VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                         VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                        BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                        BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                        BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                     }
                 }
             } catch (error) {
@@ -222,6 +229,9 @@ const getEnvFunctions = () => {
                     E2B_API_KEY: process.env.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                    BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                    BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                    BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                 }
             }
         } else {
@@ -258,12 +268,14 @@ const getEnvFunctions = () => {
                 ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
-                APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                 OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             }
         }
     }
@@ -288,6 +300,7 @@ const getEnvFunctions = () => {
         'GOOGLE_MAPS_API_KEY',
         'TYPESENSE_HOST',
         'TYPESENSE_ADMIN_API_KEY',
+        'TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })

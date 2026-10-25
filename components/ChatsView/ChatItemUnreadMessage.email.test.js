@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatItemUnreadMessage from './ChatItemUnreadMessage'
@@ -202,6 +202,17 @@ describe('ChatItemUnreadMessage email actions', () => {
             node => node.type === TouchableOpacity && node.props.accessibilityLabel === 'Archive email'
         )[0]
         expect(button.props.disabled).toBe(true)
+    })
+
+    // AT-2424: the archive is optimistic, so from the press onwards BOTH are true - the key is
+    // marked archived immediately while the mailbox call runs for another 4-8s. "Archived" has to
+    // win, or the one thing left on screen would be a spinner saying the work had not happened
+    // while the row it belongs to has already left the unread list.
+    it('shows Archived rather than a spinner while an optimistically archived email is still in flight', () => {
+        const tree = renderPreviewMessage({ isArchivedEmail: () => true, isArchivingEmail: () => true })
+
+        expect(tree.root.findAll(node => node.type === Text && node.props.children === 'Archived').length).toBe(1)
+        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0)
     })
 
     it('offers Unsubscribe only when the email carries a usable unsubscribe target', () => {

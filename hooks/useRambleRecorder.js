@@ -10,6 +10,7 @@ import {
     rememberLastUsedInputDevice,
     rememberLearnedCaptureMode,
 } from './rambleMicCapture'
+import { keepScreenAwake } from '../utils/screenWakeLock'
 
 /**
  * One-shot mic recorder for the rambler dictation feature: start → talk → stop → a single
@@ -76,6 +77,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const deviceIdRef = useRef('')
     const deviceLabelRef = useRef('')
     const triedDevicesRef = useRef([])
+    const releaseWakeLockRef = useRef(null)
 
     const onCompleteRef = useRef(onComplete)
     onCompleteRef.current = onComplete
@@ -83,6 +85,8 @@ export default function useRambleRecorder({ onComplete, onError }) {
     onErrorRef.current = onError
 
     const cleanup = useCallback(() => {
+        releaseWakeLockRef.current?.()
+        releaseWakeLockRef.current = null
         if (timerRef.current) {
             clearInterval(timerRef.current)
             timerRef.current = null
@@ -105,14 +109,59 @@ export default function useRambleRecorder({ onComplete, onError }) {
         setElapsedSeconds(0)
     }, [])
 
-    const stop = useCallback(() => {
+    /**
+     * `start()` is async — it waits on `getUserMedia` (a permission prompt the first time) and on
+     * the AT-2357 silence probe, so several hundred milliseconds can pass between the caller
+     * asking to record and a MediaRecorder existing. Push-to-talk releases inside that window all
+     * the time (AT-2405), and before this latch `stop()`/`cancel()` found `recorderRef.current`
+     * still null, did nothing at all, and the recorder then started AFTER the release with nobody
+     * left to stop it — a hot microphone running to the 300s cap. The token is compared rather
+     * than a bare boolean so a NEW start issued while an old acquisition is still in flight cannot
+     * be aborted by the old one's release.
+     */
+    const startTokenRef = useRef(0)
+    const abortedTokenRef = useRef(-1)
+    const startingRef = useRef(false)
+
+    const abortPendingStart = () => {
+        if (!startTokenRef.current || recorderRef.current) return false
+        abortedTokenRef.current = startTokenRef.current
+        startingRef.current = false
+        return true
+    }
+
+    /**
+     * @param {{minDurationMs?: number}} [options] discard the take instead of delivering it when
+     *   the recorder ran for less than this. Owned here because `startedAtRef` is the only honest
+     *   measure of how much audio exists — the press duration is not, since acquisition eats an
+     *   unpredictable slice of it.
+     * @returns {boolean} whether a recording will actually be delivered to `onComplete`.
+     */
+    const stop = useCallback((options = {}) => {
+        const { minDurationMs = 0 } = options
+        // Released before the microphone ever opened: there is no audio, so this is a discard, not
+        // a stop. Silent on purpose — the user held the button briefly and nothing happened.
+        if (abortPendingStart()) return false
         const recorder = recorderRef.current
-        if (!recorder || recorder.state === 'inactive') return
+        if (!recorder || recorder.state === 'inactive') return false
+        if (minDurationMs > 0 && Date.now() - startedAtRef.current < minDurationMs) {
+            cancelledRef.current = true
+            releaseWakeLockRef.current?.()
+            releaseWakeLockRef.current = null
+            recorder.stop()
+            return false
+        }
+        releaseWakeLockRef.current?.()
+        releaseWakeLockRef.current = null
         recorder.stop()
+        return true
     }, [])
 
     const cancel = useCallback(() => {
         cancelledRef.current = true
+        abortPendingStart()
+        releaseWakeLockRef.current?.()
+        releaseWakeLockRef.current = null
         const recorder = recorderRef.current
         if (recorder && recorder.state !== 'inactive') {
             recorder.stop()
@@ -124,8 +173,24 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const stopRef = useRef(stop)
     stopRef.current = stop
 
+    /**
+     * The live microphone level, 0..1, for the hold overlay's meter (AT-2408).
+     *
+     * Deliberately a GETTER rather than React state. The level has to be read ~10x a second to look
+     * alive, and putting that in state would re-render every consumer of this hook ten times a
+     * second — including `EditorToolbar`, which is a large tree. The meter instead polls this from
+     * its own animation frame and drives `Animated` values, so the cost stays inside the meter.
+     * Returns 0 when there is no monitor (no Web Audio) or no recording, which renders as a
+     * resting meter rather than as an error — the meter is reassurance, never a gate.
+     */
+    const getInputLevel = useCallback(() => {
+        const monitor = monitorRef.current
+        if (!monitor || typeof monitor.getLevel !== 'function') return 0
+        return monitor.getLevel()
+    }, [])
+
     const start = useCallback(async () => {
-        if (recorderRef.current) return
+        if (recorderRef.current || startingRef.current) return
         if (!isDictationSupported()) {
             onErrorRef.current?.('not-supported')
             return
@@ -135,22 +200,39 @@ export default function useRambleRecorder({ onComplete, onError }) {
         // workaround (and whether it still belongs to this device), and the pre-flight probe that
         // re-acquires a silent device with processing disabled BEFORE recording starts, so the
         // broken take never happens and no speech is lost. See rambleMicCapture.js.
+        const startToken = startTokenRef.current + 1
+        startTokenRef.current = startToken
+        startingRef.current = true
+
         let acquired
         try {
             acquired = await acquireDictationStream({
                 requestStream: audio => navigator.mediaDevices.getUserMedia({ audio }),
             })
         } catch (error) {
+            if (startTokenRef.current === startToken) startingRef.current = false
+            if (abortedTokenRef.current === startToken || startTokenRef.current !== startToken) return
             onErrorRef.current?.('permission-denied')
             return
         }
         const { stream, monitor, captureMode, setting, deviceId, deviceLabel, triedDevices, switchedDevice } = acquired
+
+        // The caller let go (or cancelled) while the microphone was still opening. Hand the device
+        // straight back instead of starting a recording nobody is holding — see the token comment
+        // on `stop()`.
+        if (abortedTokenRef.current === startToken || startTokenRef.current !== startToken) {
+            if (startTokenRef.current === startToken) startingRef.current = false
+            monitor?.close()
+            stream.getTracks().forEach(track => track.stop())
+            return
+        }
 
         const mimeType = pickSupportedMimeType()
         let recorder
         try {
             recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
         } catch (error) {
+            startingRef.current = false
             monitor?.close()
             stream.getTracks().forEach(track => track.stop())
             onErrorRef.current?.('not-supported')
@@ -184,6 +266,8 @@ export default function useRambleRecorder({ onComplete, onError }) {
         }
         recorder.onerror = () => {
             cancelledRef.current = true
+            releaseWakeLockRef.current?.()
+            releaseWakeLockRef.current = null
             onErrorRef.current?.('recorder-error')
             if (recorder.state !== 'inactive') recorder.stop()
             else cleanup()
@@ -267,7 +351,16 @@ export default function useRambleRecorder({ onComplete, onError }) {
 
         // 1s timeslices so a mid-recording crash loses at most a second, and Safari (which is
         // unreliable about a single final dataavailable) still delivers steady chunks.
-        recorder.start(1000)
+        try {
+            recorder.start(1000)
+        } catch (error) {
+            startingRef.current = false
+            cleanup()
+            onErrorRef.current?.('recorder-error')
+            return
+        }
+        startingRef.current = false
+        releaseWakeLockRef.current = keepScreenAwake()
         setIsRecording(true)
         setElapsedSeconds(0)
         // Sampled far faster than the 1s UI tick: the analyser only ever holds ~43ms of audio, so
@@ -293,6 +386,9 @@ export default function useRambleRecorder({ onComplete, onError }) {
     useEffect(() => {
         return () => {
             cancelledRef.current = true
+            abortedTokenRef.current = startTokenRef.current
+            releaseWakeLockRef.current?.()
+            releaseWakeLockRef.current = null
             const recorder = recorderRef.current
             if (recorder && recorder.state !== 'inactive') recorder.stop()
             if (timerRef.current) clearInterval(timerRef.current)
@@ -302,5 +398,5 @@ export default function useRambleRecorder({ onComplete, onError }) {
         }
     }, [])
 
-    return { isRecording, elapsedSeconds, start, stop, cancel }
+    return { isRecording, elapsedSeconds, start, stop, cancel, getInputLevel }
 }

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import AllProjectsEmptyInbox from '../../../TaskListView/OpenTasksView/AllProjectsEmptyInbox'
 import MyDayDoneTasksList from './MyDayDoneTasksList'
-import AssistantLine from '../../AssistantLine/AssistantLine'
+import AllProjectsAssistantLine from '../../AssistantLine/AllProjectsAssistantLine'
 import AllProjectsLine from '../../../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
 export default function MyDayDoneTasks() {
@@ -20,7 +20,7 @@ export default function MyDayDoneTasks() {
     return (
         <>
             <AllProjectsLine />
-            <AssistantLine useAssistantProjectContext={false} />
+            <AllProjectsAssistantLine />
             {showEmptyInbox && <AllProjectsEmptyInbox />}
             {!showEmptyInbox && (
                 <View style={{ marginTop: 16, marginBottom: 32 }}>

@@ -27,14 +27,30 @@ export default function MilestoneMoreButton({ projectId, milestone, firstMilesto
         modalRef?.current?.close()
     }
 
-    const moveMilestoneToOpen = () => {
+    const moveMilestoneToOpen = async () => {
         dismissModal()
-        Backend.updateMilestoneDoneState(projectId, milestone)
+        try {
+            await Backend.updateMilestoneDoneState(projectId, milestone)
+        } catch (error) {
+            console.error('[Milestone transition] Could not reopen milestone', {
+                projectId,
+                milestoneId: milestone.id,
+                error,
+            })
+        }
     }
 
-    const moveMilestoneToDone = () => {
+    const moveMilestoneToDone = async () => {
         closeDoneStateModal()
-        Backend.updateMilestoneDoneState(projectId, milestone)
+        try {
+            await Backend.updateMilestoneDoneState(projectId, milestone)
+        } catch (error) {
+            console.error('[Milestone transition] Could not mark milestone as done', {
+                projectId,
+                milestoneId: milestone.id,
+                error,
+            })
+        }
     }
 
     const openDoneStateModal = () => {

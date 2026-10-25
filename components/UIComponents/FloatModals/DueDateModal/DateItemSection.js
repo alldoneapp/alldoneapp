@@ -7,7 +7,7 @@ import Hotkeys from 'react-hot-keys'
 import DateText from './DateText'
 import { useSelector, useDispatch } from 'react-redux'
 import Backend from '../../../../utils/BackendBridge'
-import { setLastSelectedDueDate, setSelectedTasks, startLoadingData, stopLoadingData } from '../../../../redux/actions'
+import { setLastSelectedDueDate, setSelectedTasks } from '../../../../redux/actions'
 import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
 import { setTaskDueDate } from '../../../../utils/backends/Tasks/tasksFirestore'
@@ -30,8 +30,10 @@ export default function DateItemSection({
 
     const selectDate = dateTimestamp => {
         if (multipleTasks) {
-            Backend.setTaskDueDateMultiple(tasks, dateTimestamp).then(dispatch(stopLoadingData()))
-            dispatch([setSelectedTasks(null, true), startLoadingData()])
+            Backend.setTaskDueDateMultiple(tasks, dateTimestamp).catch(error =>
+                console.error('[tasks] Could not update task dates', error)
+            )
+            dispatch([setSelectedTasks(null, true)])
             if (updateParentGoalReminderDate) updateParentGoalReminderDate(dateTimestamp)
         } else if (updateParentGoalReminderDate) {
             updateParentGoalReminderDate(dateTimestamp)

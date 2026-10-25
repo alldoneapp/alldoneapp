@@ -1,9 +1,11 @@
-import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import React, { useRef } from 'react'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import moment from 'moment'
 
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import store from '../../redux/store'
+import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import {
     getGlobalHappinessStats,
     getHappinessDateText,
@@ -71,7 +73,19 @@ const getGlobalTrendEntries = happinessByProject => {
     })
 }
 
+/** The day a trend bar stands for, short (no year): `02/09` or `09/02`. */
+export const getHappinessTrendDateText = timestamp => moment(timestamp).format(getDateFormat(true))
+
+/**
+ * The last 14 rated days as bars, each labelled with its rating AND its date.
+ *
+ * Without the date a bar is just a shape: the strip can hold a fortnight of
+ * consecutive days or fourteen ratings scattered over a year, and the two
+ * read identically. The strip scrolls horizontally and starts at its end, so
+ * a phone shows the most recent days first rather than clipping them.
+ */
 function Trend({ entries, showAverageLabel }) {
+    const scrollRef = useRef(null)
     const trendEntries = entries
         .filter(entry => entry.rating)
         .sort((a, b) => a.timestamp - b.timestamp)
@@ -81,7 +95,14 @@ function Trend({ entries, showAverageLabel }) {
         <View style={localStyles.section}>
             <Text style={localStyles.sectionTitle}>{translate('Happiness trend')}</Text>
             {trendEntries.length > 0 ? (
-                <View style={localStyles.trend}>
+                <ScrollView
+                    ref={scrollRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={localStyles.trendScroll}
+                    contentContainerStyle={localStyles.trend}
+                    onContentSizeChange={() => scrollRef.current?.scrollToEnd?.({ animated: false })}
+                >
                     {trendEntries.map(entry => (
                         <View key={`${entry.projectId || ''}${entry.dateKey}`} style={localStyles.trendItem}>
                             <View style={localStyles.trendBarTrack}>
@@ -90,9 +111,16 @@ function Trend({ entries, showAverageLabel }) {
                             <Text style={localStyles.trendEmoji}>
                                 {showAverageLabel ? entry.rating.toFixed(1) : HAPPINESS_EMOJIS[entry.rating]}
                             </Text>
+                            <Text
+                                style={localStyles.trendDate}
+                                numberOfLines={1}
+                                testID={`happinessTrendDate_${entry.dateKey}`}
+                            >
+                                {getHappinessTrendDateText(entry.timestamp)}
+                            </Text>
                         </View>
                     ))}
-                </View>
+                </ScrollView>
             ) : (
                 <Text style={localStyles.emptyText}>{translate('No happiness data yet')}</Text>
             )}
@@ -237,15 +265,17 @@ const localStyles = StyleSheet.create({
         width: 32,
         textAlign: 'right',
     },
-    trend: {
-        height: 120,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
+    trendScroll: {
         borderBottomWidth: 1,
         borderColor: colors.Grey200,
     },
+    trend: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingBottom: 4,
+    },
     trendItem: {
-        width: 28,
+        width: 44,
         alignItems: 'center',
         marginRight: 6,
     },
@@ -264,6 +294,11 @@ const localStyles = StyleSheet.create({
     trendEmoji: {
         ...styles.caption2,
         marginTop: 4,
+    },
+    trendDate: {
+        ...styles.caption2,
+        lineHeight: 14,
+        color: colors.Text03,
     },
     emptyText: {
         ...styles.body2,

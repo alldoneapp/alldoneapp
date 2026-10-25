@@ -35,7 +35,7 @@ import useWindowSize from '../../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
 import { HEADER_POPOVER_HEIGHT_FRACTION } from '../../styles/modals'
 
-function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen }) {
+function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen, textColor }) {
     const [, windowHeight] = useWindowSize()
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -98,15 +98,18 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
         >
             <View style={localStyles.titleContainer}>
                 {user.uid === ALL_GOALS_ID ? (
-                    <Icon size={18} name="circle" color={colors.Text03} style={{ marginRight: 4 }} />
+                    <Icon size={18} name="circle" color={textColor || colors.Text03} style={{ marginRight: 4 }} />
                 ) : user.uid?.startsWith(WORKSTREAM_ID_PREFIX) ? (
-                    <Icon size={18} name="workstream" color={colors.Text03} style={{ marginRight: 4 }} />
+                    <Icon size={18} name="workstream" color={textColor || colors.Text03} style={{ marginRight: 4 }} />
                 ) : (
                     !!photoURL && <Image source={{ uri: photoURL }} style={localStyles.userImage} />
                 )}
 
                 {user.displayName !== undefined && !mobile && (
-                    <Text style={[styles.subtitle1, localStyles.userName]} numberOfLines={1}>
+                    <Text
+                        style={[styles.subtitle1, localStyles.userName, textColor && { color: textColor }]}
+                        numberOfLines={1}
+                    >
                         {user.uid === ALL_GOALS_ID || user.uid.startsWith(WORKSTREAM_ID_PREFIX) || !!user.temperature
                             ? user.displayName
                             : HelperFunctions.getFirstName(user.displayName)}

@@ -14,23 +14,80 @@ jest.mock('../styles/global', () => ({
     },
 }))
 
-import undoActionBarStyles from './undoActionBarStyles'
+import undoActionBarStyles, { getUndoOverlayPosition } from './undoActionBarStyles'
+import {
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_STACK_GAP,
+    FLOATING_ACTION_VIEWPORT_GAP,
+} from '../UIComponents/floatingActionLayout'
 
 describe('UndoActionBar layout', () => {
-    it('positions the undo banner at the safe top edge instead of the bottom', () => {
-        expect(undoActionBarStyles.overlay.top).toBeDefined()
-        expect(undoActionBarStyles.overlay.bottom).toBeUndefined()
-        expect(undoActionBarStyles.container.marginTop).toBe(64)
+    it('aligns the banner with the task action at the bottom left', () => {
+        const position = getUndoOverlayPosition()
+        expect(position.left).toBe(FLOATING_ACTION_VIEWPORT_GAP)
+        expect(position.bottom).toBe(FLOATING_ACTION_VIEWPORT_GAP)
+        expect(position.right).toBe(FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP)
+        expect(undoActionBarStyles.overlay.alignItems).toBe('flex-start')
+        expect(undoActionBarStyles.container.marginBottom).toBeUndefined()
     })
 
-    it('adds extra horizontal viewport padding on mobile', () => {
-        expect(undoActionBarStyles.mobileViewport.paddingHorizontal).toBe(24)
-        expect(undoActionBarStyles.viewport.paddingHorizontal).toBe(16)
-        expect(undoActionBarStyles.overlay.paddingHorizontal).toBeUndefined()
+    it('keeps the banner in the safe area and leaves room for the task action in a narrow viewport', () => {
+        const position = getUndoOverlayPosition({ left: 47, right: 12, bottom: 34 })
+        expect(position).toEqual({
+            left: FLOATING_ACTION_VIEWPORT_GAP + 47,
+            right: FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP + 12,
+            bottom: FLOATING_ACTION_VIEWPORT_GAP + 34,
+        })
+        expect(undoActionBarStyles.container.width).toBe('100%')
+        expect(undoActionBarStyles.container.maxWidth).toBe(560)
     })
 
     it('makes only the banner background 20% transparent', () => {
         expect(undoActionBarStyles.container.backgroundColor).toBe('rgba(4,20,47,0.8)')
         expect(undoActionBarStyles.container.opacity).toBeUndefined()
+    })
+
+    describe('the auto-hide countdown line (AT-2503)', () => {
+        it('drains from the right edge leftwards rather than shrinking towards its own middle', () => {
+            // Without this the line collapses symmetrically, which reads as a UI element being
+            // removed rather than as time running out.
+            expect(undoActionBarStyles.countdown.transformOrigin).toBe('left center')
+        })
+
+        it('sits on the bottom edge of the banner, spanning its full width', () => {
+            expect(undoActionBarStyles.countdown.position).toBe('absolute')
+            expect(undoActionBarStyles.countdown.bottom).toBe(0)
+            expect(undoActionBarStyles.countdown.left).toBe(0)
+            expect(undoActionBarStyles.countdown.right).toBe(0)
+            expect(undoActionBarStyles.countdown.height).toBeLessThanOrEqual(3)
+        })
+
+        it('is a bare fill with no track behind it', () => {
+            // A grey rail would announce a UI control in what is otherwise a sentence and a button,
+            // and it would still be sitting there once the bar had emptied. Same call as AT-2404.
+            const trackStyles = Object.keys(undoActionBarStyles).filter(name => /track|rail/i.test(name))
+            expect(trackStyles).toEqual([])
+        })
+
+        it('is clipped to the banner corners without costing the banner its shadow', () => {
+            expect(undoActionBarStyles.container.overflow).toBe('hidden')
+            // `overflow` clips descendants; an element's own box-shadow is painted outside its
+            // border box and is unaffected.
+            expect(undoActionBarStyles.container.boxShadow).toBeDefined()
+        })
+    })
+
+    describe('a long task name never hides the action (AT-2626)', () => {
+        it('lets the message shrink below its longest unbreakable word', () => {
+            // Without minWidth: 0 a flex item cannot shrink below its min-content width, so a
+            // long link pushed the Undo button past the card's clipped edge.
+            expect(undoActionBarStyles.message.flex).toBe(1)
+            expect(undoActionBarStyles.message.minWidth).toBe(0)
+            expect(undoActionBarStyles.message.overflowWrap).toBe('anywhere')
+        })
+
+        it('never shrinks the action', () => {
+            expect(undoActionBarStyles.actionSlot.flexShrink).toBe(0)
+        })
     })
 })

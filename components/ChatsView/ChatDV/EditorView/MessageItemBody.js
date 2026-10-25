@@ -29,7 +29,8 @@ import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/Em
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
-import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
+import BrowserApprovalCard from './BrowserApprovalCard'
+import { isAwaitingVmInteraction as hasAwaitingVmInteraction, showsAssistantLiveActivity } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
 import StopAssistantRunButton from './StopAssistantRunButton'
 
@@ -81,7 +82,18 @@ export default function MessageItemBody({
     // even if legacy/stale message-loading logic has already cleared isLoading.
     const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
     const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
-    const showFriendlyAssistantProgress = isLoadingState && !isAwaitingVmInteraction && assistantRun?.kind === 'chat'
+    const showFriendlyAssistantProgress = showsAssistantLiveActivity(creatorData?.isAssistant, isLoading, assistantRun)
+    const stopButton = (
+        <StopAssistantRunButton
+            projectId={projectId}
+            objectType={objectType}
+            objectId={chat?.id}
+            commentId={messageId}
+            assistantRun={assistantRun}
+            isLoading={isLoadingState}
+            variant={showFriendlyAssistantProgress ? 'card' : 'standalone'}
+        />
+    )
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
@@ -383,7 +395,13 @@ export default function MessageItemBody({
             {isLoadingState ? (
                 <View style={localStyles.loadingContainer}>
                     {showFriendlyAssistantProgress ? (
-                        <AssistantProgress activity={assistantRun?.activity} />
+                        <AssistantProgress
+                            activity={assistantRun?.activity}
+                            activityHistory={assistantRun?.activityHistory}
+                            runId={assistantRun?.runId}
+                        >
+                            {stopButton}
+                        </AssistantProgress>
                     ) : !containsBlockOrSpecialElements(loadingText) ? (
                         <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                     ) : (
@@ -409,14 +427,7 @@ export default function MessageItemBody({
                             <ActivityIndicator size="small" color={colors.PrimaryBlue} />
                         </View>
                     )}
-                    <StopAssistantRunButton
-                        projectId={projectId}
-                        objectType={objectType}
-                        objectId={chat?.id}
-                        commentId={messageId}
-                        assistantRun={assistantRun}
-                        isLoading={isLoadingState}
-                    />
+                    {!showFriendlyAssistantProgress && stopButton}
                 </View>
             ) : (
                 <>
@@ -456,14 +467,16 @@ export default function MessageItemBody({
                                 disabled={linkedEmailArchiving || linkedEmailArchived}
                                 accessibilityLabel={translate('Archive email')}
                             >
-                                {linkedEmailArchiving ? (
+                                {/* Archived wins over archiving (AT-2424): the archive is
+                                    optimistic, so the check mark is the answer from the press
+                                    onwards and the spinner only covers a state the user never
+                                    normally reaches. */}
+                                {linkedEmailArchived ? (
+                                    <Icon name="check" size={14} color={colors.Text03} />
+                                ) : linkedEmailArchiving ? (
                                     <ActivityIndicator size="small" color={colors.Text03} />
                                 ) : (
-                                    <Icon
-                                        name={linkedEmailArchived ? 'check' : 'archive'}
-                                        size={14}
-                                        color={colors.Text03}
-                                    />
+                                    <Icon name="archive" size={14} color={colors.Text03} />
                                 )}
                                 <Text style={localStyles.linkedEmailButtonText}>
                                     {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
@@ -480,6 +493,12 @@ export default function MessageItemBody({
                                 </TouchableOpacity>
                             )}
                         </View>
+                    )}
+                    {/* A browser action the policy paused. It hangs off the FINISHED comment, not
+                        the loading one: the assistant's turn has already ended by the time it asks,
+                        unlike a VM run, which parks and is still alive. */}
+                    {creatorData?.isAssistant && (
+                        <BrowserApprovalCard projectId={projectId} objectId={chat?.id} commentId={messageId} />
                     )}
                 </>
             )}

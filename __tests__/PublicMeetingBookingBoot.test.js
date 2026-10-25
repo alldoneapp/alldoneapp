@@ -13,7 +13,20 @@
 // suite already takes ~4.8s on a developer machine and 33-35s on a CI runner, so the first test —
 // which also carries the module-loading cost — blew the default and failed `test:web:changed` on
 // every branch whose diff reached the app-boot import graph, regardless of what that branch changed.
-jest.setTimeout(30000)
+//
+// The first raise of this budget set it to 30s while its own commit message recorded the CI cost as
+// "33-35s", i.e. the budget was pinned BELOW the number it was derived from and had no headroom at
+// all. What that leaves is a suite that passes only when it happens to run first in the in-band
+// worker: measured on a CI runner it takes 18.9s as the first suite of the job and 36.3s as the
+// third, and the branch that trips the difference is simply whichever one adds a couple of suites
+// ahead of it — again regardless of what that branch changed (AT-2385 added three Contacts suites
+// and turned it red twice in a row; boot itself is unchanged, 29.3s on this branch vs 30.6s on
+// master for the same cold-cache run).
+//
+// So the budget is now derived from the worst observed CI cost with real headroom rather than from
+// the best one. Nothing else changes: the assertions, the mocks and the boot path are untouched, the
+// suite still runs in full, and the CI job's own timeout remains the outer bound.
+jest.setTimeout(120000)
 
 jest.mock('../utils/backends/firestore', () => ({
     ...jest.createMockFromModule('../utils/backends/firestore'),
@@ -71,12 +84,17 @@ jest.mock('../components/UIComponents/FloatModals/EndDayStatisticsModal', () => 
     default: () => null,
 }))
 
-jest.mock('../utils/Geolocation/GeolocationHelper', () => ({ initIpRegistry: () => {} }))
+jest.mock('../utils/Geolocation/GeolocationHelper', () => ({
+    initIpRegistry: () => {
+        global.__ipRegistryInitCalls += 1
+    },
+}))
 
 jest.mock('../utils/BackendBridge', () => ({
     __esModule: true,
     default: {
         initFirebase: callback => {
+            global.__firebaseInitCalls += 1
             global.__firebaseAuthCallback = callback
         },
         logout: resolve => resolve && resolve(),
@@ -94,6 +112,8 @@ const bootApp = async pathname => {
     global.__renderedRoutes = []
     global.__loadingScreenRendered = false
     global.__firebaseAuthCallback = null
+    global.__firebaseInitCalls = 0
+    global.__ipRegistryInitCalls = 0
 
     jest.resetModules()
     const React = require('react')
@@ -130,27 +150,28 @@ describe('Public meeting link boot path (AT-2276)', () => {
         expect(NavigationService.getCurrentState().params).toEqual({ slug: 'karsten-wysk' })
         // No "connecting" spinner in front of a page that needs no account and no app data.
         expect(global.__loadingScreenRendered).toBe(false)
+        expect(global.__firebaseInitCalls).toBe(0)
+        expect(global.__firebaseAuthCallback).toBeNull()
+        expect(global.__ipRegistryInitCalls).toBe(0)
     })
 
     it('never mounts the login screen and keeps the booking URL in the address bar', async () => {
         const { NavigationService, store } = await bootApp('/meet/karsten-wysk')
 
-        await answerAuthWithNoSession()
-
         expect(global.__renderedRoutes).not.toContain('LoginScreen')
         expect(NavigationService.getCurrentState().routeName).toBe('MeetingBooking')
         expect(window.location.pathname).toBe('/meet/karsten-wysk')
-        expect(store.getState().loggedIn).toBe(false)
+        expect(store.getState().loggedIn).toBeNull()
         expect(store.getState().initialUrl).toBe('/meet/karsten-wysk')
+        expect(global.__firebaseInitCalls).toBe(0)
     })
 
     it('keeps a query string on the booking link', async () => {
         const { store } = await bootApp('/meet/karsten-wysk?utm_source=signature')
 
-        await answerAuthWithNoSession()
-
         expect(global.__renderedRoutes).not.toContain('LoginScreen')
         expect(store.getState().initialUrl).toBe('/meet/karsten-wysk?utm_source=signature')
+        expect(global.__firebaseInitCalls).toBe(0)
     })
 
     it('still sends a logged-out visitor of a normal app URL to the login screen', async () => {
@@ -159,6 +180,7 @@ describe('Public meeting link boot path (AT-2276)', () => {
         // Auth has not answered yet: the app shell stays behind the loading screen as before.
         expect(global.__loadingScreenRendered).toBe(true)
         expect(global.__renderedRoutes).toEqual([])
+        expect(global.__firebaseInitCalls).toBe(1)
 
         await answerAuthWithNoSession()
 

@@ -16,6 +16,7 @@ const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const moment = require('moment-timezone')
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { buildConnectionId, listCalendarConnections } = require('../Integrations/providerConnections')
 
 const firestoreState = {
     users: {},
@@ -73,9 +74,12 @@ describe('assistantCalendarTools', () => {
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) =>
-            Promise.resolve(createOAuthClient(projectId))
-        )
+        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) => {
+            const connection = listCalendarConnections(firestoreState.users[userId] || {}).find(
+                item => item.connectionId === projectId
+            )
+            return Promise.resolve(createOAuthClient(connection?.defaultProjectId || projectId))
+        })
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
@@ -124,8 +128,48 @@ describe('assistantCalendarTools', () => {
         const accounts = await assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')
 
         expect(accounts).toEqual([
-            { projectId: 'p1', calendarEmail: 'me@example.com', calendarDefault: false },
-            { projectId: 'p3', calendarEmail: 'other@example.com', calendarDefault: false },
+            {
+                projectId: buildConnectionId('calendar', 'google', 'me@example.com'),
+                connectionProjectId: 'p1',
+                calendarEmail: 'me@example.com',
+                calendarDefault: false,
+            },
+            {
+                projectId: buildConnectionId('calendar', 'google', 'other@example.com'),
+                connectionProjectId: 'p3',
+                calendarEmail: 'other@example.com',
+                calendarDefault: false,
+            },
+        ])
+    })
+
+    test('uses the global default Calendar account even when legacy project flags disagree', async () => {
+        const connectionId = buildConnectionId('calendar', 'google', 'default@example.com')
+        setUser('user-1', {
+            calendarConnections: {
+                [connectionId]: {
+                    provider: 'google',
+                    emailAddress: 'default@example.com',
+                    defaultProjectId: 'integration-home-project',
+                    isDefaultAccount: true,
+                },
+            },
+            apisConnected: {
+                'integration-home-project': {
+                    calendar: true,
+                    calendarEmail: 'default@example.com',
+                    calendarDefault: false,
+                },
+            },
+        })
+
+        await expect(assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')).resolves.toEqual([
+            {
+                projectId: connectionId,
+                connectionProjectId: 'integration-home-project',
+                calendarEmail: 'default@example.com',
+                calendarDefault: true,
+            },
         ])
     })
 
@@ -181,7 +225,7 @@ describe('assistantCalendarTools', () => {
         expect(result.success).toBe(true)
         expect(result.searchedAccounts).toHaveLength(2)
         expect(result.results[0]).toMatchObject({
-            projectId: 'p1',
+            projectId: buildConnectionId('calendar', 'google', 'one@example.com'),
             calendarEmail: 'one@example.com',
             calendarId: 'primary',
             eventId: 'evt-1',
@@ -876,9 +920,69 @@ describe('assistantCalendarTools', () => {
         })
 
         expect(result.success).toBe(true)
-        expect(result.projectId).toBe('p2')
+        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
         expect(defaultClient.events.insert).toHaveBeenCalled()
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
+    })
+
+    test('treats explicit primary as the saved default account when multiple are connected', async () => {
+        setUser('user-1', {
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: true },
+            },
+        })
+
+        const nonDefaultClient = setCalendarClient('p1')
+        const defaultClient = setCalendarClient('p2')
+        defaultClient.events.insert.mockResolvedValue({
+            data: {
+                id: 'evt-explicit-primary',
+                summary: 'Default Event',
+                start: { dateTime: '2026-03-11T09:00:00+01:00' },
+                end: { dateTime: '2026-03-11T10:00:00+01:00' },
+            },
+        })
+
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Default Event',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+            calendarId: 'primary',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
+        expect(defaultClient.events.insert).toHaveBeenCalledWith(expect.objectContaining({ calendarId: 'primary' }))
+        expect(nonDefaultClient.calendars.get).not.toHaveBeenCalled()
+        expect(nonDefaultClient.events.insert).not.toHaveBeenCalled()
+    })
+
+    test('keeps explicit primary ambiguous when multiple accounts have no saved default', async () => {
+        setUser('user-1', {
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: false },
+            },
+        })
+
+        const firstClient = setCalendarClient('p1')
+        const secondClient = setCalendarClient('p2')
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Ambiguous',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+            calendarId: 'primary',
+        })
+
+        expect(result.success).toBe(false)
+        expect(result.code).toBe('calendar_account_ambiguous')
+        expect(firstClient.calendars.get).not.toHaveBeenCalled()
+        expect(secondClient.calendars.get).not.toHaveBeenCalled()
     })
 
     // AT-2198: every meeting Anna books must come with a join link already attached.
@@ -1060,5 +1164,113 @@ describe('assistantCalendarTools', () => {
 
         expect(result.success).toBe(false)
         expect(result.message).toMatch(/Please connect Calendar first/)
+    })
+
+    describe('recurring event writes', () => {
+        function connectedCalendar() {
+            setUser('user-1', {
+                projectIds: ['p1'],
+                preferredTimezone: 'Europe/Berlin',
+                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
+            })
+            return setCalendarClient('p1')
+        }
+
+        test('creates a weekly series and exposes its recurrence', async () => {
+            const client = connectedCalendar()
+            client.events.insert.mockResolvedValue({
+                data: { id: 'master', recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'] },
+            })
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                summary: 'Standup',
+                start: '2026-10-05T09:00:00',
+                end: '2026-10-05T09:30:00',
+                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'] },
+            })
+            expect(result.success).toBe(true)
+            expect(result.event.recurrence).toEqual(['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'])
+            expect(client.events.insert.mock.calls[0][0].requestBody.recurrence).toEqual(result.event.recurrence)
+        })
+
+        test('rejects invalid recurrence before inserting', async () => {
+            const client = connectedCalendar()
+            await expect(
+                assistantCalendarTools.createCalendarEventForAssistantRequest({
+                    userId: 'user-1',
+                    summary: 'Standup',
+                    start: '2026-10-05T09:00:00',
+                    end: '2026-10-05T09:30:00',
+                    recurrence: { frequency: 'weekly', daysOfWeek: ['tuesday'] },
+                })
+            ).rejects.toThrow('first event weekday')
+            expect(client.events.insert).not.toHaveBeenCalled()
+        })
+
+        test('requires scope for a recurring instance and targets the right ID', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockResolvedValue({
+                data: {
+                    id: 'instance',
+                    recurringEventId: 'master',
+                    start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+                },
+            })
+            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
+            const args = { userId: 'user-1', eventId: 'instance', summary: 'New title' }
+            const ambiguous = await assistantCalendarTools.updateCalendarEventForAssistantRequest(args)
+            expect(ambiguous.code).toBe('calendar_recurrence_scope_required')
+            expect(client.events.patch).not.toHaveBeenCalled()
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'series' })
+            expect(client.events.patch.mock.calls[0][0].eventId).toBe('master')
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
+            expect(client.events.patch.mock.calls[1][0].eventId).toBe('instance')
+        })
+
+        test('updates the master recurrence using the master start date', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockImplementation(({ eventId }) =>
+                Promise.resolve({
+                    data:
+                        eventId === 'master'
+                            ? {
+                                  id: 'master',
+                                  recurrence: ['RRULE:FREQ=WEEKLY'],
+                                  start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+                              }
+                            : {
+                                  id: 'instance',
+                                  recurringEventId: 'master',
+                                  start: { dateTime: '2026-10-07T09:00:00', timeZone: 'Europe/Berlin' },
+                              },
+                })
+            )
+            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                eventId: 'instance',
+                scope: 'series',
+                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'], count: 4 },
+            })
+            expect(client.events.patch).toHaveBeenCalledWith({
+                calendarId: 'primary',
+                eventId: 'master',
+                requestBody: { recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=4'] },
+            })
+        })
+
+        test('deletes one occurrence or the entire series only with scope', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockResolvedValue({ data: { id: 'instance', recurringEventId: 'master' } })
+            client.events.delete.mockResolvedValue({})
+            const args = { userId: 'user-1', eventId: 'instance' }
+            expect((await assistantCalendarTools.deleteCalendarEventForAssistantRequest(args)).code).toBe(
+                'calendar_recurrence_scope_required'
+            )
+            expect(client.events.delete).not.toHaveBeenCalled()
+            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
+            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'series' })
+            expect(client.events.delete.mock.calls.map(call => call[0].eventId)).toEqual(['instance', 'master'])
+        })
     })
 })

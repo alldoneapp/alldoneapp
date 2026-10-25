@@ -1,3 +1,4 @@
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -58,6 +59,11 @@ export const URL_PROJECT_DETAILS_HAPPINESS = 'PROJECT_DETAILS_HAPPINESS'
 export const URL_PROJECT_DETAILS_OKRS = 'PROJECT_DETAILS_OKRS'
 
 /**
+ * /project/{projectId}/wiki-settings
+ */
+export const URL_PROJECT_DETAILS_WIKI = 'PROJECT_DETAILS_WIKI'
+
+/**
  * /project/{projectId}/contact-statuses
  */
 export const URL_PROJECT_DETAILS_CONTACT_STATUSES = 'PROJECT_DETAILS_CONTACT_STATUSES'
@@ -83,13 +89,11 @@ class URLsProjects {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsProjects.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsProjects.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('replace', data, urlPath, () => URLsProjects.setTitle(urlConstant, false, ...params))
     }
 
     /**
@@ -99,13 +103,11 @@ class URLsProjects {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsProjects.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        URLsProjects.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        writeBrowserHistory('push', data, urlPath, () => URLsProjects.setTitle(urlConstant, false, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {
@@ -132,6 +134,8 @@ class URLsProjects {
                 return `project/${params[0]}/okrs`
             case URL_PROJECT_DETAILS_ASSISTANTS:
                 return `project/${params[0]}/assistants`
+            case URL_PROJECT_DETAILS_WIKI:
+                return `project/${params[0]}/wiki-settings`
             case URL_PROJECT_DETAILS_CONTACT_STATUSES:
                 return `project/${params[0]}/contact-statuses`
         }
@@ -189,6 +193,10 @@ class URLsProjects {
             }
             case URL_PROJECT_DETAILS_OKRS: {
                 projectDetails(' - OKRs')
+                break
+            }
+            case URL_PROJECT_DETAILS_WIKI: {
+                projectDetails(' - Wiki')
                 break
             }
             case URL_PROJECT_DETAILS_CONTACT_STATUSES: {

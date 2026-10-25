@@ -11,6 +11,8 @@ const { buildWorkflowStepAdvanceUpdate, isAiWorkflowStep, buildAiStepPrompt } = 
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
+const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/vmThreadQueue')
+const { TASK_EXECUTION_MODE_DIRECT } = require('../shared/taskExecutionMode')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
@@ -36,7 +38,7 @@ const MAX_RUNS_PER_TICK = 5
 // parks here instead of settling. The VM runner re-checks it after terminal finalization, with the
 // scheduled dispatcher retained as a recovery backstop.
 const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
-const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
+const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled', 'interrupted']
 // Chat execution is authoritative before execute_task_in_vm has created its pendingWebhooks record.
 // Include the admission states as well as the states currently written by assistantRunIdempotency so
 // this remains safe if chat dispatch starts persisting its queue explicitly.
@@ -92,12 +94,22 @@ const getWorkflow = (owner, projectId) => (owner && owner.workflow && owner.work
 
 const isAssistantWorkflowTask = task => task?.workflowTask === true
 
+const buildDirectFallbackWorkflow = run => ({
+    [run.stepId]: {
+        reviewerUid: run.assistantId,
+        reviewerType: 'assistant',
+        description: 'Execute task',
+    },
+})
+
 const getWorkflowOwnerRef = (projectId, ownerType, ownerId) =>
     ownerType === 'assistant'
         ? admin.firestore().doc(`assistants/${projectId}/items/${ownerId}`)
         : admin.firestore().doc(`users/${ownerId}`)
 
 const loadRunWorkflow = async run => {
+    if (run.bypassWorkflow) return buildDirectFallbackWorkflow(run)
+
     const workflowOwnerType = run.workflowOwnerType || 'user'
     const workflowOwnerId = run.workflowOwnerId || run.assigneeUserId
     const owner = await getWorkflowOwnerRef(run.projectId, workflowOwnerType, workflowOwnerId).get()
@@ -134,7 +146,7 @@ const buildAwaitingExecutionFields = ({ assistantRunIds = [], vmCorrelationIds =
 const findLiveTaskAiWork = async (projectId, taskId, now = Date.now()) => {
     const [assistantRunIds, vmCorrelationIds] = await Promise.all([
         findActiveAssistantRuns(projectId, taskId, now),
-        findUnsettledVmJobs(projectId, taskId),
+        findUnsettledVmJobs(projectId, taskId, now),
     ])
 
     return { assistantRunIds, vmCorrelationIds, isLive: assistantRunIds.length > 0 || vmCorrelationIds.length > 0 }
@@ -167,7 +179,18 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     if (!workflowOwner.exists) return null
 
     const step = getWorkflow(workflowOwner.data(), projectId)[stepId]
-    if (!isAiWorkflowStep(step) || !step.reviewerUid) return null
+
+    const persistedOverride = newTask.workflowAiPromptOverride
+    const promptOverride =
+        persistedOverride &&
+        persistedOverride.stepId === stepId &&
+        typeof persistedOverride.prompt === 'string' &&
+        persistedOverride.prompt.trim()
+            ? persistedOverride
+            : null
+    const bypassWorkflow =
+        workflowOwnerType === 'assistant' && !!promptOverride && (!isAiWorkflowStep(step) || !step.reviewerUid)
+    if (!bypassWorkflow && (!isAiWorkflowStep(step) || !step.reviewerUid)) return null
 
     const payerUserId =
         workflowOwnerType === 'assistant'
@@ -180,14 +203,6 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     // move stamps `completed`; the stepHistory depth is the deterministic fallback.
     const enteredAt = Number(newTask.completed) || `s${newTask.stepHistory.length}`
     const runId = buildRunId(projectId, taskId, stepId, enteredAt)
-    const persistedOverride = newTask.workflowAiPromptOverride
-    const promptOverride =
-        persistedOverride &&
-        persistedOverride.stepId === stepId &&
-        typeof persistedOverride.prompt === 'string' &&
-        persistedOverride.prompt.trim()
-            ? persistedOverride
-            : null
 
     // Whether the assistant is already working this task has to be decided HERE, in the task
     // trigger, because this is the only moment that is synchronous with the task landing on the
@@ -207,11 +222,12 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                 projectId,
                 taskId,
                 stepId,
-                assistantId: step.reviewerUid,
+                assistantId: bypassWorkflow ? newTask.assistantId || workflowOwnerId : step.reviewerUid,
                 assigneeUserId: payerUserId,
                 workflowOwnerId,
                 workflowOwnerType,
                 payerUserId,
+                ...(bypassWorkflow ? { bypassWorkflow: true } : {}),
                 ...(promptOverride
                     ? {
                           promptOverride: promptOverride.prompt,
@@ -236,6 +252,12 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                 taskId,
                 assistantRunIds: liveWork.assistantRunIds,
                 vmCorrelationIds: liveWork.vmCorrelationIds,
+            })
+        } else if (bypassWorkflow) {
+            console.warn('[workflowAiStep] Assistant has no usable workflow step; running task directly', {
+                runId,
+                taskId,
+                assistantId: newTask.assistantId || workflowOwnerId,
             })
         }
         return runId
@@ -451,11 +473,10 @@ const runWorkflowAiStep = async (runId, run) => {
         return
     }
 
-    const [workflowOwner, payer] = await Promise.all([
-        getWorkflowOwnerRef(projectId, workflowOwnerType, workflowOwnerId).get(),
+    const [workflow, payer] = await Promise.all([
+        loadRunWorkflow(run),
         admin.firestore().doc(`users/${payerUserId}`).get(),
     ])
-    const workflow = getWorkflow(workflowOwner.exists ? workflowOwner.data() : null, projectId)
     const step = workflow[stepId]
 
     const taskRunLock = await acquireAssistantTaskRunLock(admin.firestore(), {
@@ -526,6 +547,7 @@ const runWorkflowAiStep = async (runId, run) => {
         }
 
         let failureReason = null
+        let delegatedToVm = false
 
         if (!isAiWorkflowStep(step)) {
             // The step was edited or deleted while the run was queued — nothing to run, just move on.
@@ -577,11 +599,77 @@ const runWorkflowAiStep = async (runId, run) => {
                         // The wall clock is the scheduled one, not the interactive 55 minutes: this
                         // run executes inside runWorkflowAiStepsSecondGen, whose Cloud Scheduler
                         // attempt deadline is 30 minutes.
-                        { triggerMessageId, maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS }
+                        {
+                            triggerMessageId,
+                            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+                            // Unattended, and it hands the task on when it is done: a step that
+                            // failed to search for a tool it was told to use would report the tool
+                            // as unavailable, advance the task to the next reviewer anyway and
+                            // spend the Gold. Send every schema instead of deferring them behind
+                            // hosted tool search.
+                            disableToolSearch: true,
+                            onVmJobStarted: async job => {
+                                // A tool can explicitly target another task/project. Its work
+                                // must not complete this task's workflow step.
+                                if (
+                                    job.projectId !== projectId ||
+                                    job.objectType !== 'tasks' ||
+                                    job.objectId !== taskId
+                                ) {
+                                    return
+                                }
+                                const now = Date.now()
+                                const parked = await admin.firestore().runTransaction(async transaction => {
+                                    const [runDoc, taskDoc] = await Promise.all([
+                                        transaction.get(runRef),
+                                        transaction.get(taskRef),
+                                    ])
+                                    if (
+                                        !runDoc.exists ||
+                                        RUN_TERMINAL_STATUSES.includes(runDoc.data().status) ||
+                                        !taskDoc.exists ||
+                                        getCurrentStepId(taskDoc.data()) !== stepId
+                                    ) {
+                                        return false
+                                    }
+                                    const ids = runDoc.data().awaitingCorrelationIds || []
+                                    transaction.set(
+                                        runRef,
+                                        buildAwaitingExecutionFields({
+                                            vmCorrelationIds: [...new Set([...ids, job.correlationId])],
+                                            now,
+                                        }),
+                                        { merge: true }
+                                    )
+                                    transaction.set(
+                                        taskRef,
+                                        {
+                                            workflowAiStatus: {
+                                                runId,
+                                                stepId,
+                                                status: RUN_STATUS_AWAITING_VM,
+                                                failureReason: null,
+                                                updatedAt: now,
+                                            },
+                                        },
+                                        { merge: true }
+                                    )
+                                    return true
+                                })
+                                if (!parked) return
+                                delegatedToVm = true
+                                // Close the ordering window if a very fast VM settled before
+                                // the handoff was persisted. The poller is the crash backstop.
+                                await resolveAwaitingVmRuns({ projectId, taskId })
+                            },
+                        }
                     )
                 }
             } catch (error) {
                 console.error('[workflowAiStep] Assistant run failed', { runId, error: error.message })
+                // Once delegated, the VM's outcome owns settlement. A late stream failure
+                // must not turn successful VM work into a failed workflow step.
+                if (delegatedToVm) return
                 failureReason = error.message || 'run_failed'
                 try {
                     await postAssistantComment(
@@ -598,6 +686,8 @@ const runWorkflowAiStep = async (runId, run) => {
                 }
             }
         }
+
+        if (delegatedToVm) return
 
         // The assistant answering is not the same as the step's work being finished. execute_task_in_vm
         // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
@@ -682,10 +772,21 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
         }
 
         const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
-        const transition =
+        const baseTransition =
             !failureReason && latest && getCurrentStepId(latest) === stepId
                 ? buildWorkflowStepAdvanceUpdate(latest, stepId, workflow)
                 : null
+        const transition =
+            baseTransition && run.bypassWorkflow
+                ? {
+                      ...baseTransition,
+                      updateData: {
+                          ...baseTransition.updateData,
+                          executionMode: TASK_EXECUTION_MODE_DIRECT,
+                          workflowTask: false,
+                      },
+                  }
+                : baseTransition
         const workflowAiStatus = {
             runId,
             stepId,
@@ -809,19 +910,49 @@ const findActiveAssistantRuns = async (projectId, taskId, now = Date.now()) => {
  * memory, because a task only ever has a handful of VM jobs and a composite index would have to be
  * created by hand (see the Firestore indexes notes in CLAUDE.md).
  */
-const findUnsettledVmJobs = async (projectId, taskId) => {
+const findUnsettledVmJobs = async (projectId, taskId, now = Date.now()) => {
     try {
         const snapshot = await admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get()
 
-        return snapshot.docs
+        const candidates = snapshot.docs.filter(doc => {
+            const job = doc.data() || {}
+            return (
+                job.kind === 'vm_job' &&
+                job.projectId === projectId &&
+                (job.objectType || 'tasks') === 'tasks' &&
+                !VM_TERMINAL_STATUSES.includes(job.status)
+            )
+        })
+
+        // `queued` is only live while the authoritative vmSessions FIFO still references it. An
+        // older runner could lose that queue by deleting a dead sandbox's whole session document;
+        // treating the surviving pendingWebhooks record as active then suppresses every later AI
+        // workflow prompt on the task forever. Admission writes the session first, so this check is
+        // safe even for a newly-created queued job.
+        const queuedCandidates = candidates.filter(doc => (doc.data() || {}).status === 'queued')
+        let session = null
+        if (queuedCandidates.length > 0) {
+            const sessionDoc = await admin
+                .firestore()
+                .doc(`vmSessions/${vmThreadKey(projectId, taskId)}`)
+                .get()
+            session = sessionDoc.exists ? sessionDoc.data() || {} : null
+        }
+
+        return candidates
             .filter(doc => {
                 const job = doc.data() || {}
-                return (
-                    job.kind === 'vm_job' &&
-                    job.projectId === projectId &&
-                    (job.objectType || 'tasks') === 'tasks' &&
-                    !VM_TERMINAL_STATUSES.includes(job.status)
-                )
+                if (job.status !== 'queued') return true
+                const correlationId = job.correlationId || doc.id
+                const referenced = isQueuedVmJobReferencedBySession(session, correlationId, now)
+                if (!referenced) {
+                    console.warn('[workflowAiStep] Ignoring orphaned queued VM job', {
+                        projectId,
+                        taskId,
+                        correlationId,
+                    })
+                }
+                return referenced
             })
             .map(doc => doc.id)
     } catch (error) {
@@ -844,7 +975,7 @@ const findTerminalVmFailure = async (projectId, taskId, run = {}) => {
                 job.kind === 'vm_job' &&
                 job.projectId === projectId &&
                 (job.objectType || 'tasks') === 'tasks' &&
-                ['failed', 'cancelled'].includes(job.status)
+                ['failed', 'cancelled', 'interrupted'].includes(job.status)
             )
         })
         return failedJob ? `vm_${failedJob.data().status}` : null
@@ -960,7 +1091,7 @@ const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskI
             if (activeAssistantRunIds.length > 0 && !assistantTimedOut) continue
 
             const correlationIds = run.awaitingAnyTaskVm
-                ? await findUnsettledVmJobs(run.projectId, run.taskId)
+                ? await findUnsettledVmJobs(run.projectId, run.taskId, now)
                 : run.awaitingCorrelationIds
             const stillRunning = await filterUnsettledVmJobs(correlationIds)
             const timedOut = now >= resolveAwaitingDeadline(run, stillRunning)

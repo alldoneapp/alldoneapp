@@ -27,6 +27,7 @@ import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
 import ConnectGCPProperty from './ConnectGCP/ConnectGCPProperty'
 import VmGoldenProperty from './VmGolden/VmGoldenProperty'
+import ProjectSkillsProperty from './ProjectSkills/ProjectSkillsProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -68,9 +69,11 @@ const ProjectProperties = ({ project, type }) => {
     const cannotLeaveGuide = isGuide && loggedUser.realTemplateProjectIds.includes(project.parentTemplateId)
 
     useEffect(() => {
-        getUserData(project.creatorId, false).then(user => {
-            setCreator(user)
-        })
+        if (loggedUser.isAnonymous) {
+            setCreator(SharedHelper.createAnonymousResourceUser(project.creatorId))
+        } else {
+            getUserData(project.creatorId, false).then(setCreator)
+        }
         writeBrowserURL()
     }, [])
 
@@ -116,6 +119,7 @@ const ProjectProperties = ({ project, type }) => {
                             <ConnectGitHubProperty project={project} disabled={!accessGranted} />
                             <ConnectGCPProperty project={project} disabled={!accessGranted} />
                             <VmGoldenProperty project={project} disabled={!accessGranted} />
+                            <ProjectSkillsProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 

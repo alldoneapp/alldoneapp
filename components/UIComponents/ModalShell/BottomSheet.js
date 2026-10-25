@@ -84,7 +84,7 @@ const prefersReducedMotion = () =>
  * pre-Phase-5 behavior; nothing waits on the animation.
  */
 export default function BottomSheet({ isOpen, onRequestClose, modalId, children }) {
-    const { keyboardInset, safeAreaInsets, windowHeight } = useModalSizing()
+    const { keyboardInset, safeAreaInsets, windowHeight, portalInsets = {} } = useModalSizing()
     // Kept true for MODAL_EXIT_MS after isOpen flips false so the slide-out
     // can play; the render gate below is this, not isOpen.
     const [isMounted, setIsMounted] = useState(!!isOpen)
@@ -390,7 +390,7 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     // pads its content above it. That avoids exposing a detached strip of the
     // page/backdrop below the sheet. When the keyboard is open it already
     // covers that safe area, so the whole sheet rides above the keyboard.
-    const bottom = keyboardOpen ? keyboardInset : 0
+    const bottom = (portalInsets.bottom || 0) + (keyboardOpen ? keyboardInset : 0)
     const bottomPadding = SHEET_BOTTOM_PADDING + (keyboardOpen ? 0 : safeAreaInsets.bottom)
     const sheetMaxHeight = Math.max(windowHeight - keyboardInset - safeAreaInsets.top - MODAL_EDGE_GAP, 0)
     const contentMaxHeight = Math.max(sheetMaxHeight - HANDLE_STRIP_HEIGHT - bottomPadding, 0)
@@ -404,7 +404,12 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             <Animated.View
                 testID={'bottom-sheet-backdrop'}
                 onClick={onBackdropPress}
-                style={[localStyles.backdrop, { opacity: progress }, isExiting && NO_POINTER_EVENTS_STYLE]}
+                style={[
+                    localStyles.backdrop,
+                    portalInsets,
+                    { opacity: progress },
+                    isExiting && NO_POINTER_EVENTS_STYLE,
+                ]}
             />
             <Animated.View
                 ref={sheetNodeRef}
@@ -415,6 +420,8 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                     localStyles.sheet,
                     isExiting && NO_POINTER_EVENTS_STYLE,
                     {
+                        left: portalInsets.left || 0,
+                        right: portalInsets.right || 0,
                         bottom,
                         maxHeight: sheetMaxHeight,
                         paddingBottom: bottomPadding,

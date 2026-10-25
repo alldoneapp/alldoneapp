@@ -470,10 +470,16 @@
     color: #93f;
 }
 .ql-editor .ql-font-serif {
-    font-family: Georgia, Times New Roman, serif;
+    font-family:
+        Georgia,
+        Times New Roman,
+        serif;
 }
 .ql-editor .ql-font-monospace {
-    font-family: Monaco, Courier New, monospace;
+    font-family:
+        Monaco,
+        Courier New,
+        monospace;
 }
 .ql-editor .ql-size-small {
     font-size: 0.75em;
@@ -1152,10 +1158,16 @@
     content: 'Monospace';
 }
 .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='serif']::before {
-    font-family: Georgia, Times New Roman, serif;
+    font-family:
+        Georgia,
+        Times New Roman,
+        serif;
 }
 .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='monospace']::before {
-    font-family: Monaco, Courier New, monospace;
+    font-family:
+        Monaco,
+        Courier New,
+        monospace;
 }
 .ql-snow .ql-picker.ql-size {
     width: 98px;
@@ -1263,7 +1275,9 @@
     padding-right: 0px;
 
     background: #fafbfb;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.04), 0px 2px 3px rgba(0, 0, 0, 0.04);
+    box-shadow:
+        0px 4px 6px rgba(0, 0, 0, 0.04),
+        0px 2px 3px rgba(0, 0, 0, 0.04);
     border-radius: 4px;
 }
 .ql-toolbar.ql-snow .ql-formats {
@@ -1459,4 +1473,103 @@
     width: 180px;
     top: -16px !important;
     left: -14px;
+}
+
+/* Cell editing stays inside the existing table; controls wrap on phones. */
+.ql-editor[contenteditable='true'] .ql-markdown-table [data-row][data-column] {
+    cursor: text;
+}
+.ql-editor .ql-markdown-table [data-row][data-column]:focus,
+.ql-editor .ql-markdown-table [data-row][data-column]:focus-within {
+    outline: 2px solid #8a9eff;
+    outline-offset: -2px;
+}
+.ql-editor .ql-table-cell-input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 76px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    resize: none;
+    min-height: 20px;
+}
+.ql-editor .ql-markdown-table th,
+.ql-editor .ql-markdown-table td {
+    white-space: pre-wrap;
+}
+.ql-editor .ql-table-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 0;
+    white-space: normal;
+}
+.ql-editor .ql-table-controls button,
+.ql-container .ql-table-draft-recovery button {
+    padding: 5px 8px;
+    border: 1px solid #d7dff0;
+    border-radius: 4px;
+    background: #f6f8fc;
+    color: #04142f;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.ql-editor .ql-table-controls button[aria-pressed='true'] {
+    background: #e8edff;
+    border-color: #8a9eff;
+}
+.ql-editor .ql-table-controls button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.ql-container.ql-disabled .ql-table-controls {
+    display: none;
+}
+.ql-container .ql-table-draft-recovery {
+    padding: 12px;
+    margin: 12px 0;
+    border: 1px solid #d7dff0;
+    border-radius: 4px;
+    background: #f6f8fc;
+}
+.ql-container .ql-table-draft-recovery textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+/* Use the same responsive state as the detail header, which follows the Alldone
+   pane in assistant mode. Mobile pages already supply their 16px outer gutter. */
+[data-note-editor-layout='desktop'] {
+    --note-editor-gutter: 104px;
+}
+[data-note-editor-layout='tablet'] {
+    --note-editor-gutter: 56px;
+}
+[data-note-editor-layout='mobile'] {
+    --note-editor-gutter: 0px;
+}
+[data-note-editor] .ql-toolbar-container,
+[data-note-editor] .ql-editor {
+    padding-inline: var(--note-editor-gutter, 0px);
+}
+[data-note-editor] .ql-container {
+    padding-inline: 0;
+}
+[data-note-editor] .ql-editor.ql-blank::before {
+    inset-inline: var(--note-editor-gutter, 0px);
+    padding-inline: 0;
 }

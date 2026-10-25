@@ -1,7 +1,5 @@
 import firebase from 'firebase/compat/app'
-
-const shouldUseEmulator = () =>
-    typeof window !== 'undefined' && window.location && window.location.search.includes('emulator=true')
+import { shouldUseFirebaseEmulators } from '../firebaseEmulators'
 
 const decodeBytes = base64 => {
     if (firebase.firestore?.Blob?.fromBase64String) {
@@ -51,17 +49,21 @@ const decodeFields = fields =>
         return data
     }, {})
 
-const buildDocumentUrl = documentPath => {
+const getDirectReadTarget = documentPath => {
     const { apiKey, projectId } = firebase.app().options
     const normalizedPath = String(documentPath || '')
         .replace(/^\/+/, '')
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')
-    const baseUrl = shouldUseEmulator()
-        ? `http://127.0.0.1:8080/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`
-        : `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`
-    return `${baseUrl}/${normalizedPath}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`
+        .replace(/\/+$/, '')
+    const databaseName = `projects/${projectId}/databases/(default)`
+    const baseUrl = shouldUseFirebaseEmulators()
+        ? `http://127.0.0.1:8080/v1/${databaseName}`
+        : `https://firestore.googleapis.com/v1/${databaseName}`
+    return {
+        baseUrl,
+        apiKey,
+        documentName: `${databaseName}/documents/${normalizedPath}`,
+        url: `${baseUrl}/documents:batchGet${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`,
+    }
 }
 
 // The regular Firestore client serves the whole app: local state, listeners and writes. An
@@ -70,17 +72,24 @@ const buildDocumentUrl = documentPath => {
 // (`Service firestore/lite is not available` in production), so use Firestore's authenticated
 // REST document endpoint instead. It has no local cache/listener state and applies the same
 // Firebase Auth security rules through the user's ID token.
-export const readDocumentDirectlyFromServer = async documentPath => {
+export const readDocumentDirectlyFromServer = async (documentPath, { signal, includeUpdateTime = false } = {}) => {
     const currentUser = firebase.auth().currentUser
     if (!currentUser) throw new Error('Cannot verify a Firestore document without an authenticated user')
 
     const idToken = await currentUser.getIdToken()
-    const response = await fetch(buildDocumentUrl(documentPath), {
+    if (signal?.aborted) throw Object.assign(new Error('Read cancelled'), { name: 'AbortError' })
+    const target = getDirectReadTarget(documentPath)
+    const response = await fetch(target.url, {
+        ...(signal ? { signal } : {}),
+        method: 'POST',
         cache: 'no-store',
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: {
+            Authorization: `Bearer ${idToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ documents: [target.documentName] }),
     })
 
-    if (response.status === 404) return { exists: false, data: undefined }
     if (!response.ok) {
         let details
         try {
@@ -95,9 +104,100 @@ export const readDocumentDirectlyFromServer = async documentPath => {
         throw directReadError
     }
 
-    const document = await response.json()
+    // batchGet deliberately represents a missing document in a successful HTTP 200 response.
+    // This keeps first-time signup out of Chrome's red 404 network/error path while retaining
+    // the independent server verification that protects an existing account from being reset.
+    const payload = await response.json()
+    const results = Array.isArray(payload) ? payload : [payload]
+    const result = results.find(item => item?.found || item?.missing)
+    if (result?.missing) return { exists: false, data: undefined }
+    if (!result?.found) throw new Error('Direct Firestore batch read returned no document result')
+
     return {
         exists: true,
-        data: decodeFields(document.fields || {}),
+        data: decodeFields(result.found.fields || {}),
+        ...(includeUpdateTime ? { updateTime: result.found.updateTime } : {}),
     }
+}
+
+// A version precondition makes this a compare-and-set. Callers supply REST fields
+// and re-read after contention. Only the supplied fields are changed.
+export const updateDocumentDirectlyFromServer = async (
+    documentPath,
+    fields,
+    updateTime,
+    { signal, assertAccount } = {}
+) => {
+    if (!updateTime) throw new Error('A server document version is required')
+    assertAccount?.()
+    const user = firebase.auth().currentUser
+    if (!user) throw new Error('Cannot update a Firestore document without an authenticated user')
+    const token = await user.getIdToken()
+    assertAccount?.()
+    if (firebase.auth().currentUser?.uid !== user.uid) throw new Error('Firestore account changed')
+    if (signal?.aborted) throw Object.assign(new Error('Write cancelled'), { name: 'AbortError' })
+    const { baseUrl, apiKey, documentName } = getDirectReadTarget(documentPath)
+    const response = await fetch(`${baseUrl}/documents:commit${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            writes: [
+                {
+                    update: { name: documentName, fields },
+                    updateMask: { fieldPaths: Object.keys(fields) },
+                    currentDocument: { updateTime },
+                },
+            ],
+        }),
+        ...(signal ? { signal } : {}),
+    })
+    if (!response.ok) {
+        const details = await response.json().catch(() => null)
+        throw Object.assign(
+            new Error(details?.error?.message || `Direct Firestore write failed with HTTP ${response.status}`),
+            {
+                code: details?.error?.status || `http-${response.status}`,
+            }
+        )
+    }
+}
+
+// Query only the newest preview comment, independently of the Listen stream.
+export const readLatestCommentDirectlyFromServer = async (parentPath, { signal } = {}) => {
+    const currentUser = firebase.auth().currentUser
+    if (!currentUser) throw new Error('Cannot read comments without an authenticated user')
+    const idToken = await currentUser.getIdToken()
+    if (signal?.aborted) throw Object.assign(new Error('Read cancelled'), { name: 'AbortError' })
+    const { baseUrl, apiKey } = getDirectReadTarget(parentPath)
+    const path = parentPath.split('/').map(encodeURIComponent).join('/')
+    const response = await fetch(
+        `${baseUrl}/documents/${path}:runQuery${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`,
+        {
+            ...(signal ? { signal } : {}),
+            method: 'POST',
+            cache: 'no-store',
+            headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                structuredQuery: {
+                    from: [{ collectionId: 'comments' }],
+                    orderBy: [{ field: { fieldPath: 'created' }, direction: 'DESCENDING' }],
+                    limit: 1,
+                },
+            }),
+        }
+    )
+    const payload = await response.json()
+    if (!response.ok)
+        throw Object.assign(new Error(payload?.error?.message || 'Comment read failed'), {
+            code: payload?.error?.status || `http-${response.status}`,
+        })
+    if (!Array.isArray(payload) || !payload.length || payload.some(item => !item.document && !item.readTime)) {
+        throw new Error('Direct comment query returned no valid result')
+    }
+    return payload
+        .filter(item => item.document)
+        .map(({ document }) => ({
+            ...decodeFields(document.fields || {}),
+            id: document.name.split('/').pop(),
+        }))
 }

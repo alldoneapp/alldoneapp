@@ -1,5 +1,6 @@
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
+import { markServerContact, startConnectionLatencySample, subscribeConnectionHealth } from '../connectionHealth'
 
 /**
  * Offline-aware write-acknowledgement helpers (AT-2340).
@@ -19,8 +20,8 @@ import { isBrowserOffline } from '../connectionState'
  * `tasksFirestore.js` `updateTaskInDone`). The fix is to await it only when an
  * ack can actually arrive.
  *
- * Reads are deliberately NOT covered here: an offline `get()` resolves from the
- * local cache, so it does not block.
+ * Reads are not covered here: an offline `get()` can reject on a cache miss.
+ * Callers must durably retain user input before doing preliminary reads.
  */
 
 /**
@@ -32,7 +33,12 @@ import { isBrowserOffline } from '../connectionState'
  */
 export const isAppOffline = () => {
     try {
-        if (store.getState().connectionState === 'offline') return true
+        const state = store.getState()
+        if (state.connectionState === 'offline') return true
+        // `stale` is a proven server outage even when navigator.onLine remains
+        // optimistic. Manual offline uses the same health value after the user
+        // chooses "Work offline" during the first reconnect attempt.
+        if (state.connectionHealth === 'stale' || state.connectionHealth === 'offline') return true
     } catch (error) {
         // The store is always available in the app; in isolated unit tests it
         // may not be, and the browser-level signal is enough there.
@@ -55,9 +61,90 @@ export const isAppOffline = () => {
  */
 export const awaitWriteAck = (write, label = 'firestore write') => {
     const settled = Promise.resolve(write)
-    if (!isAppOffline()) return settled
+    if (isAppOffline()) return continueWithoutServerAck(settled, label)
+
+    const finishLatencySample = startConnectionLatencySample('write_ack')
+    return new Promise((resolve, reject) => {
+        let finished = false
+        let releasedOffline = false
+        let unsubscribe = () => {}
+
+        const cleanup = () => {
+            finishLatencySample()
+            unsubscribe()
+        }
+
+        const releaseForOfflineWork = () => {
+            if (finished) return
+            finished = true
+            releasedOffline = true
+            cleanup()
+            resolve()
+        }
+
+        settled.then(
+            value => {
+                if (finished) return
+                finished = true
+                markServerContact('write_ack')
+                cleanup()
+                resolve(value)
+            },
+            error => {
+                if (finished) {
+                    if (releasedOffline) {
+                        console.warn(
+                            `Offline write "${label}" did not reach the server; the server rejected it and it is no longer queued.`,
+                            error
+                        )
+                    }
+                    return
+                }
+                finished = true
+                cleanup()
+                reject(describeFailedWrite(error, label))
+            }
+        )
+
+        unsubscribe = subscribeConnectionHealth(nextHealth => {
+            if (nextHealth === 'stale' || nextHealth === 'offline') releaseForOfflineWork()
+        })
+
+        // Cover the narrow race between the initial level check and listener setup.
+        if (isAppOffline()) releaseForOfflineWork()
+    })
+}
+
+/**
+ * Name the write on the error the caller receives.
+ *
+ * A multi-write flow — a cross-project move is fifteen writes across two
+ * projects — otherwise surfaces every one of them as the same bare
+ * `FirebaseError: Missing or insufficient permissions.`, with nothing to say
+ * which document was refused. The label is already written at every call site
+ * for the offline warning; carrying it onto the rejection costs nothing and is
+ * the difference between a reproducible report and a guess.
+ *
+ * The original error is returned mutated rather than wrapped, so `error.code`,
+ * the stack and any `instanceof` check a caller makes still hold.
+ */
+const describeFailedWrite = (error, label) => {
+    if (!error || typeof error !== 'object' || error.writeLabel) return error
+    try {
+        error.writeLabel = label
+        if (typeof error.message === 'string') error.message = `${error.message} (write: ${label})`
+    } catch (mutationError) {
+        // A frozen error object is still worth reporting unchanged.
+    }
+    return error
+}
+
+const continueWithoutServerAck = (settled, label) => {
     settled.catch(error => {
-        console.warn(`Offline write "${label}" did not reach the server; it stays queued locally.`, error)
+        console.warn(
+            `Offline write "${label}" did not reach the server; the server rejected it and it is no longer queued.`,
+            error
+        )
     })
     return Promise.resolve()
 }

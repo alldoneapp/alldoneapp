@@ -11,10 +11,10 @@ import {
 } from '../../../SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ProjectListModal from '../ProjectListModal/ProjectListModal'
-import { ALL_PROJECTS_OPTION } from './projectPickerConstants'
+import { ALL_ARCHIVED_PROJECTS_OPTION, ALL_PROJECTS_OPTION } from './projectPickerConstants'
 import { translate } from '../../../../i18n/TranslationService'
 
-export { ALL_PROJECTS_OPTION }
+export { ALL_PROJECTS_OPTION, ALL_ARCHIVED_PROJECTS_OPTION }
 
 /**
  * The search-scope project picker, now an adapter over the shared
@@ -43,6 +43,7 @@ export default function SelectProjectModalInSearch({
     showTemplateTab,
     showArchivedTab,
     showAllProjects,
+    showAllArchivedProjects,
     showAutomaticProject,
     widthStyle,
 }) {
@@ -64,11 +65,19 @@ export default function SelectProjectModalInSearch({
             [PROJECT_TYPE_ARCHIVED]: projects.filter(project => realArchivedProjectIds.includes(project.id)),
         }
 
+        // AT-2390: with "All archived" offered on the Archived tab, the leading
+        // row is per tab rather than "first tab only". Declaring it on the
+        // Active tab too is what keeps ProjectListModal's per-tab mechanism in
+        // charge of the slot (see its header comment) — the two mechanisms are
+        // deliberately not mixed.
+        const activeTabLeadingOptionId = showAllArchivedProjects && showAllProjects ? ALL_PROJECTS_OPTION : undefined
+
         const tabs = [
             {
                 key: PROJECT_TYPE_ACTIVE,
                 name: 'Active',
                 projects: ProjectHelper.sortProjects(byType[PROJECT_TYPE_ACTIVE], loggedUser.uid),
+                leadingOptionId: activeTabLeadingOptionId,
             },
         ]
         if (showGuideTab)
@@ -88,21 +97,34 @@ export default function SelectProjectModalInSearch({
                 key: PROJECT_TYPE_ARCHIVED,
                 name: 'Archived',
                 projects: ProjectHelper.sortProjects(byType[PROJECT_TYPE_ARCHIVED], loggedUser.uid),
+                leadingOptionId: showAllArchivedProjects ? ALL_ARCHIVED_PROJECTS_OPTION : undefined,
             })
 
-        const selectedType = realGuideProjectIds.includes(projectId)
-            ? PROJECT_TYPE_GUIDE
-            : realTemplateProjectIds.includes(projectId)
-              ? PROJECT_TYPE_TEMPLATE
-              : realArchivedProjectIds.includes(projectId)
+        const selectedType =
+            projectId === ALL_ARCHIVED_PROJECTS_OPTION
                 ? PROJECT_TYPE_ARCHIVED
-                : projectIds.includes(projectId)
-                  ? PROJECT_TYPE_ACTIVE
-                  : PROJECT_TYPE_SHARED
+                : realGuideProjectIds.includes(projectId)
+                  ? PROJECT_TYPE_GUIDE
+                  : realTemplateProjectIds.includes(projectId)
+                    ? PROJECT_TYPE_TEMPLATE
+                    : realArchivedProjectIds.includes(projectId)
+                      ? PROJECT_TYPE_ARCHIVED
+                      : projectIds.includes(projectId)
+                        ? PROJECT_TYPE_ACTIVE
+                        : PROJECT_TYPE_SHARED
         const tabIndex = tabs.findIndex(tab => tab.key === selectedType)
 
         return { tabs, initialTabIndex: tabIndex >= 0 ? tabIndex : 0 }
-    }, [projects, projectId, loggedUser, showGuideTab, showTemplateTab, showArchivedTab])
+    }, [
+        projects,
+        projectId,
+        loggedUser,
+        showGuideTab,
+        showTemplateTab,
+        showArchivedTab,
+        showAllProjects,
+        showAllArchivedProjects,
+    ])
 
     const sidebarOpenStyle = smallScreenNavigation || positionInPlace ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
 

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, View } from 'react-native'
 import { shallowEqual, useSelector } from 'react-redux'
 
 import GoalItem from '../../GoalsView/GoalItem'
@@ -12,8 +12,27 @@ import { objectIsLockedForUser } from '../../Guides/guidesHelper'
 import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/LockedGoalModal'
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
+import useGoalSectionExitMotion from './goalSectionExitMotion'
+import useGoalPostponeMotion from './goalPostponeMotion'
+import {
+    useTaskHierarchy,
+    useProjectSectionBorder,
+    taskHierarchyStyles,
+    TaskHierarchyGoalOutline,
+} from '../TaskHierarchy'
 
-export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, instanceKey, dateIndex, containerStyle }) {
+export default function EmptyGoal({
+    goal,
+    projectId,
+    isActiveOrganizeMode,
+    instanceKey,
+    dateIndex,
+    containerStyle,
+    exitRunId = 0,
+    postponeMotionEnabled = false,
+}) {
+    const taskHierarchy = useTaskHierarchy()
+    const projectBorderColor = useProjectSectionBorder()
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -26,6 +45,21 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
     const dismissibleRef = useRef(null)
     // AT-2160: keep this above the early return — hooks must run on every render.
     const hiddenByOptimisticPostpone = useOptimisticGoalPostponeHidden(projectId, goal?.id)
+    /**
+     * AT-2521 — the same graceful departure `ParentGoalSection` plays, because this is the row that
+     * is actually on screen when a goal leaves today's list: the tasks snapshot lands first and
+     * turns the section into this empty row, and only the goal snapshot after it takes the goal out
+     * of the day. `exitRunId` is 0 for every ordinary empty goal, so an ordinary row carries no
+     * animated wrapper at all. `MainSection` decides WHETHER the goal is leaving and keeps it
+     * mounted for the run; this only draws it.
+     */
+    const sectionExitMotion = useGoalSectionExitMotion(exitRunId)
+    const goalPostponeMotion = useGoalPostponeMotion({
+        enabled: postponeMotionEnabled,
+        projectId,
+        goalId: goal?.id,
+    })
+    const sectionStyle = goalPostponeMotion.sectionStyle || sectionExitMotion.sectionStyle
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
@@ -67,13 +101,20 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
     if (hiddenByOptimisticPostpone) return null
 
     return (
-        <View
+        <Animated.View
+            onLayout={sectionExitMotion.onSectionLayout}
             style={[
                 localStyles.container,
                 containerStyle,
+                taskHierarchy && taskHierarchyStyles.group,
+                taskHierarchy && taskHierarchyStyles.goalGroup,
+                taskHierarchy && projectBorderColor && { borderColor: projectBorderColor },
                 isLocked &&
                     showingTasks &&
                     !isAnonymous && { minHeight: (smallScreenNavigation ? 332 : 258) + (editing ? 168 : 86) },
+                // Last, so the pinned height wins over the locked-goal `minHeight` above it — a
+                // floor left in place would stop the collapse dead at 258px.
+                sectionStyle,
             ]}
         >
             {!isMiddleScreen && !smallScreenNavigation && (
@@ -100,7 +141,10 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
                 />
             )}
             {showingTasks && (
-                <View style={isLocked && localStyles.blurry} pointerEvents={isLocked ? 'none' : 'auto'}>
+                <View
+                    style={[isLocked && localStyles.blurry, taskHierarchy && { paddingBottom: 8 }]}
+                    pointerEvents={isLocked ? 'none' : 'auto'}
+                >
                     {accessGranted &&
                         loggedUserCanUpdateObject &&
                         (isActiveOrganizeMode ? (
@@ -127,7 +171,8 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
                     date={goal.assigneesReminderDate[currentUserId]}
                 />
             ) : null}
-        </View>
+            <TaskHierarchyGoalOutline />
+        </Animated.View>
     )
 }
 

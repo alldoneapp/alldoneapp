@@ -38,6 +38,17 @@ const ALLOWED_EVENTS = new Set([
     'quota_threshold_reached',
     'focus_changed',
     'account_deleted',
+    // Connection health (PT-4660). This Set is an ALLOWLIST — normalizeAnalyticsEvent
+    // returns null by default, so an event missing here is silently dropped rather
+    // than reported, with nothing failing anywhere to reveal it.
+    'connection_health_change',
+    'connection_slow_detected',
+    'connection_stale_detected',
+    'connection_manual_reconnect',
+    'connection_manual_offline',
+    // Sampled client performance measurements. Values are deliberately limited
+    // to aggregate counts, timings and stable route names — never object ids.
+    'performance_trace',
 ])
 
 const ALLOWED_PARAMETERS = new Set([
@@ -64,6 +75,38 @@ const ALLOWED_PARAMETERS = new Set([
     'page_title',
     'page_path',
     'page_location',
+    // Connection health (PT-4660) — sanitizeAnalyticsParameters drops any key not
+    // listed here, so the events above would arrive empty without them.
+    'state_from',
+    'state_to',
+    'trigger',
+    'duration_ms',
+    'browser_online',
+    'outcome',
+    // Sampled performance telemetry.
+    'trace_name',
+    'trace_id',
+    'phase',
+    'step_duration_ms',
+    'project_count',
+    'watcher_count',
+    'document_count',
+    'task_count',
+    'subtask_count',
+    'write_count',
+    'batch_count',
+    'candidate_count',
+    'note_count',
+    'byte_count',
+    'error_count',
+    'network_duration_ms',
+    'indexeddb_duration_ms',
+    'max_duration_ms',
+    'from_cache',
+    'diagnostic_mode',
+    'dom_interactive_ms',
+    'dom_content_loaded_ms',
+    'load_event_ms',
 ])
 
 const OBJECT_EVENT_TYPES = {
@@ -371,6 +414,8 @@ const getPageDefinition = pageKey => {
 
     return { path, title }
 }
+
+export const getAnalyticsPagePath = pageKey => getPageDefinition(pageKey).path
 
 export function trackPageView(pageKey) {
     if (!initializeAnalytics()) return false

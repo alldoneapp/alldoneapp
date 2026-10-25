@@ -8,14 +8,28 @@ import { translate } from '../../../i18n/TranslationService'
 import Button from '../../UIControls/Button'
 import { unwatch } from '../../../utils/backends/firestore'
 import {
-    watchGlobalAssistantSkills,
+    watchAssistantSkills,
     watchPendingSkillImports,
 } from '../../../utils/backends/AssistantSkills/assistantSkillsFirestore'
+import {
+    GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID,
+    isGlobalSkillCatalog,
+} from '../../../utils/AssistantSkills/skillCatalog'
 import AssistantSkillItem from './AssistantSkillItem'
 import EditAssistantSkill from './EditAssistantSkill'
 import ImportSkillsPanel from './ImportSkillsPanel'
 
-export default function AssistantSkills() {
+/**
+ * One skill catalog, rendered for whichever project owns it (AT-2450).
+ *
+ * `projectId === 'globalProject'` is the administrator's curated catalog inside
+ * the Admin Panel — its behaviour here is unchanged. Any other id is a
+ * project's own catalog, rendered from the project's settings by
+ * `ProjectSkillsProperty`, and every write it makes is authorized by project
+ * membership rather than by the administrator role.
+ */
+export default function AssistantSkills({ projectId = GLOBAL_PROJECT_ID, disabled = false }) {
+    const isGlobalCatalog = isGlobalSkillCatalog(projectId)
     const [skills, setSkills] = useState([])
     const [pendingImports, setPendingImports] = useState([])
     const [filter, setFilter] = useState('')
@@ -23,26 +37,36 @@ export default function AssistantSkills() {
     const [showImportPanel, setShowImportPanel] = useState(false)
 
     useEffect(() => {
-        URLsAdminPanel.push(URL_ADMIN_PANEL_SKILLS)
-    }, [])
+        // Only the Admin Panel owns a route; the project catalog is a panel
+        // inside project settings and must not rewrite the URL under it.
+        if (isGlobalCatalog) URLsAdminPanel.push(URL_ADMIN_PANEL_SKILLS)
+    }, [isGlobalCatalog])
 
     useEffect(() => {
         const watcherKey = v4()
-        watchGlobalAssistantSkills(watcherKey, catalogSkills => {
+        watchAssistantSkills(projectId, watcherKey, catalogSkills => {
             setSkills(catalogSkills.filter(skill => skill.source?.type !== 'builtin'))
         })
         return () => {
             unwatch(watcherKey)
         }
-    }, [])
+    }, [projectId])
 
     useEffect(() => {
         const watcherKey = v4()
-        watchPendingSkillImports(watcherKey, setPendingImports)
+        watchPendingSkillImports(watcherKey, setPendingImports, projectId)
         return () => {
             unwatch(watcherKey)
         }
-    }, [])
+    }, [projectId])
+
+    // `disabled` means the viewer cannot write to this catalog (a guide reader, or
+    // a project they have no edit access to). Gate ENTERING the editor rather than
+    // only the Add button: the security rule would reject the write anyway, but a
+    // form that accepts input and then fails on Save is a worse way to find out.
+    const openEditor = skillId => {
+        if (!disabled) setEditingSkillId(skillId)
+    }
 
     const filteredSkills = filter
         ? skills.filter(
@@ -67,7 +91,9 @@ export default function AssistantSkills() {
                     <Text style={[styles.caption2, { color: colors.Text02 }]}>{skillsAmountText}</Text>
                 </View>
             </View>
-            <Text style={[styles.body2, { color: colors.Text02 }]}>{translate('Skills admin description')}</Text>
+            <Text style={[styles.body2, { color: colors.Text02 }]}>
+                {translate(isGlobalCatalog ? 'Skills admin description' : 'Project skills description')}
+            </Text>
             <View style={localStyles.toolbar}>
                 <TextInput
                     value={filter}
@@ -81,8 +107,9 @@ export default function AssistantSkills() {
                     type={'ghost'}
                     icon={'plus-square'}
                     title={translate('Add skill')}
-                    onPress={() => setEditingSkillId('new')}
+                    onPress={() => openEditor('new')}
                     buttonStyle={localStyles.toolbarButton}
+                    disabled={disabled}
                 />
                 <Button
                     type={'ghost'}
@@ -92,20 +119,26 @@ export default function AssistantSkills() {
                     }`}
                     onPress={() => setShowImportPanel(visible => !visible)}
                     buttonStyle={localStyles.toolbarButton}
+                    disabled={disabled}
                 />
             </View>
-            {showImportPanel && <ImportSkillsPanel skills={skills} pendingImports={pendingImports} />}
-            {editingSkillId === 'new' && <EditAssistantSkill adding={true} onClose={() => setEditingSkillId(null)} />}
+            {showImportPanel && (
+                <ImportSkillsPanel skills={skills} pendingImports={pendingImports} projectId={projectId} />
+            )}
+            {editingSkillId === 'new' && (
+                <EditAssistantSkill adding={true} projectId={projectId} onClose={() => setEditingSkillId(null)} />
+            )}
             {filteredSkills.map(skill =>
                 editingSkillId === skill.uid ? (
                     <EditAssistantSkill
                         key={skill.uid}
                         adding={false}
                         skill={skill}
+                        projectId={projectId}
                         onClose={() => setEditingSkillId(null)}
                     />
                 ) : (
-                    <AssistantSkillItem key={skill.uid} skill={skill} onPress={() => setEditingSkillId(skill.uid)} />
+                    <AssistantSkillItem key={skill.uid} skill={skill} onPress={() => openEditor(skill.uid)} />
                 )
             )}
         </View>

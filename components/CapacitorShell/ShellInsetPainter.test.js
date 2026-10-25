@@ -1,5 +1,5 @@
 import React from 'react'
-import renderer from 'react-test-renderer'
+import { render, screen, cleanup } from '@testing-library/react'
 
 jest.mock('react-redux', () => ({
     useSelector: fn => fn({ loggedUser: { themeName: undefined } }),
@@ -14,43 +14,38 @@ import ShellInsetPainter from './ShellInsetPainter'
 
 describe('ShellInsetPainter', () => {
     afterEach(() => {
+        cleanup()
         delete window.Capacitor
     })
 
     it('renders nothing outside the Capacitor shell (web/PWA untouched)', () => {
         getSafeAreaInsets.mockReturnValue({ top: 59, right: 0, bottom: 34, left: 0 })
-        const tree = renderer.create(<ShellInsetPainter routeName={'LoginScreen'} />)
-        expect(tree.toJSON()).toBeNull()
+        render(<ShellInsetPainter routeName={'LoginScreen'} />)
+        expect(screen.queryByTestId('system-inset-paint')).toBeNull()
     })
 
     it('renders nothing in the shell when there is no top inset (bottom is never painted)', () => {
         window.Capacitor = { isNativePlatform: () => true, Plugins: {} }
         getSafeAreaInsets.mockReturnValue({ top: 0, right: 0, bottom: 34, left: 0 })
-        const tree = renderer.create(<ShellInsetPainter routeName={'Root'} />)
-        expect(tree.toJSON()).toBeNull()
+        render(<ShellInsetPainter routeName={'Root'} />)
+        expect(screen.queryByTestId('system-inset-paint')).toBeNull()
     })
 
     it('paints only a top strip, in the login gradient color, on login-like routes', () => {
         window.Capacitor = { isNativePlatform: () => true, Plugins: {} }
         getSafeAreaInsets.mockReturnValue({ top: 59, right: 0, bottom: 34, left: 0 })
-        const tree = renderer.create(<ShellInsetPainter routeName={'LoginScreen'} />).toJSON()
-        const strips = Array.isArray(tree) ? tree : [tree]
-        expect(strips).toHaveLength(1)
-        const flatten = style => Object.assign({}, ...[].concat(style).filter(Boolean))
-        // react-native-web normalizes colors to rgba strings.
-        expect(flatten(strips[0].props.style)).toMatchObject({
-            height: '59px',
-            backgroundColor: 'rgba(173,204,255,1.00)',
-        })
+        render(<ShellInsetPainter routeName={'LoginScreen'} />)
+        const strip = screen.getByTestId('system-inset-paint')
+        expect(strip.parentElement).toBe(document.body)
+        expect(strip.style.height).toBe('59px')
+        expect(strip.style.backgroundColor).toBe('rgb(173, 204, 255)')
     })
 
     it('paints the theme header color on app routes', () => {
         window.Capacitor = { isNativePlatform: () => true, Plugins: {} }
         getSafeAreaInsets.mockReturnValue({ top: 59, right: 0, bottom: 34, left: 0 })
-        const tree = renderer.create(<ShellInsetPainter routeName={'Root'} />).toJSON()
-        const strips = Array.isArray(tree) ? tree : [tree]
-        expect(strips).toHaveLength(1)
-        const flatten = style => Object.assign({}, ...[].concat(style).filter(Boolean))
-        expect(typeof flatten(strips[0].props.style).backgroundColor).toBe('string')
+        render(<ShellInsetPainter routeName={'Root'} />)
+        expect(screen.getByTestId('system-inset-paint').parentElement).toBe(document.body)
+        expect(screen.getByTestId('system-inset-paint').style.backgroundColor).not.toBe('')
     })
 })

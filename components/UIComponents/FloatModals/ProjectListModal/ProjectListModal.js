@@ -5,9 +5,15 @@ import { useDispatch } from 'react-redux'
 import ProjectModalItem from '../SelectProjectModal/ProjectModalItem'
 import AllProjectItem from '../SelectProjectModal/AllProjectItem'
 import AutomaticProjectItem from '../SelectProjectModal/AutomaticProjectItem'
+import AllArchivedProjectItem from '../SelectProjectModal/AllArchivedProjectItem'
 import HeaderInSearch from '../SelectProjectModal/HeaderInSearch'
-import { ALL_PROJECTS_OPTION, AUTOMATIC_PROJECT_OPTION } from '../SelectProjectModal/projectPickerConstants'
+import {
+    ALL_ARCHIVED_PROJECTS_OPTION,
+    ALL_PROJECTS_OPTION,
+    AUTOMATIC_PROJECT_OPTION,
+} from '../SelectProjectModal/projectPickerConstants'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
+import { LOADING_DATA_SPINNER_DELAY_MS } from '../../LoadingData'
 import Button from '../../../UIControls/Button'
 import ModalHeader from '../ModalHeader'
 import Line from '../GoalMilestoneModal/Line'
@@ -20,6 +26,15 @@ import { colors } from '../../../styles/global'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const ROW_HEIGHT = 48
+
+// Every leading row renders the same shape at index -1, so which sentinel is
+// active is the only thing that changes. A table rather than a ternary chain
+// keeps adding one (AT-2390's "All archived") a single-line change.
+const LEADING_ROW_BY_OPTION_ID = {
+    [ALL_PROJECTS_OPTION]: AllProjectItem,
+    [AUTOMATIC_PROJECT_OPTION]: AutomaticProjectItem,
+    [ALL_ARCHIVED_PROJECTS_OPTION]: AllArchivedProjectItem,
+}
 
 /**
  * The unified flat project pick-list (MODAL_IMPROVEMENT_PLAN.md, Phase 4/5).
@@ -42,6 +57,14 @@ const ROW_HEIGHT = 48
  * keyboard cycle in moveSelection() is built on that single slot — so the two
  * props are mutually exclusive and "All projects" wins if a caller ever passes
  * both. No caller does: search scopes offer All, task creation offers Automatic.
+ *
+ * PER-TAB leading rows (AT-2390): a tab may instead carry its own
+ * `leadingOptionId`, which is what lets the search scope picker offer
+ * "All projects" on Active and "All archived" on Archived. It is still ONE row
+ * at index -1 — only which sentinel sits there changes with the tab. The two
+ * mechanisms do not mix: as soon as ANY tab declares a `leadingOptionId` the
+ * per-tab mechanism owns the slot entirely, so a tab that declares none shows
+ * no leading row rather than silently inheriting the first-tab prop.
  */
 export default function ProjectListModal({
     closeModal,
@@ -59,16 +82,23 @@ export default function ProjectListModal({
     containerStyle,
     emptyText,
     widthStyle,
+    getBusyDescription,
 }) {
     const dispatch = useDispatch()
     const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
     const currentProjects = tabs ? tabs[activeTabIndex]?.projects || [] : projects
-    const leadingOptionId = leadingAllOption
+    const callerLeadingOptionId = leadingAllOption
         ? ALL_PROJECTS_OPTION
         : leadingAutomaticOption
           ? AUTOMATIC_PROJECT_OPTION
           : null
-    const leadingOptionVisible = !!leadingOptionId && (!tabs || activeTabIndex === 0)
+    const tabsOwnLeadingOptions = !!tabs && tabs.some(tab => !!tab.leadingOptionId)
+    const leadingOptionId = tabsOwnLeadingOptions
+        ? tabs[activeTabIndex]?.leadingOptionId || null
+        : !tabs || activeTabIndex === 0
+          ? callerLeadingOptionId
+          : null
+    const leadingOptionVisible = !!leadingOptionId
     const [activeOptionIndex, setActiveOptionIndex] = useState(() => {
         const selectedIndex = selectedProjectId
             ? (tabs ? tabs[initialTabIndex]?.projects || [] : projects).findIndex(
@@ -130,9 +160,8 @@ export default function ProjectListModal({
         else scrollRef.current?.scrollTo({ y: 0, animated: false })
     }
 
-    // Awaits the handler on purpose: the move-object flow must finish its
-    // backend work before the picker reports itself closed (the old tabbed
-    // modal awaited the move before calling closePopover).
+    // Await the caller's commit contract. Background operations (such as a task
+    // project move) deliberately return as soon as they have been dispatched.
     const commit = async index => {
         if (index === -1 && leadingOptionVisible) {
             await onSelectProject({ id: leadingOptionId }, -1)
@@ -144,9 +173,67 @@ export default function ProjectListModal({
         closeModal()
     }
 
+    // A commit is awaited to completion before the picker closes, and for the
+    // move flow that is several seconds of work across two projects. The picker
+    // therefore stays on screen for the whole of it, so it has to do two things:
+    // refuse a second commit, and say that the first one is still running.
+    //
+    // Refusing matters because a picker that looks untouched is exactly what
+    // makes a person click the row again, or press Enter — starting a SECOND
+    // move of the same object. The two runs then race over one document:
+    // whichever deletes the source first leaves the other one writing to a
+    // document that no longer exists, and under the strict rules every access to
+    // a missing document — write, delete, even a plain read — comes back as
+    // `permission-denied`, never `not-found`. So the duplicate run reports the
+    // move as broken while the move it duplicated actually succeeded.
+    const commitInFlight = useRef(false)
+    const [committingIndex, setCommittingIndex] = useState(null)
+    const [busyVisible, setBusyVisible] = useState(false)
+
+    // Most callers of this picker commit instantly (a search scope, a default
+    // project), so the busy state waits out the same grace period as the app's
+    // global spinner rather than flashing on every pick. Blocking is immediate;
+    // only saying so is delayed.
+    useEffect(() => {
+        if (committingIndex === null) {
+            setBusyVisible(false)
+            return
+        }
+        const timer = setTimeout(() => setBusyVisible(true), LOADING_DATA_SPINNER_DELAY_MS)
+        return () => clearTimeout(timer)
+    }, [committingIndex])
+
+    // Only a caller whose commit does real work supplies this; everyone else
+    // keeps the picker's ordinary description and never sees a busy state at all.
+    // `committingIndex` clears one render before the effect clears `busyVisible`,
+    // so the destination has to be resolved before deciding to ask for a message
+    // — otherwise that in-between render asks the caller to describe nothing.
+    const committingDestination =
+        committingIndex === null
+            ? null
+            : committingIndex === -1
+              ? { id: leadingOptionId }
+              : currentProjects[committingIndex]
+    const busyDescription =
+        busyVisible && getBusyDescription && committingDestination ? getBusyDescription(committingDestination) : null
+
+    const commitSafely = index => {
+        if (commitInFlight.current) return
+        commitInFlight.current = true
+        setCommittingIndex(index)
+        commit(index)
+            .catch(error => {
+                console.error('[ProjectListModal] Could not commit project selection', error)
+            })
+            .finally(() => {
+                commitInFlight.current = false
+                setCommittingIndex(null)
+            })
+    }
+
     const onRowPress = index => {
         if (commitMode === 'confirm') setActiveOptionIndex(index)
-        else commit(index)
+        else commitSafely(index)
     }
 
     useEffect(() => {
@@ -156,7 +243,7 @@ export default function ProjectListModal({
             else if (key === 'ArrowDown') moveSelection(1)
             else if (key === 'Enter') {
                 if (activeOptionIndex === -1 && !leadingOptionVisible) closeModal()
-                else commit(activeOptionIndex)
+                else commitSafely(activeOptionIndex)
             } else if (tabs && (key === 'Tab' || key === 'ArrowRight')) {
                 changeTab(activeTabIndex + 1 === tabs.length ? 0 : activeTabIndex + 1)
             } else if (tabs && key === 'ArrowLeft') {
@@ -177,14 +264,14 @@ export default function ProjectListModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 { maxHeight: getSafeAreaModalMaxHeight(height) },
-                // AT-2364: an optional width override for callers that host this
-                // picker inside a popup of their own width (the wide add-task
-                // popup), so switching to the picker cannot resize the popup.
+                // An optional width override for callers that host this picker
+                // inside a popup of their own width, so switching to the picker
+                // cannot resize the popup.
                 widthStyle,
                 containerStyle,
             ]}
         >
-            <ModalHeader closeModal={closeModal} title={title} description={description} />
+            <ModalHeader closeModal={closeModal} title={title} description={busyDescription || description} />
 
             {tabs && (
                 <View style={localStyles.tabsContainer}>
@@ -192,7 +279,13 @@ export default function ProjectListModal({
                 </View>
             )}
 
-            <View style={localStyles.projectListContainer}>
+            <View
+                style={[
+                    localStyles.projectListContainer,
+                    committingIndex !== null && localStyles.projectListInert,
+                    busyVisible && localStyles.projectListBusy,
+                ]}
+            >
                 <CustomScrollView
                     ref={scrollRef}
                     showsVerticalScrollIndicator={false}
@@ -206,19 +299,12 @@ export default function ProjectListModal({
                     }}
                 >
                     {leadingOptionVisible &&
-                        (leadingOptionId === AUTOMATIC_PROJECT_OPTION ? (
-                            <AutomaticProjectItem
-                                selectedProjectId={selectedProjectId}
-                                onProjectSelect={() => commit(-1)}
-                                active={activeOptionIndex === -1}
-                            />
-                        ) : (
-                            <AllProjectItem
-                                selectedProjectId={selectedProjectId}
-                                onProjectSelect={() => commit(-1)}
-                                active={activeOptionIndex === -1}
-                            />
-                        ))}
+                        React.createElement(LEADING_ROW_BY_OPTION_ID[leadingOptionId] || AllProjectItem, {
+                            selectedProjectId,
+                            onProjectSelect: () => commitSafely(-1),
+                            active: activeOptionIndex === -1,
+                            busy: busyVisible && committingIndex === -1,
+                        })}
 
                     {currentProjects.length > 0 ? (
                         currentProjects.map((projectItem, index) => (
@@ -233,6 +319,7 @@ export default function ProjectListModal({
                                 }
                                 newProject={projectItem}
                                 active={index === activeOptionIndex}
+                                busy={busyVisible && committingIndex === index}
                                 onProjectSelect={() => onRowPress(index)}
                             />
                         ))
@@ -258,8 +345,8 @@ export default function ProjectListModal({
                         <Button
                             title={confirmLabel || translate('Proceed')}
                             type={'primary'}
-                            onPress={() => commit(activeOptionIndex)}
-                            disabled={activeOptionIndex === -1}
+                            onPress={() => commitSafely(activeOptionIndex)}
+                            disabled={activeOptionIndex === -1 || committingIndex !== null}
                         />
                     </View>
                 </>
@@ -283,6 +370,17 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         marginHorizontal: -8,
+    },
+    // Blocking is immediate; saying so waits out the grace period. react-native-web
+    // deprecated the `pointerEvents` prop in favour of the style, so it lives here.
+    projectListInert: {
+        pointerEvents: 'none',
+    },
+    // A light touch on purpose: enough for the list to read as out of play while
+    // the spinner and the header message carry the actual news, and not so much
+    // that the picker looks broken or that the busy row's spinner goes faint.
+    projectListBusy: {
+        opacity: 0.72,
     },
     tabsContainer: {
         marginTop: 12,

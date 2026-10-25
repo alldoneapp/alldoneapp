@@ -1,5 +1,8 @@
+import { subscribeWithLoading } from '../../redux/loadingOperation'
+import { persistNewDayAcknowledgement } from './newDayAcknowledgement'
+import { persistOkrTodayVisibility } from './okrTodayVisibility'
 import firebase from 'firebase/compat/app'
-import { cloneDeep, uniq } from 'lodash'
+import { cloneDeep } from 'lodash'
 import moment from 'moment'
 
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
@@ -10,7 +13,6 @@ import {
     addWorkflowStepFeedChain,
     createDefaultProject,
     forceUsersToReloadApp,
-    getAllUserProjects,
     getDb,
     getId,
     getObjectFollowersIds,
@@ -26,8 +28,6 @@ import {
     runHttpsCallableFunction,
     selectAndSetNewDefaultProject,
     tryAddFollower,
-    unlinkDeletedProjectFromInvitedUsers,
-    unlinkDeletedProjectFromMembers,
     updateRemovedWorkflowStepSubtaks,
     updateRemovedWorkflowStepTaks,
 } from '../firestore'
@@ -97,6 +97,67 @@ const getCurrentAuthUid = () => {
     }
 }
 
+const getCurrentAuthUser = () => {
+    try {
+        return firebase.auth().currentUser || null
+    } catch (error) {
+        return null
+    }
+}
+
+const isPermissionDenied = error =>
+    error?.code === 'permission-denied' || String(error?.message || error).includes('permission-denied')
+
+const asDirectlyVerifiedSnapshot = directSnapshot => ({
+    exists: directSnapshot.exists,
+    data: () => directSnapshot.data,
+    metadata: { fromCache: false },
+    directlyVerified: true,
+})
+
+const readUserDocumentWithFreshAuth = async (userId, isLoggedUser) => {
+    const authUser = getCurrentAuthUser()
+    const isOwnLoggedUser = isLoggedUser && authUser?.uid === userId
+
+    // Auth state can become visible a fraction before Firestore receives its first ID token.
+    // Waiting for the already-cached token avoids a noisy denied boot read without making
+    // offline startup depend on a refresh request.
+    if (isOwnLoggedUser && typeof authUser.getIdToken === 'function') {
+        try {
+            await authUser.getIdToken()
+        } catch (error) {
+            // Firestore may still satisfy the read from its local cache.
+        }
+    }
+
+    try {
+        return await getDb().doc(`/users/${userId}`).get()
+    } catch (error) {
+        if (!isOwnLoggedUser || !isPermissionDenied(error) || typeof authUser.getIdToken !== 'function') throw error
+
+        // A token minted just before a rules deployment can be rejected by the first Firestore
+        // request. Refresh once, then preserve the existing failed-read behavior if it still fails.
+        await authUser.getIdToken(true)
+        try {
+            return await getDb().doc(`/users/${userId}`).get()
+        } catch (retryError) {
+            if (!isPermissionDenied(retryError)) throw retryError
+
+            // onAuthStateChanged may run before the compat Firestore connection has adopted the
+            // freshly signed-in user's token. The authenticated REST endpoint uses that token
+            // immediately, so it can authoritatively distinguish an existing account from a new
+            // user while the realtime transport is being restarted.
+            const directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
+            try {
+                await restartFirestoreNetwork('adopt the authenticated user during login')
+            } catch (restartError) {
+                console.warn('[Firestore] Could not restart after verifying the logged user directly:', restartError)
+            }
+            return asDirectlyVerifiedSnapshot(directSnapshot)
+        }
+    }
+}
+
 /**
  * Reads a user document and reports WHY there is no user: a genuinely missing document
  * (`missing: true`) or a failed read (`error` set, e.g. a transient `permission-denied` while
@@ -116,11 +177,27 @@ const getCurrentAuthUid = () => {
  * full client's bad view. A recovered document is returned normally, and a direct read that
  * cannot reach the server is reported as a failed read so the caller retries instead of
  * recovering.
+ *
+ * `options.absenceIsExpected` marks a PROBE: a caller that is only asking "is this id a user?"
+ * about an id that may equally be a contact, an assistant or a workstream (AT-2428). For that
+ * question an absence is an ordinary answer, not an anomaly, so the probe skips the verification
+ * round trip and logs nothing — it must not spend a REST read, nor report a production ERROR,
+ * for every contact the app opens. The safety net is unchanged rather than weakened: a probe is
+ * only allowed to answer "not a user" cheaply, and a caller that finds NOTHING to explain the
+ * absence has to escalate to a verified read (`getUserData` with no options), which is what still
+ * recovers a real user whose realtime read was wrong and still logs loudly when it is genuinely
+ * gone. `verified` on the result says which of the two answers the caller got.
  */
-export async function fetchUserDataResult(userId, isLoggedUser) {
+export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
+    const { absenceIsExpected = false, permissionDeniedIsExpected = false } = options
     try {
-        const docSnapshot = await getDb().doc(`/users/${userId}`).get()
+        const docSnapshot = await readUserDocumentWithFreshAuth(userId, isLoggedUser)
         if (!docSnapshot.exists) {
+            if (absenceIsExpected) return { user: null, missing: true, error: null, verified: false }
+            if (docSnapshot.directlyVerified) {
+                return { user: null, missing: true, error: null, verified: true }
+            }
+
             let directSnapshot
             try {
                 directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
@@ -132,7 +209,7 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                         'treating it as a failed read rather than a missing account.',
                     verifyError
                 )
-                return { user: null, missing: false, error: verifyError }
+                return { user: null, missing: false, error: verifyError, verified: false }
             }
 
             if (directSnapshot.exists) {
@@ -153,7 +230,7 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                         restartError
                     )
                 }
-                return { user: recoveredUser, missing: !recoveredUser, error: null }
+                return { user: recoveredUser, missing: !recoveredUser, error: null, verified: true }
             }
 
             const authUid = getCurrentAuthUid()
@@ -169,19 +246,53 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                     calledFrom: new Error().stack,
                 }
             )
-            return { user: null, missing: true, error: null }
+            return { user: null, missing: true, error: null, verified: true }
         }
+
+        // A cached document is not proof that this signed-in user may still read it. This matters
+        // for the global Administrator profile: an older session can leave a full private user
+        // document in IndexedDB, the cached get succeeds, and the listener then fails against the
+        // current strict rules. Verify optional cross-user reads independently before exposing the
+        // cached profile or arming that listener.
+        if (permissionDeniedIsExpected && docSnapshot.metadata?.fromCache && !docSnapshot.directlyVerified) {
+            let directSnapshot
+            try {
+                directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
+            } catch (verifyError) {
+                if (isPermissionDenied(verifyError)) {
+                    return { user: null, missing: false, error: verifyError, verified: false }
+                }
+                throw verifyError
+            }
+
+            if (!directSnapshot.exists) {
+                return { user: null, missing: true, error: null, verified: true }
+            }
+            const directlyVerifiedUser = directSnapshot.data
+                ? mapUserData(userId, directSnapshot.data, isLoggedUser)
+                : null
+            return {
+                user: directlyVerifiedUser,
+                missing: !directlyVerifiedUser,
+                error: null,
+                verified: true,
+            }
+        }
+
         const user = docSnapshot.data()
         const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
-        return { user: mappedUser, missing: !mappedUser, error: null }
+        return { user: mappedUser, missing: !mappedUser, error: null, verified: true }
     } catch (error) {
+        if (permissionDeniedIsExpected && isPermissionDenied(error)) {
+            return { user: null, missing: false, error, verified: false }
+        }
         console.error(`Error fetching user data for ${userId}:`, error)
-        return { user: null, missing: false, error }
+        return { user: null, missing: false, error, verified: false }
     }
 }
 
-export async function getUserData(userId, isLoggedUser) {
-    const { user } = await fetchUserDataResult(userId, isLoggedUser)
+export async function getUserData(userId, isLoggedUser, options) {
+    const { user } = await fetchUserDataResult(userId, isLoggedUser, options)
     return user
 }
 
@@ -193,26 +304,152 @@ const convertUserDocsInUsers = docs => {
     return users
 }
 
+// Multiple active projects frequently contain the same people. Keep one Firestore document
+// target per user and fan its snapshots out locally instead of opening the same users/{uid}
+// listener again for every project section on Contacts.
+const sharedProjectUserWatchers = new Map()
+
+const subscribeToSharedProjectUser = (db, userId, onSnapshot, onError) => {
+    let entry = sharedProjectUserWatchers.get(userId)
+    if (!entry) {
+        entry = {
+            subscribers: new Set(),
+            lastSnapshot: null,
+            lastError: null,
+            unsubscribe: () => {},
+        }
+        sharedProjectUserWatchers.set(userId, entry)
+        entry.unsubscribe = db.doc(`users/${userId}`).onSnapshot(
+            snapshot => {
+                entry.lastSnapshot = snapshot
+                entry.lastError = null
+                entry.subscribers.forEach(subscriber => subscriber.onSnapshot(snapshot))
+            },
+            error => {
+                entry.lastSnapshot = null
+                entry.lastError = error
+                entry.subscribers.forEach(subscriber => subscriber.onError(error))
+            }
+        )
+    }
+
+    const subscriber = { onSnapshot, onError }
+    entry.subscribers.add(subscriber)
+    if (entry.lastSnapshot) onSnapshot(entry.lastSnapshot)
+    else if (entry.lastError) onError(entry.lastError)
+
+    return () => {
+        entry.subscribers.delete(subscriber)
+        if (entry.subscribers.size > 0) return
+        entry.unsubscribe()
+        if (sharedProjectUserWatchers.get(userId) === entry) sharedProjectUserWatchers.delete(userId)
+    }
+}
+
+export const resetSharedProjectUserWatchersForTests = () => {
+    sharedProjectUserWatchers.forEach(entry => entry.unsubscribe())
+    sharedProjectUserWatchers.clear()
+}
+
 export async function watchUserByEmail(email, watcherKey, callback) {
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`users`)
-        .where('email', '==', email)
-        .limit(1)
-        .onSnapshot(userDocs => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'user_search',
+        (next, error) => getDb().collection(`users`).where('email', '==', email).limit(1).onSnapshot(next, error),
+        userDocs => {
             const user =
                 userDocs.docs.length > 0 ? mapUserData(userDocs.docs[0].id, userDocs.docs[0].data(), false) : null
             callback(user)
-        })
+        }
+    )
 }
 
-export async function watchProjectUsers(projectId, callback, watcherKey) {
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`users`)
-        .where('projectIds', 'array-contains-any', [projectId])
-        .onSnapshot(snapshot => {
-            const users = convertUserDocsInUsers(snapshot)
-            callback(users)
+export async function watchProjectUsers(projectId, callback, watcherKey, { onError } = {}) {
+    const db = getDb()
+    const userWatchers = new Map()
+    const usersById = new Map()
+    const resolvedUserIds = new Set()
+    let activeUserIds = []
+    let stopped = false
+    let projectUnsubscribe = () => {}
+
+    const stop = () => {
+        if (stopped) return
+        stopped = true
+        projectUnsubscribe()
+        userWatchers.forEach(unsubscribe => unsubscribe())
+        userWatchers.clear()
+    }
+
+    const emitWhenComplete = () => {
+        if (stopped || activeUserIds.some(userId => !resolvedUserIds.has(userId))) return
+        callback(activeUserIds.map(userId => usersById.get(userId)).filter(Boolean))
+    }
+
+    const syncUserWatchers = userIds => {
+        const nextUserIds = Array.from(
+            new Set((Array.isArray(userIds) ? userIds : []).filter(userId => typeof userId === 'string' && userId))
+        )
+        const nextUserIdSet = new Set(nextUserIds)
+
+        userWatchers.forEach((unsubscribe, userId) => {
+            if (nextUserIdSet.has(userId)) return
+            unsubscribe()
+            userWatchers.delete(userId)
+            usersById.delete(userId)
+            resolvedUserIds.delete(userId)
         })
+
+        activeUserIds = nextUserIds
+        nextUserIds.forEach(userId => {
+            if (userWatchers.has(userId)) return
+            userWatchers.set(userId, () => {})
+            const unsubscribe = subscribeToSharedProjectUser(
+                db,
+                userId,
+                snapshot => {
+                    if (stopped || !activeUserIds.includes(userId)) return
+                    resolvedUserIds.add(userId)
+                    if (snapshot.exists) usersById.set(userId, mapUserData(userId, snapshot.data(), false))
+                    else usersById.delete(userId)
+                    emitWhenComplete()
+                },
+                error => {
+                    if (stopped || !activeUserIds.includes(userId)) return
+                    // A stale project.userIds entry can point at a user document
+                    // whose own membership no longer grants access. The previous
+                    // collection query simply omitted that profile, so preserve
+                    // that behavior without weakening the user-document rule or
+                    // holding the entire project user list open forever.
+                    resolvedUserIds.add(userId)
+                    usersById.delete(userId)
+                    if (error?.code !== 'permission-denied') {
+                        console.warn(`Unable to watch project member ${userId} in ${projectId}:`, error)
+                    }
+                    emitWhenComplete()
+                }
+            )
+            userWatchers.set(userId, unsubscribe)
+        })
+        emitWhenComplete()
+    }
+
+    projectUnsubscribe = db.doc(`projects/${projectId}`).onSnapshot(
+        snapshot => syncUserWatchers(snapshot.exists ? snapshot.data()?.userIds : []),
+        error => {
+            stop()
+            if (onError) onError(error)
+            else console.error(`Error watching project members for ${projectId}:`, error)
+        }
+    )
+
+    // InitialLoad already has the project document in redux. Use its member ids
+    // immediately instead of adding a whole extra project-listener round trip
+    // before the individual, rule-safe user listeners can start. The project
+    // listener above remains authoritative for later membership changes.
+    const project = store.getState().loggedUserProjectsMap?.[projectId]
+    if (Array.isArray(project?.userIds)) syncUserWatchers(project.userIds)
+
+    globalWatcherUnsub[watcherKey] = stop
 }
 
 export const GOLD_TRANSACTIONS_PAGE_SIZE = 50
@@ -276,11 +513,15 @@ export async function getProjectUsers(projectId, getOnlyDocs) {
 
 //EDTION AND ADITION FUNCTIONS
 
-export const updateUserEditionData = async (userId, editorId) => {
+export const updateUserEditionData = async (projectId, userId, editorId) => {
     await getDb().runTransaction(async transaction => {
         const ref = getDb().doc(`users/${userId}`)
         const doc = await transaction.get(ref)
-        if (doc.exists) transaction.update(ref, { lastEditionDate: Date.now(), lastEditorId: editorId })
+        if (doc.exists) {
+            const data = { lastEditionDate: Date.now(), lastEditorId: editorId }
+            addProjectMutationProof(userId, data, projectId)
+            transaction.update(ref, data)
+        }
     })
 }
 
@@ -290,13 +531,30 @@ const updateEditionData = data => {
     data.lastEditorId = loggedUser.uid
 }
 
-export async function updateUserData(userId, data, batch) {
+function addProjectMutationProof(userId, data, projectId) {
+    // Most personal user writes do not change project-scoped data. Bail out before reading the
+    // store: some of those writes are scheduled by the My Day reducer, and Redux deliberately
+    // rejects getState() calls while a reducer is executing.
+    if (!projectId || data.projectMembershipMutation) return
+    const { loggedUser } = store.getState()
+    if (!loggedUser?.uid) return
+    data.projectMembershipMutation = {
+        projectId,
+        action: userId === loggedUser.uid ? 'self-sync' : 'project-update',
+        actorId: loggedUser.uid,
+        updatedAt: Date.now(),
+    }
+}
+
+export async function updateUserData(userId, data, batch, projectId) {
+    addProjectMutationProof(userId, data, projectId)
     updateEditionData(data)
     const ref = getDb().doc(`users/${userId}`)
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export async function updateUserDataDirectly(userId, data, batch) {
+export async function updateUserDataDirectly(userId, data, batch, projectId) {
+    addProjectMutationProof(userId, data, projectId)
     const ref = getDb().doc(`users/${userId}`)
     batch ? batch.update(ref, data) : await ref.update(data)
 }
@@ -312,6 +570,7 @@ export async function uploadNewUser(uid, user, project, task, workstream, assist
 
     const taskToStore = { ...task }
     delete taskToStore.id
+    taskToStore.projectId = project.id
 
     const workstreamToStore = { ...workstream }
     delete workstreamToStore.uid
@@ -343,36 +602,16 @@ export const addNewUserToAlldoneTemplate = async userId => {
 
 export async function deleteUser(user) {
     const userId = user.uid
-    const projects = await getAllUserProjects(userId)
-
-    const batch = new BatchWrapper(getDb())
-
-    let userToForceReloadIds = []
-    let promises = []
-    projects.forEach(project => {
-        promises.push(processProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch))
-    })
-    await Promise.all(promises)
-
-    batch.delete(getDb().doc(`invoiceNumbers/customInvoiceNumber/users/${userId}`))
-    batch.delete(getDb().doc(`karmaPoints/${userId}`))
-    batch.delete(getDb().doc(`users/${userId}`))
-
     const { loggedUser } = store.getState()
     const userToDeleteIsTheLoggedUser = loggedUser.uid === user.uid
 
-    if (!userToDeleteIsTheLoggedUser) {
-        userToForceReloadIds = userToForceReloadIds.filter(uid => uid !== loggedUser.uid)
-        userToForceReloadIds.push(user.uid)
-    }
-    forceUsersToReloadApp(uniq(userToForceReloadIds), batch)
-
-    promises = []
-    promises.push(logEvent('delete_user', { userId }))
-    promises.push(runHttpsCallableFunction('deleteUserSecondGen', { userId }))
-    await Promise.all(promises)
-
-    await batch.commit()
+    // Firestore cleanup now runs with Admin permissions inside the callable. It finishes project
+    // and personal-data cleanup before deleting Firebase Auth, so stricter client rules cannot
+    // strand a half-deleted account and a failed cleanup remains retryable.
+    logEvent('delete_user', { userId }).catch(error => {
+        console.warn('[Account deletion] Could not record analytics event', error)
+    })
+    await runHttpsCallableFunction('deleteUserSecondGen', { userId }, { timeout: 540000 })
 
     if (userToDeleteIsTheLoggedUser) {
         Backend.logout(SettingsHelper.onLogOut)
@@ -385,26 +624,31 @@ export async function deleteUser(user) {
 
 export const setUserAssistant = async (projectId, userId, assistantId, needGenerateUpdate) => {
     const batch = new BatchWrapper(getDb())
-    updateUserData(userId, { assistantId }, batch)
+    updateUserData(userId, { assistantId }, batch, projectId)
     await updateChatAssistantWithoutFeeds(projectId, userId, assistantId, batch)
     await batch.commit()
     if (needGenerateUpdate) await createUserAssistantChangedFeed(projectId, assistantId, userId, null, null)
 }
 
 export const setUserNote = async (projectId, userId, noteId) => {
-    await updateUserData(userId, { [`noteIdsByProject.${projectId}`]: noteId }, null)
+    await updateUserData(userId, { [`noteIdsByProject.${projectId}`]: noteId }, null, projectId)
 }
 
 export function updateUserLastVisitedBoardDate(projectId, userId, lastVisitBoardProperty) {
     const { loggedUser } = store.getState()
     // Update directly so "board visit" does not affect user edition metadata.
-    updateUserDataDirectly(userId, { [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() }, null)
+    updateUserDataDirectly(
+        userId,
+        { [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() },
+        null,
+        projectId
+    )
 }
 
 export async function addUserWorkflowStep(projectId, uid, newStepData) {
     const newStepId = getId()
 
-    updateUserData(uid, { [`workflow.${projectId}.${newStepId}`]: newStepData }, null)
+    updateUserData(uid, { [`workflow.${projectId}.${newStepId}`]: newStepData }, null, projectId)
 
     const { reviewerUid, description } = newStepData
     addWorkflowStepFeedChain(projectId, reviewerUid, uid, description)
@@ -413,7 +657,7 @@ export async function addUserWorkflowStep(projectId, uid, newStepData) {
 }
 
 export async function reorderUserWorkflowSteps(projectId, uid, orderedStepIds) {
-    await updateUserData(uid, getWorkflowSortIndexUpdates(projectId, orderedStepIds), null)
+    await updateUserData(uid, getWorkflowSortIndexUpdates(projectId, orderedStepIds), null, projectId)
 }
 
 export async function modifyUserWorkflowStep(projectId, uid, stepId, newStepData, oldReviewerUid, externalBatch) {
@@ -422,7 +666,7 @@ export async function modifyUserWorkflowStep(projectId, uid, stepId, newStepData
     const newStep = { ...newStepData }
     delete newStep.id
 
-    updateUserData(uid, { [`workflow.${projectId}.${stepId}`]: newStep }, batch)
+    updateUserData(uid, { [`workflow.${projectId}.${stepId}`]: newStep }, batch, projectId)
 
     const { reviewerUid } = newStep
     if (reviewerUid !== oldReviewerUid) {
@@ -463,6 +707,7 @@ export const updateEditedWorkflowStepTaks = (projectId, tasks, stepId, reviewerU
                 : task.stepHistory.findIndex(id => id === stepId)
 
             if (index !== null && index !== undefined && index > -1) {
+                task.projectId = projectId
                 task.userIds[index] = reviewerUid
                 if (index === task.stepHistory.length - 1) task.currentReviewerId = reviewerUid
                 if (task.subtaskIds && task.subtaskIds.length > 0) {
@@ -479,7 +724,12 @@ export const updateEditedWorkflowStepTaks = (projectId, tasks, stepId, reviewerU
 export async function removeUserWorkflowStep(project, uid, stepId, steps, reviewerUid) {
     let batch = new BatchWrapper(getDb())
 
-    updateUserData(uid, { [`workflow.${project.id}.${stepId}`]: firebase.firestore.FieldValue.delete() }, batch)
+    updateUserData(
+        uid,
+        { [`workflow.${project.id}.${stepId}`]: firebase.firestore.FieldValue.delete() },
+        batch,
+        project.id
+    )
 
     const tasks = (
         await getDb()
@@ -565,6 +815,7 @@ export async function addUserToProject(
 
 async function tryAddUserToProject(uid, projectId, project, removeInvitation) {
     const batch = new BatchWrapper(getDb())
+    const { loggedUser } = store.getState()
 
     batch.update(getDb().doc(`projects/${projectId}`), {
         userIds: firebase.firestore.FieldValue.arrayUnion(uid),
@@ -575,23 +826,26 @@ async function tryAddUserToProject(uid, projectId, project, removeInvitation) {
     const isTemplate = project.isTemplate
     const isGuide = !!project.parentTemplateId
 
-    updateUserData(
-        uid,
-        isTemplate
-            ? {
-                  projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                  templateProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              }
-            : isGuide
-              ? {
-                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                    guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                }
-              : {
-                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                },
-        batch
-    )
+    const membershipUpdate = isTemplate
+        ? {
+              projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+              templateProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+          }
+        : isGuide
+          ? {
+                projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+            }
+          : {
+                projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+            }
+    membershipUpdate.projectMembershipMutation = {
+        projectId,
+        action: 'add',
+        actorId: loggedUser.uid,
+        updatedAt: Date.now(),
+    }
+    updateUserData(uid, membershipUpdate, batch)
 
     await batch.commit()
 
@@ -713,7 +967,8 @@ export async function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId)
         await updateUserData(
             userId,
             { [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey) },
-            null
+            null,
+            projectId
         )
     } catch (error) {
         await refundGoldForGoalUnlock(projectId, goalId)
@@ -734,13 +989,16 @@ export async function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId)
 }
 
 export const updateUserLastCommentData = async (projectId, userId, lastComment, commentType) => {
-    getDb()
-        .doc(`users/${userId}`)
-        .update({
+    await updateUserDataDirectly(
+        userId,
+        {
             [`commentsData.${projectId}.lastComment`]: lastComment,
             [`commentsData.${projectId}.lastCommentType`]: commentType,
             [`commentsData.${projectId}.amount`]: firebase.firestore.FieldValue.increment(1),
-        })
+        },
+        null,
+        projectId
+    )
 }
 
 export const resetUserLastCommentData = async (projectId, userId) => {
@@ -749,11 +1007,16 @@ export const resetUserLastCommentData = async (projectId, userId) => {
     if (doc.exists) {
         const data = doc.data()
         if (data.commentsData && data.commentsData[projectId] && data.commentsData[projectId].amount > 0) {
-            ref.update({
-                [`commentsData.${projectId}.lastComment`]: null,
-                [`commentsData.${projectId}.lastCommentType`]: null,
-                [`commentsData.${projectId}.amount`]: 0,
-            })
+            await updateUserDataDirectly(
+                userId,
+                {
+                    [`commentsData.${projectId}.lastComment`]: null,
+                    [`commentsData.${projectId}.lastCommentType`]: null,
+                    [`commentsData.${projectId}.amount`]: 0,
+                },
+                null,
+                projectId
+            )
         }
     }
 }
@@ -768,7 +1031,8 @@ export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey,
             {
                 [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey),
             },
-            null
+            null,
+            projectId
         )
     } catch (error) {
         await refundGoldForGoalUnlock(projectId, goalId)
@@ -793,20 +1057,25 @@ export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey,
 
     const { projectUsers } = store.getState()
 
-    const usersInProject = [...projectUsers[projectId]]
+    // AT-2386: `projectUsers[projectId]` is filled on demand now, so guard the read-modify-write.
+    // The unlocked-keys update below is purely an optimistic local mirror of a server write, so
+    // skipping it when the slice is not loaded costs nothing - the live watcher brings it back.
+    const usersInProject = Array.isArray(projectUsers[projectId]) ? [...projectUsers[projectId]] : []
 
     const index = usersInProject.findIndex(user => user.uid === goalOwnerId)
     const user = usersInProject[index]
 
-    const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides)
-    if (unlockedKeysByGuides[projectId]) {
-        unlockedKeysByGuides[projectId].push(lockKey)
-    } else {
-        unlockedKeysByGuides[projectId] = [lockKey]
-    }
+    if (user) {
+        const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides)
+        if (unlockedKeysByGuides[projectId]) {
+            unlockedKeysByGuides[projectId].push(lockKey)
+        } else {
+            unlockedKeysByGuides[projectId] = [lockKey]
+        }
 
-    usersInProject[index] = { ...user, unlockedKeysByGuides }
-    store.dispatch(setUsersInProject(projectId, usersInProject))
+        usersInProject[index] = { ...user, unlockedKeysByGuides }
+        store.dispatch(setUsersInProject(projectId, usersInProject))
+    }
 
     return goldResult
 }
@@ -955,17 +1224,39 @@ export async function distributeManualSkillPoints() {
 
 export function addProjectInvitationToUser(projectId, userId) {
     const batch = new BatchWrapper(getDb())
-    batch.update(getDb().doc(`users/${userId}`), {
-        invitedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            invitedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+            projectMembershipMutation: {
+                projectId,
+                action: 'invitation-add',
+                actorId: store.getState().loggedUser.uid,
+                updatedAt: Date.now(),
+            },
+        },
+        batch,
+        projectId
+    )
     batch.commit()
 }
 
 export async function removeProjectInvitationFromUser(projectId, userId, externalBatch) {
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
-    batch.update(getDb().doc(`users/${userId}`), {
-        invitedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            invitedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
+            projectMembershipMutation: {
+                projectId,
+                action: 'invitation-remove',
+                actorId: store.getState().loggedUser.uid,
+                updatedAt: Date.now(),
+            },
+        },
+        batch,
+        projectId
+    )
     if (!externalBatch) batch.commit()
 }
 
@@ -977,12 +1268,17 @@ export function setUserDailyTopicDate(dailyTopicDate) {
         .update({ dailyTopicDate: Date.now(), previousDailyTopicDate: dailyTopicDate })
 }
 
-export function setUserStatisticsModalDate(statisticsModalDate, newStatisticsModalDate = Date.now()) {
-    const { loggedUser } = store.getState()
-    return firebase
-        .firestore()
-        .doc(`users/${loggedUser.uid}`)
-        .update({ statisticsModalDate: newStatisticsModalDate, previousStatisticsModalDate: statisticsModalDate })
+export function setUserStatisticsModalDate(
+    statisticsModalDate,
+    newStatisticsModalDate = Date.now(),
+    userId = store.getState().loggedUser.uid
+) {
+    return persistNewDayAcknowledgement(
+        userId,
+        statisticsModalDate,
+        newStatisticsModalDate,
+        () => store.getState().loggedUser.uid
+    )
 }
 
 export function updateUserStatisticsFilter(userId, statisticsData) {
@@ -1082,18 +1378,26 @@ export async function setUserOKRPrivacyMode(userId, okrPrivacyMode) {
 
 export async function setUserOKRHiddenInAllProjectsToday(userId, projectId, okrId, todayKey) {
     if (!userId || !projectId || !okrId || !todayKey) return
-    updateUserData(userId, { [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: todayKey }, null)
+    return persistOkrTodayVisibility(userId, projectId, [okrId], todayKey, () =>
+        updateUserData(
+            userId,
+            { [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: todayKey },
+            null
+        )
+    )
 }
 
 export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, okrId) {
     if (!userId || !projectId || !okrId) return
-    updateUserData(
-        userId,
-        {
-            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
-                firebase.firestore.FieldValue.delete(),
-        },
-        null
+    return persistOkrTodayVisibility(userId, projectId, [okrId], null, () =>
+        updateUserData(
+            userId,
+            {
+                [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
+                    firebase.firestore.FieldValue.delete(),
+            },
+            null
+        )
     )
 }
 
@@ -1104,7 +1408,7 @@ export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, o
             firebase.firestore.FieldValue.delete()
         return updates
     }, {})
-    updateUserData(userId, updates, null)
+    return persistOkrTodayVisibility(userId, projectId, okrIds, null, () => updateUserData(userId, updates, null))
 }
 
 export async function setUserEmailLineHiddenToday(userId, projectId, todayKey) {
@@ -1199,21 +1503,38 @@ export function setThatTheUserWasNotifiedAboutTheBotBehavior() {
 }
 
 export const addWorkstreamToUser = (projectId, userId, workstreamId, batch) => {
-    batch.update(getDb().doc(`users/${userId}`), {
-        [`workstreams.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(workstreamId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { [`workstreams.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(workstreamId) },
+        batch,
+        projectId
+    )
 }
 
 export const removeWorkstreamFromUser = (projectId, userId, workstreamId, batch) => {
-    batch.update(getDb().doc(`users/${userId}`), {
-        [`workstreams.${projectId}`]: firebase.firestore.FieldValue.arrayRemove(workstreamId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { [`workstreams.${projectId}`]: firebase.firestore.FieldValue.arrayRemove(workstreamId) },
+        batch,
+        projectId
+    )
 }
 
 export const removeUserInvitationToProject = (projectId, userId, batch) => {
-    batch.update(getDb().doc(`users/${userId}`), {
-        invitedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            invitedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
+            projectMembershipMutation: {
+                projectId,
+                action: 'invitation-remove',
+                actorId: store.getState().loggedUser.uid,
+                updatedAt: Date.now(),
+            },
+        },
+        batch,
+        projectId
+    )
 }
 
 export const updateShowAllProjectsByTime = (userId, showAllProjectsByTime) => {
@@ -1240,6 +1561,7 @@ function updateWorkstreamsDataWhenKickUserFromProject(projectId, userId, workstr
 }
 
 function updateKickedUserDataWhenKickUserFromProject(projectId, userId, batch) {
+    const { loggedUser } = store.getState()
     batch.update(getDb().doc(`users/${userId}`), {
         projectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
         archivedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
@@ -1255,6 +1577,12 @@ function updateKickedUserDataWhenKickUserFromProject(projectId, userId, batch) {
         [`workflow.${projectId}`]: firebase.firestore.FieldValue.delete(),
         [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.delete(),
         [`commentsData.${projectId}`]: firebase.firestore.FieldValue.delete(),
+        projectMembershipMutation: {
+            projectId,
+            action: 'remove',
+            actorId: loggedUser.uid,
+            updatedAt: Date.now(),
+        },
     })
 }
 
@@ -1272,14 +1600,20 @@ function updateUsersDataWhenKickUserFromProject(projectId, userId, users, batch)
             })
 
             if (Object.keys(projectWorkflow).length === 0) {
-                batch.update(getDb().doc(`users/${uid}`), {
-                    [`workflow.${projectId}`]: firebase.firestore.FieldValue.delete(),
-                })
+                updateUserDataDirectly(
+                    uid,
+                    { [`workflow.${projectId}`]: firebase.firestore.FieldValue.delete() },
+                    batch,
+                    projectId
+                )
             } else {
                 stepIds.forEach(stepId => {
-                    batch.update(getDb().doc(`users/${uid}`), {
-                        [`workflow.${projectId}.${stepId}`]: firebase.firestore.FieldValue.delete(),
-                    })
+                    updateUserDataDirectly(
+                        uid,
+                        { [`workflow.${projectId}.${stepId}`]: firebase.firestore.FieldValue.delete() },
+                        batch,
+                        projectId
+                    )
                 })
             }
 
@@ -1288,9 +1622,7 @@ function updateUsersDataWhenKickUserFromProject(projectId, userId, users, batch)
             })
 
             stepIdsToUpdateAddedProperty.forEach(stepId => {
-                batch.update(getDb().doc(`users/${uid}`), {
-                    [`workflow.${projectId}.${stepId}.addedById`]: '',
-                })
+                updateUserDataDirectly(uid, { [`workflow.${projectId}.${stepId}.addedById`]: '' }, batch, projectId)
             })
         }
     })
@@ -1324,65 +1656,7 @@ export async function kickUserFromProject(projectId, userId) {
 
     await updateDefaultProjectIfNeeded(projectId, user)
 
-    forceUsersToReloadApp(project.userIds, batch)
+    forceUsersToReloadApp(project.userIds, batch, projectId)
 
     await batch.commit()
-}
-
-const checkIfUserIsLastUser = (userId, projectUserIds, templateCreatorId) => {
-    if (templateCreatorId) {
-        const { administratorUser } = store.getState()
-        return (
-            projectUserIds.filter(uid => uid !== userId && uid !== templateCreatorId && uid !== administratorUser.uid)
-                .length === 0
-        )
-    } else {
-        return projectUserIds.filter(uid => uid !== userId).length === 0
-    }
-}
-
-async function kickUserFromProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch) {
-    let promises = []
-    promises.push(getUserWorkstreams(project.id, userId))
-    promises.push(getProjectUsers(project.id, false))
-    const [workstreams, users] = await Promise.all(promises)
-
-    userToForceReloadIds.push(...users.map(user => user.uid).filter(uid => uid !== userId))
-
-    updateProjectDataWhenKickUserFromProject(userId, project, batch)
-    updateWorkstreamsDataWhenKickUserFromProject(project.id, userId, workstreams, batch)
-    updateUsersDataWhenKickUserFromProject(project.id, userId, users, batch)
-}
-
-async function removeProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch) {
-    const { id: projectId, userIds, parentTemplateId } = project
-
-    const userToUpdateIds = userIds.filter(uid => uid !== userId)
-    if (userIds) unlinkDeletedProjectFromMembers(projectId, batch, userToUpdateIds)
-    await unlinkDeletedProjectFromInvitedUsers(projectId, batch)
-    if (parentTemplateId) {
-        batch.update(getDb().doc(`projects/${parentTemplateId}`), {
-            guideProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-        })
-    }
-
-    batch.delete(getDb().doc(`projects/${projectId}`))
-    userToForceReloadIds.push(...userToUpdateIds)
-}
-
-async function processProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch) {
-    const { parentTemplateId, userIds } = project
-
-    let templateCreatorId = ''
-    if (parentTemplateId) {
-        const template = await getProjectData(parentTemplateId)
-        if (template && template.templateCreatorId) templateCreatorId = template.templateCreatorId
-    }
-    const isLastUser = !userIds || checkIfUserIsLastUser(userId, userIds, templateCreatorId)
-
-    if (isLastUser) {
-        await removeProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch)
-    } else {
-        await kickUserFromProjectWhenDeleteUser(project, userId, userToForceReloadIds, batch)
-    }
 }

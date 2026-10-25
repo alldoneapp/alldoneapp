@@ -32,6 +32,7 @@ import {
     TASK_EXECUTION_MODE_WORKFLOW,
     getTaskExecutionMode,
 } from '../../../../utils/taskExecutionMode'
+import { getCurrentUserTaskRecurrence } from './taskRecurrence'
 
 export default function PreConfigTaskModal({ disabled, projectId, closeModal, adding, assistantId, task }) {
     const dispatch = useDispatch()
@@ -78,7 +79,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             aiModel: task ? getPreConfigTaskModelSelection(task) : INHERIT_ASSISTANT_MODEL,
             aiReasoningEffort: getPreConfigTaskReasoningEffortSelection(task),
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
-            recurrence: task ? task.recurrence : RECURRENCE_NEVER,
+            recurrence: task ? getCurrentUserTaskRecurrence(task, loggedUser.uid) : RECURRENCE_NEVER,
             executionMode: task ? getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT) : TASK_EXECUTION_MODE_WORKFLOW,
             startDate: getInitialStartDate(),
             sendWhatsApp: task?.sendWhatsApp ?? false,
@@ -86,7 +87,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             webhookAuthHeaderName: task?.taskMetadata?.webhookAuthHeaderName ?? 'Authorization',
             webhookAuth: task?.taskMetadata?.webhookAuth ?? '',
         }
-    }, [task, currentAssistant])
+    }, [task, currentAssistant, loggedUser.uid])
 
     const [name, setName] = useState(initialState.name)
     const [prompt, setPrompt] = useState(initialState.prompt)

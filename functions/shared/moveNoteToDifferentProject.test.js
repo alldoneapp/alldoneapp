@@ -68,6 +68,35 @@ test('treats a retry after the source was deleted as an already completed move',
     ).resolves.toMatchObject({ moved: false, reason: 'already_moved', noteId: 'note-1' })
 })
 
+test('makes a linked private note readable to the mover in the target project', async () => {
+    const sourceRef = {
+        get: jest.fn(async () => ({
+            exists: true,
+            data: () => ({ isPublicFor: ['source-only'], readerIds: ['source-only'] }),
+        })),
+        update: jest.fn(async () => {}),
+        delete: jest.fn(async () => {}),
+    }
+    const targetRef = { get: jest.fn(async () => ({ exists: false })), set: jest.fn(async () => {}) }
+    const database = { doc: jest.fn(path => (path.includes('project-a') ? sourceRef : targetRef)) }
+
+    await moveNoteToDifferentProject({
+        database,
+        storage: { bucket: () => ({ file: () => ({ exists: async () => [false] }) }) },
+        sourceProjectId: 'project-a',
+        targetProjectId: 'project-b',
+        targetProjectUserIds: ['actor'],
+        noteId: 'note-1',
+        editorId: 'actor',
+        notesBucketName: 'notescontentprod',
+        copyChat: async () => {},
+        copyInnerFeeds: async () => {},
+    })
+
+    expect(targetRef.set.mock.calls[0][0]).toEqual(expect.objectContaining({ isPublicFor: ['actor'] }))
+    expect(targetRef.set.mock.calls[0][0]).not.toHaveProperty('readerIds')
+})
+
 test('attributes the move feed to the assistant', async () => {
     const set = jest.fn()
     const commit = jest.fn(async () => {})

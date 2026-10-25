@@ -12,11 +12,9 @@ import UserProperties from './UserProperties/UserProperties'
 import {
     navigateToAllProjectsTasks,
     resetFloatPopup,
-    resetLoadingData,
     setNavigationRoute,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
     switchProject,
 } from '../../redux/actions'
@@ -82,12 +80,11 @@ const UserDetailedView = ({ navigation }) => {
 
                 NavigationService.navigate('Root')
                 if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                    dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                    dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
                 } else {
                     dispatch([
                         resetFloatPopup(),
                         setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
-                        resetLoadingData(),
                         setShowAccessDeniedPopup(true),
                     ])
                 }
@@ -169,7 +166,7 @@ const UserDetailedView = ({ navigation }) => {
 
             {!!user && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && accessGranted && (
+                    {!mobile && !isMiddleScreen && accessGranted && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton user={user} projectIndex={projectIndex} constant={URL_PEOPLE_DETAILS} />
                         </View>

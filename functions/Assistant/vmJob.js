@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
+const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
@@ -12,7 +13,12 @@ const {
     resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
 const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
-const { resolveFamilyToModel, isOpenRouterConfigured, getOpenRouterUpstreamPrice } = require('./vmAgentModelCatalog')
+const {
+    resolveFamilyToModel,
+    isOpenRouterConfigured,
+    getOpenRouterUpstreamPrice,
+    getModelCatalog,
+} = require('./vmAgentModelCatalog')
 const {
     isOpenRouterSelection,
     parseOpenRouterSelection,
@@ -30,6 +36,7 @@ const {
     admitVmJobToThread,
     readVmThreadSession,
     isVmThreadSessionOccupied,
+    isOrphanedQueuedVmJob,
     advanceVmThreadQueue,
 } = require('./vmThreadQueue')
 const { resolveVmThreadAgentContinuity } = require('./vmThreadAgentContinuity')
@@ -44,9 +51,8 @@ const { Timestamp } = require('firebase-admin/firestore')
 //                            + round(totalTokens / resolveTokensPerGold(agentModel))
 // The base reserve is charged up-front (refunded if the run fails); the per-minute
 // (E2B compute) + per-token (LLM usage) top-up is charged by the worker on completion
-// from the agent's actual reported usage. The per-token rate is Sol's (and matches in-app
-// assistant usage) for Sol and Claude; every other model is priced as a researched multiple
-// of Sol from its real upstream cost — vmTokenPricing.js owns that decision for every charge
+// from the agent's actual reported usage. Model rates follow researched upstream prices relative
+// to the historical Sol anchor — vmTokenPricing.js owns that decision for every charge
 // site, and `tokensPerGold` below freezes the resolved rate onto the job.
 const VM_JOB_BASE_GOLD = 20
 const VM_GOLD_PER_MINUTE = 10
@@ -63,6 +69,9 @@ const VM_MIN_GOLD_TO_LAUNCH_QUEUED = VM_GOLD_PER_MINUTE
 const VM_GOLD_EXHAUSTED_FAILURE_REASON = 'insufficient_gold'
 const VM_QUEUED_GOLD_EXHAUSTED_TEXT =
     '🛑 Skipped this queued VM task because you ran out of Gold. Add Gold and start a new VM task to continue.'
+const VM_ORPHANED_QUEUE_FAILURE_REASON = 'orphaned_vm_queue'
+const VM_ORPHANED_QUEUE_FAILURE_TEXT =
+    '❌ This queued VM task could not start because its previous VM session ended unexpectedly. Your reserved Gold has been refunded. Please start the VM task again.'
 
 // Generous expiry — must be larger than the detached job's runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
@@ -74,7 +83,7 @@ const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'inte
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
-const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
+const DEFAULT_CODEX_MODEL = 'gpt-6.1-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'medium'
 const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
@@ -165,11 +174,13 @@ function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '', toke
  * nor the runner's settlement can afford (or should risk) a network read. Persisting the result also
  * freezes the run's price at launch, so a catalog refresh mid-run cannot move what the user pays.
  *
- * Never throws and never returns a bad rate: any failure falls through to `resolveTokensPerGold`'s
- * researched static table and then to the Sol base rate, because a pricing hiccup must not fail a run.
+ * Never throws and never returns a bad rate: failures fall through to `resolveTokensPerGold`'s
+ * researched table, conservative native-provider rate, and finally the Sol base rate. A pricing
+ * lookup hiccup must not fail a run.
  */
 async function resolveTokensPerGoldForRun(agentModel) {
     let upstreamPrice = null
+    let pricingModel = agentModel
     const openRouterModel = parseOpenRouterSelection(agentModel)
     if (openRouterModel) {
         try {
@@ -180,8 +191,22 @@ async function resolveTokensPerGoldForRun(agentModel) {
                 error: error.message,
             })
         }
+    } else if (agentModel === 'opus' || agentModel === 'sonnet' || agentModel === 'haiku') {
+        // Claude Code aliases are ideal for execution, but pricing must follow the concrete model
+        // currently behind the alias. If Anthropic ships Opus 6 at a new price, the newly discovered
+        // id takes the conservative unpriced-model path instead of silently retaining Opus 5's rate.
+        try {
+            const catalog = await getModelCatalog('claude')
+            const family = (catalog.families || []).find(entry => entry.id === agentModel)
+            if (family?.latestModel) pricingModel = family.latestModel
+        } catch (error) {
+            console.warn('🖥️ VM GOLD: Failed resolving Claude alias for pricing, using alias fallback', {
+                agentModel,
+                error: error.message,
+            })
+        }
     }
-    return resolveTokensPerGold(agentModel, VM_TOKENS_PER_GOLD, { upstreamPrice })
+    return resolveTokensPerGold(pricingModel, VM_TOKENS_PER_GOLD, { upstreamPrice })
 }
 
 function isClaudeModelId(model) {
@@ -220,7 +245,7 @@ function normalizeAgentModel(agent, agentModel) {
     }
     if (agent === 'codex') {
         return isCodexModelId(trimmed)
-            ? { value: trimmed }
+            ? { value: trimmed === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : trimmed }
             : { error: 'agentModel must be an OpenAI model id when agent="codex".' }
     }
     return { value: fallback }
@@ -276,6 +301,7 @@ function normalizeAgentReasoningEffort(agent, effort) {
         // tool when reasoning.effort is "minimal". Preserve compatibility with callers that
         // still send the old value by clamping it to the lowest supported VM effort.
         if (trimmed === 'minimal') return { value: 'low' }
+        if (trimmed === 'none') return { value: 'high' }
         if (!VALID_CODEX_REASONING_EFFORTS.includes(trimmed)) {
             return {
                 error: `agentReasoningEffort must be one of: ${VALID_CODEX_REASONING_EFFORTS.join(', ')}.`,
@@ -581,6 +607,19 @@ async function startVmJob({
     const personalApiKeyUsed = credentialMode === 'byok'
     const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed
 
+    // Minted before the base reserve is charged so every ledger entry this run produces —
+    // including the very first one — carries the run id (AT-2487). Previously the ledger held
+    // nothing that could be joined back to `vmJobs` at all, so attributing a spend to its
+    // billing mode meant matching on projectId + objectId + timestamp, which is ambiguous the
+    // moment a thread has run more than once.
+    const correlationId = crypto.randomUUID()
+
+    // The billing dimensions carried by every Gold movement of this run. `billingExempt`
+    // records whether the MODEL TOKENS were Gold-billed; the base reserve and the per-minute
+    // compute charge are paid either way, so an exempt run still spends Gold — which is
+    // exactly the distinction `goldStats` could not previously express.
+    const goldBillingDimensions = { model: modelResult.value, billingExempt: tokenBillingExempt, correlationId }
+
     // Charge the up-front base reserve. The metered per-minute + per-token top-up is
     // charged by the worker on completion. The base is refunded if the run fails.
     const { deductGold } = require('../Gold/goldHelper')
@@ -590,6 +629,7 @@ async function startVmJob({
         projectId,
         objectId,
         objectType,
+        ...goldBillingDimensions,
         note: `VM task base reserve (${selectedAgent}/${taskType})`,
     })
     if (!goldResult || !goldResult.success) {
@@ -599,7 +639,6 @@ async function startVmJob({
         }
     }
 
-    const correlationId = crypto.randomUUID()
     const userIdsToNotify = [requestUserId]
     // Frozen routing context for the asynchronous callback. The task/chat can change while the VM
     // runs, so the worker must not re-resolve the assistant from their eventual state.
@@ -626,6 +665,7 @@ async function startVmJob({
             projectId,
             objectId,
             objectType,
+            ...goldBillingDimensions,
             note: 'VM task could not be queued',
         }).catch(() => {})
         return { success: false, message: 'Could not start the VM task right now. Your Gold has been refunded.' }
@@ -842,6 +882,7 @@ async function startVmJob({
         requestUserId,
         statusCommentId,
         assistantId,
+        goldBillingDimensions,
     })
     if (launch.outcome === 'ambiguous') {
         return {
@@ -899,6 +940,11 @@ async function performVmCloudRunLaunch({
     requestUserId,
     statusCommentId,
     assistantId = null,
+    // Billing dimensions for the refund this function may issue (AT-2487). Passed in
+    // rather than re-read here: both callers already hold the job state, and a refund
+    // that dropped them would leave `vm_execution_refund` unattributable while the
+    // matching charge was attributed — i.e. a NET-cost figure that silently does not add up.
+    goldBillingDimensions = {},
     executionAttemptId = crypto.randomUUID(),
 }) {
     // The HTTP request only launches the detached execution; the five-hour sliced E2B supervision
@@ -948,6 +994,7 @@ async function performVmCloudRunLaunch({
             projectId,
             objectId,
             objectType,
+            ...goldBillingDimensions,
             note: 'VM Cloud Run Job could not be launched',
         }).catch(() => {})
         await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
@@ -1025,6 +1072,7 @@ async function settleQueuedVmJobInsufficientGold(pending) {
         projectId: pending.projectId,
         objectId: pending.objectId,
         objectType: pending.objectType,
+        ...buildVmGoldBillingDimensions(pending),
         note: 'Queued VM task skipped — out of Gold',
     }).catch(() => {})
     await admin
@@ -1073,6 +1121,87 @@ async function settleQueuedVmJobInsufficientGold(pending) {
 }
 
 /**
+ * Settle and refund a queued job whose authoritative vmSessions FIFO no longer references it.
+ *
+ * The pending record and session are re-read in one transaction so a normal drain that just
+ * claimed the job always wins. refundGold's idempotency key protects the post-transaction side
+ * effect if the scheduled reconciler is retried after the status write committed.
+ */
+async function settleOrphanedQueuedVmJob(correlationId, now = Date.now()) {
+    if (!correlationId) return false
+    const db = admin.firestore()
+    const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
+
+    const pending = await db.runTransaction(async transaction => {
+        const pendingSnapshot = await transaction.get(pendingRef)
+        if (!pendingSnapshot.exists) return null
+        const latest = pendingSnapshot.data() || {}
+        if (!latest.projectId || !latest.objectId) return null
+
+        const sessionRef = vmThreadSessionRef(latest.projectId, latest.objectId)
+        const sessionSnapshot = await transaction.get(sessionRef)
+        const session = sessionSnapshot.exists ? sessionSnapshot.data() || {} : null
+        if (!isOrphanedQueuedVmJob(latest, correlationId, session, now)) return null
+
+        transaction.set(
+            pendingRef,
+            {
+                status: 'failed',
+                failureReason: VM_ORPHANED_QUEUE_FAILURE_REASON,
+                error: 'Queued VM job lost its thread-session queue entry before launch',
+                failedAt: now,
+                orphanedQueueReconciledAt: now,
+            },
+            { merge: true }
+        )
+        return { ...latest, correlationId: latest.correlationId || correlationId }
+    })
+    if (!pending) return false
+
+    const { refundGold } = require('../Gold/goldHelper')
+    await refundGold(pending.userId, Number(pending.goldCharged) || VM_JOB_BASE_GOLD, {
+        source: VM_JOB_GOLD_REFUND_SOURCE,
+        idempotencyKey: `vm_job_refund:${correlationId}`,
+        channel: 'assistant',
+        projectId: pending.projectId,
+        objectId: pending.objectId,
+        objectType: pending.objectType,
+        ...buildVmGoldBillingDimensions(pending),
+        note: 'Orphaned queued VM task',
+    }).catch(() => {})
+
+    if (pending.statusCommentId) {
+        await db
+            .doc(
+                `chatComments/${pending.projectId}/${pending.objectType || 'tasks'}/${pending.objectId}/comments/${pending.statusCommentId}`
+            )
+            .set(
+                {
+                    commentText: VM_ORPHANED_QUEUE_FAILURE_TEXT,
+                    originalContent: VM_ORPHANED_QUEUE_FAILURE_TEXT,
+                    isLoading: false,
+                    assistantRun: {
+                        kind: 'vm_job',
+                        runId: correlationId,
+                        requestUserId: pending.userId,
+                        status: 'failed',
+                    },
+                    lastChangeDate: Timestamp.now(),
+                },
+                { merge: true }
+            )
+            .catch(() => {})
+    }
+
+    console.warn('🖥️ VM JOB: reconciled orphaned queued job', {
+        correlationId,
+        projectId: pending.projectId,
+        objectId: pending.objectId,
+    })
+    return true
+}
+
+/**
  * Flip a queued job to 'pending' and launch its Cloud Run execution. Called by the runner's drain
  * when the current thread job finishes, and by the stalled-queue sweeper. No-op if the job already
  * settled (e.g. cancelled while queued).
@@ -1085,7 +1214,7 @@ async function launchQueuedVmJob(correlationId) {
     if (!snap.exists) return { success: false, reason: 'not_found' }
     const pending = snap.data() || {}
     if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
-    if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pending.status)) {
+    if (['completed', 'failed', 'cancelled', 'interrupted', 'cancel_requested'].includes(pending.status)) {
         return { success: false, reason: 'settled', status: pending.status }
     }
     // Gold short-circuit: if the user can no longer afford to make progress, don't launch a run that
@@ -1112,6 +1241,7 @@ async function launchQueuedVmJob(correlationId) {
         requestUserId: pending.userId,
         statusCommentId: pending.statusCommentId,
         assistantId: pending.assistantId || null,
+        goldBillingDimensions: buildVmGoldBillingDimensions(pending),
     })
     return { success: launch.outcome !== 'failed', outcome: launch.outcome }
 }
@@ -1124,7 +1254,8 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
 
     for (const doc of snapshot.docs) {
         const pending = doc.data() || {}
-        if (pending.kind !== 'vm_job' || ['completed', 'failed', 'cancelled'].includes(pending.status)) continue
+        if (pending.kind !== 'vm_job' || ['completed', 'failed', 'cancelled', 'interrupted'].includes(pending.status))
+            continue
         result.checked += 1
         try {
             const execution = await findVmCloudRunExecution(pending.correlationId || doc.id, {
@@ -1177,6 +1308,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
                 projectId: pending.projectId,
                 objectId: pending.objectId,
                 objectType: pending.objectType,
+                ...buildVmGoldBillingDimensions(pending),
                 note: 'VM Cloud Run Job launch could not be confirmed',
             }).catch(() => {})
             if (pending.statusCommentId) {
@@ -1228,7 +1360,9 @@ module.exports = {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_JOB_EXPIRY_MS,
+    VM_ORPHANED_QUEUE_FAILURE_REASON,
     reconcileUnknownVmCloudRunLaunches,
+    settleOrphanedQueuedVmJob,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     DEFAULT_VM_EXECUTION_MODE,
     VALID_VM_EXECUTION_MODES,
@@ -1242,5 +1376,5 @@ module.exports = {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
     resolveAgentModelForRun,
-    __private__: { packageContextObjects, normalizeAgentModel },
+    __private__: { packageContextObjects, normalizeAgentModel, resolveTokensPerGoldForRun },
 }

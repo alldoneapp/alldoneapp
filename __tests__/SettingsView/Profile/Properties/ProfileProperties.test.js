@@ -72,6 +72,7 @@ describe('ProfileProperties', () => {
         expect(tree.root.findByType('UserDescriptionField').props.helperText).toEqual(
             'Global user description helper text'
         )
+        expect(tree.root.findByType('UserDescriptionField').props.focusOnInitialText).toBe(false)
         expect(typeof tree.root.findByType('UserGold').props.onPress).toBe('function')
     })
 
@@ -133,6 +134,7 @@ describe('ProfileProperties', () => {
         expect(tree.root.findByType('UserDescriptionField').props.helperText).toEqual(
             'Project user description helper text'
         )
+        expect(tree.root.findByType('UserDescriptionField').props.focusOnInitialText).toBe(true)
         expect(tree.root.findByType('UserGold').props.onPress).toBeUndefined()
     })
 })

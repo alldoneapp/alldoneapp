@@ -3,17 +3,14 @@ import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import AllProjectsLine from './AllProjectsLine'
-import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
-
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('./AllProjectData', () => 'AllProjectData')
-jest.mock('../../../Tags/AddTaskTag', () => 'AddTaskTag')
 jest.mock('../../../Avatar', () => 'Avatar')
 jest.mock('../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton', () => 'More')
 jest.mock('../../ToggleByTime', () => 'ToggleByTime')
 jest.mock('../../EmailLine/AllProjectsEmailLabelChips', () => 'AllProjectsEmailLabelChips')
 
-describe('AllProjectsLine add-task button', () => {
+describe('AllProjectsLine task actions', () => {
     beforeEach(() => {
         const state = {
             loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
@@ -22,12 +19,21 @@ describe('AllProjectsLine add-task button', () => {
         useSelector.mockImplementation(selector => selector(state))
     })
 
-    // AT-2306: in All Projects no project is in context, so the popup opens on
-    // "Automatic" rather than silently filing everything in the default project.
-    it('defaults to the Automatic project option', () => {
-        const addTask = renderer.create(<AllProjectsLine />).root.findByType('AddTaskTag')
+    it('leaves add-task creation to the board-level floating action', () => {
+        const tree = renderer.create(<AllProjectsLine />)
 
-        expect(addTask.props.projectId).toBe(AUTOMATIC_PROJECT_OPTION)
-        expect(addTask.props.showProjectSelector).toBe(true)
+        expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(0)
+        expect(tree.root.findAllByType('More')).toHaveLength(1)
+        expect(tree.root.findByType('More').props.projectIdOverride).toBeNull()
+    })
+
+    it('keeps the existing more action limited to the Open tab', () => {
+        const state = {
+            loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
+            taskViewToggleSection: 'Done',
+        }
+        useSelector.mockImplementation(selector => selector(state))
+
+        expect(renderer.create(<AllProjectsLine />).root.findAllByType('More')).toHaveLength(0)
     })
 })

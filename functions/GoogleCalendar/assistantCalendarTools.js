@@ -7,6 +7,13 @@ const moment = require('moment-timezone')
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
 const {
+    toGoogleRecurrence,
+    validateRecurrence,
+    resolveRecurringTarget,
+    validateScope,
+} = require('../Calendar/calendarRecurrence')
+const { CALENDAR_PROVIDER_GOOGLE, listCalendarConnections } = require('../Integrations/providerConnections')
+const {
     GOOGLE_CONFERENCE_DATA_VERSION,
     buildGoogleMeetCreateRequest,
     googleConferenceSucceeded,
@@ -41,22 +48,6 @@ const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
 const DEFAULT_WORKING_HOURS_START = '09:00'
 const DEFAULT_WORKING_HOURS_END = '17:00'
 const PUBLIC_MEETING_LINK_SETTINGS_PATH = userId => `users/${userId}/bookingSettings/default`
-
-function getActiveProjectIds(userData = {}) {
-    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
-    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
-    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
-    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
-    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
-
-    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
-    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
-    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
-        activeProjectIds.unshift(defaultProjectId)
-    }
-
-    return activeProjectIds
-}
 
 function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
@@ -236,30 +227,14 @@ async function getConnectedCalendarAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    const apisConnected = userData.apisConnected || {}
-    const activeProjectIds = getActiveProjectIds(userData)
-    const seenKeys = new Set()
-    const accounts = []
-
-    activeProjectIds.forEach(projectId => {
-        const connection = apisConnected?.[projectId]
-        if (!connection?.calendar) return
-        if (connection.calendarProvider === 'microsoft') return
-
-        const calendarEmail =
-            typeof connection.calendarEmail === 'string' ? connection.calendarEmail.trim().toLowerCase() : ''
-        const dedupeKey = calendarEmail || projectId
-        if (seenKeys.has(dedupeKey)) return
-        seenKeys.add(dedupeKey)
-
-        accounts.push({
-            projectId,
-            calendarEmail: calendarEmail || null,
-            calendarDefault: connection.calendarDefault === true,
-        })
-    })
-
-    return accounts
+    return listCalendarConnections(userData)
+        .filter(connection => connection.provider === CALENDAR_PROVIDER_GOOGLE)
+        .map(connection => ({
+            projectId: connection.connectionId,
+            connectionProjectId: connection.defaultProjectId || '',
+            calendarEmail: connection.emailAddress || null,
+            calendarDefault: connection.isDefaultAccount,
+        }))
 }
 
 async function getUserDefaultTimeZone(userId) {
@@ -855,6 +830,7 @@ function normalizeCalendarEvent(event, account, calendarId, includeDescription =
         hangoutLink: event?.hangoutLink || '',
         conferenceData: event?.conferenceData || null,
         recurringEventId: event?.recurringEventId || null,
+        recurrence: event?.recurrence || null,
     }
 }
 
@@ -917,7 +893,13 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    if (!calendarId) {
+    // Google uses "primary" as an alias within each account. When more than one account is
+    // connected, probing that alias across every account makes the otherwise deterministic saved
+    // default look ambiguous. Treat an explicit "primary" exactly like an omitted target so tool
+    // callers cannot accidentally bypass the user's saved default account.
+    const targetsDefaultCalendar = !calendarId || resolvedCalendarId === DEFAULT_CALENDAR_ID
+
+    if (targetsDefaultCalendar) {
         const defaultAccount = accounts.find(account => account.calendarDefault)
         if (defaultAccount) {
             return {
@@ -944,12 +926,12 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    if (!calendarId) {
+    if (targetsDefaultCalendar) {
         return {
             success: false,
             code: 'calendar_account_ambiguous',
             message:
-                'Multiple Google Calendar accounts are connected. Please provide a calendarId or connect only one Calendar account for assistant writes.',
+                'Multiple Google Calendar accounts are connected and no saved default is available. Please specify one of the connected calendar email targets or set a default Calendar account.',
             accounts,
         }
     }
@@ -1267,6 +1249,7 @@ async function createCalendarEventForAssistantRequest({
     attendees,
     calendarId,
     addConferencing,
+    recurrence,
 }) {
     const trimmedSummary = safeTrim(summary)
     if (!trimmedSummary) {
@@ -1277,6 +1260,7 @@ async function createCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
+    if (recurrence !== undefined) validateRecurrence(recurrence, start, resolvedTimeZone)
     const microsoftAccounts = await getConnectedMicrosoftCalendarAccounts(userId).catch(() => [])
     const googleAccounts = await getConnectedCalendarAccounts(userId).catch(() => [])
     if (microsoftAccounts.find(account => account.calendarDefault) || googleAccounts.length === 0) {
@@ -1291,6 +1275,7 @@ async function createCalendarEventForAssistantRequest({
             attendees,
             calendarId,
             addConferencing,
+            recurrence,
         })
     }
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
@@ -1315,6 +1300,7 @@ async function createCalendarEventForAssistantRequest({
         },
         { requireRange: true }
     )
+    if (recurrence !== undefined) payload.recurrence = toGoogleRecurrence(recurrence, payload.start, resolvedTimeZone)
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const inserted = await insertGoogleEventWithConferencing(calendar, resolution.calendarId, payload, addConferencing)
@@ -1349,6 +1335,8 @@ async function updateCalendarEventForAssistantRequest({
     timeZone,
     location,
     attendees,
+    recurrence,
+    scope,
 }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
@@ -1359,6 +1347,8 @@ async function updateCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
+    validateScope(scope)
+    if (recurrence !== undefined && scope !== 'series') throw new Error('Changing recurrence requires scope: series.')
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
         return updateMicrosoftCalendarEventForAssistantRequest({
@@ -1372,6 +1362,8 @@ async function updateCalendarEventForAssistantRequest({
             timeZone: resolvedTimeZone,
             location,
             attendees,
+            recurrence,
+            scope,
         })
     }
 
@@ -1388,6 +1380,24 @@ async function updateCalendarEventForAssistantRequest({
         { requireRange: false }
     )
 
+    const calendar = await getCalendarClient(userId, resolution.account.projectId)
+    const currentEvent =
+        resolution.event ||
+        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
+        {}
+    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
+    if (target.error) return target.error
+    if (recurrence !== undefined) {
+        const masterEvent =
+            target.eventId === trimmedEventId
+                ? currentEvent
+                : (await calendar.events.get({ calendarId: resolution.calendarId, eventId: target.eventId }))?.data ||
+                  {}
+        const recurrenceStart = payload.start || masterEvent.start
+        if (!recurrenceStart) throw new Error('The series start date is required to change recurrence.')
+        payload.recurrence = toGoogleRecurrence(recurrence, recurrenceStart, resolvedTimeZone)
+    }
+
     if (Object.keys(payload).length === 0) {
         return {
             success: false,
@@ -1395,10 +1405,9 @@ async function updateCalendarEventForAssistantRequest({
         }
     }
 
-    const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const response = await calendar.events.patch({
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
         requestBody: payload,
     })
 
@@ -1412,7 +1421,7 @@ async function updateCalendarEventForAssistantRequest({
     }
 }
 
-async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId }) {
+async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId, scope }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
         return {
@@ -1422,14 +1431,21 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
     }
 
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
+    validateScope(scope)
     if (!resolution.success) {
-        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId })
+        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId, scope })
     }
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
+    const currentEvent =
+        resolution.event ||
+        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
+        {}
+    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
+    if (target.error) return target.error
     await calendar.events.delete({
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
     })
 
     return {
@@ -1437,7 +1453,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
         message: 'Calendar event deleted successfully.',
     }
 }
@@ -1449,7 +1465,6 @@ module.exports = {
     updateCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
     __private__: {
-        getActiveProjectIds,
         normalizeLimit,
         normalizeEventDateTimeInput,
         validateEventRange,

@@ -95,6 +95,7 @@ const findUndoAllButtons = tree =>
 describe('OKRSection', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        clearUserOKRsHiddenInAllProjectsToday.mockResolvedValue(true)
         mockState = createState()
     })
 

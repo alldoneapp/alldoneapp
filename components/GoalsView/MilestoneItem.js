@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet } from 'react-native'
+import { TaskHierarchyGroup, useProjectSectionBorder } from '../TaskListView/TaskHierarchy'
 
 import DismissibleItem from '../UIComponents/DismissibleItem'
 import EditMilestone from './EditMilestone'
@@ -24,15 +25,18 @@ export default function MilestoneItem({
     previousMilestoneDate,
     isActiveMilestone,
 }) {
+    const borderColor = useProjectSectionBorder()
     const activeDragGoalMode = useSelector(state => state.activeDragGoalMode === milestone.id)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const userWorkstreamsIdsInProject = useSelector(state =>
         state.currentUser.workstreams ? state.currentUser.workstreams[projectId] : null
     )
-    const projectUsersAmount = useSelector(state => state.projectUsers[projectId].length)
-    const projectWorkstreamsAmount = useSelector(state => state.projectWorkstreams[projectId].length)
-    const projectContactsAmount = useSelector(state => state.projectContacts[projectId].length)
+    // AT-2386: filled on demand now - read defensively. These are useMemo dependencies, so the
+    // memo recomputes by itself once the real lengths arrive.
+    const projectUsersAmount = useSelector(state => (state.projectUsers[projectId] || []).length)
+    const projectWorkstreamsAmount = useSelector(state => (state.projectWorkstreams[projectId] || []).length)
+    const projectContactsAmount = useSelector(state => (state.projectContacts[projectId] || []).length)
     const boardGoals = useSelector(state => state.boardGoalsByMilestoneByProject[projectId][milestone.id])
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
 
@@ -99,11 +103,16 @@ export default function MilestoneItem({
 
     return (
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
-            <View style={localStyles.container} pointerEvents={activeDragGoalMode ? 'none' : 'auto'}>
+            <TaskHierarchyGroup
+                style={localStyles.container}
+                pointerEvents={activeDragGoalMode ? 'none' : 'auto'}
+                borderColor={borderColor}
+            >
                 <DismissibleItem
                     ref={setRef}
                     defaultComponent={
                         <MilestonePresentation
+                            inHierarchyCard
                             projectId={projectId}
                             onPress={openEditionMode}
                             milestone={milestone}
@@ -157,7 +166,7 @@ export default function MilestoneItem({
                         inDone={milestone.done}
                     />
                 )}
-            </View>
+            </TaskHierarchyGroup>
         )
     )
 }

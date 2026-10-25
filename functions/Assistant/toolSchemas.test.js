@@ -43,6 +43,26 @@ describe('Calendar assistant tool schemas', () => {
         expect(toolSchemas.update_calendar_event.function.parameters.required).toEqual(['eventId'])
         expect(toolSchemas.delete_calendar_event.function.parameters.required).toEqual(['eventId'])
     })
+
+    test('exposes recurrence and occurrence-or-series scope without changing single-event required fields', () => {
+        const create = toolSchemas.create_calendar_event.function.parameters.properties
+        const update = toolSchemas.update_calendar_event.function.parameters.properties
+        const remove = toolSchemas.delete_calendar_event.function.parameters.properties
+        expect(create.recurrence.properties.frequency.enum).toEqual(['daily', 'weekly', 'monthly', 'yearly'])
+        expect(update.recurrence).toBe(create.recurrence)
+        expect(update.scope.enum).toEqual(['occurrence', 'series'])
+        expect(remove.scope.enum).toEqual(['occurrence', 'series'])
+    })
+
+    test('tells calendar writes to omit primary and use the saved default account', () => {
+        const calendarWriteToolNames = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event']
+        calendarWriteToolNames.forEach(toolName => {
+            const description = toolSchemas[toolName].function.parameters.properties.calendarId.description
+            expect(description).toMatch(/omit this field/i)
+            expect(description).toMatch(/saved default/i)
+            expect(description).toMatch(/do not pass "primary"/i)
+        })
+    })
 })
 
 describe('Gmail assistant tool schemas', () => {
@@ -167,6 +187,18 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_user_memory.function.parameters.properties.reason.type).toBe('string')
     })
 
+    test('exposes optional parent goals with explicit clearing for task tools', () => {
+        for (const name of ['create_task', 'update_task']) {
+            const parameters = toolSchemas[name].function.parameters
+            expect(parameters.properties.parentGoalId.type).toEqual(['string', 'null'])
+            expect(parameters.required).not.toContain('parentGoalId')
+            expect(parameters.properties.parentGoalProjectId.type).toBe('string')
+        }
+        expect(toolSchemas.update_task.function.parameters.properties.parentGoalId.description).toContain(
+            'omitting this field preserves it'
+        )
+    })
+
     test('defines optional image URLs for create_task', () => {
         expect(toolSchemas.create_task.function.parameters.properties.images).toEqual({
             type: 'array',
@@ -178,7 +210,7 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
-    test('distinguishes direct user requests from proactive task suggestions', () => {
+    test('records task origin while assigning assistant-created tasks directly to the user', () => {
         const properties = toolSchemas.create_task.function.parameters.properties
 
         expect(properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
@@ -187,7 +219,9 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.comment.description).toContain('Required and non-empty')
         expect(properties.comment.description).toContain('context-specific reason')
         expect(properties.comment.description).toContain('do not merely restate the title')
-        expect(toolSchemas.create_task.function.description).toContain('suggested-task approval flow')
+        expect(toolSchemas.create_task.function.description).toContain('assigned directly to the user')
+        expect(properties.taskOrigin.description).toContain('without approval')
+        expect(properties.comment.description).toContain('assistant name')
         expect(toolSchemas.create_task.function.description).toContain('automation instruction')
         expect(toolSchemas.create_task.function.parameters.required).toEqual(['name', 'taskOrigin'])
     })
@@ -205,6 +239,15 @@ describe('User memory assistant tool schemas', () => {
     test('requires create_note responses to reuse the canonical URL without recreating the note', () => {
         expect(toolSchemas.create_note.function.description).toContain('canonical note URL')
         expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')
+    })
+
+    test('lets create_note name its target project without requiring one', () => {
+        const parameters = toolSchemas.create_note.function.parameters
+
+        expect(parameters.properties.projectId.type).toBe('string')
+        expect(parameters.properties.projectName.type).toBe('string')
+        expect(parameters.properties.projectName.description).toContain('exact project name')
+        expect(parameters.required).toEqual(['title', 'content'])
     })
 
     test('defines recurrence for task creation and updates', () => {
@@ -243,9 +286,9 @@ describe('User memory assistant tool schemas', () => {
     test('documents heartbeat settings update fields', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.model.enum).toEqual([
-            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT6_SOL',
             'MODEL_GPT5_6_TERRA',
-            'MODEL_GPT5_6_LUNA',
+            'MODEL_GPT6_LUNA',
             'MODEL_DEEPSEEK_V4_FLASH',
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.reasoningEffort.enum).toEqual([
@@ -288,6 +331,11 @@ describe('User memory assistant tool schemas', () => {
     test('documents project description update fields', () => {
         expect(toolSchemas.update_project_description.function.parameters.required).toEqual(['description'])
         expect(toolSchemas.update_project_description.function.description).toContain('shared context')
+        // A stable profile that routing reads, not a status report.
+        expect(toolSchemas.update_project_description.function.description).toContain("the project's stable profile")
+        expect(toolSchemas.update_project_description.function.description).toContain(
+            'Leave current status, recent activity, dated progress and weekly summaries out of it unless the user explicitly asks for them'
+        )
         expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
@@ -317,7 +365,7 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.assistantId.type).toBe('string')
         expect(properties.assistantName.type).toBe('string')
         expect(properties.projectId.type).toBe('string')
-        expect(properties.model.enum).toContain('MODEL_GPT5_6_SOL')
+        expect(properties.model.enum).toContain('MODEL_GPT6_SOL')
         expect(properties.model.enum).toContain('MODEL_GPT5_5')
         expect(properties.temperature.enum).toContain('TEMPERATURE_NORMAL')
         expect(Object.keys(properties)).not.toContain('allowedTools')
@@ -337,7 +385,14 @@ describe('User memory assistant tool schemas', () => {
             'summary',
             'progressCompleted',
             'progressTotal',
+            'currentProjectId',
+            'currentProjectName',
+            'nextProjectId',
+            'nextProjectName',
+            'projectIds',
         ])
+        expect(toolSchemas.compact_thread_context.function.strict).toBe(true)
+        expect(toolSchemas.compact_thread_context.function.parameters.additionalProperties).toBe(false)
         expect(toolSchemas.compact_thread_context.function.description).toContain('long-running')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.type).toBe('string')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.description).toContain(
@@ -345,10 +400,22 @@ describe('User memory assistant tool schemas', () => {
         )
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressCompleted.type).toBe('integer')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressTotal.type).toBe('integer')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectId.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectName.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectId.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectName.type).toBe('string')
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectId.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectName.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectId.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectName.type).toEqual([
+            'string',
+            'null',
+        ])
     })
 })
 
@@ -439,6 +506,8 @@ describe('VM assistant tool schema', () => {
         expect(properties.executionMode.description).toContain('existing non-interactive runner')
         expect(properties.executionMode.description).toContain('never silently downgrade')
         expect(properties.target_task_id.type).toBe('string')
+        expect(properties.target_project_id.type).toBe('string')
+        expect(properties.target_project_id.description).toContain("task's project")
         expect(properties.target_task_id.description).toContain('existing task')
         expect(properties.target_task_id.description).toContain('instead of creating a duplicate host task')
         expect(properties.target_task_id.description).toContain('Never pass both')
@@ -638,10 +707,79 @@ describe('Update note assistant tool schema', () => {
 
 describe('Update contact assistant tool schema', () => {
     test('supports contact-targeted updates with email writes', () => {
-        expect(toolSchemas.update_contact.function.parameters.required).toEqual(['email'])
+        // Since profile enrichment, an email is one of several optional fields; the executor
+        // rejects a call that changes nothing at all.
+        expect(toolSchemas.update_contact.function.parameters.required).toEqual([])
         expect(toolSchemas.update_contact.function.parameters.properties.contactId.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.contactName.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.contactEmail.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.email.type).toBe('string')
+    })
+})
+
+describe('Contact research tool schemas (profile enrichment)', () => {
+    test('exposes fetch_url and find_profile_photo when allowed', () => {
+        expect(getToolSchemas(['fetch_url', 'find_profile_photo']).map(schema => schema.function.name)).toEqual([
+            'fetch_url',
+            'find_profile_photo',
+        ])
+    })
+
+    test('fetch_url requires only the url and warns the model off LinkedIn', () => {
+        const schema = toolSchemas.fetch_url.function
+        expect(schema.parameters.required).toEqual(['url'])
+        expect(schema.description).toMatch(/LinkedIn pages cannot be read/)
+    })
+
+    test('find_profile_photo takes any combination of email, GitHub and page URLs', () => {
+        const { properties, required } = toolSchemas.find_profile_photo.function.parameters
+        expect(Object.keys(properties)).toEqual(['email', 'githubUsername', 'pageUrls'])
+        expect(properties.pageUrls.type).toBe('array')
+        expect(required).toEqual([])
+    })
+
+    test('update_contact accepts the enrichment fields and no longer forces an email', () => {
+        const { properties, required } = toolSchemas.update_contact.function.parameters
+        for (const field of [
+            'email',
+            'displayName',
+            'company',
+            'role',
+            'phone',
+            'linkedInUrl',
+            'description',
+            'photoUrl',
+            'contactStatusId',
+            'contactStatusName',
+        ]) {
+            expect(properties[field]).toBeDefined()
+        }
+        expect(required).toEqual([])
+        expect(properties.photoUrl.description).toMatch(/find_profile_photo/)
+    })
+})
+
+describe('Artifact assistant tool schemas', () => {
+    test('one Tools Access key offers all four artifact tools', () => {
+        expect(getToolSchemas(['artifacts']).map(schema => schema.function.name)).toEqual([
+            'get_artifacts',
+            'read_artifact',
+            'create_artifact',
+            'update_artifact',
+        ])
+        expect(getToolSchemas(['create_note']).map(schema => schema.function.name)).toEqual(['create_note'])
+    })
+
+    test('create and update take text files, and update can send only the change', () => {
+        const create = toolSchemas.create_artifact.function.parameters
+        expect(create.required).toEqual(['title', 'files'])
+        expect(create.properties.files.items.required).toEqual(['path', 'content'])
+
+        const update = toolSchemas.update_artifact.function.parameters
+        expect(update.required).toEqual(['artifactId'])
+        expect(update.properties.edits.items.required).toEqual(['path', 'find', 'replace'])
+        expect(Object.keys(update.properties)).toEqual(
+            expect.arrayContaining(['files', 'removePaths', 'title', 'description', 'changeSummary'])
+        )
     })
 })

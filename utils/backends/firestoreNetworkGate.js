@@ -1,4 +1,5 @@
 import store from '../../redux/store'
+import { isManualOfflineMode } from '../connectionHealth'
 
 /**
  * Stands Firestore's network down while the app is offline (offline log/battery
@@ -21,20 +22,24 @@ import store from '../../redux/store'
  * The boot-integrity healer's own disable/enable cycles cannot interleave: it
  * stands down entirely while `connectionState === 'offline'`.
  */
-export const installFirestoreNetworkGate = (db, { getState = store.getState, subscribe = store.subscribe } = {}) => {
+export const installFirestoreNetworkGate = (
+    db,
+    { getState = store.getState, subscribe = store.subscribe, isManualOffline = isManualOfflineMode } = {}
+) => {
     if (!db || typeof db.disableNetwork !== 'function') return () => {}
 
-    let lastState = getState().connectionState
+    const shouldParkNetwork = () => getState().connectionState === 'offline' || isManualOffline()
+    let wasParked = shouldParkNetwork()
     return subscribe(() => {
-        const connectionState = getState().connectionState
-        if (connectionState === lastState) return
-        lastState = connectionState
+        const shouldPark = shouldParkNetwork()
+        if (shouldPark === wasParked) return
+        wasParked = shouldPark
 
-        if (connectionState === 'offline') {
+        if (shouldPark) {
             db.disableNetwork().catch(error =>
                 console.warn('Failed to park the Firestore network while offline:', error)
             )
-        } else if (connectionState === 'online') {
+        } else {
             db.enableNetwork().catch(error =>
                 console.warn('Failed to resume the Firestore network after reconnect:', error)
             )

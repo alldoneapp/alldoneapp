@@ -42,12 +42,18 @@ class TaskTitle extends Component {
             selectedTab: storeState.selectedNavItem,
             taskTitleInEditMode: storeState.taskTitleInEditMode,
             mobile: storeState.smallScreenNavigation,
-            unsubscribe: store.subscribe(this.updateState),
         }
     }
 
     componentDidMount() {
         this._isMounted = true
+        // Subscribe here rather than in the constructor so the subscription's lifetime
+        // matches the mount lifetime. Redux notifies a snapshot of its listener list, so a
+        // dispatch that unmounts this view would otherwise still reach a listener registered
+        // for an instance that is already gone.
+        this.unsubscribe = store.subscribe(this.updateState)
+        // Catch up on any store change that landed between construction and mount.
+        this.updateState()
     }
 
     getMaxHeight = () => {
@@ -65,8 +71,9 @@ class TaskTitle extends Component {
 
     componentWillUnmount() {
         this._isMounted = false
-        if (this.state.unsubscribe) {
-            this.state.unsubscribe()
+        if (this.unsubscribe) {
+            this.unsubscribe()
+            this.unsubscribe = null
         }
     }
 
@@ -106,7 +113,15 @@ class TaskTitle extends Component {
         ) : null
 
         return (
-            <View style={[localStyles.titleContainer, { maxHeight: maxHeight }]}>
+            <View
+                style={[localStyles.titleContainer, { maxHeight: maxHeight }]}
+                dataSet={{
+                    annaObjectType: titleType === TITLE_NOTE ? 'note' : 'task',
+                    annaObjectId: object.id,
+                    annaProjectId: projectId,
+                    annaObjectView: 'detail',
+                }}
+            >
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     <View
@@ -156,10 +171,17 @@ class TaskTitle extends Component {
 
     updateState = () => {
         if (!this._isMounted) {
-            console.debug('[TaskTitle] updateState called after unmount')
             return
         }
         const storeState = store.getState()
+        const { selectedTab, taskTitleInEditMode, mobile } = this.state
+        if (
+            selectedTab === storeState.selectedNavItem &&
+            taskTitleInEditMode === storeState.taskTitleInEditMode &&
+            mobile === storeState.smallScreenNavigation
+        ) {
+            return
+        }
         this.setState({
             selectedTab: storeState.selectedNavItem,
             taskTitleInEditMode: storeState.taskTitleInEditMode,

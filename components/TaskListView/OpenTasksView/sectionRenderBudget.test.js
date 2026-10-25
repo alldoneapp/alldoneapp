@@ -141,3 +141,29 @@ describe('sectionRenderBudget - AT-2203: a background task must not unmount an o
         expect(settled).toEqual({ goalA: 4 })
     })
 })
+
+describe('sectionRenderBudget - AT-2507: a section that is leaving must still render', () => {
+    /**
+     * A goal section playing its departure has no tasks left under it — they have already collapsed
+     * away — so it always resolves to `amount === 0`. On a truncated list (the ordinary board, cut
+     * to the user's "number of today tasks") that is exactly the shape the budget skips, and a
+     * skipped section renders `null` while `MainSection` still holds its place out of the layout:
+     * the same pop the animation exists to remove, one animation later.
+     */
+    it('does not skip a leaving section that has nothing left to render', () => {
+        const budget = createSectionRenderBudget(false, { current: {} })
+
+        expect(budget.shouldSkip('goal-1', 0, true)).toBe(true)
+        expect(budget.shouldSkip('goal-1', 0, true, { leaving: true })).toBe(false)
+    })
+
+    it('leaves every other section exactly as it was', () => {
+        const budget = createSectionRenderBudget(false, { current: {} })
+
+        // The flag is opt-in, so an untouched call site cannot change behaviour.
+        expect(budget.shouldSkip('goal-1', 0, true, {})).toBe(true)
+        expect(budget.shouldSkip('goal-1', 0, true, { leaving: false })).toBe(true)
+        expect(budget.shouldSkip('goal-1', 2, true, { leaving: false })).toBe(false)
+        expect(budget.shouldSkip('goal-1', 0, false, { leaving: false })).toBe(false)
+    })
+})

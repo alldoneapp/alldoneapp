@@ -5,10 +5,12 @@
  */
 const fs = require('fs')
 const path = require('path')
+const vm = require('vm')
 
 const rootDir = path.resolve(__dirname, '..')
 
 const swSource = fs.readFileSync(path.join(rootDir, 'web-bundler', 'service-worker.js'), 'utf8')
+const handlerSource = fs.readFileSync(path.join(rootDir, 'web', 'service-worker-handler.js'), 'utf8')
 const webpackConfigSource = fs.readFileSync(path.join(rootDir, 'web-bundler', 'webpack.config.js'), 'utf8')
 
 // Instantiating the real config needs web-bundler's own node_modules (webpack,
@@ -54,6 +56,10 @@ describe('workbox service worker source', () => {
     it('does not intercept video, whose Range requests break against cached bodies', () => {
         expect(swSource).toContain('mp4')
     })
+
+    it('bypasses the browser HTTP cache for network-first navigation checks', () => {
+        expect(swSource).toContain("fetchOptions: { cache: 'no-store' }")
+    })
 })
 
 describe('web-bundler webpack config source (runs everywhere)', () => {
@@ -94,8 +100,99 @@ describe('service worker files', () => {
     })
 
     it('still registers the SW at the URL existing clients hold', () => {
-        const handler = fs.readFileSync(path.join(rootDir, 'web', 'service-worker-handler.js'), 'utf8')
-        expect(handler).toContain("register('/service-worker.js'")
+        expect(handlerSource).toContain("register('/service-worker.js'")
+    })
+
+    it('reloads a stale boot shell once after the current worker activates', () => {
+        expect(handlerSource).toContain('startup-shell-check=')
+        expect(handlerSource).toContain("{ cache: 'no-store' }")
+        expect(handlerSource).toContain('waitForWorkerActivation')
+        expect(handlerSource).toContain('window.location.reload()')
+        expect(handlerSource).toContain('alldone_stale_shell_reload_target')
+    })
+
+    it('detects and reloads a stale hashed bundle while online', async () => {
+        let onLoad
+        const reload = jest.fn()
+        const update = jest.fn(() => Promise.resolve())
+        const storage = new Map()
+        const context = {
+            Array,
+            Date,
+            Promise,
+            String,
+            clearTimeout,
+            console,
+            document: { scripts: [{ src: 'https://my.alldone.app/static/js/main.old.js' }] },
+            fetch: jest.fn(() =>
+                Promise.resolve({
+                    ok: true,
+                    text: () => Promise.resolve('<script src="/static/js/main.new.js"></script>'),
+                })
+            ),
+            navigator: {
+                serviceWorker: {
+                    getRegistration: () => Promise.resolve({ update, installing: null, waiting: null }),
+                    register: jest.fn(),
+                },
+            },
+            sessionStorage: {
+                getItem: key => storage.get(key) || null,
+                removeItem: key => storage.delete(key),
+                setItem: (key, value) => storage.set(key, value),
+            },
+            setTimeout,
+            window: {
+                addEventListener: (event, callback) => {
+                    if (event === 'load') onLoad = callback
+                },
+                location: { reload },
+            },
+        }
+
+        vm.runInNewContext(handlerSource, context)
+        await onLoad()
+
+        expect(context.fetch).toHaveBeenCalledWith(expect.stringContaining('startup-shell-check='), {
+            cache: 'no-store',
+        })
+        expect(update).toHaveBeenCalledTimes(1)
+        expect(storage.get('alldone_stale_shell_reload_target')).toBe('/static/js/main.old.js->/static/js/main.new.js')
+        expect(reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the cached shell when the startup version check is offline', async () => {
+        let onLoad
+        const reload = jest.fn()
+        const context = {
+            Array,
+            Date,
+            Promise,
+            String,
+            clearTimeout,
+            console,
+            document: { scripts: [{ src: 'https://my.alldone.app/static/js/main.cached.js' }] },
+            fetch: jest.fn(() => Promise.reject(new Error('offline'))),
+            navigator: {
+                serviceWorker: {
+                    getRegistration: () => Promise.resolve({ update: jest.fn() }),
+                    register: jest.fn(),
+                },
+            },
+            sessionStorage: { getItem: jest.fn(), removeItem: jest.fn(), setItem: jest.fn() },
+            setTimeout,
+            window: {
+                addEventListener: (event, callback) => {
+                    if (event === 'load') onLoad = callback
+                },
+                location: { reload },
+            },
+        }
+
+        vm.runInNewContext(handlerSource, context)
+        await onLoad()
+
+        expect(reload).not.toHaveBeenCalled()
     })
 
     it('keeps deleteCache away from the workbox precache', () => {

@@ -18,7 +18,7 @@ import useMoveObjectToProject from './useMoveObjectToProject'
  * - the PLAIN id-set semantics (ProjectHelper.getProjectsByType + the
  *   projectIds membership filter — deliberately NOT merged with
  *   SelectProjectModalInSearch's real* sets; callers own filtering),
- * - the move engine (useMoveObjectToProject) and its ordering: move, then
+ * - the move engine (useMoveObjectToProject) and its ordering: dispatch, then
  *   dismissAllPopups, then closePopover(newProject) — some hosts
  *   (NoteMoreButton) read the argument to know a move actually happened,
  * - picking the CURRENT project just closes without moving.
@@ -30,6 +30,11 @@ export default function SelectProjectModal({
     headerText,
     subheaderText,
     onSelectProject,
+    onTaskProjectMoveStarted,
+    onTaskProjectMoveEnqueued,
+    onTaskProjectMoveEnqueueFailed,
+    onNoteProjectMoveStarted,
+    onNoteProjectMoveFinished,
 }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -61,8 +66,22 @@ export default function SelectProjectModal({
     const handleSelect = async newProject => {
         committedProjectRef.current = newProject
         if (newProject.id === project.id) return
-        if (onSelectProject) onSelectProject()
-        await moveObjectToProject(item, project, newProject)
+        if (onSelectProject) onSelectProject(newProject)
+        if (item.type === 'task') onTaskProjectMoveStarted?.(newProject)
+        if (item.type === 'note') onNoteProjectMoveStarted?.(newProject)
+        try {
+            await moveObjectToProject(
+                item,
+                project,
+                newProject,
+                item.type === 'note'
+                    ? { onNoteProjectMoveFinished }
+                    : { onTaskProjectMoveEnqueued, onTaskProjectMoveEnqueueFailed }
+            )
+        } catch (error) {
+            if (item.type === 'note') onNoteProjectMoveFinished?.()
+            throw error
+        }
         dismissAllPopups()
     }
 
@@ -75,6 +94,12 @@ export default function SelectProjectModal({
             description={subheader}
             selectedProjectId={project.id}
             onSelectProject={handleSelect}
+            // Non-task object moves still complete synchronously. Task moves
+            // return immediately after dispatching their background worker, so
+            // this fallback busy label is only visible for the legacy branches.
+            getBusyDescription={destination =>
+                translate('Moving to projectName', { projectName: destination?.name || '' })
+            }
         />
     )
 }

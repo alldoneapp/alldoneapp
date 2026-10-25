@@ -1,0 +1,37 @@
+steps:
+    - name: gcr.io/cloud-builders/docker
+      args:
+          - build
+          - --file
+          - Assistant/browser-worker/Dockerfile
+          - --tag
+          - ${_IMAGE}
+          - .
+    - name: gcr.io/cloud-builders/docker
+      args:
+          - run
+          - --rm
+          - --entrypoint
+          - node
+          - ${_IMAGE}
+          - -e
+          - |
+              const assert = require('node:assert/strict');
+              assert.equal(process.versions.node.split('.')[0], '22');
+              assert.equal(require('node:zlib').constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, -17);
+              (async () => {
+                  const browser = await require('playwright').chromium.launch({
+                      headless: true,
+                      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+                  });
+                  try {
+                      const page = await browser.newPage();
+                      await page.setContent('<title>Runtime smoke check</title>');
+                      assert.equal(await page.title(), 'Runtime smoke check');
+                      console.log('Patched Node', process.version, 'Chromium', browser.version());
+                  } finally {
+                      await browser.close();
+                  }
+              })().catch(error => { console.error(error); process.exitCode = 1; });
+images:
+    - ${_IMAGE}

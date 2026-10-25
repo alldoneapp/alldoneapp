@@ -69,6 +69,7 @@ const installAudioContext = amplitudesPerContext => {
 }
 
 let hookValue
+let renderedHooks = []
 const Harness = ({ options }) => {
     hookValue = useRambleRecorder(options)
     return null
@@ -79,6 +80,7 @@ const renderHook = options => {
     act(() => {
         root = renderer.create(<Harness options={options} />)
     })
+    renderedHooks.push(root)
     return root
 }
 
@@ -87,6 +89,7 @@ const originalMediaDevices = navigator.mediaDevices
 beforeEach(() => {
     jest.useFakeTimers()
     recorderInstances = []
+    renderedHooks = []
     supportedTypes = ['audio/webm;codecs=opus', 'audio/webm']
     global.MediaRecorder = MockMediaRecorder
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -96,6 +99,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    act(() => renderedHooks.forEach(root => root.unmount()))
     jest.useRealTimers()
     delete global.MediaRecorder
     delete global.window.AudioContext
@@ -122,6 +126,54 @@ describe('isDictationSupported', () => {
 })
 
 describe('useRambleRecorder', () => {
+    test('keeps the screen awake only while the dictation recorder runs', async () => {
+        const sentinel = { release: jest.fn(async () => {}), addEventListener: jest.fn() }
+        const request = jest.fn(async () => sentinel)
+        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
+        renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+        await act(async () => {
+            await hookValue.start()
+        })
+        await Promise.resolve()
+        expect(request).toHaveBeenCalledWith('screen')
+
+        act(() => hookValue.stop())
+        expect(sentinel.release).toHaveBeenCalledTimes(1)
+        delete navigator.wakeLock
+    })
+
+    test('releases the screen lock on recorder error and unmount', async () => {
+        const sentinels = []
+        Object.defineProperty(navigator, 'wakeLock', {
+            configurable: true,
+            value: {
+                request: jest.fn(async () => {
+                    const sentinel = { release: jest.fn(async () => {}), addEventListener: jest.fn() }
+                    sentinels.push(sentinel)
+                    return sentinel
+                }),
+            },
+        })
+        const onError = jest.fn()
+        const root = renderHook({ onComplete: jest.fn(), onError })
+        await act(async () => {
+            await hookValue.start()
+        })
+        await Promise.resolve()
+        act(() => recorderInstances[0].onerror())
+        expect(sentinels[0].release).toHaveBeenCalledTimes(1)
+        expect(onError).toHaveBeenCalledWith('recorder-error')
+
+        await act(async () => {
+            await hookValue.start()
+        })
+        await Promise.resolve()
+        act(() => root.unmount())
+        expect(sentinels[1].release).toHaveBeenCalledTimes(1)
+        delete navigator.wakeLock
+    })
+
     test('start → data → stop delivers one base64 clip with mimeType and duration', async () => {
         // jsdom's FileReader schedules its load event through timers, so this test runs on real
         // ones; only the auto-stop test below needs the fake clock.
@@ -177,6 +229,210 @@ describe('useRambleRecorder', () => {
         expect(hookValue.isRecording).toBe(false)
         expect(onComplete).not.toHaveBeenCalled()
         expect(recorderInstances[0].stream.tracks[0].stop).toHaveBeenCalled()
+    })
+
+    /**
+     * Push-to-talk (AT-2405) releases the button whenever it likes, including while `start()` is
+     * still awaiting getUserMedia and the AT-2357 silence probe — several hundred milliseconds in
+     * which no MediaRecorder exists yet. Before these guards, `stop()` found `recorderRef.current`
+     * null, did nothing, and the recording then started AFTER the release with nothing left to
+     * stop it: a hot microphone running to the 300s cap, invisible because the UI had already
+     * gone back to idle.
+     */
+    describe('release before the microphone finished opening (AT-2405)', () => {
+        // Hold getUserMedia open so a release can be interleaved with acquisition, the way a real
+        // permission gate does.
+        const deferredStream = () => {
+            let release
+            const gate = new Promise(resolve => {
+                release = resolve
+            })
+            const issued = []
+            navigator.mediaDevices.getUserMedia = jest.fn(async () => {
+                await gate
+                const stream = buildStream()
+                issued.push(stream)
+                return stream
+            })
+            return { openMic: () => release(), issued }
+        }
+
+        test('stopping mid-acquisition never starts a recorder and reports nothing', async () => {
+            jest.useRealTimers()
+            const { openMic } = deferredStream()
+            const onComplete = jest.fn()
+            const onError = jest.fn()
+            renderHook({ onComplete, onError })
+
+            let pending
+            act(() => {
+                pending = hookValue.start()
+            })
+            // The user let go while the permission gate was still open.
+            let delivered
+            act(() => {
+                delivered = hookValue.stop()
+            })
+            expect(delivered).toBe(false)
+
+            await act(async () => {
+                openMic()
+                await pending
+            })
+
+            expect(recorderInstances).toHaveLength(0)
+            expect(hookValue.isRecording).toBe(false)
+            // Silent: the user held the button for a moment and nothing happened. An error here
+            // would be noise, not information.
+            expect(onError).not.toHaveBeenCalled()
+            expect(onComplete).not.toHaveBeenCalled()
+        })
+
+        test('the microphone acquired after an abort is handed straight back', async () => {
+            jest.useRealTimers()
+            const { openMic, issued } = deferredStream()
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            let pending
+            act(() => {
+                pending = hookValue.start()
+            })
+            act(() => {
+                hookValue.cancel()
+            })
+            await act(async () => {
+                openMic()
+                await pending
+            })
+
+            // Leaving the track live would keep the browser's recording indicator lit with no
+            // recording behind it — the user would think they were still being listened to.
+            expect(issued).toHaveLength(1)
+            expect(issued[0].tracks[0].stop).toHaveBeenCalled()
+            expect(recorderInstances).toHaveLength(0)
+        })
+
+        test('unmount while microphone permission is pending never requests a wake lock', async () => {
+            jest.useRealTimers()
+            const { openMic, issued } = deferredStream()
+            const request = jest.fn()
+            Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
+            const root = renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            let pending
+            act(() => {
+                pending = hookValue.start()
+                root.unmount()
+            })
+            await act(async () => {
+                openMic()
+                await pending
+            })
+
+            expect(issued[0].tracks[0].stop).toHaveBeenCalled()
+            expect(recorderInstances).toHaveLength(0)
+            expect(request).not.toHaveBeenCalled()
+            delete navigator.wakeLock
+        })
+
+        test('a second press cannot open a second recorder; a retry after cancel uses the new take', async () => {
+            jest.useRealTimers()
+            const { openMic, issued } = deferredStream()
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            let first
+            let retry
+            act(() => {
+                first = hookValue.start()
+                hookValue.start()
+            })
+            expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+            act(() => {
+                hookValue.stop()
+                retry = hookValue.start()
+            })
+            expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2)
+            await act(async () => {
+                openMic()
+                await Promise.all([first, retry])
+            })
+
+            expect(issued[0].tracks[0].stop).toHaveBeenCalled()
+            expect(recorderInstances).toHaveLength(1)
+            expect(hookValue.isRecording).toBe(true)
+        })
+
+        test('a start issued after an abort is not itself aborted', async () => {
+            jest.useRealTimers()
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            act(() => {
+                hookValue.stop()
+            })
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            expect(recorderInstances).toHaveLength(1)
+            expect(hookValue.isRecording).toBe(true)
+        })
+    })
+
+    describe('minimum recording duration (AT-2405)', () => {
+        test('a take shorter than the minimum is discarded, not uploaded', async () => {
+            jest.useRealTimers()
+            const onComplete = jest.fn()
+            const onError = jest.fn()
+            renderHook({ onComplete, onError })
+
+            await act(async () => {
+                await hookValue.start()
+            })
+            let delivered
+            act(() => {
+                recorderInstances[0].ondataavailable({ data: new Blob(['x'], { type: 'audio/webm' }) })
+                delivered = hookValue.stop({ minDurationMs: 60000 })
+            })
+
+            expect(delivered).toBe(false)
+            // Discarded exactly like Escape: nothing uploaded, no Gold spent, and no error message
+            // for what was plainly an accidental press.
+            expect(onComplete).not.toHaveBeenCalled()
+            expect(onError).not.toHaveBeenCalled()
+            expect(hookValue.isRecording).toBe(false)
+            expect(recorderInstances[0].stream.tracks[0].stop).toHaveBeenCalled()
+        })
+
+        test('a take that clears the minimum is delivered normally', async () => {
+            jest.useRealTimers()
+            const onComplete = jest.fn()
+            renderHook({ onComplete, onError: jest.fn() })
+
+            await act(async () => {
+                await hookValue.start()
+            })
+            let delivered
+            act(() => {
+                recorderInstances[0].ondataavailable({ data: new Blob(['x'], { type: 'audio/webm' }) })
+            })
+            await act(async () => {
+                delivered = hookValue.stop({ minDurationMs: 0 })
+                // jsdom's FileReader delivers its load event through timers, so the completion is
+                // polled for rather than assumed — same as the happy-path test above.
+                await new Promise((resolve, reject) => {
+                    const startedAt = Date.now()
+                    const poll = () => {
+                        if (onComplete.mock.calls.length) return resolve()
+                        if (Date.now() - startedAt > 3000) return reject(new Error('FileReader never completed'))
+                        setTimeout(poll, 10)
+                    }
+                    poll()
+                })
+            })
+
+            expect(delivered).toBe(true)
+            expect(onComplete).toHaveBeenCalled()
+        })
     })
 
     test('auto-stops at the max duration', async () => {
@@ -494,5 +750,55 @@ describe('useRambleRecorder', () => {
         })
 
         expect(tracks[0].stop).toHaveBeenCalled()
+    })
+
+    /**
+     * The live level for the hold overlay's meter (AT-2408). It is a getter rather than state on
+     * purpose — a level in state would re-render every consumer of this hook ten times a second,
+     * `EditorToolbar` among them — so the contract worth pinning is that it reads through to the
+     * monitor and answers a harmless 0 whenever there is nothing to read.
+     */
+    describe('getInputLevel', () => {
+        test('reads the live window level while recording', async () => {
+            jest.useRealTimers()
+            installAudioContext([0.4])
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            expect(hookValue.getInputLevel()).toBe(0)
+
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            expect(hookValue.getInputLevel()).toBeCloseTo(0.4)
+        })
+
+        test('answers 0 rather than throwing when there is no monitor', async () => {
+            // No Web Audio at all: the meter rests, the recording is unaffected. Reassurance is
+            // never allowed to become a gate on dictation working.
+            jest.useRealTimers()
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            expect(hookValue.getInputLevel()).toBe(0)
+        })
+
+        test('falls back to 0 once the recording has been torn down', async () => {
+            jest.useRealTimers()
+            installAudioContext([0.4])
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            act(() => {
+                hookValue.cancel()
+            })
+
+            expect(hookValue.getInputLevel()).toBe(0)
+        })
     })
 })

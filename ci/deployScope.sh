@@ -44,11 +44,14 @@
 #
 #   compute            Write deploy-scope.env with one DEPLOY_<TARGET>=0|1 per target.
 #                      Run once per pipeline, early; every later job reads the artifact
-#                      so they all make the SAME decision from the same data.
+#                      so web build/test/deploy use the same data. Functions refresh
+#                      their graph inside the serialized deployment job.
 #   require <target>   Exit 0 if that target must be deployed, 76 if it must not.
 #   record <target>    Move the marker to this commit. Call only after a successful
 #                      deploy. Never fails the job.
 #   marker-read <t>    Print the marker commit (used by ci/github-push.sh).
+#   functions-plan <t> Refresh function names from the verified marker; 76 on no-op.
+#   functions-begin <t> Record the attempt BEFORE deploying; fails closed if unavailable.
 #
 # EXIT CODES
 #
@@ -72,7 +75,8 @@
 # DEPLOY_MARKER_TOKEN with write_repository remains an explicit override for older GitLab
 # instances or projects that deliberately keep job-token pushes disabled.
 # Until either route works, `record` warns and the target falls back to the old push-range
-# comparison - no deployment regression, but the superseded-pipeline hole remains open.
+# comparison for path-scoped targets. Functions require attempt-marker writes before
+# deploying so a partial failure followed by a revert can never be silently skipped.
 #
 # Tag pipelines cannot be triggered by this: the workflow rules in .gitlab-ci.yml only
 # admit pipelines that have $CI_COMMIT_BRANCH, which a tag push does not.
@@ -93,10 +97,9 @@ PATHS_DIR="${DEPLOY_SCOPE_PATHS_DIR:-${PROJECT_DIR}/ci/deploy-scope}"
 MARKER_NAMESPACE="deployed"
 NOT_NEEDED_EXIT_CODE=76
 
-# Every target the `compute` step reports on. Staging is deliberately absent: `develop`
-# is dormant (roughly 1,660 commits behind master), so two pushes never race there, and
-# keeping it on plain `rules: changes:` keeps this mechanism to the branch that needs it.
-TARGETS="web-production functions-production runner-production"
+# Production targets reported by `compute`. Functions also refresh their selection
+# inside the serialized deploy job; staging uses that same selection directly.
+TARGETS="web-production functions-production runner-production firestore-rules-production firestore-tests"
 
 log() {
     echo "deploy-scope${TARGET:+ [$TARGET]}: $1"
@@ -135,7 +138,8 @@ g() {
 # disposable. Read it there rather than trusting anything local.
 marker_remote_sha() {
     have_git || return 1
-    g ls-remote origin "$(marker_ref "$1")" 2>/dev/null | awk 'NR == 1 { print $1 }'
+    remote_refs="$(g ls-remote origin "$(marker_ref "$1")" 2>/dev/null)" || return 1
+    printf '%s\n' "$remote_refs" | awk 'NR == 1 { print $1 }'
 }
 
 # A tree diff only needs both commit objects present, not a shared history, so a
@@ -170,14 +174,25 @@ target_has_changes() {
     mode=""
 
     if have_git; then
-        marker="$(marker_remote_sha "$t" || true)"
-        if [ -n "$marker" ] && fetch_marker "$t"; then
+        marker_target="$t"
+        marker="$(marker_remote_sha "$marker_target" || true)"
+        # Before the first dedicated test marker, a successful rules deployment
+        # is a tested baseline: that deployment was gated by the emulator suite.
+        if [ "$t" = "firestore-tests" ] && [ -z "$marker" ]; then
+            marker_target="firestore-rules-production"
+            marker="$(marker_remote_sha "$marker_target" || true)"
+        fi
+        if [ -n "$marker" ] && fetch_marker "$marker_target"; then
             base="$marker"
             mode="marker"
         fi
     fi
 
     if [ -z "$base" ]; then
+        if [ "$t" = "firestore-tests" ]; then
+            log "no verified test baseline; running the complete rules suite."
+            return 0
+        fi
         # No marker yet (or no git): fall back to the range this push introduced, which
         # is what `rules: changes:` used to compare. Same behaviour as before, including
         # the same hole - hence the warning.
@@ -194,9 +209,33 @@ target_has_changes() {
         fi
     fi
 
+    # Tests must use this exact verified deployment baseline, not a new remote
+    # read later in the pipeline and not the most recent push's parent.
+    if [ "$t" = "web-production" ] && [ "$mode" = "marker" ]; then
+        WEB_TEST_BASE="$base"
+    fi
+
     if ! commit_exists "$CI_COMMIT_SHA"; then
         log "this commit is not available locally; assuming a deploy is needed."
         return 0
+    fi
+
+    if [ "$t" = "functions-production" ]; then
+        # Individual exports and their transitive imports, including shared files
+        # outside functions/, determine the selection. An unverified push-range
+        # baseline cannot prove what shipped, so it deliberately selects all.
+        function_base=""
+        if [ "$mode" = "marker" ]; then function_base="$base"; fi
+        force_all="${FUNCTIONS_DEPLOY_ALL:-0}"
+        attempt="$(marker_remote_sha "${t}-attempt" || echo unknown)"
+        if [ -n "$attempt" ] && [ "$attempt" != "$function_base" ]; then force_all=1; fi
+        if FUNCTIONS_DEPLOY_ALL="$force_all" node "${SCRIPT_DIR}/selectFunctionsDeployment.js" "$function_base" "$CI_COMMIT_SHA" "${PROJECT_DIR}/functions-deploy-scope.json"; then
+            return 0
+        else
+            status=$?
+            if [ "$status" -eq 76 ]; then return 1; fi
+            die "Functions dependency analysis failed; refusing to publish an incomplete selection."
+        fi
     fi
 
     changed="$(g diff --name-only "$base" "$CI_COMMIT_SHA" 2>/dev/null || true)"
@@ -235,6 +274,7 @@ target_has_changes() {
 
 cmd_compute() {
     : >"$SCOPE_FILE"
+    WEB_TEST_BASE=""
     for t in $TARGETS; do
         TARGET="$t"
         if target_has_changes "$t"; then
@@ -244,6 +284,9 @@ cmd_compute() {
         fi
     done
     TARGET=""
+    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$WEB_TEST_BASE" "$CI_COMMIT_SHA" "${PROJECT_DIR}/web-test-scope.json")
+    functions_test_base="$(node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(p.base || "")' "${PROJECT_DIR}/functions-deploy-scope.json")"
+    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$functions_test_base" "$CI_COMMIT_SHA" "${PROJECT_DIR}/functions-test-scope.json" --functions)
     log "wrote $SCOPE_FILE:"
     sed 's/^/  /' "$SCOPE_FILE"
 }
@@ -287,6 +330,7 @@ cmd_record() {
         marker_push_user="gitlab-ci-token"
         MARKER_PUSH_TOKEN="$CI_JOB_TOKEN"
     else
+        [ "$CMD" != "functions-begin" ] || die "Cannot record Functions attempt without a marker token."
         log "WARNING: neither CI_JOB_TOKEN nor DEPLOY_MARKER_TOKEN is available, so the"
         log "         deploy marker cannot be recorded. Every pipeline will keep"
         log "         falling back to its own push diff."
@@ -295,21 +339,38 @@ cmd_record() {
     export MARKER_PUSH_TOKEN
 
     if ! have_git; then
+        [ "$CMD" != "functions-begin" ] || die "Cannot record Functions attempt without git."
         log "WARNING: git is unavailable, so the deploy marker was not recorded."
         return 0
     fi
 
     url="https://${CI_SERVER_HOST:-gitlab.com}/${CI_PROJECT_PATH:-}.git"
     ref="$(marker_ref "$TARGET")"
+    source_ref="$CI_COMMIT_SHA"
+    if [ "$TARGET" = "web-full-tests" ]; then
+        # Annotated tags carry the validation time, not the source commit time.
+        # A superseded full run must not move this marker backwards.
+        latest="$(g ls-remote origin "refs/heads/${CI_DEFAULT_BRANCH:-master}" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+        if [ "$latest" != "$CI_COMMIT_SHA" ]; then
+            log "not recording full-suite time for an unverified or superseded commit."
+            return 0
+        fi
+        if ! g -c user.name='Alldone CI' -c user.email='ci@alldone.app' tag --force --annotate "${MARKER_NAMESPACE}/${TARGET}" "$CI_COMMIT_SHA" --message='Full web test suite passed'; then
+            log "WARNING: full-suite timestamp could not be recorded; the next deployment will run the full suite."
+            return 0
+        fi
+        source_ref="$ref"
+    fi
 
     # The token is handed to git through a credential helper reading the environment, so
     # it never appears in a remote URL, a process command line or a GIT_TRACE dump - the
     # same precaution ci/github-push.sh takes.
     if g \
         -c "credential.${url}.helper=!f() { echo username=${marker_push_user}; echo password=\${MARKER_PUSH_TOKEN}; }; f" \
-        push --force --quiet "$url" "${CI_COMMIT_SHA}:${ref}" >/dev/null 2>&1; then
+        push --force --quiet "$url" "${source_ref}:${ref}" >/dev/null 2>&1; then
         log "marker ${ref} now points at ${CI_COMMIT_SHA}."
     else
+        [ "$CMD" != "functions-begin" ] || die "Could not record Functions attempt; refusing an untracked partial deploy."
         # Not fatal: the deploy itself succeeded. The next pipeline will simply compare
         # against the older marker and redeploy this range, which is wasteful but correct.
         log "WARNING: could not push ${ref}. The deploy succeeded; the next pipeline will"
@@ -325,13 +386,37 @@ cmd_marker_read() {
     marker_remote_sha "$TARGET" || true
 }
 
+cmd_functions_plan() {
+    case "$TARGET" in functions-production|functions-staging) ;; *) die "functions-plan requires a Functions target" ;; esac
+    base=""
+    marker="$(marker_remote_sha "$TARGET" || true)"
+    if [ -n "$marker" ] && fetch_marker "$TARGET"; then base="$marker"; fi
+    # A failed deploy can have updated only some batches. Even a subsequent
+    # revert back to the last successful source must repair those live functions.
+    force_all="${FUNCTIONS_DEPLOY_ALL:-0}"
+    attempt="$(marker_remote_sha "${TARGET}-attempt" || echo unknown)"
+    if [ -n "$attempt" ] && [ "$attempt" != "$base" ]; then
+        log "Unverified prior deployment attempt; reconciling all Functions."
+        force_all=1
+    fi
+    FUNCTIONS_DEPLOY_ALL="$force_all" node "${SCRIPT_DIR}/selectFunctionsDeployment.js" "$base" "$CI_COMMIT_SHA" "${PROJECT_DIR}/functions-deploy-scope.json"
+}
+
+cmd_functions_begin() {
+    case "$TARGET" in functions-production|functions-staging) ;; *) die "functions-begin requires a Functions target" ;; esac
+    TARGET="${TARGET}-attempt"
+    cmd_record
+}
+
 case "$CMD" in
     compute) cmd_compute ;;
     require) cmd_require ;;
     record) cmd_record ;;
     marker-read) cmd_marker_read ;;
+    functions-plan) cmd_functions_plan ;;
+    functions-begin) cmd_functions_begin ;;
     *)
-        echo "usage: $0 {compute | require <target> | record <target> | marker-read <target>}" >&2
+        echo "usage: $0 {compute | require <target> | record <target> | marker-read <target> | functions-plan <target> | functions-begin <target>}" >&2
         echo "targets: $TARGETS" >&2
         exit 2
         ;;

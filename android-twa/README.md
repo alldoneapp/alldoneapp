@@ -23,7 +23,7 @@ npx bubblewrap build --skipPwaValidation     # → app-release-signed.apk + app-
 Upload `app-release-bundle.aab` to the Play Console. For a shell release, bump
 `appVersionCode` (and `appVersion`) in `twa-manifest.json` first — Play requires
 a strictly increasing versionCode. Only shell changes (icon, splash, target SDK
-bumps, manifest colors) need a Play release at all.
+bumps, manifest colors, share-target intent filters) need a Play release at all.
 
 ## Signing (NOT in git)
 
@@ -75,3 +75,16 @@ npx bubblewrap install   # installs app-release-signed.apk on a connected device
 ```
 
 The URL bar disappears only once the asset links above are live.
+
+## Assistant voice calls in the background (AT-2496)
+
+Nothing in this shell is involved: a TWA renders in Chrome, so Chrome owns the
+microphone and its own "microphone in use" foreground notification, and keeps
+the tab alive while it captures — with the app in the background or the screen
+locked. The web side registers the call as a Media Session
+(`components/UIComponents/assistantCallBackground.js`), which is what gives
+Chrome's ongoing notification its title and a hang-up button. No extra
+permission is declared here on purpose: `RECORD_AUDIO` belongs to Chrome, not to
+the TWA package. Verify on a device: start a call, press Home, keep talking,
+lock the screen, return — the call topic's transcript must contain the turns
+spoken while backgrounded.

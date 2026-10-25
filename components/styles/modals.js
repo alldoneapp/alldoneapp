@@ -52,3 +52,15 @@ export const MODAL_EXIT_MS = 120
 
 export const MODAL_Z_BACKDROP = 9990
 export const MODAL_Z_CONTENT = 10000
+
+// The layer for a typeahead spawned from INSIDE a popup — today only the
+// caret-anchored @-mention list (AT-2397). It must sit above MODAL_Z_CONTENT
+// rather than beside it: the vendored popover library portals every popover to
+// `document.body`, so the mention list and its host popup are SIBLINGS in the
+// root stacking context, and DOM order does not decide the winner. A host that
+// sets any z-index at all (the "Add task" popup uses 9999, the mobile
+// BottomSheet MODAL_Z_CONTENT) paints over a sibling left at `z-index: auto` —
+// which is what the mention portal got, because the vendored `createContainer`
+// only ever sets overflow/position/top/left. Being nested in the React tree
+// buys the popup nothing here.
+export const MODAL_Z_AUTOCOMPLETE = 10500

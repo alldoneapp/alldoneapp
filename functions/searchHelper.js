@@ -29,6 +29,8 @@ const CONTACTS_OBJECTS_TYPE = 'contacts'
 const ASSISTANTS_OBJECTS_TYPE = 'assistants'
 const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
+const ARTIFACTS_OBJECTS_TYPE = 'artifacts'
+const ARTIFACTS_INDEX_NAME_PREFIX = 'dev_artifacts'
 const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
 const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
 
@@ -87,8 +89,11 @@ const getProjectFromList = (projectsList, projectId) => {
 
 const getNoteContent = async (projectId, noteId) => {
     console.log(`Getting content for note ${noteId} in project ${projectId}`)
-    const { defineString } = require('firebase-functions/params')
-    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+    // Deployed project identity wins over the configured parameter (AT-2498): a
+    // production indexer that reads the dev bucket does not degrade, it throws
+    // `storage.objects.get denied` and silently indexes nothing.
+    const { getNotesBucketName } = require('./shared/notesStorageBucket')
+    const notesBucketName = getNotesBucketName()
     console.log(`Using storage bucket: ${notesBucketName}`)
 
     const notesBucket = admin.storage().bucket(notesBucketName)
@@ -463,6 +468,8 @@ const getIndexName = objectsType => {
         namePrefix = CONTACTS_INDEX_NAME_PREFIX
     } else if (objectsType === CHATS_OBJECTS_TYPE) {
         namePrefix = UPDATES_INDEX_NAME_PREFIX
+    } else if (objectsType === ARTIFACTS_OBJECTS_TYPE) {
+        namePrefix = ARTIFACTS_INDEX_NAME_PREFIX
     }
     const indexName = namePrefix
     return indexName
@@ -514,4 +521,5 @@ module.exports = {
     getIndexName,
     GOALS_OBJECTS_TYPE,
     CHATS_OBJECTS_TYPE,
+    ARTIFACTS_OBJECTS_TYPE,
 }

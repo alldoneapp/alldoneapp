@@ -7,6 +7,11 @@ import {
 
 export const SKILL_SOURCE_CUSTOM = 'custom'
 export const SKILL_SOURCE_IMPORT = 'import'
+// Added by AT-2431: a skill composed from an uploaded file or from text pasted
+// into the Add-skill form. Recorded for provenance only — neither behaves
+// differently from a hand-written 'custom' skill once saved.
+export const SKILL_SOURCE_UPLOAD = 'upload'
+export const SKILL_SOURCE_PASTE = 'paste'
 
 export const MAX_SKILL_NAME_LENGTH = 64
 export const MAX_SKILL_DESCRIPTION_LENGTH = 1024
