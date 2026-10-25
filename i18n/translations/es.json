@@ -3590,5 +3590,6 @@
     "Artifact action needs internet": "Esto necesita conexión a internet. Inténtalo de nuevo cuando estés en línea.",
     "Open upload source": "Abrir origen",
     "Some uploads could not be loaded": "No se pudieron cargar algunos archivos. Vuelve a abrir Artefactos para reintentar.",
-    "Show in artifacts": "Mostrar en artefactos"
+    "Show in artifacts": "Mostrar en artefactos",
+    "File": "Archivo"
 }

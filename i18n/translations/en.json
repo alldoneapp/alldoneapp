@@ -3642,5 +3642,6 @@
     "Artifact action needs internet": "This needs an internet connection. Try again once you are online.",
     "Open upload source": "Open source",
     "Some uploads could not be loaded": "Some uploads could not be loaded. Reopen Artifacts to retry.",
-    "Show in artifacts": "Show in artifacts"
+    "Show in artifacts": "Show in artifacts",
+    "File": "File"
 }
