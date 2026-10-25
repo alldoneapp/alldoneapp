@@ -8,6 +8,7 @@ import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
 import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function ProjectKickedMemberFeed({
     feed,
@@ -21,7 +22,7 @@ export default function ProjectKickedMemberFeed({
     const [width, setWidth] = useState(0)
     const { kickedUserId, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
     const { photoURL: kickedUserAvatarURL, shortName: kickedUserName } = getUserPresentationDataInProject(
         projectId,
         kickedUserId

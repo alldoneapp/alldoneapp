@@ -9,6 +9,7 @@ const { tryAddFollower } = require('../Followers/followerHelper')
 const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+const { buildLastEditorVia } = require('../shared/mcpActor')
 
 /**
  * Set task estimation (Cloud Functions version)
@@ -63,10 +64,12 @@ async function setTaskEstimationsCloud(projectId, taskId, task, stepId, estimati
     // Update task estimation field
     // Normalize for both numeric and string keys (cross-environment compatibility)
     const taskRef = db.collection(`items/${projectId}/tasks`).doc(taskId)
+    const lastEditionDate = Date.now()
     const updateData = {
         [`estimations.${stepId}`]: estimation,
-        lastEditionDate: Date.now(),
+        lastEditionDate,
         lastEditorId: feedCreator.uid,
+        lastEditorVia: buildLastEditorVia(feedCreator, lastEditionDate),
     }
 
     // If stepId is OPEN_STEP, also update both -1 and 'Open' keys for cross-environment compatibility
