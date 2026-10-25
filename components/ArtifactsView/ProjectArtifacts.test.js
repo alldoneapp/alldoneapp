@@ -26,6 +26,14 @@ jest.mock('../UIControls/Button', () => {
         </TouchableOpacity>
     )
 })
+jest.mock('./ArtifactFileViewer', () => {
+    const { Text } = require('react-native')
+    return ({ fileId, files }) => (
+        <Text testID="artifact-file-viewer" files={files}>
+            {fileId}
+        </Text>
+    )
+})
 jest.mock('./ArtifactDetail', () => {
     const { Text } = require('react-native')
     return ({ artifactId }) => <Text testID="artifact-detail">{artifactId}</Text>
@@ -34,6 +42,8 @@ jest.mock('../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: () => fa
 jest.mock('../../utils/backends/Artifacts/artifactsFirestore', () => ({
     isArtifactUploadTooLarge: files => files.some(file => file.size > 20 * 1024 * 1024),
     uploadArtifactFiles: (...args) => mockUpload(...args),
+    getArtifactUrl: (projectId, artifact) =>
+        `https://serve.test/a/${projectId}/${artifact.id}/secret/${artifact.title}`,
 }))
 jest.mock('../../URLSystem/Artifacts/URLsArtifacts', () => ({
     __esModule: true,
@@ -169,7 +179,7 @@ it('filters by kind when there is more than one kind, and offers no filter other
     expect(single.root.findAllByProps({ testID: 'artifacts-kind-filter' })).toHaveLength(0)
 })
 
-it('opens a linked upload in its original source without creating an artifact detail or share link', async () => {
+it('opens a linked upload without a file address in its original source, creating no detail or share link', async () => {
     const source = { type: 'notes', id: 'original-note', title: 'Meeting notes' }
     mockArtifacts = [
         { id: 'upload:path', title: 'Existing.pdf', kind: 'pdf', linkedUpload: true, linkedSources: [source] },
@@ -180,4 +190,90 @@ it('opens a linked upload in its original source without creating an artifact de
     expect(mockPush).not.toHaveBeenCalled()
     expect(mockUpload).not.toHaveBeenCalled()
     expect(tree.root.findAllByProps({ testID: 'artifact-detail' })).toHaveLength(0)
+})
+
+const rowIdsOf = tree =>
+    tree.root
+        .findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('artifact-row-'), {
+            deep: false,
+        })
+        .map(row => row.props.testID.replace('artifact-row-', ''))
+
+const manyArtifacts = count =>
+    Array.from({ length: count }, (_, index) => ({
+        id: `a${index}`,
+        title: `Report ${index}.pdf`,
+        kind: 'pdf',
+        lastEditionDate: count - index,
+        sizeBytes: 1,
+        versionCount: 1,
+    }))
+
+it('shows three per project in All projects and the rest behind show more, like Notes', async () => {
+    mockArtifacts = manyArtifacts(5)
+    const tree = await render({ inAllProjects: true })
+    expect(rowIdsOf(tree)).toEqual(['a0', 'a1', 'a2'])
+
+    const toggle = () => tree.root.findByType(require('../UIControls/ShowMoreButton').default)
+    await act(async () => toggle().props.expand())
+    expect(rowIdsOf(tree)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4'])
+    await act(async () => toggle().props.contract())
+    expect(rowIdsOf(tree)).toEqual(['a0', 'a1', 'a2'])
+})
+
+it('shows ten in a single project and offers no show more when nothing is hidden', async () => {
+    mockArtifacts = manyArtifacts(12)
+    const tree = await render()
+    expect(rowIdsOf(tree)).toHaveLength(10)
+    expect(tree.root.findAllByType(require('../UIControls/ShowMoreButton').default)).toHaveLength(1)
+
+    mockArtifacts = manyArtifacts(3)
+    const short = await render({ inAllProjects: true })
+    expect(rowIdsOf(short)).toHaveLength(3)
+    expect(short.root.findAllByType(require('../UIControls/ShowMoreButton').default)).toHaveLength(0)
+})
+
+it('shows a linked screenshot in the viewer, and its link badge still leads to the source', async () => {
+    const source = { type: 'tasks', id: 'task-1', title: 'Roadmap' }
+    const shot = {
+        id: 'upload:attachments/c/shot.png',
+        title: 'shot.png',
+        kind: 'image',
+        linkedUpload: true,
+        linkedSources: [source],
+        url: 'https://storage.test/shot.png?token=t',
+        thumbnailUrl: 'https://storage.test/shot_300x300.png?token=t',
+    }
+    mockArtifacts = [shot, { ...mockArtifacts[0] }]
+    openProjectArtifacts.mockClear()
+    const tree = await render({ inAllProjects: true })
+
+    // The row draws the stored thumbnail, not the full file.
+    expect(tree.root.findByProps({ 'data-testid': 'artifact-thumbnail-image' }).props.src).toBe(shot.thumbnailUrl)
+
+    await act(async () => tree.root.findByProps({ testID: `artifact-row-${shot.id}` }).props.onPress())
+    const viewer = tree.root.findByProps({ testID: 'artifact-file-viewer' })
+    expect(viewer.props.children).toBe(shot.id)
+    // It walks through the uploads only; a full artifact opens its own detail.
+    expect(viewer.props.files.map(file => file.id)).toEqual([shot.id])
+    expect(mockOpenSource).not.toHaveBeenCalled()
+    expect(openProjectArtifacts).not.toHaveBeenCalled()
+
+    await act(async () => tree.root.findByProps({ testID: `artifact-open-source-${shot.id}` }).props.onPress())
+    expect(mockOpenSource).toHaveBeenCalledWith('project-a', source)
+    expect(tree.root.findAllByProps({ testID: 'artifact-file-viewer' })).toHaveLength(0)
+})
+
+it('previews a full image artifact through serveArtifact and keeps the icon for other kinds', async () => {
+    mockArtifacts = [
+        { id: 'img', title: 'chart.png', kind: 'image', lastEditionDate: 2, sizeBytes: 1, versionCount: 1 },
+        { id: 'doc', title: 'Report', kind: 'pdf', lastEditionDate: 1, sizeBytes: 1, versionCount: 1 },
+    ]
+    const tree = await render()
+    const images = tree.root.findAllByProps({ 'data-testid': 'artifact-thumbnail-image' })
+    expect(images.map(image => image.props.src)).toEqual(['https://serve.test/a/project-a/img/secret/chart.png'])
+
+    // A preview that cannot load falls back to the kind icon instead of a broken image.
+    await act(async () => images[0].props.onError())
+    expect(tree.root.findAllByProps({ 'data-testid': 'artifact-thumbnail-image' })).toHaveLength(0)
 })

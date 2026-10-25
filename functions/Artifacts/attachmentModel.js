@@ -29,25 +29,34 @@ function parseAttachmentUrl(url, bucketName) {
 
 const TOKEN_FORMATS = [
     { trigger: 'EbDsQTD14ahtSR5', nameIndex: 2, fields: 3 },
-    { trigger: 'O2TI5plHBf1QfdY', nameIndex: 3, fields: 4 },
+    { trigger: 'O2TI5plHBf1QfdY', nameIndex: 3, fields: 4, thumbnailIndex: 2 },
     { trigger: 'ptPQsef7OeB5eWd', nameIndex: 2, fields: 3 },
 ]
 
-// Reads saved comment/description tokens and Quill note deltas. Thumbnails are deliberately
-// ignored: a screenshot contributes its original file once, even if embedded more than once.
+// Reads saved comment/description tokens and Quill note deltas. A thumbnail is never a file of its
+// own: a screenshot contributes its original file once, even if embedded more than once, and its
+// stored thumbnail (an image's 300px copy) only rides along as `thumbnailUrl` for a list preview.
 function extractAttachmentReferences(content, bucketName) {
     const references = new Map()
-    const add = (url, fileName) => {
+    const add = (url, fileName, thumbnailUrl) => {
         const attachment = parseAttachmentUrl(url, bucketName)
-        if (!attachment || references.has(attachment.path)) return
-        references.set(attachment.path, { path: attachment.path, url, fileName: String(fileName || '') })
+        if (!attachment) return
+        const thumbnail = thumbnailUrl && parseAttachmentUrl(thumbnailUrl, bucketName) ? thumbnailUrl : null
+        const existing = references.get(attachment.path)
+        if (existing) {
+            if (thumbnail && !existing.thumbnailUrl) existing.thumbnailUrl = thumbnail
+            return
+        }
+        const reference = { path: attachment.path, url, fileName: String(fileName || '') }
+        if (thumbnail) reference.thumbnailUrl = thumbnail
+        references.set(attachment.path, reference)
     }
     const readText = text => {
-        for (const { trigger, nameIndex, fields } of TOKEN_FORMATS) {
+        for (const { trigger, nameIndex, fields, thumbnailIndex } of TOKEN_FORMATS) {
             const pattern = new RegExp(`${trigger}(?:[^\\r\\n]*?${trigger}){${fields - 1}}[^\\s]*`, 'g')
             for (const match of text.matchAll(pattern)) {
                 const parts = match[0].split(trigger)
-                add(parts[1], parts[nameIndex])
+                add(parts[1], parts[nameIndex], thumbnailIndex && parts[thumbnailIndex])
             }
         }
     }
@@ -59,7 +68,7 @@ function extractAttachmentReferences(content, bucketName) {
             else if (insert && typeof insert === 'object') {
                 for (const format of ['attachment', 'customImageFormat', 'videoFormat']) {
                     const value = insert[format]
-                    if (value) add(value.uri, value.text)
+                    if (value) add(value.uri, value.text, format === 'customImageFormat' && value.resizedUri)
                 }
             }
         }

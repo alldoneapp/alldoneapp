@@ -3632,5 +3632,8 @@
     "Open upload source": "Abrir origen",
     "Some uploads could not be loaded": "No se pudieron cargar algunos archivos. Vuelve a abrir Artefactos para reintentar.",
     "Show in artifacts": "Mostrar en artefactos",
+    "Artifact upload in": "En %{title}",
+    "Previous file": "Archivo anterior",
+    "Next file": "Archivo siguiente",
     "File": "Archivo"
 }

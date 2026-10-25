@@ -773,7 +773,12 @@ the artifact. Existing assistants store their own `allowedTools` and get the key
 **Linked uploads (AT-2828) supersede the original explicit-copy UI decision.** The All artifacts
 list additionally projects uploads from their readable source documents, comments and saved Yjs
 notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
-path yields one row; a row opens the source, never a new serving/public URL. Membership, original
+path yields one row, which never gets a new serving/public URL: pressing it opens
+`ArtifactFileViewer` with the download URL the source itself embeds (an image's stored 300px copy is
+the row thumbnail), and its link badge opens the source. Only img/video/audio render inline; a PDF or
+other file goes to a new tab, because Chrome frames a PDF only unsandboxed and a stored file's content
+type is whatever the uploader's browser declared. Lists show 3 per project in All projects and 10 in
+one project, the rest behind `ShowMoreButton`, like Notes. Membership, original
 query rules and current source privacy gate the projection; removals and listener failures clear
 it, including pending asynchronous note loads. `uploadsRevision` on notes announces completed local
 Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
