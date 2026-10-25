@@ -109,6 +109,50 @@ describe('a wiki revision in the Updates feed', () => {
         expect(db.read(`feedsObjectsLastStates/${PROJECT_ID}/wiki/wiki`)).toMatchObject({ type: 'wiki' })
     })
 
+    it("labels a correction a member's MCP client made, and badges that member too", async () => {
+        const db = createDb()
+        await createPage(db)
+        await writeKnowledgePage({
+            db,
+            projectId: PROJECT_ID,
+            slug: 'kunden-und-partner',
+            title: 'Kunden und Partner',
+            summary: 'Wer mit dem Projekt arbeitet.',
+            body: '## Acme\nAcme ist Kunde seit März [[correction:c1]].',
+            sourceKeys: ['correction:c1'],
+            allowedSourceKeys: new Set(['correction:c1']),
+            expectedRevision: 1,
+            mode: 'correction',
+            author: {
+                type: 'user',
+                userId: MEMBER,
+                name: 'Maria Muster',
+                correctionId: 'c1',
+                via: 'mcp',
+                viaClient: 'Claude',
+            },
+            reason: 'Acme ist seit März Kunde',
+            now: NOW + 1000,
+            fieldValue,
+        })
+
+        const result = await publishWikiRevisionFeed({
+            db,
+            projectId: PROJECT_ID,
+            slug: 'kunden-und-partner',
+            revision: db.read(revisionPath('kunden-und-partner', 2)),
+        })
+
+        const feedId = buildWikiFeedId('kunden-und-partner', 2)
+        expect(result.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        expect(db.read(`feedsStore/${PROJECT_ID}/all/${feedId}`)).toMatchObject({
+            creatorId: MEMBER,
+            via: 'mcp',
+            viaClient: 'Claude',
+        })
+        expect(db.read(`feedsCount/${PROJECT_ID}/${MEMBER}/followed`).wiki.wiki[feedId]).toBeDefined()
+    })
+
     it('badges every other member for a correction a member made, and follows it for them', async () => {
         const db = createDb()
         await createPage(db)

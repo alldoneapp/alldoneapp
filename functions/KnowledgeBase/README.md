@@ -20,6 +20,8 @@ its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-set
 | `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
 | `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state            |
 | `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
+| `knowledgeBaseSchedule.js`        | The payer's nightly slot, and whether the payer is active (30-day login window)         |
+| `knowledgeBaseDefaults.js`        | Switches the wiki on by default for active users' projects; resumes and hands over      |
 | `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct, undo and document tools                 |
 | `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
 | `knowledgeDocuments.js`           | Add a chat upload to the wiki (`documents/{id}`), or take it out again                  |
@@ -37,7 +39,10 @@ run goes through the same `runKnowledgeBaseIngest` queue as "refresh now".
    client writes).
 2. Functions: `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh`, `undoKnowledgeCorrection`,
    `runKnowledgeBaseIngest`, `dispatchKnowledgeBaseIngests`, `onCreateKnowledgePageRevisionSecondGen`
-   (the Updates feed lines), plus the task/goal/note/contact update
+   (the Updates feed lines), `applyKnowledgeBaseDefaults` (the daily default switch-on, which also
+   reaches the projects that existed before the default; no migration to run), `onCreateProjectSecondGen`
+   and `onUpdateUserSecondGen` (the same default for a new project and a returning user), plus the
+   task/goal/note/contact update
    and delete triggers that invalidate pages and every function that runs an assistant (the wiki
    context and tools live in `Assistant/assistantHelper.js`).
 3. Once per environment, after the first deploy of the worker, let the Firebase Admin SDK service

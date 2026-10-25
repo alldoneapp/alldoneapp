@@ -8,6 +8,7 @@ import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
 import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function NoteOwnerChangedFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -15,7 +16,7 @@ export default function NoteOwnerChangedFeed({ feed, projectId, showNewFeedDot, 
     const [width, setWidth] = useState(0)
     const { oldOwnerId, newOwnerId, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
     const { photoURL: oldOwnerAvatarURL, shortName: oldOwnerName } = getUserPresentationDataInProject(
         projectId,
         oldOwnerId

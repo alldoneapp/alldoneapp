@@ -12,6 +12,7 @@
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
+const { buildLastEditorVia } = require('./mcpActor')
 const TASK_PRIORITY_NONE = 'none'
 
 // Dynamic imports for cross-platform compatibility
@@ -825,6 +826,9 @@ class TaskService {
             if (editorId) updateData.lastEditorId = editorId
             const editorName = feedUser && (feedUser.displayName || feedUser.name)
             if (editorName) updateData.lastEditorName = editorName
+            // Who edited is not enough once an MCP client can edit in the user's name: the stamp says
+            // it was the agent, for the triggers that derive feeds from lastEditorId afterwards.
+            updateData.lastEditorVia = buildLastEditorVia(feedUser, currentTimestamp)
         }
 
         // Create updated task object for feed generation
@@ -1311,7 +1315,7 @@ class TaskService {
 
             if (this.options.isCloudFunction && undoInitiatorId) {
                 const undoableFields = ['name', 'extendedName', 'description', 'priority', 'hasStar']
-                const metadataFields = ['lastEditionDate', 'lastEditorId', 'lastEditorName']
+                const metadataFields = ['lastEditionDate', 'lastEditorId', 'lastEditorName', 'lastEditorVia']
                 const hasNonUndoableField = Object.keys(updateData).some(
                     field => !undoableFields.includes(field) && !metadataFields.includes(field)
                 )

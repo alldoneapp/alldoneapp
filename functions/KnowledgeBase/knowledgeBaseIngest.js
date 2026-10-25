@@ -18,6 +18,8 @@
 //     the next run is scheduled right away and continues from the cursor;
 //   - the monthly cap → the wiki pauses until the first of next month (UTC);
 //   - the owner is out of Gold → the next nightly slot;
+//   - the owner has not used Alldone for 30 days → paused (nextRunAt null) until they are back,
+//     which knowledgeBaseDefaults.js notices; nothing is spent on a member who is not there;
 //   - nothing changed → no model call at all, the next nightly slot.
 
 const admin = require('firebase-admin')
@@ -25,7 +27,6 @@ const { FieldValue } = require('firebase-admin/firestore')
 const crypto = require('crypto')
 
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
-const { getUserLocalDayStart } = require('../GoogleCalendar/calendarUserDay')
 const {
     advanceKnowledgeCursor,
     buildCorrectionCard,
@@ -35,6 +36,7 @@ const {
     loadKnowledgeSourcesByKeys,
 } = require('./collectKnowledgeSources')
 const {
+    KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
@@ -52,6 +54,7 @@ const {
     writeKnowledgePage,
 } = require('./knowledgePageStore')
 const { readPendingRewriteSlugs } = require('./knowledgeCurrentStateRewrite')
+const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
 
 // The run shares the heartbeat's budget for the same reason: it is delivered through Cloud Tasks,
 // whose dispatch deadline tops out at 30 minutes.
@@ -68,7 +71,6 @@ const MAX_CORRECTIONS_IN_PROMPT = 30
 // The project description rides in every conversation of a run, so it is capped like a source card.
 const PROJECT_DESCRIPTION_MAX_CHARS = 4000
 const CONTINUE_DELAY_MS = 60 * 1000
-const NIGHTLY_HOUR = 3
 const INGEST_TEMPERATURE = 'TEMPERATURE_LOW'
 const GOLD_SOURCE = 'knowledge_base_ingest'
 
@@ -88,13 +90,6 @@ function startOfNextMonthUtc(now) {
     return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)
 }
 
-// The next 03:00 in the owner's own day, so a wiki is rebuilt while its project sleeps.
-function nextNightlyRunAt(now, ownerData = {}) {
-    const dayStart = getUserLocalDayStart(ownerData, now)
-    const tonight = dayStart.clone().add(NIGHTLY_HOUR, 'hours').valueOf()
-    return tonight > now ? tonight : dayStart.clone().add(1, 'day').add(NIGHTLY_HOUR, 'hours').valueOf()
-}
-
 async function claimIngestLease(db, projectId, leaseId, now) {
     const ref = db.doc(getKnowledgeBasePath(projectId))
     return db.runTransaction(async transaction => {
@@ -111,7 +106,9 @@ async function claimIngestLease(db, projectId, leaseId, now) {
 }
 
 // Releases the lease and schedules the next run. A refresh or a rebuild requested while this run
-// was going (nextRunAt moved past its start) is honoured rather than overwritten.
+// was going (nextRunAt moved past its start) is honoured rather than overwritten. A paused wiki
+// (nextRunAt null) keeps such a request too: Math.min(null, x) is 0, which would make it due at once
+// and every 15 minutes after.
 async function releaseIngestLease(db, projectId, leaseId, startedAt, update, fieldValue) {
     const ref = db.doc(getKnowledgeBasePath(projectId))
     return db.runTransaction(async transaction => {
@@ -120,8 +117,10 @@ async function releaseIngestLease(db, projectId, leaseId, startedAt, update, fie
         const current = snapshot.data() || {}
         if (current.leaseOwner !== leaseId) return false
         let nextRunAt = update.nextRunAt
+        const requestedAt = Number(current.nextRunAt)
         if (current.enabled !== true) nextRunAt = null
-        else if (Number(current.nextRunAt) > startedAt) nextRunAt = Math.min(nextRunAt, Number(current.nextRunAt))
+        else if (requestedAt > startedAt)
+            nextRunAt = nextRunAt === null ? requestedAt : Math.min(nextRunAt, requestedAt)
         transaction.update(ref, {
             ...update,
             nextRunAt,
@@ -506,6 +505,9 @@ async function runKnowledgeBaseIngest({
         if (!ownerUserId) throw new KnowledgeBaseRunStop('no_owner')
         const ownerSnapshot = await db.doc(`users/${ownerUserId}`).get()
         ownerData = ownerSnapshot.exists ? ownerSnapshot.data() || {} : {}
+        if (ownerSnapshot.exists && !isKnowledgeBaseOwnerActive(ownerData, startedAt)) {
+            throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON)
+        }
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
         if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
 
@@ -711,11 +713,13 @@ async function runKnowledgeBaseIngest({
             ? 'partial'
             : 'completed'
     const nextRunAt =
-        stopReason === 'monthly_cap'
-            ? startOfNextMonthUtc(finishedAt)
-            : moreWork && !failure
-              ? finishedAt + CONTINUE_DELAY_MS
-              : nextNightlyRunAt(finishedAt, ownerData)
+        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
+            ? null
+            : stopReason === 'monthly_cap'
+              ? startOfNextMonthUtc(finishedAt)
+              : moreWork && !failure
+                ? finishedAt + CONTINUE_DELAY_MS
+                : nextNightlyRunAt(finishedAt, ownerData)
 
     if (runDocWritten) {
         await runRef.set(

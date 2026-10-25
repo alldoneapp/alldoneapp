@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
-import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 import { WIKI_FEED_AUTHOR_ID, getWikiFeedTarget } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import { openProjectWikiChange } from '../../WikiView/wikiLinks'
 import { describeWikiChange } from '../../WikiView/wikiChangeText'
@@ -22,7 +22,7 @@ export default function WikiPageChangedFeed({ feed, projectId, showNewFeedDot, f
     const byWiki = !feed.creatorId || feed.creatorId === WIKI_FEED_AUTHOR_ID
     const name = byWiki
         ? translate('The wiki')
-        : getUserPresentationDataInProject(projectId, feed.creatorId).shortName || translate('A project member')
+        : getFeedCreatorPresentationData(projectId, feed).shortName || translate('A project member')
 
     return (
         <TouchableOpacity

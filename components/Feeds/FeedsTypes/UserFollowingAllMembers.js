@@ -12,7 +12,8 @@ import {
     generatorParserViewElement,
 } from '../Utils/HelperFunctions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function UserFollowingAllMembers({
     feed,
@@ -26,7 +27,7 @@ export default function UserFollowingAllMembers({
     const [width, setWidth] = useState(0)
     const { creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const project = ProjectHelper.getProjectById(projectId)
     const projectName = project.name

@@ -11,6 +11,7 @@ const { divideArrayIntoSubgroups } = require('../Utils/HelperFunctionsCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { ALERT_NOTIFICATION_TYPE } = require('../Tasks/reminderChannels')
+const { MCP_CHANNEL } = require('../shared/mcpActor')
 
 const getUsersMap = async userIds => {
     const promises = []
@@ -149,7 +150,8 @@ const sendWhatsAppForNotifications = async (notifications, usersMap) => {
         const { projectName: parsedProjectName, objectName: parsedObjectName, updateText } = parsePushBody(body)
         const commentId = notification.id
 
-        const initiatorId = notification.initiatorId || null
+        // Something the user's MCP client did is news to the user, so the initiator is not skipped.
+        const initiatorId = notification.initiatorVia === MCP_CHANNEL ? null : notification.initiatorId || null
 
         userIds.forEach(userId => {
             const user = usersMap[userId]
