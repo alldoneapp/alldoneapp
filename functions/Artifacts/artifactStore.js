@@ -6,6 +6,7 @@ const { HttpsError } = require('firebase-functions/v2/https')
 
 const { buildObjectAccessProjection } = require('../shared/objectAccessProjection')
 const { canAccessObject } = require('../shared/privacyAccess')
+const { buildLastEditorVia, getActorChannelFields } = require('../shared/mcpActor')
 const {
     ARTIFACT_SOURCES,
     ArtifactInputError,
@@ -234,6 +235,9 @@ async function commitArtifactVersion({
     // Live project data for the page (artifactDataBridge.js): set on create, or changed by the
     // artifact's owner together with a new version. Undefined leaves it as it is.
     dataAccess,
+    // The MCP marker of a commit an MCP client made in the user's name (shared/mcpActor.js): the
+    // version, its history event and the artifact's last editor say which client it was.
+    actorChannel = null,
     db = admin.firestore(),
     bucket = admin.storage().bucket(),
     now = Date.now(),
@@ -242,6 +246,7 @@ async function commitArtifactVersion({
 }) {
     validateCaller(userId, projectId)
     const mergeWithCurrent = !!artifactId && keepUnchangedFiles === true
+    const lastEditorVia = buildLastEditorVia(actorChannel, now)
 
     let input
     try {
@@ -298,6 +303,7 @@ async function commitArtifactVersion({
         createdAt: now,
         changeSummary: input.changeSummary,
         source,
+        ...getActorChannelFields(actorChannel),
     }
     if (assistantId) versionBase.assistantId = assistantId
 
@@ -327,6 +333,7 @@ async function commitArtifactVersion({
                     versionCount: version.versionNumber,
                     lastEditorId: userId,
                     lastEditionDate: now,
+                    lastEditorVia,
                 }
                 if (input.title) patch.title = input.title
                 if (input.description) patch.description = input.description
@@ -367,6 +374,7 @@ async function commitArtifactVersion({
                 artifact.assistantId = assistantId
             }
             if (vmOutputKey) artifact.vmOutputKey = vmOutputKey
+            if (lastEditorVia) artifact.lastEditorVia = lastEditorVia
             // Written together with the artifact, so it is in the creator's list the moment the call
             // returns instead of after a projection trigger has run.
             Object.assign(artifact, buildObjectAccessProjection(artifact, project.userIds, null, FOLLOWER_FIELD))
@@ -430,6 +438,7 @@ async function setArtifactDataAccess({
     projectId,
     artifactId,
     enabled,
+    actorChannel = null,
     db = admin.firestore(),
     now = Date.now(),
 }) {
@@ -448,6 +457,7 @@ async function setArtifactDataAccess({
                 {
                     date: now,
                     actorId: userId,
+                    ...getActorChannelFields(actorChannel),
                 }
             )
         )
