@@ -30,6 +30,7 @@ const {
     advanceKnowledgeCursor,
     buildCorrectionCard,
     chunkKnowledgeSources,
+    cleanText,
     collectKnowledgeSources,
     loadKnowledgeSourcesByKeys,
 } = require('./collectKnowledgeSources')
@@ -64,6 +65,8 @@ const MAX_REBUILDS_PER_RUN = 10
 const MAX_CURRENT_STATE_REWRITES_PER_RUN = 10
 const MAX_TOOL_ROUNDS_PER_CONVERSATION = 40
 const MAX_CORRECTIONS_IN_PROMPT = 30
+// The project description rides in every conversation of a run, so it is capped like a source card.
+const PROJECT_DESCRIPTION_MAX_CHARS = 4000
 const CONTINUE_DELAY_MS = 60 * 1000
 const NIGHTLY_HOUR = 3
 const INGEST_TEMPERATURE = 'TEMPERATURE_LOW'
@@ -166,9 +169,24 @@ const WIKI_RULES = [
     '- When you are done, answer with one short line describing what you changed (or that nothing was worth adding).',
 ].join('\n')
 
-function buildSystemPrompt({ projectName, instructions, index, corrections, task }) {
+// The project description frames the wiki but is never one of its sources. It is free text that any
+// member, or an assistant acting for one, writes without a visibility filter, and it has no source
+// key: a statement copied from it could not be cited, and knowledgeSourceInvalidation.js, which
+// finds text only through the sources a page cites, could never take it back out of a page.
+const PROJECT_DESCRIPTION_RULE =
+    'Use it to judge what belongs in this wiki and how to frame its pages. It is not a source: never cite it and never copy a statement from it into a page; everything on a page comes from a source card or a correction. It can be out of date, so where it disagrees with a source card or a correction, those win.'
+
+function buildSystemPrompt({ projectName, projectDescription, instructions, index, corrections, task }) {
     return [
         `You maintain the wiki of the project "${projectName}" in Alldone: a small set of markdown pages that capture what the project knows. Project members read it, and the project's assistants use it as context.`,
+        ...(projectDescription
+            ? [
+                  '',
+                  'Project description, as the project members wrote it:',
+                  projectDescription,
+                  PROJECT_DESCRIPTION_RULE,
+              ]
+            : []),
         '',
         task,
         '',
@@ -491,7 +509,12 @@ async function runKnowledgeBaseIngest({
         if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
 
         const projectSnapshot = await db.doc(`projects/${projectId}`).get()
-        const projectName = (projectSnapshot.exists && projectSnapshot.data()?.name) || projectId
+        const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
+        const projectName = projectData.name || projectId
+        const projectDescription =
+            typeof projectData.description === 'string'
+                ? cleanText(projectData.description, PROJECT_DESCRIPTION_MAX_CHARS)
+                : ''
         const pages = await loadKnowledgePages(db, projectId)
         const corrections = await loadRecentCorrections(db, projectId)
         const correctionKeys = corrections.map(({ id }) => `correction:${id}`)
@@ -520,6 +543,7 @@ async function runKnowledgeBaseIngest({
                     label: `rebuild-${page.slug}`,
                     systemPrompt: buildSystemPrompt({
                         projectName,
+                        projectDescription,
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,
@@ -589,6 +613,7 @@ async function runKnowledgeBaseIngest({
                         label: `rewrite-${slug}`,
                         systemPrompt: buildSystemPrompt({
                             projectName,
+                            projectDescription,
                             instructions: knowledgeBase.instructions,
                             index: buildKnowledgeIndex(pages),
                             corrections,
@@ -635,6 +660,7 @@ async function runKnowledgeBaseIngest({
                     label: `ingest-${round}-${chunkIndex}`,
                     systemPrompt: buildSystemPrompt({
                         projectName,
+                        projectDescription,
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,

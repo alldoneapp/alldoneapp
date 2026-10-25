@@ -155,3 +155,42 @@ describe('SearchService note lookup cost', () => {
         ])
     })
 })
+
+describe('SearchService explicit project scope', () => {
+    // buildTypesenseFilters narrows to projectId exactly as given, so an id the caller does not
+    // belong to must be refused before any search pass runs.
+    const buildService = () => {
+        const userGet = jest.fn().mockResolvedValue({ exists: true, data: () => ({ projectIds: ['project-1'] }) })
+        const service = new SearchService({
+            database: { collection: jest.fn(() => ({ doc: jest.fn(() => ({ get: userGet })) })) },
+        })
+        service.initialized = true
+        service.searchWithOptimization = jest.fn().mockResolvedValue({ results: {}, totalResults: 0 })
+        return service
+    }
+
+    test('refuses a projectId outside the caller projects without searching', async () => {
+        const service = buildService()
+
+        await expect(service.search('user-1', { query: 'launch plan', projectId: 'project-foreign' })).resolves.toEqual(
+            {
+                results: {},
+                query: 'launch plan',
+                totalResults: 0,
+                message: 'Target project not found or not accessible: "project-foreign"',
+            }
+        )
+        expect(service.searchWithOptimization).not.toHaveBeenCalled()
+    })
+
+    test('searches a project the caller belongs to', async () => {
+        const service = buildService()
+
+        await service.search('user-1', { query: 'launch plan', projectId: 'project-1' })
+
+        expect(service.searchWithOptimization).toHaveBeenCalledWith(
+            'user-1',
+            expect.objectContaining({ projectId: 'project-1' })
+        )
+    })
+})

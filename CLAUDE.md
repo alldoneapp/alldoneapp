@@ -586,6 +586,17 @@ tools and the execution gate:
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
   or delegated assistant is not a member saying "this is wrong".
+- **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
+  server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
+  answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
+  and membership is still checked per call. The three tools are separate switches under Settings →
+  MCP (`mcpDisabledTools`), so correcting can be switched off while reading stays on. Over MCP
+  there is no page index in a prompt and no conversation project: `read_knowledge_page` without a
+  slug lists the pages, `projectId` defaults to the user's default project, and
+  `adaptToolSchemaForMcp` in `mcpServerSimple.js` rewrites exactly those parts of the shared
+  descriptions. A correction made this way records `sourceChannel: 'mcp'` and `assistantId: null`.
+  `__tests__/SettingsView/MCPSettingsToolParity.test.js` fails the build when the server serves a
+  tool that Settings → MCP cannot switch off (the six `browser_*` tools are a known exception).
 
 A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
 page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
@@ -623,6 +634,17 @@ source leaves the list without a model call; and a run stopped mid-conversation 
 pending, so the page is rewritten by the next run rather than skipped. Pinned by
 `knowledgeCurrentStateRewrite.test.js` and the `one-time current-state pass` block of
 `knowledgeBaseIngest.test.js`.
+
+**The project description frames the wiki and is never one of its sources.** The two have
+separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by
+people: what the project is, what belongs in it, standing rules. Task, calendar and Gmail routing,
+the email channel, VM jobs and projects without a wiki depend on it. The wiki holds everything that
+changes. Every ingest conversation therefore gets the description, capped at
+`PROJECT_DESCRIPTION_MAX_CHARS`, to judge scope and framing. It may never
+be cited or copied onto a page. It is free text written without a visibility filter and has no
+source key, so `knowledgeSourceInvalidation.js` could never take a copied statement back out.
+`update_project_description` and its base instruction steer assistants the same way: status
+and recent activity stay out of the description unless the user explicitly asks for them.
 
 Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
 under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
