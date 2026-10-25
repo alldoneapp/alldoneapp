@@ -4728,6 +4728,16 @@ exports.onCreateObjectCommentSecondGen = onDocumentCreated(
         if (isReplyCandidate(event.data.data())) {
             await enqueueAssistantCommentReply({ projectId, objectType, objectId, commentId })
         }
+        // A user message whose client was about to start the assistant is checked again shortly after,
+        // in case that client never got its request out (see Assistant/assistantMissedRunCatchUp.js).
+        const {
+            isMissedRunCandidate,
+            enqueueMissedAssistantRunCheck,
+        } = require('./Assistant/assistantMissedRunCatchUp')
+        const commentData = event.data.data() || {}
+        if (isMissedRunCandidate(commentData, { projectId, objectType, objectId })) {
+            await enqueueMissedAssistantRunCheck({ projectId, objectType, objectId, commentId }, commentData)
+        }
     }
 )
 
@@ -5953,6 +5963,8 @@ exports.runAssistantCommentReply = onTaskDispatched(
         rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
     },
     async req => {
+        const { isMissedAssistantRunTask, runMissedAssistantRun } = require('./Assistant/assistantMissedRunCatchUp')
+        if (isMissedAssistantRunTask(req.data)) return await runMissedAssistantRun(req.data)
         const { runAssistantCommentReply } = require('./Assistant/assistantCommentReply')
         return await runAssistantCommentReply(req.data || {})
     }

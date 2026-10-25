@@ -693,7 +693,7 @@ it('saves the visible context and one project conversation message before invoki
         true,
         'a1',
         null,
-        { id: 'm1', created: expect.any(Number) }
+        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true }
     )
     expect(mockContextUpdate.mock.invocationCallOrder[0]).toBeLessThan(createObjectMessage.mock.invocationCallOrder[0])
     expect(runHttpsCallableFunction).toHaveBeenCalledWith(
@@ -886,7 +886,7 @@ it('resumes a paused request after hand-back without replacing an unsent draft',
         true,
         'a1',
         null,
-        { id: 'm1', created: expect.any(Number) }
+        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true }
     )
     expect(container.querySelector('textarea').value).toBe('Find a note')
     expect(onResumeHandled).toHaveBeenCalledWith('resume1')
@@ -1012,7 +1012,11 @@ it('uses the final body renderer and keeps the message node through pending, per
     expect(mockMessageRender).toHaveBeenCalledWith('m1')
     expect(container.querySelector('.anna-message-text')).toBeNull()
     await act(async () => preparation.resolve())
-    expect(createObjectMessage.mock.calls[0][11]).toMatchObject({ id: 'm1', created: expect.any(Number) })
+    expect(createObjectMessage.mock.calls[0][11]).toMatchObject({
+        id: 'm1',
+        created: expect.any(Number),
+        requestsAssistantRun: true,
+    })
     expect(container.querySelector('.anna-message-user')).toBe(messageNode)
     expect(messageNode.children[1]).toBe(bodyNode)
     mockMessages = [

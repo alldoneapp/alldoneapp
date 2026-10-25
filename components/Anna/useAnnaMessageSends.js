@@ -112,7 +112,9 @@ export default function useAnnaMessageSends({
                         true,
                         thread.assistantId,
                         null,
-                        { id: job.id, created: job.created }
+                        // The run is started below, but the comment still records it so the server can
+                        // start it if this page goes away before the request is sent.
+                        { id: job.id, created: job.created, requestsAssistantRun: true }
                     )
                     if (!job.id) throw new Error(translate('Your message could not be sent. Please try again.'))
                     job.locallySaved = true

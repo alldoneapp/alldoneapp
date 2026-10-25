@@ -50,3 +50,11 @@ and invocation permission on the new `runassistantcommentreply` worker, followin
 the heartbeat/VM worker setup. Use `firebase-adminsdk-*@<project>`, as described in
 `CLAUDE.md`. Validate an enabled and disabled target in staging after deployment;
 unit tests do not invoke a live model or Cloud Tasks service.
+
+## The same worker also catches up missed user runs
+
+`runAssistantCommentReply` also receives `kind: 'missed_user_run'` tasks. The comment trigger
+schedules one 90 seconds after a human comment whose client recorded `assistantRunRequest`. The
+task starts that run only if its per-message lock still does not exist, i.e. the sender's page never
+got its `askToBotSecondGen` request out. See `assistantMissedRunCatchUp.js` and the CLAUDE.md
+section on it. Deploy the trigger and the worker together, as above.

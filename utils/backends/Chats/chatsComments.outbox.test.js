@@ -286,3 +286,92 @@ it('saves a global assistant conversation without trying to update a nonexistent
     expect(commits[0].some(write => write.path === 'assistants/p/items/global-assistant')).toBe(false)
     expect(docs.has('chatComments/p/assistants/global-assistant/comments/stable-id')).toBe(true)
 })
+
+// The server starts the run itself when this page never gets its askToBot request out
+// (functions/Assistant/assistantMissedRunCatchUp.js), so the comment has to say which run it expects.
+describe('recording the assistant run a comment expects', () => {
+    const storedComment = () => docs.get('chatComments/p/tasks/t/comments/stable-id')
+    const assistantRequest = { projectId: 'p', objectType: 'tasks', objectId: 't', assistantId: 'project-assistant' }
+
+    it('records the run this client is about to start', async () => {
+        runHttpsCallableFunction.mockResolvedValue({})
+        await createObjectMessage(
+            'p',
+            't',
+            'Prepare this meeting',
+            'tasks',
+            2,
+            null,
+            null,
+            false,
+            true,
+            'project-assistant'
+        )
+        goOnline()
+        await commentOutbox.flush()
+        expect(storedComment().assistantRunRequest).toEqual(assistantRequest)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'askToBotSecondGen',
+            expect.objectContaining({ messageId: 'stable-id', assistantId: 'project-assistant' }),
+            expect.any(Object)
+        )
+    })
+
+    it('records nothing in a thread without an assistant', async () => {
+        await submit()
+        goOnline()
+        await commentOutbox.flush()
+        expect(storedComment()).not.toHaveProperty('assistantRunRequest')
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('records nothing when the caller skips the assistant', async () => {
+        await createObjectMessage('p', 't', 'Just a note', 'tasks', 2, null, null, true, true, 'project-assistant')
+        goOnline()
+        await commentOutbox.flush()
+        expect(storedComment()).not.toHaveProperty('assistantRunRequest')
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('records the run of a caller that starts it itself, without a second request', async () => {
+        await createObjectMessage(
+            'p',
+            't',
+            'Anna, help me',
+            'tasks',
+            2,
+            null,
+            null,
+            true,
+            true,
+            'project-assistant',
+            null,
+            { id: 'stable-id', created: Date.now(), requestsAssistantRun: true }
+        )
+        goOnline()
+        await commentOutbox.flush()
+        expect(storedComment().assistantRunRequest).toEqual(assistantRequest)
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('records nothing for a webhook task, whose messages go to the webhook', async () => {
+        getTaskData.mockResolvedValue({
+            isPublicFor: [0],
+            assistantId: 'assistant',
+            creatorId: 'u',
+            extendedName: 'Webhook task',
+            isAssistantEnabled: true,
+            taskMetadata: { isWebhookTask: true, webhookUrl: 'https://example.test/hook' },
+        })
+        runHttpsCallableFunction.mockResolvedValue({})
+        await submit()
+        goOnline()
+        await commentOutbox.flush()
+        expect(storedComment()).not.toHaveProperty('assistantRunRequest')
+        expect(runHttpsCallableFunction).not.toHaveBeenCalledWith(
+            'askToBotSecondGen',
+            expect.anything(),
+            expect.anything()
+        )
+    })
+})

@@ -505,6 +505,43 @@ treats `duplicate: true` as "another invocation owns this task", which is a thir
 the contract's existing "server succeeded" and "no outcome reported". A request carrying no
 `messageId` (an empty prompt) acquires nothing and behaves exactly as before.
 
+### A user message is answered only if the sender's page gets its request out, so the server checks (AT-2848)
+
+The replay above is one way a callable goes wrong; the opposite is the request that never leaves.
+`createObjectMessage` stores the comment and then calls `askToBotSecondGen` **without awaiting it**,
+and nothing on the server reacted to a user comment. When the page went away in between, the comment
+was saved and never answered, with no error anywhere. Reproducer (2026-10-25, Android app): a topic
+from the assistant line, the `askToBot` CORS preflight logged at 19:29:55 UTC, 8.3s spent
+cold-starting (no warm instances since the cost review), and the page freshly loaded around 19:30
+(the boot batch of email-line, calendar-sync and Typesense calls repeats). The POST was never
+received. A missing POST
+after an `OPTIONS` 204 from the same `remoteIp` is the tell.
+
+`functions/Assistant/assistantMissedRunCatchUp.js` closes it with **evidence, not guesswork**. The
+client records the run it is about to start on the comment (`assistantRunRequest: {projectId,
+objectType, objectId, assistantId}`, written in the comment's own batch, so it is exactly as durable
+as the message). Anna's workspace sets it through `submission.requestsAssistantRun` because it starts
+its run itself. `onCreateObjectCommentSecondGen` schedules a check `MISSED_RUN_GRACE_SECONDS` (90s)
+later on the **existing** `runAssistantCommentReply` queue (`kind: 'missed_user_run'`, deterministic
+task id), so no new function and no IAM grant was needed. The check reads the per-message run lock
+first: the client's run takes it before anything else, so an existing lock in **any** state ends the
+check after one read, which is the outcome for nearly every message. Only a missing lock goes on to
+run `askToOpenAIBot` for the comment's author on the heartbeat 25-minute budget, with
+`retryFailed: false`. A client request that arrives later meets that lock and returns `duplicate`.
+
+What keeps it from answering twice or answering the wrong thing: the request must name the comment's
+**current** location, so a comment copied with its thread into another project or object does not get
+a second answer at its new address. A thread that has **any newer comment** is skipped, since that
+message's run (or its own catch-up) carries this one in its history. The assistant switched off
+(`isAssistantEnabled === false`), a webhook task, a deleted comment or thread, failing the callable's
+own `assertObjectAccess`, or a comment older than 24h all skip without taking the lock. Server-written
+user turns (WhatsApp daily topic, VM host requests, workflow step prompts) never carry the field, so
+they are untouched by construction. Clients older than this change write no field and keep the old
+behaviour. Pinned by `functions/Assistant/assistantMissedRunCatchUp.test.js` (including the
+`index.js` wiring) and the `recording the assistant run a comment expects` block of
+`utils/backends/Chats/chatsComments.outbox.test.js`. `generatePreConfigTaskResultSecondGen` has no
+catch-up: its requests carry task-completion semantics a server rerun would have to reproduce.
+
 ### A thread can pin its own assistant model (AT-2502)
 
 **The model lives on the THREAD's own document, next to the assistant that answers there.**
