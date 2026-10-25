@@ -15,10 +15,6 @@
 //     canCorrectKnowledgeBaseOnChannel). A heartbeat, a recurring task, a delegated assistant or a
 //     reply drafted from an email is not a member saying "this is wrong", and writing mode never
 //     writes.
-// An MCP client (Claude, Codex, any agent signed in through OAuth) is the one caller without an
-// assistant: it acts for the signed-in member directly, so it may read and correct. Each of the
-// three tools can be switched off on its own under Settings → MCP, which mcpServerSimple enforces
-// before a call ever reaches this module.
 //
 // A correction is a source of its own (knowledgeBases/{projectId}/corrections/{id}): it is stored
 // together with the page revision it produced, the ingest treats it as overriding older sources,
@@ -61,11 +57,6 @@ const ACCESS_CORRECT = 'correct'
  * tool call is executed.
  */
 function resolveKnowledgeBaseAccess(context) {
-    // The MCP server builds this context itself for the OAuth-authenticated user, so the channel
-    // cannot be claimed by a model. Membership is still checked per call.
-    if (context?.sourceChannel === 'mcp') {
-        return context.projectId && context.requestUserId ? ACCESS_CORRECT : ACCESS_NONE
-    }
     // Like load_skill, the wiki comes with an assistant: a bare model call (the writing router)
     // has no tools at all.
     if (!context?.projectId || !context?.requestUserId || !context?.assistantId) return ACCESS_NONE
@@ -296,7 +287,6 @@ async function correctKnowledgePage({ db, projectId, userId, assistantId, args, 
                 revisionAfter: revision,
                 objectType: toolRuntimeContext?.objectType || null,
                 objectId: toolRuntimeContext?.objectId || null,
-                sourceChannel: toolRuntimeContext?.sourceChannel || null,
                 createdAt: now,
             }),
     })

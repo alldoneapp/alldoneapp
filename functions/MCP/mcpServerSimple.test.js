@@ -191,31 +191,6 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         expect(create.inputSchema.properties.projectId.type).toBe('string')
     })
 
-    test('exposes the three project wiki tools, described for a client without an assistant', async () => {
-        const tools = await listTools()
-        const byName = Object.fromEntries(tools.map(tool => [tool.name, tool]))
-        for (const name of ['read_knowledge_page', 'correct_knowledge_page', 'undo_knowledge_correction']) {
-            expect(byName[name]).toBeDefined()
-            // An MCP client has no conversation, so the default is the user's default project.
-            expect(byName[name].inputSchema.properties.projectId.description).toMatch(/get_user_projects/)
-            expect(byName[name].inputSchema.properties.projectId.description).not.toMatch(/conversation/)
-        }
-        // ...and no page index in its instructions: it lists the pages with the same tool.
-        expect(byName.read_knowledge_page.description).toMatch(/without a slug first/)
-        expect(byName.read_knowledge_page.description).not.toMatch(/in your instructions/)
-        expect(byName.correct_knowledge_page.inputSchema.required).toEqual(['slug', 'revision', 'correction', 'body'])
-        expect(byName.undo_knowledge_correction.inputSchema.required).toEqual(['correctionId'])
-    })
-
-    test('leaves the shared wiki schemas untouched for the in-app assistant', async () => {
-        await listTools()
-        const { toolSchemas } = require('../Assistant/toolSchemas')
-        expect(toolSchemas.read_knowledge_page.function.description).toMatch(/wiki index in your instructions/)
-        expect(toolSchemas.read_knowledge_page.function.parameters.properties.projectId.description).toMatch(
-            /conversation/
-        )
-    })
-
     test('exposes the safe patch fields for update_note', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'update_note')
@@ -381,51 +356,6 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
         )
     })
 
-    test('runs a wiki tool through executeToolNatively in the requested project', async () => {
-        const server = buildServer()
-        mockExecuteToolNatively.mockResolvedValue({ success: true, pages: [] })
-
-        const response = await server.handleSingleJsonRpc(
-            {
-                jsonrpc: '2.0',
-                id: 6,
-                method: 'tools/call',
-                params: { name: 'read_knowledge_page', arguments: { projectId: 'project-2' } },
-            },
-            {}
-        )
-
-        expect(response.result.isError).toBeUndefined()
-        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
-            'read_knowledge_page',
-            { projectId: 'project-2' },
-            'project-2',
-            null,
-            'user-1',
-            {},
-            expect.objectContaining({ sourceChannel: 'mcp' })
-        )
-    })
-
-    test('asks for a project instead of running a wiki tool without one', async () => {
-        const server = buildServer()
-        server.getUserDefaultProject = jest.fn().mockResolvedValue(null)
-
-        const response = await server.handleSingleJsonRpc(
-            {
-                jsonrpc: '2.0',
-                id: 7,
-                method: 'tools/call',
-                params: { name: 'read_knowledge_page', arguments: {} },
-            },
-            {}
-        )
-
-        expect(response.result.isError).toBe(true)
-        expect(JSON.parse(response.result.content[0].text).error).toMatch(/projectId/)
-        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
-    })
-
     test('routes an MCP-only tool to its dedicated handler', async () => {
         const server = buildServer()
         server.getCurrentUserInfo = jest.fn().mockResolvedValue({ userId: 'user-1' })
@@ -531,34 +461,6 @@ describe('AlldoneSimpleMCPServer per-user MCP access', () => {
         const allowed = await callTool(server, 'get_tasks')
         expect(allowed.result.isError).toBeUndefined()
         expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
-    })
-
-    test('correcting the wiki can be switched off while reading and undoing stay available', async () => {
-        const server = buildServer({ enabled: true, disabledTools: ['correct_knowledge_page'] })
-        mockExecuteToolNatively.mockResolvedValue({ success: true })
-
-        const listed = await server.handleSingleJsonRpc({ jsonrpc: '2.0', id: 8, method: 'tools/list' }, {})
-        const names = listed.result.tools.map(tool => tool.name)
-        expect(names).not.toContain('correct_knowledge_page')
-        expect(names).toContain('read_knowledge_page')
-        expect(names).toContain('undo_knowledge_correction')
-
-        const blocked = await callTool(server, 'correct_knowledge_page')
-        expect(blocked.result.isError).toBe(true)
-        expect(JSON.parse(blocked.result.content[0].text).error).toMatch(/disabled/i)
-        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
-
-        const read = await callTool(server, 'read_knowledge_page')
-        expect(read.result.isError).toBeUndefined()
-        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
-            'read_knowledge_page',
-            expect.anything(),
-            'p1',
-            null,
-            'user-1',
-            {},
-            expect.objectContaining({ sourceChannel: 'mcp' })
-        )
     })
 })
 

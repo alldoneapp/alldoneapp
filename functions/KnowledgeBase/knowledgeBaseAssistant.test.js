@@ -113,15 +113,6 @@ describe('resolveKnowledgeBaseAccess', () => {
     it('lets writing mode read but never write', () => {
         expect(resolveKnowledgeBaseAccess(chatRun({ writingDraft: true }))).toBe('read')
     })
-
-    it('lets an MCP client, which acts for the signed-in member without an assistant, read and correct', () => {
-        const mcpCall = { projectId: PROJECT_ID, requestUserId: 'member', assistantId: null, sourceChannel: 'mcp' }
-        expect(resolveKnowledgeBaseAccess(mcpCall)).toBe('correct')
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, projectId: null })).toBe('none')
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, requestUserId: null })).toBe('none')
-        // Any other assistant-less context still gets nothing.
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, sourceChannel: 'whatsapp' })).toBe('none')
-    })
 })
 
 describe('getKnowledgeBaseContextMessage', () => {
@@ -277,7 +268,6 @@ describe('correct_knowledge_page', () => {
             revisionAfter: 3,
             objectType: 'topics',
             objectId: 'chat-1',
-            sourceChannel: null,
             createdAt: NOW,
         })
         expect(db.read(revisionPath('kunden', 3))).toMatchObject({
@@ -418,98 +408,5 @@ describe('undoing a correction', () => {
 
         expect(result).toMatchObject({ success: false, error: expect.stringMatching(/no longer available/) })
         expect(JSON.stringify(db.read(pagePath('kunden')))).not.toContain('Pilotkunde')
-    })
-})
-
-describe('over MCP', () => {
-    // The context executeToolNatively builds for an MCP call: the project the MCP server resolved,
-    // the OAuth-authenticated user, no assistant and no thread.
-    const mcpCall = (overrides = {}) => ({
-        projectId: PROJECT_ID,
-        requestUserId: 'member',
-        assistantId: null,
-        sourceChannel: 'mcp',
-        userTimezoneOffset: 120,
-        language: 'de',
-        objectType: null,
-        objectId: null,
-        ...overrides,
-    })
-    const mcpRun = (db, toolName, args, context = mcpCall()) =>
-        executeKnowledgeBaseTool({
-            db,
-            toolName,
-            args,
-            assistantId: null,
-            toolRuntimeContext: context,
-            now: NOW,
-            fieldValue,
-        })
-
-    it('lists and reads the pages a member may see', async () => {
-        const db = createDb()
-
-        const list = await mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, {})
-        expect(list.pages.map(page => page.slug)).toEqual(['entscheidungen', 'kunden'])
-
-        await expect(mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'kunden' })).resolves.toMatchObject({
-            success: true,
-            revision: 2,
-            body: KUNDEN_BODY,
-        })
-        await expect(mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'geheim' })).resolves.toMatchObject({
-            success: false,
-        })
-    })
-
-    it('corrects a page in the member’s name and records that the correction came through MCP', async () => {
-        const db = createDb()
-
-        const result = await mcpRun(db, CORRECT_KNOWLEDGE_PAGE_TOOL, {
-            slug: 'kunden',
-            revision: 2,
-            correction: 'Die Ansprechpartnerin heißt Frau Brandt.',
-            body: 'Ansprechpartnerin ist Frau Brandt [[correction:new]].',
-        })
-
-        expect(result).toMatchObject({ success: true, revision: 3 })
-        expect(db.read(`${KB_PATH}/corrections/${result.correctionId}`)).toMatchObject({
-            authorUserId: 'member',
-            authorName: 'Karsten',
-            assistantId: null,
-            objectType: null,
-            objectId: null,
-            sourceChannel: 'mcp',
-            status: 'applied',
-        })
-        expect(db.read(revisionPath('kunden', 3)).author).toMatchObject({
-            type: 'user',
-            userId: 'member',
-            assistantId: null,
-        })
-
-        await expect(
-            mcpRun(db, UNDO_KNOWLEDGE_CORRECTION_TOOL, { correctionId: result.correctionId })
-        ).resolves.toMatchObject({ success: true })
-        expect(db.read(pagePath('kunden')).body).toBe(KUNDEN_BODY)
-        expect(db.read(`${KB_PATH}/corrections/${result.correctionId}`).status).toBe('reverted')
-    })
-
-    it('refuses a project the signed-in user is no member of', async () => {
-        const db = createDb()
-
-        await expect(
-            mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, {}, mcpCall({ projectId: 'project-b' }))
-        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/members/) })
-        await expect(
-            mcpRun(db, CORRECT_KNOWLEDGE_PAGE_TOOL, {
-                slug: 'kunden',
-                revision: 2,
-                correction: 'x',
-                body: 'x',
-                projectId: 'project-b',
-            })
-        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/members/) })
-        expect(db.read(pagePath('kunden')).revision).toBe(2)
     })
 })
