@@ -12,6 +12,7 @@ const SOURCE_TYPE_ICONS = {
     goal: 'target',
     contact: 'user',
     correction: 'edit-3',
+    document: 'paperclip',
 }
 
 const SOURCE_TYPE_LABELS = {
@@ -20,6 +21,12 @@ const SOURCE_TYPE_LABELS = {
     goal: 'Goal',
     contact: 'Contact',
     correction: 'Correction',
+    document: 'Document',
+}
+
+// Corrections and documents added to the wiki live inside it and have no view of their own.
+export function isOpenableWikiSource(objectType) {
+    return objectType !== 'correction' && objectType !== 'document'
 }
 
 export function getWikiSourceLabel(node, sourceLabels = {}) {
@@ -73,7 +80,7 @@ function Inline({ nodes, context }) {
                 )
             }
             case 'source': {
-                const pressable = node.objectType !== 'correction'
+                const pressable = isOpenableWikiSource(node.objectType)
                 return (
                     <Text
                         key={index}
@@ -174,7 +181,8 @@ function Block({ block, context, depth = 0 }) {
 /**
  * Renders a wiki page body. Wiki links and source references come back through the callbacks, so
  * the view decides where they lead; a link to a page that does not exist (any more) is shown but
- * not pressable, and a correction cannot be opened because it has no view of its own.
+ * not pressable, and a correction or an added document cannot be opened because it has no view of
+ * its own.
  */
 export default function WikiMarkdown({
     body,

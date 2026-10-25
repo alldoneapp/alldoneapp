@@ -1,7 +1,8 @@
 # Project wiki (knowledge base)
 
 A Karpathy-style wiki per project: markdown pages an LLM compiles from the project's tasks,
-goals, notes and contacts, kept current by ingest runs and read by the project's assistants.
+goals, notes and contacts, and from documents members add to it through an assistant, kept
+current by ingest runs and read by the project's assistants.
 The design notes live in the module headers; this file is the operational checklist.
 
 The web client reads the wiki straight from Firestore (`utils/backends/KnowledgeBase/`) and
@@ -19,10 +20,16 @@ its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-set
 | `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
 | `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state            |
 | `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
-| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct and undo tools                           |
+| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct, undo and document tools                 |
 | `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
+| `knowledgeDocuments.js`           | Add a chat upload to the wiki (`documents/{id}`), or take it out again                  |
 | `knowledgeWikiFeedModel.js`       | How a revision appears in Updates: ids, change kinds (dependency-free, shared with web) |
 | `knowledgeWikiFeed.js`            | The revision trigger's body: one Updates line per revision, no page text in it          |
+
+A document's text comes from `WhatsApp/whatsAppFileExtraction.js`, which reads PDF, Word, text
+and — through `Utils/officeDocumentText.js` — PowerPoint (.pptx) and Excel (.xlsx). Adding one
+needs no new function: the tools run inside the existing assistant entry points, and the immediate
+run goes through the same `runKnowledgeBaseIngest` queue as "refresh now".
 
 ## Deploying
 

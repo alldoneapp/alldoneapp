@@ -255,6 +255,7 @@ const MCP_TOOL_PREFIX = 'mcp_'
 // the names, the policy and the audit trail all live under ./browser.
 const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./browser/browserToolContract')
 const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
+const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 // Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
 const { ARTIFACT_TOOL_KEY, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
 const MAX_MCP_TOOLS = 60
@@ -5405,6 +5406,18 @@ async function executeToolNativelyImpl(
             args: toolArgs,
             assistantId,
             toolRuntimeContext: { projectId, requestUserId, assistantId, ...(toolRuntimeContext || {}) },
+            // A document added to the wiki is always a file of THIS conversation, whichever project's
+            // wiki it goes to.
+            readChatAttachment: ({ messageId, fileName }) =>
+                readChatAttachmentFile({
+                    projectId: toolRuntimeContext?.projectId || projectId || '',
+                    objectType: toolRuntimeContext?.objectType || '',
+                    objectId: toolRuntimeContext?.objectId || '',
+                    messageId: messageId || toolRuntimeContext?.messageId || '',
+                    expectedFileName: fileName,
+                    explicitMessageIdProvided: !!messageId,
+                    userMessageText: userContext?.message || '',
+                }),
         })
     }
 
@@ -13053,6 +13066,9 @@ function inferMimeTypeFromFileName(fileName = '') {
     if (normalized.endsWith('.xlsx')) {
         return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     }
+    if (normalized.endsWith('.pptx')) {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    }
     if (normalized.endsWith('.png')) return 'image/png'
     if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
     return 'application/octet-stream'
@@ -13142,6 +13158,7 @@ function normalizeCommentMediaContext(messageData = {}) {
             previewUrl: previewUrl || (kind === 'image' ? storageUrl : ''),
             extractedText: String(media?.extractedText || '').substring(0, MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH),
             extractionStatus: String(media?.extractionStatus || '').trim(),
+            ...(media?.extractionTruncated === true ? { extractionTruncated: true } : {}),
         })
     })
 
@@ -13158,7 +13175,10 @@ function buildFileContextFromMediaContext(mediaContext = []) {
         const mimeType = media.mimeType || 'unknown'
         const extractedText = String(media.extractedText || '').trim()
         if (extractedText) {
-            parts.push(`[FILE: ${fileName}, type=${mimeType}]\n${extractedText}`)
+            // The model must know it sees only the beginning of a long file, or it answers about the
+            // whole document from its first pages.
+            const scope = media.extractionTruncated ? `, only the first ${extractedText.length} characters` : ''
+            parts.push(`[FILE: ${fileName}, type=${mimeType}${scope}]\n${extractedText}`)
         } else {
             parts.push(`[FILE ATTACHED: ${fileName}, type=${mimeType}]`)
         }
@@ -13310,7 +13330,9 @@ function shouldExtractTextFromMedia(media = {}) {
         fileName.endsWith('.csv') ||
         fileName.endsWith('.json') ||
         fileName.endsWith('.md') ||
-        fileName.endsWith('.docx')
+        fileName.endsWith('.docx') ||
+        isPptxFile(mimeType, fileName) ||
+        isXlsxFile(mimeType, fileName)
     )
 }
 
@@ -13346,6 +13368,7 @@ async function enrichCommentMediaContext(commentRef, messageData = {}) {
                     MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH
                 ),
                 extractionStatus: extraction?.status || (extraction?.extractedText ? 'extracted' : 'unsupported'),
+                ...(extraction?.truncated === true ? { extractionTruncated: true } : {}),
             }
             updated = true
         } catch (error) {
@@ -13364,7 +13387,10 @@ async function enrichCommentMediaContext(commentRef, messageData = {}) {
     return nextMediaContext
 }
 
-async function getChatAttachmentForAssistantRequest({
+// Which attachment a tool call means: the one on the given message, or — when the model passed no
+// message id — the most plausible recent upload in the thread. Shared by get_chat_attachment, which
+// hands the bytes to another tool, and add_knowledge_document, which reads the file into the wiki.
+async function resolveRequestedChatAttachment({
     projectId,
     objectType,
     objectId,
@@ -13400,7 +13426,7 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
-    let attachments = selectRequestedChatAttachments(
+    const attachments = selectRequestedChatAttachments(
         mediaContext.filter(isFetchableChatAttachment),
         normalizedExpectedFileName
     )
@@ -13415,26 +13441,7 @@ async function getChatAttachmentForAssistantRequest({
             userMessageText,
         })
 
-        if (fallbackAttachment) {
-            attachments = [fallbackAttachment.media]
-            return {
-                ...(await (async () => {
-                    const fileData = await fetchBinaryFileAsBase64(
-                        fallbackAttachment.media.storageUrl,
-                        fallbackAttachment.media.fileName
-                    )
-                    return {
-                        success: true,
-                        fileName: fallbackAttachment.media.fileName,
-                        fileBase64: fileData.fileBase64,
-                        fileMimeType: fileData.fileMimeType,
-                        fileSizeBytes: fileData.fileSizeBytes,
-                        source: 'chat',
-                        messageId: fallbackAttachment.messageId,
-                    }
-                })()),
-            }
-        }
+        if (fallbackAttachment) return { media: fallbackAttachment.media, messageId: fallbackAttachment.messageId }
     }
 
     if (attachments.length === 0) {
@@ -13453,15 +13460,39 @@ async function getChatAttachmentForAssistantRequest({
         )
     }
 
-    const fileData = await fetchBinaryFileAsBase64(attachment.storageUrl, attachment.fileName)
+    return { media: attachment, messageId: normalizedMessageId }
+}
+
+async function getChatAttachmentForAssistantRequest(request) {
+    const { media, messageId } = await resolveRequestedChatAttachment(request)
+    const fileData = await fetchBinaryFileAsBase64(media.storageUrl, media.fileName)
     return {
         success: true,
-        fileName: attachment.fileName,
+        fileName: media.fileName,
         fileBase64: fileData.fileBase64,
         fileMimeType: fileData.fileMimeType,
         fileSizeBytes: fileData.fileSizeBytes,
         source: 'chat',
-        messageId: normalizedMessageId,
+        messageId,
+    }
+}
+
+// The same attachment as raw bytes, for reading its text on the server. Nothing of it reaches the
+// conversation.
+async function readChatAttachmentFile(request) {
+    const { media, messageId } = await resolveRequestedChatAttachment(request)
+    const { buffer, fileMimeType, fileSizeBytes } = await fetchBinaryFileBuffer(
+        media.storageUrl,
+        media.fileName,
+        MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES
+    )
+    return {
+        fileName: media.fileName,
+        mimeType: fileMimeType || media.mimeType || inferMimeTypeFromFileName(media.fileName),
+        kind: media.kind || 'file',
+        buffer,
+        fileSizeBytes,
+        messageId,
     }
 }
 
@@ -14698,6 +14729,7 @@ module.exports = {
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
     getChatAttachmentForAssistantRequest,
+    readChatAttachmentFile,
     listRecentChatMediaForAssistantRequest,
     isFetchableChatAttachment,
     selectRequestedChatAttachments,

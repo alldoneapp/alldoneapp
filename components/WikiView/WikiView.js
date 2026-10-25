@@ -16,7 +16,7 @@ import URLsWiki, {
     URL_PROJECT_WIKI_PAGE,
     URL_PROJECT_WIKI_PAGE_CHANGE,
 } from '../../URLSystem/Wiki/URLsWiki'
-import WikiMarkdown, { getWikiSourceLabel } from './WikiMarkdown'
+import WikiMarkdown, { getWikiSourceLabel, isOpenableWikiSource } from './WikiMarkdown'
 import WikiPageHistory from './WikiPageHistory'
 import WikiPageChange from './WikiPageChange'
 import WikiCorrectionForm from './WikiCorrectionForm'
@@ -140,7 +140,7 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                                 key={source.key}
                                 testID={`wiki-page-source-${source.key}`}
                                 style={localStyles.sourceItem}
-                                disabled={source.objectType === 'correction'}
+                                disabled={!isOpenableWikiSource(source.objectType)}
                                 onPress={() => openWikiSource(projectId, source)}
                                 accessible={false}
                             >

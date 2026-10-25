@@ -669,6 +669,43 @@ source key, so `knowledgeSourceInvalidation.js` could never take a copied statem
 `update_project_description` and its base instruction steer assistants the same way: status
 and recent activity stay out of the description unless the user explicitly asks for them.
 
+**A member can hand the wiki a document: "put this deck into the wiki" (AT-2816).** The runs that
+may correct also get `add_knowledge_document` and `remove_knowledge_document`
+(`knowledgeDocuments.js`), offered as soon as the wiki is switched ON, not only once it has a page,
+because a deck is often the first thing a new wiki gets. The model passes no content: the server
+reads the uploaded file of THIS conversation (`readChatAttachmentFile`, the same resolution as
+`get_chat_attachment`), extracts up to 120,000 characters and stores them at
+`knowledgeBases/{id}/documents/{id}`, then pulls `nextRunAt` to now and enqueues a run. The ingest
+reads documents as a source type of their own, cited `[[document:ID]]`, with a rule to work the document
+into the pages it concerns rather than write a summary page next to them. Four things are
+load-bearing. A long document is split into parts of at most `DOCUMENT_PART_MAX_TOKENS` (10,000)
+because `chunkKnowledgeSources` CUTS an oversized card instead of splitting it — a deck would
+otherwise lose everything after its first ~55,000 characters, silently. Only the LAST part carries
+the cursor position, so a run that stops after part 2 of 4 reads the whole document again rather
+than never seeing parts 3 and 4. A document is not a note on purpose: it lives inside the wiki tree,
+shares its audience by construction (like a correction), and never shows up in notes lists or
+follower notifications; only the page revisions it causes reach the Updates feed, like any other
+wiki change. The current-state pass and rebuilds load all its parts through
+`loadKnowledgeSourcesByKeys`. And removal runs the same `invalidateKnowledgeSource` as an object that
+turned private — pages emptied, hidden and rebuilt, revisions redacted — after deleting the stored
+text, because members can read the whole tree. The same text hash already active answers
+`alreadyAdded` instead of feeding the document twice.
+
+**PowerPoint and Excel are read as text everywhere a file reaches an assistant.**
+`functions/Utils/officeDocumentText.js` turns .pptx (slides in the deck's own order from
+`presentation.xml`, speaker notes, no field text) and .xlsx (rows with " | ", dates formatted from
+the cell's number format, cached formula results) into text; `extractTextFromWhatsAppFile` uses it
+for WhatsApp, inbound email and chat uploads alike, and takes a `maxChars` budget (8,000 inline,
+120,000 for the wiki). A chat upload the model sees only the beginning of is now labelled
+`[FILE: name, type=…, only the first N characters]` (`extractionTruncated`), so it cannot answer
+about the whole deck from its first slides. The archive is untrusted: each part's declared size is
+checked before it is inflated (60 MB per part, 150 MB in all). Legacy .ppt/.xls and Keynote stay
+unsupported. `jszip` is pinned to 3.10.1, the version mammoth already brought in. Pinned by
+`officeDocumentText.test.js` (real files written by python-pptx/openpyxl and re-saved by
+LibreOffice, whose markup differs), `knowledgeDocuments.test.js` (a real deck end to end into the
+ingest's source card) and the `documents added to the wiki` block of
+`collectKnowledgeSources.test.js`.
+
 Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
 under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
 case-insensitive filesystem. The renderer is deliberately self-written (no Markdown dependency, no

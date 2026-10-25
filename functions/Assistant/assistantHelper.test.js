@@ -3823,6 +3823,110 @@ describe('assistant chat media helpers', () => {
         })
     })
 
+    test('reads a PowerPoint or Excel upload as text, so the assistant can see what it says', async () => {
+        const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
+        const commentRef = { set: jest.fn(async () => {}) }
+        mockCollectionGet.mockResolvedValue({
+            docs: ['deck.pptx', 'prices.xlsx'].map((fileName, index) => ({
+                id: `message-${index}`,
+                ref: commentRef,
+                data: () => ({
+                    created: index,
+                    fromAssistant: false,
+                    mediaContext: [{ kind: 'file', fileName, storageUrl: `https://cdn.example.com/${fileName}` }],
+                }),
+            })),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('zip-bytes'),
+            headers: { get: jest.fn(() => '') },
+        })
+
+        await listRecentChatMediaForAssistantRequest({
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+        })
+
+        expect(extractTextFromWhatsAppFile.mock.calls.map(([args]) => [args.fileName, args.contentType])).toEqual([
+            ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+            ['prices.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        ])
+        expect(commentRef.set).toHaveBeenCalledWith(
+            { mediaContext: [expect.objectContaining({ extractedText: 'Extracted text for deck.pptx' })] },
+            { merge: true }
+        )
+    })
+
+    test('tells the model when it sees only the beginning of a long file', () => {
+        const [media] = normalizeCommentMediaContext({
+            mediaContext: [
+                {
+                    kind: 'file',
+                    fileName: 'deck.pptx',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    storageUrl: 'https://cdn.example.com/deck.pptx',
+                    extractedText: 'Slide 1',
+                    extractionStatus: 'ok',
+                    extractionTruncated: true,
+                },
+            ],
+        })
+
+        expect(buildUserMessageContentFromComment('Put this into the wiki', [media])).toBe(
+            'Put this into the wiki\n\n[FILE: deck.pptx, type=application/vnd.openxmlformats-officedocument.presentationml.presentation, only the first 7 characters]\nSlide 1'
+        )
+    })
+
+    test('hands the wiki the bytes of a file from the conversation, never from the target project', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'Put the deck into the wiki of the other project',
+                mediaContext: [
+                    {
+                        kind: 'file',
+                        fileName: 'deck.pptx',
+                        storageUrl: 'https://cdn.example.com/deck.pptx',
+                        extractedText: 'Slide 1',
+                    },
+                ],
+            }),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('deck-bytes'),
+            headers: { get: jest.fn(() => '') },
+        })
+
+        await executeToolNatively(
+            'add_knowledge_document',
+            { projectId: 'other-project' },
+            'p1',
+            'anna',
+            'u1',
+            { message: 'Put the deck into the wiki of the other project' },
+            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1', messageId: 'm1' }
+        )
+        const [{ readChatAttachment, args }] = mockKnowledgeBase.executeKnowledgeBaseTool.mock.calls.at(-1)
+        expect(args).toEqual({ projectId: 'other-project' })
+
+        mockDocGet.mockClear()
+        const file = await readChatAttachment({ messageId: '', fileName: '' })
+
+        expect(mockDocGet.mock.contexts[0].path).toBe('chatComments/p1/topics/c1/comments/m1')
+        expect(file).toEqual({
+            fileName: 'deck.pptx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            kind: 'file',
+            buffer: Buffer.from('deck-bytes'),
+            fileSizeBytes: Buffer.from('deck-bytes').length,
+            messageId: 'm1',
+        })
+    })
+
     test('lists recent chat media with message ids and extracted-text availability', async () => {
         mockCollectionGet.mockResolvedValue({
             docs: [
