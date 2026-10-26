@@ -515,6 +515,27 @@ describe('runKnowledgeBaseIngest', () => {
         expect(db.read(KB_PATH).monthlyGold).toEqual({ month: '2026-10', spent: 2 })
     })
 
+    it('pauses without a model call while the payer has the project archived', async () => {
+        const db = createDb({
+            ['users/owner']: {
+                gold: 1000,
+                timezone: 2,
+                lastLogin: NOW - DAY,
+                archivedProjectIds: [PROJECT_ID],
+            },
+            [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+        })
+        const { runConversation } = scriptedModel()
+        const charge = jest.fn()
+
+        const result = await run(db, { runConversation, charge })
+
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(charge).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'project_archived', nextRunAt: null })
+        expect(db.read(KB_PATH)).toMatchObject({ nextRunAt: null, lastRunStopReason: 'project_archived' })
+    })
+
     it('stops when the owner has no Gold left', async () => {
         const db = createDb({
             ['users/owner']: { gold: 0, timezone: 2, lastLogin: NOW - DAY },

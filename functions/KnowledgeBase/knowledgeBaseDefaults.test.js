@@ -106,6 +106,112 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
         }
     })
 
+    it('neither switches on nor pays for a project the member archived, without reading it', async () => {
+        const db = createDb({ 'projects/p1': project(), 'projects/p2': project() })
+        const member = { ...user(ACTIVE, ['p1', 'p2']), archivedProjectIds: ['p1', 'p2'] }
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({ db, userId: 'creator', userData: member, now: NOW })
+
+        expect(stats).toMatchObject({ enabled: 0, archived: 2 })
+        expect(db.read(kbPath('p1'))).toBeUndefined()
+        expect(db.read(kbPath('p2'))).toBeUndefined()
+    })
+
+    it('lets a member who has the project active pay when its creator archived it', async () => {
+        const db = createDb({
+            'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            'projects/p1': project(),
+        })
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'member',
+            userData: user(ACTIVE),
+            now: NOW,
+        })
+
+        expect(stats.enabled).toBe(1)
+        expect(db.read(kbPath('p1'))).toMatchObject({ enabled: true, enabledBy: 'default', ownerUserId: 'member' })
+    })
+
+    it('resumes a wiki paused for an archived project once its payer reactivates it', async () => {
+        const paused = {
+            enabled: true,
+            enabledBy: 'default',
+            ownerUserId: 'creator',
+            nextRunAt: null,
+            lastRunStopReason: 'project_archived',
+        }
+        const db = createDb({ 'projects/p1': project(), [kbPath('p1')]: paused })
+
+        const stillArchived = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'creator',
+            userData: { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            now: NOW,
+        })
+        expect(stillArchived).toMatchObject({ archived: 1, resumed: 0 })
+        expect(db.read(kbPath('p1')).nextRunAt).toBeNull()
+
+        const reactivated = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'creator',
+            userData: { ...user(ACTIVE), archivedProjectIds: [] },
+            now: NOW,
+        })
+        expect(reactivated.resumed).toBe(1)
+        expect(db.read(kbPath('p1'))).toMatchObject({ ownerUserId: 'creator', nextRunAt: TONIGHT })
+    })
+
+    it('hands a default wiki to a member for whom the project is active once its payer archived it', async () => {
+        const db = createDb({
+            'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            'projects/p1': project(),
+            [kbPath('p1')]: {
+                enabled: true,
+                enabledBy: 'default',
+                ownerUserId: 'creator',
+                nextRunAt: null,
+                lastRunStopReason: 'project_archived',
+            },
+        })
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'member',
+            userData: user(ACTIVE),
+            now: NOW,
+        })
+
+        expect(stats.taken_over).toBe(1)
+        expect(db.read(kbPath('p1'))).toMatchObject({ ownerUserId: 'member', nextRunAt: TONIGHT })
+    })
+
+    it('leaves a wiki a member switched on themselves with them while they have it archived', async () => {
+        const paused = {
+            enabled: true,
+            enabledBy: 'member',
+            ownerUserId: 'creator',
+            nextRunAt: null,
+            lastRunStopReason: 'project_archived',
+        }
+        const db = createDb({
+            'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            'projects/p1': project(),
+            [kbPath('p1')]: paused,
+        })
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'member',
+            userData: user(ACTIVE),
+            now: NOW,
+        })
+
+        expect(stats.unchanged).toBe(1)
+        expect(db.read(kbPath('p1'))).toEqual(paused)
+    })
+
     it('does nothing for a user who has not used Alldone for 30 days', async () => {
         const db = createDb({ 'projects/p1': project() })
 

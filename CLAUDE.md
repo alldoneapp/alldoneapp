@@ -612,7 +612,13 @@ when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefau
 also what reached the projects that existed before the default — there is no migration. The payer
 is the project's creator when they are an active member, otherwise the member being processed.
 Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
-template's author, who would otherwise pay for the wiki of every guide anybody starts. When the
+template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archiving
+is per member** (`users/{uid}.archivedProjectIds`, the list `projectScope.js` reads), not the
+project-wide `project.active` flag the first version checked, which switched on 33 projects the
+dogfooding account had archived. A member who archived a project neither switches its wiki on nor
+pays for it (`isProjectArchivedForUser`), and a run whose payer has the project archived stops
+with `project_archived` and clears `nextRunAt`, like `owner_inactive`; the sweep resumes it when the
+payer reactivates the project, and hands a default wiki to a member for whom it is still active. When the
 payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
 model call); the payer's return resumes it, and a wiki the default switched on moves to another
 active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,

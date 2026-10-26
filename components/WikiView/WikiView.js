@@ -25,6 +25,7 @@ import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } fro
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import {
     isKnowledgeBasePausedAtMonthlyCap,
+    isKnowledgeBasePausedForArchivedProject,
     parseKnowledgeSourceKey,
 } from '../../functions/KnowledgeBase/knowledgeBaseModel'
 
@@ -35,6 +36,9 @@ function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
         lines.push(translate('Wiki last updated', { date: formatWikiDate(knowledgeBase.lastRunAt) }))
     }
     if (knowledgeBase && knowledgeBase.enabled !== true) lines.push(translate('Wiki paused hint'))
+    if (isKnowledgeBasePausedForArchivedProject(knowledgeBase || {})) {
+        lines.push(translate('Wiki paused while its payer has archived the project'))
+    }
     if (isKnowledgeBasePausedAtMonthlyCap(knowledgeBase || {})) {
         lines.push(translate('Wiki paused at monthly cap', { date: formatWikiDate(knowledgeBase.nextRunAt) }))
     }

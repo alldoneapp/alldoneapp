@@ -235,10 +235,23 @@ describe('ProjectWikiSettings', () => {
         text = textOf(component.toJSON())
         expect(text).toContain('Paused: the paying member has not used Alldone for 30 days.')
 
+        act(() =>
+            mockWatchers.knowledgeBase({
+                enabled: true,
+                ownerUserId: 'owner',
+                nextRunAt: null,
+                lastRunStopReason: 'project_archived',
+            })
+        )
+        expect(textOf(component.root.findByProps({ testID: 'project-wiki-archived-hint' }).children)).toContain(
+            'Paused: the paying member has archived this project.'
+        )
+
         // A wiki a member switched on themselves says neither.
         act(() => mockWatchers.knowledgeBase({ enabled: true, ownerUserId: 'owner', nextRunAt: 5 }))
         expect(component.root.findAllByProps({ testID: 'project-wiki-default-hint' })).toHaveLength(0)
         expect(component.root.findAllByProps({ testID: 'project-wiki-paused-hint' })).toHaveLength(0)
+        expect(component.root.findAllByProps({ testID: 'project-wiki-archived-hint' })).toHaveLength(0)
     })
 
     it('only saves a monthly limit inside the allowed range', async () => {
