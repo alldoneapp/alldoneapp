@@ -42,7 +42,15 @@ const LastCommentRow = ({ projectId, commentText, objectName, compact = false })
                     )}
                 </View>
                 <View style={localStyles.parsedTextContainer}>
-                    <LastCommentText projectId={projectId} commentText={commentText} />
+                    {/*
+                     * AT-2872 — the preview shows the END of the comment. The clip grows with its
+                     * content up to the body height, so a short comment still sits at the top, and
+                     * bottom-aligns what it holds, so an overflowing one is cut at the TOP and the
+                     * last lines stay visible.
+                     */}
+                    <View style={localStyles.tailClip} testID="last-comment-tail-clip">
+                        <LastCommentText projectId={projectId} commentText={commentText} fromEnd />
+                    </View>
                 </View>
             </View>
             <ProjectTagIndicator projectId={projectId} />
@@ -79,6 +87,11 @@ const localStyles = StyleSheet.create({
         height: PREVIEW_BODY_HEIGHT,
         flexShrink: 0,
         overflow: 'hidden',
+    },
+    tailClip: {
+        maxHeight: PREVIEW_BODY_HEIGHT,
+        overflow: 'hidden',
+        justifyContent: 'flex-end',
     },
     icon: {
         marginTop: 4,
