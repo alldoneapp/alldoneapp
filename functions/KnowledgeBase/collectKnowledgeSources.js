@@ -28,10 +28,15 @@
 // whole project like any topic, things worth knowing get discussed there too, and the ingest decides
 // what in them belongs to the project.
 //
+// Tasks created from an email (gmailData with the message they came from, AT-2833) are sources like
+// any other task, and so are their threads: an actionable email lands in the project the labeling
+// matched, and what is decided on it is project knowledge. They pass the same visibility filter as
+// every other task and nothing more; the card says the task came from an email but carries no
+// sender, address or mailbox.
+//
 // What else is deliberately left out, and why:
-//   - email-derived tasks (gmailData): a task per email is the inbox, not knowledge, and stays out
-//     until emails are taken into the wiki as a flow of their own. A thread of an excluded object
-//     is left out with it;
+//   - the daily inbox counter task ("Emails in inbox", isForEmail): an unread count, not knowledge.
+//     A thread of an excluded object is left out with it;
 //   - the generated day-rate time-log task: bookkeeping, not knowledge;
 //   - user memory notes (parentObject.type === 'users'): personal facts about one member;
 //   - the wiki's own Gold-limit notice topic;
@@ -209,9 +214,24 @@ function isVisibleToWholeProject(data, type) {
     return data.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
 }
 
+// A task created from an email carries the message it came from (`gmailData.messageId`, or
+// `messageIds` once a thread has continued on it): the Gmail labeling follow-up tasks and the email
+// line's "create task". The daily inbox counter ("Emails in inbox", `isForEmail`, apis/
+// EmailIntegration.js) carries gmailData too, but only a mailbox address and an unread count, and
+// it is rewritten all day long; it is the inbox, not knowledge.
+function isInboxSummaryEmailTask(data) {
+    if (!data?.gmailData) return false
+    if (data.isForEmail === true) return true
+    const { messageId, messageIds } = data.gmailData
+    const hasMessage =
+        (typeof messageId === 'string' && messageId.trim()) ||
+        (Array.isArray(messageIds) && messageIds.some(id => typeof id === 'string' && id.trim()))
+    return !hasMessage
+}
+
 function getExclusionReason(data, type) {
     if (type === 'task') {
-        if (data.gmailData) return 'email'
+        if (isInboxSummaryEmailTask(data)) return 'email_inbox'
         if (data.genericData?.type === 'dayRateTimeLog') return 'generated'
     }
     if (type === 'note' && data.parentObject?.type === 'users') return 'user_memory'
@@ -317,6 +337,7 @@ function buildTaskCard(id, data, userNames) {
     if (goalKey) details.push(`goal [[${goalKey}]]`)
     const parentKey = buildKnowledgeSourceKey('task', data.parentId)
     if (parentKey) details.push(`subtask of [[${parentKey}]]`)
+    if (data.gmailData) details.push('created from an email')
 
     const lines = [`[[task:${id}]] "${title}" (${details.join(', ')})`]
     const description = cleanText(data.description, TASK_DESCRIPTION_MAX_CHARS)
@@ -962,6 +983,7 @@ module.exports = {
     DOCUMENT_PART_MAX_TOKENS,
     THREAD_COMMENTS_PER_CARD,
     isVisibleToWholeProject,
+    isInboxSummaryEmailTask,
     getExclusionReason,
     getThreadExclusionReason,
     collectKnowledgeSources,
