@@ -44,6 +44,8 @@
  *    cost, not a correctness problem, and DeepSeek V4 Flash's 1M-token window absorbs it comfortably.
  */
 
+const { isTransientModelError } = require('./transientModelErrors')
+
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 /**
@@ -198,8 +200,12 @@ async function* convertChatCompletionsStream(stream, usageContext = {}) {
     for await (const chunk of stream) {
         // OpenRouter forwards upstream provider errors as an `error` member on an otherwise
         // well-formed chunk rather than as an HTTP status, so a stream can fail mid-flight.
+        // (Through the OpenAI SDK such an event is already thrown as an APIError carrying `code`;
+        // this branch covers a raw iterable.) The code is kept so a 502 can be told from a 402.
         if (chunk?.error) {
-            throw new Error(chunk.error.message || 'OpenRouter stream failed')
+            const streamError = new Error(chunk.error.message || 'OpenRouter stream failed')
+            if (chunk.error.code !== undefined) streamError.code = chunk.error.code
+            throw streamError
         }
         if (chunk?.usage) usage = chunk.usage
 
@@ -271,12 +277,97 @@ async function* convertChatCompletionsStream(stream, usageContext = {}) {
 }
 
 /**
+ * Retries for a stream that breaks off mid-flight (AT-2870).
+ *
+ * The SDK already retries the request itself (connection errors, 429, 5xx) — but only until the
+ * response starts. OpenRouter answers a stream with HTTP 200 straight away and reports a lost
+ * upstream connection later, as an error event inside the stream, which no SDK retry ever sees.
+ * One such event ended a whole project-wiki run. Two retries with a short backoff cover a blip
+ * without hiding a real outage.
+ */
+const OPENROUTER_STREAM_MAX_RETRIES = 2
+const OPENROUTER_STREAM_RETRY_BASE_DELAY_MS = 1000
+
+const defaultSleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * Re-requests the completion when the stream fails transiently — but only while the consumer has
+ * seen NOTHING of the failed attempt. The interactive assistant streams text straight to the user,
+ * so text that already went out cannot be taken back, and replaying the request would print it
+ * twice. Tool calls are never at risk either way: the converter emits them only once a stream has
+ * completed, so a broken stream cannot have started a tool.
+ *
+ * A caller that does not stream to anybody (the wiki ingest) passes `bufferOutput`: every attempt
+ * is then held back until it has completed, so it can be retried wherever it broke off.
+ */
+async function* streamWithTransientRetries({
+    firstStream,
+    openStream,
+    bufferOutput,
+    maxRetries,
+    retryBaseDelayMs,
+    sleep,
+    signal,
+    logContext,
+}) {
+    let stream = firstStream
+    for (let attempt = 0; ; attempt++) {
+        let yieldedToConsumer = false
+        const buffered = []
+        try {
+            if (!stream) stream = await openStream()
+            for await (const chunk of stream) {
+                if (bufferOutput) {
+                    buffered.push(chunk)
+                } else {
+                    yieldedToConsumer = true
+                    yield chunk
+                }
+            }
+        } catch (error) {
+            const retryable =
+                !yieldedToConsumer && attempt < maxRetries && !signal?.aborted && isTransientModelError(error)
+            if (!retryable) {
+                if (attempt > 0 || yieldedToConsumer) {
+                    console.warn('🌐 OPENROUTER: Stream failed, not retrying', {
+                        ...logContext,
+                        attempt: attempt + 1,
+                        afterPartialOutput: yieldedToConsumer,
+                        error: error?.message,
+                    })
+                }
+                throw error
+            }
+            const delayMs = retryBaseDelayMs * 2 ** attempt + Math.floor(Math.random() * 250)
+            console.warn('🌐 OPENROUTER: Transient stream failure, retrying', {
+                ...logContext,
+                attempt: attempt + 1,
+                nextAttemptInMs: delayMs,
+                error: error?.message,
+                code: error?.code ?? null,
+                status: error?.status ?? null,
+            })
+            await sleep(delayMs)
+            if (signal?.aborted) throw error
+            stream = null
+            continue
+        }
+        for (const chunk of buffered) yield chunk
+        return
+    }
+}
+
+/**
  * Open a streaming OpenRouter chat completion and return it already converted to the assistant's
  * stream contract.
  *
  * `tools` are the same `{ type: 'function', function: {...} }` schemas `getToolSchemas` produces for
  * the OpenAI path — Chat Completions is where that shape comes from, so they are passed straight
  * through.
+ *
+ * The first request is made before this returns, so a request that cannot even be opened still
+ * throws from the call, as it always did. Failures after that are retried by
+ * `streamWithTransientRetries`.
  */
 async function streamOpenRouterChat({
     apiKey,
@@ -287,10 +378,15 @@ async function streamOpenRouterChat({
     supportsImages = false,
     usageContext = {},
     signal,
+    bufferOutput = false,
+    maxStreamRetries = OPENROUTER_STREAM_MAX_RETRIES,
+    retryBaseDelayMs = OPENROUTER_STREAM_RETRY_BASE_DELAY_MS,
+    sleep = defaultSleep,
+    client: injectedClient = null,
 } = {}) {
     if (!model) throw new Error('Model name is required')
 
-    const client = getOpenRouterClient(apiKey)
+    const client = injectedClient || getOpenRouterClient(apiKey)
     // Dropping an image is invisible from the outside: the request succeeds, the model answers, and
     // the only symptom is an answer that ignores the attachment the user is looking at. Counting the
     // replacements is what makes "why did it not see my photo?" answerable from the logs.
@@ -322,15 +418,30 @@ async function streamOpenRouterChat({
         route: usageContext.route || 'assistant',
     })
 
-    const stream = await (signal
-        ? client.chat.completions.create(requestParams, { signal })
-        : client.chat.completions.create(requestParams))
-    return convertChatCompletionsStream(stream, { ...usageContext, model })
+    const openStream = async () => {
+        const stream = await (signal
+            ? client.chat.completions.create(requestParams, { signal })
+            : client.chat.completions.create(requestParams))
+        return convertChatCompletionsStream(stream, { ...usageContext, model })
+    }
+
+    const firstStream = await openStream()
+    return streamWithTransientRetries({
+        firstStream,
+        openStream,
+        bufferOutput: bufferOutput === true,
+        maxRetries: Math.max(0, Number(maxStreamRetries) || 0),
+        retryBaseDelayMs,
+        sleep,
+        signal,
+        logContext: { model, route: usageContext.route || 'assistant', messageCount: requestParams.messages.length },
+    })
 }
 
 module.exports = {
     OPENROUTER_BASE_URL,
     OPENROUTER_HEADERS,
+    OPENROUTER_STREAM_MAX_RETRIES,
     UNSUPPORTED_IMAGE_PLACEHOLDER,
     getOpenRouterClient,
     normalizeContentForChatCompletions,

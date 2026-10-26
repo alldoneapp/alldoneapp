@@ -780,6 +780,21 @@ the visible page list, and shows a redacted revision as removed and nothing more
 `components/WikiView/wikiDiff.test.js`, the `what a revision changed` block of `WikiView.test.js`
 and `components/Feeds/FeedsObjects/WikiObject.test.js`.
 
+**A wiki run that loses its model connection retries within minutes, not overnight (AT-2870).**
+On 2026-10-26 one OpenRouter stream broke off with `Network connection lost.` and paused a wiki
+that was catching up until the next night. OpenRouter reports a lost upstream connection as an
+error event INSIDE an HTTP 200 stream, which the OpenAI SDK throws as an `APIError` with no
+`status` and `code: 502`; the SDK's own create-time retries never see it. `streamOpenRouterChat`
+therefore re-requests a transiently broken stream twice (`Assistant/transientModelErrors.js`
+decides what is transient), but only while the consumer has received nothing of it: interactive
+text that already reached the user is never replayed. The ingest passes `bufferModelOutput`, so
+its answers are held back until complete and can be retried at any point; tool calls are emitted
+only by a completed stream either way. A run that still fails transiently schedules itself 7
+minutes later and enqueues that task itself (the dispatcher only ticks every 15 minutes), at most
+`MAX_TRANSIENT_FAILURE_RETRIES` (3) times in a row; anything else keeps the nightly slot. Pinned by
+the AT-2870 blocks in `knowledgeBaseIngest.test.js` and `openRouterChatClient.test.js`, and by
+`transientModelErrors.test.js`, which builds the SDK's real error classes.
+
 **The project description frames the wiki and is never one of its sources.** The two have
 separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by
 people: what the project is, what belongs in it, standing rules. Task, calendar and Gmail routing,

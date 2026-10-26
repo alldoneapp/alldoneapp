@@ -2951,6 +2951,9 @@ async function interactWithChatStream(
                     toolRuntimeContext?.objectType ||
                     'assistant',
             },
+            // A run that streams to nobody (the wiki ingest) lets a broken stream be retried
+            // wherever it broke off, not only before its first chunk (AT-2870).
+            bufferOutput: toolRuntimeContext?.bufferModelOutput === true,
             ...(toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : {}),
         })
     }
