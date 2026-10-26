@@ -4,7 +4,6 @@ import ProjectHelper from '../../components/SettingsView/ProjectsSettings/Projec
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
 import {
     ARTIFACT_SECTION_CHAT,
-    ARTIFACT_SECTION_DETAILS,
     ARTIFACT_SECTION_UPDATES,
 } from '../../components/ArtifactsView/artifactsNavigationState'
 
@@ -38,16 +37,10 @@ export const URL_ARTIFACT_DETAILS_CHAT = 'ARTIFACT_DETAILS_CHAT'
  */
 export const URL_ARTIFACT_DETAILS_UPDATES = 'ARTIFACT_DETAILS_UPDATES'
 
-/**
- * /projects/{projectId}/artifacts/{artifactId}/details
- */
-export const URL_ARTIFACT_DETAILS_PROPERTIES = 'ARTIFACT_DETAILS_PROPERTIES'
-
 // The URL of an open artifact showing `section`.
 export function getArtifactDetailsUrl(section) {
     if (section === ARTIFACT_SECTION_CHAT) return URL_ARTIFACT_DETAILS_CHAT
     if (section === ARTIFACT_SECTION_UPDATES) return URL_ARTIFACT_DETAILS_UPDATES
-    if (section === ARTIFACT_SECTION_DETAILS) return URL_ARTIFACT_DETAILS_PROPERTIES
     return URL_ARTIFACT_DETAILS
 }
 
@@ -81,8 +74,6 @@ class URLsArtifacts {
                 return `projects/${params[0]}/artifacts/${params[1]}/chat`
             case URL_ARTIFACT_DETAILS_UPDATES:
                 return `projects/${params[0]}/artifacts/${params[1]}/updates`
-            case URL_ARTIFACT_DETAILS_PROPERTIES:
-                return `projects/${params[0]}/artifacts/${params[1]}/details`
         }
     }
 
@@ -97,16 +88,13 @@ class URLsArtifacts {
             const isDetail =
                 urlConstant === URL_ARTIFACT_DETAILS ||
                 urlConstant === URL_ARTIFACT_DETAILS_CHAT ||
-                urlConstant === URL_ARTIFACT_DETAILS_UPDATES ||
-                urlConstant === URL_ARTIFACT_DETAILS_PROPERTIES
+                urlConstant === URL_ARTIFACT_DETAILS_UPDATES
             const suffix =
                 urlConstant === URL_ARTIFACT_DETAILS_CHAT
                     ? ' - Chat'
                     : urlConstant === URL_ARTIFACT_DETAILS_UPDATES
                       ? ' - Updates'
-                      : urlConstant === URL_ARTIFACT_DETAILS_PROPERTIES
-                        ? ' - Details'
-                        : ''
+                      : ''
             title =
                 isDetail && params[2]
                     ? `${prefix}${projectName} - ${shrinkTagText(params[2], 100)}${suffix}`

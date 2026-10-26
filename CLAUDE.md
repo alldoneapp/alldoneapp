@@ -636,7 +636,7 @@ model answer: a notice that the Gold ran out must not spend Gold. It is sent onc
 and limit (the comment id carries the limit), and it never throws into the run. Raising the limit
 above this month's spending in the settings sets `nextRunAt` to now and enqueues a run
 (`cap_raised`); otherwise the notice would send people to a setting that changed nothing until the
-1st. The wiki view and the settings show the pause too (`isKnowledgeBasePausedAtMonthlyCap`).
+1st. The wiki view and the settings show the pause too (`isKnowledgeBasePausedAtMonthlyCap`). A cap raised WHILE a run is going is not a pause yet, so that save resumes nothing: the run therefore re-reads the stored cap before it stops for it, and `releaseIngestLease` re-checks the stop against the cap stored at release and reschedules at once instead of pausing (AT-2880, a run that had read 5000 paused a wiki already raised to 10000 until the 1st). A wiki left paused at a cap already above its spending can be resumed by saving that same cap; the settings offer it.
 Pinned by `knowledgeBaseCapNotice.test.js`, the monthly-cap cases in `knowledgeBaseIngest.test.js`
 and `knowledgeBaseSettings.test.js`.
 

@@ -503,6 +503,113 @@ describe('runKnowledgeBaseIngest', () => {
         expect(notifyCapReached).toHaveBeenCalledWith(expect.objectContaining({ spent: 101, goldCap: 100 }))
     })
 
+    // AT-2880: the payer raised the cap while a run was going. The run had read the old cap when it
+    // claimed its lease and, before the fix, stopped at it and paused the wiki until the 1st, with a
+    // cap far above what it had spent and a settings form that offered nothing left to save.
+    describe('a cap raised while the run is going (AT-2880)', () => {
+        const capped = { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 99 } }
+        const changedTask = { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } }
+
+        it('keeps running instead of stopping at the old cap', async () => {
+            const db = createDb(changedTask, capped)
+            const { runConversation } = scriptedModel(async () => {
+                // The settings save lands while the model is still working on the first chunk.
+                db.update(KB_PATH, { monthlyGoldCap: 1000 })
+            })
+            const notifyCapReached = jest.fn(async () => ({ notified: true }))
+            const enqueueRun = jest.fn(async () => 'enqueued')
+
+            const result = await run(db, { runConversation, notifyCapReached, enqueueRun })
+
+            expect(result).toMatchObject({ status: 'completed', stopReason: null })
+            expect(notifyCapReached).not.toHaveBeenCalled()
+            const knowledgeBase = db.read(KB_PATH)
+            expect(knowledgeBase).toMatchObject({
+                monthlyGoldCap: 1000,
+                monthlyGold: { month: '2026-10', spent: 101 },
+                lastRunStopReason: null,
+                nextRunAt: nextNightlyRunAt(NOW, { timezone: 2 }),
+            })
+        })
+
+        it('does not pause the wiki when the cap is raised just before the stop is recorded', async () => {
+            const db = createDb(changedTask, capped)
+            // The run's own re-read still sees the old cap (the save lands right after it), and only
+            // the release, which records the stop, sees the raised one.
+            const realDoc = db.doc.bind(db)
+            let staleReads = 0
+            db.doc = path => {
+                const ref = realDoc(path)
+                if (path !== KB_PATH) return ref
+                return {
+                    ...ref,
+                    get: async () => {
+                        staleReads += 1
+                        const snapshot = await ref.get()
+                        db.update(KB_PATH, { monthlyGoldCap: 1000 })
+                        return { ...snapshot, data: () => ({ ...snapshot.data(), monthlyGoldCap: 100 }) }
+                    },
+                }
+            }
+            const { runConversation } = scriptedModel()
+            const notifyCapReached = jest.fn(async () => ({ notified: true }))
+            const enqueueRun = jest.fn(async () => 'enqueued')
+
+            const result = await run(db, { runConversation, notifyCapReached, enqueueRun })
+
+            expect(staleReads).toBeGreaterThan(0)
+            // The run did stop at the cap it knew about, and says so in its own record ...
+            expect(result).toMatchObject({ stopReason: 'monthly_cap', capRaisedDuringRun: true, nextRunAt: NOW })
+            // ... but the wiki is not paused until the 1st, and nobody is told the Gold ran out.
+            const knowledgeBase = db.read(KB_PATH)
+            expect(knowledgeBase.lastRunStopReason).toBeNull()
+            expect(knowledgeBase.nextRunAt).toBe(NOW)
+            expect(knowledgeBase).not.toHaveProperty('leaseOwner')
+            expect(notifyCapReached).not.toHaveBeenCalled()
+            expect(enqueueRun).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'cap_raised' })
+        })
+
+        it('still stops when the raised cap is not above what this month has spent', async () => {
+            const db = createDb(changedTask, capped)
+            const { runConversation } = scriptedModel(async () => {
+                db.update(KB_PATH, { monthlyGoldCap: 101 })
+            })
+            const notifyCapReached = jest.fn(async () => ({ notified: true }))
+            const enqueueRun = jest.fn()
+
+            const result = await run(db, { runConversation, notifyCapReached, enqueueRun })
+
+            expect(result).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
+            expect(db.read(KB_PATH)).toMatchObject({
+                lastRunStopReason: 'monthly_cap',
+                nextRunAt: Date.UTC(2026, 10, 1),
+            })
+            expect(notifyCapReached).toHaveBeenCalledWith(expect.objectContaining({ spent: 101, goldCap: 101 }))
+            expect(enqueueRun).not.toHaveBeenCalled()
+        })
+
+        it('keeps the old cap when it cannot re-read it', async () => {
+            const db = createDb(changedTask, { ...capped, monthlyGold: { month: '2026-10', spent: 100 } })
+            const realDoc = db.doc.bind(db)
+            db.doc = path => {
+                const ref = realDoc(path)
+                if (path !== KB_PATH) return ref
+                return {
+                    ...ref,
+                    get: async () => {
+                        throw new Error('unavailable')
+                    },
+                }
+            }
+            const { runConversation } = scriptedModel()
+
+            const result = await run(db, { runConversation })
+
+            expect(runConversation).not.toHaveBeenCalled()
+            expect(result).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
+        })
+    })
+
     it('starts a new month with a fresh budget', async () => {
         const db = createDb(
             { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } },

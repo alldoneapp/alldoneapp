@@ -91,6 +91,7 @@ const CONTINUE_DELAY_MS = 60 * 1000
 const TRANSIENT_FAILURE_RETRY_DELAY_MS = 7 * 60 * 1000
 const MAX_TRANSIENT_FAILURE_RETRIES = 3
 const TRANSIENT_RETRY_TRIGGER = 'transient_retry'
+const CAP_RAISED_TRIGGER = 'cap_raised'
 const INGEST_TEMPERATURE = 'TEMPERATURE_LOW'
 const GOLD_SOURCE = 'knowledge_base_ingest'
 
@@ -125,6 +126,12 @@ async function claimIngestLease(db, projectId, leaseId, now) {
 // was going (nextRunAt moved past its start) is honoured rather than overwritten. A paused wiki
 // (nextRunAt null) keeps such a request too: Math.min(null, x) is 0, which would make it due at once
 // and every 15 minutes after.
+//
+// A run that stops at the monthly cap measured it against the cap it last read, and the payer may
+// have raised it since (AT-2880): the settings save only resumes a wiki that is ALREADY paused, so a
+// cap raised while this run was going would otherwise be ignored and the wiki paused until the 1st
+// with a cap well above what it spent. The stop is therefore re-checked here, in the same
+// transaction that records it, against the cap stored now.
 async function releaseIngestLease(db, projectId, leaseId, startedAt, update, fieldValue) {
     const ref = db.doc(getKnowledgeBasePath(projectId))
     return db.runTransaction(async transaction => {
@@ -133,18 +140,44 @@ async function releaseIngestLease(db, projectId, leaseId, startedAt, update, fie
         const current = snapshot.data() || {}
         if (current.leaseOwner !== leaseId) return false
         let nextRunAt = update.nextRunAt
+        let lastRunStopReason = update.lastRunStopReason
+        let capRaisedDuringRun = false
+        if (
+            current.enabled === true &&
+            lastRunStopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON &&
+            resolveKnowledgeBaseMonthlyGoldCap(current.monthlyGoldCap) > (Number(update.monthlyGold?.spent) || 0)
+        ) {
+            capRaisedDuringRun = true
+            lastRunStopReason = null
+            nextRunAt = Number.isFinite(update.lastRunAt) ? update.lastRunAt : startedAt
+        }
         const requestedAt = Number(current.nextRunAt)
         if (current.enabled !== true) nextRunAt = null
         else if (requestedAt > startedAt)
             nextRunAt = nextRunAt === null ? requestedAt : Math.min(nextRunAt, requestedAt)
         transaction.update(ref, {
             ...update,
+            lastRunStopReason,
             nextRunAt,
             leaseOwner: fieldValue.delete(),
             leaseExpiresAt: fieldValue.delete(),
         })
-        return { released: true, nextRunAt }
+        return { released: true, nextRunAt, capRaisedDuringRun }
     })
+}
+
+// The cap a run compares against is re-read from the wiki document whenever the run is about to
+// stop for it, so a cap the payer raised mid-run takes effect in that run (AT-2880). A failed read
+// keeps the cap the run already has: stopping is the safe direction for somebody else's Gold.
+async function readStoredMonthlyGoldCap(db, projectId, fallbackCap) {
+    try {
+        const snapshot = await db.doc(getKnowledgeBasePath(projectId)).get()
+        if (!snapshot.exists) return fallbackCap
+        return resolveKnowledgeBaseMonthlyGoldCap((snapshot.data() || {}).monthlyGoldCap)
+    } catch (error) {
+        console.warn('[knowledge base] Could not re-read the monthly Gold cap', { projectId, error: error.message })
+        return fallbackCap
+    }
 }
 
 function defaultEnqueueRun(args) {
@@ -455,11 +488,19 @@ async function runKnowledgeBaseIngest({
     const knowledgeBase = claim.knowledgeBase
     const ownerUserId = knowledgeBase.ownerUserId
     const modelKey = resolveKnowledgeBaseModel(knowledgeBase.model)
-    const goldCap = resolveKnowledgeBaseMonthlyGoldCap(knowledgeBase.monthlyGoldCap)
+    let goldCap = resolveKnowledgeBaseMonthlyGoldCap(knowledgeBase.monthlyGoldCap)
     const currentMonth = getKnowledgeBaseMonthKey(startedAt)
     const monthlyGold = {
         month: currentMonth,
         spent: knowledgeBase.monthlyGold?.month === currentMonth ? Number(knowledgeBase.monthlyGold.spent) || 0 : 0,
+    }
+    // True when this month's spending has reached the cap as it is stored NOW, not as it was when
+    // the run claimed its lease: only the stop is worth a read, so the document is consulted only
+    // once the run's own copy says the cap is spent.
+    const monthlyCapReached = async () => {
+        if (monthlyGold.spent < goldCap) return false
+        goldCap = await readStoredMonthlyGoldCap(db, projectId, goldCap)
+        return monthlyGold.spent >= goldCap
     }
     const deadline = startedAt + maxRunWallClockMs
     const runRef = db.doc(`${getKnowledgeRunsPath(projectId)}/${leaseId}`)
@@ -489,7 +530,7 @@ async function runKnowledgeBaseIngest({
 
     const conversation = async ({ systemPrompt, userPrompt, tools, label }) => {
         if (clock() + MIN_CONVERSATION_TIME_MS > deadline) throw new KnowledgeBaseRunStop('time')
-        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
+        if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
         await ensureRunDoc()
         const assertActive = async () => {
             if (clock() > deadline) throw new KnowledgeBaseRunStop('time')
@@ -527,7 +568,7 @@ async function runKnowledgeBaseIngest({
                         stats.goldSpent += gold
                     }
                 }
-                if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
+                if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
             },
         })
     }
@@ -543,7 +584,7 @@ async function runKnowledgeBaseIngest({
             throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON)
         }
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
-        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
+        if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
         const projectSnapshot = await db.doc(`projects/${projectId}`).get()
         const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
@@ -827,8 +868,27 @@ async function runKnowledgeBaseIngest({
         }
     }
 
+    // The payer raised the cap while this run was going, after its last look (AT-2880): the release
+    // did not record a pause, so neither a notice nor a wait for the dispatcher's tick is wanted.
+    const capRaisedDuringRun = !!released?.capRaisedDuringRun
+    if (capRaisedDuringRun) {
+        console.info('[knowledge base] Monthly cap was raised during the run; continuing', {
+            projectId,
+            runId: leaseId,
+            spent: monthlyGold.spent,
+        })
+        try {
+            await enqueueRun({ projectId, dueAt: released.nextRunAt, trigger: CAP_RAISED_TRIGGER })
+        } catch (error) {
+            console.warn('[knowledge base] Could not enqueue the run after a raised cap; the dispatcher will', {
+                projectId,
+                error: error.message,
+            })
+        }
+    }
+
     // Only after the stop is recorded: the notice links to settings that read it.
-    if (stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON) {
+    if (stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON && !capRaisedDuringRun) {
         await notifyCapReached({
             projectId,
             ownerUserId,
@@ -843,7 +903,15 @@ async function runKnowledgeBaseIngest({
         })
     }
 
-    return { status, stopReason, runId: runDocWritten ? leaseId : null, nextRunAt, changes, ...stats }
+    return {
+        status,
+        stopReason,
+        runId: runDocWritten ? leaseId : null,
+        nextRunAt: capRaisedDuringRun ? released.nextRunAt : nextRunAt,
+        ...(capRaisedDuringRun ? { capRaisedDuringRun: true } : {}),
+        changes,
+        ...stats,
+    }
 }
 
 module.exports = {

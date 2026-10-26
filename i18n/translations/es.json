@@ -233,6 +233,7 @@
     "Give feedback": "Dar feedback",
     "Wiki paused at monthly cap": "En pausa: se alcanzó el límite mensual de Gold. La wiki continúa el %{date}, o de inmediato si se sube el límite en los ajustes de la wiki.",
     "Wiki monthly cap reached": "Se alcanzó el límite mensual de Gold. La wiki está en pausa hasta el %{date}. Sube el límite y continúa de inmediato.",
+    "Wiki monthly cap already raised": "El límite ya supera el gasto de este mes. Guárdalo para que la wiki continúe ahora.",
     "Show history": "Mostrar historial",
     "Hide history": "Ocultar historial",
     "Loading history": "Cargando historial…",
