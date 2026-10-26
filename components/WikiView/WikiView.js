@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'
@@ -23,6 +23,7 @@ import WikiFeedbackButton from './WikiFeedbackButton'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } from './wikiNavigationState'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
+import { getWikiIndexPages } from './wikiIndexOrder'
 import {
     isKnowledgeBasePausedAtMonthlyCap,
     isKnowledgeBasePausedForArchivedProject,
@@ -78,7 +79,45 @@ function WikiEmptyState({ projectId, knowledgeBase }) {
     )
 }
 
+// Sits at the very top of the index. Narrows the list by title and summary, the two things a row shows.
+function WikiSearch({ value, onChange }) {
+    return (
+        <View testID="wiki-search" style={localStyles.searchBox}>
+            <Icon name="search" size={18} color={colors.Text03} />
+            <TextInput
+                testID="wiki-search-input"
+                value={value}
+                onChangeText={onChange}
+                placeholder={translate('Search wiki pages')}
+                placeholderTextColor={colors.Text03}
+                accessibilityLabel={translate('Search wiki pages')}
+                autoCapitalize="none"
+                autoCorrect={false}
+                numberOfLines={1}
+                style={localStyles.searchInput}
+            />
+            {!!value && (
+                <TouchableOpacity
+                    testID="wiki-search-clear"
+                    onPress={() => onChange('')}
+                    accessibilityLabel={translate('Clear wiki search')}
+                    style={localStyles.searchClear}
+                >
+                    <Icon name="x" size={18} color={colors.Text03} />
+                </TouchableOpacity>
+            )}
+        </View>
+    )
+}
+
 function WikiIndex({ pages, selectedSlug, onSelect }) {
+    if (pages.length === 0) {
+        return (
+            <Text testID="wiki-search-empty" style={localStyles.searchEmpty}>
+                {translate('No wiki pages match your search')}
+            </Text>
+        )
+    }
     return (
         <View testID="wiki-index">
             {pages.map(page => {
@@ -204,9 +243,13 @@ export function ProjectWiki({ project }) {
     const { pages, pendingRebuilds, loaded } = useKnowledgePages(project.id)
     const [selectedSlug, setSelectedSlug] = useWikiSelectedSlug(project.id)
     const selectedRevision = useWikiSelectedRevision(project.id)
+    // Kept here rather than in the index, so going into a page and back keeps the search.
+    const [searchText, setSearchText] = useState('')
 
     const pageSlugs = useMemo(() => new Set(pages.map(page => page.slug)), [pages])
     const selectedPage = pages.find(page => page.slug === selectedSlug) || null
+    // Newest first, by the same `updatedAt` each row shows as "Last updated".
+    const indexPages = useMemo(() => getWikiIndexPages(pages, searchText), [pages, searchText])
     // The index and a page are one column on every screen: the index first, a page in its place.
     const shownPage = selectedPage
     // A change is shown for any page, archived or hidden ones included: the Updates feed links to
@@ -269,6 +312,7 @@ export function ProjectWiki({ project }) {
                     <WikiEmptyState projectId={project.id} knowledgeBase={knowledgeBase} />
                 ) : (
                     <View style={localStyles.column}>
+                        {!shownPage && <WikiSearch value={searchText} onChange={setSearchText} />}
                         <WikiStatusLine knowledgeBase={knowledgeBase} pendingRebuilds={pendingRebuilds} />
                         {shownPage ? (
                             <WikiPage
@@ -279,7 +323,7 @@ export function ProjectWiki({ project }) {
                                 onBack={() => setSelectedSlug(null)}
                             />
                         ) : (
-                            <WikiIndex pages={pages} selectedSlug={null} onSelect={setSelectedSlug} />
+                            <WikiIndex pages={indexPages} selectedSlug={null} onSelect={setSelectedSlug} />
                         )}
                     </View>
                 )}
@@ -375,6 +419,39 @@ const localStyles = StyleSheet.create({
     // One readable column; on a wide screen a full-width line of prose is hard to follow.
     column: {
         maxWidth: 880,
+    },
+    searchBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 40,
+        marginTop: 12,
+        paddingLeft: 12,
+        paddingRight: 4,
+        borderWidth: 1,
+        borderRadius: 6,
+        borderColor: colors.Grey400,
+        backgroundColor: '#FFFFFF',
+    },
+    searchInput: {
+        ...styles.body2,
+        flex: 1,
+        minWidth: 0,
+        height: 38,
+        color: colors.Text01,
+        marginLeft: 8,
+        paddingVertical: 0,
+    },
+    searchClear: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    searchEmpty: {
+        ...styles.body2,
+        color: colors.Text02,
+        paddingVertical: 16,
+        paddingHorizontal: 12,
     },
     indexItem: {
         paddingVertical: 8,

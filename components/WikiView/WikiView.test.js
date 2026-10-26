@@ -240,6 +240,99 @@ describe('WikiView', () => {
         )
     })
 
+    describe('the index, newest first, with a search above it', () => {
+        const DATED = [
+            page('alt', 'Alte Entscheidungen', { updatedAt: Date.UTC(2026, 9, 1, 8) }),
+            page('neu', 'Kunden', { updatedAt: Date.UTC(2026, 9, 25, 8), summary: 'Wer kauft' }),
+            page('ohne', 'Archiv', { updatedAt: null }),
+            page('mitte', 'Preise', { updatedAt: Date.UTC(2026, 9, 12, 8) }),
+        ]
+        const listed = component =>
+            component.root
+                .findByProps({ testID: 'wiki-index' })
+                .findAll(node => typeof node.props.testID === 'string' && /^wiki-index-[^u]/.test(node.props.testID))
+                .filter(node => node.type === TouchableOpacity)
+                .map(node => node.props.testID.replace('wiki-index-', ''))
+        const search = (component, text) =>
+            act(() => component.root.findByProps({ testID: 'wiki-search-input' }).props.onChangeText(text))
+
+        it('lists the most recently updated page first and a page without a date last', () => {
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: DATED })
+
+            expect(listed(component)).toEqual(['neu', 'mitte', 'alt', 'ohne'])
+        })
+
+        it('puts the search at the very top, above the status line', () => {
+            const component = mount()
+            deliver({
+                knowledgeBase: { enabled: true, leaseOwner: 'run', leaseExpiresAt: Date.now() + 60000 },
+                pages: DATED,
+            })
+
+            // Document order of the rendered output: the search comes before the status line.
+            const rendered = JSON.stringify(component.toJSON())
+            expect(rendered.indexOf('"wiki-search"')).toBeGreaterThanOrEqual(0)
+            expect(rendered.indexOf('"wiki-search"')).toBeLessThan(rendered.indexOf('"wiki-status"'))
+            expect(textOf(component.toJSON())).toContain('The wiki is being updated right now')
+        })
+
+        it('filters by title and summary without regard to case, still newest first', () => {
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: DATED })
+
+            search(component, 'ENTSCHEIDUNGEN')
+            expect(listed(component)).toEqual(['alt'])
+
+            search(component, 'wer kauft')
+            expect(listed(component)).toEqual(['neu'])
+
+            search(component, 'e')
+            expect(listed(component)).toEqual(['neu', 'mitte', 'alt'])
+        })
+
+        it('says when nothing matches and clears the search with one press', () => {
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: DATED })
+
+            search(component, 'gibt es nicht')
+            expect(component.root.findAllByProps({ testID: 'wiki-index' })).toHaveLength(0)
+            expect(textOf(component.root.findByProps({ testID: 'wiki-search-empty' }).children)).toBe(
+                'No wiki page matches your search.'
+            )
+
+            press(component, 'wiki-search-clear')
+            expect(listed(component)).toEqual(['neu', 'mitte', 'alt', 'ohne'])
+            expect(component.root.findAllByProps({ testID: 'wiki-search-clear' })).toHaveLength(0)
+        })
+
+        it('hides the search on a page and keeps it when going back to the index', () => {
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: DATED })
+
+            search(component, 'kunden')
+            press(component, 'wiki-index-neu')
+            expect(component.root.findAllByProps({ testID: 'wiki-search' })).toHaveLength(0)
+
+            pressText(component, 'All wiki pages')
+            expect(component.root.findByProps({ testID: 'wiki-search-input' }).props.value).toBe('kunden')
+            expect(listed(component)).toEqual(['neu'])
+        })
+
+        it('keeps the order when a page is updated while the index is open', () => {
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: DATED })
+
+            deliver({
+                knowledgeBase: { enabled: true },
+                pages: DATED.map(item =>
+                    item.slug === 'alt' ? { ...item, updatedAt: Date.UTC(2026, 9, 26, 8) } : item
+                ),
+            })
+            expect(listed(component)).toEqual(['alt', 'neu', 'mitte', 'ohne'])
+        })
+    })
+
     it('says above the index that the wiki stands still at its monthly Gold limit', () => {
         const month = new Date(Date.now()).toISOString().slice(0, 7)
         const component = mount()
