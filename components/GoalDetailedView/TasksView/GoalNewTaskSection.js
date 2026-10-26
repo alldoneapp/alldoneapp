@@ -15,6 +15,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { PROJECT_TYPE_TEMPLATE } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
 import EditTask from '../../TaskListView/TaskItem/EditTask'
 import { taskEditorLayout } from '../../TaskListView/TaskItem/TaskEditorLayout'
+import InlineAddTaskFileDrop from '../../TaskListView/InlineAddTaskFileDrop'
 
 export default function GoalNewTaskSection({ projectId, goal, dateFormated }) {
     const dispatch = useDispatch()
@@ -82,36 +83,48 @@ export default function GoalNewTaskSection({ projectId, goal, dateFormated }) {
 
     return (
         <View style={taskEditorLayout.addTaskSection}>
-            <DismissibleItem
-                ref={newItemRef}
-                defaultComponent={
-                    <AddTask
-                        projectId={projectId}
-                        tags={[]}
-                        toggleModal={() => {
-                            newItemRef?.current?.toggleModal()
-                        }}
-                        newItem={true}
-                        hideParentGoalButton={true}
-                        dateFormated={dateFormated}
-                    />
-                }
-                modalComponent={
-                    <EditTask
-                        adding={true}
-                        projectId={projectId}
-                        onCancelAction={() => {
-                            newItemRef?.current?.toggleModal()
-                        }}
-                        defaultDate={date.valueOf()}
-                        inBacklog={dateFormated === BACKLOG_DATE_STRING}
-                        activeGoal={goal}
-                        tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
-                        dateFormated={dateFormated}
-                        useLoggedUser={true}
-                    />
-                }
-            />
+            {/* AT-2875: dropping files on this line opens the add-task popup with them attached. */}
+            <InlineAddTaskFileDrop
+                projectId={projectId}
+                enabled={true}
+                inlineEditorRef={newItemRef}
+                activeGoal={goal}
+                defaultDate={date.valueOf()}
+                inBacklog={dateFormated === BACKLOG_DATE_STRING}
+                useLoggedUser={true}
+                tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
+            >
+                <DismissibleItem
+                    ref={newItemRef}
+                    defaultComponent={
+                        <AddTask
+                            projectId={projectId}
+                            tags={[]}
+                            toggleModal={() => {
+                                newItemRef?.current?.toggleModal()
+                            }}
+                            newItem={true}
+                            hideParentGoalButton={true}
+                            dateFormated={dateFormated}
+                        />
+                    }
+                    modalComponent={
+                        <EditTask
+                            adding={true}
+                            projectId={projectId}
+                            onCancelAction={() => {
+                                newItemRef?.current?.toggleModal()
+                            }}
+                            defaultDate={date.valueOf()}
+                            inBacklog={dateFormated === BACKLOG_DATE_STRING}
+                            activeGoal={goal}
+                            tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
+                            dateFormated={dateFormated}
+                            useLoggedUser={true}
+                        />
+                    }
+                />
+            </InlineAddTaskFileDrop>
         </View>
     )
 }

@@ -1083,6 +1083,7 @@
     "File size exceeds": "File size exceeds %{limit} MB. The file size is: %{size} MB.",
     "Drop files to attach": "Drop files to attach",
     "Drop files to add to description": "Drop files to add to description",
+    "Drop files to create a task": "Drop files to create a task",
     "Adding files to description": "Adding files to description",
     "Files added to description": "Files added to description",
     "Task attachment upload failed": "Some files could not be uploaded. Please try again.",
