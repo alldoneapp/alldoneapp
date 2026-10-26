@@ -17,7 +17,12 @@ jest.mock('../TaskListView/ProjectSection', () => {
     const Section = ({ children }) => <View>{children}</View>
     return { __esModule: true, default: Section, ProjectSectionBody: Section }
 })
-jest.mock('../TaskListView/Header/ProjectHeader', () => () => null)
+jest.mock('../TaskListView/Header/ProjectHeader', () => {
+    const { View } = require('react-native')
+    return ({ showRootSectionNavigation }) => (
+        <View testID="project-header" showRootSectionNavigation={showRootSectionNavigation} />
+    )
+})
 jest.mock('../UIControls/Button', () => {
     const { Text, TouchableOpacity } = require('react-native')
     return ({ title, onPress, accessibilityLabel }) => (
@@ -124,6 +129,23 @@ it('opens an artifact in place and gives it its own address', async () => {
 
     expect(tree.root.findByProps({ testID: 'artifact-detail' }).props.children).toBe('older')
     expect(mockPush).toHaveBeenCalledWith('ARTIFACT_DETAILS', null, 'project-a', 'older', 'Report')
+})
+
+it('opens an artifact as a detail view without the project line or the section navigation (AT-2882)', async () => {
+    const tree = await render()
+    const header = tree.root.findAll(node => node.props.testID === 'project-header', { deep: false })
+    expect(header).toHaveLength(1)
+    expect(header[0].props.showRootSectionNavigation).toBe(true)
+
+    await act(async () => tree.root.findByProps({ testID: 'artifact-row-older' }).props.onPress())
+    expect(tree.root.findAllByProps({ testID: 'project-header' })).toHaveLength(0)
+    expect(tree.root.findAllByProps({ testID: 'artifacts-list-project-a' })).toHaveLength(0)
+    expect(tree.root.findByProps({ testID: 'artifact-detail' }).props.children).toBe('older')
+
+    // Back to the list brings both back.
+    await act(async () => setSelectedArtifactId(PROJECT.id, null))
+    expect(tree.root.findAll(node => node.props.testID === 'project-header', { deep: false })).toHaveLength(1)
+    expect(tree.root.findAllByProps({ testID: 'artifact-detail' })).toHaveLength(0)
 })
 
 it('switches to the project when an artifact is opened from All projects', async () => {

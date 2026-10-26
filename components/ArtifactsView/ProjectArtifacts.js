@@ -135,6 +135,17 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
 
     if (inAllProjects && (!loaded || artifacts.length === 0)) return null
 
+    // An open artifact is a detail view like a note's: it starts at its own back-arrow row, with no
+    // project line and no section navigation above it (AT-2882). Back returns to the list, which
+    // has both.
+    if (openArtifactId) {
+        return (
+            <View testID={`artifact-detail-view-${project.id}`} style={localStyles.detail}>
+                <ArtifactDetail projectId={project.id} artifactId={openArtifactId} onBack={closeArtifact} />
+            </View>
+        )
+    }
+
     return (
         <ProjectSection projectId={project.id} projectColor={project.color} selected style={localStyles.section}>
             <ProjectHeader
@@ -142,70 +153,60 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
                 projectId={project.id}
                 showRootSectionNavigation={!inAllProjects}
                 customRight={
-                    !openArtifactId && (
-                        <Button
-                            type={'ghost'}
-                            icon={'plus'}
-                            onPress={() => fileInput.current?.open()}
-                            disabled={uploading}
-                            accessibilityLabel={translate('Add artifact')}
-                            buttonStyle={localStyles.addButton}
-                        />
-                    )
+                    <Button
+                        type={'ghost'}
+                        icon={'plus'}
+                        onPress={() => fileInput.current?.open()}
+                        disabled={uploading}
+                        accessibilityLabel={translate('Add artifact')}
+                        buttonStyle={localStyles.addButton}
+                    />
                 }
             />
             <ProjectSectionBody>
-                {openArtifactId ? (
-                    <ArtifactDetail projectId={project.id} artifactId={openArtifactId} onBack={closeArtifact} />
-                ) : (
-                    <ArtifactDropZone
-                        onFiles={uploadFiles}
-                        disabled={uploading}
-                        testID={`artifacts-drop-${project.id}`}
-                    >
-                        <ArtifactFileInput ref={fileInput} onFiles={uploadFiles} />
-                        <ArtifactUploadStatus uploading={uploading} error={error} />
-                        {uploadsError && (
-                            <Text style={localStyles.status}>{translate('Some uploads could not be loaded')}</Text>
-                        )}
-                        {!loaded ? (
-                            <Text style={localStyles.status}>{translate('Loading artifacts')}</Text>
-                        ) : artifacts.length === 0 ? (
-                            <EmptyArtifacts followedOnly={followedOnly} />
-                        ) : (
-                            <View testID={`artifacts-list-${project.id}`} style={localStyles.list}>
-                                <KindFilter groups={kindGroups} active={activeKindGroup} onChange={setKindGroup} />
-                                {visibleArtifacts.map(artifact => (
-                                    <ArtifactRow
-                                        key={artifact.id}
-                                        artifact={artifact}
-                                        projectId={project.id}
-                                        onPress={openArtifact}
-                                        onOpenSource={openSource}
-                                    />
-                                ))}
-                                {hasMore && (
-                                    <ShowMoreButton
-                                        expanded={expanded}
-                                        expand={() => setExpanded(true)}
-                                        contract={() => setExpanded(false)}
-                                        style={localStyles.showMore}
-                                    />
-                                )}
-                            </View>
-                        )}
-                        {!inAllProjects && loaded && (
-                            <Button
-                                type="ghost"
-                                icon="upload"
-                                title={translate('Add artifact')}
-                                onPress={() => fileInput.current?.open()}
-                                disabled={uploading}
-                                buttonStyle={localStyles.addInlineButton}
-                            />
-                        )}
-                    </ArtifactDropZone>
-                )}
+                <ArtifactDropZone onFiles={uploadFiles} disabled={uploading} testID={`artifacts-drop-${project.id}`}>
+                    <ArtifactFileInput ref={fileInput} onFiles={uploadFiles} />
+                    <ArtifactUploadStatus uploading={uploading} error={error} />
+                    {uploadsError && (
+                        <Text style={localStyles.status}>{translate('Some uploads could not be loaded')}</Text>
+                    )}
+                    {!loaded ? (
+                        <Text style={localStyles.status}>{translate('Loading artifacts')}</Text>
+                    ) : artifacts.length === 0 ? (
+                        <EmptyArtifacts followedOnly={followedOnly} />
+                    ) : (
+                        <View testID={`artifacts-list-${project.id}`} style={localStyles.list}>
+                            <KindFilter groups={kindGroups} active={activeKindGroup} onChange={setKindGroup} />
+                            {visibleArtifacts.map(artifact => (
+                                <ArtifactRow
+                                    key={artifact.id}
+                                    artifact={artifact}
+                                    projectId={project.id}
+                                    onPress={openArtifact}
+                                    onOpenSource={openSource}
+                                />
+                            ))}
+                            {hasMore && (
+                                <ShowMoreButton
+                                    expanded={expanded}
+                                    expand={() => setExpanded(true)}
+                                    contract={() => setExpanded(false)}
+                                    style={localStyles.showMore}
+                                />
+                            )}
+                        </View>
+                    )}
+                    {!inAllProjects && loaded && (
+                        <Button
+                            type="ghost"
+                            icon="upload"
+                            title={translate('Add artifact')}
+                            onPress={() => fileInput.current?.open()}
+                            disabled={uploading}
+                            buttonStyle={localStyles.addInlineButton}
+                        />
+                    )}
+                </ArtifactDropZone>
                 {/* Outside the drop zone: React bubbles a portal's events through its owner, so a
                     file dropped on the viewer would otherwise be uploaded to the project. */}
                 {!!viewerFileId && (
@@ -224,6 +225,10 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
 
 const localStyles = StyleSheet.create({
     section: {
+        marginBottom: 32,
+    },
+    detail: {
+        paddingTop: 16,
         marginBottom: 32,
     },
     addButton: {
