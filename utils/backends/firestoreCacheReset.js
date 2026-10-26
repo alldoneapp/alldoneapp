@@ -21,6 +21,7 @@
  *    empty cache. A request is only honoured for a few minutes, and an interrupted clear is never
  *    retried, so this can not loop.
  */
+import { subscribePageHidden } from '../appResume'
 import { hasUnsafeCommentDrafts } from '../commentDraftStore'
 import { recordNewDayEvent } from '../newDayDiagnostics'
 import { hasPendingTaskWrites } from './pendingTaskWrites'
@@ -186,6 +187,9 @@ export const scheduleFirestoreCacheResetCheck = (
         setTimer = setTimeout,
         clearTimer = clearTimeout,
         doc = typeof document !== 'undefined' ? document : null,
+        // Hidden-page signals have one owner (utils/appResume.js, PT-4660); a listener of our own
+        // would re-derive which of visibilitychange, freeze and pagehide means "gone".
+        subscribeHidden = subscribePageHidden,
         isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false,
         hasPendingAppWrites = () => hasPendingTaskWrites() || hasUnsafeCommentDrafts(),
         delayMs = CACHE_CHECK_DELAY_MS,
@@ -196,7 +200,7 @@ export const scheduleFirestoreCacheResetCheck = (
     if (state && state.state !== 'requested') return () => {}
     let stopped = false
     let attempting = false
-    let listening = false
+    let unsubscribe = null
 
     const attempt = async () => {
         if (stopped || attempting || !doc || doc.visibilityState !== 'hidden') return
@@ -223,21 +227,17 @@ export const scheduleFirestoreCacheResetCheck = (
             attempting = false
         }
     }
-    const onVisibility = () => {
-        void attempt()
-    }
     const stop = () => {
         stopped = true
-        if (listening) doc.removeEventListener('visibilitychange', onVisibility)
-        listening = false
+        if (unsubscribe) unsubscribe()
+        unsubscribe = null
         clearTimer(timer)
     }
     const timer = setTimer(async () => {
         if (stopped) return
         const inspection = await inspect()
         if (stopped || !isBloatedFirestoreCache(inspection) || !doc) return
-        doc.addEventListener('visibilitychange', onVisibility)
-        listening = true
+        unsubscribe = subscribeHidden(() => void attempt())
         void attempt()
     }, delayMs)
     return stop
