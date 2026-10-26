@@ -70,12 +70,11 @@ describe('collectKnowledgeSources', () => {
         expect(stats.skipped.private).toBe(3)
     })
 
-    it('leaves out the inbox counter task, generated time logs and user memory notes', async () => {
+    it('leaves out email tasks, generated time logs and user memory notes', async () => {
         const db = new KnowledgeFirestoreDouble({
-            [taskPath('emailTask-owner-2026-10-23')]: {
-                name: 'Emails in inbox',
-                isForEmail: true,
-                gmailData: { email: 'owner@example.test', gmailEmail: 'owner@example.test', unreadMails: 12 },
+            [taskPath('email')]: {
+                name: 'Mail',
+                gmailData: { messageId: 'm1' },
                 isPublicFor: PUBLIC,
                 lastEditionDate: NOW - DAY,
             },
@@ -96,47 +95,7 @@ describe('collectKnowledgeSources', () => {
         const { sources, stats } = await collect(db)
 
         expect(sources).toEqual([])
-        expect(stats.skipped).toEqual({ email_inbox: 1, generated: 1, user_memory: 1 })
-    })
-
-    it('takes in a visible task created from an email and says where it came from, without its mailbox', async () => {
-        const db = new KnowledgeFirestoreDouble({
-            [taskPath('follow-up')]: {
-                extendedName: 'Angebot an Acme bis Freitag schicken',
-                description: 'Acme braucht das Angebot für Q4.',
-                gmailData: {
-                    origin: 'gmail_label_follow_up',
-                    messageId: 'm1',
-                    gmailEmail: 'owner@example.test',
-                    webUrl: 'https://mail.google.com/mail/u/owner@example.test/#all/m1',
-                },
-                isPublicFor: PUBLIC,
-                lastEditionDate: NOW - DAY,
-            },
-            // A thread that continued on the task keeps its messages in messageIds.
-            [taskPath('continued')]: {
-                name: 'Vertrag prüfen',
-                gmailData: { messageIds: ['m2', 'm3'] },
-                isPublicFor: PUBLIC,
-                lastEditionDate: NOW - DAY,
-            },
-            [taskPath('private-mail')]: {
-                name: 'Arzttermin bestätigen',
-                gmailData: { origin: 'gmail_label_follow_up', messageId: 'm4' },
-                isPublicFor: ['owner'],
-                lastEditionDate: NOW - DAY,
-            },
-        })
-
-        const { sources, stats } = await collect(db)
-
-        expect(sources.map(source => source.key).sort()).toEqual(['task:continued', 'task:follow-up'])
-        expect(sources.find(source => source.key === 'task:follow-up').text.split('\n')).toEqual([
-            '[[task:follow-up]] "Angebot an Acme bis Freitag schicken" (open, created from an email)',
-            'Description: Acme braucht das Angebot für Q4.',
-        ])
-        expect(JSON.stringify(sources)).not.toMatch(/owner@example\.test|mail\.google|Arzttermin/)
-        expect(stats.skipped).toEqual({ private: 1 })
+        expect(stats.skipped).toEqual({ email: 1, generated: 1, user_memory: 1 })
     })
 
     it('builds compact cards that cite each object with its own token', async () => {
@@ -590,12 +549,7 @@ describe('comment threads and artifacts', () => {
         const readThreadComments = jest.fn(async () => [{ commentText: 'geheim', creatorId: 'owner', created: NOW }])
         const db = threadDb({
             [taskPath('t1')]: { name: 'Gehalt', isPublicFor: ['owner'], lastEditionDate: NOW - 20 * DAY },
-            [taskPath('mail')]: {
-                name: 'Emails in inbox',
-                isForEmail: true,
-                gmailData: { unreadMails: 3 },
-                isPublicFor: PUBLIC,
-            },
+            [taskPath('mail')]: { name: 'Mail', gmailData: { messageId: 'm' }, isPublicFor: PUBLIC },
             [chatPath('mail')]: { type: 'tasks', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
             // The chat object says public, but its task is gone.
             [chatPath('orphan')]: { type: 'tasks', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
@@ -607,7 +561,7 @@ describe('comment threads and artifacts', () => {
         expect(sources.filter(source => source.type === 'chat')).toEqual([])
         expect(readThreadComments).not.toHaveBeenCalled()
         // The private task is skipped twice: as a task and as the object its thread belongs to.
-        expect(stats.skipped).toEqual({ private: 2, email_inbox: 1, missing_parent: 1, other_thread: 1 })
+        expect(stats.skipped).toEqual({ private: 2, email: 1, missing_parent: 1, other_thread: 1 })
     })
 
     it("takes in topics, a member's WhatsApp, heartbeat and email topics included, but no private ones", async () => {
@@ -672,45 +626,11 @@ describe('comment threads and artifacts', () => {
         ])
     })
 
-    it('takes in the thread of a visible task created from an email, but not that of a private one', async () => {
+    it('still leaves out the thread of a task created from an email', async () => {
         const db = threadDb({
             [taskPath('t1')]: {
                 extendedName: 'Antwort an Acme',
-                gmailData: { origin: 'gmail_label_follow_up', messageId: 'm1' },
-                isPublicFor: PUBLIC,
-                lastEditionDate: NOW - 20 * DAY,
-            },
-            [taskPath('private-mail')]: {
-                extendedName: 'Arzttermin bestätigen',
-                gmailData: { origin: 'gmail_label_follow_up', messageId: 'm2' },
-                isPublicFor: ['owner'],
-                lastEditionDate: NOW - 20 * DAY,
-            },
-            [chatPath('private-mail')]: { type: 'tasks', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-            [commentPath('tasks', 'private-mail', 'c1')]: {
-                commentText: 'Termin am Dienstag',
-                creatorId: 'owner',
-                created: NOW - DAY,
-            },
-        })
-
-        const { sources, stats } = await collect(db, threadOptions())
-
-        expect(sources.map(source => source.key).sort()).toEqual(['chat:t1', 'task:t1'])
-        expect(sources.find(source => source.key === 'chat:t1').text).toMatch(
-            /^\[\[chat:t1\]\] Comments on the task \[\[task:t1\]\] "Antwort an Acme" \(2 new comments\)/
-        )
-        expect(JSON.stringify(sources)).not.toMatch(/Arzttermin|Dienstag/)
-        // The private email task is skipped twice: as a task and as the object its thread belongs to.
-        expect(stats.skipped).toEqual({ private: 2 })
-    })
-
-    it('still leaves out the thread of the inbox counter task', async () => {
-        const db = threadDb({
-            [taskPath('t1')]: {
-                extendedName: 'Emails in inbox',
-                isForEmail: true,
-                gmailData: { email: 'owner@example.test', unreadMails: 4 },
+                gmailData: { messageId: 'm1' },
                 isPublicFor: PUBLIC,
                 lastEditionDate: NOW - 20 * DAY,
             },
@@ -719,7 +639,7 @@ describe('comment threads and artifacts', () => {
         const { sources, stats } = await collect(db, threadOptions())
 
         expect(sources).toEqual([])
-        expect(stats.skipped).toEqual({ email_inbox: 2 })
+        expect(stats.skipped).toEqual({ email: 2 })
     })
 
     it('shows a delta only the comments written since the wiki last looked, and a rebuild the latest ones', async () => {
