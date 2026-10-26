@@ -564,7 +564,7 @@ describe('comment threads and artifacts', () => {
         expect(stats.skipped).toEqual({ private: 2, email: 1, missing_parent: 1, other_thread: 1 })
     })
 
-    it("takes in topics, a member's WhatsApp and heartbeat topics included, but no email or private topics", async () => {
+    it("takes in topics, a member's WhatsApp, heartbeat and email topics included, but no private ones", async () => {
         const topic = (id, data) => ({
             [chatPath(id)]: { type: 'topics', title: id, isPublicFor: [0], lastEditionDate: NOW - DAY, ...data },
             [commentPath('topics', id, 'c')]: { commentText: `Inhalt ${id}`, creatorId: 'owner', created: NOW - DAY },
@@ -574,7 +574,8 @@ describe('comment threads and artifacts', () => {
             ...topic('BotChat20261023owner'),
             ...topic('Heartbeat20261023owner'),
             ...topic('BotChatEmail20261023owner'),
-            ...topic('WikiGoldCap_project-a_2026-10', { isPublicFor: ['owner'] }),
+            // Public or not, the wiki's own Gold notice says nothing about the project.
+            ...topic('WikiGoldCap_project-a_2026-10'),
             ...topic('Privat', { isPublicFor: ['owner'] }),
         })
 
@@ -582,38 +583,63 @@ describe('comment threads and artifacts', () => {
 
         expect(sources.map(source => source.key).sort()).toEqual([
             'chat:BotChat20261023owner',
+            'chat:BotChatEmail20261023owner',
             'chat:Heartbeat20261023owner',
             'chat:Planung',
         ])
         expect(sources.find(source => source.key === 'chat:Planung').text).toMatch(
             /^\[\[chat:Planung\]\] Chat topic "Planung" \(1 new comment\)/
         )
-        expect(stats.skipped).toEqual({ email: 1, private: 2 })
+        expect(stats.skipped).toEqual({ wiki_notice: 1, private: 1 })
     })
 
-    it('leaves out email comments and answers an assistant is still writing', async () => {
-        const db = threadDb({
-            [commentPath('tasks', 't1', 'c3')]: {
-                commentText: 'Email from Bank: Kontoauszug',
+    it('takes in the email comments of an email day topic, but not answers an assistant is still writing', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [chatPath('daily-emails')]: {
+                type: 'topics',
+                title: 'Daily emails Alldone 23.10.2026',
+                isPublicFor: [0],
+                lastEditionDate: NOW - DAY,
+            },
+            [commentPath('topics', 'daily-emails', 'c1')]: {
+                commentText: 'Email from Acme: Der Vertrag ist unterschrieben',
                 gmailData: { messageId: 'm1' },
                 creatorId: 'anna',
                 fromAssistant: true,
                 created: NOW - DAY,
             },
-            [commentPath('tasks', 't1', 'c4')]: {
+            [commentPath('topics', 'daily-emails', 'c2')]: {
                 commentText: 'Ich denke noch',
                 isLoading: true,
                 creatorId: 'anna',
                 fromAssistant: true,
-                created: NOW - DAY,
+                created: NOW - DAY + 1,
             },
         })
 
         const { sources } = await collect(db, threadOptions())
 
-        const text = sources.find(source => source.key === 'chat:t1').text
-        expect(text).not.toMatch(/Kontoauszug|Ich denke noch/)
-        expect(text).toMatch(/2 new comments/)
+        expect(sources).toHaveLength(1)
+        expect(sources[0].text.split('\n')).toEqual([
+            '[[chat:daily-emails]] Chat topic "Daily emails Alldone 23.10.2026" (1 new comment)',
+            '- 2026-10-23 Anna (assistant): Email from Acme: Der Vertrag ist unterschrieben',
+        ])
+    })
+
+    it('still leaves out the thread of a task created from an email', async () => {
+        const db = threadDb({
+            [taskPath('t1')]: {
+                extendedName: 'Antwort an Acme',
+                gmailData: { messageId: 'm1' },
+                isPublicFor: PUBLIC,
+                lastEditionDate: NOW - 20 * DAY,
+            },
+        })
+
+        const { sources, stats } = await collect(db, threadOptions())
+
+        expect(sources).toEqual([])
+        expect(stats.skipped).toEqual({ email: 2 })
     })
 
     it('shows a delta only the comments written since the wiki last looked, and a rebuild the latest ones', async () => {

@@ -22,14 +22,19 @@
 // reads the latest comments instead. Artifacts (`artifact:ID`) contribute their title, description
 // and the text of their current entry file (knowledgeArtifactText.js).
 //
+// The topics a member has with their assistant are sources like any other topic: the daily WhatsApp,
+// heartbeat and menubar conversations, and the email day topics with their email comments (Anna's
+// email conversations, the "Daily emails …" summaries of the Gmail labeling). They are visible to the
+// whole project like any topic, things worth knowing get discussed there too, and the ingest decides
+// what in them belongs to the project.
+//
 // What else is deliberately left out, and why:
-//   - email-derived tasks (gmailData) and email comments: emails are opt-in for the wiki and not
-//     part of the MVP. A thread of an excluded object is left out with it;
+//   - email-derived tasks (gmailData): a task per email is the inbox, not knowledge, and stays out
+//     until emails are taken into the wiki as a flow of their own. A thread of an excluded object
+//     is left out with it;
 //   - the generated day-rate time-log task: bookkeeping, not knowledge;
 //   - user memory notes (parentObject.type === 'users'): personal facts about one member;
-//   - the email day topics and the wiki's own Gold-limit notice. A member's daily WhatsApp,
-//     heartbeat and menubar topics with their assistant are sources, though: they are visible to the
-//     whole project like any topic, and the ingest decides what in them belongs to the project;
+//   - the wiki's own Gold-limit notice topic;
 //   - the threads of users, assistants and skills: a member's profile chat, an assistant's board;
 //   - a comment an assistant is still writing (isLoading / isThinking).
 //
@@ -169,16 +174,11 @@ const THREAD_PARENT_SOURCE_TYPES = {
     contacts: 'contact',
     artifacts: 'artifact',
 }
-// Topics the server opens with deterministic ids that are never sources: the email day topics
-// (`BotChatEmail…`, emails stay out of the wiki like email tasks) and the wiki's own Gold-limit
-// notice (knowledgeBaseCapNotice.js `WikiGoldCap_…`). The other channel topics a member has with
-// their assistant (daily WhatsApp `BotChat…`, heartbeat `Heartbeat…`, menubar `MacApp…`) ARE
-// sources: things worth knowing get discussed there too, and the ingest decides what belongs to
-// the project.
-const EXCLUDED_TOPIC_ID_PREFIXES = [
-    { prefix: 'BotChatEmail', reason: 'email' },
-    { prefix: 'WikiGoldCap_', reason: 'wiki_notice' },
-]
+// Topics the server opens with deterministic ids that are never sources: the wiki's own Gold-limit
+// notice (knowledgeBaseCapNotice.js `WikiGoldCap_…`), which says nothing about the project. The
+// channel topics a member has with their assistant (daily WhatsApp `BotChat…`, email
+// `BotChatEmail…`, heartbeat `Heartbeat…`, menubar `MacApp…`) ARE sources.
+const EXCLUDED_TOPIC_ID_PREFIXES = [{ prefix: 'WikiGoldCap_', reason: 'wiki_notice' }]
 const THREAD_TYPE_LABELS = {
     tasks: 'the task',
     notes: 'the note',
@@ -240,8 +240,9 @@ function getThreadExclusionReason(chatId, chat, parent) {
     return getExclusionReason(parent, sourceType)
 }
 
+// An email comment (gmailData) is a source like any other: it is what an email day topic consists of.
 function isThreadCommentSource(comment) {
-    if (!comment || comment.gmailData) return false
+    if (!comment) return false
     return comment.isLoading !== true && comment.isThinking !== true
 }
 
