@@ -709,8 +709,47 @@ function analyzeRecursiveDelete(tokens, context) {
     return { risky: false }
 }
 
+// Git's global options that consume the NEXT token as their value (`git -C dir push`,
+// `git -c key=value push`). Every other leading `-…` token is a flag on its own.
+const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
+    '-C',
+    '-c',
+    '--git-dir',
+    '--work-tree',
+    '--namespace',
+    '--super-prefix',
+    '--config-env',
+    '--list-cmds',
+])
+
+/**
+ * Index of the git subcommand in `tokens` (which start with `git`), or -1.
+ *
+ * AT-2869: the push rules used to fire whenever the word `push` appeared ANYWHERE on a git
+ * command line, so `git stash push <path>` was analysed as `git push`. With no refspec it resolved
+ * to `HEAD` = the base branch and escalated as "a push to the base branch" - a never-auto-approved
+ * rule, so even `permissive` paused a purely local stash. Only the actual subcommand decides.
+ */
+function gitSubcommandIndex(tokens) {
+    for (let i = 1; i < tokens.length; i += 1) {
+        const token = tokens[i]
+        if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
+            i += 1
+            continue
+        }
+        if (token.startsWith('-')) continue
+        return i
+    }
+    return -1
+}
+
+function isGitPush(tokens) {
+    const index = gitSubcommandIndex(tokens)
+    return index !== -1 && tokens[index] === 'push'
+}
+
 function analyzeGitPush(tokens, context) {
-    const pushIndex = tokens.indexOf('push')
+    const pushIndex = gitSubcommandIndex(tokens)
     const args = tokens.slice(pushIndex + 1)
     const forceFlag = args.some(arg => /^(?:-f|--force|--force-with-lease(?:=.*)?|--force-if-includes)$/.test(arg))
     const deleteFlag = args.some(arg => /^(?:-d|--delete|--mirror)$/.test(arg))
@@ -876,7 +915,7 @@ function assessBashCommand(command, context) {
             continue
         }
 
-        if (program === 'git' && bare.includes('push')) {
+        if (program === 'git' && isGitPush(bare)) {
             if (level === 'strict') {
                 return escalation('publishing or destructive Git operation', 'bash:git_publish', NEVER_AUTO_APPROVED)
             }
