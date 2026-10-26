@@ -105,6 +105,10 @@ function Inline({ nodes, context }) {
     })
 }
 
+// Where list text starts, and how far each nested list steps right — the notes editor's values.
+const LIST_TEXT_INDENT = 36
+const LIST_NESTING_STEP = 24
+
 const HEADING_STYLES = {
     1: styles.title5,
     2: styles.title6,
@@ -128,12 +132,20 @@ function Block({ block, context, depth = 0 }) {
             )
         case 'list':
             return (
-                <View style={[localStyles.list, depth > 0 && localStyles.nestedList]}>
+                <View testID="wiki-list" style={[localStyles.list, depth > 0 && localStyles.nestedList]}>
                     {block.items.map((item, index) => (
                         <View key={index}>
                             <View style={localStyles.listItem}>
-                                <Text style={localStyles.listMarker}>{block.ordered ? `${index + 1}.` : '•'}</Text>
-                                <Text style={localStyles.listText}>
+                                <Text
+                                    testID="wiki-list-marker"
+                                    style={[
+                                        localStyles.listMarker,
+                                        block.ordered ? localStyles.orderedListMarker : localStyles.bulletListMarker,
+                                    ]}
+                                >
+                                    {block.ordered ? `${index + 1}.` : '•'}
+                                </Text>
+                                <Text testID="wiki-list-text" style={localStyles.listText}>
                                     <Inline nodes={item.inline} context={context} />
                                 </Text>
                             </View>
@@ -252,26 +264,44 @@ const localStyles = StyleSheet.create({
         fontFamily: 'alldone',
         color: colors.Text03,
     },
+    // Lists are laid out like lists in notes (AT-2873, measured against the notes editor's
+    // toolbar-styles.css at the same 16px): the marker sits in a fixed column, right-aligned, so the
+    // text of every item — and every wrapped line of it — starts at the same indent, and each nesting
+    // level steps right by the same 24px a note does.
     list: {
         marginBottom: 12,
     },
     nestedList: {
-        marginLeft: 20,
+        marginLeft: LIST_NESTING_STEP,
         marginBottom: 0,
     },
     listItem: {
         flexDirection: 'row',
         marginBottom: 4,
     },
+    // The app shell forces `flex-basis: auto !important` on every element (web-bundler/index.html),
+    // which turns the text's `flex: 1` into a content-sized basis. Without flexShrink: 0 the marker
+    // column was then squeezed in proportion to how long the item is, so the gap between bullet and
+    // text changed from item to item. minWidth (not width) lets a long number like "100." widen its
+    // own column instead of running into the text.
     listMarker: {
         ...styles.body1,
         color: colors.Text02,
-        width: 22,
+        minWidth: LIST_TEXT_INDENT,
+        flexShrink: 0,
+        textAlign: 'right',
+    },
+    bulletListMarker: {
+        paddingRight: 4,
+    },
+    orderedListMarker: {
+        paddingRight: 11,
     },
     listText: {
         ...styles.body1,
         color: colors.Text01,
         flex: 1,
+        minWidth: 0,
     },
     quote: {
         borderLeftWidth: 3,
