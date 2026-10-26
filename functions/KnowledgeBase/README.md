@@ -1,8 +1,9 @@
 # Project wiki (knowledge base)
 
 A Karpathy-style wiki per project: markdown pages an LLM compiles from the project's tasks,
-goals, notes and contacts, and from documents members add to it through an assistant, kept
-current by ingest runs and read by the project's assistants.
+goals, notes, contacts, comment threads (topics and the chats of those objects) and artifacts, and
+from documents members add to it through an assistant, kept current by ingest runs and read by the
+project's assistants.
 The design notes live in the module headers; this file is the operational checklist.
 
 The web client reads the wiki straight from Firestore (`utils/backends/KnowledgeBase/`) and
@@ -15,6 +16,7 @@ its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-set
 | `knowledgeBaseModel.js`           | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation            |
 | `knowledgeBaseSettings.js`        | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                     |
 | `collectKnowledgeSources.js`      | Delta of objects visible to the whole project, as source cards                          |
+| `knowledgeArtifactText.js`        | The text an artifact's current entry file contributes to its source card                |
 | `knowledgeSourceInvalidation.js`  | Hides and empties pages citing a withdrawn object, redacts their revisions              |
 | `knowledgePageStore.js`           | The one place a page is written: citation, revision and concurrency checks              |
 | `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
@@ -42,7 +44,7 @@ run goes through the same `runKnowledgeBaseIngest` queue as "refresh now".
    (the Updates feed lines), `applyKnowledgeBaseDefaults` (the daily default switch-on, which also
    reaches the projects that existed before the default; no migration to run), `onCreateProjectSecondGen`
    and `onUpdateUserSecondGen` (the same default for a new project and a returning user), plus the
-   task/goal/note/contact update
+   task/goal/note/contact/artifact/chat update
    and delete triggers that invalidate pages and every function that runs an assistant (the wiki
    context and tools live in `Assistant/assistantHelper.js`).
 3. Once per environment, after the first deploy of the worker, let the Firebase Admin SDK service

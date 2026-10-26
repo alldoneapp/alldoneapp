@@ -597,7 +597,7 @@ object id re-renders every subscriber on every write (AT-2336) for state that co
 ### The project wiki is compiled only from what the whole project can see
 
 `knowledgeBases/{projectId}` holds a Karpathy-style wiki per project: Markdown pages a model compiles
-from the project's tasks, goals, notes and contacts (`functions/KnowledgeBase/`, read UI in
+from the project's tasks, goals, notes, contacts, comment threads and artifacts (`functions/KnowledgeBase/`, read UI in
 `components/WikiView/`). Members may read the whole tree straight from Firestore and nobody may
 write it; every write is a callable or the `runKnowledgeBaseIngest` worker. The member who switches
 it on pays (`knowledge_base_ingest` Gold, monthly cap, default model DeepSeek V4 Flash).
@@ -652,6 +652,32 @@ names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public
 `mapGoalData`); emails, generated day-rate tasks and user-memory notes are excluded outright, and
 contact email addresses and phone numbers never reach a source card. `loadSourcesByKeys` re-applies
 the same filter, because a key stored on a page is not proof the object is still public.
+
+**A comment thread is exactly as visible as the object it belongs to, never as its chat object
+says.** Threads are sources of their own (`[[chat:ID]]`, the chat object's id, which for a task,
+note, goal, contact or artifact thread is that object's id). The delta finds them with one query on
+`chatObjects/{projectId}/chats` by `lastEditionDate` (every new comment stamps it), then reads each
+thread's object and filters it like a source: a private task's thread is never read, and the thread of
+an email task or a time-log task is excluded with it. A chat object copies `isPublicFor` once at
+creation and is not kept in step with its object, so trusting it would leak. A topic is its own
+object. Threads of users, assistants and skills are not sources, nor are the wiki's own Gold notice
+(`WikiGoldCap_…`) and comments still being written (`isLoading`/`isThinking`). A member's daily
+WhatsApp (`BotChat…`), email (`BotChatEmail…`, and the "Daily emails …" topics of the Gmail
+labeling, whose comments carry `gmailData`), heartbeat and menubar topics ARE sources by decision
+(they are readable by the project anyway, and things worth knowing get discussed there); the ingest
+prompt tells the model to keep only what concerns the project and nothing personal. Tasks created
+from an email (`gmailData` on the task) and their threads still are not. A delta card carries only the comments since the wiki last
+looked (comments `created >=` the chats cursor), at most 40 and about 6,000 characters, newest kept;
+a rebuild reads the latest ones. Two known limits: an edited comment does not stamp the chat object,
+so an edit is only seen when the thread changes again, and an object made public again does not
+bring its older comments back until somebody comments. **Artifacts** (`[[artifact:ID]]`) contribute
+title, description and the text of the current entry file (`knowledgeArtifactText.js`: text kinds as
+text, HTML as visible text, PDF/Word/PowerPoint/Excel through the upload extraction; images, audio
+and video never, because transcription costs money on every edit). Withdrawal: an object's
+update/delete trigger withdraws `type:ID` and `chat:ID` together, the artifact triggers do the same,
+and `onUpdateChatSecondGen`/`onDeleteChatSecondGen` withdraw a topic made private and any deleted
+thread. Pinned by the `comment threads and artifacts` blocks of `collectKnowledgeSources.test.js`
+and `knowledgeSourceInvalidation.test.js`, `knowledgeArtifactText.test.js` and `components/WikiView/wikiLinks.test.js`.
 
 **A withdrawn source must leave the stored data, not just the views.** When a cited object turns
 private or is deleted, the object's existing update/delete trigger calls

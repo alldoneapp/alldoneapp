@@ -88,6 +88,23 @@ describe('WikiMarkdown', () => {
         expect(component.root.findByProps({ testID: 'wiki-source-document:d1' }).props.onPress).toBeUndefined()
     })
 
+    it('shows conversations and artifacts as sources that open where they live', () => {
+        const onPressSource = jest.fn()
+        const component = render({
+            body: 'Release am 3. November [[chat:t1]], Zahlen im Dashboard [[artifact:a1]] [[chat:topic]].',
+            sourceLabels: { 'chat:t1': 'Release planen', 'artifact:a1': 'Churn-Dashboard' },
+            onPressSource,
+        })
+        const text = textOf(component.toJSON())
+
+        expect(text).toContain('<message-circle> Release planen')
+        expect(text).toContain('<package> Churn-Dashboard')
+        expect(text).toContain('<message-circle> Chat')
+        act(() => component.root.findByProps({ testID: 'wiki-source-chat:t1' }).props.onPress())
+        act(() => component.root.findByProps({ testID: 'wiki-source-artifact:a1' }).props.onPress())
+        expect(onPressSource.mock.calls.map(([node]) => node.key)).toEqual(['chat:t1', 'artifact:a1'])
+    })
+
     it('renders no markup it was not written for', () => {
         const component = render({ body: '<img src=x onerror=alert(1)> **fett** [Link](javascript:alert(1))' })
         const texts = component.root.findAllByType(Text)

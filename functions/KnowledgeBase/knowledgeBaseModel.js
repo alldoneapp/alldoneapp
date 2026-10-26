@@ -1,8 +1,9 @@
 'use strict'
 
 // Project wiki (a Karpathy-style knowledge base): markdown pages an LLM compiles from a
-// project's tasks, goals, notes and contacts, and from documents members add to it, kept current
-// by scheduled ingest runs and read by the project's assistants. One tree per project:
+// project's tasks, goals, notes, contacts, comment threads and artifacts, and from documents
+// members add to it, kept current by scheduled ingest runs and read by the project's assistants.
+// One tree per project:
 //
 //   knowledgeBases/{projectId}                                 settings + run state
 //   knowledgeBases/{projectId}/pages/{pageId}                  one compiled markdown page
@@ -62,7 +63,10 @@ const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
 const KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS = 200
 const KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS = 1000
 
-const KNOWLEDGE_SOURCE_TYPES = ['task', 'goal', 'note', 'contact', 'correction', 'document']
+// A `chat` source is one comment thread, keyed by its chat object's id: chatObjects/{projectId}/chats
+// holds the threads of tasks, notes, goals, contacts and artifacts next to the project's topics, and
+// a thread's chat object has the id of the object it belongs to, so the id is unique in the project.
+const KNOWLEDGE_SOURCE_TYPES = ['task', 'goal', 'note', 'contact', 'chat', 'artifact', 'correction', 'document']
 
 // Object collections name their types in the plural (`tasks`); source keys use the singular.
 const OBJECT_TYPE_TO_SOURCE_TYPE = {
@@ -74,10 +78,12 @@ const OBJECT_TYPE_TO_SOURCE_TYPE = {
     note: 'note',
     contacts: 'contact',
     contact: 'contact',
+    artifacts: 'artifact',
+    artifact: 'artifact',
 }
 
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
-const SOURCE_TOKEN_PATTERN = /^(task|goal|note|contact|correction|document):([A-Za-z0-9_-]{1,128})$/
+const SOURCE_TOKEN_PATTERN = /^(task|goal|note|contact|chat|artifact|correction|document):([A-Za-z0-9_-]{1,128})$/
 // [[slug]], [[slug|Label]], [[task:ID]] and [[task:ID|Label]]. No brackets, pipes or line
 // breaks inside, so a stray "[[" in prose can never swallow the rest of a page.
 const KNOWLEDGE_TOKEN_REGEX = /\[\[([^[\]\n|]{1,200})(?:\|([^[\]\n]{1,200}))?\]\]/g
