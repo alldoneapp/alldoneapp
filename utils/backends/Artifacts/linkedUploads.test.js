@@ -48,6 +48,49 @@ it('keeps same-named distinct files separate and mints no address of its own', (
     expect(files.map(file => file.url)).toEqual([null, null])
 })
 
+// AT-2868: an embed's display text is not always a file name ("Screenshot at 3:00" for a meeting
+// screenshot). The stored object's own name then decides the type, so the row gets its preview.
+it('types a file by its stored name when its display name has no known extension', () => {
+    const path = 'notesAttachments/26102026/abc/Meeting 2026-10-26 12.32 screenshot 1.jpg'
+    const [screenshot, clip, unknown] = mergeLinkedUploads([
+        {
+            references: [{ path, url: url(path), fileName: 'Screenshot at 3:00', thumbnailUrl: url(path) }],
+            source: { type: 'notes', id: 'n' },
+            date: 3,
+        },
+        {
+            references: [{ path: 'notesAttachments/d/clip.mp4', fileName: 'Recording v1.2' }],
+            source: { type: 'notes', id: 'n' },
+            date: 2,
+        },
+        {
+            references: [{ path: 'attachments/e/blob', fileName: 'Screenshot at 4:00' }],
+            source: { type: 'tasks', id: 't' },
+            date: 1,
+        },
+    ])
+    expect(screenshot).toMatchObject({
+        title: 'Screenshot at 3:00',
+        kind: 'image',
+        mimeType: 'image/jpeg',
+        thumbnailUrl: url(path),
+    })
+    expect(clip).toMatchObject({ title: 'Recording v1.2', kind: 'video', mimeType: 'video/mp4' })
+    // Nothing anywhere says what it is: it stays a generic file.
+    expect(unknown).toMatchObject({ kind: 'file', mimeType: 'application/octet-stream' })
+})
+
+it('keeps the display name authoritative when it names a known type', () => {
+    const [file] = mergeLinkedUploads([
+        {
+            references: [{ path: 'attachments/c/upload.bin', fileName: 'report.pdf' }],
+            source: { type: 'tasks', id: 't' },
+            date: 1,
+        },
+    ])
+    expect(file).toMatchObject({ kind: 'pdf', mimeType: 'application/pdf' })
+})
+
 it('lists one file once across sources, private only if every source is private', () => {
     const [file] = mergeLinkedUploads([
         { references: [{ path: 'attachments/c/a.pdf' }], source: { type: 'tasks', id: 't' }, date: 1, isPrivate: true },
