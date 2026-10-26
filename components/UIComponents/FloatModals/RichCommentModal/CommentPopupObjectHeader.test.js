@@ -43,6 +43,7 @@ jest.mock('../../../ChatsView/ChatItem', () => 'ChatItem')
 jest.mock('../../../SettingsView/Profile/Skills/SkillItem/SkillPresentation', () => 'SkillPresentation')
 jest.mock('../../../AdminPanel/Assistants/AssistantPresentation', () => 'AssistantPresentation')
 jest.mock('./Header', () => 'Header')
+jest.mock('./CommentPopupProjectLine', () => 'CommentPopupProjectLine')
 
 const PRESENTATION_BY_TYPE = {
     tasks: 'TaskPresentation',
@@ -143,6 +144,39 @@ describe('CommentPopupObjectHeader', () => {
         const surface = tree.root.findByProps({ testID: 'comment-popup-object-surface-topics' })
 
         expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: '#1A3289' }]))
+    })
+
+    describe('owning project line (AT-2867)', () => {
+        it('names the popup project above the task row', async () => {
+            const tree = await renderHeader('tasks')
+            const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-tasks')
+            const line = tree.root.findByType('CommentPopupProjectLine')
+
+            expect(line.props.projectId).toBe('project-1')
+            // The project line is the first child, i.e. directly above the object surface.
+            expect(boundary.children[0].type).toBe('CommentPopupProjectLine')
+        })
+
+        it('keeps the project line while the object is unavailable', async () => {
+            const tree = await renderHeader('tasks', null)
+
+            expect(tree.root.findByType('CommentPopupProjectLine').props.projectId).toBe('project-1')
+        })
+
+        it('keeps the project line above the loading state', () => {
+            getParentObjectData.mockReturnValue(new Promise(() => {}))
+            let tree
+            act(() => {
+                tree = renderer.create(
+                    <CommentPopupObjectHeader projectId="project-1" objectId="object-1" objectType="tasks" />
+                )
+            })
+
+            const json = tree.toJSON()
+            expect(json[0].type).toBe('CommentPopupProjectLine')
+            expect(tree.root.findByProps({ accessibilityLabel: 'Loading task' })).toBeTruthy()
+            act(() => tree.unmount())
+        })
     })
 
     it('shows a graceful fallback for deleted objects', async () => {

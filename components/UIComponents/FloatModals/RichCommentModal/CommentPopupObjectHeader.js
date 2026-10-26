@@ -22,6 +22,7 @@ import ChatItem from '../../../ChatsView/ChatItem'
 import SkillPresentation from '../../../SettingsView/Profile/Skills/SkillItem/SkillPresentation'
 import AssistantPresentation from '../../../AdminPanel/Assistants/AssistantPresentation'
 import Header from './Header'
+import CommentPopupProjectLine from './CommentPopupProjectLine'
 import { getCommentPopupObjectStringKey } from './commentPopupObjectStrings'
 
 const WATCHED_OBJECT_TYPES = {
@@ -130,22 +131,34 @@ export default function CommentPopupObjectHeader({
         }
     }, [projectId, objectId, objectType])
 
+    // The popup's projectId is the project that owns the object (its comments live under it),
+    // so the line names the object's real project, never merely the selected one (AT-2867).
+    const projectLine = <CommentPopupProjectLine projectId={projectId} />
+
     if (loading) {
         return (
-            <View
-                style={localStyles.loadingContainer}
-                accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'loading'))}
-            >
-                <ActivityIndicator size="small" color={colors.UtilityBlue125} />
-            </View>
+            <>
+                {projectLine}
+                <View
+                    style={localStyles.loadingContainer}
+                    accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'loading'))}
+                >
+                    <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                </View>
+            </>
         )
     }
 
     if (!object) {
-        return reconnecting ? (
-            <RecoveringObject objectName={objectName} objectType={objectType} />
-        ) : (
-            <UnavailableObject objectName={objectName} objectType={objectType} />
+        return (
+            <>
+                {projectLine}
+                {reconnecting ? (
+                    <RecoveringObject objectName={objectName} objectType={objectType} />
+                ) : (
+                    <UnavailableObject objectName={objectName} objectType={objectType} />
+                )}
+            </>
         )
     }
 
@@ -165,6 +178,7 @@ export default function CommentPopupObjectHeader({
             onTouchStart={stopEventPropagation}
             style={{ width: '100%' }}
         >
+            {projectLine}
             <View
                 testID={`comment-popup-object-surface-${normalizedObjectType}`}
                 style={[localStyles.objectContainer, { backgroundColor }]}
