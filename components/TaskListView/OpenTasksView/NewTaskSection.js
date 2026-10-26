@@ -15,7 +15,6 @@ import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
 import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
-import InlineAddTaskFileDrop from '../InlineAddTaskFileDrop'
 
 function AddTaskEditor(props) {
     const taskEditorLock = useTaskEditorLock()
@@ -125,55 +124,42 @@ export default function NewTaskSection({
         if (addTaskSectionToOpenData) processAutoOpenWhenSelectGoal(addTaskSectionToOpenData)
     }, [addTaskSectionToOpenData])
 
-    // AT-2875: dropping files on this line opens the add-task popup with them attached.
-    const fileDropEnabled = !hideItemFutureTasks && !isLocked
-
     return (
         <View style={taskEditorLayout.addTaskSection}>
-            <InlineAddTaskFileDrop
-                projectId={projectId}
-                enabled={fileDropEnabled}
-                inlineEditorRef={newItemRef}
-                activeGoal={activeGoal}
-                defaultDate={date.valueOf()}
-                inBacklog={dateFormated === BACKLOG_DATE_STRING}
-                expandTasksList={expandTasksList}
-            >
-                <DismissibleItem
-                    ref={newItemRef}
-                    defaultComponent={
-                        !hideItemFutureTasks && (
-                            <AddTask
-                                projectId={projectId}
-                                tags={[]}
-                                toggleModal={() => {
-                                    newItemRef?.current?.toggleModal()
-                                }}
-                                newItem={true}
-                                activeGoal={activeGoal}
-                                hideParentGoalButton={hideParentGoalButton}
-                                isLocked={isLocked}
-                                dateFormated={dateFormated}
-                            />
-                        )
-                    }
-                    modalComponent={
-                        <AddTaskEditor
-                            adding={true}
+            <DismissibleItem
+                ref={newItemRef}
+                defaultComponent={
+                    !hideItemFutureTasks && (
+                        <AddTask
                             projectId={projectId}
-                            onCancelAction={forceAction => {
-                                newItemRef?.current?.toggleModal(forceAction)
+                            tags={[]}
+                            toggleModal={() => {
+                                newItemRef?.current?.toggleModal()
                             }}
-                            defaultDate={date.valueOf()}
-                            inBacklog={dateFormated === BACKLOG_DATE_STRING}
-                            originalParentGoal={originalParentGoal}
+                            newItem={true}
                             activeGoal={activeGoal}
-                            expandTasksList={expandTasksList}
+                            hideParentGoalButton={hideParentGoalButton}
+                            isLocked={isLocked}
                             dateFormated={dateFormated}
                         />
-                    }
-                />
-            </InlineAddTaskFileDrop>
+                    )
+                }
+                modalComponent={
+                    <AddTaskEditor
+                        adding={true}
+                        projectId={projectId}
+                        onCancelAction={forceAction => {
+                            newItemRef?.current?.toggleModal(forceAction)
+                        }}
+                        defaultDate={date.valueOf()}
+                        inBacklog={dateFormated === BACKLOG_DATE_STRING}
+                        originalParentGoal={originalParentGoal}
+                        activeGoal={activeGoal}
+                        expandTasksList={expandTasksList}
+                        dateFormated={dateFormated}
+                    />
+                }
+            />
         </View>
     )
 }

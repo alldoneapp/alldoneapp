@@ -179,6 +179,111 @@ describe('only the git SUBCOMMAND decides whether a command is a push (AT-2869)'
     })
 })
 
+describe('HEAD is resolved after the branch steps of the same command line (AT-2876)', () => {
+    // The exact command production job b59ced6d (task AT-2874) paused on at `permissive`: the
+    // platform's own delivery flow in one call, reviewed while the checkout was still on `master`.
+    const reportedCommand =
+        'cd /home/user/repo && git checkout -q -b ai/at-2874-wiki-feedback-popup && git add components/WikiView && ' +
+        "git commit -q -F - <<'EOF'\n" +
+        'fix(wiki): standard feedback button and popup (AT-2874)\n\n' +
+        '"Give feedback" on a wiki page was a full-size ghost button that expanded a\n' +
+        'bespoke grey inline form under the page metadata.\n\n' +
+        'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n' +
+        'EOF\n' +
+        'git push -u origin HEAD -o merge_request.create -o merge_request.target=master ' +
+        '-o merge_request.title="fix(wiki): standard feedback button and popup (AT-2874)" ' +
+        '-o merge_request.remove_source_branch 2>&1 | grep -iE "merge_requests|error|rejected"'
+    const onBase = level => balanced({ level, currentBranch: 'master' })
+    const onFeature = level => balanced({ level, currentBranch: 'ai/feature' })
+
+    test.each(['balanced', 'permissive'])('the reported checkout + commit + push runs unattended at %s', level => {
+        expect(assessClaudeToolApproval('Bash', { command: reportedCommand }, onBase(level))).toMatchObject({
+            autoApprove: true,
+        })
+    })
+
+    test('strict still pauses it, as it pauses every Git publish', () => {
+        expect(assessClaudeToolApproval('Bash', { command: reportedCommand }, onBase('strict'))).toMatchObject({
+            autoApprove: false,
+            reason: 'publishing or destructive Git operation',
+        })
+    })
+
+    test.each([
+        'git checkout -b ai/x && git push -u origin HEAD',
+        'git checkout -qb ai/x && git push origin HEAD',
+        'git checkout -B ai/x origin/master && git push origin HEAD',
+        'git switch -c ai/x && git push -u origin HEAD',
+        'git switch --create=ai/x && git push origin HEAD',
+        'git switch ai/x && git push origin HEAD',
+        'git checkout --track origin/ai/x && git push origin HEAD',
+        'git checkout -b ai/x && git add . && git commit -m wip && git push origin HEAD',
+        // Product decision (AT-2876): a branch CREATION counts as done for what follows it even
+        // behind `;`, a newline or a pipe - the delivery flow puts the push after a heredoc.
+        'git checkout -b ai/x; git push origin HEAD',
+        'git checkout -b ai/x\ngit push origin HEAD',
+        'git checkout -b ai/x | cat && git push origin HEAD',
+        'git checkout -b ai/x || git checkout ai/x; git push origin HEAD',
+        'cd /home/user/repo && git checkout -b ai/x; git push origin HEAD',
+    ])('a push that runs after creating a feature branch is not a base push: %s', command => {
+        expect(assessClaudeToolApproval('Bash', { command }, onBase('balanced'))).toMatchObject({ autoApprove: true })
+    })
+
+    test.each([
+        // A push that only runs when the branch creation FAILED runs on the base branch.
+        'git checkout -b ai/x || git push origin HEAD',
+        'git switch -c ai/x || git push -u origin HEAD',
+        'cd /home/user/repo && git checkout -b ai/x || git push origin HEAD',
+        'cd /home/user/repo || git checkout -b ai/x; git push origin HEAD',
+        // A plain switch to an existing branch may fail and leave the base branch checked out.
+        'git switch ai/x; git push origin HEAD',
+        // `git checkout <x>` may be a file restore that never leaves the base branch.
+        'git checkout ai/x && git push origin HEAD',
+        // Explicit base targets are never rescued by an earlier checkout.
+        'git checkout -b ai/x && git push origin master',
+        'git checkout -b ai/x && git push origin HEAD:master',
+    ])('a push that can still run on the base branch keeps pausing at permissive: %s', command => {
+        expect(assessClaudeToolApproval('Bash', { command }, onBase('permissive'))).toMatchObject({
+            autoApprove: false,
+            reason: 'a push to the base branch "master"',
+        })
+    })
+
+    test.each([
+        // The reverse: the live branch is a feature branch, but the command returns to the base
+        // branch before pushing HEAD. Resolving HEAD up front used to auto-approve these.
+        'git checkout master && git push origin HEAD',
+        'git switch master && git push -u origin HEAD',
+        'git checkout -B master origin/master && git push origin HEAD',
+        'git checkout -b ai/x && git checkout master && git push origin HEAD',
+    ])('switching back to the base branch before pushing HEAD pauses: %s', command => {
+        expect(assessClaudeToolApproval('Bash', { command }, onFeature('permissive'))).toMatchObject({
+            autoApprove: false,
+            reason: 'a push to the base branch "master"',
+        })
+    })
+
+    test.each(['git checkout --detach && git push origin HEAD', 'git switch - && git push origin HEAD'])(
+        'a step whose resulting branch cannot be read makes the push undeterminable: %s',
+        command => {
+            expect(assessClaudeToolApproval('Bash', { command }, onFeature('permissive'))).toMatchObject({
+                autoApprove: false,
+                reason: 'a push whose target branch could not be determined',
+            })
+        }
+    )
+
+    test.each([
+        'git checkout -- src/app.js && git push origin HEAD',
+        'git checkout HEAD~1 src/app.js && git push origin HEAD',
+        'git checkout -b ai/x || true; git checkout ai/x && git push origin HEAD',
+    ])('file restores and recovered checkouts keep the feature branch: %s', command => {
+        expect(assessClaudeToolApproval('Bash', { command }, onFeature('balanced'))).toMatchObject({
+            autoApprove: true,
+        })
+    })
+})
+
 describe('outbound HTTP (AT-2199)', () => {
     const TOKEN = 'Bearer $GCP_ACCESS_TOKEN'
 
