@@ -660,12 +660,13 @@ note, goal, contact or artifact thread is that object's id). The delta finds the
 thread's object and filters it like a source: a private task's thread is never read, and the thread of
 an email task or a time-log task is excluded with it. A chat object copies `isPublicFor` once at
 creation and is not kept in step with its object, so trusting it would leak. A topic is its own
-object. Threads of users, assistants and skills are not sources, nor are email day topics
-(`BotChatEmail…`), the wiki's own Gold notice (`WikiGoldCap_…`), comments carrying `gmailData` and
-comments still being written (`isLoading`/`isThinking`). A member's daily WhatsApp (`BotChat…`),
-heartbeat and menubar topics ARE sources by decision (they are readable by the project anyway, and
-things worth knowing get discussed there); the ingest prompt tells the model to keep only what
-concerns the project and nothing personal. A delta card carries only the comments since the wiki last
+object. Threads of users, assistants and skills are not sources, nor are the wiki's own Gold notice
+(`WikiGoldCap_…`) and comments still being written (`isLoading`/`isThinking`). A member's daily
+WhatsApp (`BotChat…`), email (`BotChatEmail…`, and the "Daily emails …" topics of the Gmail
+labeling, whose comments carry `gmailData`), heartbeat and menubar topics ARE sources by decision
+(they are readable by the project anyway, and things worth knowing get discussed there); the ingest
+prompt tells the model to keep only what concerns the project and nothing personal. Tasks created
+from an email (`gmailData` on the task) and their threads still are not. A delta card carries only the comments since the wiki last
 looked (comments `created >=` the chats cursor), at most 40 and about 6,000 characters, newest kept;
 a rebuild reads the latest ones. Two known limits: an edited comment does not stamp the chat object,
 so an edit is only seen when the thread changes again, and an object made public again does not
