@@ -1,21 +1,25 @@
 /**
- * AT-2873 — wiki bullet lists are laid out like note bullet lists.
+ * AT-2873 — wiki lists: markers on the content edge, comfortable spacing, hanging wrapped lines.
  *
- * Renders the REAL `WikiMarkdown` and a REAL notes list (Quill 2's list DOM + the notes editor's
- * `toolbar-styles.css`) at a desktop and a phone width and measures, per list item:
+ * Renders the REAL `WikiMarkdown` (with the app shell's global reset and Roboto) at a desktop and a
+ * phone width and measures, per list item:
  *   - where the marker glyph is painted,
  *   - where the first line of text starts,
- *   - where every wrapped line of that item starts (via Range.getClientRects).
+ *   - where every wrapped line of that item starts (via Range.getClientRects),
+ * and where the heading and paragraph text before the list start (the content edge).
  *
  * Asserted contract:
  *   1. Every wrapped line of an item starts exactly where its first line starts (hanging indent),
  *      never under the marker.
  *   2. The gap between marker and text is the SAME for every item at one depth — it may not depend
- *      on how long the item is or how many source chips it carries (the reported defect).
- *   3. At the top level and one level down, text starts where the notes editor starts it, and the
- *      bullet is painted where notes paints it (±1px).
- *   4. Nested lists step right by the notes editor's indent step.
- *   5. Ordered markers (incl. a two-digit "10.") never shrink, overlap the text or move the text.
+ *      on how long the item is or how many source chips it carries (the original report).
+ *   3. Top-level bullets sit on the content edge of the heading and paragraph — the whole list is
+ *      not inset (the follow-up report: MR 718 had copied the notes editor's ~26px inset) — with a
+ *      comfortable 10–18px gap between bullet and text.
+ *   4. A nested list starts its bullets under its parent item's text.
+ *   5. Ordered markers (incl. a two-digit "10.") are right-aligned, the widest one on the content
+ *      edge, and never shrink, overlap the text or move the text.
+ *   6. Source chips still render inside the item text.
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -108,42 +112,27 @@ function measure() {
         }
     })
 
-    const notesRoot = document.querySelector('[data-testid="notes"] .ql-editor')
-    const notesLeft = notesRoot.getBoundingClientRect().left
-    const notes = [...notesRoot.querySelectorAll('li')].map(li => {
-        const ui = li.querySelector('.ql-ui')
-        // The bullet is a ::before pseudo-element; measure it by its computed box.
-        const before = getComputedStyle(ui, '::before')
-        const uiRect = ui.getBoundingClientRect()
-        const width = parseFloat(before.width)
-        const marginLeft = parseFloat(before.marginLeft)
-        // Paint the marker into a probe with the same font to find its advance width. Quill's
-        // ordered content carries a trailing space ("1. "); the visible marker ends before it.
-        const ordered = li.getAttribute('data-list') === 'ordered'
-        const content = ordered ? `${[...li.parentElement.children].indexOf(li) + 1}.` : '•'
-        const probe = document.createElement('span')
-        probe.style.whiteSpace = 'pre'
-        probe.textContent = ordered ? `${content} ` : content
-        probe.style.font = before.font
-        probe.style.letterSpacing = before.letterSpacing
-        document.body.appendChild(probe)
-        const fullWidth = probe.getBoundingClientRect().width
-        probe.textContent = content
-        const glyphWidth = probe.getBoundingClientRect().width
-        probe.remove()
-        const boxLeft = uiRect.left + marginLeft
-        // text-align: right inside a 1.2em box — unless the content is wider, then it starts at the box.
-        const contentRight = Math.max(boxLeft + width, boxLeft + fullWidth)
-        const glyphRight = contentRight - (fullWidth - glyphWidth)
+    // The content edge: where the heading and the paragraph before the lists start their text.
+    const textStartOf = needle => {
+        const walker = document.createTreeWalker(wikiRoot, NodeFilter.SHOW_TEXT)
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (node.textContent.includes(needle)) return Math.min(...lineStarts(node.parentElement)) - wikiLeft
+        }
+        return NaN
+    }
+    const edges = { heading: textStartOf('Mercedes B'), paragraph: textStartOf('Paragraph before the list') }
+
+    // Source chips: each must sit inside its item's text column.
+    const chips = [...wikiRoot.querySelectorAll('[data-testid^="wiki-source-"]')].map(chip => {
+        const item = chip.closest('[data-testid="wiki-list-text"]')
         return {
-            marker: content,
-            depth: Number((li.className.match(/ql-indent-(\d)/) || [0, 0])[1]),
-            glyphLeft: glyphRight - glyphWidth - notesLeft,
-            glyphRight: glyphRight - notesLeft,
-            lines: lineStarts(li.querySelector('.notes-text')).map(x => x - notesLeft),
+            left: chip.getBoundingClientRect().left - wikiLeft,
+            width: chip.getBoundingClientRect().width,
+            label: chip.textContent,
+            textLeft: item ? Math.min(...lineStarts(item)) - wikiLeft : NaN,
         }
     })
-    return { wiki, notes }
+    return { wiki, edges, chips }
 }
 
 const server = http.createServer((req, res) => {
@@ -182,7 +171,7 @@ const near = (actual, expected, message) =>
             await page.waitForSelector('[data-testid="wiki-markdown"]')
             await page.evaluate(() => document.fonts && document.fonts.ready)
             await page.screenshot({ path: path.join(output, `wiki-${width}.png`), fullPage: true })
-            const { wiki, notes } = await page.evaluate(measure)
+            const { wiki, edges, chips } = await page.evaluate(measure)
             assert.deepEqual(errors, [], 'page errors')
             const report = rows =>
                 rows
@@ -193,7 +182,9 @@ const near = (actual, expected, message) =>
                                 .join(', ')}`
                     )
                     .join('\n')
-            console.log(`\n== width ${width}\n-- wiki\n${report(wiki)}\n-- notes\n${report(notes)}`)
+            console.log(
+                `\n== width ${width}  heading ${edges.heading.toFixed(1)}  paragraph ${edges.paragraph.toFixed(1)}\n${report(wiki)}`
+            )
 
             const checks = [
                 [
@@ -222,31 +213,64 @@ const near = (actual, expected, message) =>
                     },
                 ],
                 [
-                    'bullets and text sit where the notes editor puts them',
+                    'top-level bullets sit on the heading/paragraph content edge, text a comfortable gap right of them',
                     () => {
-                        for (const depth of [0, 1, 2]) {
-                            const w = wiki.find(i => i.depth === depth && i.marker === '•')
-                            const n = notes.find(i => i.depth === depth && i.marker === '•')
-                            near(w.lines[0], n.lines[0], `text start d${depth} vs notes`)
-                            near(w.glyphRight, n.glyphRight, `bullet right edge d${depth} vs notes`)
+                        near(edges.heading, 0, 'heading text start')
+                        near(edges.paragraph, 0, 'paragraph text start')
+                        const bullets = wiki.filter(i => i.depth === 0 && i.marker === '•')
+                        assert.ok(bullets.length >= 4, 'harness must contain top-level bullets')
+                        for (const bullet of bullets) {
+                            near(bullet.glyphLeft, edges.paragraph, 'top-level bullet vs content edge')
+                            const gap = bullet.lines[0] - bullet.glyphRight
+                            assert.ok(gap >= 10 && gap <= 18, `bullet-to-text gap ${gap.toFixed(1)} not within 10–18px`)
+                            assert.ok(bullet.lines[0] <= 24, `top-level text starts too far right (${bullet.lines[0]})`)
                         }
                     },
                 ],
                 [
-                    'ordered markers keep their width and never touch the text',
+                    'a nested list starts its bullets under its parent item text',
+                    () => {
+                        for (const depth of [1, 2]) {
+                            const parent = wiki.find(i => i.depth === depth - 1 && i.marker === '•')
+                            const child = wiki.find(i => i.depth === depth && i.marker === '•')
+                            assert.ok(child, `harness must contain a depth-${depth} bullet`)
+                            near(child.glyphLeft, parent.lines[0], `d${depth} bullet vs d${depth - 1} text`)
+                            near(
+                                child.lines[0] - child.glyphLeft,
+                                parent.lines[0] - parent.glyphLeft,
+                                `d${depth} marker-to-text spacing`
+                            )
+                        }
+                    },
+                ],
+                [
+                    'ordered markers are right-aligned, the widest on the content edge, and never touch the text',
                     () => {
                         const ordered = wiki.filter(i => /\d+\./.test(i.marker))
-                        const notesOrdered = notes.filter(i => /\d+\./.test(i.marker))
                         assert.equal(ordered.length, 10)
-                        near(ordered[0].lines[0], notesOrdered[0].lines[0], 'ordered text start vs notes')
-                        near(ordered[0].glyphRight, notesOrdered[0].glyphRight, 'ordered "1." right edge vs notes')
+                        near(ordered[9].glyphLeft, edges.paragraph, '"10." vs content edge')
+                        ordered.forEach(i => near(i.glyphRight, ordered[0].glyphRight, `${i.marker} right edge`))
                         ordered.forEach(i => near(i.lines[0], ordered[0].lines[0], `ordered text start ${i.marker}`))
                         ordered.forEach(i =>
-                            assert.ok(i.glyphRight <= i.lines[0] - 3, `${i.marker} marker overlaps text`)
+                            assert.ok(i.glyphRight <= i.lines[0] - 4, `${i.marker} marker overlaps text`)
                         )
                         ordered.forEach(i =>
                             assert.ok(i.glyphLeft >= -TOLERANCE, `${i.marker} marker leaves the column`)
                         )
+                    },
+                ],
+                [
+                    'source chips render inside the item text',
+                    () => {
+                        const inList = chips.filter(chip => !Number.isNaN(chip.textLeft))
+                        assert.ok(inList.length >= 8, `expected source chips in list items, got ${inList.length}`)
+                        for (const chip of inList) {
+                            assert.ok(chip.width > 20, `chip "${chip.label}" is not rendered`)
+                            assert.ok(
+                                chip.left >= chip.textLeft - TOLERANCE,
+                                `chip "${chip.label}" sits under the marker`
+                            )
+                        }
                     },
                 ],
             ]
