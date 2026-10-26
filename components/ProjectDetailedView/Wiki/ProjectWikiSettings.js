@@ -174,6 +174,13 @@ export default function ProjectWikiSettings({ project }) {
         parsedCap >= MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP &&
         parsedCap <= MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP
     const disabled = !canManage || saving
+    const spentThisMonth = currentMonthSpent(knowledgeBase)
+    // A wiki can be paused at a limit that is already above what it spent (AT-2880: the limit was
+    // raised while a run was still going). Saving the same limit again resumes it on the server, so
+    // the button must not stay greyed out just because the number did not change.
+    const capAlreadyRaised = settings.pausedAtMonthlyCap && settings.monthlyGoldCap > spentThisMonth
+    const capUnchanged = parsedCap === settings.monthlyGoldCap
+    const capResumes = settings.pausedAtMonthlyCap && capValid && parsedCap > spentThisMonth
     const running = isKnowledgeBaseRunning(knowledgeBase)
     const switchedOn = requestedEnabled !== null ? requestedEnabled : settings.enabled
     // Only while the server has not answered: a document that already agrees, or a finished call,
@@ -252,20 +259,25 @@ export default function ProjectWikiSettings({ project }) {
                     <Button
                         type={'ghost'}
                         title={translate('Save')}
-                        disabled={disabled || !capValid || parsedCap === settings.monthlyGoldCap}
+                        disabled={disabled || !capValid || (capUnchanged && !capResumes)}
                         onPress={() => save({ monthlyGoldCap: parsedCap })}
                     />
                 </View>
             </View>
             <Text style={localStyles.hint}>
                 {translate('Wiki Gold spent this month', {
-                    spent: currentMonthSpent(knowledgeBase),
+                    spent: spentThisMonth,
                     cap: settings.monthlyGoldCap,
                 })}
             </Text>
             {settings.pausedAtMonthlyCap && (
                 <Text testID="project-wiki-cap-reached" style={[localStyles.hint, localStyles.error]}>
                     {translate('Wiki monthly cap reached', { date: formatWikiDate(settings.nextRunAt) })}
+                </Text>
+            )}
+            {capAlreadyRaised && (
+                <Text testID="project-wiki-cap-already-raised" style={localStyles.hint}>
+                    {translate('Wiki monthly cap already raised')}
                 </Text>
             )}
 

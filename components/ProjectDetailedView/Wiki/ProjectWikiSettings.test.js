@@ -316,6 +316,44 @@ describe('ProjectWikiSettings', () => {
         expect(component.root.findAllByProps({ testID: 'project-wiki-cap-reached' })).toHaveLength(0)
     })
 
+    // AT-2880: a run that had read the old limit paused the wiki although the payer had already
+    // raised it. Saving that same limit resumes it on the server, so the button must be offered.
+    it('lets the payer resume a wiki paused at a limit that is already above its spending', async () => {
+        const month = new Date(Date.now()).toISOString().slice(0, 7)
+        const component = mount({
+            enabled: true,
+            ownerUserId: 'me',
+            monthlyGoldCap: 10000,
+            monthlyGold: { month, spent: 5008 },
+            lastRunStopReason: 'monthly_cap',
+            nextRunAt: Date.now() + 5 * 24 * 60 * 60 * 1000,
+        })
+
+        expect(component.root.findAllByProps({ testID: 'project-wiki-cap-reached' })).toHaveLength(1)
+        expect(textOf(component.root.findByProps({ testID: 'project-wiki-cap-already-raised' }).children)).toContain(
+            "The limit is already above this month's spending"
+        )
+        expect(findButton(component, 'Save').props.disabled).toBe(false)
+
+        await act(async () => findButton(component, 'Save').props.onPress())
+        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { monthlyGoldCap: 10000 })
+    })
+
+    it('keeps an unchanged limit unsaveable while the wiki is paused at it', () => {
+        const month = new Date(Date.now()).toISOString().slice(0, 7)
+        const component = mount({
+            enabled: true,
+            ownerUserId: 'me',
+            monthlyGoldCap: 500,
+            monthlyGold: { month, spent: 506 },
+            lastRunStopReason: 'monthly_cap',
+            nextRunAt: Date.now() + 5 * 24 * 60 * 60 * 1000,
+        })
+
+        expect(component.root.findAllByProps({ testID: 'project-wiki-cap-already-raised' })).toHaveLength(0)
+        expect(findButton(component, 'Save').props.disabled).toBe(true)
+    })
+
     it('saves the wiki rules', async () => {
         const component = mount({ enabled: true, ownerUserId: 'me', instructions: '' })
         const input = component.root.findByProps({ testID: 'project-wiki-instructions' })

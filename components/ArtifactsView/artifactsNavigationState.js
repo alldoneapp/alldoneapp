@@ -10,14 +10,11 @@ import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 export const ARTIFACT_SECTION_ARTIFACT = 'artifact'
 export const ARTIFACT_SECTION_CHAT = 'chat'
 export const ARTIFACT_SECTION_UPDATES = 'updates'
-// Everything about the artifact that is not the artifact itself: title, description, visibility,
-// live data, versions, links and deletion (AT-2879 moved them out from under the preview).
-export const ARTIFACT_SECTION_DETAILS = 'details'
-const NON_DEFAULT_SECTIONS = [ARTIFACT_SECTION_CHAT, ARTIFACT_SECTION_UPDATES, ARTIFACT_SECTION_DETAILS]
+const NON_DEFAULT_SECTIONS = [ARTIFACT_SECTION_CHAT, ARTIFACT_SECTION_UPDATES]
 
 const selectedArtifactByProject = new Map()
 const selectionListeners = new Set()
-// Which part of the open artifact is shown: the artifact itself, its chat, its updates or its details.
+// Which part of the open artifact is shown: the artifact itself or its chat.
 const sectionByProject = new Map()
 const sectionListeners = new Set()
 // All by default: a member follows an artifact only by creating it or commenting on it, so Followed
