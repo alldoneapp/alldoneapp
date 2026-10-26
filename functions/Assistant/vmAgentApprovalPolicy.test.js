@@ -129,6 +129,56 @@ describe('Git publishing (AT-2199)', () => {
     })
 })
 
+describe('only the git SUBCOMMAND decides whether a command is a push (AT-2869)', () => {
+    // The exact command from the AT-2869 screenshot: tests around a local `git stash push/pop`,
+    // run while the checkout was still on the base branch. It escalated at `permissive` as
+    // "a push to the base branch", which no level can auto-approve.
+    const reportedCommand =
+        'cd /home/user/repo; npx jest utils/backends/Artifacts components/ArtifactsView 2>&1 | grep -A8 "FAIL"; ' +
+        'git stash push functions/Artifacts/linkedUploadsModel.js -q; ' +
+        'npx jest --config ci/jest.functions.config.js functions/Artifacts/linkedUploadsIndex 2>&1 | grep -E "×|Tests:"; ' +
+        "npx jest utils/backends/Artifacts/linkedUploads 2>&1 | grep -E '×|Tests:'; " +
+        'git stash pop -q; git status --short .'
+
+    test.each(['strict', 'balanced', 'permissive'])('the reported stash command runs unattended at %s', level => {
+        expect(
+            assessClaudeToolApproval('Bash', { command: reportedCommand }, balanced({ level, currentBranch: 'master' }))
+        ).toMatchObject({ autoApprove: true })
+    })
+
+    test.each([
+        'git stash push',
+        'git stash push -m "wip" src/app.js',
+        'git -C /home/user/repo stash push -q',
+        'git stash pop',
+        'git log --grep push',
+        'git checkout push',
+    ])('%s is not a push', command => {
+        expect(
+            assessClaudeToolApproval('Bash', { command }, balanced({ level: 'strict', currentBranch: 'master' }))
+        ).toMatchObject({ autoApprove: true })
+    })
+
+    test.each([
+        'git -C /home/user/repo push origin master',
+        'git -c http.extraHeader=x push origin master',
+        'git --git-dir=/home/user/git-metadata/repo push origin master',
+        'git --no-pager push origin HEAD',
+        'sudo git push origin master',
+    ])('a real push behind global options is still a push to the base branch: %s', command => {
+        expect(
+            assessClaudeToolApproval('Bash', { command }, balanced({ level: 'permissive', currentBranch: 'master' }))
+        ).toMatchObject({ autoApprove: false, reason: 'a push to the base branch "master"' })
+    })
+
+    test('a stash next to a real base-branch push still pauses', () => {
+        const command = 'git stash push -q && git push origin HEAD'
+        expect(
+            assessClaudeToolApproval('Bash', { command }, balanced({ level: 'permissive', currentBranch: 'master' }))
+        ).toMatchObject({ autoApprove: false, reason: 'a push to the base branch "master"' })
+    })
+})
+
 describe('outbound HTTP (AT-2199)', () => {
     const TOKEN = 'Bearer $GCP_ACCESS_TOKEN'
 
