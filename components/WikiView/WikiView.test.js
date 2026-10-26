@@ -59,8 +59,21 @@ jest.mock('./WikiCorrectionForm', () => {
     const { Text: MockText } = require('react-native')
     return ({ page }) => <MockText testID="wiki-correction-form">{`correcting ${page.slug}`}</MockText>
 })
+jest.mock('../UIComponents/ModalShell/AppPopover', () => {
+    const { View: MockView } = require('react-native')
+    return ({ children, content, isOpen, onClickOutside }) => (
+        <MockView testID="wiki-feedback-popover" isOpen={isOpen} onClickOutside={onClickOutside}>
+            {children}
+            {isOpen ? content : null}
+        </MockView>
+    )
+})
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({ checkIfSelectedProject: index => index >= 0 }))
-jest.mock('../../redux/actions', () => ({ setNavigationRoute: route => ({ type: 'setNavigationRoute', route }) }))
+jest.mock('../../redux/actions', () => ({
+    setNavigationRoute: route => ({ type: 'setNavigationRoute', route }),
+    showFloatPopup: () => ({ type: 'showFloatPopup' }),
+    hideFloatPopup: () => ({ type: 'hideFloatPopup' }),
+}))
 jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
     getDateFormat: () => 'DD.MM.YYYY',
     getTimeFormat: () => 'HH:mm',
@@ -302,17 +315,25 @@ describe('WikiView', () => {
         expect(history).toContain('Neuer Kunde')
         expect(history).toContain('Text removed: a source it used became private or was deleted')
     })
-    it('opens the feedback form for the page on display from the top of the page', () => {
+    it('opens the feedback form for the page on display as a popup, not inline (AT-2874)', () => {
         setWikiSelectedSlug('p1', 'entscheidungen')
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
 
+        const popover = () => component.root.findByProps({ testID: 'wiki-feedback-popover' })
+        expect(popover().props.isOpen).toBe(false)
+        expect(component.root.findAllByProps({ testID: 'wiki-correction-form' })).toHaveLength(0)
+
         pressText(component, 'Give feedback')
 
+        expect(popover().props.isOpen).toBe(true)
         expect(textOf(component.root.findByProps({ testID: 'wiki-correction-form' }).children)).toBe(
             'correcting entscheidungen'
         )
-        expect(textOf(component.toJSON())).not.toContain('Give feedback')
+
+        act(() => popover().props.onClickOutside())
+        expect(popover().props.isOpen).toBe(false)
+        expect(component.root.findAllByProps({ testID: 'wiki-correction-form' })).toHaveLength(0)
     })
 
     it('offers to undo a correction only while it is the page’s latest revision', async () => {
