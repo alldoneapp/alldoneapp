@@ -111,6 +111,11 @@ describe('requesting the reset', () => {
             setTimer,
             clearTimer: jest.fn(),
             doc,
+            // Stands in for appResume's page-hidden signal, which owns the visibility listeners.
+            subscribeHidden: fn => {
+                doc.addEventListener('visibilitychange', fn)
+                return () => doc.removeEventListener('visibilitychange', fn)
+            },
             now: () => 5000,
             isOnline: () => true,
             hasPendingAppWrites: () => false,
