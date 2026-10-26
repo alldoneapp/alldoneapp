@@ -12,6 +12,7 @@ import { getArtifactUrl } from '../../utils/backends/Artifacts/artifactsFirestor
 import { canPreviewArtifact, getArtifactKindIcon, isInlineTextArtifact } from './artifactPresentation'
 import { ARTIFACT_BRIDGE_SANDBOX } from '../../functions/Artifacts/artifactDataBridge'
 import useArtifactDataBridge from './useArtifactDataBridge'
+import useArtifactFrameHeight from './useArtifactFrameHeight'
 
 // The second line of defence for an HTML artifact. The first is the CSP sandbox serveArtifact sends
 // with it; both deliberately leave out allow-same-origin and allow-top-navigation, so the page can
@@ -63,33 +64,41 @@ function DownloadLink({ url, fileName }) {
     )
 }
 
-// A page that reads live project data: framed at the bridge address, with nothing but scripts
-// allowed, and answered by the app (useArtifactDataBridge). Keyed by its address by the caller.
-function BridgedArtifactFrame({ projectId, artifact, versionId, height }) {
+// An HTML artifact in a frame. A data-bound one (artifact.dataAccess) is framed at the bridge
+// address with nothing but scripts allowed and answered by the app (useArtifactDataBridge). With
+// `autoHeight` the frame takes the height the page reports (useArtifactFrameHeight, AT-2881), so it
+// has no scrollbar of its own and the page around it scrolls; until the page reports, and if it never
+// does, it keeps `height`. Keyed by its address by the caller.
+function ArtifactWebFrame({ projectId, artifact, versionId, height, autoHeight }) {
     const frameRef = useRef(null)
-    const url = getArtifactUrl(projectId, artifact, { versionId, bridge: true })
+    const bridge = !!artifact.dataAccess
+    const url = getArtifactUrl(projectId, artifact, { versionId, bridge })
     const runQuery = useCallback(
         request => require('../../utils/backends/Artifacts/artifactBridgeData').runBridgeQuery(projectId, request),
         [projectId]
     )
-    const onLoad = useArtifactDataBridge({ frameRef, enabled: true, runQuery })
+    const onLoad = useArtifactDataBridge({ frameRef, enabled: bridge, runQuery })
+    const contentHeight = useArtifactFrameHeight({ frameRef, enabled: !!autoHeight })
     return (
         <iframe
             ref={frameRef}
             data-testid="artifact-preview-frame"
-            data-bridge="true"
+            data-bridge={bridge ? 'true' : undefined}
+            data-natural-height={contentHeight === null ? undefined : 'true'}
             title={artifact.title}
             src={url}
-            sandbox={ARTIFACT_BRIDGE_SANDBOX}
+            sandbox={bridge ? ARTIFACT_BRIDGE_SANDBOX : ARTIFACT_IFRAME_SANDBOX}
             referrerPolicy="no-referrer"
-            onLoad={onLoad}
-            style={{ ...webStyles.frame, height }}
+            onLoad={bridge ? onLoad : undefined}
+            style={{ ...webStyles.frame, height: contentHeight === null ? height : contentHeight }}
         />
     )
 }
 
-// `height` fixes the frame height, for a preview embedded in something else (a note).
-export default function ArtifactPreview({ projectId, artifact, versionId = null, height = null }) {
+// `height` fixes the frame height, for a preview embedded in something else (a note). `autoHeight`
+// lets an HTML page grow to its natural height instead (the detail view); `height` is then only
+// what it shows until the page has said how tall it is.
+export default function ArtifactPreview({ projectId, artifact, versionId = null, height = null, autoHeight = false }) {
     const offline = useSelector(state => state.connectionState === 'offline')
     const [, windowHeight] = useWindowSize()
     const url = getArtifactUrl(projectId, artifact, { versionId })
@@ -118,25 +127,14 @@ export default function ArtifactPreview({ projectId, artifact, versionId = null,
 
     switch (artifact.kind) {
         case ARTIFACT_KINDS.WEB:
-            if (artifact.dataAccess)
-                return (
-                    <BridgedArtifactFrame
-                        key={url}
-                        projectId={projectId}
-                        artifact={artifact}
-                        versionId={versionId}
-                        height={frameHeight}
-                    />
-                )
             return (
-                <iframe
-                    key={url}
-                    data-testid="artifact-preview-frame"
-                    title={artifact.title}
-                    src={url}
-                    sandbox={ARTIFACT_IFRAME_SANDBOX}
-                    referrerPolicy="no-referrer"
-                    style={{ ...webStyles.frame, height: frameHeight }}
+                <ArtifactWebFrame
+                    key={url + (artifact.dataAccess ? '#bridge' : '')}
+                    projectId={projectId}
+                    artifact={artifact}
+                    versionId={versionId}
+                    height={frameHeight}
+                    autoHeight={autoHeight}
                 />
             )
         // Chrome refuses to render a PDF inside a sandboxed frame. A PDF is not a document that can
@@ -210,6 +208,8 @@ const webStyles = {
         borderRadius: 8,
         backgroundColor: '#FFFFFF',
         display: 'block',
+        // The height is the frame's viewport, which is what a page reports as its own height.
+        boxSizing: 'content-box',
     },
     image: {
         maxWidth: '100%',

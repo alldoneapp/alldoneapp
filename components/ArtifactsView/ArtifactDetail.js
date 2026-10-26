@@ -572,7 +572,9 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                         style={localStyles.preview}
                         testID="artifact-preview-area"
                     >
-                        <ArtifactPreview projectId={projectId} artifact={artifact} height={previewHeight} />
+                        {/* An HTML page grows to its natural height and the page scrolls (AT-2881); the fill
+                            height is what it shows until then, and what a PDF keeps. */}
+                        <ArtifactPreview projectId={projectId} artifact={artifact} height={previewHeight} autoHeight />
                     </View>
                 </>
             )}

@@ -20,6 +20,7 @@ const {
     ARTIFACT_BRIDGE_SCRIPT,
     isBridgeScriptPath,
 } = require('./artifactDataBridge')
+const { appendFrameHeightScript, shouldReportFrameHeight } = require('./artifactFrameHeight')
 
 // Serves an artifact's files at /a/{projectId}/{artifactId}/{serveSecret}/[~{versionId}/]{path}.
 //
@@ -104,7 +105,15 @@ function contentDisposition(mimeType, fileName) {
     return `${type}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName || 'file')}`
 }
 
-function buildArtifactResponseHeaders({ mimeType, fileName, size, sha256, pinnedVersion, bridge = false }) {
+function buildArtifactResponseHeaders({
+    mimeType,
+    fileName,
+    size,
+    sha256,
+    pinnedVersion,
+    bridge = false,
+    frameHeight = false,
+}) {
     const headers = {
         'Content-Type': isTextMimeType(mimeType) ? `${mimeType}; charset=utf-8` : mimeType,
         'Content-Disposition': contentDisposition(mimeType, fileName),
@@ -118,7 +127,10 @@ function buildArtifactResponseHeaders({ mimeType, fileName, size, sha256, pinned
         'Cache-Control': pinnedVersion ? 'private, max-age=31536000, immutable' : 'private, max-age=60',
     }
     if (Number.isFinite(size)) headers['Content-Length'] = String(size)
-    if (sha256) headers.ETag = `"${sha256}"`
+    // A framed HTML page carries the height reporter (artifactFrameHeight.js), so it is a different
+    // body from the stored file: its own ETag, and a cache keyed on how the browser loaded it.
+    if (sha256) headers.ETag = frameHeight ? `"${sha256}-frame"` : `"${sha256}"`
+    if (mimeType === 'text/html') headers.Vary = 'Sec-Fetch-Dest'
     // A page framed for the live data bridge gets the locked-down policy (artifactDataBridge.js). It
     // follows the address, so the response that receives data is always one served with it.
     if (isActiveMimeType(mimeType)) {
@@ -192,6 +204,9 @@ async function handleServeArtifactRequest(
         const file = filePath ? files.find(candidate => candidate.path === filePath) : null
         if (!file) return sendPlain(res, 404, 'Not found')
 
+        // AT-2881: a page shown inside the app reports its height, so the app can frame it at its
+        // natural height instead of giving it a scrollbar of its own.
+        const frameHeight = shouldReportFrameHeight(req, file.mimeType)
         const headers = buildArtifactResponseHeaders({
             mimeType: file.mimeType,
             fileName: getFileNameFromPath(file.path),
@@ -199,6 +214,7 @@ async function handleServeArtifactRequest(
             sha256: file.sha256,
             pinnedVersion: !!parsed.versionId,
             bridge: getQueryValue(req, ARTIFACT_BRIDGE_QUERY_PARAM) === '1',
+            frameHeight,
         })
 
         const ifNoneMatch = req.get ? req.get('if-none-match') : req.headers?.['if-none-match']
@@ -209,13 +225,29 @@ async function handleServeArtifactRequest(
             return res.end()
         }
 
+        const storagePath = getArtifactFileStoragePath(parsed.projectId, parsed.artifactId, versionId, file.path)
+        if (frameHeight) {
+            // The stored size no longer describes the body; HEAD answers without it rather than
+            // reading the file only to count it.
+            delete headers['Content-Length']
+            if (req.method === 'HEAD') {
+                res.status(200)
+                res.set(headers)
+                return res.end()
+            }
+            const [stored] = await bucket.file(storagePath).download()
+            const body = appendFrameHeightScript(stored)
+            headers['Content-Length'] = String(body.length)
+            res.status(200)
+            res.set(headers)
+            return res.end(body)
+        }
+
         res.status(200)
         res.set(headers)
         if (req.method === 'HEAD') return res.end()
 
-        const stream = bucket
-            .file(getArtifactFileStoragePath(parsed.projectId, parsed.artifactId, versionId, file.path))
-            .createReadStream()
+        const stream = bucket.file(storagePath).createReadStream()
         return await new Promise(resolve => {
             stream.on('error', error => {
                 console.error('[artifacts] Could not stream an artifact file', {

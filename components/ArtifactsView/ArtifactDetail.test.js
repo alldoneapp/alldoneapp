@@ -9,7 +9,13 @@ jest.mock('./useArtifacts', () => ({
     useArtifact: () => mockArtifact,
     useArtifactVersions: () => [],
 }))
-jest.mock('./ArtifactPreview', () => () => null)
+jest.mock(
+    './ArtifactPreview',
+    () =>
+        function MockArtifactPreview() {
+            return null
+        }
+)
 jest.mock('./ArtifactAssistantForm', () => {
     const { Text: MockText } = require('react-native')
     return ({ artifact, onClose, onSent }) => (
@@ -350,6 +356,14 @@ describe('ArtifactDetail', () => {
             const tree = render()
             showDetails(tree)
             expect(tree.root.findAllByProps({ testID: 'artifact-toggle-privacy' })).toHaveLength(0)
+        })
+
+        it('lets the artifact grow to its natural height instead of a fixed frame (AT-2881)', () => {
+            const MockArtifactPreview = require('./ArtifactPreview')
+            const tree = render()
+            const [preview] = tree.root.findAllByType(MockArtifactPreview)
+            expect(preview.props.autoHeight).toBe(true)
+            expect(preview.props.artifact).toBe(mockArtifact)
         })
 
         it('changing with the assistant from another section goes back to the artifact first', () => {
