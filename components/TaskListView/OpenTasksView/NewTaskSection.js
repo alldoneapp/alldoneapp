@@ -15,6 +15,7 @@ import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
 import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
+import InlineAddTaskFileDrop from '../InlineAddTaskFileDrop'
 
 function AddTaskEditor(props) {
     const taskEditorLock = useTaskEditorLock()
@@ -124,42 +125,55 @@ export default function NewTaskSection({
         if (addTaskSectionToOpenData) processAutoOpenWhenSelectGoal(addTaskSectionToOpenData)
     }, [addTaskSectionToOpenData])
 
+    // AT-2875: dropping files on this line opens the add-task popup with them attached.
+    const fileDropEnabled = !hideItemFutureTasks && !isLocked
+
     return (
         <View style={taskEditorLayout.addTaskSection}>
-            <DismissibleItem
-                ref={newItemRef}
-                defaultComponent={
-                    !hideItemFutureTasks && (
-                        <AddTask
+            <InlineAddTaskFileDrop
+                projectId={projectId}
+                enabled={fileDropEnabled}
+                inlineEditorRef={newItemRef}
+                activeGoal={activeGoal}
+                defaultDate={date.valueOf()}
+                inBacklog={dateFormated === BACKLOG_DATE_STRING}
+                expandTasksList={expandTasksList}
+            >
+                <DismissibleItem
+                    ref={newItemRef}
+                    defaultComponent={
+                        !hideItemFutureTasks && (
+                            <AddTask
+                                projectId={projectId}
+                                tags={[]}
+                                toggleModal={() => {
+                                    newItemRef?.current?.toggleModal()
+                                }}
+                                newItem={true}
+                                activeGoal={activeGoal}
+                                hideParentGoalButton={hideParentGoalButton}
+                                isLocked={isLocked}
+                                dateFormated={dateFormated}
+                            />
+                        )
+                    }
+                    modalComponent={
+                        <AddTaskEditor
+                            adding={true}
                             projectId={projectId}
-                            tags={[]}
-                            toggleModal={() => {
-                                newItemRef?.current?.toggleModal()
+                            onCancelAction={forceAction => {
+                                newItemRef?.current?.toggleModal(forceAction)
                             }}
-                            newItem={true}
+                            defaultDate={date.valueOf()}
+                            inBacklog={dateFormated === BACKLOG_DATE_STRING}
+                            originalParentGoal={originalParentGoal}
                             activeGoal={activeGoal}
-                            hideParentGoalButton={hideParentGoalButton}
-                            isLocked={isLocked}
+                            expandTasksList={expandTasksList}
                             dateFormated={dateFormated}
                         />
-                    )
-                }
-                modalComponent={
-                    <AddTaskEditor
-                        adding={true}
-                        projectId={projectId}
-                        onCancelAction={forceAction => {
-                            newItemRef?.current?.toggleModal(forceAction)
-                        }}
-                        defaultDate={date.valueOf()}
-                        inBacklog={dateFormated === BACKLOG_DATE_STRING}
-                        originalParentGoal={originalParentGoal}
-                        activeGoal={activeGoal}
-                        expandTasksList={expandTasksList}
-                        dateFormated={dateFormated}
-                    />
-                }
-            />
+                    }
+                />
+            </InlineAddTaskFileDrop>
         </View>
     )
 }
