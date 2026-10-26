@@ -271,3 +271,184 @@ describe('convertChatCompletionsStream', () => {
         ])
     })
 })
+
+describe('streamOpenRouterChat retries a transiently broken stream (AT-2870)', () => {
+    const { streamOpenRouterChat } = require('./openRouterChatClient')
+    const { APIError, BadRequestError } = require('openai')
+
+    // Exactly what the SDK throws for an OpenRouter error event inside an HTTP 200 stream: no
+    // status, the provider's code, the provider's message verbatim — the wiki run of 2026-10-26.
+    const lostConnection = () => new APIError(undefined, { code: 502, message: 'Network connection lost.' })
+
+    /** A raw chunk stream that yields `chunks` and then, if given, fails with `error`. */
+    function rawStream(chunks, error = null) {
+        return (async function* () {
+            for (const chunk of chunks) yield chunk
+            if (error) throw error
+        })()
+    }
+
+    const toolCallChunk = {
+        choices: [
+            {
+                delta: {
+                    tool_calls: [
+                        { index: 0, id: 'call_1', function: { name: 'write_page', arguments: '{"slug":"a"}' } },
+                    ],
+                },
+                finish_reason: 'tool_calls',
+            },
+        ],
+    }
+
+    function fakeClient(...attempts) {
+        const create = jest.fn(async () => {
+            const next = attempts.shift()
+            if (!next) throw new Error('unexpected extra request')
+            if (next instanceof Error) throw next
+            return next
+        })
+        return { client: { chat: { completions: { create } } }, create }
+    }
+
+    let warnLog
+    let infoLog
+    beforeEach(() => {
+        warnLog = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        infoLog = jest.spyOn(console, 'log').mockImplementation(() => {})
+    })
+    afterEach(() => {
+        warnLog.mockRestore()
+        infoLog.mockRestore()
+    })
+
+    const open = (client, options = {}) =>
+        streamOpenRouterChat({
+            client,
+            model: 'deepseek/deepseek-v4-flash',
+            messages: [['user', 'hi']],
+            sleep: options.sleep || jest.fn(async () => {}),
+            ...options,
+        })
+
+    test('re-requests a stream that broke off before the consumer saw anything', async () => {
+        const { client, create } = fakeClient(rawStream([], lostConnection()), rawStream([toolCallChunk]))
+        const sleep = jest.fn(async () => {})
+
+        const events = await collect(await open(client, { sleep }))
+
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(sleep).toHaveBeenCalledTimes(1)
+        expect(sleep.mock.calls[0][0]).toBeGreaterThanOrEqual(1000)
+        expect(sleep.mock.calls[0][0]).toBeLessThan(2000)
+        // One tool call, once: the broken attempt never got as far as emitting one.
+        expect(events).toEqual([
+            {
+                content: '',
+                additional_kwargs: {
+                    tool_calls: [
+                        { id: 'call_1', type: 'function', function: { name: 'write_page', arguments: '{"slug":"a"}' } },
+                    ],
+                },
+            },
+        ])
+    })
+
+    test('does not replay a stream whose text the consumer already received', async () => {
+        // Interactive chat: the text has gone to the user, a replay would print it twice.
+        const { client, create } = fakeClient(rawStream([textDelta('Hal')], lostConnection()))
+
+        const received = []
+        await expect(
+            (async () => {
+                for await (const event of await open(client)) received.push(event.content)
+            })()
+        ).rejects.toThrow('Network connection lost.')
+
+        expect(received).toEqual(['Hal'])
+        expect(create).toHaveBeenCalledTimes(1)
+    })
+
+    test('with bufferOutput retries wherever the stream broke off, and hands over only the complete answer', async () => {
+        const { client, create } = fakeClient(
+            rawStream([textDelta('Halb fertig')], lostConnection()),
+            rawStream([textDelta('Ganz '), textDelta('fertig'), toolCallChunk])
+        )
+
+        const events = await collect(await open(client, { bufferOutput: true }))
+
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(events.map(event => event.content)).toEqual(['Ganz ', 'fertig', ''])
+        expect(events.filter(event => event.additional_kwargs.tool_calls)).toHaveLength(1)
+    })
+
+    test('gives up after the bounded number of retries and reports the original error', async () => {
+        const { client, create } = fakeClient(
+            rawStream([], lostConnection()),
+            rawStream([], lostConnection()),
+            rawStream([], lostConnection())
+        )
+        const sleep = jest.fn(async () => {})
+
+        await expect(collect(await open(client, { sleep }))).rejects.toThrow('Network connection lost.')
+
+        expect(create).toHaveBeenCalledTimes(3)
+        expect(sleep).toHaveBeenCalledTimes(2)
+    })
+
+    test('retries a mid-stream event that arrives as a raw chunk, keeping its code', async () => {
+        const { client, create } = fakeClient(
+            rawStream([{ error: { code: 502, message: 'Network connection lost.' } }]),
+            rawStream([textDelta('ok')])
+        )
+
+        const events = await collect(await open(client))
+
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(events).toEqual([{ content: 'ok', additional_kwargs: {} }])
+    })
+
+    test.each([
+        [
+            'a permanent mid-stream code (out of credits)',
+            () => new APIError(undefined, { code: 402, message: 'Insufficient credits' }),
+        ],
+        ['an empty answer cut off by the token limit', null],
+    ])('does not retry %s', async (_label, makeError) => {
+        const first = makeError
+            ? rawStream([], makeError())
+            : rawStream([{ choices: [{ delta: {}, finish_reason: 'length' }] }])
+        const { client, create } = fakeClient(first)
+
+        await expect(collect(await open(client))).rejects.toThrow()
+        expect(create).toHaveBeenCalledTimes(1)
+    })
+
+    test('does not retry once the caller has aborted', async () => {
+        const controller = new AbortController()
+        const { client, create } = fakeClient(
+            (async function* () {
+                controller.abort()
+                throw lostConnection()
+            })()
+        )
+
+        await expect(collect(await open(client, { signal: controller.signal }))).rejects.toThrow()
+        expect(create).toHaveBeenCalledTimes(1)
+    })
+
+    test('a request that cannot be opened still throws from the call itself', async () => {
+        const refused = new BadRequestError(400, { message: 'bad model' }, undefined, new Headers())
+        const { client, create } = fakeClient(refused)
+
+        await expect(open(client)).rejects.toBe(refused)
+        expect(create).toHaveBeenCalledTimes(1)
+    })
+
+    test('maxStreamRetries 0 turns retrying off', async () => {
+        const { client, create } = fakeClient(rawStream([], lostConnection()))
+
+        await expect(collect(await open(client, { maxStreamRetries: 0 }))).rejects.toThrow('Network connection lost.')
+        expect(create).toHaveBeenCalledTimes(1)
+    })
+})

@@ -81,3 +81,15 @@ node migration/rewriteKnowledgeBasesToCurrentState.js --firebase-project-id=<pro
 Each wiki becomes due at once, and its runs then rewrite up to ten pages each, continuing a minute
 later until the list on the wiki document (`currentStateRewrite`) is empty. It is billed to the
 wiki's owner and stops at the monthly cap like any other run; what is left continues next month.
+
+## When a run fails (AT-2870)
+
+A model request that breaks off transiently is retried twice, a second or two apart, inside the
+OpenRouter transport (`Assistant/openRouterChatClient.js`; what counts as transient is decided in
+`Assistant/transientModelErrors.js`). The ingest asks the transport to hold back each answer until
+it is complete (`bufferModelOutput`), so a broken stream can be retried wherever it broke off, and
+a tool call is only ever executed from a stream that finished. If the run still fails on a transient
+error, it schedules and enqueues the next run 7 minutes later (`transientFailureRetries` on the
+wiki document, at most 3 in a row). Every other failure, and the fourth transient one in a row,
+waits for the nightly slot as before. A failed run keeps what its finished blocks wrote; the block
+it was working on is read again (and billed again) by the next run.

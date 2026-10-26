@@ -9130,8 +9130,27 @@ test('includes voice controls for the configured OpenRouter model even without o
             sourceChannel: 'browser_call',
         })
         expect(mockStream).toHaveBeenCalledWith(
-            expect.objectContaining({ tools: [schema], usageContext: { route: 'browser_call' } })
+            expect.objectContaining({ tools: [schema], usageContext: { route: 'browser_call' }, bufferOutput: false })
         )
+    } finally {
+        mockStream.mockRestore()
+    }
+})
+
+test('lets only a run that streams to nobody buffer the OpenRouter answer for retries (AT-2870)', async () => {
+    const client = require('./openRouterChatClient')
+    const mockStream = jest.spyOn(client, 'streamOpenRouterChat').mockResolvedValue([])
+    try {
+        await interactWithChatStream([['user', 'Fold this in']], 'MODEL_DEEPSEEK_V4_FLASH', 'TEMPERATURE_LOW', [], {
+            projectId: 'project-a',
+            bufferModelOutput: true,
+        })
+        expect(mockStream).toHaveBeenLastCalledWith(expect.objectContaining({ bufferOutput: true }))
+
+        await interactWithChatStream([['user', 'Hi']], 'MODEL_DEEPSEEK_V4_FLASH', 'TEMPERATURE_LOW', [], {
+            projectId: 'project-a',
+        })
+        expect(mockStream).toHaveBeenLastCalledWith(expect.objectContaining({ bufferOutput: false }))
     } finally {
         mockStream.mockRestore()
     }

@@ -22,13 +22,18 @@
 //     which knowledgeBaseDefaults.js notices; nothing is spent on a member who is not there;
 //   - the owner has archived the project → paused the same way until they reactivate it (or the
 //     default hands the wiki to a member for whom it is active); nothing is spent on it;
-//   - nothing changed → no model call at all, the next nightly slot.
+//   - nothing changed → no model call at all, the next nightly slot;
+//   - the model request broke off transiently (a lost connection, a 5xx or 429 from the provider)
+//     even after the transport's own retries → the run fails, and another run is scheduled and
+//     enqueued in TRANSIENT_FAILURE_RETRY_DELAY_MS, up to MAX_TRANSIENT_FAILURE_RETRIES times in a
+//     row (AT-2870); any other failure → the next nightly slot.
 
 const admin = require('firebase-admin')
 const { FieldValue } = require('firebase-admin/firestore')
 const crypto = require('crypto')
 
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
+const { isTransientModelError } = require('../Assistant/transientModelErrors')
 const {
     advanceKnowledgeCursor,
     buildCorrectionCard,
@@ -77,6 +82,15 @@ const MAX_CORRECTIONS_IN_PROMPT = 30
 // The project description rides in every conversation of a run, so it is capped like a source card.
 const PROJECT_DESCRIPTION_MAX_CHARS = 4000
 const CONTINUE_DELAY_MS = 60 * 1000
+// A run that failed on a transient model error (AT-2870) is tried again soon rather than the next
+// night: on 2026-10-26 one lost OpenRouter connection paused a wiki that was catching up for 16
+// hours. Bounded, so a provider outage costs a few retries and then waits for the nightly slot
+// instead of failing every few minutes. Each retry still passes every check a run makes (owner,
+// Gold, monthly cap), and the dispatcher's 15-minute tick is not waited for: the run that failed
+// enqueues the retry itself.
+const TRANSIENT_FAILURE_RETRY_DELAY_MS = 7 * 60 * 1000
+const MAX_TRANSIENT_FAILURE_RETRIES = 3
+const TRANSIENT_RETRY_TRIGGER = 'transient_retry'
 const INGEST_TEMPERATURE = 'TEMPERATURE_LOW'
 const GOLD_SOURCE = 'knowledge_base_ingest'
 
@@ -129,8 +143,13 @@ async function releaseIngestLease(db, projectId, leaseId, startedAt, update, fie
             leaseOwner: fieldValue.delete(),
             leaseExpiresAt: fieldValue.delete(),
         })
-        return true
+        return { released: true, nextRunAt }
     })
+}
+
+function defaultEnqueueRun(args) {
+    const { enqueueKnowledgeBaseIngest } = require('./knowledgeBaseDispatcher')
+    return enqueueKnowledgeBaseIngest(args)
 }
 
 async function loadRecentCorrections(db, projectId) {
@@ -426,6 +445,7 @@ async function runKnowledgeBaseIngest({
     resolveAssistantNames,
     maxRunWallClockMs = KNOWLEDGE_BASE_INGEST_MAX_RUN_WALL_CLOCK_MS,
     notifyCapReached = args => require('./knowledgeBaseCapNotice').notifyKnowledgeBaseCapReached(args),
+    enqueueRun = defaultEnqueueRun,
 }) {
     if (!projectId) throw new Error('projectId is required')
     const startedAt = clock()
@@ -487,6 +507,9 @@ async function runKnowledgeBaseIngest({
                 requestUserId: ownerUserId,
                 maxToolCallIterations: MAX_TOOL_ROUNDS_PER_CONVERSATION,
                 maxRunWallClockMs: Math.max(0, deadline - clock()),
+                // Nobody watches this run stream, so the transport may hold each model answer back
+                // until it is complete and retry a broken stream wherever it broke off (AT-2870).
+                bufferModelOutput: true,
             },
             onRoundComplete: async ({ assistantText, conversation: history, round }) => {
                 const { gold } = measureRound({ assistantText, conversation: history, modelKey })
@@ -714,7 +737,12 @@ async function runKnowledgeBaseIngest({
             if (error.reason === 'time') moreWork = true
         } else {
             failure = error
-            console.error('[knowledge base] Ingest run failed', { projectId, runId: leaseId, error: error.message })
+            console.error('[knowledge base] Ingest run failed', {
+                projectId,
+                runId: leaseId,
+                error: error.message,
+                transient: isTransientModelError(error),
+            })
         }
     }
 
@@ -726,6 +754,12 @@ async function runKnowledgeBaseIngest({
           : moreWork
             ? 'partial'
             : 'completed'
+    // Consecutive transient failures, counted on the wiki document so the bound holds across runs.
+    // Anything other than a transient failure resets it.
+    const previousTransientRetries = Math.max(0, Number(knowledgeBase.transientFailureRetries) || 0)
+    const retryTransientFailure =
+        !!failure && isTransientModelError(failure) && previousTransientRetries < MAX_TRANSIENT_FAILURE_RETRIES
+    const transientFailureRetries = retryTransientFailure ? previousTransientRetries + 1 : 0
     const nextRunAt =
         stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON ||
         stopReason === KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON
@@ -734,7 +768,18 @@ async function runKnowledgeBaseIngest({
               ? startOfNextMonthUtc(finishedAt)
               : moreWork && !failure
                 ? finishedAt + CONTINUE_DELAY_MS
-                : nextNightlyRunAt(finishedAt, ownerData)
+                : retryTransientFailure
+                  ? finishedAt + TRANSIENT_FAILURE_RETRY_DELAY_MS
+                  : nextNightlyRunAt(finishedAt, ownerData)
+    if (failure) {
+        console.warn('[knowledge base] Failed run rescheduled', {
+            projectId,
+            runId: leaseId,
+            transientRetry: retryTransientFailure,
+            transientFailureRetries,
+            nextRunAt,
+        })
+    }
 
     if (runDocWritten) {
         await runRef.set(
@@ -750,7 +795,7 @@ async function runKnowledgeBaseIngest({
         )
     }
 
-    await releaseIngestLease(
+    const released = await releaseIngestLease(
         db,
         projectId,
         leaseId,
@@ -763,9 +808,24 @@ async function runKnowledgeBaseIngest({
             lastRunStopReason: stopReason,
             ...(runDocWritten ? { lastRunId: leaseId } : {}),
             nextRunAt,
+            transientFailureRetries: transientFailureRetries > 0 ? transientFailureRetries : fieldValue.delete(),
         },
         fieldValue
     )
+
+    // The dispatcher only looks every 15 minutes; enqueue the retry for its own time instead. The
+    // task id is derived from (project, nextRunAt), so the dispatcher's tick cannot queue it twice,
+    // and the lease keeps two runs from overlapping. Best effort: the tick is the backstop.
+    if (retryTransientFailure && released && Number.isFinite(released.nextRunAt)) {
+        try {
+            await enqueueRun({ projectId, dueAt: released.nextRunAt, trigger: TRANSIENT_RETRY_TRIGGER })
+        } catch (error) {
+            console.warn('[knowledge base] Could not enqueue the retry; the dispatcher will pick it up', {
+                projectId,
+                error: error.message,
+            })
+        }
+    }
 
     // Only after the stop is recorded: the notice links to settings that read it.
     if (stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON) {
@@ -793,6 +853,8 @@ module.exports = {
     MAX_REBUILDS_PER_RUN,
     MAX_CURRENT_STATE_REWRITES_PER_RUN,
     CONTINUE_DELAY_MS,
+    TRANSIENT_FAILURE_RETRY_DELAY_MS,
+    MAX_TRANSIENT_FAILURE_RETRIES,
     GOLD_SOURCE,
     nextNightlyRunAt,
     startOfNextMonthUtc,

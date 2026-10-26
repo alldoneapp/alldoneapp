@@ -3,6 +3,8 @@ const {
     CONTINUE_DELAY_MS,
     GOLD_SOURCE,
     MAX_CURRENT_STATE_REWRITES_PER_RUN,
+    MAX_TRANSIENT_FAILURE_RETRIES,
+    TRANSIENT_FAILURE_RETRY_DELAY_MS,
     nextNightlyRunAt,
     runKnowledgeBaseIngest,
     startOfNextMonthUtc,
@@ -683,7 +685,189 @@ describe('runKnowledgeBaseIngest', () => {
         expect(knowledgeBase.nextRunAt).toBe(nextNightlyRunAt(NOW, { timezone: 2 }))
         // The chunk that failed is read again next time.
         expect(knowledgeBase.cursor.tasks).toEqual({ ms: NOW - 10 * DAY, ids: [] })
+        expect(knowledgeBase).not.toHaveProperty('transientFailureRetries')
         errorLog.mockRestore()
+    })
+})
+
+describe('a run that fails on a transient model error (AT-2870)', () => {
+    // The production failure: OpenRouter reported a lost upstream connection INSIDE an HTTP 200
+    // stream, which the OpenAI SDK throws as an APIError with no status, code 502 and that message.
+    const lostConnection = () => Object.assign(new Error('Network connection lost.'), { code: 502, status: undefined })
+    const RETRY_AT = NOW + TRANSIENT_FAILURE_RETRY_DELAY_MS
+    let errorLog
+    let warnLog
+    beforeEach(() => {
+        errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+        warnLog = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+    afterEach(() => {
+        errorLog.mockRestore()
+        warnLog.mockRestore()
+    })
+
+    // Enough tasks for two chunks, so one block can finish before the next one breaks off.
+    function twoChunkTasks() {
+        const documents = {}
+        for (let index = 0; index < 80; index++) {
+            documents[taskPath(`t${String(index).padStart(2, '0')}`)] = {
+                name: `Aufgabe ${index}`,
+                description: 'y'.repeat(3000),
+                isPublicFor: PUBLIC,
+                lastEditionDate: NOW - DAY + index,
+            }
+        }
+        return documents
+    }
+
+    it('keeps the finished block, retries in minutes rather than tonight, and enqueues that run itself', async () => {
+        const db = createDb(twoChunkTasks())
+        const enqueueRun = jest.fn(async () => 'enqueued')
+        const { runConversation, calls } = scriptedModel(
+            async tools => {
+                await tools.write_page({
+                    title: 'Aufgaben',
+                    summary: 'Was gerade ansteht.',
+                    body: 'Aufgabe 0 steht an [[task:t00]].',
+                    sourceKeys: ['task:t00'],
+                    reason: 'Neu',
+                })
+            },
+            async () => {
+                throw lostConnection()
+            }
+        )
+
+        const result = await run(db, { runConversation, enqueueRun })
+
+        expect(calls).toHaveLength(2)
+        expect(result).toMatchObject({ status: 'failed', nextRunAt: RETRY_AT })
+        expect(db.read(`${KB_PATH}/runs/run-1`)).toMatchObject({ status: 'failed', error: 'Network connection lost.' })
+        const knowledgeBase = db.read(KB_PATH)
+        expect(knowledgeBase).toMatchObject({
+            nextRunAt: RETRY_AT,
+            transientFailureRetries: 1,
+            lastRunStatus: 'failed',
+        })
+        expect(knowledgeBase).not.toHaveProperty('leaseOwner')
+        // The finished block stays written and its cursor stays advanced; the broken one is read again.
+        expect(db.read(pagePath('aufgaben'))).toMatchObject({ revision: 1 })
+        const handled = calls[0].user.match(/\[\[task:/g).length
+        expect(knowledgeBase.cursor.tasks).toEqual({
+            ms: NOW - DAY + handled - 1,
+            ids: [`t${String(handled - 1).padStart(2, '0')}`],
+        })
+        // Without waiting up to 15 minutes for the dispatcher, under the id the dispatcher would use.
+        expect(enqueueRun).toHaveBeenCalledTimes(1)
+        expect(enqueueRun).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: RETRY_AT, trigger: 'transient_retry' })
+        expect(TRANSIENT_FAILURE_RETRY_DELAY_MS).toBeGreaterThanOrEqual(5 * 60 * 1000)
+        expect(TRANSIENT_FAILURE_RETRY_DELAY_MS).toBeLessThanOrEqual(10 * 60 * 1000)
+    })
+
+    it.each([
+        ['a rate limit', Object.assign(new Error('Rate limit exceeded'), { status: 429 })],
+        ['a provider 503', Object.assign(new Error('503 Service Unavailable'), { status: 503 })],
+        ['a dropped socket', Object.assign(new TypeError('terminated'), { cause: { code: 'UND_ERR_SOCKET' } })],
+    ])('treats %s as transient too', async (_label, error) => {
+        const db = createDb({ [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } })
+        const enqueueRun = jest.fn(async () => 'enqueued')
+        const runConversation = jest.fn(async () => {
+            throw error
+        })
+
+        await run(db, { runConversation, enqueueRun })
+
+        expect(db.read(KB_PATH).nextRunAt).toBe(RETRY_AT)
+        expect(enqueueRun).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+        ['a refused request', Object.assign(new Error('400 Bad request'), { status: 400 })],
+        ['missing credits', Object.assign(new Error('Insufficient credits'), { code: 402 })],
+        [
+            'an answer cut off by the token limit',
+            new Error('OpenRouter returned an empty response (finish_reason: length)'),
+        ],
+    ])('keeps the nightly slot for %s', async (_label, error) => {
+        const db = createDb(
+            { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } },
+            { transientFailureRetries: 2 }
+        )
+        const enqueueRun = jest.fn()
+        const runConversation = jest.fn(async () => {
+            throw error
+        })
+
+        await run(db, { runConversation, enqueueRun })
+
+        const knowledgeBase = db.read(KB_PATH)
+        expect(knowledgeBase.nextRunAt).toBe(nextNightlyRunAt(NOW, { timezone: 2 }))
+        expect(knowledgeBase).not.toHaveProperty('transientFailureRetries')
+        expect(enqueueRun).not.toHaveBeenCalled()
+    })
+
+    it('stops retrying soon after a bounded number of transient failures in a row', async () => {
+        const db = createDb(
+            { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } },
+            { transientFailureRetries: MAX_TRANSIENT_FAILURE_RETRIES }
+        )
+        const enqueueRun = jest.fn()
+        const runConversation = jest.fn(async () => {
+            throw lostConnection()
+        })
+
+        const result = await run(db, { runConversation, enqueueRun })
+
+        expect(result.status).toBe('failed')
+        const knowledgeBase = db.read(KB_PATH)
+        expect(knowledgeBase.nextRunAt).toBe(nextNightlyRunAt(NOW, { timezone: 2 }))
+        // The nightly run starts a fresh series of quick retries.
+        expect(knowledgeBase).not.toHaveProperty('transientFailureRetries')
+        expect(enqueueRun).not.toHaveBeenCalled()
+    })
+
+    it('counts consecutive retries and forgets them after a run that does not fail', async () => {
+        const db = createDb(
+            { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } },
+            { transientFailureRetries: 1 }
+        )
+        const failing = jest.fn(async () => {
+            throw lostConnection()
+        })
+        await run(db, { runConversation: failing, enqueueRun: jest.fn() })
+        expect(db.read(KB_PATH).transientFailureRetries).toBe(2)
+
+        await run(db, { runConversation: scriptedModel().runConversation, leaseId: 'run-2' })
+
+        expect(db.read(KB_PATH)).not.toHaveProperty('transientFailureRetries')
+        expect(db.read(KB_PATH).lastRunStatus).toBe('completed')
+    })
+
+    it('still honours an earlier refresh and survives an enqueue that fails', async () => {
+        const db = createDb({ [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } })
+        const enqueueRun = jest.fn(async () => {
+            throw new Error('queue unavailable')
+        })
+        const runConversation = jest.fn(async () => {
+            await db.doc(KB_PATH).update({ nextRunAt: NOW + 1 })
+            throw lostConnection()
+        })
+
+        const result = await run(db, { runConversation, enqueueRun })
+
+        expect(result.status).toBe('failed')
+        expect(db.read(KB_PATH).nextRunAt).toBe(NOW + 1)
+        expect(enqueueRun).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW + 1, trigger: 'transient_retry' })
+        expect(db.read(KB_PATH)).not.toHaveProperty('leaseOwner')
+    })
+
+    it('lets the transport hold back and retry each model answer, since nobody watches it stream', async () => {
+        const db = createDb({ [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } })
+        const { runConversation } = scriptedModel()
+
+        await run(db, { runConversation })
+
+        expect(runConversation.mock.calls[0][0].runtime).toMatchObject({ bufferModelOutput: true })
     })
 })
 
