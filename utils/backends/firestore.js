@@ -4032,6 +4032,8 @@ export function mapUserData(userId, user) {
             : null,
         mcpEnabled: user.mcpEnabled !== false,
         mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
+        // WebMCP / window.alldone for browser agents (AT-2871), on unless switched off.
+        browserAgentToolsEnabled: user.browserAgentToolsEnabled !== false,
         // One-shot AI feature model choices (rambler, email draft reply, …). This mapping is an
         // explicit whitelist — without this line the Settings pickers would never see the field.
         featureModelPreferences:

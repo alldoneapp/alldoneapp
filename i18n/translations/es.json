@@ -3650,5 +3650,8 @@
     "Previous file": "Archivo anterior",
     "Next file": "Archivo siguiente",
     "File": "Archivo",
-    "Actor via MCP client": "%{name} (vía %{client})"
+    "Actor via MCP client": "%{name} (vía %{client})",
+    "Browser agent": "Agente del navegador",
+    "Browser agents (WebMCP & JavaScript)": "Agentes del navegador (WebMCP y JavaScript)",
+    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "Los asistentes de IA que manejan tu navegador (por ejemplo Gemini en Chrome, Claude en Chrome o el agente de ChatGPT) pueden usar las mismas herramientas en esta pestaña sin un conector. Los navegadores con WebMCP las descubren automáticamente; otros agentes pueden llamar a window.alldone desde JavaScript. Actúan como la cuenta con la sesión iniciada en esta pestaña y solo con las herramientas permitidas abajo."
 }

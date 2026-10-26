@@ -1347,6 +1347,14 @@ export async function setUserMCPSettings(userId, mcpEnabled, mcpDisabledTools) {
         })
 }
 
+// Settings → MCP → "Browser agents" (AT-2871): whether the signed-in web app exposes the MCP tools
+// to browser agents through WebMCP and window.alldone. Default on; the MCP server enforces it too.
+export async function setUserBrowserAgentToolsEnabled(userId, enabled) {
+    return getDb()
+        .doc(`users/${userId}`)
+        .update({ browserAgentToolsEnabled: enabled !== false })
+}
+
 // Per-user model choice for the one-shot AI features (rambler dictation, email draft reply,
 // email task summary, task-goal routing) — see functions/Assistant/featureModelPreferences.js.
 // Dotted field path so saving one feature cannot clobber the others (the vmAgentSettings lesson).

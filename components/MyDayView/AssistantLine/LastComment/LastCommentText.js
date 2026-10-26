@@ -18,34 +18,15 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
-export const PREVIEW_TEXT_BUDGET = 500
-
-/**
- * Cuts the decoded comment to the preview budget, always at a token boundary so mention metadata,
- * object ids and URLs stay intact.
- *
- * AT-2872 — `fromEnd` keeps the LAST part instead of the first. A long, growing comment such as a
- * VM/Claude status update starts with boilerplate ("Working with Claude…", subscription notice,
- * first command), so a head-first preview never showed what is actually happening right now.
- */
-export const getPreviewText = (text, fromEnd = false) => {
-    if (text.length <= PREVIEW_TEXT_BUDGET) return text
-    if (!fromEnd) {
-        const previewEnd = text.indexOf(' ', PREVIEW_TEXT_BUDGET)
-        return previewEnd === -1 ? text : `${text.substring(0, previewEnd)} ...`
-    }
-    // Extend backwards to the previous token boundary, mirroring the head-first rule above.
-    const previewStart = text.lastIndexOf(' ', text.length - PREVIEW_TEXT_BUDGET)
-    return previewStart === -1 ? text : `... ${text.substring(previewStart + 1)}`
-}
-
 // Share the existing mention/link rendering across pending, saved and compact previews. Decode
 // complete tokens: cutting serialized text first can split a space code, object id or avatar URL.
-export default function LastCommentText({ projectId, commentText, compact = false, fromEnd = false, testID }) {
+export default function LastCommentText({ projectId, commentText, compact = false, testID }) {
     const text = cleanTextMetaData(removeFormatTagsFromText(commentText || '').replace(/\s+/g, ' '), true, true)
     let linkCounter = 0
     const getLinkCounter = () => ++linkCounter
-    const previewText = getPreviewText(text, fromEnd)
+    // Keep the preview budget, extending to the next token boundary so metadata stays intact.
+    const previewEnd = text.indexOf(' ', 500)
+    const previewText = previewEnd === -1 ? text : `${text.substring(0, previewEnd)} ...`
     const parsedElements = parseFeedComment(previewText)
 
     return (

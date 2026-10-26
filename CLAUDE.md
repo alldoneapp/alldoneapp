@@ -1051,6 +1051,35 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
+### Browser agents use the MCP tools through the signed-in page (AT-2871)
+
+Assistants that cannot add a custom connector but can drive a browser (Gemini in Chrome, Claude in
+Chrome, ChatGPT agent, Comet) get the same tools in a signed-in Alldone tab, on two surfaces:
+**native WebMCP** (`document.modelContext.registerTool`, with `navigator.modelContext` as the
+deprecated alias) and **`window.alldone`** (`listTools`, `callTool`, `tools.<name>(args)`, `help()`)
+for agents that only run JavaScript. `utils/browserAgent/browserAgentApi.js` implements both, and
+`components/BrowserAgent/BrowserAgentApiBridge.js` mounts them in the logged-in tree. Neither has
+tools of its own. Both call the existing `/mcpServer` (same origin, through the hosting rewrite) with
+the user's Firebase **ID token**, which `getAuthenticatedUserFromToken` already accepted. So
+membership, visibility, Settings → MCP (master switch and per-tool opt-outs) and rate limits apply
+unchanged, and nothing works signed out. The bridge sends `X-Alldone-Mcp-Client:
+alldone-browser-agent`. The server honours that header **only for an ID token** (an OAuth token
+keeps the name it reported in `initialize`), labels writes "via Browser agent" (`mcpActor.js`), and
+refuses the bridge when `users/{uid}.browserAgentToolsEnabled === false` (Settings → MCP → "Browser
+agents", on by default). The header is not a security boundary: a page that omits it is ordinary MCP
+with the user's own rights.
+
+Three things to know. **WebMCP is not a standard yet.** It is a W3C Community Group draft, and Chrome
+149–156 expose it only to origins with an **origin-trial token**: paste one per host into
+`utils/browserAgent/webMcpOriginTrial.js`, or the API does not exist and only `window.alldone` works.
+**ID tokens are JWTs whose first characters are identical for every user**, so the rate limiter's
+`client:` key (a token prefix) used to put every browser session into one bucket. JWT-shaped tokens
+are now hashed (`getClientIdFromRequest`). **Discovery** is `/llms.txt` (`web-bundler/static`) plus
+an `ai-agent-api` meta tag and the `data-alldone-agent-api` attribute. An agent that only fetches
+URLs and cannot use a signed-in browser still needs the OAuth connector. Pinned by
+`utils/browserAgent/browserAgentApi.test.js`, `components/BrowserAgent/BrowserAgentApiBridge.test.js`
+and `functions/MCP/mcpBrowserAgent.test.js`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

@@ -31,6 +31,7 @@ import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
+import BrowserAgentApiBridge from './components/BrowserAgent/BrowserAgentApiBridge'
 import { processNewUser } from './utils/InitialLoad/newUserHelper'
 import { loadGlobalDataAndGetUserResult, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
 import { LOGIN_FAILURE_ACTIONS, describeLoginError, resolveLoginFailureAction } from './utils/Auth/authErrorHelper'
@@ -460,6 +461,7 @@ export default function AppContent() {
                                 <EndDayStatisticsModal />
                             </WorkspaceOverlayLayer>
                             <Shortcuts />
+                            <BrowserAgentApiBridge />
                             <InitLoadView />
                             {heavyComponentsLoaded && (
                                 <>
