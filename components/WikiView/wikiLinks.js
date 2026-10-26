@@ -41,6 +41,11 @@ export function getProjectWikiPath(projectId, slug = null, revision = null) {
     return `/projects/${projectId}/wiki${page}`
 }
 
+// Everything a page changed since one of its revisions, as one comparison (AT-2878).
+export function getProjectWikiChangesSincePath(projectId, slug, since) {
+    return `${getProjectWikiPath(projectId, slug)}/changes/since/${since}`
+}
+
 export function openProjectWiki(projectId, slug = null) {
     if (!projectId) return
     getURLTrigger().processUrl(NavigationService, getProjectWikiPath(projectId, slug))

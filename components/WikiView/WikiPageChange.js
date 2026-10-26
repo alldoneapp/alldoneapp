@@ -22,7 +22,7 @@ function sourceNode(key) {
     return parsed ? { key, objectType: parsed.type, label: '' } : null
 }
 
-function Notice({ text, testID }) {
+export function Notice({ text, testID }) {
     return (
         <View testID={testID} style={localStyles.notice}>
             <Icon name="info" size={16} color={colors.Text03} />
@@ -62,7 +62,9 @@ function SourceChanges({ before, after, sourceLabels }) {
     )
 }
 
-function ChangeContent({ change, sourceLabels, pageSlugs }) {
+// Shared with the recent-changes view (WikiPageRecentChanges), which passes its own wording for a
+// comparison whose starting text is gone.
+export function ChangeContent({ change, sourceLabels, pageSlugs, baseUnavailableText }) {
     const labelFor = source => getWikiSourceLabel(sourceNode(`${source.type}:${source.id}`) || {}, sourceLabels)
     const format = text => formatWikiTextForDiff(text, labelFor)
     const { kind, before, after } = change
@@ -73,7 +75,10 @@ function ChangeContent({ change, sourceLabels, pageSlugs }) {
         }
         return (
             <>
-                <Notice testID="wiki-change-base-unavailable" text={translate('Wiki previous text unavailable')} />
+                <Notice
+                    testID="wiki-change-base-unavailable"
+                    text={baseUnavailableText || translate('Wiki previous text unavailable')}
+                />
                 <WikiMarkdown body={after.body} sourceLabels={sourceLabels} pageExists={slug => pageSlugs.has(slug)} />
             </>
         )

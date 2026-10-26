@@ -15,13 +15,22 @@ import URLsWiki, {
     URL_PROJECT_WIKI,
     URL_PROJECT_WIKI_PAGE,
     URL_PROJECT_WIKI_PAGE_CHANGE,
+    URL_PROJECT_WIKI_PAGE_CHANGES_SINCE,
 } from '../../URLSystem/Wiki/URLsWiki'
 import WikiMarkdown, { getWikiSourceLabel, isOpenableWikiSource } from './WikiMarkdown'
 import WikiPageHistory from './WikiPageHistory'
 import WikiPageChange from './WikiPageChange'
+import WikiPageRecentChanges from './WikiPageRecentChanges'
 import WikiFeedbackButton from './WikiFeedbackButton'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
-import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } from './wikiNavigationState'
+import {
+    setWikiSelectedRange,
+    setWikiSelectedSlug,
+    useWikiSelectedRevision,
+    useWikiSelectedSince,
+    useWikiSelectedSlug,
+} from './wikiNavigationState'
+import { getDefaultWikiRangeBase } from './wikiRecentChanges'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import { getWikiIndexPages } from './wikiIndexOrder'
 import {
@@ -179,7 +188,23 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                         ? translate('Wiki page last updated', { date: formatWikiDate(page.updatedAt) })
                         : ''}
                 </Text>
-                <WikiFeedbackButton projectId={projectId} page={page} />
+                <View style={localStyles.pageActions}>
+                    {page.revision > 0 && (
+                        <Button
+                            type={'ghost'}
+                            icon={'git-commit'}
+                            iconSize={16}
+                            iconGap={8}
+                            title={translate('Show changes')}
+                            accessibilityLabel={translate('Show recent changes of this page')}
+                            onPress={() =>
+                                setWikiSelectedRange(projectId, page.slug, getDefaultWikiRangeBase(page.revision))
+                            }
+                            buttonStyle={localStyles.compactButton}
+                        />
+                    )}
+                    <WikiFeedbackButton projectId={projectId} page={page} />
+                </View>
             </View>
             {!!page.summary && <Text style={localStyles.pageSummary}>{page.summary}</Text>}
 
@@ -243,6 +268,7 @@ export function ProjectWiki({ project }) {
     const { pages, pendingRebuilds, loaded } = useKnowledgePages(project.id)
     const [selectedSlug, setSelectedSlug] = useWikiSelectedSlug(project.id)
     const selectedRevision = useWikiSelectedRevision(project.id)
+    const selectedSince = useWikiSelectedSince(project.id)
     // Kept here rather than in the index, so going into a page and back keeps the search.
     const [searchText, setSearchText] = useState('')
 
@@ -255,6 +281,11 @@ export function ProjectWiki({ project }) {
     // A change is shown for any page, archived or hidden ones included: the Updates feed links to
     // every change, and the page view only knows the pages people may read right now.
     const shownChange = selectedSlug && selectedRevision ? { slug: selectedSlug, revision: selectedRevision } : null
+    // Everything a page changed since one of its revisions (AT-2878), opened from the page itself.
+    const shownRange =
+        !shownChange && selectedSlug && Number.isInteger(selectedSince)
+            ? { slug: selectedSlug, since: selectedSince }
+            : null
 
     useEffect(() => {
         if (shownChange) {
@@ -266,12 +297,21 @@ export function ProjectWiki({ project }) {
                 selectedPage?.title,
                 shownChange.revision
             )
+        } else if (shownRange) {
+            URLsWiki.push(
+                URL_PROJECT_WIKI_PAGE_CHANGES_SINCE,
+                null,
+                project.id,
+                shownRange.slug,
+                selectedPage?.title,
+                shownRange.since
+            )
         } else if (shownPage) {
             URLsWiki.push(URL_PROJECT_WIKI_PAGE, null, project.id, shownPage.slug, shownPage.title)
         } else {
             URLsWiki.push(URL_PROJECT_WIKI, null, project.id)
         }
-    }, [project.id, shownPage?.slug, shownChange?.slug, shownChange?.revision])
+    }, [project.id, shownPage?.slug, shownChange?.slug, shownChange?.revision, shownRange?.slug, shownRange?.since])
 
     const loading = knowledgeBase === undefined || !loaded
     const changeView = shownChange && (
@@ -282,6 +322,19 @@ export function ProjectWiki({ project }) {
             revision={shownChange.revision}
             pageSlugs={pageSlugs}
             onSelectRevision={revision => setWikiSelectedSlug(project.id, shownChange.slug, revision)}
+            onOpenPage={setSelectedSlug}
+            onBack={() => setSelectedSlug(null)}
+        />
+    )
+    const rangeView = shownRange && (
+        <WikiPageRecentChanges
+            key={`${shownRange.slug}-since-${shownRange.since}`}
+            projectId={project.id}
+            slug={shownRange.slug}
+            since={shownRange.since}
+            pageSlugs={pageSlugs}
+            onSelectSince={since => setWikiSelectedRange(project.id, shownRange.slug, since)}
+            onOpenChange={revision => setWikiSelectedSlug(project.id, shownRange.slug, revision)}
             onOpenPage={setSelectedSlug}
             onBack={() => setSelectedSlug(null)}
         />
@@ -308,6 +361,8 @@ export function ProjectWiki({ project }) {
                     <Text style={localStyles.statusText}>{translate('Loading wiki')}</Text>
                 ) : changeView ? (
                     changeView
+                ) : rangeView ? (
+                    rangeView
                 ) : pages.length === 0 ? (
                     <WikiEmptyState projectId={project.id} knowledgeBase={knowledgeBase} />
                 ) : (
@@ -501,6 +556,22 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         marginTop: 4,
+    },
+    pageActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+    },
+    // The same compact ghost button as "Give feedback" next to it (WikiFeedbackButton).
+    compactButton: {
+        height: 32,
+        minHeight: 32,
+        maxHeight: 32,
+        paddingVertical: 4,
+        paddingLeft: 8,
+        paddingRight: 12,
+        marginVertical: 4,
+        marginRight: 4,
     },
     pageMetaText: {
         ...styles.caption2,
