@@ -6,7 +6,6 @@ import {
     getFirebaseProjectId,
     getFunctionsRegion,
     getLoggedUserAccessReaderId,
-    getNoteData,
     runHttpsCallableFunction,
 } from '../firestore'
 import { updateQuotaTraffic } from '../Premium/premiumFirestore'
@@ -28,8 +27,7 @@ import {
     sortArtifactsByLastEdition,
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
-import { UPLOAD_SOURCES, sourceTitle, watchLinkedUploads } from './linkedUploads'
-import { createNoteUploadsCache } from './artifactsLocalCache'
+import { UPLOAD_SOURCES, sourceTitle } from './linkedUploads'
 import { ARTIFACT_BRIDGE_QUERY_PARAM } from '../../../functions/Artifacts/artifactDataBridge'
 
 // Artifacts are read straight from Firestore and their metadata is edited there; versions and
@@ -64,21 +62,49 @@ export function watchProjectArtifacts(projectId, { followedOnly = false } = {}, 
     )
 }
 
-// Linked uploads deliberately use the original object views rather than serveArtifact.
-// `onChange(files, { settled })`, see watchLinkedUploads.
-export function watchProjectUploads(projectId, onChange, onError) {
-    const userId = store.getState().loggedUser?.uid
-    return watchLinkedUploads({
-        db: getDb(),
-        projectId,
-        userId,
-        readerId: getLoggedUserAccessReaderId(),
-        bucketName: firebase.app().options.storageBucket,
-        loadNote: getNoteData,
-        noteUploadsCache: userId ? createNoteUploadsCache(userId, projectId) : null,
-        onChange,
-        onError,
-    })
+// Linked uploads deliberately use the original object views rather than serveArtifact. The server
+// finds them (functions/Artifacts/linkedUploadsIndex.js) and answers once per call; the first answer
+// for a large project can be partial (`complete: false`) while its one-time scan runs, so the call is
+// repeated until it is complete. `onChange(files, { settled })` keeps the contract of the listener
+// it replaced: `settled` once the list is complete. No Firestore listener is opened (AT-2860).
+export const LINKED_UPLOADS_MAX_POLLS = 30
+const LINKED_UPLOADS_CALL_TIMEOUT_MS = 100 * 1000
+
+export function watchProjectUploads(
+    projectId,
+    onChange,
+    onError,
+    { setTimer = setTimeout, clearTimer = clearTimeout } = {}
+) {
+    let stopped = false
+    let timer = null
+    const ask = async attempt => {
+        let result
+        try {
+            result = await runHttpsCallableFunction(
+                'getProjectLinkedUploads',
+                { projectId },
+                { timeout: LINKED_UPLOADS_CALL_TIMEOUT_MS }
+            )
+        } catch (error) {
+            if (stopped) return
+            // Offline the remembered list simply stays; that is not a failure to report.
+            if (error?.code === 'offline') return
+            console.warn('[artifacts] linked uploads failed', { projectId, code: error?.code })
+            if (onError) onError(error)
+            return
+        }
+        if (stopped) return
+        const complete = result?.complete !== false
+        onChange(Array.isArray(result?.files) ? result.files : [], { settled: complete })
+        if (!complete && attempt + 1 < LINKED_UPLOADS_MAX_POLLS)
+            timer = setTimer(() => ask(attempt + 1), Math.max(500, Number(result?.retryAfterMs) || 2000))
+    }
+    if (projectId) ask(0)
+    return () => {
+        stopped = true
+        if (timer) clearTimer(timer)
+    }
 }
 
 const CONTEXT_OBJECT_PATHS = Object.fromEntries(UPLOAD_SOURCES.map(({ type, path }) => [type, path]))
