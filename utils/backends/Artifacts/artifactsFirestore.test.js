@@ -5,8 +5,9 @@ import {
     setArtifactPrivacy,
     updateArtifactLastCommentData,
     watchArtifactBacklinks,
+    watchProjectUploads,
 } from './artifactsFirestore'
-import { getDb } from '../firestore'
+import { getDb, runHttpsCallableFunction } from '../firestore'
 import { updateChatAssistantWithoutFeeds, updateChatPrivacy } from '../Chats/chatsFirestore'
 
 jest.mock('firebase/compat/app', () => ({
@@ -192,5 +193,73 @@ describe('the object an artifact was made in', () => {
             }),
         })
         await expect(getArtifactContextTitle('p', { type: 'assistants', id: 'a' })).resolves.toBe('Anna')
+    })
+})
+
+describe('linked uploads come from one callable, never from listeners (AT-2860)', () => {
+    const flush = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve()
+    }
+    let timers
+    const options = () => ({
+        setTimer: (fn, ms) => {
+            timers.push({ fn, ms })
+            return timers.length
+        },
+        clearTimer: jest.fn(),
+    })
+    beforeEach(() => {
+        timers = []
+        runHttpsCallableFunction.mockReset()
+        getDb.mockReset()
+    })
+
+    it('asks again while the server is still scanning and settles with the complete list', async () => {
+        runHttpsCallableFunction
+            .mockResolvedValueOnce({ files: [{ id: 'upload:a' }], complete: false, retryAfterMs: 5000 })
+            .mockResolvedValueOnce({ files: [{ id: 'upload:a' }, { id: 'upload:b' }], complete: true })
+        const onChange = jest.fn()
+        watchProjectUploads('p', onChange, jest.fn(), options())
+        await flush()
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'getProjectLinkedUploads',
+            { projectId: 'p' },
+            expect.objectContaining({ timeout: expect.any(Number) })
+        )
+        expect(onChange).toHaveBeenLastCalledWith([{ id: 'upload:a' }], { settled: false })
+        expect(timers).toHaveLength(1)
+        expect(timers[0].ms).toBe(5000)
+        timers[0].fn()
+        await flush()
+        expect(onChange).toHaveBeenLastCalledWith([{ id: 'upload:a' }, { id: 'upload:b' }], { settled: true })
+        expect(timers).toHaveLength(1)
+        expect(getDb).not.toHaveBeenCalled()
+    })
+
+    it('keeps the remembered list offline and reports any other failure', async () => {
+        const onChange = jest.fn()
+        const onError = jest.fn()
+        runHttpsCallableFunction.mockRejectedValueOnce(Object.assign(new Error('offline'), { code: 'offline' }))
+        watchProjectUploads('p', onChange, onError, options())
+        await flush()
+        expect(onChange).not.toHaveBeenCalled()
+        expect(onError).not.toHaveBeenCalled()
+
+        runHttpsCallableFunction.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'internal' }))
+        watchProjectUploads('p', onChange, onError, options())
+        await flush()
+        expect(onError).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores an answer that arrives after the view closed and stops asking', async () => {
+        let resolve
+        runHttpsCallableFunction.mockReturnValueOnce(new Promise(done => (resolve = done)))
+        const onChange = jest.fn()
+        const stop = watchProjectUploads('p', onChange, jest.fn(), options())
+        stop()
+        resolve({ files: [{ id: 'upload:a' }], complete: false })
+        await flush()
+        expect(onChange).not.toHaveBeenCalled()
+        expect(timers).toHaveLength(0)
     })
 })

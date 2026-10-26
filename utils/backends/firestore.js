@@ -46,6 +46,7 @@ import {
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
+import { applyPendingFirestoreCacheReset, scheduleFirestoreCacheResetCheck } from './firestoreCacheReset'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { scheduleFirestoreWebStorageSweep } from './firestoreWebStorageSweep'
 import { installTaskWriteMonitor } from './taskWriteMonitor'
@@ -489,10 +490,15 @@ export async function initFirebase(onComplete) {
     }
     if (!firestorePersistenceRequested) {
         firestorePersistenceRequested = true
+        // A requested one-time reset of a bloated cache must run before anything else
+        // touches Firestore (AT-2860, firestoreCacheReset.js).
+        if (!useEmulator) applyPendingFirestoreCacheReset(db)
         // Configure the persistent multi-tab cache before the first real Firestore
         // operation. The helper is intentionally non-blocking and preserves the
         // in-memory fallback for emulator and diagnostic sessions.
-        enableFirestorePersistence(db, { useEmulator })
+        enableFirestorePersistence(db, { useEmulator }).then(enabled => {
+            if (enabled) scheduleFirestoreCacheResetCheck(db, { projectId: firebase.app().options.projectId })
+        })
         // Offline is a designed state now, not an error: silence the SDK's WARN
         // chatter (`WebChannelConnection RPC 'Listen' transport errored` on every
         // reconnect attempt, BloomFilter warnings). Real errors still log at 'error'.

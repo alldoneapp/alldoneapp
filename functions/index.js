@@ -1663,6 +1663,23 @@ exports.saveAttachmentAsArtifact = onCall(
     }
 )
 
+// The uploaded files the Artifacts tab lists, found on the server instead of by browser listeners
+// on whole collections (AT-2860). See Artifacts/linkedUploadsIndex.js.
+exports.getProjectLinkedUploads = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getProjectLinkedUploads } = require('./Artifacts/linkedUploadsIndex')
+        return await getProjectLinkedUploads({ userId: auth.uid, projectId: data && data.projectId })
+    }
+)
+
 exports.restoreArtifactVersion = onCall(
     {
         timeoutSeconds: 30,
