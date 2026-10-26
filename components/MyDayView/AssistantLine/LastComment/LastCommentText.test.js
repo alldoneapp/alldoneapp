@@ -2,7 +2,7 @@ import React from 'react'
 import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import LastCommentText from './LastCommentText'
+import LastCommentText, { getPreviewText, PREVIEW_TEXT_BUDGET } from './LastCommentText'
 import LastAssistantComment from './LastAssistantComment'
 import PendingAssistantComment from './PendingAssistantComment'
 import MentionTag from '../../../Tags/MentionTag'
@@ -200,6 +200,69 @@ describe('Last comment mention previews (AT-2695)', () => {
     it('keeps empty comments empty', () => {
         const tree = render(<LastCommentText projectId={PROJECT_ID} />)
         expect(textOf(tree.root)).toBe('')
+        act(() => tree.unmount())
+    })
+})
+
+describe('Last comment preview shows the end of long comments (AT-2872)', () => {
+    const boilerplate = '🖥️ Working with Claude (Opus 5.5 · high effort) in a VM… 🔐 Using your Claude subscription.'
+    const filler = Array.from({ length: 120 }, (_, i) => `step${i}`).join(' ')
+    const vmUpdate = `${boilerplate} ${filler} Now running the migration and checking the deploy logs.`
+
+    it('keeps the last part of a long comment, cut at a token boundary', () => {
+        const preview = getPreviewText(vmUpdate, true)
+        expect(preview.startsWith('... ')).toBe(true)
+        expect(preview.endsWith('Now running the migration and checking the deploy logs.')).toBe(true)
+        expect(preview).not.toContain('Working with Claude')
+        expect(vmUpdate).toContain(preview.substring(4))
+        // Starts on a whole word: the token before the cut is preceded by a space in the source.
+        expect(vmUpdate).toContain(` ${preview.substring(4).split(' ')[0]} `)
+        expect(preview.length).toBeLessThanOrEqual(PREVIEW_TEXT_BUDGET + 4 + 20)
+    })
+
+    it('still keeps the first part when not asked for the end', () => {
+        const preview = getPreviewText(vmUpdate)
+        expect(preview.startsWith(boilerplate)).toBe(true)
+        expect(preview.endsWith(' ...')).toBe(true)
+    })
+
+    it('leaves short comments untouched in both directions', () => {
+        expect(getPreviewText('Done, MR is open.', true)).toBe('Done, MR is open.')
+        expect(getPreviewText('Done, MR is open.')).toBe('Done, MR is open.')
+        const exact = 'a'.repeat(PREVIEW_TEXT_BUDGET)
+        expect(getPreviewText(exact, true)).toBe(exact)
+    })
+
+    it('never cuts inside a single long token', () => {
+        const oneToken = 'x'.repeat(PREVIEW_TEXT_BUDGET + 50)
+        expect(getPreviewText(oneToken, true)).toBe(oneToken)
+    })
+
+    it('never truncates inside mention metadata at the start of the tail', () => {
+        const text = `before ${token} ${'a'.repeat(PREVIEW_TEXT_BUDGET - 10)}`
+        const tree = render(<LastCommentText projectId={PROJECT_ID} commentText={text} fromEnd />)
+        expect(textOf(tree.root)).not.toContain('M2mVOS')
+        expect(textOf(tree.root)).not.toContain(CONTACT_ID)
+        act(() => tree.unmount())
+    })
+
+    it('renders the end of the comment in the saved card, inside a bottom-aligned clip', () => {
+        const tree = render(preview('saved', false, vmUpdate))
+        const body = tree.root.findByType(LastCommentText)
+        expect(body.props.fromEnd).toBe(true)
+        expect(textOf(body)).toContain('checking the deploy logs.')
+        expect(textOf(body)).not.toContain('Working with Claude')
+        const clip = tree.root.find(node => node.props.testID === 'last-comment-tail-clip' && node.props.style)
+        const style = Object.assign({}, ...[].concat(clip.props.style).filter(Boolean))
+        expect(style).toMatchObject({ justifyContent: 'flex-end', overflow: 'hidden' })
+        expect(style.maxHeight).toBeGreaterThan(0)
+        act(() => tree.unmount())
+    })
+
+    it("keeps the pending card (the user's own message) head-first", () => {
+        const tree = render(preview('pending', false, vmUpdate))
+        const body = tree.root.findByType(LastCommentText)
+        expect(textOf(body)).toContain('Working with Claude')
         act(() => tree.unmount())
     })
 })
