@@ -127,6 +127,54 @@ export async function getKnowledgePageChange(projectId, slug, revision) {
 }
 
 /**
+ * What a page changed since one of its revisions (AT-2878): the page as it is now, its newest
+ * revision, the base revision the comparison starts from and the latest revisions (for the list of
+ * single changes in the range and the range buttons). Every text comes from a stored revision, so a
+ * redacted one comes back exactly as stored. `base` 0 is the page before it existed.
+ */
+export async function getKnowledgePageRange(projectId, slug, base) {
+    const db = getDb()
+    const baseNumber = Number(base)
+    if (!db || !projectId || !slug || !Number.isInteger(baseNumber) || baseNumber < 0) return null
+    const [pageData, revisions] = await Promise.all([
+        readData(getKnowledgePagePath(projectId, slug)),
+        getKnowledgePageRevisions(projectId, slug),
+    ])
+    const page = pageData ? mapKnowledgePage(slug, pageData) : null
+    const latestNumber = Number(page?.revision) || 0
+    // The newest revisions are usually among those just read; a base further back is read on its own.
+    const findOrRead = async number => {
+        const listed = revisions.find(revision => Number(revision.revision) === number)
+        if (listed) return listed
+        const stored = await readData(getRevisionPath(projectId, slug, number))
+        return stored ? { id: getWikiRevisionDocId(number), ...stored } : null
+    }
+    const [latest, baseRevision] = await Promise.all([
+        latestNumber > 0 ? findOrRead(latestNumber) : null,
+        baseNumber > 0 && baseNumber < latestNumber ? findOrRead(baseNumber) : null,
+    ])
+    return { page, latest, base: baseRevision, revisions }
+}
+
+/**
+ * The number of the newest revision of a page made before `timestamp`, or 0 when the page did not
+ * exist yet: where "the last 7 days" of a page starts when they reach past its loaded revisions.
+ * A single-field range on `createdAt`, which Firestore indexes automatically.
+ */
+export async function getKnowledgeRevisionNumberBefore(projectId, slug, timestamp) {
+    const db = getDb()
+    if (!db || !projectId || !slug || !Number.isFinite(Number(timestamp))) return null
+    const snapshot = await db
+        .collection(getKnowledgePageRevisionsPath(projectId, slug))
+        .where('createdAt', '<', Number(timestamp))
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get()
+    const number = snapshot.empty ? 0 : Number(snapshot.docs[0].data()?.revision)
+    return Number.isInteger(number) && number >= 0 ? number : null
+}
+
+/**
  * The title a page had in one revision, for its line in the Updates feed (which stores no page
  * text). An archive or a redacted revision has none, so the page's current title is used, and null
  * when that was removed too.

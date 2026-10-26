@@ -30,14 +30,21 @@ jest.mock('../Tasks/URLsTasks', () => ({
 import store from '../../redux/store'
 import URLsTasks from '../Tasks/URLsTasks'
 import URLsWikiTrigger from './URLsWikiTrigger'
-import { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE, URL_PROJECT_WIKI_PAGE_CHANGE } from './URLsWiki'
+import {
+    URL_PROJECT_WIKI,
+    URL_PROJECT_WIKI_PAGE,
+    URL_PROJECT_WIKI_PAGE_CHANGE,
+    URL_PROJECT_WIKI_PAGE_CHANGES_SINCE,
+} from './URLsWiki'
 import { URL_NOT_MATCH } from '../URLSystemTrigger'
 import {
     getWikiSelectedRevision,
+    getWikiSelectedSince,
     getWikiSelectedSlug,
+    setWikiSelectedRange,
     setWikiSelectedSlug,
 } from '../../components/WikiView/wikiNavigationState'
-import { getProjectWikiPath } from '../../components/WikiView/wikiLinks'
+import { getProjectWikiChangesSincePath, getProjectWikiPath } from '../../components/WikiView/wikiLinks'
 import { DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
 
 const navigation = { navigate: jest.fn() }
@@ -89,6 +96,47 @@ describe('wiki URLs', () => {
 
         expect(getWikiSelectedSlug('project-b')).toBe('kunden')
         expect(getWikiSelectedRevision('project-b')).toBeNull()
+    })
+
+    describe('what a page changed since one of its revisions (AT-2878)', () => {
+        it('matches a base revision from 0 and builds the same path', () => {
+            const range = URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/since/7')
+            expect(range.key).toBe(URL_PROJECT_WIKI_PAGE_CHANGES_SINCE)
+            expect(range.matches.groups).toMatchObject({ projectId: 'project-a', slug: 'kunden', since: '7' })
+            expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/since/0').key).toBe(
+                URL_PROJECT_WIKI_PAGE_CHANGES_SINCE
+            )
+            expect(URLsWikiTrigger.match(getProjectWikiChangesSincePath('project-a', 'kunden', 3)).key).toBe(
+                URL_PROJECT_WIKI_PAGE_CHANGES_SINCE
+            )
+
+            expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/since/01')).toBe(URL_NOT_MATCH)
+            expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/since/-1')).toBe(URL_NOT_MATCH)
+            expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/since')).toBe(URL_NOT_MATCH)
+        })
+
+        it('opens the range on its page and keeps its address; a single change or the page closes it', () => {
+            URLsWikiTrigger.trigger(navigation, '/projects/project-b/wiki/kunden/changes/since/0')
+
+            expect(getWikiSelectedSlug('project-b')).toBe('kunden')
+            expect(getWikiSelectedSince('project-b')).toBe(0)
+            expect(getWikiSelectedRevision('project-b')).toBeNull()
+            expect(window.location.pathname).toBe('/projects/project-b/wiki/kunden/changes/since/0')
+
+            URLsWikiTrigger.trigger(navigation, '/projects/project-b/wiki/kunden/changes/4')
+            expect(getWikiSelectedRevision('project-b')).toBe(4)
+            expect(getWikiSelectedSince('project-b')).toBeNull()
+
+            setWikiSelectedRange('project-b', 'kunden', 2)
+            URLsWikiTrigger.trigger(navigation, '/projects/project-b/wiki/kunden')
+            expect(getWikiSelectedSince('project-b')).toBeNull()
+        })
+
+        it('does not open a range for anyone who is not a member', () => {
+            URLsWikiTrigger.trigger(navigation, '/projects/someone-elses/wiki/kunden/changes/since/1')
+            expect(getWikiSelectedSince('someone-elses')).toBeNull()
+            expect(URLsTasks.replace).toHaveBeenCalledWith('ALL_PROJECTS_TASKS_OPEN')
+        })
     })
 
     it('opens the wiki tab of a project the user belongs to, on the requested page', () => {

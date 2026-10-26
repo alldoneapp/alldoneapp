@@ -219,16 +219,16 @@ export function buildWikiDiff(beforeText, afterText, { context = WIKI_DIFF_CONTE
     }
 }
 
-const textOf = revision => ({
+export const getWikiRevisionText = revision => ({
     title: typeof revision?.title === 'string' ? revision.title : '',
     summary: typeof revision?.summary === 'string' ? revision.summary : '',
     body: typeof revision?.body === 'string' ? revision.body : '',
     sourceKeys: Array.isArray(revision?.sourceKeys) ? revision.sourceKeys : [],
 })
 
-const EMPTY_TEXT = { title: '', summary: '', body: '', sourceKeys: [] }
+export const EMPTY_WIKI_TEXT = { title: '', summary: '', body: '', sourceKeys: [] }
 
-const isUsableBase = revision =>
+export const isUsableWikiDiffBase = revision =>
     !!revision && revision.redacted !== true && revision.archived !== true && typeof revision.body === 'string'
 
 /**
@@ -245,17 +245,17 @@ export function resolveWikiChange(revision, previous) {
     if (revision.redacted === true) return { status: 'redacted', kind }
 
     if (kind === WIKI_CHANGE_ARCHIVED) {
-        return isUsableBase(previous)
-            ? { status: 'ok', kind, before: textOf(previous), after: EMPTY_TEXT }
-            : { status: 'baseUnavailable', kind, before: null, after: EMPTY_TEXT }
+        return isUsableWikiDiffBase(previous)
+            ? { status: 'ok', kind, before: getWikiRevisionText(previous), after: EMPTY_WIKI_TEXT }
+            : { status: 'baseUnavailable', kind, before: null, after: EMPTY_WIKI_TEXT }
     }
 
-    const after = textOf(revision)
+    const after = getWikiRevisionText(revision)
     if (kind === WIKI_CHANGE_CREATED || previous?.archived === true) {
-        return { status: 'ok', kind, before: EMPTY_TEXT, after }
+        return { status: 'ok', kind, before: EMPTY_WIKI_TEXT, after }
     }
-    return isUsableBase(previous)
-        ? { status: 'ok', kind, before: textOf(previous), after }
+    return isUsableWikiDiffBase(previous)
+        ? { status: 'ok', kind, before: getWikiRevisionText(previous), after }
         : { status: 'baseUnavailable', kind, before: null, after }
 }
 

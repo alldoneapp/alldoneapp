@@ -26,6 +26,8 @@ jest.mock('../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     watchKnowledgeRuns: jest.fn(() => () => {}),
     getKnowledgePageRevisions: jest.fn(),
     getKnowledgePageChange: jest.fn(),
+    getKnowledgePageRange: jest.fn(),
+    getKnowledgeRevisionNumberBefore: jest.fn(),
     undoKnowledgeCorrection: jest.fn(),
 }))
 jest.mock('../TaskListView/ProjectSection', () => {
@@ -53,6 +55,7 @@ jest.mock('../../URLSystem/Wiki/URLsWiki', () => ({
     URL_PROJECT_WIKI: 'PROJECT_WIKI',
     URL_PROJECT_WIKI_PAGE: 'PROJECT_WIKI_PAGE',
     URL_PROJECT_WIKI_PAGE_CHANGE: 'PROJECT_WIKI_PAGE_CHANGE',
+    URL_PROJECT_WIKI_PAGE_CHANGES_SINCE: 'PROJECT_WIKI_PAGE_CHANGES_SINCE',
 }))
 jest.mock('./wikiLinks', () => ({ openProjectWikiSettings: jest.fn(), openWikiSource: jest.fn() }))
 jest.mock('./WikiCorrectionForm', () => {
@@ -92,12 +95,19 @@ jest.mock('../../i18n/TranslationService', () => {
 import URLsWiki from '../../URLSystem/Wiki/URLsWiki'
 import {
     getKnowledgePageChange,
+    getKnowledgePageRange,
     getKnowledgePageRevisions,
+    getKnowledgeRevisionNumberBefore,
     undoKnowledgeCorrection,
 } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import WikiView from './WikiView'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
-import { getWikiSelectedRevision, setWikiSelectedSlug } from './wikiNavigationState'
+import {
+    getWikiSelectedRevision,
+    getWikiSelectedSince,
+    setWikiSelectedRange,
+    setWikiSelectedSlug,
+} from './wikiNavigationState'
 
 const page = (slug, title, extra = {}) => ({
     slug,
@@ -591,6 +601,170 @@ describe('WikiView', () => {
             expect(getWikiSelectedRevision('p1')).toBe(4)
             await act(async () => press(component, 'wiki-change-older'))
             expect(getWikiSelectedRevision('p1')).toBe(3)
+        })
+    })
+
+    describe('what a page changed lately (AT-2878)', () => {
+        const DAY = 24 * 60 * 60 * 1000
+        const now = Date.now()
+        // Revisions 1..5 of "Kunden", revision 5 two days old, each one 2 days older than the next.
+        const REVISIONS = [5, 4, 3, 2, 1].map(number => ({
+            id: `00000${number}`,
+            revision: number,
+            title: 'Kunden',
+            summary: 'Kunden summary',
+            body: `Acme ist Kunde.\nStand ${number}.`,
+            sourceKeys: ['task:t1'],
+            mode: number === 4 ? 'correction' : 'ingest',
+            created: number === 1,
+            reason: number === 4 ? 'Stand korrigiert' : '',
+            author: number === 4 ? { type: 'user', userId: 'u2', name: 'Maria' } : { type: 'wiki' },
+            createdAt: now - (12 - 2 * number) * DAY,
+        }))
+        const PAGE_NOW = { ...PAGES[1], revision: 5 }
+        const rangeResult = (since, extra = {}) => ({
+            page: PAGE_NOW,
+            latest: REVISIONS[0],
+            base: since > 0 ? REVISIONS.find(item => item.revision === since) : null,
+            revisions: REVISIONS,
+            ...extra,
+        })
+
+        beforeEach(() => {
+            getKnowledgePageRange.mockImplementation((projectId, slug, since) => Promise.resolve(rangeResult(since)))
+        })
+
+        it('opens from the top of the page on its last change, in place of the page, with its own address', async () => {
+            setWikiSelectedSlug('p1', 'kunden')
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] })
+
+            // The entry point sits in the line under the title, next to "Give feedback".
+            await act(async () => pressText(component, 'Show changes'))
+
+            expect(getWikiSelectedSince('p1')).toBe(4)
+            expect(getKnowledgePageRange).toHaveBeenCalledWith('p1', 'kunden', 4)
+            expect(component.root.findAllByProps({ testID: 'wiki-page-kunden' })).toHaveLength(0)
+            expect(URLsWiki.push).toHaveBeenLastCalledWith(
+                'PROJECT_WIKI_PAGE_CHANGES_SINCE',
+                null,
+                'p1',
+                'kunden',
+                'Kunden',
+                4
+            )
+            expect(textOf(component.root.findByProps({ testID: 'wiki-range-heading' }).children)).toMatch(
+                /^Changes since revision 4 \(/
+            )
+            const body = component.root.findByProps({ testID: 'wiki-diff-body' })
+            expect(textOf(body.findAllByProps({ testID: 'wiki-diff-removed' })[0].children)).toContain('Stand 4')
+            expect(textOf(body.findAllByProps({ testID: 'wiki-diff-added' })[0].children)).toContain('Stand 5')
+            const listed = component.root.findByProps({ testID: 'wiki-range-revisions' })
+            expect(textOf(listed.children)).toContain('Changes in this range (1)')
+            expect(listed.findAllByProps({ testID: 'wiki-range-revision-5' })).not.toHaveLength(0)
+            expect(component.root.findByProps({ testID: 'wiki-range-lastChange' }).props.accessibilityState).toEqual({
+                selected: true,
+            })
+
+            press(component, 'wiki-range-back')
+            expect(getWikiSelectedSince('p1')).toBeNull()
+            expect(component.root.findAllByProps({ testID: 'wiki-page-kunden' })).not.toHaveLength(0)
+        })
+
+        it('widens the range with a button and says who made each change in it', async () => {
+            setWikiSelectedRange('p1', 'kunden', 4)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] }))
+
+            await act(async () => press(component, 'wiki-range-last3Changes'))
+
+            expect(getWikiSelectedSince('p1')).toBe(2)
+            expect(getKnowledgePageRange).toHaveBeenLastCalledWith('p1', 'kunden', 2)
+            const body = component.root.findByProps({ testID: 'wiki-diff-body' })
+            expect(textOf(body.findAllByProps({ testID: 'wiki-diff-removed' })[0].children)).toContain('Stand 2')
+            const listed = component.root.findByProps({ testID: 'wiki-range-revisions' })
+            expect(textOf(listed.children)).toContain('Changes in this range (3)')
+            expect(textOf(listed.findByProps({ testID: 'wiki-range-revision-4' }).children)).toContain(
+                'Maria corrected the page “Kunden”'
+            )
+            expect(textOf(listed.findByProps({ testID: 'wiki-range-revision-4' }).children)).toContain(
+                'Stand korrigiert'
+            )
+        })
+
+        it('starts the range at any change in it, and opens a single change on its own', async () => {
+            setWikiSelectedRange('p1', 'kunden', 1)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] }))
+
+            // The oldest change of the range already is its start.
+            expect(component.root.findAllByProps({ testID: 'wiki-range-from-2' })).toHaveLength(0)
+            await act(async () => press(component, 'wiki-range-from-4'))
+            expect(getWikiSelectedSince('p1')).toBe(3)
+
+            getKnowledgePageChange.mockResolvedValue({ revision: REVISIONS[0], previous: REVISIONS[1], page: PAGE_NOW })
+            await act(async () => press(component, 'wiki-range-open-5'))
+            expect(getWikiSelectedRevision('p1')).toBe(5)
+            expect(getWikiSelectedSince('p1')).toBeNull()
+            expect(component.root.findAllByProps({ testID: 'wiki-change-kunden-5' })).not.toHaveLength(0)
+        })
+
+        it('looks up where a period starts when it reaches past the loaded revisions', async () => {
+            const recent = REVISIONS.slice(0, 3) // revisions 5, 4, 3: all inside the last 30 days
+            getKnowledgePageRange.mockImplementation((projectId, slug, since) =>
+                Promise.resolve(rangeResult(since, { revisions: recent }))
+            )
+            getKnowledgeRevisionNumberBefore.mockResolvedValue(1)
+            setWikiSelectedRange('p1', 'kunden', 4)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] }))
+
+            await act(async () => press(component, 'wiki-range-last30Days'))
+
+            expect(getKnowledgeRevisionNumberBefore).toHaveBeenCalledWith('p1', 'kunden', expect.any(Number))
+            expect(getWikiSelectedSince('p1')).toBe(1)
+            expect(textOf(component.root.findByProps({ testID: 'wiki-range-not-listed' }).children)).toContain(
+                '1 older changes'
+            )
+        })
+
+        it('never shows text the wiki removed from the revision the range starts at', async () => {
+            getKnowledgePageRange.mockResolvedValue(
+                rangeResult(2, { base: { id: '000002', revision: 2, redacted: true, createdAt: 1 } })
+            )
+            setWikiSelectedRange('p1', 'kunden', 2)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] }))
+
+            expect(textOf(component.root.findByProps({ testID: 'wiki-change-base-unavailable' }).children)).toContain(
+                'The text of revision 2 is no longer available'
+            )
+            expect(component.root.findAllByProps({ testID: 'wiki-diff-body' })).toHaveLength(0)
+            expect(textOf(component.toJSON())).not.toContain('Stand 2')
+        })
+
+        it('shows no range for a page people cannot read right now', async () => {
+            getKnowledgePageRange.mockResolvedValue(
+                rangeResult(4, { page: { ...PAGE_NOW, title: '', body: '', needsRebuild: true } })
+            )
+            setWikiSelectedRange('p1', 'kunden', 4)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0]] }))
+
+            expect(component.root.findAllByProps({ testID: 'wiki-range-unavailable' })).not.toHaveLength(0)
+            expect(component.root.findAllByProps({ testID: 'wiki-diff-body' })).toHaveLength(0)
+            expect(textOf(component.root.findByProps({ testID: 'wiki-range-back' }).children)).toBe('All wiki pages')
+        })
+
+        it('says when the changes could not be loaded', async () => {
+            getKnowledgePageRange.mockRejectedValue(new Error('offline'))
+            setWikiSelectedRange('p1', 'kunden', 4)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [PAGES[0], PAGE_NOW] }))
+
+            expect(textOf(component.root.findByProps({ testID: 'wiki-range-unavailable' }).children)).toContain(
+                'Could not load the changes.'
+            )
         })
     })
 })
