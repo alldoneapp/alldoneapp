@@ -6,6 +6,7 @@ import URLsArtifacts, {
     URL_ALL_PROJECTS_ARTIFACTS_FOLLOWED,
     URL_ARTIFACT_DETAILS,
     URL_ARTIFACT_DETAILS_CHAT,
+    URL_ARTIFACT_DETAILS_PROPERTIES,
     URL_ARTIFACT_DETAILS_UPDATES,
     URL_PROJECT_ARTIFACTS,
     getArtifactDetailsUrl,
@@ -25,6 +26,7 @@ import { ALL_TAB, FOLLOWED_TAB } from '../../components/Feeds/Utils/FeedsConstan
 import {
     ARTIFACT_SECTION_ARTIFACT,
     ARTIFACT_SECTION_CHAT,
+    ARTIFACT_SECTION_DETAILS,
     ARTIFACT_SECTION_UPDATES,
     setArtifactsActiveTab,
     setSelectedArtifactId,
@@ -33,6 +35,7 @@ import {
 const SECTION_BY_URL = {
     [URL_ARTIFACT_DETAILS_CHAT]: ARTIFACT_SECTION_CHAT,
     [URL_ARTIFACT_DETAILS_UPDATES]: ARTIFACT_SECTION_UPDATES,
+    [URL_ARTIFACT_DETAILS_PROPERTIES]: ARTIFACT_SECTION_DETAILS,
 }
 
 class URLsArtifactsTrigger {
@@ -47,6 +50,9 @@ class URLsArtifactsTrigger {
             ),
             [URL_ARTIFACT_DETAILS_UPDATES]: new RegExp(
                 '^/projects/(?<projectId>[\\w-]+)/artifacts/(?<artifactId>[\\w-]+)/updates$'
+            ),
+            [URL_ARTIFACT_DETAILS_PROPERTIES]: new RegExp(
+                '^/projects/(?<projectId>[\\w-]+)/artifacts/(?<artifactId>[\\w-]+)/details$'
             ),
         }
     }
