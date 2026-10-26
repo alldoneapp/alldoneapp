@@ -36,6 +36,8 @@ jest.mock('../../i18n/TranslationService', () => {
 
 import { createBotQuickTopic } from '../../utils/assistantHelper'
 import WikiCorrectionForm from './WikiCorrectionForm'
+import ModalHeader from '../UIComponents/FloatModals/ModalHeader'
+import { ModalShellContext } from '../UIComponents/ModalShell/ModalShellContext'
 
 const PAGE = { slug: 'kunden', title: 'Kunden' }
 
@@ -124,5 +126,58 @@ describe('WikiCorrectionForm', () => {
 
         expect(button(component, 'Send to assistant').props.disabled).toBe(true)
         expect(textOf(component.toJSON())).toContain('This project has no assistant.')
+    })
+
+    describe('as the standard popup (AT-2874)', () => {
+        it('has the standard modal header, and its × closes the popup', () => {
+            const onClose = jest.fn()
+            const component = mount(onClose)
+
+            const header = component.root.findByType(ModalHeader)
+            expect(header.props.title).toBe('Give feedback')
+            expect(header.props.description).toContain('What is wrong, missing or should be different?')
+
+            act(() => header.props.closeModal())
+            expect(onClose).toHaveBeenCalledTimes(1)
+        })
+
+        it('cannot be closed while the chat is being started', async () => {
+            let resolveTopic
+            createBotQuickTopic.mockReturnValue(new Promise(resolve => (resolveTopic = resolve)))
+            const onClose = jest.fn()
+            const component = mount(onClose)
+
+            type(component, 'Falsch.')
+            act(() => {
+                button(component, 'Send to assistant').props.onPress()
+            })
+            act(() => component.root.findByType(ModalHeader).props.closeModal())
+            expect(onClose).not.toHaveBeenCalled()
+
+            await act(async () => resolveTopic({ chatId: 'c1' }))
+            expect(onClose).toHaveBeenCalledTimes(1)
+        })
+
+        it('is a dark card of its own on desktop and gives its chrome to the bottom sheet on mobile', () => {
+            const flatten = node => Object.assign({}, ...[].concat(node.props.style).flat(Infinity).filter(Boolean))
+
+            const desktop = mount()
+            const desktopStyle = flatten(desktop.root.findByProps({ testID: 'wiki-correction-form' }))
+            expect(typeof desktopStyle.width).toBe('number')
+            expect(desktopStyle.boxShadow).not.toBe('none')
+
+            let sheet
+            act(() => {
+                sheet = renderer.create(
+                    <ModalShellContext.Provider value={{ presentation: 'sheet' }}>
+                        <WikiCorrectionForm projectId="p1" page={PAGE} onClose={jest.fn()} />
+                    </ModalShellContext.Provider>
+                )
+            })
+            mounted.push(sheet)
+            const sheetStyle = flatten(sheet.root.findByProps({ testID: 'wiki-correction-form' }))
+            expect(sheetStyle.width).toBe('100%')
+            expect(sheetStyle.boxShadow).toBe('none')
+        })
     })
 })

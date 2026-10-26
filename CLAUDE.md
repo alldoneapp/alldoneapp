@@ -666,11 +666,7 @@ WhatsApp (`BotChat…`), email (`BotChatEmail…`, and the "Daily emails …" to
 labeling, whose comments carry `gmailData`), heartbeat and menubar topics ARE sources by decision
 (they are readable by the project anyway, and things worth knowing get discussed there); the ingest
 prompt tells the model to keep only what concerns the project and nothing personal. Tasks created
-from an email (`gmailData` naming a `messageId`/`messageIds`: Gmail labeling follow-ups, the email
-line's "create task") and their threads ARE sources too since AT-2833, behind the same visibility
-filter as every other task and nothing more; their card says "created from an email" and carries no
-mailbox, address or link. Only the daily inbox counter (`isForEmail`, "Emails in inbox", an unread
-count) stays out, as `email_inbox` (`isInboxSummaryEmailTask`). A delta card carries only the comments since the wiki last
+from an email (`gmailData` on the task) and their threads still are not. A delta card carries only the comments since the wiki last
 looked (comments `created >=` the chats cursor), at most 40 and about 6,000 characters, newest kept;
 a rebuild reads the latest ones. Two known limits: an edited comment does not stamp the chat object,
 so an edit is only seen when the thread changes again, and an object made public again does not
