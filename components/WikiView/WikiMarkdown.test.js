@@ -1,5 +1,5 @@
 import React from 'react'
-import { Text } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import WikiMarkdown, { getWikiSourceLabel } from './WikiMarkdown'
@@ -112,6 +112,38 @@ describe('WikiMarkdown', () => {
         expect(textOf(component.toJSON())).toContain('<img src=x onerror=alert(1)>')
         // The javascript: link is shown as text, not made pressable.
         expect(texts.filter(node => typeof node.props.onPress === 'function')).toHaveLength(0)
+    })
+
+    // AT-2873. Layout itself is only observable in a real browser (browser-tests/at2873); this pins
+    // the style contract it depends on, which the app shell's `* { flex-basis: auto !important }`
+    // reset otherwise breaks without any error.
+    it('lays lists out like notes: a fixed marker column, hanging text and a 24px nesting step', () => {
+        const component = render({ body: ['- Eins', '  - Zwei', '', '1. Erster', '10. Zehnter'].join('\n') })
+        const styleOf = node => StyleSheet.flatten(node.props.style)
+        const markers = component.root.findAll(node => node.props.testID === 'wiki-list-marker' && node.type === Text)
+        const texts = component.root.findAll(node => node.props.testID === 'wiki-list-text' && node.type === Text)
+        const lists = component.root.findAll(
+            node => node.props.testID === 'wiki-list' && typeof node.type !== 'string',
+            {
+                deep: true,
+            }
+        )
+
+        expect(markers.map(node => textOf(node))).toEqual(['•', '•', '1.', '2.'])
+        for (const marker of markers) {
+            const style = styleOf(marker)
+            // Never squeezed by a long item, so every item's text starts at the same indent...
+            expect(style.flexShrink).toBe(0)
+            expect(style.minWidth).toBe(36)
+            expect(style.textAlign).toBe('right')
+        }
+        // ...and the text column may shrink instead, wrapping under its own first line.
+        for (const text of texts) expect(styleOf(text)).toEqual(expect.objectContaining({ flex: 1, minWidth: 0 }))
+
+        expect(styleOf(markers[0]).paddingRight).toBe(4)
+        expect(styleOf(markers[2]).paddingRight).toBe(11)
+        const nested = lists.map(styleOf).filter(style => style.marginLeft)
+        expect(nested.map(style => style.marginLeft)).toEqual(expect.arrayContaining([24]))
     })
 
     it('labels a source by its type when nothing better is known', () => {
