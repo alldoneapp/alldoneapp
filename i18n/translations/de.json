@@ -961,7 +961,6 @@
     "File size exceeds": "Die Dateigröße ist größer als %{limit} MB. Aktuelle Dateigröße: %{size} MB.",
     "Drop files to attach": "Dateien zum Anhängen hier ablegen",
     "Drop files to add to description": "Dateien hier ablegen, um sie zur Beschreibung hinzuzufügen",
-    "Drop files to create a task": "Dateien hier ablegen, um eine Aufgabe zu erstellen",
     "Adding files to description": "Dateien werden zur Beschreibung hinzugefügt",
     "Files added to description": "Dateien zur Beschreibung hinzugefügt",
     "Task attachment upload failed": "Einige Dateien konnten nicht hochgeladen werden. Bitte versuche es erneut.",

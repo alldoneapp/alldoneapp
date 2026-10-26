@@ -748,6 +748,133 @@ function isGitPush(tokens) {
     return index !== -1 && tokens[index] === 'push'
 }
 
+// Short-flag clusters such as `-qb` end in the option that takes the next token as its value.
+function takesValueFlag(arg, shortFlags, longFlags) {
+    if (longFlags.includes(arg)) return true
+    return /^-[a-zA-Z]+$/.test(arg) && shortFlags.includes(arg[arg.length - 1])
+}
+
+/**
+ * How a git command changes the checked-out branch, if at all.
+ *
+ * AT-2876: the push rules resolve `HEAD` against the branch the repository is on when the TOOL
+ * CALL is reviewed, i.e. before any of it runs. The agent's standard delivery is one compound
+ * command - `git checkout -b ai/x && git add … && git commit … && git push -u origin HEAD …` - so
+ * `HEAD` was resolved to the base branch it had not left yet and the publish flow escalated as
+ * "a push to the base branch", which pauses at every level including `permissive`. The command
+ * line is therefore simulated in order, and this tells the simulation what each git step does.
+ *
+ * Returns null when the branch does not change, or one of
+ *   { kind: 'switch', branch }  - on success the repository is on `branch` (`creates: true` when
+ *                                 the step creates it: `checkout -b`, `switch -c`, `--track`, …)
+ *   { kind: 'maybe', branch }   - `git checkout <x>`: a branch switch OR a file restore; both stay possible
+ *   { kind: 'unknown' }         - detached HEAD, `-`, anything the branch cannot be read from
+ */
+function analyzeGitBranchChange(tokens) {
+    const index = gitSubcommandIndex(tokens)
+    if (index === -1) return null
+    const subcommand = tokens[index]
+    if (subcommand !== 'checkout' && subcommand !== 'switch') return null
+    const args = tokens.slice(index + 1)
+
+    const createShort = subcommand === 'checkout' ? ['b', 'B'] : ['c', 'C']
+    const createLong = subcommand === 'checkout' ? ['--orphan'] : ['--create', '--force-create', '--orphan']
+    const positionals = []
+    let track = false
+    let detach = false
+    for (let i = 0; i < args.length; i += 1) {
+        const arg = args[i]
+        if (arg === '--') {
+            // `git checkout [<tree-ish>] -- <paths>` restores files; it never moves HEAD.
+            if (subcommand === 'checkout') return null
+            break
+        }
+        if (takesValueFlag(arg, createShort, createLong)) {
+            const branch = normalizeBranchRef(args[i + 1])
+            return branch ? { kind: 'switch', branch, creates: true } : { kind: 'unknown' }
+        }
+        const inlineCreate = arg.match(/^--(?:create|force-create|orphan)=(.+)$/)
+        if (inlineCreate) return { kind: 'switch', branch: normalizeBranchRef(inlineCreate[1]), creates: true }
+        if (arg === '--detach' || (subcommand === 'switch' && arg === '-d')) detach = true
+        if (arg === '-t' || arg === '--track' || arg.startsWith('--track=')) track = true
+        if (arg === '-') {
+            positionals.push(arg)
+            continue
+        }
+        if (arg.startsWith('-')) continue
+        positionals.push(arg)
+    }
+
+    if (detach) return { kind: 'unknown' }
+    if (positionals.length === 0) return null
+    if (positionals[0] === '-') return { kind: 'unknown' }
+    if (track) {
+        // `git checkout --track origin/feature` creates and switches to the local `feature`.
+        const branch = normalizeBranchRef(positionals[0]).split('/').slice(1).join('/')
+        return branch ? { kind: 'switch', branch, creates: true } : { kind: 'unknown' }
+    }
+    // `git switch` only ever takes a branch. `git checkout <x>` may equally restore a file named x,
+    // and `git checkout <tree-ish> <paths…>` always does.
+    if (subcommand === 'switch') return { kind: 'switch', branch: normalizeBranchRef(positionals[0]) }
+    if (positionals.length > 1) return null
+    return { kind: 'maybe', branch: normalizeBranchRef(positionals[0]) }
+}
+
+/**
+ * Tracks the branches the repository can be on at each step of a compound command.
+ *
+ * Shell semantics decide what is still possible: after `a && b`, `b` only runs if `a` succeeded,
+ * so a push behind `git checkout -b x &&` can only run on `x`; after `;`, a newline, `||` or a pipe
+ * a failed step leaves the original branch possible. A push is judged against EVERY branch it
+ * could run on.
+ *
+ * `assumeCreationSucceeds` drops the failure path of a step that CREATES a branch, including the
+ * failures of the `&&` chain leading up to it. That is a
+ * product decision (AT-2876): the agent's delivery flow routinely puts the push on the line after
+ * a `git commit -F - <<'EOF'` heredoc, i.e. behind a newline rather than `&&`, and a failed
+ * `checkout -b` (the branch already exists) is the only way that push could still run on the
+ * base branch - which the remote's branch protection rejects anyway. The caller still consults the
+ * exact tracker for a step that can ONLY run if such a creation failed (`checkout -b x || …`).
+ */
+function createBranchTracker(initialBranch, { assumeCreationSucceeds = false } = {}) {
+    let onSuccess = [initialBranch || '']
+    let onFailure = [initialBranch || '']
+    const union = (...lists) => Array.from(new Set(lists.flat()))
+
+    return {
+        // Returns the branches the segment may run on, and records how it leaves the repository.
+        enter(segment, change) {
+            const separator = segment.separatorBefore
+            let entry
+            let skippedSuccess = []
+            let skippedFailure = []
+            if (separator === '&&') {
+                entry = onSuccess
+                skippedFailure = onFailure // skipped: the failure carries on to the next separator
+            } else if (separator === '||') {
+                entry = onFailure
+                skippedSuccess = onSuccess
+            } else {
+                entry = union(onSuccess, onFailure)
+            }
+
+            let afterSuccess = entry
+            if (change?.kind === 'switch') afterSuccess = [change.branch || '']
+            else if (change?.kind === 'maybe') afterSuccess = union(entry, [change.branch || ''])
+            else if (change?.kind === 'unknown') afterSuccess = ['']
+
+            onSuccess = union(afterSuccess, skippedSuccess)
+            // Assuming the creation happened also means the `&&` chain that led to it did
+            // (`cd repo && git checkout -b x`): no failure state is left behind it.
+            onFailure =
+                assumeCreationSucceeds && change?.kind === 'switch' && change.creates
+                    ? []
+                    : union(entry, skippedFailure)
+            return entry
+        },
+    }
+}
+
 function analyzeGitPush(tokens, context) {
     const pushIndex = gitSubcommandIndex(tokens)
     const args = tokens.slice(pushIndex + 1)
@@ -784,10 +911,15 @@ function analyzeGitPush(tokens, context) {
     // `HEAD` - the shape the platform's own instructions use - resolves to whatever branch the
     // agent is on. Resolve it when we can; when we cannot, pause rather than risk an unnoticed
     // push to the base branch.
-    const targets = (refspecs.length > 0 ? refspecs : ['HEAD']).map(ref => {
+    // `headBranches` is every branch the push can run on once the earlier steps of the same
+    // command line have run (see createBranchTracker); a bare call has only the live branch.
+    const headBranches = Array.isArray(context.headBranches) ? context.headBranches : [currentBranch]
+    const targets = (refspecs.length > 0 ? refspecs : ['HEAD']).flatMap(ref => {
         const normalized = normalizeBranchRef(ref)
-        if (normalized === 'HEAD' || normalized === '') return currentBranch || null
-        return normalized
+        if (normalized === 'HEAD' || normalized === '') {
+            return headBranches.map(branch => normalizeBranchRef(branch) || null)
+        }
+        return [normalized]
     })
 
     if (targets.some(target => !target)) {
@@ -882,8 +1014,17 @@ function assessBashCommand(command, context) {
         }
     }
 
+    // See createBranchTracker: the optimistic tracker decides, unless a step is reachable only
+    // through a failed branch creation, where the exact one does.
+    const assumedBranches = createBranchTracker(context.currentBranch, { assumeCreationSucceeds: true })
+    const exactBranches = createBranchTracker(context.currentBranch)
+
     for (const segment of analyzeCommandSegments(command)) {
         const { tokens, bare, program, riskText } = segment
+        const branchChange = program === 'git' ? analyzeGitBranchChange(bare) : null
+        const assumedHeads = assumedBranches.enter(segment, branchChange)
+        const exactHeads = exactBranches.enter(segment, branchChange)
+        const headBranches = assumedHeads.length > 0 ? assumedHeads : exactHeads
         if (bare.length === 0) continue
 
         const secretAccess = classifySecretPathAccess(tokens)
@@ -919,7 +1060,7 @@ function assessBashCommand(command, context) {
             if (level === 'strict') {
                 return escalation('publishing or destructive Git operation', 'bash:git_publish', NEVER_AUTO_APPROVED)
             }
-            const verdict = analyzeGitPush(bare, context)
+            const verdict = analyzeGitPush(bare, { ...context, headBranches })
             if (verdict.risky && !levelAllows(level, verdict.allowedFrom)) {
                 return escalation(verdict.reason, `bash:${verdict.key}`, verdict.allowedFrom)
             }

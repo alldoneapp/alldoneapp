@@ -36,13 +36,6 @@ jest.mock('../../UIComponents/DismissibleItem', () => {
     })
 })
 jest.mock('../AddTask', () => 'AddTask')
-// AT-2875: the file-drop host wraps the line; its behaviour is covered by InlineAddTaskFileDrop.test.js.
-jest.mock(
-    '../InlineAddTaskFileDrop',
-    () =>
-        ({ children }) =>
-            children
-)
 jest.mock('../TaskItem/EditTask', () => 'EditTask')
 jest.mock('../../../utils/BackendBridge', () => ({
     __esModule: true,

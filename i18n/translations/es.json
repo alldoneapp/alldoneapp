@@ -1074,7 +1074,6 @@
     "File size exceeds": "El tamaño del archivo excede %{limit} MB. El tamaño del archivo es: %{tamaño} MB.",
     "Drop files to attach": "Suelta los archivos para adjuntarlos",
     "Drop files to add to description": "Suelta los archivos para añadirlos a la descripción",
-    "Drop files to create a task": "Suelta los archivos para crear una tarea",
     "Adding files to description": "Añadiendo archivos a la descripción",
     "Files added to description": "Archivos añadidos a la descripción",
     "Task attachment upload failed": "Algunos archivos no se pudieron subir. Vuelve a intentarlo.",

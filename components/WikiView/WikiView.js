@@ -19,7 +19,7 @@ import URLsWiki, {
 import WikiMarkdown, { getWikiSourceLabel, isOpenableWikiSource } from './WikiMarkdown'
 import WikiPageHistory from './WikiPageHistory'
 import WikiPageChange from './WikiPageChange'
-import WikiFeedbackButton from './WikiFeedbackButton'
+import WikiCorrectionForm from './WikiCorrectionForm'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } from './wikiNavigationState'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
@@ -113,9 +113,11 @@ function WikiIndex({ pages, selectedSlug, onSelect }) {
 
 function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
     const [showHistory, setShowHistory] = useState(false)
+    const [correcting, setCorrecting] = useState(false)
 
     useEffect(() => {
         setShowHistory(false)
+        setCorrecting(false)
     }, [page.slug])
 
     const sources = page.sourceKeys
@@ -140,8 +142,19 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                         ? translate('Wiki page last updated', { date: formatWikiDate(page.updatedAt) })
                         : ''}
                 </Text>
-                <WikiFeedbackButton projectId={projectId} page={page} />
+                {!correcting && (
+                    <Button
+                        type={'ghost'}
+                        icon={'message-circle'}
+                        title={translate('Give feedback')}
+                        onPress={() => setCorrecting(true)}
+                        buttonStyle={localStyles.feedbackButton}
+                    />
+                )}
             </View>
+            {correcting && (
+                <WikiCorrectionForm projectId={projectId} page={page} onClose={() => setCorrecting(false)} />
+            )}
             {!!page.summary && <Text style={localStyles.pageSummary}>{page.summary}</Text>}
 
             <WikiMarkdown
@@ -429,6 +442,9 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         color: colors.Text03,
         marginRight: 12,
+    },
+    feedbackButton: {
+        marginVertical: 4,
     },
     pageSummary: {
         ...styles.body2,
