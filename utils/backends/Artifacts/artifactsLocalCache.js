@@ -1,17 +1,21 @@
 // What the Artifacts tab showed last time, kept on this device so that opening the tab draws that
-// list at once and the live answer only updates it, as the Notes lists do with Firestore's own
-// cache. The linked uploads cannot lean on Firestore's cache: they come from a callable
-// (getProjectLinkedUploads), whose first answer for a large project can take a few calls.
+// list at once and the live listeners only update it, as the Notes lists do with Firestore's own
+// cache. The linked uploads cannot lean on Firestore's cache alone: they are assembled from every
+// object's comments and from note bodies in Storage, which took the tab many seconds per visit.
 //
 // Nothing here widens what anybody sees: an entry is keyed by the signed-in user, it is only ever a
-// copy of what that user's own listeners and calls delivered, and the live result replaces it as
-// soon as it has settled. Without IndexedDB (jsdom, a private window, wedged storage) it is a memory cache.
+// copy of what that user's own listeners delivered, and the live result replaces it as soon as it
+// has settled. Without IndexedDB (jsdom, a private window, wedged storage) it is a memory cache.
 
 const DB_NAME = 'alldone-artifacts-cache'
 const STORE = 'entries'
 const DB_VERSION = 1
 const WRITE_DELAY_MS = 1000
 const STORAGE_TIMEOUT_MS = 1500
+
+// A note's uploads are re-read from its body when this is older, even if the note's edition stamps
+// did not move: it bounds how long a body change that stamped nothing can stay unnoticed.
+export const NOTE_REFS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 const memory = new Map()
 const pendingWrites = new Map()
@@ -138,4 +142,44 @@ export function getArtifactsListCacheKey(userId, projectId, followedOnly) {
 
 export function getLinkedUploadsCacheKey(userId, projectId) {
     return `uploads|${userId}|${projectId}`
+}
+
+// The edition stamps that tell a note body changed, the same two watchLinkedUploads re-reads on.
+export function getNoteUploadsSignature(note = {}) {
+    return `${Number(note.lastEditionDate) || 0}|${note.uploadsRevision || ''}`
+}
+
+// The attachments each note of a project embeds, keyed by the note's edition stamps, so a note whose
+// body has not changed is not downloaded from Storage and decoded again. One map per project, shared
+// by every watcher of that project in this session.
+export function createNoteUploadsCache(userId, projectId, { now = () => Date.now() } = {}) {
+    const key = `noteUploads|${userId}|${projectId}`
+    const load = async () => {
+        const stored = await loadCachedValue(key)
+        if (stored && typeof stored === 'object') return stored
+        const fresh = readCachedValue(key) || {}
+        memory.set(key, fresh)
+        return fresh
+    }
+    return {
+        async get(noteId, signature) {
+            try {
+                const entry = (await load())[noteId]
+                if (!entry || entry.signature !== signature || !Array.isArray(entry.refs)) return null
+                if (!(now() - (Number(entry.savedAt) || 0) < NOTE_REFS_MAX_AGE_MS)) return null
+                return entry.refs
+            } catch (error) {
+                return null
+            }
+        },
+        async set(noteId, signature, refs) {
+            try {
+                const map = await load()
+                map[noteId] = { signature, refs, savedAt: now() }
+                writeCachedValue(key, map)
+            } catch (error) {
+                // Not remembering a note only means reading it again next time.
+            }
+        },
+    }
 }

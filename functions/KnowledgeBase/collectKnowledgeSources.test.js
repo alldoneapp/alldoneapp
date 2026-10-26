@@ -493,3 +493,237 @@ describe('documents added to the wiki', () => {
         expect(splitDocumentText('')).toEqual([])
     })
 })
+
+describe('comment threads and artifacts', () => {
+    const { THREAD_COMMENTS_PER_CARD, loadKnowledgeSourcesByKeys: loadByKeys } = require('./collectKnowledgeSources')
+    const chatPath = id => `chatObjects/${PROJECT_ID}/chats/${id}`
+    const commentPath = (threadType, chatId, id) => `chatComments/${PROJECT_ID}/${threadType}/${chatId}/comments/${id}`
+    const artifactPath = id => `artifactItems/${PROJECT_ID}/artifacts/${id}`
+
+    function threadOptions(extra = {}) {
+        return {
+            resolveAssistantNames: async () => ({ anna: 'Anna' }),
+            readArtifactContent: async (projectId, artifactId) => `Text of ${artifactId}`,
+            ...extra,
+        }
+    }
+
+    function threadDb(extraDocuments = {}) {
+        return new KnowledgeFirestoreDouble({
+            [taskPath('t1')]: { extendedName: 'Release planen', isPublicFor: PUBLIC, lastEditionDate: NOW - 20 * DAY },
+            [chatPath('t1')]: {
+                type: 'tasks',
+                title: 'Release planen',
+                isPublicFor: PUBLIC,
+                lastEditionDate: NOW - DAY,
+            },
+            [commentPath('tasks', 't1', 'c1')]: {
+                commentText: 'Wir releasen am 3. November.',
+                creatorId: 'owner',
+                fromAssistant: false,
+                created: NOW - 2 * DAY,
+            },
+            [commentPath('tasks', 't1', 'c2')]: {
+                commentText: 'Ich habe den Changelog vorbereitet.',
+                creatorId: 'anna',
+                fromAssistant: true,
+                created: NOW - DAY,
+            },
+            ...extraDocuments,
+        })
+    }
+
+    it('turns the thread of a visible task into one card, oldest comment first, with its authors', async () => {
+        const { sources } = await collect(threadDb(), threadOptions())
+
+        const thread = sources.find(source => source.key === 'chat:t1')
+        expect(thread.title).toBe('Release planen')
+        expect(thread.text.split('\n')).toEqual([
+            '[[chat:t1]] Comments on the task [[task:t1]] "Release planen" (2 new comments)',
+            '- 2026-10-22 Karsten: Wir releasen am 3. November.',
+            '- 2026-10-23 Anna (assistant): Ich habe den Changelog vorbereitet.',
+        ])
+    })
+
+    it('never reads the comments of a thread whose object the whole project cannot see', async () => {
+        const readThreadComments = jest.fn(async () => [{ commentText: 'geheim', creatorId: 'owner', created: NOW }])
+        const db = threadDb({
+            [taskPath('t1')]: { name: 'Gehalt', isPublicFor: ['owner'], lastEditionDate: NOW - 20 * DAY },
+            [taskPath('mail')]: { name: 'Mail', gmailData: { messageId: 'm' }, isPublicFor: PUBLIC },
+            [chatPath('mail')]: { type: 'tasks', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            // The chat object says public, but its task is gone.
+            [chatPath('orphan')]: { type: 'tasks', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            [chatPath('profile')]: { type: 'users', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+        })
+
+        const { sources, stats } = await collect(db, threadOptions({ readThreadComments }))
+
+        expect(sources.filter(source => source.type === 'chat')).toEqual([])
+        expect(readThreadComments).not.toHaveBeenCalled()
+        // The private task is skipped twice: as a task and as the object its thread belongs to.
+        expect(stats.skipped).toEqual({ private: 2, email: 1, missing_parent: 1, other_thread: 1 })
+    })
+
+    it("takes in topics, a member's WhatsApp and heartbeat topics included, but no email or private topics", async () => {
+        const topic = (id, data) => ({
+            [chatPath(id)]: { type: 'topics', title: id, isPublicFor: [0], lastEditionDate: NOW - DAY, ...data },
+            [commentPath('topics', id, 'c')]: { commentText: `Inhalt ${id}`, creatorId: 'owner', created: NOW - DAY },
+        })
+        const db = new KnowledgeFirestoreDouble({
+            ...topic('Planung'),
+            ...topic('BotChat20261023owner'),
+            ...topic('Heartbeat20261023owner'),
+            ...topic('BotChatEmail20261023owner'),
+            ...topic('WikiGoldCap_project-a_2026-10', { isPublicFor: ['owner'] }),
+            ...topic('Privat', { isPublicFor: ['owner'] }),
+        })
+
+        const { sources, stats } = await collect(db, threadOptions())
+
+        expect(sources.map(source => source.key).sort()).toEqual([
+            'chat:BotChat20261023owner',
+            'chat:Heartbeat20261023owner',
+            'chat:Planung',
+        ])
+        expect(sources.find(source => source.key === 'chat:Planung').text).toMatch(
+            /^\[\[chat:Planung\]\] Chat topic "Planung" \(1 new comment\)/
+        )
+        expect(stats.skipped).toEqual({ email: 1, private: 2 })
+    })
+
+    it('leaves out email comments and answers an assistant is still writing', async () => {
+        const db = threadDb({
+            [commentPath('tasks', 't1', 'c3')]: {
+                commentText: 'Email from Bank: Kontoauszug',
+                gmailData: { messageId: 'm1' },
+                creatorId: 'anna',
+                fromAssistant: true,
+                created: NOW - DAY,
+            },
+            [commentPath('tasks', 't1', 'c4')]: {
+                commentText: 'Ich denke noch',
+                isLoading: true,
+                creatorId: 'anna',
+                fromAssistant: true,
+                created: NOW - DAY,
+            },
+        })
+
+        const { sources } = await collect(db, threadOptions())
+
+        const text = sources.find(source => source.key === 'chat:t1').text
+        expect(text).not.toMatch(/Kontoauszug|Ich denke noch/)
+        expect(text).toMatch(/2 new comments/)
+    })
+
+    it('shows a delta only the comments written since the wiki last looked, and a rebuild the latest ones', async () => {
+        const db = threadDb()
+        const cursor = { chats: { ms: NOW - 1.5 * DAY, ids: [] } }
+
+        const { sources } = await collect(db, { ...threadOptions(), cursor })
+        const rebuilt = await loadByKeys({ db, projectId: PROJECT_ID, keys: ['chat:t1'], ...threadOptions() })
+
+        const delta = sources.find(source => source.key === 'chat:t1').text
+        expect(delta).not.toMatch(/3\. November/)
+        expect(delta).toMatch(/\(1 new comment\)/)
+        expect(rebuilt).toHaveLength(1)
+        expect(rebuilt[0].text).toMatch(/\(2 comments\)/)
+        expect(rebuilt[0].text).toMatch(/3\. November[\s\S]*Changelog/)
+    })
+
+    it('moves past a thread whose chat object changed without a new comment, without a card', async () => {
+        const db = threadDb()
+        const cursor = { chats: { ms: NOW - 0.5 * DAY, ids: [] } }
+        await db.doc(chatPath('t1')).update({ lastEditionDate: NOW - 0.25 * DAY })
+
+        const { sources, nextCursor } = await collect(db, { ...threadOptions(), cursor })
+
+        expect(sources.filter(source => source.type === 'chat')).toEqual([])
+        expect(nextCursor.chats).toEqual({ ms: NOW - 0.25 * DAY, ids: ['t1'] })
+    })
+
+    it('keeps the newest comments of a thread that does not fit one card, and says so', async () => {
+        const comments = {}
+        for (let index = 0; index < THREAD_COMMENTS_PER_CARD + 5; index++) {
+            comments[commentPath('tasks', 't1', `long${String(index).padStart(2, '0')}`)] = {
+                commentText: `Kommentar ${index} ${'x'.repeat(400)}`,
+                creatorId: 'owner',
+                created: NOW - DAY + index,
+            }
+        }
+        const { sources } = await collect(threadDb(comments), threadOptions())
+
+        const text = sources.find(source => source.key === 'chat:t1').text
+        expect(text.split('\n')[0]).toMatch(/older ones left out\)$/)
+        expect(text).toMatch(new RegExp(`Kommentar ${THREAD_COMMENTS_PER_CARD + 4} `))
+        expect(text).not.toMatch(/Kommentar 0 /)
+        expect(text.length).toBeLessThan(6500)
+    })
+
+    it('labels a comment an MCP client wrote in a member’s name', async () => {
+        const db = threadDb({
+            [commentPath('tasks', 't1', 'c5')]: {
+                commentText: 'Status gepostet',
+                creatorId: 'owner',
+                via: 'mcp',
+                viaClient: 'Claude',
+                created: NOW - DAY + 5,
+            },
+        })
+
+        const { sources } = await collect(db, threadOptions())
+
+        expect(sources.find(source => source.key === 'chat:t1').text).toMatch(/Karsten \(via Claude\): Status gepostet/)
+    })
+
+    it('turns a visible artifact into a card with its text, and never reads a private one', async () => {
+        const readArtifactContent = jest.fn(
+            async (projectId, artifactId) => `Churn ist auf 2 % gefallen (${artifactId})`
+        )
+        const db = new KnowledgeFirestoreDouble({
+            [artifactPath('a1')]: {
+                title: 'Churn-Dashboard',
+                description: 'Monatliche Kennzahlen',
+                kind: 'web',
+                versionCount: 3,
+                isPublicFor: PUBLIC,
+                lastEditionDate: NOW - DAY,
+            },
+            [artifactPath('secret')]: {
+                title: 'Gehälter',
+                kind: 'data',
+                isPrivate: true,
+                isPublicFor: ['owner'],
+                lastEditionDate: NOW - DAY,
+            },
+        })
+
+        const { sources, stats } = await collect(db, threadOptions({ readArtifactContent }))
+
+        expect(sources.map(source => source.key)).toEqual(['artifact:a1'])
+        expect(sources[0].text.split('\n')).toEqual([
+            '[[artifact:a1]] "Churn-Dashboard" (web artifact, version 3, last changed 2026-10-23)',
+            'Description: Monatliche Kennzahlen',
+            'Content:',
+            'Churn ist auf 2 % gefallen (a1)',
+        ])
+        expect(readArtifactContent).toHaveBeenCalledTimes(1)
+        expect(JSON.stringify(sources)).not.toMatch(/Gehälter/)
+        expect(stats.skipped).toEqual({ private: 1 })
+    })
+
+    it('rebuilds from a thread and an artifact only while their objects are still visible', async () => {
+        const db = threadDb({
+            [artifactPath('a1')]: { title: 'Bericht', kind: 'pdf', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+        })
+        const keys = ['chat:t1', 'artifact:a1']
+
+        const before = await loadByKeys({ db, projectId: PROJECT_ID, keys, ...threadOptions() })
+        await db.doc(taskPath('t1')).update({ isPublicFor: ['owner'] })
+        await db.doc(artifactPath('a1')).update({ isPublicFor: ['owner'], isPrivate: true })
+        const after = await loadByKeys({ db, projectId: PROJECT_ID, keys, ...threadOptions() })
+
+        expect(before.map(source => source.key).sort()).toEqual(['artifact:a1', 'chat:t1'])
+        expect(after).toEqual([])
+    })
+})

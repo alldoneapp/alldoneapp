@@ -14,6 +14,11 @@
 // the page's `historicalSourceKeys` too, because a page may have stopped citing a source long after
 // one of its revisions repeated it. The page id (its slug) is the one thing that stays.
 //
+// A comment thread is exactly as visible as the object it belongs to, so an object that loses its
+// visibility withdraws its thread (`chat:ID`, the same id) with it; a topic is its own object and is
+// withdrawn by its chat object's triggers. Deleting an object deletes its chat object too, whose
+// trigger withdraws the thread again: the second call finds no page citing it and does nothing.
+//
 // Runs from the existing object triggers, so no new trigger is deployed. Only a change that takes
 // visibility AWAY does any work, and the work is two array-contains queries on the project's pages
 // plus one on the revisions of each page they return.
@@ -134,6 +139,27 @@ async function invalidateKnowledgeSource({
     return result
 }
 
+// The source types whose objects carry a comment thread that is a source of its own.
+const THREADED_SOURCE_TYPES = ['task', 'note', 'goal', 'contact', 'artifact']
+
+// The keys an object stands for in the wiki: itself and, when it has one, its thread.
+function getObjectSourceKeys(type, objectId) {
+    return [
+        buildKnowledgeSourceKey(type, objectId),
+        THREADED_SOURCE_TYPES.includes(type) ? buildKnowledgeSourceKey('chat', objectId) : null,
+    ].filter(Boolean)
+}
+
+async function invalidateKnowledgeSources({ keys, ...options }) {
+    const total = { pages: 0, redactedRevisions: 0 }
+    for (const sourceKey of keys) {
+        const result = await invalidateKnowledgeSource({ ...options, sourceKey })
+        total.pages += result.pages
+        total.redactedRevisions += result.redactedRevisions
+    }
+    return total
+}
+
 async function invalidateKnowledgeSourcesOnUpdate({
     db,
     projectId,
@@ -150,10 +176,10 @@ async function invalidateKnowledgeSourcesOnUpdate({
         return { pages: 0, redactedRevisions: 0 }
     }
 
-    return invalidateKnowledgeSource({
+    return invalidateKnowledgeSources({
         db,
         projectId,
-        sourceKey: buildKnowledgeSourceKey(type, objectId),
+        keys: getObjectSourceKeys(type, objectId),
         reason: 'privacy',
         now,
         fieldValue,
@@ -166,10 +192,41 @@ async function invalidateKnowledgeSourcesOnDelete({ db, projectId, objectType, o
     // An object the whole project could never see was never compiled into a page.
     if (!isVisibleToWholeProject(data, type)) return { pages: 0, redactedRevisions: 0 }
 
+    return invalidateKnowledgeSources({
+        db,
+        projectId,
+        keys: getObjectSourceKeys(type, objectId),
+        reason: 'deleted',
+        now,
+        fieldValue,
+    })
+}
+
+// A topic made private. Only a topic's own chat object decides who may read it; the chat object of
+// any other thread follows its object, whose trigger withdraws the thread.
+async function invalidateThreadSourceOnChatUpdate({ db, projectId, chatId, before, after, now, fieldValue }) {
+    if (before?.type !== 'topics') return { pages: 0, redactedRevisions: 0 }
+    if (!isVisibleToWholeProject(before, 'chat') || isVisibleToWholeProject(after, 'chat')) {
+        return { pages: 0, redactedRevisions: 0 }
+    }
     return invalidateKnowledgeSource({
         db,
         projectId,
-        sourceKey: buildKnowledgeSourceKey(type, objectId),
+        sourceKey: buildKnowledgeSourceKey('chat', chatId),
+        reason: 'privacy',
+        now,
+        fieldValue,
+    })
+}
+
+// A deleted thread takes its comments with it. A topic nobody else could read was never a source;
+// for any other thread the chat object does not say who could read it, so it is always withdrawn.
+async function invalidateThreadSourceOnChatDelete({ db, projectId, chatId, data, now, fieldValue }) {
+    if (data?.type === 'topics' && !isVisibleToWholeProject(data, 'chat')) return { pages: 0, redactedRevisions: 0 }
+    return invalidateKnowledgeSource({
+        db,
+        projectId,
+        sourceKey: buildKnowledgeSourceKey('chat', chatId),
         reason: 'deleted',
         now,
         fieldValue,
@@ -180,4 +237,6 @@ module.exports = {
     invalidateKnowledgeSource,
     invalidateKnowledgeSourcesOnUpdate,
     invalidateKnowledgeSourcesOnDelete,
+    invalidateThreadSourceOnChatUpdate,
+    invalidateThreadSourceOnChatDelete,
 }

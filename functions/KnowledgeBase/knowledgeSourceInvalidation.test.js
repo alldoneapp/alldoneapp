@@ -2,6 +2,8 @@ const { KnowledgeFirestoreDouble, fieldValue } = require('./__fixtures__/knowled
 const {
     invalidateKnowledgeSourcesOnDelete,
     invalidateKnowledgeSourcesOnUpdate,
+    invalidateThreadSourceOnChatDelete,
+    invalidateThreadSourceOnChatUpdate,
 } = require('./knowledgeSourceInvalidation')
 const { isKnowledgePageVisible } = require('./knowledgeBaseModel')
 
@@ -160,6 +162,111 @@ describe('invalidateKnowledgeSourcesOnDelete', () => {
         expect(result).toEqual({ pages: 0, redactedRevisions: 0 })
         expect(db.commits).toBe(0)
         expect(db.read(KB_PATH).nextRunAt).toBe(NOW + 3_600_000)
+    })
+})
+
+describe('comment threads and artifacts', () => {
+    function createThreadDb() {
+        return new KnowledgeFirestoreDouble({
+            [KB_PATH]: { enabled: true, nextRunAt: NOW + 3_600_000 },
+            [pagePath('release')]: { title: 'Release', body: 'Termin steht [[chat:t1]]', sourceKeys: ['chat:t1'] },
+            [pagePath('chat')]: { title: 'Team', body: 'Absprache [[chat:topic1]]', sourceKeys: ['chat:topic1'] },
+            [pagePath('berichte')]: { title: 'Berichte', body: 'Siehe [[artifact:a1]]', sourceKeys: ['artifact:a1'] },
+        })
+    }
+
+    it("withdraws an object's thread together with the object when it turns private", async () => {
+        const db = createThreadDb()
+
+        const result = await invalidateKnowledgeSourcesOnUpdate({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            objectType: 'tasks',
+            objectId: 't1',
+            before: { isPublicFor: [0, 'owner'] },
+            after: { isPublicFor: ['owner'] },
+        })
+
+        expect(result).toEqual({ pages: 1, redactedRevisions: 0 })
+        const page = db.read(pagePath('release'))
+        expect(page).toMatchObject({ needsRebuild: true, sourceKeys: [], removedSourceKeys: ['chat:t1'] })
+        expect(page.body).toBeUndefined()
+        expect(isKnowledgePageVisible(db.read(pagePath('chat')))).toBe(true)
+    })
+
+    it('withdraws an artifact, and its thread, when it turns private', async () => {
+        const db = createThreadDb()
+
+        await invalidateKnowledgeSourcesOnUpdate({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            objectType: 'artifacts',
+            objectId: 'a1',
+            before: { isPublicFor: [0, 'owner'] },
+            after: { isPublicFor: ['owner'], isPrivate: true },
+        })
+
+        expect(db.read(pagePath('berichte'))).toMatchObject({ needsRebuild: true, removedSourceKeys: ['artifact:a1'] })
+        // Its comment thread is looked up as well.
+        expect(new Set(db.queries.map(query => query.filters[0].value))).toEqual(new Set(['artifact:a1', 'chat:a1']))
+    })
+
+    it('withdraws a topic that was made private, and only a topic', async () => {
+        const db = createThreadDb()
+
+        const topic = await invalidateThreadSourceOnChatUpdate({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            chatId: 'topic1',
+            before: { type: 'topics', isPublicFor: [0] },
+            after: { type: 'topics', isPublicFor: ['owner'] },
+        })
+        // A task thread's chat object does not decide who may read it; the task does.
+        const taskThread = await invalidateThreadSourceOnChatUpdate({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            chatId: 't1',
+            before: { type: 'tasks', isPublicFor: [0] },
+            after: { type: 'tasks', isPublicFor: ['owner'] },
+        })
+
+        expect(topic).toEqual({ pages: 1, redactedRevisions: 0 })
+        expect(taskThread).toEqual({ pages: 0, redactedRevisions: 0 })
+        expect(db.read(pagePath('chat'))).toMatchObject({ needsRebuild: true, needsRebuildReason: 'privacy' })
+        expect(isKnowledgePageVisible(db.read(pagePath('release')))).toBe(true)
+    })
+
+    it('withdraws a deleted thread, but never queries for a topic nobody else could read', async () => {
+        const db = createThreadDb()
+
+        await invalidateThreadSourceOnChatDelete({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            chatId: 'private-topic',
+            data: { type: 'topics', isPublicFor: ['owner'] },
+        })
+        expect(db.queries).toHaveLength(0)
+
+        const result = await invalidateThreadSourceOnChatDelete({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            chatId: 't1',
+            data: { type: 'tasks', isPublicFor: ['owner'] },
+        })
+        expect(result).toEqual({ pages: 1, redactedRevisions: 0 })
+        expect(db.read(pagePath('release'))).toMatchObject({ needsRebuildReason: 'deleted' })
     })
 })
 

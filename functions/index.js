@@ -212,6 +212,40 @@ function invalidateKnowledgeSourcesOnDelete(event, objectType) {
     )
 }
 
+// The same for a comment thread: a topic made private, or any thread whose chat object is deleted.
+// The thread of a task, note, goal, contact or artifact turning private is handled by that object's
+// trigger, through invalidateKnowledgeSourcesOnUpdate above.
+function invalidateThreadSourceOnChatChange(event, change) {
+    const {
+        invalidateThreadSourceOnChatUpdate,
+        invalidateThreadSourceOnChatDelete,
+    } = require('./KnowledgeBase/knowledgeSourceInvalidation')
+    const { projectId, chatId } = event.params
+    const run =
+        change === 'deleted'
+            ? invalidateThreadSourceOnChatDelete({
+                  db: admin.firestore(),
+                  projectId,
+                  chatId,
+                  data: event.data.data() || {},
+              })
+            : invalidateThreadSourceOnChatUpdate({
+                  db: admin.firestore(),
+                  projectId,
+                  chatId,
+                  before: event.data.before.data() || {},
+                  after: event.data.after.data() || {},
+              })
+    return run.catch(error =>
+        console.error('[knowledge base] Could not invalidate wiki pages of a withdrawn thread', {
+            projectId,
+            chatId,
+            change,
+            error: error.message,
+        })
+    )
+}
+
 const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
 const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
 const ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION = 'firestoreAccessProjectionMigrations'
@@ -1626,23 +1660,6 @@ exports.saveAttachmentAsArtifact = onCall(
             url: data && data.url,
             fileName: data && data.fileName,
         })
-    }
-)
-
-// The uploaded files the Artifacts tab lists, found on the server instead of by browser listeners
-// on whole collections (AT-2860). See Artifacts/linkedUploadsIndex.js.
-exports.getProjectLinkedUploads = onCall(
-    {
-        timeoutSeconds: 120,
-        memory: '1GiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { getProjectLinkedUploads } = require('./Artifacts/linkedUploadsIndex')
-        return await getProjectLinkedUploads({ userId: auth.uid, projectId: data && data.projectId })
     }
 )
 
@@ -4590,6 +4607,7 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
         await Promise.all([
             onUpdateChat(projectId, chatId, event.data),
             synchronizeAccessProjection(event, null, 'usersFollowing'),
+            invalidateThreadSourceOnChatChange(event, 'updated'),
         ])
     }
 )
@@ -4605,7 +4623,7 @@ exports.onDeleteChatSecondGen = onDocumentDeleted(
         const { onDeleteChat } = require('./Chats/onDeleteChatFunctions')
         const { projectId, chatId } = event.params
         const chat = { ...event.data.data(), id: chatId }
-        await onDeleteChat(projectId, chat)
+        await Promise.all([onDeleteChat(projectId, chat), invalidateThreadSourceOnChatChange(event, 'deleted')])
     }
 )
 
@@ -5358,6 +5376,7 @@ exports.onUpdateArtifactSecondGen = onDocumentUpdated(
                     error: error.message,
                 })
             ),
+            invalidateKnowledgeSourcesOnUpdate(event, 'artifacts'),
         ])
     }
 )
@@ -5384,6 +5403,7 @@ exports.onDeleteArtifactSecondGen = onDocumentDeleted(
             // Its conversation goes with it, as a skill's does; the chat's own delete trigger
             // removes the comments.
             deleteChat(admin, projectId, artifactId),
+            invalidateKnowledgeSourcesOnDelete(event, 'artifacts'),
         ])
     }
 )
