@@ -10,6 +10,7 @@ const {
     getKnowledgeBaseMonthlyGoldSpent,
     getKnowledgeBasePath,
     isKnowledgeBasePausedAtMonthlyCap,
+    isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
     normalizeKnowledgeBaseSettingsInput,
     resolveKnowledgeBaseModel,
@@ -130,8 +131,12 @@ async function setKnowledgeBaseSettings({
                 next.enabledAt = now
                 // The first build should not wait for the nightly slot.
                 next.nextRunAt = now
-            } else if (isKnowledgeBasePausedForInactiveOwner(current)) {
-                // Whoever saves is using Alldone right now, and is (or just became) the payer.
+            } else if (
+                isKnowledgeBasePausedForInactiveOwner(current) ||
+                isKnowledgeBasePausedForArchivedProject(current)
+            ) {
+                // Whoever saves is using Alldone right now, and is (or just became) the payer. A run
+                // for a payer who still has the project archived stops again before any model call.
                 next.nextRunAt = now
             } else if (
                 isKnowledgeBasePausedAtMonthlyCap(current, now) &&

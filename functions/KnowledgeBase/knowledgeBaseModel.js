@@ -55,6 +55,7 @@ const KNOWLEDGE_BASE_ENABLED_BY_MEMBER = 'member'
 const KNOWLEDGE_BASE_ENABLED_BY_DEFAULT = 'default'
 const KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON = 'owner_inactive'
 const KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON = 'monthly_cap'
+const KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON = 'project_archived'
 // A document's text is stored inside its Firestore document, so it stays well under the 1 MiB limit
 // even at three bytes a character. About 30,000 tokens: a long deck, a short report.
 const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
@@ -262,6 +263,24 @@ function isKnowledgeBasePausedForInactiveOwner(data = {}) {
     )
 }
 
+// Archiving is per member in Alldone (users/{uid}.archivedProjectIds, the same list projectScope.js
+// reads): a project one member archived is still active for the others. `project.active` is a
+// different, project-wide flag and says nothing about it.
+function isProjectArchivedForUser(userData, projectId) {
+    return Array.isArray(userData?.archivedProjectIds) && userData.archivedProjectIds.includes(projectId)
+}
+
+// A wiki whose payer has archived its project stops running, like one whose payer stopped using
+// Alldone: the run clears nextRunAt and records why, and the default sweep resumes it once the
+// payer reactivates the project (or hands a default wiki to a member for whom it is active).
+function isKnowledgeBasePausedForArchivedProject(data = {}) {
+    return (
+        data.enabled === true &&
+        !Number.isFinite(data.nextRunAt) &&
+        data.lastRunStopReason === KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON
+    )
+}
+
 // The month a wiki's Gold counter belongs to. UTC, like the reset on the first of the month.
 function getKnowledgeBaseMonthKey(now = Date.now()) {
     return new Date(now).toISOString().slice(0, 7)
@@ -291,6 +310,7 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
         enabled: data.enabled === true,
         enabledByDefault: data.enabled === true && data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
         pausedForInactiveOwner: isKnowledgeBasePausedForInactiveOwner(data),
+        pausedForArchivedProject: isKnowledgeBasePausedForArchivedProject(data),
         pausedAtMonthlyCap: isKnowledgeBasePausedAtMonthlyCap(data, now),
         instructions: typeof data.instructions === 'string' ? data.instructions : '',
         model: resolveKnowledgeBaseModel(data.model),
@@ -338,6 +358,7 @@ module.exports = {
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
+    KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON,
     KNOWLEDGE_DOCUMENT_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
@@ -359,6 +380,8 @@ module.exports = {
     rewriteKnowledgeSourceTokens,
     isKnowledgePageVisible,
     isKnowledgeBasePausedForInactiveOwner,
+    isKnowledgeBasePausedForArchivedProject,
+    isProjectArchivedForUser,
     getKnowledgeBaseMonthKey,
     getKnowledgeBaseMonthlyGoldSpent,
     isKnowledgeBasePausedAtMonthlyCap,

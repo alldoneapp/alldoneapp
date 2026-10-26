@@ -20,6 +20,8 @@
 //   - the owner is out of Gold → the next nightly slot;
 //   - the owner has not used Alldone for 30 days → paused (nextRunAt null) until they are back,
 //     which knowledgeBaseDefaults.js notices; nothing is spent on a member who is not there;
+//   - the owner has archived the project → paused the same way until they reactivate it (or the
+//     default hands the wiki to a member for whom it is active); nothing is spent on it;
 //   - nothing changed → no model call at all, the next nightly slot.
 
 const admin = require('firebase-admin')
@@ -38,12 +40,14 @@ const {
 const {
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
+    KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON,
     getKnowledgeBaseMonthKey,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
     getKnowledgeRunsPath,
     isKnowledgePageVisible,
+    isProjectArchivedForUser,
     normalizeKnowledgePageSlug,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
@@ -507,6 +511,9 @@ async function runKnowledgeBaseIngest({
         if (ownerSnapshot.exists && !isKnowledgeBaseOwnerActive(ownerData, startedAt)) {
             throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON)
         }
+        if (isProjectArchivedForUser(ownerData, projectId)) {
+            throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON)
+        }
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
         if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
@@ -712,7 +719,8 @@ async function runKnowledgeBaseIngest({
             ? 'partial'
             : 'completed'
     const nextRunAt =
-        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
+        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON ||
+        stopReason === KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON
             ? null
             : stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON
               ? startOfNextMonthUtc(finishedAt)

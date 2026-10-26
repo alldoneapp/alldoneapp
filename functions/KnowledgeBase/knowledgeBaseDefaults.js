@@ -16,10 +16,17 @@
 //     never changes hands this way; it simply waits for them.
 // A wiki a member switched off stays off: that is the one choice the default must never undo.
 //
-// Who pays: the project's creator when they are an active member, otherwise the active member the
-// default is being applied for. Guides (projects copied from a template, parentTemplateId) and
-// templates are left out: a guide's creatorId is the template's author, who would otherwise pay
-// for the wiki of every guide anybody ever started. Archived projects are left out too.
+// Who pays: the project's creator when they are an active member who has not archived it,
+// otherwise the active member the default is being applied for. Guides (projects copied from a
+// template, parentTemplateId) and templates are left out: a guide's creatorId is the template's
+// author, who would otherwise pay for the wiki of every guide anybody ever started.
+//
+// Archiving is per member (users/{uid}.archivedProjectIds), so it is checked per member: a member
+// who archived a project neither switches its wiki on nor pays for it, and a wiki whose payer
+// archived the project pauses (knowledgeBaseIngest.js) until they reactivate it. A default wiki
+// whose payer archived the project moves to a member for whom it is still active. The first
+// version checked the project-wide `active` flag instead and switched on 33 projects its user
+// had archived.
 //
 // The first run waits for the payer's next nightly slot instead of starting at once: the default
 // reaches every project of a user in the same pass, and the worker runs three wikis at a time.
@@ -38,7 +45,9 @@ const {
     DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
     getKnowledgeBasePath,
+    isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
+    isProjectArchivedForUser,
 } = require('./knowledgeBaseModel')
 const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
 
@@ -75,13 +84,19 @@ function createReaders(db, { users = new Map(), projects = new Map() } = {}) {
     }
 }
 
-async function resolveDefaultOwner({ project, userId, userData, loadUser, now }) {
+async function resolveDefaultOwner({ projectId, project, userId, userData, loadUser, now }) {
     const creatorId = project.creatorId
     if (creatorId && creatorId !== userId && getProjectMemberIds(project).includes(creatorId)) {
         const creator = await loadUser(creatorId)
-        if (isKnowledgeBaseOwnerActive(creator, now)) return { ownerUserId: creatorId, ownerData: creator }
+        if (isKnowledgeBaseOwnerActive(creator, now) && !isProjectArchivedForUser(creator, projectId)) {
+            return { ownerUserId: creatorId, ownerData: creator }
+        }
     }
     return { ownerUserId: userId, ownerData: userData }
+}
+
+function isKnowledgeBasePaused(data) {
+    return isKnowledgeBasePausedForInactiveOwner(data) || isKnowledgeBasePausedForArchivedProject(data)
 }
 
 function buildDefaultKnowledgeBase({ projectId, ownerUserId, ownerData, now }) {
@@ -100,9 +115,11 @@ function buildDefaultKnowledgeBase({ projectId, ownerUserId, ownerData, now }) {
     }
 }
 
-async function isPayerGone(current, project, loadUser, now) {
+// Gone: left the project, stopped using Alldone, or archived the project.
+async function isPayerGone(current, projectId, project, loadUser, now) {
     if (!current.ownerUserId || !getProjectMemberIds(project).includes(current.ownerUserId)) return true
-    return !isKnowledgeBaseOwnerActive(await loadUser(current.ownerUserId), now)
+    const payer = await loadUser(current.ownerUserId)
+    return !isKnowledgeBaseOwnerActive(payer, now) || isProjectArchivedForUser(payer, projectId)
 }
 
 // Applies the default to one project for one member: 'enabled', 'resumed', 'taken_over' or why not.
@@ -110,6 +127,7 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
     if (!isKnowledgeBaseProjectEligible(project)) return 'ineligible'
     if (!getProjectMemberIds(project).includes(userId)) return 'not_member'
     if (!isKnowledgeBaseOwnerActive(userData, now)) return 'inactive'
+    if (isProjectArchivedForUser(userData, projectId)) return 'archived'
 
     const ref = db.doc(getKnowledgeBasePath(projectId))
     // Read outside the transaction first: nearly every pass finds a document it leaves alone, and
@@ -117,7 +135,7 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
     const existing = await ref.get()
 
     if (!existing.exists) {
-        const owner = await resolveDefaultOwner({ project, userId, userData, loadUser, now })
+        const owner = await resolveDefaultOwner({ projectId, project, userId, userData, loadUser, now })
         return db.runTransaction(async transaction => {
             const snapshot = await transaction.get(ref)
             if (snapshot.exists) return 'unchanged'
@@ -129,21 +147,23 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
     const current = existing.data() || {}
     if (current.enabled !== true) return 'unchanged'
 
+    // The payer is active and has the project active (both checked above): a wiki paused for either
+    // reason runs again.
     if (current.ownerUserId === userId) {
-        if (!isKnowledgeBasePausedForInactiveOwner(current)) return 'unchanged'
+        if (!isKnowledgeBasePaused(current)) return 'unchanged'
         return db.runTransaction(async transaction => {
             const snapshot = await transaction.get(ref)
             const latest = snapshot.exists ? snapshot.data() || {} : {}
-            if (latest.ownerUserId !== userId || !isKnowledgeBasePausedForInactiveOwner(latest)) return 'unchanged'
+            if (latest.ownerUserId !== userId || !isKnowledgeBasePaused(latest)) return 'unchanged'
             transaction.update(ref, { nextRunAt: nextNightlyRunAt(now, userData), updatedAt: now })
             return 'resumed'
         })
     }
 
     if (current.enabledBy !== KNOWLEDGE_BASE_ENABLED_BY_DEFAULT) return 'unchanged'
-    if (!(await isPayerGone(current, project, loadUser, now))) return 'unchanged'
+    if (!(await isPayerGone(current, projectId, project, loadUser, now))) return 'unchanged'
 
-    const owner = await resolveDefaultOwner({ project, userId, userData, loadUser, now })
+    const owner = await resolveDefaultOwner({ projectId, project, userId, userData, loadUser, now })
     return db.runTransaction(async transaction => {
         const snapshot = await transaction.get(ref)
         const latest = snapshot.exists ? snapshot.data() || {} : {}
@@ -164,11 +184,13 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
 }
 
 function emptyStats() {
-    return { enabled: 0, resumed: 0, taken_over: 0, unchanged: 0, ineligible: 0, failed: 0 }
+    return { enabled: 0, resumed: 0, taken_over: 0, unchanged: 0, archived: 0, ineligible: 0, failed: 0 }
 }
 
 function addResult(stats, result) {
-    const key = ['enabled', 'resumed', 'taken_over', 'unchanged', 'failed'].includes(result) ? result : 'ineligible'
+    const key = ['enabled', 'resumed', 'taken_over', 'unchanged', 'archived', 'failed'].includes(result)
+        ? result
+        : 'ineligible'
     stats[key] += 1
 }
 
@@ -184,9 +206,14 @@ async function applyKnowledgeBaseDefaultsForUser({
     const stats = emptyStats()
     if (!userId || !isKnowledgeBaseOwnerActive(userData, now)) return stats
     const { loadUser, loadProject } = readers || createReaders(db)
-    const projectIds = [...new Set(Array.isArray(userData.projectIds) ? userData.projectIds : [])]
-        .filter(projectId => typeof projectId === 'string' && projectId)
-        .slice(0, MAX_PROJECTS_PER_USER)
+    const allProjectIds = [...new Set(Array.isArray(userData.projectIds) ? userData.projectIds : [])].filter(
+        projectId => typeof projectId === 'string' && projectId
+    )
+    // A project this member archived is skipped without a read; applyKnowledgeBaseDefault checks it
+    // again for the callers that come in with a single project.
+    const projectIds = allProjectIds.filter(projectId => !isProjectArchivedForUser(userData, projectId))
+    stats.archived += allProjectIds.length - projectIds.length
+    projectIds.splice(MAX_PROJECTS_PER_USER)
 
     const results = await mapWithConcurrency(projectIds, PROJECT_CONCURRENCY, async projectId => {
         try {
