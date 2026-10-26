@@ -37,11 +37,11 @@ export function withRememberedFiles(remembered, live) {
     return [...remembered, ...live.filter(file => !ids.has(file.id))]
 }
 
-// The list opens with what this device showed last time and the listeners then update it
+// The list opens with what this device showed last time and the live data then updates it
 // (artifactsLocalCache.js), like the Notes lists. Real artifacts come from one query, whose first
-// snapshot replaces the remembered list. Linked uploads are assembled from many listeners and note
-// bodies, so the remembered files stay until that has settled instead of the list growing file by
-// file. A result that saw a listener fail is shown but not remembered.
+// snapshot replaces the remembered list. Linked uploads come from the server, whose first answer for
+// a large project can be partial while it scans, so the remembered files stay until that has settled
+// instead of the list growing file by file. A result that saw a failure is shown but not remembered.
 export function useProjectArtifacts(projectId, followedOnly) {
     const userId = useSelector(state => state.loggedUser?.uid)
     const listKey = userId && projectId ? getArtifactsListCacheKey(userId, projectId, followedOnly) : null

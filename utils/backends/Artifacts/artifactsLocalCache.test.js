@@ -1,10 +1,7 @@
 import {
-    NOTE_REFS_MAX_AGE_MS,
-    createNoteUploadsCache,
     flushArtifactsLocalCache,
     getArtifactsListCacheKey,
     getLinkedUploadsCacheKey,
-    getNoteUploadsSignature,
     loadCachedValue,
     readCachedValue,
     resetArtifactsLocalCacheForTests,
@@ -108,28 +105,4 @@ it('treats a wedged database as an empty one instead of waiting for it', async (
     } finally {
         jest.useRealTimers()
     }
-})
-
-describe('note attachments', () => {
-    it('names a note body by the two stamps that move when it changes', () => {
-        expect(getNoteUploadsSignature({ lastEditionDate: 5, uploadsRevision: 'r2' })).toBe('5|r2')
-        expect(getNoteUploadsSignature({})).toBe('0|')
-    })
-
-    it('returns the attachments only for the same edition, and not once they are old', async () => {
-        global.indexedDB = undefined
-        let now = 1000
-        const cache = createNoteUploadsCache('u', 'p', { now: () => now })
-        await cache.set('n', '5|', [{ path: 'notesAttachments/n/a.png' }])
-        expect(await cache.get('n', '5|')).toEqual([{ path: 'notesAttachments/n/a.png' }])
-        expect(await cache.get('n', '6|')).toBeNull()
-        expect(await cache.get('other', '5|')).toBeNull()
-
-        // Shared by the next watcher of the same project in this session.
-        expect(await createNoteUploadsCache('u', 'p', { now: () => now }).get('n', '5|')).toHaveLength(1)
-        expect(await createNoteUploadsCache('someone-else', 'p', { now: () => now }).get('n', '5|')).toBeNull()
-
-        now += NOTE_REFS_MAX_AGE_MS
-        expect(await cache.get('n', '5|')).toBeNull()
-    })
 })

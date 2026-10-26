@@ -866,37 +866,56 @@ the artifact. Existing assistants store their own `allowedTools` and get the key
 `migration/enableArtifactToolForAssistants.js` (dry run by default) or the checkbox.
 
 **Linked uploads (AT-2828) supersede the original explicit-copy UI decision.** The All artifacts
-list additionally projects uploads from their readable source documents, comments and saved Yjs
-notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
+list additionally shows uploads from their readable source documents, comments and saved Yjs
+notes; since AT-2860 the server finds them (see the next paragraph). Existing uploads need no migration. One stored
 path yields one row, which never gets a new serving/public URL: pressing it opens
 `ArtifactFileViewer` with the download URL the source itself embeds (an image's stored 300px copy is
 the row thumbnail), and its context line opens the source. Only img/video/audio render inline; a PDF or
 other file goes to a new tab, because Chrome frames a PDF only unsandboxed and a stored file's content
 type is whatever the uploader's browser declared. Lists show 3 per project in All projects and 10 in
-one project, the rest behind `ShowMoreButton`, like Notes. Membership, original
-query rules and current source privacy gate the projection; removals and listener failures clear
-it, including pending asynchronous note loads. `uploadsRevision` on notes announces completed local
+one project, the rest behind `ShowMoreButton`, like Notes. Membership, the source's `readerIds`
+projection and its current `isPublicFor` gate every row. `uploadsRevision` on notes announces completed local
 Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
 now "Show in artifacts" and opens All, without invoking the old copying callable. Full historical
 copies and VM artifacts remain independent (see `ARTIFACTS_PLAN.md` linked-upload limitations).
 
-**The Artifacts tab opens from what this device showed last time, and the listeners only update
-it** (`utils/backends/Artifacts/artifactsLocalCache.js`, an IndexedDB store with a memory mirror,
-keyed by user, project and tab). Without it every visit rebuilt the whole projection: one
-comment listener per task, note and goal of every project, and every note body downloaded from
-Storage four at a time, which is many seconds per project. Three rules make the cache safe. Real
-artifacts come from one query and its first snapshot replaces the remembered list. Linked uploads
-report `onChange(files, { settled })` and the remembered files stay (plus any new live file) until
-every source, comment thread and note body has answered once, so the list never shrinks to a
-partial result and grows back; a result that saw a listener fail is shown but never remembered,
-and a remembered list whose listener fails before confirming it is dropped. And a note body is
-only re-read when its `lastEditionDate`/`uploadsRevision` moved (the same stamps the watcher
-always re-read on), or after `NOTE_REFS_MAX_AGE_MS`, which bounds a body change that stamped
-nothing. **Comments are only listened to for objects that have a chat object**
-(`chatObjects/{p}/chats/{objectId}`), because every comment write creates or updates it; topics,
-user and assistant threads are always listened to. That replaced one Firestore query per object,
-almost all of them empty and each billed a read. A comment path that writes no chat object would
-make its uploads invisible here, so keep that invariant if a new comment writer is added.
+**Linked uploads are found on the server, never by browser listeners (AT-2860).** The first
+version assembled them in the browser: a listener on every source collection of each project (all
+22,798 tasks of the main project) plus one per conversation with a chat object, and every note body
+downloaded from Storage. One visit to the tab left a device with ~28,000 Firestore targets and
+~100 MB of cached documents, the client's Firestore queue stopped answering, and the app replaced
+itself every seven minutes (`firestore-restart_timeout` in `runtimeErrors`, which had not occurred
+once in the three weeks before). `getProjectLinkedUploads` (`functions/Artifacts/linkedUploadsIndex.js`)
+now keeps a server-only candidate index at `artifactUploadIndex/{projectId}` (no client rule; it holds
+download URLs). A project is read in full once, in resumable steps of `SCAN_BUDGET_MS` (the callable
+answers `complete: false` and the client asks again after `retryAfterMs`), then only what changed:
+`lastEditionDate` on every source, a note's `uploadsRevision` (a push id, compared by its time
+prefix), and a chat object's `lastEditionDate` for new comments, which re-reads that one thread.
+More than `INCREMENTAL_LIMIT` changes, or a week since the last full read, starts a full read again;
+that is also what catches a comment edited in place, which stamps nothing. The index only lists
+CANDIDATES: every call re-reads each candidate and its parent, so an edit, a deletion or a privacy
+change shows at once, and access is the old query's (`readerIds` names the caller AND `isPublicFor`
+does), member and assistant threads open to every member as their rules say. A source gone or empty
+is dropped from the index; one the caller may not read stays for the members who may. One scan runs
+per project at a time (a lease on the state document). The tab still opens from what this device
+showed last time (`artifactsLocalCache.js`) and keeps it until the answer is complete; offline it
+keeps it without an error. Do not reintroduce a client listener per source collection or per thread
+here: the cost is paid by every other Firestore query on that device. Pinned by
+`functions/Artifacts/linkedUploadsIndex.test.js` (an in-memory Firestore that counts what each query
+read) and the polling block of `utils/backends/Artifacts/artifactsFirestore.test.js`.
+
+**A device whose Firestore cache is bloated resets it once (`utils/backends/firestoreCacheReset.js`).**
+Removing the listeners stops new bloat; the existing one stays until the cache is deleted, and a
+local query reads every cached document of its collection. A while after boot the app reads the
+SDK's own bookkeeping straight from IndexedDB (never creating the database); above
+`BLOATED_TARGET_COUNT` targets or `BLOATED_DOCUMENT_BYTES` it waits until the page is hidden, waits
+for `waitForPendingWrites`, and requires an empty `mutations` store, no task write or comment draft
+in flight and no other live client (another tab would have the database deleted under it). Only then
+it records a request and reloads; the next boot calls `clearPersistence()` before persistence is
+configured, which the SDK runs first on its own queue. A request older than a few minutes is ignored,
+a clear interrupted by the page going away is never retried, and a clear that stays blocked for
+`CLEAR_TIMEOUT_MS` replaces the page without retrying. The outcome is journaled as `cache-reset` in
+`runtimeErrors`. One reset per device and key version (`alldone.firestoreCacheReset.v1`).
 
 **Every artifact row leads to where the artifact was made** (`ArtifactContextLink`,
 `artifactContext.js`): a linked upload to its first source ("In Meeting notes +1"), and a full
