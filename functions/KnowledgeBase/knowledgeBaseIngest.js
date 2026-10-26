@@ -161,7 +161,9 @@ const WIKI_RULES = [
     '- When a source changes or settles something a page already says, rewrite that statement to the new state and remove the outdated one together with its citation, instead of adding the new version next to the old. Source cards are listed oldest first; a later card describes a more recent state than an earlier one and than what the pages say about the same object.',
     '- Prefer extending an existing page over creating a new one. Keep each page focused on one subject; split a page that grows past about 1500 words and link the parts.',
     '- Read a page with read_page before you replace it. write_page replaces the whole body: keep what is still true, leave out what no longer is, and bring any older passage that still narrates history up to the current state.',
-    '- Cite every statement with the token of the source it came from, exactly as given: [[task:ID]], [[goal:ID]], [[note:ID]], [[contact:ID]], [[correction:ID]], [[document:ID]]. List every source you used in sourceKeys.',
+    '- Cite every statement with the token of the source it came from, exactly as given: [[task:ID]], [[goal:ID]], [[note:ID]], [[contact:ID]], [[chat:ID]], [[artifact:ID]], [[correction:ID]], [[document:ID]]. List every source you used in sourceKeys.',
+    "- A conversation (a [[chat:ID]] card) holds the comments of a chat topic or of the object it names, oldest first; a delta card holds only the comments written since the wiki last looked. Take from it what is worth knowing: a decision and its reason, an agreed date, a fact someone stated or confirmed. A later comment can revise an earlier one. What an assistant wrote is an answer or a suggestion, not a decision, until a member agreed with it. A member's conversation with their assistant (a daily WhatsApp, heartbeat or menubar topic) can be about anything: keep only what concerns this project, and nothing personal. Most comments are routine coordination and status; leave those out.",
+    '- An artifact (an [[artifact:ID]] card) is something the project produced, such as a report, a dashboard or a presentation. Take what it states into the pages it concerns, and name the artifact where a reader should open it.',
     '- A document (a [[document:ID]] card) was added by a project member so that the wiki takes it in: work its substance into the pages it concerns and update what it supersedes, rather than writing a page that only summarizes the document; create a new page only for a subject no page covers yet. When the member said what to take from it, follow that. A long document arrives in parts; each part is a card of its own.',
     '- Link other wiki pages with [[slug]] or [[slug|label]].',
     '- A correction by a project member overrides older sources. Never bring back what a correction rejected.',
@@ -418,7 +420,10 @@ async function runKnowledgeBaseIngest({
     collectSources = collectKnowledgeSources,
     loadSourcesByKeys = loadKnowledgeSourcesByKeys,
     readNoteContent,
+    readThreadComments,
+    readArtifactContent,
     resolveUserNames,
+    resolveAssistantNames,
     maxRunWallClockMs = KNOWLEDGE_BASE_INGEST_MAX_RUN_WALL_CLOCK_MS,
     notifyCapReached = args => require('./knowledgeBaseCapNotice').notifyKnowledgeBaseCapReached(args),
 }) {
@@ -533,7 +538,10 @@ async function runKnowledgeBaseIngest({
         const labelsOf = sources => Object.fromEntries(sources.map(source => [source.key, source.title]))
         const sourceOptions = {
             ...(readNoteContent ? { readNoteContent } : {}),
+            ...(readThreadComments ? { readThreadComments } : {}),
+            ...(readArtifactContent ? { readArtifactContent } : {}),
             ...(resolveUserNames ? { resolveUserNames } : {}),
+            ...(resolveAssistantNames ? { resolveAssistantNames } : {}),
         }
         const onChange = change => changes.push(change)
 

@@ -14,13 +14,29 @@
 // enough for one prompt, because chunkKnowledgeSources cuts a card that is too large rather than
 // splitting it, and a deck's last slides matter as much as its first.
 //
+// Comment threads are sources too, one card per thread (`chat:ID`, the id of its chat object). A
+// thread belongs to the task, note, goal, contact or artifact it is attached to and is exactly as
+// visible as that object, whatever its own chat object says, so the object is read and filtered
+// like a source of its own; a topic is its own object. A delta card holds only the comments written
+// since the wiki last looked, because a thread is re-read every time anybody adds to it; a rebuild
+// reads the latest comments instead. Artifacts (`artifact:ID`) contribute their title, description
+// and the text of their current entry file (knowledgeArtifactText.js).
+//
 // What else is deliberately left out, and why:
-//   - email-derived tasks (gmailData): emails are opt-in for the wiki and not part of the MVP;
+//   - email-derived tasks (gmailData) and email comments: emails are opt-in for the wiki and not
+//     part of the MVP. A thread of an excluded object is left out with it;
 //   - the generated day-rate time-log task: bookkeeping, not knowledge;
-//   - user memory notes (parentObject.type === 'users'): personal facts about one member.
+//   - user memory notes (parentObject.type === 'users'): personal facts about one member;
+//   - the email day topics and the wiki's own Gold-limit notice. A member's daily WhatsApp,
+//     heartbeat and menubar topics with their assistant are sources, though: they are visible to the
+//     whole project like any topic, and the ingest decides what in them belongs to the project;
+//   - the threads of users, assistants and skills: a member's profile chat, an assistant's board;
+//   - a comment an assistant is still writing (isLoading / isThinking).
 //
 // Delta queries use single-field indexes only, so the wiki needs no composite index:
-//   - `lastEditionDate` ascending for every type, paged with a cursor;
+//   - `lastEditionDate` ascending for every type, paged with a cursor. A thread's chat object takes
+//     the time of every new comment, so one query on chatObjects finds every thread with something
+//     new, and its comments are then read by `created`, newest first;
 //   - tasks also by `completed`, because completing a task does not stamp lastEditionDate. That
 //     field has only a DESCENDING single-field index (see the field override in
 //     firestore.indexes.json), so it is read newest-first in one bounded window and a burst larger
@@ -43,6 +59,9 @@ const {
 
 const FEED_PUBLIC_FOR_ALL = 0
 const DAY_MS = 24 * 60 * 60 * 1000
+const GLOBAL_PROJECT_ID = 'globalProject'
+// A Firestore id that is safe to put into a document path.
+const AUTHOR_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 const SOURCE_QUERIES = [
     {
@@ -92,6 +111,29 @@ const SOURCE_QUERIES = [
         initialLookbackMs: null,
     },
     {
+        cursorKey: 'chats',
+        // Every thread card reads its comments (and the object it belongs to), so threads are read in
+        // smaller pages. The first look back is shorter than for tasks: a project's threads change
+        // daily (a heartbeat and a WhatsApp topic per member and day), and every existing wiki
+        // pays for that first build when threads become a source.
+        type: 'chat',
+        collectionPath: projectId => `chatObjects/${projectId}/chats`,
+        field: 'lastEditionDate',
+        direction: 'asc',
+        pageLimit: 60,
+        initialLookbackMs: 30 * DAY_MS,
+    },
+    {
+        cursorKey: 'artifacts',
+        // Every artifact card downloads its entry file.
+        type: 'artifact',
+        collectionPath: projectId => `artifactItems/${projectId}/artifacts`,
+        field: 'lastEditionDate',
+        direction: 'asc',
+        pageLimit: 20,
+        initialLookbackMs: null,
+    },
+    {
         cursorKey: 'documents',
         // Up to 120,000 characters each, so only a few per page.
         type: 'document',
@@ -108,6 +150,42 @@ const GOAL_DESCRIPTION_MAX_CHARS = 1500
 const CONTACT_DESCRIPTION_MAX_CHARS = 1500
 const NOTE_CONTENT_MAX_CHARS = 6000
 const NOTE_READ_CONCURRENCY = 5
+const THREAD_COMMENT_MAX_CHARS = 1500
+// Like a note: a thread contributes at most about one note's worth of text per card.
+const THREAD_CARD_MAX_CHARS = 6000
+const THREAD_COMMENTS_PER_CARD = 40
+const THREAD_READ_CONCURRENCY = 5
+const ARTIFACT_DESCRIPTION_MAX_CHARS = 1500
+const ARTIFACT_CONTENT_MAX_CHARS = 6000
+const ARTIFACT_READ_CONCURRENCY = 3
+
+// The threads that are sources, by their chat object's `type`, and the source type of the object
+// each belongs to. A topic is its own object.
+const TOPIC_THREAD_TYPE = 'topics'
+const THREAD_PARENT_SOURCE_TYPES = {
+    tasks: 'task',
+    notes: 'note',
+    goals: 'goal',
+    contacts: 'contact',
+    artifacts: 'artifact',
+}
+// Topics the server opens with deterministic ids that are never sources: the email day topics
+// (`BotChatEmail…`, emails stay out of the wiki like email tasks) and the wiki's own Gold-limit
+// notice (knowledgeBaseCapNotice.js `WikiGoldCap_…`). The other channel topics a member has with
+// their assistant (daily WhatsApp `BotChat…`, heartbeat `Heartbeat…`, menubar `MacApp…`) ARE
+// sources: things worth knowing get discussed there too, and the ingest decides what belongs to
+// the project.
+const EXCLUDED_TOPIC_ID_PREFIXES = [
+    { prefix: 'BotChatEmail', reason: 'email' },
+    { prefix: 'WikiGoldCap_', reason: 'wiki_notice' },
+]
+const THREAD_TYPE_LABELS = {
+    tasks: 'the task',
+    notes: 'the note',
+    goals: 'the goal',
+    contacts: 'the contact',
+    artifacts: 'the artifact',
+}
 // Well under the ingest's 16,000-token chunk, so a part always travels whole and with company.
 const DOCUMENT_PART_MAX_TOKENS = 10000
 // Due dates this far out are the "Someday" backlog, not a date anyone means.
@@ -138,6 +216,70 @@ function getExclusionReason(data, type) {
     }
     if (type === 'note' && data.parentObject?.type === 'users') return 'user_memory'
     return null
+}
+
+// The object a thread belongs to, as a source type and document path, or null for a topic (its own
+// object) and for the threads that are never sources.
+function getThreadParent(projectId, chatId, chat) {
+    const sourceType = THREAD_PARENT_SOURCE_TYPES[chat?.type]
+    return sourceType ? { sourceType, path: SOURCE_DOC_PATHS[sourceType](projectId, chatId) } : null
+}
+
+// Why a thread is not a source, or null when it is. `parent` is the object the thread belongs to
+// (undefined for a topic, null when that object is gone).
+function getThreadExclusionReason(chatId, chat, parent) {
+    if (chat?.type === TOPIC_THREAD_TYPE) {
+        if (!isVisibleToWholeProject(chat, 'chat')) return 'private'
+        const excluded = EXCLUDED_TOPIC_ID_PREFIXES.find(({ prefix }) => String(chatId).startsWith(prefix))
+        return excluded ? excluded.reason : null
+    }
+    const sourceType = THREAD_PARENT_SOURCE_TYPES[chat?.type]
+    if (!sourceType) return 'other_thread'
+    if (!parent) return 'missing_parent'
+    if (!isVisibleToWholeProject(parent, sourceType)) return 'private'
+    return getExclusionReason(parent, sourceType)
+}
+
+function isThreadCommentSource(comment) {
+    if (!comment || comment.gmailData) return false
+    return comment.isLoading !== true && comment.isThinking !== true
+}
+
+// Reads the objects the given threads belong to, in one batch, and decides for each thread whether
+// it is a source. Returns a Map chatId -> { reason, thread } where `thread` describes it for its card.
+async function resolveThreads(db, projectId, chats) {
+    const parents = chats.map(({ id, data }) => getThreadParent(projectId, id, data))
+    const refs = parents.filter(Boolean).map(parent => db.doc(parent.path))
+    const snapshots = refs.length ? await db.getAll(...refs) : []
+    const parentData = new Map(
+        snapshots.map(snapshot => [snapshot.ref.path, snapshot.exists ? snapshot.data() || {} : null])
+    )
+
+    const threads = new Map()
+    chats.forEach(({ id, data }, index) => {
+        const parent = parents[index]
+        const parentDoc = parent ? parentData.get(parent.path) : undefined
+        const reason = getThreadExclusionReason(id, data, parentDoc)
+        const title = parent
+            ? cleanText(
+                  parentDoc?.extendedName ||
+                      parentDoc?.name ||
+                      parentDoc?.extendedTitle ||
+                      parentDoc?.title ||
+                      parentDoc?.displayName,
+                  300
+              )
+            : cleanText(data.title, 300)
+        threads.set(id, {
+            reason,
+            thread: {
+                threadType: data.type,
+                title: title || cleanText(data.title, 300) || '(untitled conversation)',
+                parentKey: parent ? buildKnowledgeSourceKey(parent.sourceType, id) : null,
+            },
+        })
+    })
+    return threads
 }
 
 function cleanText(value, maxChars) {
@@ -274,6 +416,64 @@ function buildContactCard(id, data) {
     return { title, text: lines.join('\n') }
 }
 
+function describeCommentAuthor(comment, userNames, assistantNames) {
+    const name = comment.fromAssistant
+        ? assistantNames[comment.creatorId]
+            ? `${assistantNames[comment.creatorId]} (assistant)`
+            : 'an assistant'
+        : userNames[comment.creatorId] || 'a project member'
+    // Written by an MCP client in the member's name (shared/mcpActor.js).
+    return comment.via === 'mcp' ? `${name} (via ${comment.viaClient || 'MCP'})` : name
+}
+
+// One thread as a card: the comments in the order they were written, the newest kept when they do
+// not all fit. `comments` arrive newest first, already filtered; `moreBefore` says the read itself
+// stopped at its limit, so there are older ones the card cannot show.
+function buildThreadCard(id, thread, { comments, moreBefore }, userNames, assistantNames, { onlyNew }) {
+    const lines = []
+    let size = 0
+    let omitted = moreBefore
+    for (const comment of comments) {
+        const text = cleanText(comment.commentText, THREAD_COMMENT_MAX_CHARS).replace(/\n+/g, '\n  ')
+        if (!text) continue
+        const date = formatDate(toMillis(comment.created))
+        const line = `- ${date ? `${date} ` : ''}${describeCommentAuthor(comment, userNames, assistantNames)}: ${text}`
+        if (lines.length && size + line.length > THREAD_CARD_MAX_CHARS) {
+            omitted = true
+            break
+        }
+        lines.push(line)
+        size += line.length
+    }
+    if (!lines.length) return null
+    lines.reverse()
+
+    const where =
+        thread.threadType === TOPIC_THREAD_TYPE
+            ? `Chat topic "${thread.title}"`
+            : `Comments on ${THREAD_TYPE_LABELS[thread.threadType] || 'the object'}${
+                  thread.parentKey ? ` [[${thread.parentKey}]]` : ''
+              } "${thread.title}"`
+    const count = `${lines.length} ${onlyNew ? 'new ' : ''}comment${lines.length === 1 ? '' : 's'}`
+    const header = `[[chat:${id}]] ${where} (${count}${omitted ? ', older ones left out' : ''})`
+    return { title: thread.title, text: [header, ...lines].join('\n') }
+}
+
+function buildArtifactCard(id, data, content) {
+    const title = cleanText(data.title, 300) || '(untitled artifact)'
+    const details = [`${data.kind || 'file'} artifact`]
+    const versions = Number(data.versionCount)
+    if (Number.isFinite(versions) && versions > 0) details.push(`version ${versions}`)
+    const edited = formatDate(toMillis(data.lastEditionDate))
+    if (edited) details.push(`last changed ${edited}`)
+    const lines = [`[[artifact:${id}]] "${title}" (${details.join(', ')})`]
+    const description = cleanText(data.description, ARTIFACT_DESCRIPTION_MAX_CHARS)
+    if (description) lines.push(`Description: ${description}`)
+    const body = cleanText(content, ARTIFACT_CONTENT_MAX_CHARS)
+    if (body) lines.push(`Content:\n${body}`)
+    return { title, text: lines.join('\n') }
+}
+
 function readQueryCursor(cursor, cursorKey) {
     const entry = cursor && cursor[cursorKey]
     if (!entry || !Number.isFinite(entry.ms)) return null
@@ -314,6 +514,8 @@ async function runSourceQuery({ db, projectId, spec, cursor, now }) {
         exhausted: spec.direction === 'desc' || !full,
         truncated: spec.direction === 'desc' && full,
         start,
+        // Where this read began: for a thread, the comments written since then are the new ones.
+        fromMs,
     }
 }
 
@@ -331,6 +533,51 @@ async function resolveUserNamesFromFirestore(db, userIds) {
         })
     }
     return names
+}
+
+// Assistants live in the project's own assistants collection or, for the shared ones, in the
+// global project; a comment only names its author's id.
+async function resolveAssistantNamesFromFirestore(db, projectId, assistantIds) {
+    const ids = [...new Set(assistantIds.filter(id => typeof id === 'string' && AUTHOR_ID_PATTERN.test(id)))]
+    const names = {}
+    for (const collectionProjectId of [projectId, GLOBAL_PROJECT_ID]) {
+        const missing = ids.filter(id => !names[id])
+        for (let index = 0; index < missing.length; index += 100) {
+            const refs = missing
+                .slice(index, index + 100)
+                .map(id => db.doc(`assistants/${collectionProjectId}/items/${id}`))
+            const snapshots = await db.getAll(...refs)
+            snapshots.forEach(snapshot => {
+                if (!snapshot.exists) return
+                const name = (snapshot.data() || {}).displayName
+                if (name) names[snapshot.id] = String(name)
+            })
+        }
+    }
+    return names
+}
+
+// The newest comments of a thread, newest first: those written since `sinceMs` for a delta, the
+// latest ones for a rebuild. `created` has the default single-field index in both directions.
+async function readThreadCommentsFromFirestore(db, { projectId, threadType, chatId, sinceMs, limit }) {
+    let query = db.collection(`chatComments/${projectId}/${threadType}/${chatId}/comments`)
+    if (Number.isFinite(sinceMs)) query = query.where('created', '>=', sinceMs)
+    const snapshot = await query.orderBy('created', 'desc').limit(limit).get()
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
+}
+
+function createDefaultArtifactContentReader() {
+    return async (projectId, artifactId, artifact) => {
+        const admin = require('firebase-admin')
+        const { readArtifactText } = require('./knowledgeArtifactText')
+        return readArtifactText({
+            bucket: admin.storage().bucket(),
+            projectId,
+            artifactId,
+            artifact,
+            maxChars: ARTIFACT_CONTENT_MAX_CHARS,
+        })
+    }
 }
 
 let defaultNoteServicePromise = null
@@ -375,7 +622,10 @@ async function collectKnowledgeSources({
     cursor = {},
     now = Date.now(),
     readNoteContent = createDefaultNoteContentReader(),
+    readThreadComments = options => readThreadCommentsFromFirestore(db, options),
+    readArtifactContent = createDefaultArtifactContentReader(),
     resolveUserNames = userIds => resolveUserNamesFromFirestore(db, userIds),
+    resolveAssistantNames = assistantIds => resolveAssistantNamesFromFirestore(db, projectId, assistantIds),
 }) {
     if (!db) throw new Error('db is required')
     if (!projectId) throw new Error('projectId is required')
@@ -383,6 +633,9 @@ async function collectKnowledgeSources({
     const results = await Promise.all(
         SOURCE_QUERIES.map(async spec => ({ spec, ...(await runSourceQuery({ db, projectId, spec, cursor, now })) }))
     )
+    const chatsResult = results.find(result => result.spec.type === 'chat')
+    const threads =
+        chatsResult && chatsResult.docs.length ? await resolveThreads(db, projectId, chatsResult.docs) : new Map()
 
     const stats = { scanned: 0, included: 0, skipped: {}, truncated: [] }
     const nextCursor = { ...(cursor || {}) }
@@ -396,9 +649,12 @@ async function collectKnowledgeSources({
             stats.scanned += 1
             position = moveCursor(position, doc.ms, doc.id)
 
-            const reason = !isVisibleToWholeProject(doc.data, spec.type)
-                ? 'private'
-                : getExclusionReason(doc.data, spec.type)
+            const reason =
+                spec.type === 'chat'
+                    ? threads.get(doc.id)?.reason
+                    : !isVisibleToWholeProject(doc.data, spec.type)
+                      ? 'private'
+                      : getExclusionReason(doc.data, spec.type)
             if (reason) {
                 stats.skipped[reason] = (stats.skipped[reason] || 0) + 1
                 continue
@@ -418,6 +674,7 @@ async function collectKnowledgeSources({
                     data: doc.data,
                     updatedAt: doc.ms,
                     positions: [{ cursorKey: spec.cursorKey, ms: doc.ms }],
+                    ...(spec.type === 'chat' && { thread: threads.get(doc.id).thread, commentsSinceMs: result.fromMs }),
                 })
             }
         }
@@ -425,7 +682,15 @@ async function collectKnowledgeSources({
     }
 
     const sources = (
-        await buildSourceCards({ projectId, entries: [...candidates.values()], readNoteContent, resolveUserNames })
+        await buildSourceCards({
+            projectId,
+            entries: [...candidates.values()],
+            readNoteContent,
+            readThreadComments,
+            readArtifactContent,
+            resolveUserNames,
+            resolveAssistantNames,
+        })
     ).sort(
         (left, right) =>
             left.updatedAt - right.updatedAt ||
@@ -436,30 +701,90 @@ async function collectKnowledgeSources({
     return { sources, nextCursor, exhausted: results.every(result => result.exhausted), stats }
 }
 
-// Turns visible, non-excluded documents into cards: resolves the user names the cards mention and
-// downloads note bodies, a few at a time.
-async function buildSourceCards({ projectId, entries, readNoteContent, resolveUserNames }) {
+// Turns visible, non-excluded documents into cards: downloads note bodies, reads thread comments and
+// artifact files, a few at a time, then resolves the names the cards mention.
+async function buildSourceCards({
+    projectId,
+    entries,
+    readNoteContent,
+    readThreadComments,
+    readArtifactContent,
+    resolveUserNames,
+    resolveAssistantNames,
+}) {
+    const noteContents = new Map()
+    const threadComments = new Map()
+    const artifactContents = new Map()
+    const readEach = (type, concurrency, read, describe) =>
+        mapWithConcurrency(
+            entries.filter(entry => entry.type === type),
+            concurrency,
+            async entry => {
+                try {
+                    await read(entry)
+                } catch (error) {
+                    // A source whose content cannot be read still contributes what its document says.
+                    console.warn(`[knowledge base] Could not read ${describe}`, {
+                        projectId,
+                        id: entry.id,
+                        error: error.message,
+                    })
+                }
+            }
+        )
+    await Promise.all([
+        readEach(
+            'note',
+            NOTE_READ_CONCURRENCY,
+            async entry => {
+                noteContents.set(entry.id, await readNoteContent(projectId, entry.id))
+            },
+            'note content'
+        ),
+        readEach(
+            'chat',
+            THREAD_READ_CONCURRENCY,
+            async entry => {
+                const comments = await readThreadComments({
+                    projectId,
+                    threadType: entry.thread.threadType,
+                    chatId: entry.id,
+                    sinceMs: entry.commentsSinceMs,
+                    limit: THREAD_COMMENTS_PER_CARD,
+                })
+                const read = Array.isArray(comments) ? comments : []
+                threadComments.set(entry.id, {
+                    comments: read
+                        .filter(isThreadCommentSource)
+                        .sort((left, right) => (toMillis(right.created) || 0) - (toMillis(left.created) || 0)),
+                    moreBefore: read.length >= THREAD_COMMENTS_PER_CARD,
+                })
+            },
+            'thread comments'
+        ),
+        readEach(
+            'artifact',
+            ARTIFACT_READ_CONCURRENCY,
+            async entry => {
+                artifactContents.set(entry.id, await readArtifactContent(projectId, entry.id, entry.data))
+            },
+            'artifact content'
+        ),
+    ])
+
     const userIds = []
+    const assistantIds = []
     entries.forEach(entry => {
         if (entry.type === 'task') userIds.push(entry.data.userId)
         if (entry.type === 'goal' && Array.isArray(entry.data.assigneesIds)) userIds.push(...entry.data.assigneesIds)
     })
-    const userNames = userIds.length ? await resolveUserNames(userIds) : {}
-
-    const noteContents = new Map()
-    const notes = entries.filter(entry => entry.type === 'note')
-    await mapWithConcurrency(notes, NOTE_READ_CONCURRENCY, async entry => {
-        try {
-            noteContents.set(entry.id, await readNoteContent(projectId, entry.id))
-        } catch (error) {
-            // A note whose body cannot be read still contributes its title and preview.
-            console.warn('[knowledge base] Could not read note content', {
-                projectId,
-                noteId: entry.id,
-                error: error.message,
-            })
-        }
-    })
+    threadComments.forEach(({ comments }) =>
+        comments.forEach(comment => (comment.fromAssistant ? assistantIds : userIds).push(comment.creatorId))
+    )
+    const [userNames, assistantNames] = await Promise.all([
+        userIds.length ? resolveUserNames(userIds) : {},
+        assistantIds.length ? resolveAssistantNames(assistantIds) : {},
+    ])
 
     return entries.flatMap(entry => {
         const cards =
@@ -469,11 +794,28 @@ async function buildSourceCards({ projectId, entries, readNoteContent, resolveUs
                   ? [buildGoalCard(entry.id, entry.data, userNames)]
                   : entry.type === 'note'
                     ? [buildNoteCard(entry.id, entry.data, noteContents.get(entry.id))]
-                    : entry.type === 'correction'
-                      ? [buildCorrectionCard(entry.id, entry.data)]
-                      : entry.type === 'document'
-                        ? buildDocumentCards(entry.id, entry.data)
-                        : [buildContactCard(entry.id, entry.data)]
+                    : entry.type === 'chat'
+                      ? // A thread whose chat object moved without a comment (a rename, a follower) has
+                        // nothing new to say.
+                        [
+                            buildThreadCard(
+                                entry.id,
+                                entry.thread,
+                                threadComments.get(entry.id) || { comments: [], moreBefore: false },
+                                userNames,
+                                assistantNames,
+                                {
+                                    onlyNew: Number.isFinite(entry.commentsSinceMs),
+                                }
+                            ),
+                        ].filter(Boolean)
+                      : entry.type === 'artifact'
+                        ? [buildArtifactCard(entry.id, entry.data, artifactContents.get(entry.id))]
+                        : entry.type === 'correction'
+                          ? [buildCorrectionCard(entry.id, entry.data)]
+                          : entry.type === 'document'
+                            ? buildDocumentCards(entry.id, entry.data)
+                            : [buildContactCard(entry.id, entry.data)]
         return cards.map((card, index) => ({
             key: entry.key,
             type: entry.type,
@@ -509,6 +851,8 @@ const SOURCE_DOC_PATHS = {
     goal: (projectId, id) => `goals/${projectId}/items/${id}`,
     note: (projectId, id) => `noteItems/${projectId}/notes/${id}`,
     contact: (projectId, id) => `projectsContacts/${projectId}/contacts/${id}`,
+    chat: (projectId, id) => `chatObjects/${projectId}/chats/${id}`,
+    artifact: (projectId, id) => `artifactItems/${projectId}/artifacts/${id}`,
     correction: (projectId, id) => `knowledgeBases/${projectId}/corrections/${id}`,
     document: (projectId, id) => `${getKnowledgeDocumentsPath(projectId)}/${id}`,
 }
@@ -516,37 +860,58 @@ const SOURCE_DOC_PATHS = {
 /**
  * Cards for a known set of source keys, as a page rebuild needs them. Every object is read again
  * and goes through the same visibility filter as the delta: a key on a page is a hint, never
- * proof that the object is still visible to the whole project. Missing objects are dropped.
+ * proof that the object is still visible to the whole project. Missing objects are dropped. A
+ * thread is read again through the object it belongs to, and contributes its latest comments.
  */
 async function loadKnowledgeSourcesByKeys({
     db,
     projectId,
     keys,
     readNoteContent = createDefaultNoteContentReader(),
+    readThreadComments = options => readThreadCommentsFromFirestore(db, options),
+    readArtifactContent = createDefaultArtifactContentReader(),
     resolveUserNames = userIds => resolveUserNamesFromFirestore(db, userIds),
+    resolveAssistantNames = assistantIds => resolveAssistantNamesFromFirestore(db, projectId, assistantIds),
 }) {
     const parsed = [...new Set(keys || [])].map(parseKnowledgeSourceKey).filter(Boolean)
     if (!parsed.length) return []
 
     const snapshots = await db.getAll(...parsed.map(({ type, id }) => db.doc(SOURCE_DOC_PATHS[type](projectId, id))))
+    const loaded = snapshots
+        .map((snapshot, index) => ({ ...parsed[index], exists: snapshot.exists, data: snapshot.data() || {} }))
+        .filter(({ exists }) => exists)
+    const chats = loaded.filter(({ type }) => type === 'chat')
+    const threads = chats.length ? await resolveThreads(db, projectId, chats) : new Map()
+
     const entries = []
-    snapshots.forEach((snapshot, index) => {
-        const { type, id } = parsed[index]
-        if (!snapshot.exists) return
-        const data = snapshot.data() || {}
+    loaded.forEach(({ type, id, data }) => {
         // Corrections live inside the wiki itself and share its audience by construction; one that
         // was undone is no source any more.
-        if (type === 'correction' ? data.status === 'reverted' : !isVisibleToWholeProject(data, type)) return
-        if (type !== 'correction' && getExclusionReason(data, type)) return
+        if (type === 'correction') {
+            if (data.status === 'reverted') return
+        } else if (type === 'chat') {
+            if (threads.get(id).reason) return
+        } else if (!isVisibleToWholeProject(data, type) || getExclusionReason(data, type)) {
+            return
+        }
         entries.push({
             key: `${type}:${id}`,
             type,
             id,
             data,
             updatedAt: toMillis(data.lastEditionDate) || toMillis(data.createdAt) || 0,
+            ...(type === 'chat' && { thread: threads.get(id).thread, commentsSinceMs: null }),
         })
     })
-    return buildSourceCards({ projectId, entries, readNoteContent, resolveUserNames })
+    return buildSourceCards({
+        projectId,
+        entries,
+        readNoteContent,
+        readThreadComments,
+        readArtifactContent,
+        resolveUserNames,
+        resolveAssistantNames,
+    })
 }
 
 /**
@@ -594,8 +959,10 @@ function chunkKnowledgeSources(sources, { maxTokens = 20000 } = {}) {
 module.exports = {
     SOURCE_QUERIES,
     DOCUMENT_PART_MAX_TOKENS,
+    THREAD_COMMENTS_PER_CARD,
     isVisibleToWholeProject,
     getExclusionReason,
+    getThreadExclusionReason,
     collectKnowledgeSources,
     loadKnowledgeSourcesByKeys,
     buildCorrectionCard,

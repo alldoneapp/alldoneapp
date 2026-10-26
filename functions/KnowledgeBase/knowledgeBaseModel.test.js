@@ -49,18 +49,24 @@ describe('source keys', () => {
     it('maps the plural object types the triggers use onto singular source types', () => {
         expect(toKnowledgeSourceType('tasks')).toBe('task')
         expect(toKnowledgeSourceType('contacts')).toBe('contact')
+        expect(toKnowledgeSourceType('artifacts')).toBe('artifact')
+        // A thread is keyed by its chat object, never by the object type of the thread it is.
         expect(toKnowledgeSourceType('chats')).toBeNull()
+        expect(toKnowledgeSourceType('topics')).toBeNull()
     })
 
     it('builds and parses keys for Firestore push ids', () => {
         expect(buildKnowledgeSourceKey('tasks', '-OpffOJFeG3jsXRd-GIZ')).toBe('task:-OpffOJFeG3jsXRd-GIZ')
         expect(parseKnowledgeSourceKey('goal:g_1')).toEqual({ type: 'goal', id: 'g_1' })
+        expect(buildKnowledgeSourceKey('chat', 'BotChat20261026u1')).toBe('chat:BotChat20261026u1')
+        expect(parseKnowledgeSourceKey('artifact:a1')).toEqual({ type: 'artifact', id: 'a1' })
     })
 
     it('refuses ids that could break out of a path or a token', () => {
         expect(buildKnowledgeSourceKey('task', 'a/b')).toBeNull()
         expect(buildKnowledgeSourceKey('task', 'a]]b')).toBeNull()
-        expect(buildKnowledgeSourceKey('chat', 'abc')).toBeNull()
+        expect(buildKnowledgeSourceKey('skill', 'abc')).toBeNull()
+        expect(buildKnowledgeSourceKey('chat', 'a b')).toBeNull()
         expect(parseKnowledgeSourceKey('task:')).toBeNull()
     })
 })

@@ -412,14 +412,6 @@ Open items:
 
 ## Linked uploads (AT-2828, 2026-10-25)
 
-**Updated 2026-10-26, AT-2860:** the read-time view below is now computed by the
-`getProjectLinkedUploads` callable (`functions/Artifacts/linkedUploadsIndex.js`) instead of browser
-listeners, which created ~28,000 Firestore targets per visit and stalled the client. The server keeps
-a candidate index (`artifactUploadIndex/{projectId}`, server-only), reads a project in full once and
-then only what changed, and re-checks every candidate and its access on each call. The access and
-display rules described here are unchanged. A one-time reset removes the bloated cache from devices
-that visited the tab before (`utils/backends/firestoreCacheReset.js`).
-
 The All list combines full artifacts with a read-time view of original uploads
 (`utils/backends/Artifacts/linkedUploads.js`). It reads authorized task, note, goal, contact,
 skill, topic, artifact and OKR documents, their comment threads, plus project-user and assistant
