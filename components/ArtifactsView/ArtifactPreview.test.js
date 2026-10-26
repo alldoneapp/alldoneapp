@@ -102,3 +102,84 @@ it('frames a data-bound page at the bridge address with nothing but scripts allo
     expect(frame.props['data-bridge']).toBe('true')
     expect(typeof frame.props.onLoad).toBe('function')
 })
+
+describe('natural height (AT-2881)', () => {
+    const { ARTIFACT_FRAME_PROTOCOL } = require('../../functions/Artifacts/artifactFrameHeight')
+
+    // A rendered frame with a window of its own, as react-dom would give it.
+    async function renderFramed(props) {
+        const frameWindow = { postMessage: jest.fn() }
+        let tree
+        await act(async () => {
+            tree = renderer.create(<ArtifactPreview projectId="project-a" {...props} />, {
+                createNodeMock: element => (element.type === 'iframe' ? { contentWindow: frameWindow } : null),
+            })
+        })
+        return { tree, frameWindow }
+    }
+
+    async function post(data, { source, origin = 'null' } = {}) {
+        await act(async () => {
+            window.dispatchEvent(new MessageEvent('message', { data, source, origin }))
+        })
+    }
+
+    const heightMessage = height => ({ protocol: ARTIFACT_FRAME_PROTOCOL, type: 'height', height })
+    const frameOf = tree => byTestId(tree, 'artifact-preview-frame')[0]
+
+    it('takes the height its own page reports, and follows it as the page changes', async () => {
+        const { tree, frameWindow } = await renderFramed({ artifact: artifact(), height: 700, autoHeight: true })
+        expect(frameOf(tree).props.style.height).toBe(700)
+
+        await post(heightMessage(2480), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(2480)
+        expect(frameOf(tree).props['data-natural-height']).toBe('true')
+
+        await post(heightMessage(310), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(310)
+        // Isolation is untouched.
+        expect(frameOf(tree).props.sandbox).toBe(ARTIFACT_IFRAME_SANDBOX)
+    })
+
+    it('ignores a height from any other window, from a real origin, or in any other shape', async () => {
+        const { tree, frameWindow } = await renderFramed({ artifact: artifact(), height: 700, autoHeight: true })
+        await post(heightMessage(2000), { source: { postMessage: jest.fn() } })
+        await post(heightMessage(2000), { source: window })
+        await post(heightMessage(2000), { source: frameWindow, origin: 'https://evil.example' })
+        await post({ protocol: 'alldone-bridge-v1', type: 'height', height: 2000 }, { source: frameWindow })
+        await post(heightMessage('tall'), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(700)
+    })
+
+    it('caps what a page may ask for', async () => {
+        const { MAX_FRAME_CONTENT_HEIGHT } = require('../../functions/Artifacts/artifactFrameHeight')
+        const { tree, frameWindow } = await renderFramed({ artifact: artifact(), height: 700, autoHeight: true })
+        await post(heightMessage(10 ** 9), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(MAX_FRAME_CONTENT_HEIGHT)
+    })
+
+    it('grows a data-bound page too, with the bridge still answering only that frame', async () => {
+        const { tree, frameWindow } = await renderFramed({
+            artifact: artifact({ dataAccess: true }),
+            height: 700,
+            autoHeight: true,
+        })
+        expect(frameOf(tree).props['data-bridge']).toBe('true')
+        await post(heightMessage(1500), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(1500)
+    })
+
+    it('keeps a fixed frame where the caller fixes it (a note card) and for a PDF', async () => {
+        const { tree, frameWindow } = await renderFramed({ artifact: artifact(), height: 260 })
+        await post(heightMessage(2000), { source: frameWindow })
+        expect(frameOf(tree).props.style.height).toBe(260)
+
+        const pdf = await renderFramed({
+            artifact: artifact({ kind: 'pdf', mimeType: 'application/pdf', entryPath: 'r.pdf' }),
+            height: 700,
+            autoHeight: true,
+        })
+        await post(heightMessage(2000), { source: pdf.frameWindow })
+        expect(byTestId(pdf.tree, 'artifact-preview-pdf')[0].props.style.height).toBe(700)
+    })
+})

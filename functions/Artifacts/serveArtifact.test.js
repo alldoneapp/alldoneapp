@@ -222,3 +222,77 @@ describe('live data bridge', () => {
         expect(plain.headers['Content-Security-Policy']).toBe(ACTIVE_CONTENT_SECURITY_POLICY)
     })
 })
+
+describe('natural-height frames (AT-2881)', () => {
+    const { FRAME_HEIGHT_SCRIPT_TAG } = require('./artifactFrameHeight')
+    const html = '<!doctype html><html><body><h1>Report</h1></body></html>'
+
+    it('appends the height reporter only to an HTML page loaded into a frame', async () => {
+        await seed([{ path: 'index.html', base64: base64(html) }])
+
+        const framed = await request(artifactUrl(''), { headers: { 'sec-fetch-dest': 'iframe' } })
+        expect(framed.statusCode).toBe(200)
+        expect(framed.body()).toBe(html + FRAME_HEIGHT_SCRIPT_TAG)
+        expect(framed.body().startsWith('<!doctype html>')).toBe(true)
+        expect(framed.headers['Content-Length']).toBe(String(Buffer.byteLength(html + FRAME_HEIGHT_SCRIPT_TAG)))
+        expect(framed.headers['Content-Security-Policy']).toBe(ACTIVE_CONTENT_SECURITY_POLICY)
+        expect(framed.headers.Vary).toBe('Sec-Fetch-Dest')
+        expect(framed.headers.ETag).toMatch(/-frame"$/)
+
+        // Full screen (a top-level document), a download and a fetch get the stored bytes.
+        for (const dest of [undefined, 'document', 'empty']) {
+            const plain = await request(artifactUrl(''), { headers: dest ? { 'sec-fetch-dest': dest } : {} })
+            expect(plain.body()).toBe(html)
+            expect(plain.headers.Vary).toBe('Sec-Fetch-Dest')
+            expect(plain.headers.ETag).not.toMatch(/-frame"$/)
+        }
+    })
+
+    it('keeps the locked-down bridge policy, whose inline-script allowance the reporter needs', async () => {
+        await seed([{ path: 'index.html', base64: base64(html) }])
+        const res = await request(artifactUrl(''), {
+            headers: { 'sec-fetch-dest': 'iframe' },
+            query: { 'alldone-bridge': '1' },
+        })
+        expect(res.body()).toBe(html + FRAME_HEIGHT_SCRIPT_TAG)
+        expect(res.headers['Content-Security-Policy']).toBe(ARTIFACT_BRIDGE_CONTENT_SECURITY_POLICY)
+        expect(ARTIFACT_BRIDGE_CONTENT_SECURITY_POLICY).toContain("'unsafe-inline'")
+    })
+
+    it('never touches other types, even when framed', async () => {
+        await seed([
+            { path: 'index.html', base64: base64(html) },
+            { path: 'chart.svg', base64: base64('<svg xmlns="http://www.w3.org/2000/svg"/>') },
+            { path: 'report.pdf', base64: base64('%PDF-1.7') },
+        ])
+        const headers = { 'sec-fetch-dest': 'iframe' }
+        expect((await request(artifactUrl('chart.svg'), { headers })).body()).toBe(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>'
+        )
+        const pdf = await request(artifactUrl('report.pdf'), { headers })
+        expect(pdf.body()).toBe('%PDF-1.7')
+        expect(pdf.headers.Vary).toBeUndefined()
+    })
+
+    it('revalidates the framed variant by its own ETag and answers HEAD without a stale length', async () => {
+        await seed([{ path: 'index.html', base64: base64(html) }])
+        const framed = await request(artifactUrl(''), { headers: { 'sec-fetch-dest': 'iframe' } })
+
+        const notModified = await request(artifactUrl(''), {
+            headers: { 'sec-fetch-dest': 'iframe', 'if-none-match': framed.headers.ETag },
+        })
+        expect(notModified.statusCode).toBe(304)
+
+        // The stored file's ETag does not match the framed body.
+        const plain = await request(artifactUrl(''))
+        const mixed = await request(artifactUrl(''), {
+            headers: { 'sec-fetch-dest': 'iframe', 'if-none-match': plain.headers.ETag },
+        })
+        expect(mixed.statusCode).toBe(200)
+
+        const head = await request(artifactUrl(''), { method: 'HEAD', headers: { 'sec-fetch-dest': 'iframe' } })
+        expect(head.statusCode).toBe(200)
+        expect(head.headers['Content-Length']).toBeUndefined()
+        expect(head.body()).toBe('')
+    })
+})

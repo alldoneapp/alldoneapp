@@ -884,6 +884,20 @@ the membership sync rewrites `readerIds`) and on "Reset link". Artifact bytes ge
 token; reads go only through the function. `serveArtifact` caches an artifact document for 60s per
 instance, so a rotation lands within a minute.
 
+**An HTML artifact is framed at its natural height, which only the page can report (AT-2881).**
+The frame is cross-origin and sandboxed, so the app cannot measure it. `serveArtifact` appends a
+small reporter (`Artifacts/artifactFrameHeight.js`) to an HTML response **only** when the browser
+loads it into a frame (`Sec-Fetch-Dest: iframe`, with `Vary` and a separate `-frame` ETag), so full
+screen, downloads and fetches still get the stored bytes. The script posts its height to its parent.
+`useArtifactFrameHeight` accepts the height only from that frame's own window and only from
+origin `'null'`, then clamps it. Only the detail view opts in (`autoHeight`). Note cards and PDFs
+keep a fixed frame. A page whose height follows its viewport, or flips between two heights, is
+settled by the script and keeps an inner scrollbar. The same applies to a page that never reports,
+such as a cached response or a page whose own CSP blocks inline script. Rendering is throttled in
+off-screen cross-origin frames, so measuring must not rely on `requestAnimationFrame` alone. Pinned
+by `artifactFrameHeight.test.js`, the AT-2881 blocks of `serveArtifact.test.js` /
+`ArtifactPreview.test.js`, and `node browser-tests/artifacts/frameHeight.js` (real Chromium).
+
 **Only Cloud Functions create artifacts and write versions and bytes** (`commitArtifactVersion`,
 `restoreArtifactVersion`, `resetArtifactLink`); `firestore.rules` refuses a client create and any
 client update touching a server-owned field (`artifactServerFieldsUnchanged`, mirrored by
