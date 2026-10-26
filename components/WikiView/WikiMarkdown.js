@@ -105,9 +105,16 @@ function Inline({ nodes, context }) {
     })
 }
 
-// Where list text starts, and how far each nested list steps right — the notes editor's values.
-const LIST_TEXT_INDENT = 36
-const LIST_NESTING_STEP = 24
+// Where list text starts, measured from the content edge the list's marker sits on. Unlike the
+// notes editor (which insets the whole list by ~26px), a wiki list starts its markers at the same
+// left edge as the headings and paragraphs around it (AT-2873 follow-up).
+const LIST_TEXT_INDENT = 20
+// A Roboto digit at 16px is 9px wide: every extra digit of the highest number widens the column of
+// an ordered list by that much, so "10." starts at the content edge and "9." stays right-aligned.
+const LIST_DIGIT_WIDTH = 9
+
+const getListColumnWidth = block =>
+    block.ordered ? LIST_TEXT_INDENT + (String(block.items.length).length - 1) * LIST_DIGIT_WIDTH : LIST_TEXT_INDENT
 
 const HEADING_STYLES = {
     1: styles.title5,
@@ -116,7 +123,7 @@ const HEADING_STYLES = {
     4: styles.subtitle2,
 }
 
-function Block({ block, context, depth = 0 }) {
+function Block({ block, context, depth = 0, parentColumnWidth = 0 }) {
     switch (block.type) {
         case 'heading':
             return (
@@ -130,9 +137,14 @@ function Block({ block, context, depth = 0 }) {
                     <Inline nodes={block.inline} context={context} />
                 </Text>
             )
-        case 'list':
+        case 'list': {
+            const columnWidth = getListColumnWidth(block)
             return (
-                <View testID="wiki-list" style={[localStyles.list, depth > 0 && localStyles.nestedList]}>
+                <View
+                    testID="wiki-list"
+                    // A nested list starts its markers exactly under the text of the item it belongs to.
+                    style={[localStyles.list, depth > 0 && [localStyles.nestedList, { marginLeft: parentColumnWidth }]]}
+                >
                     {block.items.map((item, index) => (
                         <View key={index}>
                             <View style={localStyles.listItem}>
@@ -140,6 +152,7 @@ function Block({ block, context, depth = 0 }) {
                                     testID="wiki-list-marker"
                                     style={[
                                         localStyles.listMarker,
+                                        { minWidth: columnWidth },
                                         block.ordered ? localStyles.orderedListMarker : localStyles.bulletListMarker,
                                     ]}
                                 >
@@ -150,12 +163,19 @@ function Block({ block, context, depth = 0 }) {
                                 </Text>
                             </View>
                             {item.children.map((child, childIndex) => (
-                                <Block key={childIndex} block={child} context={context} depth={depth + 1} />
+                                <Block
+                                    key={childIndex}
+                                    block={child}
+                                    context={context}
+                                    depth={depth + 1}
+                                    parentColumnWidth={columnWidth}
+                                />
                             ))}
                         </View>
                     ))}
                 </View>
             )
+        }
         case 'quote':
             return (
                 <View style={localStyles.quote}>
@@ -264,15 +284,14 @@ const localStyles = StyleSheet.create({
         fontFamily: 'alldone',
         color: colors.Text03,
     },
-    // Lists are laid out like lists in notes (AT-2873, measured against the notes editor's
-    // toolbar-styles.css at the same 16px): the marker sits in a fixed column, right-aligned, so the
-    // text of every item — and every wrapped line of it — starts at the same indent, and each nesting
-    // level steps right by the same 24px a note does.
+    // Lists (AT-2873): the marker sits in a fixed column that starts at the content edge, so the
+    // bullet lines up with the headings and paragraphs around it, and the text of every item — and
+    // every wrapped line of it — starts at the same indent. Nested lists start under their parent's
+    // text (marginLeft is set per list from the parent's column width).
     list: {
         marginBottom: 12,
     },
     nestedList: {
-        marginLeft: LIST_NESTING_STEP,
         marginBottom: 0,
     },
     listItem: {
@@ -282,20 +301,20 @@ const localStyles = StyleSheet.create({
     // The app shell forces `flex-basis: auto !important` on every element (web-bundler/index.html),
     // which turns the text's `flex: 1` into a content-sized basis. Without flexShrink: 0 the marker
     // column was then squeezed in proportion to how long the item is, so the gap between bullet and
-    // text changed from item to item. minWidth (not width) lets a long number like "100." widen its
-    // own column instead of running into the text.
+    // text changed from item to item. minWidth (not width) lets a number wider than the estimate
+    // (another font) widen its own column instead of running into the text.
     listMarker: {
         ...styles.body1,
         color: colors.Text02,
-        minWidth: LIST_TEXT_INDENT,
         flexShrink: 0,
-        textAlign: 'right',
     },
     bulletListMarker: {
-        paddingRight: 4,
+        textAlign: 'left',
     },
+    // Numbers are right-aligned so their dots line up, with the widest one on the content edge.
     orderedListMarker: {
-        paddingRight: 11,
+        textAlign: 'right',
+        paddingRight: 6,
     },
     listText: {
         ...styles.body1,

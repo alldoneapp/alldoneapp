@@ -117,8 +117,9 @@ describe('WikiMarkdown', () => {
     // AT-2873. Layout itself is only observable in a real browser (browser-tests/at2873); this pins
     // the style contract it depends on, which the app shell's `* { flex-basis: auto !important }`
     // reset otherwise breaks without any error.
-    it('lays lists out like notes: a fixed marker column, hanging text and a 24px nesting step', () => {
-        const component = render({ body: ['- Eins', '  - Zwei', '', '1. Erster', '10. Zehnter'].join('\n') })
+    it('starts lists on the content edge: a fixed marker column, hanging text, nested lists under their parent text', () => {
+        const body = ['- Eins', '  - Zwei', '', ...Array.from({ length: 10 }, (_, i) => `${i + 1}. Punkt ${i + 1}`)]
+        const component = render({ body: body.join('\n') })
         const styleOf = node => StyleSheet.flatten(node.props.style)
         const markers = component.root.findAll(node => node.props.testID === 'wiki-list-marker' && node.type === Text)
         const texts = component.root.findAll(node => node.props.testID === 'wiki-list-text' && node.type === Text)
@@ -129,21 +130,31 @@ describe('WikiMarkdown', () => {
             }
         )
 
-        expect(markers.map(node => textOf(node))).toEqual(['•', '•', '1.', '2.'])
-        for (const marker of markers) {
-            const style = styleOf(marker)
-            // Never squeezed by a long item, so every item's text starts at the same indent...
-            expect(style.flexShrink).toBe(0)
-            expect(style.minWidth).toBe(36)
-            expect(style.textAlign).toBe('right')
-        }
+        expect(markers.map(node => textOf(node))).toEqual([
+            '•',
+            '•',
+            ...Array.from({ length: 10 }, (_, i) => `${i + 1}.`),
+        ])
+        // Never squeezed by a long item, so every item's text starts at the same indent...
+        for (const marker of markers) expect(styleOf(marker).flexShrink).toBe(0)
         // ...and the text column may shrink instead, wrapping under its own first line.
         for (const text of texts) expect(styleOf(text)).toEqual(expect.objectContaining({ flex: 1, minWidth: 0 }))
 
-        expect(styleOf(markers[0]).paddingRight).toBe(4)
-        expect(styleOf(markers[2]).paddingRight).toBe(11)
-        const nested = lists.map(styleOf).filter(style => style.marginLeft)
-        expect(nested.map(style => style.marginLeft)).toEqual(expect.arrayContaining([24]))
+        // A bullet starts at the left of its 20px column, i.e. on the content edge — no whole-list
+        // inset like the notes editor's (the AT-2873 follow-up).
+        const bullet = styleOf(markers[0])
+        expect(bullet).toEqual(expect.objectContaining({ minWidth: 20, textAlign: 'left' }))
+        expect(bullet.paddingLeft || 0).toBe(0)
+        // Numbers are right-aligned in a column one digit wider for a list that reaches "10.".
+        expect(styleOf(markers[2])).toEqual(
+            expect.objectContaining({ minWidth: 29, textAlign: 'right', paddingRight: 6 })
+        )
+
+        const [topLevel, nested, ordered] = lists.map(styleOf)
+        expect(topLevel.marginLeft || 0).toBe(0)
+        expect(ordered.marginLeft || 0).toBe(0)
+        // The nested list starts under its parent's text.
+        expect(nested.marginLeft).toBe(20)
     })
 
     it('labels a source by its type when nothing better is known', () => {
