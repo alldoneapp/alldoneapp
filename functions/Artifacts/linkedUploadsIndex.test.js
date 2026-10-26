@@ -81,6 +81,40 @@ it('finds uploads in objects, note bodies and every kind of conversation in one 
     expect(photo.linkedSources[0]).toMatchObject({ type: 'users', id: 'v', title: 'Vera' })
 })
 
+// AT-2868: a meeting recorder embeds its screenshots through markdown (`![Screenshot at 3:00](…)`),
+// so the embed's text is a caption with no extension. The row must still be an image with a preview.
+it('lists a meeting screenshot captioned without a file name as an image with its preview', async () => {
+    const path = 'notesAttachments/26102026/abc/Meeting 2026-10-26 12.32 screenshot 1.jpg'
+    const doc = new Y.Doc()
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+    // eslint-disable-next-line global-require
+    const { insertMarkdownToYjs } = require('../Assistant/markdownToYjs')
+    insertMarkdownToYjs(
+        doc.getText('quill'),
+        0,
+        `**Speaker 1** _[3:00]_\nHere.\n\n![Screenshot at 3:00](<${url(path)}>)`,
+        {
+            editorId: 'meeting',
+        }
+    )
+    log.mockRestore()
+    noteBodies.set('p/meeting', Y.encodeStateAsUpdate(doc))
+    doc.destroy()
+    db.store.set('noteItems/p/notes/meeting', readable({ title: '12:32 | 26.10.2026 | ERP MCP Product use case' }))
+
+    const screenshot = (await call()).files.find(file => file.title === 'Screenshot at 3:00')
+    expect(screenshot).toMatchObject({
+        id: `upload:${path}`,
+        kind: 'image',
+        mimeType: 'image/jpeg',
+        url: url(path),
+        thumbnailUrl: url(path),
+    })
+    expect(screenshot.linkedSources).toEqual([
+        { type: 'notes', id: 'meeting', title: '12:32 | 26.10.2026 | ERP MCP Product use case' },
+    ])
+})
+
 it('lists nothing a caller could not read, and nothing at all for a non-member', async () => {
     expect(titles(await call('u'))).not.toContain('secret.pdf')
     expect(titles(await call('v'))).toContain('secret.pdf')
