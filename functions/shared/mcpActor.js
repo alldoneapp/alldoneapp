@@ -23,9 +23,16 @@
 
 const MCP_CHANNEL = 'mcp'
 
+// The client name the web app's own WebMCP / `window.alldone` bridge reports (AT-2871). A browser
+// agent calls the tools through the signed-in page, and the page cannot know which agent (Gemini in
+// Chrome, Claude in Chrome, …) is driving it, so it is labelled generically.
+const BROWSER_AGENT_CLIENT_NAME = 'alldone-browser-agent'
+const BROWSER_AGENT_CLIENT_LABEL = 'Browser agent'
+
 // Matched against the `clientInfo.name` a client sends with `initialize`. Order matters: the more
 // specific name comes first ("claude-code" before anything Anthropic, "codex" before OpenAI).
 const MCP_CLIENT_LABELS = [
+    [/alldone[\s_-]*browser[\s_-]*agent/i, BROWSER_AGENT_CLIENT_LABEL],
     [/claude[\s_-]*code/i, 'Claude Code'],
     [/codex/i, 'Codex'],
     [/anthropic|claude/i, 'Claude'],
@@ -94,6 +101,8 @@ function getLastEditorChannelFields(object) {
 module.exports = {
     MCP_CHANNEL,
     MCP_CLIENT_LABELS,
+    BROWSER_AGENT_CLIENT_NAME,
+    BROWSER_AGENT_CLIENT_LABEL,
     resolveMcpClientLabel,
     normalizeViaClient,
     buildMcpActorMarker,

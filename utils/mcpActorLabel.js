@@ -7,7 +7,13 @@ import { isMcpActor, normalizeViaClient } from '../functions/shared/mcpActor'
  * the feed, comment or other document that carries the `via` / `viaClient` marker.
  */
 
-export const getMcpClientDisplayName = subject => normalizeViaClient(subject?.viaClient) || 'MCP'
+// Brand names stay as they are; the generic label of the web app's own WebMCP bridge is translated.
+const TRANSLATED_CLIENT_LABELS = new Set(['Browser agent'])
+
+export const getMcpClientDisplayName = subject => {
+    const client = normalizeViaClient(subject?.viaClient) || 'MCP'
+    return TRANSLATED_CLIENT_LABELS.has(client) ? translate(client) : client
+}
 
 export const withMcpActorLabel = (name, subject) => {
     if (!isMcpActor(subject) || !name) return name

@@ -8,7 +8,7 @@ import Switch from '../../UIControls/Switch'
 import URLsSettings, { URL_SETTINGS_MCP } from '../../../URLSystem/Settings/URLsSettings'
 import { translate, useTranslator } from '../../../i18n/TranslationService'
 import { copyTextToClipboard } from '../../../utils/HelperFunctions'
-import { setUserMCPSettings } from '../../../utils/backends/Users/usersFirestore'
+import { setUserBrowserAgentToolsEnabled, setUserMCPSettings } from '../../../utils/backends/Users/usersFirestore'
 import { storeLoggedUser } from '../../../redux/actions'
 import { TOOL_LABEL_BY_KEY } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 
@@ -83,6 +83,9 @@ const MCP_TOOL_LABELS = {
     undo_knowledge_correction: 'Undo wiki correction',
 }
 
+// What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.
+export const BROWSER_AGENT_EXAMPLE = "await alldone.listTools()\nawait alldone.callTool('get_tasks', {})"
+
 // Derive the MCP server URL from the host the user is currently on so it is
 // always correct for the environment (my.alldone.app, mystaging.alldone.app, …).
 // The server itself is exposed at the /mcpServer path (see firebase.json rewrites).
@@ -106,6 +109,7 @@ export default function MCPSettings() {
     const mcpEnabled = loggedUser.mcpEnabled !== false
     const disabledTools = Array.isArray(loggedUser.mcpDisabledTools) ? loggedUser.mcpDisabledTools : []
     const disabledSet = new Set(disabledTools)
+    const browserAgentEnabled = loggedUser.browserAgentToolsEnabled !== false
 
     useEffect(() => {
         URLsSettings.push(URL_SETTINGS_MCP)
@@ -125,6 +129,11 @@ export default function MCPSettings() {
     }
 
     const setMcpEnabled = enabled => persistMcpSettings(enabled, disabledTools)
+
+    const setBrowserAgentEnabled = enabled => {
+        dispatch(storeLoggedUser({ ...loggedUser, browserAgentToolsEnabled: enabled }))
+        setUserBrowserAgentToolsEnabled(loggedUser.uid, enabled)
+    }
 
     const setToolEnabled = (toolKey, enabled) => {
         const next = new Set(disabledTools)
@@ -195,6 +204,28 @@ export default function MCPSettings() {
                         'When this is off, no MCP client can use Alldone tools with your account — even one that is already connected.'
                     )}
                 </Text>
+            </View>
+
+            <View style={[localStyles.card, !mcpEnabled && localStyles.cardDisabled]} testID="mcp-browser-agents">
+                <View style={localStyles.switchRow}>
+                    <Text style={localStyles.switchLabel}>{translate('Browser agents (WebMCP & JavaScript)')}</Text>
+                    <Switch
+                        active={mcpEnabled && browserAgentEnabled}
+                        activeSwitch={() => setBrowserAgentEnabled(true)}
+                        deactiveSwitch={() => setBrowserAgentEnabled(false)}
+                        disabled={!mcpEnabled}
+                    />
+                </View>
+                <Text style={localStyles.cardHelp}>
+                    {translate(
+                        'AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.'
+                    )}
+                </Text>
+                <View style={[localStyles.urlBox, localStyles.codeBox]}>
+                    <Text style={localStyles.urlText} selectable>
+                        {BROWSER_AGENT_EXAMPLE}
+                    </Text>
+                </View>
             </View>
 
             <View style={[localStyles.card, !mcpEnabled && localStyles.cardDisabled]}>
@@ -386,6 +417,11 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 10,
         marginRight: 12,
+    },
+    codeBox: {
+        flex: 0,
+        marginRight: 0,
+        marginTop: 12,
     },
     urlBoxMobile: {
         marginRight: 0,

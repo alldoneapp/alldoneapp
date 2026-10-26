@@ -218,13 +218,18 @@ const { CloudOAuthHandler, CloudSessionManager, UserSessionManager } = require('
 
 // Import Alldone constants (still needed for other operations)
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
-const { resolveMcpClientLabel } = require('../shared/mcpActor')
+const { resolveMcpClientLabel, BROWSER_AGENT_CLIENT_LABEL } = require('../shared/mcpActor')
 
 // What the token behind a request says about its client, per request. Everything an MCP client writes
 // is attributed to the user AND labelled with the client ("via Claude", shared/mcpActor.js); the label
 // comes from the name the client reported in `initialize`, which is remembered on its access token.
 const mcpCallerByRequest = new WeakMap()
 const MCP_CLIENT_NAME_MAX_LENGTH = 100
+
+// The header the web app's own browser-agent bridge (WebMCP + `window.alldone`, AT-2871) sends with
+// every request. Only honoured for a Firebase ID token, i.e. a request made from inside a signed-in
+// Alldone page: an OAuth token already carries the name its client reported in `initialize`.
+const MCP_CLIENT_NAME_HEADER = 'x-alldone-mcp-client'
 
 /**
  * Rate Limiter using Firestore for persistence
@@ -657,7 +662,14 @@ class AlldoneSimpleMCPServer {
         // Extract from OAuth Authorization header
         const authHeader = req.headers?.authorization
         if (authHeader?.startsWith('Bearer ')) {
-            // For Bearer tokens, we'll use the token itself as identifier
+            const token = authHeader.substring(7)
+            // A Firebase ID token (the web app's browser-agent bridge, AT-2871) is a JWT: its first
+            // characters are the base64 header, identical for every user signed in with the same key,
+            // so a prefix would put all of them into ONE rate-limit bucket. Hash the whole token.
+            if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(token)) {
+                return `jwt:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 40)}`
+            }
+            // For opaque OAuth tokens, we'll use the token itself as identifier
             return authHeader.substring(7, 50) // First 43 chars for uniqueness
         }
 
@@ -1041,6 +1053,16 @@ class AlldoneSimpleMCPServer {
         return resolveMcpClientLabel(callerInfo?.mcpClientName)
     }
 
+    // True when the request comes from the web app's WebMCP / `window.alldone` bridge (AT-2871).
+    // Only meaningful after getAuthenticatedUserForClient ran for this request.
+    isBrowserAgentRequest(request) {
+        const callerInfo = request && typeof request === 'object' ? mcpCallerByRequest.get(request) : null
+        return (
+            !!callerInfo?.firebaseSession &&
+            resolveMcpClientLabel(callerInfo.mcpClientName) === BROWSER_AGENT_CLIENT_LABEL
+        )
+    }
+
     // Stores the client name from `initialize` on the access token (and its refresh token, so a
     // refreshed token keeps it). Best effort: a session whose name could not be stored is only
     // labelled "via MCP".
@@ -1163,10 +1185,12 @@ class AlldoneSimpleMCPServer {
             return {
                 enabled: data.mcpEnabled !== false,
                 disabledTools: Array.isArray(data.mcpDisabledTools) ? data.mcpDisabledTools : [],
+                // Settings → MCP → "Browser agents": the WebMCP / `window.alldone` bridge (AT-2871).
+                browserAgentEnabled: data.browserAgentToolsEnabled !== false,
             }
         } catch (error) {
             console.warn('MCP: failed to read user MCP access, defaulting to enabled', error && error.message)
-            return { enabled: true, disabledTools: [] }
+            return { enabled: true, disabledTools: [], browserAgentEnabled: true }
         }
     }
 
@@ -1610,6 +1634,15 @@ class AlldoneSimpleMCPServer {
             const accessToken = authHeader.substring(7)
             const callerInfo = {}
             const userId = await this.getAuthenticatedUserFromToken(accessToken, callerInfo)
+            // No accessToken on callerInfo means the request authenticated with a Firebase ID token,
+            // i.e. it came from a signed-in Alldone page. Such a page says which bridge it is.
+            if (!callerInfo.accessToken) {
+                callerInfo.firebaseSession = true
+                const declaredClient = req.headers[MCP_CLIENT_NAME_HEADER]
+                if (this.hasNonEmptyString(declaredClient)) {
+                    callerInfo.mcpClientName = declaredClient.trim().slice(0, MCP_CLIENT_NAME_MAX_LENGTH)
+                }
+            }
             if (typeof req === 'object') mcpCallerByRequest.set(req, callerInfo)
             return userId
         } catch (error) {
@@ -2066,6 +2099,9 @@ class AlldoneSimpleMCPServer {
                 if (!access.enabled) {
                     return { jsonrpc: '2.0', id: request.id, result: { tools: [] } }
                 }
+                if (access.browserAgentEnabled === false && this.isBrowserAgentRequest(httpReq)) {
+                    return { jsonrpc: '2.0', id: request.id, result: { tools: [] } }
+                }
 
                 const disabled = new Set(access.disabledTools)
                 // Derive the MCP tool definitions from the same schema source the
@@ -2133,6 +2169,11 @@ class AlldoneSimpleMCPServer {
                         if (!access.enabled) {
                             throw new Error(
                                 'MCP access is disabled for this account. Enable it in Alldone under Settings → MCP.'
+                            )
+                        }
+                        if (access.browserAgentEnabled === false && this.isBrowserAgentRequest(httpReq)) {
+                            throw new Error(
+                                'Browser agent access is disabled for this account. Enable it in Alldone under Settings → MCP.'
                             )
                         }
                         if (access.disabledTools.includes(toolName)) {
