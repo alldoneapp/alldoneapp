@@ -2240,105 +2240,17 @@ describe('project artifacts', () => {
     })
 })
 
-// AT-2828: the upload list uses the actual source and comment listeners with these rules.
-// A wrapper translates the modular test SDK into the compat interface used by the app.
-describe('linked uploads respect their original sources', () => {
-    const { onSnapshot } = require('firebase/firestore')
-    const { watchLinkedUploads } = require('../../utils/backends/Artifacts/linkedUploads')
-    const storageUrl =
-        'https://firebasestorage.googleapis.com/v0/b/test-bucket/o/attachments%2Fold%2Freport.pdf?token=t'
-    const attachmentText = `EbDsQTD14ahtSR5${storageUrl}EbDsQTD14ahtSR5report.pdfEbDsQTD14ahtSR5false`
-    const waitUntil = async predicate => {
-        const deadline = Date.now() + 10000
-        while (!predicate()) {
-            if (Date.now() > deadline) throw new Error('Linked upload listener did not reach the expected state')
-            await new Promise(resolve => setTimeout(resolve, 20))
-        }
-    }
-    const start = userId => {
-        const db = testEnv.authenticatedContext(userId).firestore()
-        const listen = ref => ({ onSnapshot: (next, error) => onSnapshot(ref, next, error) })
-        let files = []
-        const stop = watchLinkedUploads({
-            db: {
-                doc: path => ({
-                    onSnapshot: (next, error) =>
-                        onSnapshot(
-                            doc(db, path),
-                            snapshot => next({ exists: snapshot.exists(), data: () => snapshot.data() }),
-                            error
-                        ),
-                }),
-                collection: path => ({
-                    ...listen(collection(db, path)),
-                    where: (field, operator, value) =>
-                        listen(query(collection(db, path), where(field, operator, value))),
-                }),
-            },
-            projectId: PROJECT_ID,
-            userId,
-            readerId: userId,
-            bucketName: 'test-bucket',
-            loadNote: async () => null,
-            onChange: next => {
-                files = next
-            },
-        })
-        return { files: () => files, stop }
-    }
-    const writeAsAdmin = callback => testEnv.withSecurityRulesDisabled(context => callback(context.firestore()))
-
-    it('includes old private uploads only for a source reader; removes them on source revocation and deletion', async () => {
-        const sourcePath = `items/${PROJECT_ID}/tasks/upload-source`
-        await writeAsAdmin(async db => {
-            await setDoc(doc(db, sourcePath), {
-                isPublicFor: [MEMBER_ID],
-                readerIds: [MEMBER_ID],
-                description: attachmentText,
-            })
-        })
-        const member = start(MEMBER_ID)
-        const teammate = start(TEAMMATE_ID)
-        try {
-            await waitUntil(() => member.files().length === 1)
-            expect(teammate.files()).toEqual([])
-            // Keep the old reader projection deliberately: the source privacy wins immediately.
-            await writeAsAdmin(db => updateDoc(doc(db, sourcePath), { isPublicFor: [TEAMMATE_ID] }))
-            await waitUntil(() => member.files().length === 0)
-            await writeAsAdmin(db => updateDoc(doc(db, sourcePath), { readerIds: [TEAMMATE_ID] }))
-            await waitUntil(() => teammate.files().length === 1)
-            await writeAsAdmin(db => deleteDoc(doc(db, sourcePath)))
-            await waitUntil(() => teammate.files().length === 0)
-        } finally {
-            member.stop()
-            teammate.stop()
-        }
-    })
-
-    it('removes a historical comment attachment when the comment or project membership disappears', async () => {
-        const sourcePath = `items/${PROJECT_ID}/tasks/upload-source`
-        const commentPath = `chatComments/${PROJECT_ID}/tasks/upload-source/comments/old-comment`
-        await writeAsAdmin(async db => {
-            await setDoc(doc(db, sourcePath), { isPublicFor: [MEMBER_ID], readerIds: [MEMBER_ID] })
-            // Every comment write creates the object's chat; only objects with one are listened to.
-            await setDoc(doc(db, `chatObjects/${PROJECT_ID}/chats/upload-source`), {
-                type: 'tasks',
-                isPublicFor: [MEMBER_ID],
-                readerIds: [MEMBER_ID],
-            })
-            await setDoc(doc(db, commentPath), { commentText: attachmentText })
-        })
-        const member = start(MEMBER_ID)
-        try {
-            await waitUntil(() => member.files().length === 1)
-            await writeAsAdmin(db => deleteDoc(doc(db, commentPath)))
-            await waitUntil(() => member.files().length === 0)
-            await writeAsAdmin(db => setDoc(doc(db, commentPath), { commentText: attachmentText }))
-            await waitUntil(() => member.files().length === 1)
-            await writeAsAdmin(db => updateDoc(doc(db, `projects/${PROJECT_ID}`), { userIds: [TEAMMATE_ID] }))
-            await waitUntil(() => member.files().length === 0)
-        } finally {
-            member.stop()
-        }
+// AT-2828 ran the browser's linked-upload listeners against these rules here. Since AT-2860 the
+// server finds linked uploads with the Admin SDK and decides access itself; that is covered by
+// functions/Artifacts/linkedUploadsIndex.test.js. Its index holds the download URLs of sources a
+// member may not read, so no client may touch it.
+describe('the linked-upload index is server-only', () => {
+    it('denies every client read and write, even to a project member', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(getDoc(doc(memberDb, `artifactUploadIndex/${PROJECT_ID}`)))
+        await assertFails(getDocs(collection(memberDb, `artifactUploadIndex/${PROJECT_ID}/candidates`)))
+        await assertFails(
+            setDoc(doc(memberDb, `artifactUploadIndex/${PROJECT_ID}/candidates/forged`), { kind: 'object' })
+        )
     })
 })

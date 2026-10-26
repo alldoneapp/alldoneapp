@@ -11,8 +11,6 @@ const SOURCE_TYPE_ICONS = {
     note: 'file-text',
     goal: 'target',
     contact: 'user',
-    chat: 'message-circle',
-    artifact: 'package',
     correction: 'edit-3',
     document: 'paperclip',
 }
@@ -22,8 +20,6 @@ const SOURCE_TYPE_LABELS = {
     note: 'Note',
     goal: 'Goal',
     contact: 'Contact',
-    chat: 'Chat',
-    artifact: 'Artifact',
     correction: 'Correction',
     document: 'Document',
 }
