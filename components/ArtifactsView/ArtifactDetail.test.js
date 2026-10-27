@@ -54,8 +54,8 @@ jest.mock('./ArtifactUpload', () => {
 })
 jest.mock('../UIControls/Button', () => {
     const { Text: MockText, TouchableOpacity: MockTouchable } = require('react-native')
-    return ({ title, onPress, testID }) => (
-        <MockTouchable onPress={onPress} testID={testID}>
+    return ({ title, onPress }) => (
+        <MockTouchable onPress={onPress}>
             <MockText>{title}</MockText>
         </MockTouchable>
     )
@@ -64,9 +64,7 @@ jest.mock('../Icon', () => () => null)
 jest.mock('../../utils/backends/Artifacts/artifactsFirestore', () => ({
     deleteArtifact: jest.fn(),
     getArtifactUrl: () => 'https://serve.example/a',
-    getArtifactPublicUrl: artifact =>
-        artifact?.publicLink?.token ? `https://artifacts.example/${artifact.publicLink.token}/` : null,
-    setArtifactPublicLink: jest.fn(() => Promise.resolve()),
+    resetArtifactLink: jest.fn(),
     restoreArtifactVersion: jest.fn(),
     setArtifactPrivacy: jest.fn(),
     updateArtifactMetadata: jest.fn(),
@@ -83,10 +81,9 @@ jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
 }))
 
 import ArtifactDetail from './ArtifactDetail'
-import { setArtifactDataAccess, setArtifactPublicLink } from '../../utils/backends/Artifacts/artifactsFirestore'
+import { setArtifactDataAccess } from '../../utils/backends/Artifacts/artifactsFirestore'
 import URLsArtifacts from '../../URLSystem/Artifacts/URLsArtifacts'
 import { setArtifactSection } from './artifactsNavigationState'
-import { translate as translateKey } from '../../i18n/TranslationService'
 
 const mounted = []
 function render() {
@@ -122,16 +119,6 @@ const pressButton = (tree, title) =>
 
 const showDetails = tree => pressButton(tree, 'Details')
 
-const findPressable = (tree, testID) =>
-    tree.root.findAllByProps({ testID }).find(node => typeof node.props.onPress === 'function')
-const pressTestID = async (tree, testID) => {
-    await act(async () => findPressable(tree, testID).props.onPress())
-}
-const textByTestID = (tree, testID) => {
-    const [node] = tree.root.findAllByProps({ testID })
-    return node ? textOf(node.children) : null
-}
-
 afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())))
 
 beforeEach(() => {
@@ -148,7 +135,6 @@ beforeEach(() => {
         userId: 'owner',
         isPrivate: false,
         currentVersionId: 'v1',
-        publicLink: { token: 'tok_abcdefghijklmnopqrst', createdAt: 1, createdBy: 'owner' },
     }
 })
 
@@ -248,92 +234,35 @@ describe('ArtifactDetail', () => {
         expect(tree.root.findAllByProps({ testID: 'artifact-chat' }, { deep: false })).toHaveLength(1)
     })
 
-    describe('the public link', () => {
+    it('copies the in-app link at once and the sign-in-free link only after a warning', () => {
         const { copyTextToClipboard } = require('../../utils/HelperFunctions')
+        const tree = render()
+        showDetails(tree)
 
-        it('is copied from the top right of the artifact page, and says so', async () => {
-            const tree = render()
-            const header = tree.root.findAllByProps({ testID: 'artifact-header' })[0]
-            expect(header.findAllByProps({ testID: 'artifact-copy-link' }).length).toBeGreaterThan(0)
+        pressButton(tree, 'Copy link')
+        expect(copyTextToClipboard).toHaveBeenLastCalledWith(
+            `${window.location.origin}/projects/project-a/artifacts/a1`
+        )
 
-            pressButton(tree, 'Copy public link')
-            expect(copyTextToClipboard).toHaveBeenLastCalledWith('https://artifacts.example/tok_abcdefghijklmnopqrst/')
-            expect(textByTestID(tree, 'artifact-link-copied')).toContain('Anyone with it can open the artifact')
-        })
+        pressButton(tree, 'Share outside the project')
+        expect(copyTextToClipboard).toHaveBeenCalledTimes(1)
+        expect(tree.root.findAllByProps({ testID: 'artifact-outside-share-warning' })).not.toHaveLength(0)
 
-        it('copies the address for project members from the top right while it is switched off', () => {
-            mockArtifact = { ...mockArtifact, publicLink: null }
-            const tree = render()
-            pressButton(tree, 'Copy link for project members')
-            expect(copyTextToClipboard).toHaveBeenLastCalledWith(
-                `${window.location.origin}/projects/project-a/artifacts/a1`
-            )
-            expect(textByTestID(tree, 'artifact-link-copied')).toContain('Project members')
-        })
-
-        it('shows the address under Details and copies either link from there', async () => {
-            const tree = render()
-            showDetails(tree)
-            expect(textByTestID(tree, 'artifact-public-link-url')).toBe(
-                'https://artifacts.example/tok_abcdefghijklmnopqrst/'
-            )
-
-            await pressTestID(tree, 'artifact-public-link-copy')
-            expect(copyTextToClipboard).toHaveBeenLastCalledWith('https://artifacts.example/tok_abcdefghijklmnopqrst/')
-
-            await pressTestID(tree, 'artifact-member-link-copy')
-            expect(copyTextToClipboard).toHaveBeenLastCalledWith(
-                `${window.location.origin}/projects/project-a/artifacts/a1`
-            )
-        })
-
-        it('changes the link and switches it off only on a second press', async () => {
-            const tree = render()
-            showDetails(tree)
-
-            await pressTestID(tree, 'artifact-public-link-change')
-            expect(setArtifactPublicLink).not.toHaveBeenCalled()
-            expect(textByTestID(tree, 'artifact-public-link-confirm')).toContain('stops working')
-            await pressTestID(tree, 'artifact-public-link-change')
-            expect(setArtifactPublicLink).toHaveBeenLastCalledWith('project-a', 'a1', 'change')
-            expect(textByTestID(tree, 'artifact-public-link-notice')).toContain('The old one no longer works')
-
-            await pressTestID(tree, 'artifact-public-link-disable')
-            expect(setArtifactPublicLink).toHaveBeenCalledTimes(1)
-            await pressTestID(tree, 'artifact-public-link-disable')
-            expect(setArtifactPublicLink).toHaveBeenLastCalledWith('project-a', 'a1', 'disable')
-        })
-
-        it('switches a link that is off on at once', async () => {
-            mockArtifact = { ...mockArtifact, publicLink: null }
-            const tree = render()
-            showDetails(tree)
-            expect(tree.root.findAllByProps({ testID: 'artifact-public-link-url' })).toHaveLength(0)
-            expect(textByTestID(tree, 'artifact-public-link-off')).toContain('Only project members')
-
-            await pressTestID(tree, 'artifact-public-link-enable')
-            expect(setArtifactPublicLink).toHaveBeenCalledWith('project-a', 'a1', 'enable')
-        })
-
-        it('reports a failed change next to the link', async () => {
-            setArtifactPublicLink.mockImplementationOnce(() => Promise.reject({ code: 'offline' }))
-            const tree = render()
-            showDetails(tree)
-            await pressTestID(tree, 'artifact-public-link-change')
-            await pressTestID(tree, 'artifact-public-link-change')
-            expect(textByTestID(tree, 'artifact-public-link-notice')).toBe(
-                translateKey('Artifact action needs internet')
-            )
-        })
+        pressButton(tree, 'Copy link for outside')
+        expect(copyTextToClipboard).toHaveBeenLastCalledWith('https://serve.example/a')
+        expect(tree.root.findAllByProps({ testID: 'artifact-outside-share-warning' })).toHaveLength(0)
+        const notice = tree.root.findAllByProps({ testID: 'artifact-notice' })[0]
+        expect(textOf(notice.children)).toContain('until you reset the link')
     })
 
-    it('uploads a new version from Details, next to the versions', () => {
+    it('can back out of sharing outside the project', () => {
+        const { copyTextToClipboard } = require('../../utils/HelperFunctions')
         const tree = render()
-        const header = tree.root.findAllByProps({ testID: 'artifact-header' })[0]
-        expect(header.findAllByProps({ testID: 'artifact-upload-version' })).toHaveLength(0)
         showDetails(tree)
-        const versions = tree.root.findAllByProps({ testID: 'artifact-versions' })[0]
-        expect(versions.findAllByProps({ testID: 'artifact-upload-version' }).length).toBeGreaterThan(0)
+        pressButton(tree, 'Share outside the project')
+        act(() => tree.root.findByProps({ testID: 'artifact-outside-share-cancel' }).props.onPress())
+        expect(tree.root.findAllByProps({ testID: 'artifact-outside-share-warning' })).toHaveLength(0)
+        expect(copyTextToClipboard).not.toHaveBeenCalled()
     })
 
     it('says where the artifact came from', () => {
@@ -382,7 +311,7 @@ describe('ArtifactDetail', () => {
                 'artifact-versions',
             ])
                 expect(tree.root.findAllByProps({ testID })).toHaveLength(0)
-            for (const title of ['Copy link for project members', 'Delete artifact', 'Change link'])
+            for (const title of ['Copy link', 'Delete artifact', 'Reset link'])
                 expect(tree.root.findAll(node => node.type === Text && textOf(node.children) === title)).toHaveLength(0)
         })
 
@@ -400,7 +329,7 @@ describe('ArtifactDetail', () => {
             for (const testID of [
                 'artifact-open-full-screen',
                 'artifact-change-with-assistant',
-                'artifact-copy-link',
+                'artifact-upload-version',
                 'artifact-back',
             ])
                 expect(header.findAllByProps({ testID }).length).toBeGreaterThan(0)

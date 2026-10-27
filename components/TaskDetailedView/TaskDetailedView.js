@@ -155,7 +155,6 @@ const TaskDetailedView = ({ navigation }) => {
 
         return () => {
             dispatch([setTaskInDetailView({}), unsetSharedMode()])
-            Backend.offOnSingleTaskChange()
         }
     }, [selectedTab])
 
@@ -192,9 +191,20 @@ const TaskDetailedView = ({ navigation }) => {
         }
     }, [selectedTab])
 
+    // The live task listener belongs to (projectId, task.id) and nothing else. It used to be torn
+    // down by the `[selectedTab]` cleanup above while only this effect could start it again, so the
+    // first tab switch (e.g. Properties -> Chat) silently froze `task` for the rest of the visit.
+    // The chat composer then kept reading a stale `isAssistantEnabled: true` after the user had
+    // switched the assistant off, and still started a run (AT-2886). The listener reads the
+    // callback through a ref so a long-lived subscription never acts on a stale render's closure.
+    const afterTaskChangeRef = useRef(null)
+    afterTaskChangeRef.current = task => afterTaskChange(task)
     useEffect(() => {
         Backend.offOnSingleTaskChange()
-        Backend.onSingleTaskChange(projectId, task.id, afterTaskChange)
+        Backend.onSingleTaskChange(projectId, task.id, changedTask => afterTaskChangeRef.current(changedTask))
+        return () => {
+            Backend.offOnSingleTaskChange()
+        }
     }, [projectId, task.id])
 
     const afterTaskChange = task => {

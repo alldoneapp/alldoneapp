@@ -2,7 +2,7 @@ const { Writable } = require('stream')
 
 const { KnowledgeFirestoreDouble } = require('../KnowledgeBase/__fixtures__/knowledgeFirestoreDouble')
 const { ArtifactBucketDouble } = require('./__fixtures__/artifactBucketDouble')
-const { commitArtifactVersion, setArtifactPublicLink } = require('./artifactStore')
+const { commitArtifactVersion } = require('./artifactStore')
 const { ARTIFACT_BRIDGE_CONTENT_SECURITY_POLICY, ARTIFACT_BRIDGE_SCRIPT } = require('./artifactDataBridge')
 const {
     ACTIVE_CONTENT_SECURITY_POLICY,
@@ -12,7 +12,6 @@ const {
 
 const PROJECT_ID = 'project-a'
 const SECRET = 'secret-one-aaaaaaaaaaaaaaaaaaaaaa'
-const TOKEN = 'token-one-aaaaaaaaaaaa'
 const NOW = 1_800_000_000_000
 const base64 = text => Buffer.from(text).toString('base64')
 
@@ -69,7 +68,6 @@ async function seed(files, extra = {}) {
         now: NOW,
         newId: () => ids.shift(),
         newSecret: () => SECRET,
-        newPublicToken: () => TOKEN,
         userId: 'owner',
         projectId: PROJECT_ID,
         files,
@@ -296,87 +294,5 @@ describe('natural-height frames (AT-2881)', () => {
         expect(head.statusCode).toBe(200)
         expect(head.headers['Content-Length']).toBeUndefined()
         expect(head.body()).toBe('')
-    })
-})
-
-describe('public links', () => {
-    const switchLink = (action, newToken = () => 'token-two-bbbbbbbbbbbb') =>
-        setArtifactPublicLink({ db, newToken, userId: 'owner', projectId: PROJECT_ID, artifactId: 'artifact1', action })
-
-    it('serves the entry file at the bare token, on the Hosting site and on the function URL alike', async () => {
-        await seed([{ path: 'index.html', base64: base64('<h1>Hi</h1>') }])
-
-        for (const path of [`/${TOKEN}/`, `/serveArtifact/${TOKEN}/`]) {
-            const res = await request(path)
-            expect(res.statusCode).toBe(200)
-            expect(res.body()).toBe('<h1>Hi</h1>')
-            expect(res.headers).toMatchObject({
-                'Content-Security-Policy': ACTIVE_CONTENT_SECURITY_POLICY,
-                'Referrer-Policy': 'no-referrer',
-                'X-Robots-Tag': 'noindex, nofollow',
-            })
-        }
-    })
-
-    it('adds the missing slash, so relative links in the page resolve under the token', async () => {
-        await seed([
-            { path: 'index.html', base64: base64('<script src="assets/app.js"></script>') },
-            { path: 'assets/app.js', base64: base64('console.log(1)') },
-        ])
-
-        const bare = await request(`/${TOKEN}`)
-        expect(bare.statusCode).toBe(302)
-        expect(bare.headers.Location).toBe(`${TOKEN}/`)
-
-        const asset = await request(`/${TOKEN}/assets/app.js`)
-        expect(asset.statusCode).toBe(200)
-        expect(asset.body()).toBe('console.log(1)')
-    })
-
-    it('redirects to an entry file that sits in a folder', async () => {
-        await seed([
-            { path: 'site/index.html', base64: base64('<h1>Site</h1>') },
-            { path: 'site/app.js', base64: base64('1') },
-        ])
-
-        const res = await request(`/${TOKEN}/`)
-        expect(res.statusCode).toBe(302)
-        expect(res.headers.Location).toBe('site/index.html')
-        expect((await request(`/${TOKEN}/site/index.html`)).body()).toBe('<h1>Site</h1>')
-    })
-
-    it('never answers the live data bridge on a public link', async () => {
-        await seed([{ path: 'index.html', base64: base64('<h1>Hi</h1>') }], { dataAccess: true })
-        const res = await request(`/${TOKEN}/`, { query: { 'alldone-bridge': '1' } })
-        expect(res.headers['Content-Security-Policy']).toBe(ACTIVE_CONTENT_SECURITY_POLICY)
-    })
-
-    it('answers an unknown token, a changed link and a switched-off link with the same 404', async () => {
-        await seed([{ path: 'index.html', base64: base64('<h1>Hi</h1>') }])
-        expect((await request('/token-nine-zzzzzzzzzzzz/')).statusCode).toBe(404)
-
-        await switchLink('change')
-        clearServeArtifactCaches()
-        expect((await request(`/${TOKEN}/`)).statusCode).toBe(404)
-        expect((await request('/token-two-bbbbbbbbbbbb/')).statusCode).toBe(200)
-
-        await switchLink('disable')
-        clearServeArtifactCaches()
-        const off = await request('/token-two-bbbbbbbbbbbb/')
-        expect(off.statusCode).toBe(404)
-        expect(off.body()).toBe('Not found')
-    })
-
-    it('does not serve a lookup the artifact no longer agrees with', async () => {
-        await seed([{ path: 'index.html', base64: base64('<h1>Hi</h1>') }])
-        await db.doc(`artifactItems/${PROJECT_ID}/artifacts/artifact1`).update({ publicLink: null })
-        expect((await request(`/${TOKEN}/`)).statusCode).toBe(404)
-    })
-
-    it('leaves the internal address the app previews with alone', async () => {
-        await seed([{ path: 'index.html', base64: base64('<h1>Hi</h1>') }])
-        await switchLink('disable')
-        clearServeArtifactCaches()
-        expect((await request(artifactUrl(''))).statusCode).toBe(200)
     })
 })

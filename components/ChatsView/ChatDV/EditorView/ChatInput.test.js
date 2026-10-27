@@ -699,3 +699,155 @@ describe('ChatInput durable submission', () => {
         act(() => tree.unmount())
     })
 })
+
+// AT-2886: the composer's assistant button showed "off" while the composer still sent the next
+// comment with `explicitAssistantEnabled: true`, because the host's `parentObject` had not (or never)
+// caught up with the toggle. What the button shows must be what the send uses.
+describe('ChatInput assistant toggled off right before sending (AT-2886)', () => {
+    const taskChat = { id: 'task-1', type: 'tasks' }
+    const enabledTask = { id: 'task-1', isAssistantEnabled: true }
+
+    const renderTaskComposer = parentObject =>
+        renderer.create(
+            <ChatInput
+                chat={taskChat}
+                parentObject={parentObject}
+                projectId="project-1"
+                assistantId="assistant-1"
+                objectType="tasks"
+                setWaitingForBotAnswer={jest.fn()}
+                setAmountOfNewCommentsToHighligth={jest.fn()}
+            />
+        )
+    const buttons = tree => tree.root.findByProps({ testID: 'chat-input-buttons' })
+    const sentAssistantFlag = () => createObjectMessage.mock.calls[createObjectMessage.mock.calls.length - 1][8]
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        // The composer's toggle also clears the global flag; model the state right after it.
+        mockState.assistantEnabled = false
+        mockState.assistantEnabledScope = null
+    })
+
+    afterEach(() => {
+        mockState.assistantEnabled = true
+        mockState.assistantEnabledScope = null
+    })
+
+    it('does not start the assistant when the parent object has not caught up with the toggle', async () => {
+        let tree
+        await act(async () => {
+            tree = renderTaskComposer(enabledTask)
+        })
+        expect(buttons(tree).props.assistantEnabled).toBe(true)
+
+        act(() => {
+            buttons(tree).props.onAssistantToggled({ isAssistantEnabled: false })
+        })
+        expect(buttons(tree).props.assistantEnabled).toBe(false)
+
+        await act(async () => {
+            await buttons(tree).props.onSubmit('RM: I would expect it to be registered')
+        })
+        expect(sentAssistantFlag()).toBe(false)
+        act(() => tree.unmount())
+    })
+
+    it('keeps honouring the toggle once the persisted value catches up', async () => {
+        let tree
+        await act(async () => {
+            tree = renderTaskComposer(enabledTask)
+        })
+        act(() => {
+            buttons(tree).props.onAssistantToggled({ isAssistantEnabled: false })
+        })
+        await act(async () => {
+            tree.update(
+                <ChatInput
+                    chat={taskChat}
+                    parentObject={{ ...enabledTask, isAssistantEnabled: false }}
+                    projectId="project-1"
+                    assistantId="assistant-1"
+                    objectType="tasks"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+        await act(async () => {
+            await buttons(tree).props.onSubmit('Hello')
+        })
+        expect(sentAssistantFlag()).toBe(false)
+        act(() => tree.unmount())
+    })
+
+    it('starts the assistant when it is switched on in the composer before the parent catches up', async () => {
+        let tree
+        await act(async () => {
+            tree = renderTaskComposer({ id: 'task-1', isAssistantEnabled: false })
+        })
+        act(() => {
+            buttons(tree).props.onAssistantToggled({ isAssistantEnabled: true })
+        })
+        await act(async () => {
+            await buttons(tree).props.onSubmit('Hello')
+        })
+        expect(sentAssistantFlag()).toBe(true)
+        act(() => tree.unmount())
+    })
+
+    it('follows a later change of the persisted value made elsewhere', async () => {
+        let tree
+        await act(async () => {
+            tree = renderTaskComposer({ id: 'task-1', isAssistantEnabled: false })
+        })
+        act(() => {
+            buttons(tree).props.onAssistantToggled({ isAssistantEnabled: false })
+        })
+        await act(async () => {
+            tree.update(
+                <ChatInput
+                    chat={taskChat}
+                    parentObject={enabledTask}
+                    projectId="project-1"
+                    assistantId="assistant-1"
+                    objectType="tasks"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+        expect(buttons(tree).props.assistantEnabled).toBe(true)
+        act(() => tree.unmount())
+    })
+
+    it('still lets an explicit invocation (the global flag) start a run after a toggle-off', async () => {
+        let tree
+        await act(async () => {
+            tree = renderTaskComposer(enabledTask)
+        })
+        act(() => {
+            buttons(tree).props.onAssistantToggled({ isAssistantEnabled: false })
+        })
+        // e.g. the user @-mentions the assistant afterwards, which arms the flag for this chat.
+        mockState.assistantEnabled = true
+        await act(async () => {
+            tree.update(
+                <ChatInput
+                    chat={taskChat}
+                    parentObject={enabledTask}
+                    projectId="project-1"
+                    assistantId="assistant-1"
+                    objectType="tasks"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+        await act(async () => {
+            await buttons(tree).props.onSubmit('@assistant please')
+        })
+        expect(sentAssistantFlag()).toBe(true)
+        act(() => tree.unmount())
+    })
+})

@@ -109,10 +109,8 @@ https://alldone-artifacts.web.app/a/{projectId}/{artifactId}/{serveSecret}/index
 That address works without sign-in, like a note attachment link. It is one step better than a
 note attachment in one respect: the secret can be **rotated**. The server replaces `serveSecret`
 when the artifact's privacy changes or a member leaves the project, and a "Reset link" button in
-Properties did the same by hand. Old links then stop working. A note attachment's download token
-can never be withdrawn. (Superseded for sharing, 2026-10-27: people share a separate public link,
-`artifacts.alldone.app/{token}/`, that can be switched off and changed on its own; the address above
-is now internal and has no button. See "Sharing outside the project" under Phase 3.)
+Properties does the same by hand. Old links then stop working. A note attachment's download token
+can never be withdrawn.
 
 **The one rule notes do not need: artifact HTML is never served from the app origin.** A note is
 text that our own code renders. An HTML or SVG artifact is code that runs by itself, written by a
@@ -362,13 +360,7 @@ Phase 2, started:
 Phase 3:
 
 - **Sharing outside the project**: "Copy link" (the in-app address) and "Share outside the project",
-  which explains what the serve address means before copying it. Replaced on 2026-10-27 by a
-  separate **public link** (`publicLink` + the server-only `artifactPublicLinks/{token}` lookup) at
-  `artifacts.alldone.app/{token}/`, a Hosting site of its own (`hosting/artifacts/`). It is on by
-  default for a project-visible artifact, can be switched off, on (new address) and changed by any
-  member who can read the artifact, ends when the artifact is made private, and is copied from the
-  top right of the detail page; "Upload new version" moved to Details next to the versions. The
-  internal serve address keeps rotating on lost access but no longer has a "Reset link" button.
+  which explains what the serve address means before copying it.
 - **Deliverables**: an artifact made in a task's or goal's thread is that object's result
   (server-owned `parentObject`) and is listed under the description as "Results".
 - **Note embeds**: a link to an artifact in a note can be switched to a live preview card and back

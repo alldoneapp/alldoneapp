@@ -6,16 +6,11 @@
 //   artifactItems/{projectId}/artifacts/{artifactId}                       metadata, read like a note
 //   artifactItems/{projectId}/artifacts/{artifactId}/versions/{versionId}  immutable version manifests
 //   Storage: artifacts/{projectId}/{artifactId}/{versionId}/{path}         bytes, read only by serveArtifact
-//   artifactPublicLinks/{token}                                            server-only: public token → artifact
 //
 // An artifact is never edited in place: it changes by getting a new version, which is what makes a
 // version safe to cache forever. Its bytes are served by the serveArtifact function from an origin
 // that is not the app's, at an address whose `serveSecret` segment the server rotates whenever
 // somebody loses read access. See serveArtifact.js for why the origin matters.
-//
-// That address is internal: the app frames the preview with it. What people share is the artifact's
-// public link (`publicLink`), a separate token at a short address (artifacts.alldone.app/{token}/)
-// that is on by default, can be changed and can be switched off without touching the preview.
 //
 // Pure module: the web app imports it too, so it must not require anything server-only.
 
@@ -60,22 +55,7 @@ const ARTIFACT_SERVER_FIELDS = [
     // Whether the app answers the page's live data questions (artifactDataBridge.js). Only the
     // owner switches it, through the server.
     'dataAccess',
-    // The public link ({ token, createdAt, createdBy } or null when switched off). The token is a
-    // capability and has a server-only lookup document, so only the server may set it.
-    'publicLink',
 ]
-
-// token → { projectId, artifactId }: how serveArtifact finds the artifact behind a public link
-// without the ids in the address. No client rule, so Firestore's default deny keeps it server-only.
-const ARTIFACT_PUBLIC_LINKS_COLLECTION = 'artifactPublicLinks'
-
-// Where a project's public links live. A project without its own host (staging, the emulator)
-// shares them on serveArtifact's own URL, which answers the same `/{token}/` paths.
-// artifacts.alldone.app is a separate Firebase Hosting site that only rewrites to serveArtifact
-// (hosting/artifacts/firebase.json); it shares no origin with my.alldone.app.
-const ARTIFACT_PUBLIC_HOSTS = Object.freeze({
-    alldonealeph: 'https://artifacts.alldone.app',
-})
 
 const ARTIFACT_KINDS = {
     WEB: 'web',
@@ -159,7 +139,6 @@ const INLINE_MIME_TYPES = new Set([
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const SECRET_PATTERN = /^[A-Za-z0-9_-]{20,128}$/
-const PUBLIC_TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,64}$/
 
 function getArtifactsCollectionPath(projectId) {
     return `${ARTIFACT_ITEMS_COLLECTION}/${projectId}/${ARTIFACTS_SUBCOLLECTION}`
@@ -171,10 +150,6 @@ function getArtifactDocPath(projectId, artifactId) {
 
 function getArtifactVersionsCollectionPath(projectId, artifactId) {
     return `${getArtifactDocPath(projectId, artifactId)}/${ARTIFACT_VERSIONS_SUBCOLLECTION}`
-}
-
-function getArtifactPublicLinkDocPath(token) {
-    return `${ARTIFACT_PUBLIC_LINKS_COLLECTION}/${token}`
 }
 
 function getArtifactStoragePrefix(projectId, artifactId) {
@@ -340,62 +315,13 @@ function buildArtifactServeUrl(baseUrl, params) {
     return `${String(baseUrl).replace(/\/+$/, '')}${path}`
 }
 
-function isPublicLinkToken(token) {
-    return typeof token === 'string' && PUBLIC_TOKEN_PATTERN.test(token)
-}
-
-// The stored public link, or null when the artifact has none (switched off, private, or created
-// before public links existed).
-function mapArtifactPublicLink(publicLink) {
-    if (!publicLink || !isPublicLinkToken(publicLink.token)) return null
-    return {
-        token: publicLink.token,
-        createdAt: Number(publicLink.createdAt) || 0,
-        createdBy: publicLink.createdBy || '',
-    }
-}
-
-function resolveArtifactPublicBaseUrl(firebaseProjectId, serveBaseUrl) {
-    return ARTIFACT_PUBLIC_HOSTS[firebaseProjectId] || serveBaseUrl || null
-}
-
-// `/{token}/` is the artifact's entry file; the files of a multi-file artifact sit under it, so its
-// relative links resolve without the ids or the internal secret in the address.
-function buildArtifactPublicUrl(baseUrl, token) {
-    if (!baseUrl || !isPublicLinkToken(token)) return null
-    return `${String(baseUrl).replace(/\/+$/, '')}/${token}/`
-}
-
-function stripServeFunctionPrefix(pathname) {
-    const functionPrefix = `/${SERVE_ARTIFACT_FUNCTION}`
-    if (pathname === functionPrefix || pathname.startsWith(`${functionPrefix}/`)) {
-        return pathname.slice(functionPrefix.length)
-    }
-    return pathname
-}
-
-// `/{token}` and `/{token}/{path}`. `trailingSlash` is false for the bare token, which the server
-// redirects to `/{token}/` so that relative links in the page resolve under the token.
-function parseArtifactPublicPath(pathname) {
-    if (typeof pathname !== 'string') return null
-    const rest = stripServeFunctionPrefix(pathname)
-    if (!rest.startsWith('/') || rest.startsWith('/a/')) return null
-    const [token, ...pathParts] = rest.slice(1).split('/')
-    if (!isPublicLinkToken(token)) return null
-    let path
-    try {
-        path = pathParts.map(segment => decodeURIComponent(segment)).join('/')
-    } catch (_) {
-        return null
-    }
-    return { publicToken: token, path, trailingSlash: pathParts.length > 0 }
-}
-
 // Accepts the path with or without the function name in front of it: Cloud Functions' own URL
 // (`/serveArtifact/a/...`) and a Hosting rewrite (`/a/...`) both end up here.
 function parseArtifactServePath(pathname) {
     if (typeof pathname !== 'string') return null
-    const rest = stripServeFunctionPrefix(pathname)
+    let rest = pathname
+    const functionPrefix = `/${SERVE_ARTIFACT_FUNCTION}`
+    if (rest === functionPrefix || rest.startsWith(`${functionPrefix}/`)) rest = rest.slice(functionPrefix.length)
     if (!rest.startsWith('/a/')) return null
 
     const parts = rest.slice(3).split('/')
@@ -463,7 +389,6 @@ function mapArtifactData(artifactId, data = {}) {
         // The chat's last comment, as on every other object with a chat.
         commentsData: data.commentsData || null,
         dataAccess: data.dataAccess === true,
-        publicLink: mapArtifactPublicLink(data.publicLink),
     }
 }
 
@@ -500,8 +425,6 @@ module.exports = {
     ACTIVE_MIME_TYPES,
     ARTIFACT_ITEMS_COLLECTION,
     ARTIFACT_KINDS,
-    ARTIFACT_PUBLIC_HOSTS,
-    ARTIFACT_PUBLIC_LINKS_COLLECTION,
     ARTIFACT_SERVER_FIELDS,
     ARTIFACT_SOURCES,
     ARTIFACT_STORAGE_PREFIX,
@@ -517,14 +440,12 @@ module.exports = {
     SERVE_ARTIFACT_FUNCTION,
     buildArtifactAppPath,
     buildArtifactIsPublicFor,
-    buildArtifactPublicUrl,
     buildArtifactServePath,
     buildArtifactServeUrl,
     encodeArtifactPath,
     getArtifactDocPath,
     getArtifactFileStoragePath,
     getArtifactKindForMimeType,
-    getArtifactPublicLinkDocPath,
     getArtifactStoragePrefix,
     getArtifactVersionsCollectionPath,
     getArtifactsCollectionPath,
@@ -536,18 +457,14 @@ module.exports = {
     isActiveMimeType,
     isInlineMimeType,
     isProjectPublic,
-    isPublicLinkToken,
     isTextMimeType,
     mapArtifactData,
-    mapArtifactPublicLink,
     mapArtifactVersionData,
     normalizeArtifactDescription,
     normalizeArtifactPath,
     normalizeArtifactTitle,
     normalizeChangeSummary,
-    parseArtifactPublicPath,
     parseArtifactServePath,
-    resolveArtifactPublicBaseUrl,
     resolveEntryPath,
     resolveRequestedFilePath,
     sortArtifactsByLastEdition,

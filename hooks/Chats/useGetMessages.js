@@ -1,5 +1,5 @@
 import { subscribeWithLoading } from '../../utils/redux/loadingOperation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -63,9 +63,13 @@ const useGetMessages = (
     const cachedState = { scope, messages: cached || [], loaded: cached !== null }
     const [state, setState] = useState(cachedState)
     const currentState = state.scope === scope ? state : cachedState
+    // The "the assistant spoke last, so keep it on" default belongs to OPENING a chat. The effect
+    // below re-subscribes whenever `toRender` grows (loading earlier messages), and re-applying the
+    // default then switched the assistant back on right after the user had turned it off (AT-2886).
+    const assistantDefaultScopeRef = useRef(null)
 
     useEffect(() => {
-        let isFirstFetch = true
+        let isFirstFetch = assistantDefaultScopeRef.current !== scope
         let latestMessages = currentState.messages
         const watcherKey = v4()
         const unsubscribe = subscribeWithLoading(
@@ -101,6 +105,7 @@ const useGetMessages = (
             if (messageCache && !metadata?.fromCache) messageCache.write(cacheScope, sortedMessages)
 
             if (checkAssistant && isFirstFetch) {
+                assistantDefaultScopeRef.current = scope
                 const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
                 const lastMessage = sortedMessages[sortedMessages.length - 1]
                 const assistantResponded =
