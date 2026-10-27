@@ -25,7 +25,7 @@ import ArtifactPreview from './ArtifactPreview'
 import ArtifactBacklinks from './ArtifactBacklinks'
 import ArtifactContextLink from './ArtifactContextLink'
 import { openUploadSource } from './uploadSourceLinks'
-import ArtifactAssistantForm from './ArtifactAssistantForm'
+import ArtifactCommentsPopup from './ArtifactCommentsPopup'
 import ArtifactChat from './ArtifactChat'
 import ArtifactHistory from './ArtifactHistory'
 import {
@@ -420,7 +420,6 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [notice, setNotice] = useState('')
     const [confirmDelete, setConfirmDelete] = useState(false)
-    const [showAssistantForm, setShowAssistantForm] = useState(false)
     const [copiedNotice, setCopiedNotice] = useState('')
     const copiedTimer = useRef(null)
     const [section, setSection] = useArtifactSection(projectId)
@@ -429,7 +428,6 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
     useEffect(() => {
         setNotice('')
         setConfirmDelete(false)
-        setShowAssistantForm(false)
         setCopiedNotice('')
     }, [artifactId])
     useEffect(() => () => clearTimeout(copiedTimer.current), [])
@@ -472,13 +470,16 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
 
     const isOwner = artifact.userId === loggedUserId
     const editedDate = formatArtifactDate(artifact.lastEditionDate)
-    const url = getArtifactUrl(projectId, artifact)
+    const publicUrl = getArtifactPublicUrl(artifact)
+    // Full screen opens the same address the header's link button hands out (AT-2888): the public
+    // link on artifacts.alldone.app. Without one (a private artifact, or the link switched off) it
+    // falls back to the internal address, which only works for people who can read the artifact,
+    // so nothing is made public by opening it.
+    const fullScreenUrl = publicUrl || getArtifactUrl(projectId, artifact)
 
     const openFullScreen = () => {
-        if (Platform.OS === 'web' && url) window.open(url, '_blank', 'noopener,noreferrer')
+        if (Platform.OS === 'web' && fullScreenUrl) window.open(fullScreenUrl, '_blank', 'noopener,noreferrer')
     }
-
-    const publicUrl = getArtifactPublicUrl(artifact)
 
     // The header's link button hands out the public link; with it switched off, the address only
     // project members can open, and the notice says which one it was.
@@ -499,18 +500,10 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
         URLsArtifacts.push(getArtifactDetailsUrl(nextSection), null, projectId, artifact.id, artifact.title)
     }
 
-    const toggleAssistantForm = () => {
-        if (section !== ARTIFACT_SECTION_ARTIFACT) {
-            showSection(ARTIFACT_SECTION_ARTIFACT)
-            return setShowAssistantForm(true)
-        }
-        setShowAssistantForm(shown => !shown)
-    }
-
     // One row above the artifact and nothing below it (AT-2879): back, title, the four sections
-    // and the three things one does with the artifact itself: open it full screen, change it with
-    // the assistant, and copy its link. Everything else, uploading a new version included, lives
-    // under Details.
+    // and the three things one does with the artifact itself: open it full screen, talk about it
+    // (with the assistant, too) in the comment popup every other object uses (AT-2888), and copy
+    // its link. Everything else, uploading a new version included, lives under Details.
     const header = (
         <View style={localStyles.header} testID="artifact-header">
             <View style={[localStyles.titleGroup, mobile && localStyles.titleGroupMobile]}>
@@ -538,12 +531,18 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                     label={translate('Open full screen')}
                     onPress={openFullScreen}
                 />
-                <HeaderAction
-                    testID="artifact-change-with-assistant"
-                    icon="message-circle"
-                    label={translate('Change with assistant')}
-                    onPress={toggleAssistantForm}
-                    active={showAssistantForm && section === ARTIFACT_SECTION_ARTIFACT}
+                <ArtifactCommentsPopup
+                    projectId={projectId}
+                    artifact={artifact}
+                    renderTrigger={({ open, isOpen }) => (
+                        <HeaderAction
+                            testID="artifact-comments"
+                            icon="message-circle"
+                            label={translate('Comments')}
+                            onPress={open}
+                            active={isOpen}
+                        />
+                    )}
                 />
                 <HeaderAction
                     testID="artifact-copy-link"
@@ -661,17 +660,6 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                 </View>
             ) : (
                 <>
-                    {showAssistantForm && (
-                        <ArtifactAssistantForm
-                            projectId={projectId}
-                            artifact={artifact}
-                            onClose={() => setShowAssistantForm(false)}
-                            onSent={() => {
-                                setShowAssistantForm(false)
-                                showSection(ARTIFACT_SECTION_CHAT)
-                            }}
-                        />
-                    )}
                     <View
                         ref={previewRef}
                         onLayout={measurePreview}
