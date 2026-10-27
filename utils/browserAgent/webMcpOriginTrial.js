@@ -6,8 +6,18 @@
  * agent gets. Tokens are bound to one origin and are public by design (they are sent in every page),
  * so they live here rather than in CI secrets.
  *
- * To enable it: register each origin at https://developer.chrome.com/origintrials (trial "WebMCP"),
- * paste the token under its host below, deploy. Chrome accepts a token injected from script into a
+ * Status (AT-2890): no token is registered yet, so production has NO native WebMCP. Until one is,
+ * `window.alldone` is the only browser surface.
+ *
+ * To enable it:
+ *   1. Open https://developer.chrome.com/origintrials, pick the "WebMCP" trial and click "Register".
+ *   2. Web origin: https://my.alldone.app (repeat for https://mystaging.alldone.app and the
+ *      alldonestaging.web.app origin used for staging QA). Leave "third-party matching" off.
+ *   3. Paste each token under its host below (hostname only, no scheme) and deploy the web app.
+ *   4. Verify in Chrome 149+: `!!document.modelContext` is true after sign-in, and the
+ *      `#alldone-agent-api` manifest reports `webMcp.available: true` with a tool count.
+ *   Tokens expire with the trial (or per renewal); an expired token simply makes the API disappear.
+ * Tokens are bound to one origin. Chrome accepts a token injected from script into a
  * `<meta http-equiv="origin-trial">` tag; it then exposes the API from that moment on, which is why
  * this runs before the bridge looks for `document.modelContext`.
  */

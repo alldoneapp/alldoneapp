@@ -1,4 +1,6 @@
 import {
+    AGENT_API_MANIFEST_ID,
+    AGENT_API_STATES,
     AlldoneToolError,
     BROWSER_AGENT_CLIENT_HEADER,
     BROWSER_AGENT_CLIENT_NAME,
@@ -9,7 +11,9 @@ import {
     getToolAnnotations,
     installBrowserAgentApi,
     installWindowApi,
+    installWindowApiStub,
     registerWebMcpTools,
+    resetAgentApiAnnouncements,
 } from './browserAgentApi'
 import { ensureWebMcpOriginTrialToken } from './webMcpOriginTrial'
 
@@ -306,7 +310,12 @@ describe('window.alldone', () => {
 })
 
 describe('installBrowserAgentApi', () => {
+    beforeEach(() => {
+        jest.spyOn(console, 'info').mockImplementation(() => {})
+    })
+
     afterEach(() => {
+        console.info.mockRestore()
         delete window.alldone
         delete document.modelContext
     })
@@ -320,7 +329,7 @@ describe('installBrowserAgentApi', () => {
 
         expect(window.alldone).toBeDefined()
         expect(modelContext.registerTool).toHaveBeenCalledTimes(1)
-        expect(window.alldone.status()).toEqual({ webMcpSupported: true, webMcpRegistered: 1 })
+        expect(window.alldone.status()).toEqual({ state: 'ready', webMcpSupported: true, webMcpRegistered: 1 })
         const signal = modelContext.registerTool.mock.calls[0][1].signal
         dispose()
         expect(signal.aborted).toBe(true)
@@ -349,9 +358,157 @@ describe('installBrowserAgentApi', () => {
     test('without WebMCP only window.alldone is installed and nothing is fetched up front', async () => {
         const client = { listTools: jest.fn(), callTool: jest.fn() }
         const dispose = await installBrowserAgentApi({ win: window, client })
-        expect(window.alldone.status()).toEqual({ webMcpSupported: false, webMcpRegistered: 0 })
+        expect(window.alldone.status()).toEqual({ state: 'ready', webMcpSupported: false, webMcpRegistered: 0 })
         expect(client.listTools).not.toHaveBeenCalled()
         dispose()
+    })
+})
+
+describe('discoverability (AT-2890)', () => {
+    const readManifest = () => JSON.parse(document.getElementById(AGENT_API_MANIFEST_ID).textContent)
+    let info
+
+    beforeEach(() => {
+        resetAgentApiAnnouncements()
+        info = jest.spyOn(console, 'info').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        info.mockRestore()
+        delete window.alldone
+        delete document.modelContext
+    })
+
+    test('window.alldone is enumerable, so Object.keys(window) finds it', () => {
+        const uninstall = installWindowApi(window, { listTools: jest.fn(), callTool: jest.fn() })
+        expect(Object.keys(window)).toContain('alldone')
+        expect(Object.getOwnPropertyDescriptor(window, 'alldone')).toMatchObject({
+            enumerable: true,
+            writable: false,
+            configurable: true,
+        })
+        expect(Object.keys(window.alldone)).toEqual(
+            expect.arrayContaining(['listTools', 'callTool', 'tools', 'help', 'status', 'whenReady', 'state'])
+        )
+        expect(Object.prototype.toString.call(window.alldone)).toBe('[object Alldone]')
+        uninstall()
+        expect(Object.keys(window)).not.toContain('alldone')
+    })
+
+    test('alldone.tools lists the tool names once they are loaded, and help() names them', async () => {
+        const callTool = jest.fn(async () => 'ok')
+        const uninstall = installWindowApi(window, {
+            listTools: async () => [{ name: 'get_tasks' }, { name: 'read_knowledge_page' }],
+            callTool,
+        })
+        expect(Object.keys(window.alldone.tools)).toEqual([])
+
+        await window.alldone.listTools()
+
+        expect(Object.keys(window.alldone.tools)).toEqual(['get_tasks', 'read_knowledge_page'])
+        expect('get_tasks' in window.alldone.tools).toBe(true)
+        expect(window.alldone.tools.get_tasks.name).toBe('get_tasks')
+        expect(window.alldone.tools.get_tasks).toBe(window.alldone.tools.get_tasks)
+        expect(window.alldone.help()).toMatch(/2 tools: get_tasks, read_knowledge_page/)
+        // Enumerating or serialising the shortcut never calls a tool.
+        expect(JSON.stringify(window.alldone.tools)).toBe('{}')
+        expect(window.alldone.tools.toJSON).toBeUndefined()
+        expect(window.alldone.tools.constructor).toBeUndefined()
+        expect(callTool).not.toHaveBeenCalled()
+        uninstall()
+    })
+
+    test('a signed-in session publishes a manifest and DOM markers without any tool or user data', async () => {
+        const modelContext = { registerTool: jest.fn() }
+        document.modelContext = modelContext
+        const client = {
+            listTools: jest.fn(async () => [{ name: 'get_tasks', description: 'secret-ish', annotations: {} }]),
+            callTool: jest.fn(),
+        }
+        const dispose = await installBrowserAgentApi({ win: window, client })
+
+        const root = document.documentElement
+        expect(root.getAttribute('data-alldone-agent-api')).toBe('window.alldone')
+        expect(root.getAttribute('data-alldone-agent-api-state')).toBe('ready')
+        const element = document.getElementById(AGENT_API_MANIFEST_ID)
+        expect(element.getAttribute('type')).toBe('application/json')
+        const manifest = readManifest()
+        expect(manifest).toMatchObject({
+            state: 'ready',
+            javascript: 'window.alldone',
+            docs: '/llms.txt',
+            webMcp: { available: true, registeredTools: 1 },
+        })
+        expect(JSON.stringify(manifest)).not.toMatch(/get_tasks|secret-ish|uid|email/)
+
+        dispose()
+        expect(document.getElementById(AGENT_API_MANIFEST_ID)).toBeNull()
+        expect(root.hasAttribute('data-alldone-agent-api-state')).toBe(false)
+    })
+
+    test('announces the API once per page in the console', async () => {
+        const client = { listTools: jest.fn(), callTool: jest.fn() }
+        const first = await installBrowserAgentApi({ win: window, client })
+        first()
+        const second = await installBrowserAgentApi({ win: window, client })
+        second()
+        expect(info).toHaveBeenCalledTimes(1)
+        expect(info.mock.calls[0][0]).toMatch(/window\.alldone.*alldone\.help\(\).*\/llms\.txt/)
+        expect(client.listTools).not.toHaveBeenCalled()
+    })
+
+    test('a signed-out stub explains itself, has no tools and makes no request', async () => {
+        const uninstall = installWindowApiStub(window, { state: AGENT_API_STATES.SIGNED_OUT })
+
+        expect(Object.keys(window)).toContain('alldone')
+        expect(window.alldone.state).toBe('signed_out')
+        expect(window.alldone.help()).toMatch(/Nobody is signed in/)
+        await expect(window.alldone.listTools()).rejects.toThrow(/Not signed in/)
+        await expect(window.alldone.callTool('get_tasks', {})).rejects.toBeInstanceOf(AlldoneToolError)
+        await expect(window.alldone.tools.get_tasks({})).rejects.toThrow(/Not signed in/)
+        expect(Object.keys(window.alldone.tools)).toEqual([])
+        expect(readManifest()).toMatchObject({
+            state: 'signed_out',
+            usage: ['await alldone.whenReady()', 'alldone.help()'],
+        })
+        expect(document.documentElement.getAttribute('data-alldone-agent-api-state')).toBe('signed_out')
+        expect(info).toHaveBeenCalledWith(expect.stringMatching(/signed_out/))
+        uninstall()
+        expect(window.alldone).toBeUndefined()
+    })
+
+    test('the loading stub stays quiet in the console', () => {
+        const uninstall = installWindowApiStub(window, { state: AGENT_API_STATES.LOADING })
+        expect(window.alldone.help()).toMatch(/still loading/)
+        expect(info).not.toHaveBeenCalled()
+        uninstall()
+    })
+
+    test('whenReady() on the stub resolves with the real API once a session installs it', async () => {
+        const uninstallStub = installWindowApiStub(window, { state: AGENT_API_STATES.LOADING })
+        const pending = window.alldone.whenReady()
+
+        uninstallStub()
+        const uninstall = installWindowApi(window, { listTools: jest.fn(), callTool: jest.fn() })
+
+        const api = await pending
+        expect(api).toBe(window.alldone)
+        expect(api.state).toBe('ready')
+        await expect(api.whenReady()).resolves.toBe(api)
+        uninstall()
+    })
+
+    test('whenReady() on the stub gives up after its timeout', async () => {
+        jest.useFakeTimers()
+        try {
+            const uninstall = installWindowApiStub(window, { state: AGENT_API_STATES.SIGNED_OUT })
+            const pending = window.alldone.whenReady(1000)
+            jest.advanceTimersByTime(1000)
+            await expect(pending).rejects.toThrow(/did not become ready/)
+            uninstall()
+        } finally {
+            jest.useRealTimers()
+        }
     })
 })
 

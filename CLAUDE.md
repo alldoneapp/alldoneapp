@@ -1124,6 +1124,27 @@ URLs and cannot use a signed-in browser still needs the OAuth connector. Pinned 
 `utils/browserAgent/browserAgentApi.test.js`, `components/BrowserAgent/BrowserAgentApiBridge.test.js`
 and `functions/MCP/mcpBrowserAgent.test.js`.
 
+**An agent that cannot find the API cannot use it, and the first version was hidden from every
+check an agent actually runs (AT-2890).** `window.alldone` was installed with `Object.defineProperty`
+and no `enumerable: true`, so `Object.keys(window)`, the first thing Claude in Chrome tried, did not
+list it. The meta tag is in `<head>`, which is neither in the accessibility tree nor in the page
+text, and on the login page there was nothing at all. So Claude reported that the page had no API.
+The API now announces itself on every channel an agent reads, and none of them carries more than
+the page already shows. `window.alldone` is enumerable and exists in **every** state: `ready`, plus
+`loading` / `signed_out` stubs that have no tools, make no request, explain themselves in `help()`
+and resolve `whenReady()` with the real API once a session installs it. `BrowserAgentApiBridge` is
+therefore mounted for the whole app in `AppContent` (`sessionReady` replaces the old mount
+condition), and `resolveBrowserAgentPageState` decides the state. A user who switched browser
+agents off gets **nothing**, not a stub, once their user document is known. During boot a loading
+stub can appear briefly, because the account is not known yet.
+`Object.keys(alldone.tools)` lists the tool names once `listTools()` has loaded them, and the proxy
+only turns snake_case names into calls, so `then`, `toJSON` and `constructor` never call a tool.
+There is one `console.info` line per page and state, and the loading stub stays silent. There is
+also a JSON manifest, `<script type="application/json" id="alldone-agent-api">`, with the state,
+usage and WebMCP outcome but no tool or user data, plus `data-alldone-agent-api-state` on `<html>`.
+Native WebMCP is still off in production until origin-trial tokens are registered (see
+`webMcpOriginTrial.js`).
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
