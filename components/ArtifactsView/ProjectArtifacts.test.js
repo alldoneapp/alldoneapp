@@ -355,3 +355,30 @@ it('previews a full image artifact through serveArtifact and keeps the icon for 
     await act(async () => images[0].props.onError())
     expect(tree.root.findAllByProps({ 'data-testid': 'artifact-thumbnail-image' })).toHaveLength(0)
 })
+
+// AT-2887: linked uploads from legacy tasks carried Number.MAX_SAFE_INTEGER as their date and the
+// row read "Edited Invalid date". A date that is not a real time is left out, never made up.
+it('never prints "Invalid date": a row without a trustworthy date simply has no edited label', async () => {
+    mockArtifacts = [
+        { id: 'legacy', title: 'image.jpg', kind: 'image', lastEditionDate: Number.MAX_SAFE_INTEGER, sizeBytes: 1 },
+        { id: 'dated', title: 'Report', kind: 'pdf', lastEditionDate: Date.UTC(2026, 9, 27, 9, 25), sizeBytes: 1 },
+    ]
+    const tree = await render()
+    const legacy = texts(tree.root.findByProps({ testID: 'artifact-row-legacy' }))
+    const dated = texts(tree.root.findByProps({ testID: 'artifact-row-dated' }))
+    expect(legacy).not.toMatch(/Invalid date/)
+    expect(legacy).not.toMatch(/Edited|Bearbeitet/)
+    expect(dated).toMatch(/27\.10\.2026/)
+})
+
+it('reports its count and its newest artifact date, so All projects can order the projects', async () => {
+    const onLoaded = jest.fn()
+    const newest = Date.UTC(2026, 9, 27, 9, 25)
+    mockArtifacts = [
+        { id: 'legacy', title: 'image.jpg', kind: 'image', lastEditionDate: Number.MAX_SAFE_INTEGER },
+        { id: 'older', title: 'Report', kind: 'pdf', lastEditionDate: newest - 1000 },
+        { id: 'newest', title: 'Deck', kind: 'pdf', lastEditionDate: newest },
+    ]
+    await render({ inAllProjects: true, onLoaded })
+    expect(onLoaded).toHaveBeenLastCalledWith('project-a', 3, newest)
+})

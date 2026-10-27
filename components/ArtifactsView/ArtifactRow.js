@@ -25,8 +25,9 @@ function getServeUrl(projectId) {
 export default function ArtifactRow({ artifact, onPress, onOpenSource, projectId, inCommentPopup = false }) {
     const thumbnail = getArtifactThumbnail(artifact, getServeUrl(projectId))
     const showsContext = !!onOpenSource
+    const editedDate = formatArtifactDate(artifact.lastEditionDate)
     const metaParts = [
-        translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) }),
+        editedDate && translate('Artifact edited at', { date: editedDate }),
         artifact.linkedUpload
             ? !showsContext &&
               translate('Artifact upload in', { title: artifact.linkedSources[0]?.title || translate('File') })

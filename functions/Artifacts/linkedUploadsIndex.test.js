@@ -251,3 +251,45 @@ it('encodes times like push ids so note upload revisions compare by time', () =>
     expect(`${pushIdPrefixForTime(1792997192424)}xyz` > pushIdPrefixForTime(1792997192423)).toBe(true)
     expect(readNoteUploadReferences(null, bucketName)).toEqual([])
 })
+
+// AT-2887: tasks from 2020 carry the old "Someday" sentinel (Number.MAX_SAFE_INTEGER) as their
+// edition stamp. Their uploads rendered as "Edited Invalid date" and sorted above every real file.
+it('dates an upload by its source creation time when the edition stamp is a legacy sentinel', async () => {
+    const created = Date.UTC(2023, 0, 11, 19, 45, 25)
+    const recent = Date.UTC(2026, 9, 27, 9, 25)
+    db.store.set(
+        'items/p/tasks/legacy',
+        readable({
+            name: 'Level up popup',
+            description: token('attachments/legacy/Bildschirmfoto.png', 'Bildschirmfoto.png'),
+            lastEditionDate: Number.MAX_SAFE_INTEGER,
+            created,
+        })
+    )
+    db.store.set(
+        'items/p/tasks/broken',
+        readable({
+            name: 'No usable date',
+            description: token('attachments/broken/image.jpg', 'image.jpg'),
+            lastEditionDate: Number.MAX_SAFE_INTEGER,
+        })
+    )
+    db.store.set(
+        'items/p/tasks/recent',
+        readable({
+            name: 'Recent',
+            description: token('attachments/recent/Screenshot.png', 'Screenshot.png'),
+            lastEditionDate: recent,
+        })
+    )
+
+    const files = (await call()).files
+    const byTitle = title => files.find(file => file.title === title)
+    expect(byTitle('Bildschirmfoto.png').lastEditionDate).toBe(created)
+    expect(byTitle('image.jpg').lastEditionDate).toBe(0)
+    expect(byTitle('Screenshot.png').lastEditionDate).toBe(recent)
+    const order = files.map(file => file.title)
+    expect(order.indexOf('Screenshot.png')).toBeLessThan(order.indexOf('Bildschirmfoto.png'))
+    expect(order.indexOf('Bildschirmfoto.png')).toBeLessThan(order.indexOf('image.jpg'))
+    expect(files.every(file => file.lastEditionDate < 8.64e15)).toBe(true)
+})

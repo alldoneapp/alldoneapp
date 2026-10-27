@@ -471,6 +471,7 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
     }
 
     const isOwner = artifact.userId === loggedUserId
+    const editedDate = formatArtifactDate(artifact.lastEditionDate)
     const url = getArtifactUrl(projectId, artifact)
 
     const openFullScreen = () => {
@@ -618,8 +619,8 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
 
                     <Text style={localStyles.meta} testID="artifact-meta">
                         {artifact.entryPath} · {formatArtifactSize(artifact.sizeBytes)} ·{' '}
-                        {translate(getArtifactSourceLabelKey(artifact.source))} ·{' '}
-                        {translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) })}
+                        {translate(getArtifactSourceLabelKey(artifact.source))}
+                        {!!editedDate && ` · ${translate('Artifact edited at', { date: editedDate })}`}
                     </Text>
 
                     <ArtifactContextLink

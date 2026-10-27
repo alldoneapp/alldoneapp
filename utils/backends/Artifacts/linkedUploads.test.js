@@ -1,6 +1,8 @@
 import { getUploadSourcePath, mergeLinkedUploads, sourceTitle, UPLOAD_SOURCES } from './linkedUploads'
 
 const bucketName = 'test.appspot.com'
+// A real epoch-ms base: dates outside a plausible range are treated as unknown (AT-2887).
+const T = Date.UTC(2026, 9, 1)
 const url = (path, token = 't') =>
     `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${token}`
 
@@ -41,7 +43,7 @@ it('keeps same-named distinct files separate and mints no address of its own', (
         {
             references: ['a', 'b'].map(id => ({ path: `attachments/${id}/report.pdf`, fileName: 'report.pdf' })),
             source: { type: 'tasks', id: 't' },
-            date: 1,
+            date: T + 1,
         },
     ])
     expect(files).toHaveLength(2)
@@ -56,17 +58,17 @@ it('types a file by its stored name when its display name has no known extension
         {
             references: [{ path, url: url(path), fileName: 'Screenshot at 3:00', thumbnailUrl: url(path) }],
             source: { type: 'notes', id: 'n' },
-            date: 3,
+            date: T + 3,
         },
         {
             references: [{ path: 'notesAttachments/d/clip.mp4', fileName: 'Recording v1.2' }],
             source: { type: 'notes', id: 'n' },
-            date: 2,
+            date: T + 2,
         },
         {
             references: [{ path: 'attachments/e/blob', fileName: 'Screenshot at 4:00' }],
             source: { type: 'tasks', id: 't' },
-            date: 1,
+            date: T + 1,
         },
     ])
     expect(screenshot).toMatchObject({
@@ -85,7 +87,7 @@ it('keeps the display name authoritative when it names a known type', () => {
         {
             references: [{ path: 'attachments/c/upload.bin', fileName: 'report.pdf' }],
             source: { type: 'tasks', id: 't' },
-            date: 1,
+            date: T + 1,
         },
     ])
     expect(file).toMatchObject({ kind: 'pdf', mimeType: 'application/pdf' })
@@ -93,16 +95,21 @@ it('keeps the display name authoritative when it names a known type', () => {
 
 it('lists one file once across sources, private only if every source is private', () => {
     const [file] = mergeLinkedUploads([
-        { references: [{ path: 'attachments/c/a.pdf' }], source: { type: 'tasks', id: 't' }, date: 1, isPrivate: true },
+        {
+            references: [{ path: 'attachments/c/a.pdf' }],
+            source: { type: 'tasks', id: 't' },
+            date: T + 1,
+            isPrivate: true,
+        },
         {
             references: [{ path: 'attachments/c/a.pdf' }],
             source: { type: 'tasks', id: 't', commentId: 'c' },
-            date: 3,
+            date: T + 3,
             isPrivate: false,
         },
     ])
     expect(file.linkedSources).toHaveLength(2)
-    expect(file).toMatchObject({ isPrivate: false, lastEditionDate: 3 })
+    expect(file).toMatchObject({ isPrivate: false, lastEditionDate: T + 3 })
 })
 
 it('shows a file through the address its source already embeds, with the image thumbnail if any', () => {
@@ -112,7 +119,7 @@ it('shows a file through the address its source already embeds, with the image t
         {
             references: [{ path: 'attachments/c/shot.png', url: image, fileName: 'shot.png' }],
             source: { type: 'tasks', id: 't' },
-            date: 1,
+            date: T + 1,
         },
         {
             references: [
@@ -123,7 +130,7 @@ it('shows a file through the address its source already embeds, with the image t
                 },
             ],
             source: { type: 'notes', id: 'n' },
-            date: 2,
+            date: T + 2,
         },
     ])
     expect(file).toMatchObject({ kind: 'image', mimeType: 'image/png', url: image, thumbnailUrl: thumbnail })

@@ -28,6 +28,9 @@ jest.mock('../firestore', () => ({
     runHttpsCallableFunction: jest.fn(),
 }))
 jest.mock('../Premium/premiumFirestore', () => ({ updateQuotaTraffic: jest.fn() }))
+// A real epoch-ms base: dates outside a plausible range are treated as unknown (AT-2887).
+const T = Date.UTC(2026, 9, 1)
+
 jest.mock('../offlineWriteAck', () => ({ awaitWriteAck: write => write }))
 jest.mock('../../firebaseEmulators', () => ({ shouldUseFirebaseEmulators: () => false }))
 jest.mock('../../../redux/store', () => ({ getState: () => ({ loggedUser: { uid: 'owner' } }) }))
@@ -140,11 +143,11 @@ it('watches the tasks and notes that link to the artifact through the per-reader
     ])
 
     const snapshot = docs => ({ docs: docs.map(([id, data]) => ({ id, data: () => data })) })
-    listeners['items/p/tasks'](snapshot([['t1', { extendedName: 'Check it', done: true, lastEditionDate: 1 }]]))
-    listeners['noteItems/p/notes'](snapshot([['n1', { extendedTitle: 'Review', lastEditionDate: 5 }]]))
+    listeners['items/p/tasks'](snapshot([['t1', { extendedName: 'Check it', done: true, lastEditionDate: T + 1 }]]))
+    listeners['noteItems/p/notes'](snapshot([['n1', { extendedTitle: 'Review', lastEditionDate: T + 5 }]]))
     expect(onChange).toHaveBeenLastCalledWith([
-        { type: 'note', id: 'n1', title: 'Review', done: false, lastEditionDate: 5 },
-        { type: 'task', id: 't1', title: 'Check it', done: true, lastEditionDate: 1 },
+        { type: 'note', id: 'n1', title: 'Review', done: false, lastEditionDate: T + 5 },
+        { type: 'task', id: 't1', title: 'Check it', done: true, lastEditionDate: T + 1 },
     ])
 
     unsubscribe()

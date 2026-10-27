@@ -20,19 +20,28 @@ import URLsArtifacts, {
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import ProjectArtifacts from './ProjectArtifacts'
 import { getArtifactSection, getSelectedArtifactId, useArtifactsActiveTab } from './artifactsNavigationState'
+import { sortProjectsByNewestArtifact } from './artifactPresentation'
 
-function AllProjectsArtifacts({ projects }) {
+// Each project section reports how many artifacts it has and when its newest one was edited. The
+// sections are ordered by that date, newest first, like the Notes lists; keys are stable, so a
+// reorder moves the sections instead of remounting them (and their listeners).
+export function AllProjectsArtifacts({ projects }) {
     const [counts, setCounts] = useState({})
-    const onLoaded = useCallback((projectId, count) => {
+    const [newestDates, setNewestDates] = useState({})
+    const onLoaded = useCallback((projectId, count, newestDate = 0) => {
         setCounts(current => (current[projectId] === count ? current : { ...current, [projectId]: count }))
+        setNewestDates(current =>
+            current[projectId] === newestDate ? current : { ...current, [projectId]: newestDate }
+        )
     }, [])
 
     const allLoaded = projects.every(project => counts[project.id] !== undefined)
     const total = projects.reduce((sum, project) => sum + (counts[project.id] || 0), 0)
+    const orderedProjects = useMemo(() => sortProjectsByNewestArtifact(projects, newestDates), [projects, newestDates])
 
     return (
         <View>
-            {projects.map(project => (
+            {orderedProjects.map(project => (
                 <ProjectArtifacts key={project.id} project={project} inAllProjects onLoaded={onLoaded} />
             ))}
             {allLoaded && total === 0 && (
@@ -59,8 +68,15 @@ export default function ArtifactsView() {
     const project = loggedUserProjects[selectedProjectIndex]
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex) && !!project
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    // The user's own project order is the base, as in Notes; the newest artifact then reorders it.
     const activeProjects = useMemo(
-        () => (inAllProjects ? ProjectHelper.getActiveProjects2(loggedUserProjects, loggedUser) : []),
+        () =>
+            inAllProjects
+                ? ProjectHelper.sortProjects(
+                      ProjectHelper.getActiveProjects2(loggedUserProjects, loggedUser),
+                      loggedUser.uid
+                  )
+                : [],
         [inAllProjects, loggedUserProjects, loggedUser.projectIds, loggedUser.archivedProjectIds]
     )
 

@@ -18,6 +18,7 @@
 // download URLs of sources the caller may not be allowed to read.
 const Y = require('yjs')
 const { extractAttachmentReferences } = require('./attachmentModel')
+const { firstArtifactTimestamp } = require('./artifactDates')
 const {
     UPLOAD_SOURCES,
     commentReferences,
@@ -467,7 +468,9 @@ async function answer({ db, projectId, userId, userIds, bucketName, candidates }
         if (!parent.readable) continue
         const { data } = parent
         const source = { type: candidate.type, id: candidate.id, title: sourceTitle(data) }
-        const date = data.lastEditionDate || data.created
+        // Legacy objects can carry a sentinel edition stamp (AT-2887); the creation time is the honest
+        // fallback, and neither is ever made up.
+        const date = firstArtifactTimestamp(data.lastEditionDate, data.created)
         const isPrivate = !data.isPublicFor.includes(0)
         if (candidate.kind === 'comment') {
             const comment = comments.get(commentPath(candidate))
@@ -479,7 +482,7 @@ async function answer({ db, projectId, userId, userIds, bucketName, candidates }
             entries.push({
                 references,
                 source: { ...source, commentId: candidate.commentId },
-                date: comment.lastEditionDate || comment.created || date,
+                date: firstArtifactTimestamp(comment.lastEditionDate, comment.created, date),
                 isPrivate,
             })
             continue
