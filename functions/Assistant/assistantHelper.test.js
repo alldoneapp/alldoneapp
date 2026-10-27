@@ -735,6 +735,16 @@ describe('project wiki wiring', () => {
         expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).not.toHaveBeenCalled()
         mockKnowledgeBase.getKnowledgeBaseContextMessage.mockResolvedValue('')
     })
+
+    test('allows stored-knowledge questions to trigger wiki research without an explicit search command', async () => {
+        const messages = []
+        await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['get_user_projects', 'search'])
+        const actionInstruction = messages.map(([, text]) => text).find(text => text.includes('action-oriented'))
+
+        expect(actionInstruction).toContain('asks for information from their stored project knowledge')
+        expect(actionInstruction).toContain('Follow the wiki-first instructions')
+        expect(actionInstruction).not.toContain('Only use tools when the user clearly intends an action')
+    })
 })
 
 describe('Responses API compatibility helpers', () => {

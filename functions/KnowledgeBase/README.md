@@ -35,6 +35,22 @@ and — through `Utils/officeDocumentText.js` — PowerPoint (.pptx) and Excel (
 needs no new function: the tools run inside the existing assistant entry points, and the immediate
 run goes through the same `runKnowledgeBaseIngest` queue as "refresh now".
 
+## Assistant research across projects (AT-2889)
+
+For project-knowledge questions, assistants first select the project the question concerns using
+known context or `get_user_projects` (names and descriptions), then read its wiki before searching
+tasks, notes or chats. The chat's project only supplies the initial index; it does not fix the
+research project. A question about JTL in a personal chat must read the JTL index and relevant
+pages with the JTL `projectId` on both calls. Page summaries alone do not count as reading a page.
+Original sources follow when the wiki is missing, incomplete, stale or contradicted, or when the
+user explicitly asks for them. Routine greetings, direct changes, task IDs and date-based
+listings do not require wiki research.
+
+Member runs receive these instructions and `read_knowledge_page` even if the chat project has
+no wiki or only rebuilding pages. Every read checks membership of its target project. Email
+runs remain excluded; correction and document tool availability retain their separate rules.
+Wiki reads count against the shared research budget, just like other workspace reads.
+
 ## Deploying
 
 1. `deploy:firestore:rules:<env>` — the `knowledgeBases/{projectId}/**` rule (members read, no

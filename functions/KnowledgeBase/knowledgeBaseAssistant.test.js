@@ -133,6 +133,7 @@ describe('getKnowledgeBaseContextMessage', () => {
         const message = await getKnowledgeBaseContextMessage({ db, context: chatRun() })
 
         expect(message).toContain('Project wiki of "Alldone Product"')
+        expect(message).toContain(`Project ID: ${PROJECT_ID}`)
         expect(message).toContain('- [[entscheidungen]] Entscheidungen — Was beschlossen wurde.')
         expect(message).toContain('- [[kunden]] Kunden — Wer unsere Kunden sind.')
         expect(message).not.toContain('geheim')
@@ -157,7 +158,20 @@ describe('getKnowledgeBaseContextMessage', () => {
         expect(correcting).toContain(UNDO_KNOWLEDGE_CORRECTION_TOOL)
     })
 
-    it('says nothing to someone outside the project, on the email channel, or without a wiki', async () => {
+    it('keeps project selection and wiki-first research instructions when the chat has no wiki', async () => {
+        const db = createDb()
+        db.documents.delete(KB_PATH)
+        const message = await getKnowledgeBaseContextMessage({ db, context: chatRun() })
+
+        expect(message).toContain('PROJECT KNOWLEDGE — WIKI FIRST')
+        expect(message).toContain('get_user_projects')
+        expect(message).toContain('SAME projectId')
+        expect(message).not.toContain('Pages:')
+        expect(message).not.toContain(CORRECT_KNOWLEDGE_PAGE_TOOL)
+        expect(db.queries).toHaveLength(0)
+    })
+
+    it('says nothing to someone outside the project or on the email channel', async () => {
         await expect(
             getKnowledgeBaseContextMessage({ db: createDb(), context: chatRun({ requestUserId: 'stranger' }) })
         ).resolves.toBe('')
@@ -200,7 +214,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         offered.forEach(toolName => expect(WRITING_READ_TOOLS.has(toolName)).toBe(true))
     })
 
-    it('offers only the document tools, and only to a direct conversation, while no page can be read', async () => {
+    it('keeps reading other project wikis available while the chat wiki is being rebuilt', async () => {
         const db = new KnowledgeFirestoreDouble({
             [`projects/${PROJECT_ID}`]: { userIds: ['member'] },
             [KB_PATH]: { enabled: true },
@@ -209,13 +223,27 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
 
         // A new wiki's first content is often a deck: adding one must not wait for a first page.
         await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
+            READ_KNOWLEDGE_PAGE_TOOL,
             ADD_KNOWLEDGE_DOCUMENT_TOOL,
             REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
         ])
         _resetKnowledgeBaseAvailabilityCacheForTests()
         await expect(
             getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun({ allowKnowledgeCorrections: false }) })
-        ).resolves.toEqual([])
+        ).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
+    })
+
+    it('offers reading without a local wiki, but never to a nonmember or the email channel', async () => {
+        const db = createDb()
+        db.documents.delete(KB_PATH)
+        for (const context of [chatRun(), chatRun({ writingDraft: true })]) {
+            await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: context })).resolves.toEqual([
+                READ_KNOWLEDGE_PAGE_TOOL,
+            ])
+        }
+        for (const context of [chatRun({ requestUserId: 'stranger' }), chatRun({ channel: 'email' })]) {
+            await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: context })).resolves.toEqual([])
+        }
     })
 
     it('offers no document tools for a wiki that is switched off, though its pages stay readable', async () => {
@@ -232,15 +260,43 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         const db = new KnowledgeFirestoreDouble({ [`projects/${PROJECT_ID}`]: { userIds: ['member'] } })
         const ask = now => getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun(), now })
 
-        await expect(ask(NOW)).resolves.toEqual([])
+        await expect(ask(NOW)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
         db.write(KB_PATH, { enabled: true })
         db.write(pagePath('kunden'), { title: 'Kunden', archived: false, needsRebuild: false })
-        await expect(ask(NOW + 10_000)).resolves.toEqual([])
+        await expect(ask(NOW + 10_000)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
         await expect(ask(NOW + 31_000)).resolves.toHaveLength(5)
     })
 })
 
 describe('read_knowledge_page', () => {
+    it('reads the chosen project index and page from a chat without a wiki, rechecking target membership', async () => {
+        const db = createDb({
+            'projects/jtl': { name: 'JTL Software - Project Juno', userIds: ['member'] },
+            'knowledgeBases/jtl': { enabled: true },
+            'knowledgeBases/jtl/pages/connect': {
+                title: 'JTL Connect',
+                body: 'Slides came from the presentation team.',
+                archived: false,
+                needsRebuild: false,
+            },
+        })
+        db.documents.delete(KB_PATH)
+        const offered = await getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })
+        expect(offered).toContain(READ_KNOWLEDGE_PAGE_TOOL)
+        const index = await run(db, READ_KNOWLEDGE_PAGE_TOOL, { projectId: 'jtl' })
+        expect(index).toMatchObject({ projectId: 'jtl', pages: [{ slug: 'connect', title: 'JTL Connect' }] })
+        await expect(
+            run(db, READ_KNOWLEDGE_PAGE_TOOL, { projectId: 'jtl', slug: index.pages[0].slug })
+        ).resolves.toMatchObject({ projectId: 'jtl', body: 'Slides came from the presentation team.' })
+
+        // Returning an index never grants ongoing access to the target project's pages.
+        db.write('projects/jtl', { userIds: ['someone-else'] }, { merge: true })
+        await expect(run(db, READ_KNOWLEDGE_PAGE_TOOL, { projectId: 'jtl', slug: 'connect' })).resolves.toMatchObject({
+            success: false,
+            error: expect.stringMatching(/members/),
+        })
+    })
+
     it('returns the page with its revision and labelled sources', async () => {
         const result = await run(createDb(), READ_KNOWLEDGE_PAGE_TOOL, { slug: 'kunden' })
 

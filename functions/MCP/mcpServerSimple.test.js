@@ -208,9 +208,10 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
     })
 
     test('leaves the shared wiki schemas untouched for the in-app assistant', async () => {
-        await listTools()
         const { toolSchemas } = require('../Assistant/toolSchemas')
-        expect(toolSchemas.read_knowledge_page.function.description).toMatch(/wiki index in your instructions/)
+        const originalSchema = JSON.parse(JSON.stringify(toolSchemas.read_knowledge_page))
+        await listTools()
+        expect(toolSchemas.read_knowledge_page).toEqual(originalSchema)
         expect(toolSchemas.read_knowledge_page.function.parameters.properties.projectId.description).toMatch(
             /conversation/
         )

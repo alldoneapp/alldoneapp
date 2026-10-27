@@ -3,6 +3,7 @@ const { createHash } = require('crypto')
 const { compactTaskListing } = require('./taskListingContext')
 
 const RESEARCH_TOOLS = new Set([
+    'read_knowledge_page',
     'search',
     'get_notes',
     'get_chats',

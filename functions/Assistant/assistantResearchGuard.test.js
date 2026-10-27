@@ -57,6 +57,27 @@ describe('shared assistant research safeguards', () => {
         expect(prepareResearchRequest(prompt).stopReason).toBe('research_call_limit')
     })
 
+    test('counts wiki pages as research instead of letting each page reset the research budget', () => {
+        const prompt = [...request]
+        for (let i = 0; i < MAX_RESEARCH_CALLS; i++)
+            prompt.push(
+                ...round(
+                    i,
+                    'read_knowledge_page',
+                    { success: true, body: `Page ${i}` },
+                    { projectId: 'jtl', slug: `p-${i}` }
+                )
+            )
+        expect(prepareResearchRequest(prompt).stopReason).toBe('research_call_limit')
+        expect(
+            prepareResearchRequest([
+                ...request,
+                ...round(1, 'read_knowledge_page', { success: true }, { projectId: 'jtl', slug: 'connect' }),
+                ...round(2, 'read_knowledge_page', { success: true }, { projectId: 'jtl', slug: 'connect' }),
+            ]).stopReason
+        ).toBe('duplicate_research_call')
+    })
+
     test('allows long workflows that make progress through successful mutations', () => {
         const prompt = [...request]
         for (let i = 0; i < 25; i++)
