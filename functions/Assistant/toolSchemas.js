@@ -801,7 +801,7 @@ const toolSchemas = {
                             },
                         ],
                         description:
-                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
+                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests. To only make sure a task is due on a day (e.g. today), pass the date alone as "YYYY-MM-DD": if the task is already due that day in the user\'s timezone nothing changes and its time is kept. Omit dueDate when you only add a comment or change other fields; do not resend it with every update.',
                     },
                     alertEnabled: {
                         type: 'boolean',

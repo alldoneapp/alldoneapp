@@ -693,6 +693,7 @@ class TaskService {
             focus,
             focusUserId,
             initiatorId,
+            keepCurrentDueDate,
             ...otherParams
         } = params
 
@@ -744,7 +745,14 @@ class TaskService {
             updateData.description = String(description)
             changes.push('description')
         }
-        if (dueDate !== undefined) {
+        // Re-sending the stored dueDate is not a change (AT-2891): MCP clients resend it with
+        // every progress comment, and each one used to write and post "updated task due".
+        const dueDateIsUnchanged =
+            dueDate !== undefined &&
+            dueDate !== null &&
+            Number.isFinite(Number(dueDate)) &&
+            Number(dueDate) === Number(currentTask.dueDate)
+        if (dueDate !== undefined && !dueDateIsUnchanged) {
             updateData.dueDate = dueDate
             changes.push('due date')
         }
@@ -862,7 +870,7 @@ class TaskService {
                 focusAction = {
                     type: 'set',
                     userId: effectiveFocusUserId,
-                    preserveDueDate: updateData.dueDate !== undefined,
+                    preserveDueDate: dueDate !== undefined || keepCurrentDueDate === true,
                 }
             } else {
                 changes.push('removed from focus')
