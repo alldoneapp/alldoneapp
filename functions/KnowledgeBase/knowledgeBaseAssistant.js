@@ -6,9 +6,9 @@
 // (knowledgeDocuments.js).
 //
 // The tools have no Tools Access toggle, like load_skill: the wiki itself is the access control.
-// They are offered exactly when the run's project has a wiki with at least one visible page and the
-// person the run answers is a member of that project, because a member may read the whole wiki
-// tree anyway (firestore.rules). The document tools are the exception: they need a wiki that is
+// Reading is offered to member runs even when the conversation's project has no wiki: a question
+// can concern another project. Every read checks membership of its target project. Correction
+// tools need visible pages in the conversation's project; document tools need a wiki that is
 // switched on, not one that has pages, because a deck is often the first thing a new wiki gets.
 // Two kinds of run never get them:
 //   - the email channel is action-only and can reply to people outside the project, and Gmail
@@ -62,6 +62,16 @@ const NEW_CORRECTION_TOKEN = /\[\[\s*correction:new\s*(\|[^\]]*)?\]\]/g
 const ACCESS_NONE = 'none'
 const ACCESS_READ = 'read'
 const ACCESS_CORRECT = 'correct'
+
+const KNOWLEDGE_RESEARCH_INSTRUCTIONS = [
+    'PROJECT KNOWLEDGE — WIKI FIRST:',
+    '- Questions about a project, customer, event, decision or who worked on something require looking up stored knowledge, even when the user does not explicitly say "search".',
+    "- Choose the project that the question is ABOUT, using its name and description and the conversation. The project hosting this chat and the user's default project do not determine the subject. If the target project ID is not already known, call get_user_projects and use its names and descriptions to select it. Never invent a project ID.",
+    "- Before searching tasks, notes, chats or contacts for project knowledge, call read_knowledge_page in the relevant project. For a different project, first call it with that projectId and no slug to get its index, then read the relevant page(s) with the SAME projectId and their returned slugs. A page index or summary alone is not a page read. For this chat's project you may use the index below, but still read the relevant page.",
+    "- Answer from the wiki when it is sufficient. Then use the original tasks, notes or chats only for missing details, an explicitly requested original record, or to verify newer or conflicting information. Keep those lookups scoped to the same relevant project. If the topic changes to another project, read that project's wiki first; for a comparison, consult each relevant project.",
+    "- If the selected project has no wiki, no relevant page, a rebuilding page or a read error, continue with the available original sources in that project. An absent wiki in the chat project says nothing about another project's wiki. Never claim a wiki was read when it was unavailable.",
+    '- Routine greetings, general knowledge, direct changes, task-ID lookups and task/calendar listings do not need a wiki detour. Respect an explicit request to use or skip particular sources.',
+].join('\n')
 
 /**
  * How much of the project wiki a run may use, from its runtime context: 'none', 'read' or
@@ -120,11 +130,12 @@ async function loadIndexPages(db, projectId) {
     return pages
 }
 
-function buildKnowledgeBaseContextMessage({ projectName, pages, access }) {
+function buildKnowledgeBaseContextMessage({ projectId, projectName, pages, access }) {
     const index = buildKnowledgeIndex(pages, { maxChars: KNOWLEDGE_CONTEXT_INDEX_MAX_CHARS })
     const truncated = index.includes('more pages')
     const lines = [
         `Project wiki of "${projectName}":`,
+        `- Project ID: ${projectId}. This index belongs to the chat project; use it only when that project is relevant to the question.`,
         "- Context rule: The wiki is compiled automatically from the project's shared tasks, goals, notes and contacts and updated about once a day. Use it as background knowledge about the project. It can be out of date: when it disagrees with the conversation or with a task, note or goal you look up, those win.",
         `- To use a page, call ${READ_KNOWLEDGE_PAGE_TOOL} with its slug${
             truncated ? `; call it without a slug for the full list of pages` : ''
@@ -141,33 +152,40 @@ function buildKnowledgeBaseContextMessage({ projectName, pages, access }) {
 }
 
 /**
- * The wiki block of an assistant's system prompt, or '' when the run may not use the wiki or the
- * project has none. Read fresh every time: it carries page titles and summaries, and a page that
- * lost a source must disappear from the next prompt, not from one a cache decides on.
+ * Wiki-first research instructions and the chat project's index when it has one; '' for ineligible
+ * runs. Read the index fresh: a page that lost a source must disappear from the next prompt.
  */
 async function getKnowledgeBaseContextMessage({ db, context }) {
     const access = resolveKnowledgeBaseAccess(context)
     if (access === ACCESS_NONE) return ''
-    const knowledgeBase = await db.doc(getKnowledgeBasePath(context.projectId)).get()
-    if (!knowledgeBase.exists) return ''
     const project = await isProjectMember(db, context.projectId, context.requestUserId)
     if (!project) return ''
+    const knowledgeBase = await db.doc(getKnowledgeBasePath(context.projectId)).get()
+    if (!knowledgeBase.exists) return KNOWLEDGE_RESEARCH_INSTRUCTIONS
     const pages = await loadIndexPages(db, context.projectId)
-    if (!pages.size) return ''
-    return buildKnowledgeBaseContextMessage({ projectName: project.name || context.projectId, pages, access })
+    if (!pages.size) return KNOWLEDGE_RESEARCH_INSTRUCTIONS
+    return [
+        KNOWLEDGE_RESEARCH_INSTRUCTIONS,
+        buildKnowledgeBaseContextMessage({
+            projectId: context.projectId,
+            projectName: project.name || context.projectId,
+            pages,
+            access,
+        }),
+    ].join('\n\n')
 }
 
 const availabilityCache = new Map()
 
-// { hasPages, enabled } for a member of the project; both false for anyone else.
+// The current project's membership and wiki availability. Target membership is rechecked per read.
 async function getKnowledgeBaseAvailability({ db, projectId, userId, now = Date.now() }) {
     const cacheKey = `${projectId}|${userId}`
     const cached = availabilityCache.get(cacheKey)
     if (cached && cached.expiresAt > now) return cached.availability
 
-    const availability = { hasPages: false, enabled: false }
-    const knowledgeBase = await db.doc(getKnowledgeBasePath(projectId)).get()
-    if (knowledgeBase.exists && (await isProjectMember(db, projectId, userId))) {
+    const availability = { isMember: !!(await isProjectMember(db, projectId, userId)), hasPages: false, enabled: false }
+    const knowledgeBase = availability.isMember ? await db.doc(getKnowledgeBasePath(projectId)).get() : null
+    if (knowledgeBase?.exists) {
         const visible = await db
             .collection(getKnowledgePagesPath(projectId))
             .where('archived', '==', false)
@@ -196,14 +214,15 @@ function toolNamesForAccess(access) {
 async function getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext, now }) {
     const access = resolveKnowledgeBaseAccess(toolRuntimeContext)
     if (access === ACCESS_NONE) return []
-    const { hasPages, enabled } = await getKnowledgeBaseAvailability({
+    const { isMember, hasPages, enabled } = await getKnowledgeBaseAvailability({
         db,
         projectId: toolRuntimeContext.projectId,
         userId: toolRuntimeContext.requestUserId,
         now,
     })
+    if (!isMember) return []
     return [
-        ...(hasPages ? PAGE_TOOLS_BY_ACCESS[access] || [] : []),
+        ...(hasPages ? PAGE_TOOLS_BY_ACCESS[access] || [] : [READ_KNOWLEDGE_PAGE_TOOL]),
         ...(enabled && access === ACCESS_CORRECT ? DOCUMENT_TOOLS : []),
     ]
 }

@@ -12749,7 +12749,7 @@ async function addBaseInstructions(
             'system',
             `IMPORTANT: You are action-oriented. When users ask you to do something, DO IT IMMEDIATELY - don't just talk about doing it. ` +
                 `However, do NOT call tools merely for routine greetings ("hello", "hi", "hey", "how are you"), thank-yous, or empty small talk. ` +
-                `Only use tools when the user clearly intends an action (e.g. "create a task called X", "add X to my tasks", "search for Y", "remind me to Z"). ` +
+                `Use tools when the user requests an action or asks for information from their stored project knowledge (e.g. who prepared a presentation, what was decided, or a project's status), even without an explicit "search" command. Follow the wiki-first instructions for project knowledge. ` +
                 `When in doubt whether the user wants an action or is just chatting, respond with text only. ` +
                 (allowedTools.includes('web_search')
                     ? `The only exception is the limited, occasional proactive web_search behavior described in your conversational style instructions.`

@@ -37,7 +37,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
         function: {
             name: READ_KNOWLEDGE_PAGE_TOOL,
             description:
-                "Read a page of the project wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts and from documents members added. Pass the page's slug from the wiki index in your instructions. Without a slug it returns the list of all pages and of the added documents.",
+                "Start project-knowledge research here, before searching tasks, notes or chats. Choose the project the question concerns, even when this chat is in another project. If its ID is unknown, use get_user_projects. For another project, pass projectId without a slug for its index, then pass the SAME projectId with a returned page slug to read the page. Without projectId it defaults to this conversation's project. The wiki is compiled from shared project sources and added documents; if no relevant page exists, fall back to original sources.",
             parameters: {
                 type: 'object',
                 properties: {
