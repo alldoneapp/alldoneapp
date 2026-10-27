@@ -3119,6 +3119,20 @@ sequential reads) and then probed each for the note (up to ~190 more). With both
 `projectId` it now does three reads (`findNoteInProject`, same membership + visibility rules);
 the fallback paths read projects at bounded concurrency and check the caller's project first.
 
+### A date-only dueDate is "due on that day", not a new timestamp (AT-2891)
+
+Codex resent `update_task` with `dueDate: "2026-10-27"` next to every progress comment to keep a
+task in Today, and each call wrote the task and posted another "updated task due" feed entry
+(eleven in 40 minutes on one task) although every call resolved to the same midnight timestamp.
+`TaskService.updateTask` never compared the new dueDate with the stored one. Two rules now apply. An
+identical timestamp is no change at all (no write, no `lastEditionDate`, no feed). In the
+assistant/MCP funnel (`TaskUpdateService.performTaskUpdate`), a bare `YYYY-MM-DD` on a task that is
+already due that day **in the user's timezone** keeps the stored timestamp, time of day included
+(`shared/dueDateIntent.js`), and the tool result tells the model to stop resending it. Anything else
+is applied as before: another day (including an overdue or Someday task), any value carrying a time,
+and a request with `alertEnabled`, where dueDate is the reminder time. Pinned by
+`TaskUpdateService.dueDateIntent.test.js` and `TaskService.dueDateNoop.test.js`.
+
 ### A recurrence copy must carry its goal's privacy, not just its goal id
 
 `parentGoalId` and `parentGoalIsPublicFor` are one fact written as two fields: the open-task lists
