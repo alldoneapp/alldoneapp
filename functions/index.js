@@ -912,9 +912,10 @@ exports.openInBrowserTab = onRequest(
     }
 )
 
-// Serves artifact files on this function's own origin, never the app's: an HTML artifact is code,
-// and on my.alldone.app it would run with the viewer's session. Do not add a Hosting rewrite to it
-// on any alldone.app host. See functions/Artifacts/serveArtifact.js.
+// Serves artifact files on this function's own origin and on artifacts.alldone.app (public links),
+// never the app's: an HTML artifact is code, and on my.alldone.app it would run with the viewer's
+// session. The only Hosting rewrite to it is the separate artifacts site (hosting/artifacts/);
+// never add one to the app's own site. See functions/Artifacts/serveArtifact.js.
 exports.serveArtifact = onRequest(
     {
         timeoutSeconds: 120,
@@ -1721,7 +1722,30 @@ exports.setArtifactDataAccess = onCall(
     }
 )
 
-// "Reset link": a new serve secret, so every address copied before stops working.
+// The public link on, off, or changed ("enable" | "disable" | "change"); any member who can read
+// the artifact may.
+exports.setArtifactPublicLink = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setArtifactPublicLink } = require('./Artifacts/artifactStore')
+        return await setArtifactPublicLink({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+            action: data && data.action,
+        })
+    }
+)
+
+// The old "Reset link": a new internal serve secret. No longer offered by the app; kept for
+// clients that still show the button.
 exports.resetArtifactLink = onCall(
     {
         timeoutSeconds: 30,
@@ -5319,8 +5343,9 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
 
 // Artifacts are created server-side with their access projection already written (see
 // Artifacts/artifactStore.js), so the create trigger only makes them findable in search. An update
-// keeps the projection in step, rotates the serve secret whenever somebody loses read access and
-// re-indexes the artifact when something search shows changed.
+// keeps the projection in step, rotates the serve secret whenever somebody loses read access, ends
+// the public link when the artifact is made private and re-indexes the artifact when something
+// search shows changed.
 exports.onCreateArtifactSecondGen = onDocumentCreated(
     {
         document: 'artifactItems/{projectId}/artifacts/{artifactId}',
@@ -5350,7 +5375,10 @@ exports.onUpdateArtifactSecondGen = onDocumentUpdated(
     },
     async event => {
         const admin = require('firebase-admin')
-        const { rotateServeSecretOnLostReaders } = require('./Artifacts/artifactStore')
+        const {
+            rotateServeSecretOnLostReaders,
+            withdrawPublicLinkWhenMadePrivate,
+        } = require('./Artifacts/artifactStore')
         const { artifactSearchUpdateNeeded, indexArtifactForSearch } = require('./Artifacts/artifactSearch')
         const { recordMetadataHistory } = require('./Artifacts/artifactHistory')
         const { projectId, artifactId } = event.params
@@ -5393,6 +5421,19 @@ exports.onUpdateArtifactSecondGen = onDocumentUpdated(
                     error: error.message,
                 })
             ),
+            withdrawPublicLinkWhenMadePrivate({
+                db: admin.firestore(),
+                projectId,
+                artifactId,
+                before,
+                after,
+            }).catch(error =>
+                console.error('[artifacts] Could not withdraw the public link', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
             invalidateKnowledgeSourcesOnUpdate(event, 'artifacts'),
         ])
     }
@@ -5412,8 +5453,9 @@ exports.onDeleteArtifactSecondGen = onDocumentDeleted(
         const { removeObjectFromBacklinks } = require('./Backlinks/backlinksHelper')
         const { deleteChat } = require('./Chats/chatsFirestoreCloud')
         const { projectId, artifactId } = event.params
+        const deleted = (event.data && event.data.data()) || {}
         await Promise.all([
-            deleteArtifactData({ projectId, artifactId }),
+            deleteArtifactData({ projectId, artifactId, publicLink: deleted.publicLink }),
             removeArtifactFromSearch({ projectId, artifactId }),
             // Tasks and notes that linked to it stop listing it as a backlink.
             removeObjectFromBacklinks(projectId, 'linkedParentArtifactsIds', artifactId, admin),

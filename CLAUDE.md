@@ -862,27 +862,53 @@ subcollection and bytes at `artifacts/{projectId}/{id}/{versionId}/…` in Stora
 metadata edited exactly like a note (`isPublicFor` + the server-owned `readerIds` projection; the
 collection is in `OBJECT_COLLECTIONS`), and it opens in place at `/projects/{projectId}/artifacts/{id}`.
 
-**`serveArtifact` must never be reachable on an alldone.app host.** An HTML or SVG artifact is code
-a model wrote or somebody uploaded; on `my.alldone.app` it would run with the viewer's Firebase
+**`serveArtifact` must never be reachable on the app's own origin.** An HTML or SVG artifact is
+code a model wrote or somebody uploaded; on `my.alldone.app` it would run with the viewer's Firebase
 session (IndexedDB on that origin) and could do anything the viewer can — and assistants read
 email, so a crafted message can steer one into building such a page. The function is addressed by
-its own `cloudfunctions.net` URL (`getArtifactServeBaseUrl`), active types (`ACTIVE_MIME_TYPES`)
-get `Content-Security-Policy: sandbox …` **without** `allow-same-origin`, and `ArtifactPreview`
-frames them with the same flags. Never add `allow-same-origin` or `allow-top-navigation` to either:
-without the sandbox, every artifact on the shared function origin would get real storage and could
-read every other artifact's. A PDF is framed without the sandbox only because Chrome refuses to
-render one inside it. The type is derived from the file extension on the server, never taken from
-the client, because it decides whether a response is sandboxed. `browser-tests/artifacts` proves
-all of this in Chromium and is mutation-checked.
+its own `cloudfunctions.net` URL (`getArtifactServeBaseUrl`) and, for public links, by
+`artifacts.alldone.app`: a separate Hosting site (`hosting/artifacts/`) whose only rewrite goes to
+`serveArtifact`. That is a sibling origin, so it shares no storage with the app; never add the
+rewrite to the root `firebase.json` and never connect an app domain to that site. Active types
+(`ACTIVE_MIME_TYPES`) get `Content-Security-Policy: sandbox …` **without** `allow-same-origin`, and
+`ArtifactPreview` frames them with the same flags. Never add `allow-same-origin` or
+`allow-top-navigation` to either: without the sandbox, every artifact on the shared origin would
+get real storage and could read every other artifact's. A PDF is framed without the sandbox only
+because Chrome refuses to render one inside it. The type is derived from the file extension on the
+server, never taken from the client, because it decides whether a response is sandboxed.
+`browser-tests/artifacts` proves all of this in Chromium and is mutation-checked. The one risk the
+alldone.app subdomain adds is reputation: a phishing page uploaded as an artifact and shared
+publicly carries our domain, and Safe Browsing can flag a whole domain. Moving public links to a
+separate domain is a change to `ARTIFACT_PUBLIC_HOSTS` plus DNS.
 
-**The address is the capability, like a note attachment's download-token URL.** Files live at
-`/a/{projectId}/{artifactId}/{serveSecret}/{path}` (`~{versionId}/` pins a version), so relative
-links inside a multi-file artifact resolve without a cookie. `serveSecret` rotates whenever anybody
-loses read access (`rotateServeSecretOnLostReaders` in the update trigger compares `readerIds`
-before and after, which covers turning private, a narrower audience and a member leaving, because
-the membership sync rewrites `readerIds`) and on "Reset link". Artifact bytes get **no** download
-token; reads go only through the function. `serveArtifact` caches an artifact document for 60s per
-instance, so a rotation lands within a minute.
+**An artifact has two addresses, and only one is meant to be shared.** Both are capabilities, like
+a note attachment's download-token URL; artifact bytes get **no** download token and are read only
+through the function, which caches an artifact document and a public-link lookup for 60s per
+instance, so any change lands within a minute.
+
+- **Internal** `/a/{projectId}/{artifactId}/{serveSecret}/{path}` (`~{versionId}/` pins a version):
+  what the app frames the preview and full screen with. `serveSecret` rotates whenever anybody loses
+  read access (`rotateServeSecretOnLostReaders` in the update trigger compares `readerIds` before
+  and after, which covers turning private, a narrower audience and a member leaving, because the
+  membership sync rewrites `readerIds`). No button touches it any more; the old "Reset link"
+  callable (`resetArtifactLink`) stays only for clients that still show it.
+- **Public link** `artifacts.alldone.app/{token}/` (on staging and in the emulator: serveArtifact's
+  own URL, `ARTIFACT_PUBLIC_HOSTS`): the server-owned `publicLink` field
+  (`{ token, createdAt, createdBy }` or `null`) plus a server-only lookup
+  `artifactPublicLinks/{token}` → `{ projectId, artifactId }`, so the address carries no ids.
+  `serveArtifact` serves only a token the artifact itself still carries, redirects the bare token to
+  `/{token}/` (relative links) and an entry file in a folder to that folder, and never answers the
+  live data bridge there. It is **on by default** for a project-visible artifact
+  (`commitArtifactVersion`), absent for a private one, and any member who can read the artifact may
+  switch it off, on or change it (`setArtifactPublicLink`; on again always means a new token).
+  Making an artifact private ends it (`withdrawPublicLinkWhenMadePrivate`); making it visible again
+  does not bring it back. A member leaving does **not** change it: it is public by intent. Artifacts
+  from before public links have no `publicLink` field at all;
+  `migration/enableArtifactPublicLinks.js` (dry run by default) gives them one, and `null` (switched
+  off) is never overwritten. The detail page copies it from the header (with it off, the in-app
+  address instead); everything else about it lives under Details. Pinned by the `public link`
+  blocks of `artifactStore.test.js`, `serveArtifact.test.js`, `artifactModel.test.js` and
+  `ArtifactDetail.test.js`.
 
 **An HTML artifact is framed at its natural height, which only the page can report (AT-2881).**
 The frame is cross-origin and sandboxed, so the app cannot measure it. `serveArtifact` appends a
@@ -899,7 +925,7 @@ by `artifactFrameHeight.test.js`, the AT-2881 blocks of `serveArtifact.test.js` 
 `ArtifactPreview.test.js`, and `node browser-tests/artifacts/frameHeight.js` (real Chromium).
 
 **Only Cloud Functions create artifacts and write versions and bytes** (`commitArtifactVersion`,
-`restoreArtifactVersion`, `resetArtifactLink`); `firestore.rules` refuses a client create and any
+`restoreArtifactVersion`, `setArtifactPublicLink`); `firestore.rules` refuses a client create and any
 client update touching a server-owned field (`artifactServerFieldsUnchanged`, mirrored by
 `ARTIFACT_SERVER_FIELDS` in `artifactModel.js`). Files reach the server base64-encoded inside the
 callable request, so an upload is capped at 20 MB (`MAX_ARTIFACT_UPLOAD_BYTES`) — deliberately, since
