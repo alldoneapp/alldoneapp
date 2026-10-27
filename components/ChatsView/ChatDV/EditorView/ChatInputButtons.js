@@ -38,6 +38,7 @@ export default function ChatInputButtons({
     objectId,
     objectType,
     assistantEnabled,
+    onAssistantToggled,
 }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -128,6 +129,7 @@ export default function ChatInputButtons({
                         setAssistantId={setAssistantId}
                         objectType={objectType}
                         assistantEnabled={assistantEnabled}
+                        updateObjectState={onAssistantToggled}
                     />
                 )}
             </View>

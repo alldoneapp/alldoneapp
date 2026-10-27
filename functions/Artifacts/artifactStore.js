@@ -16,14 +16,12 @@ const {
     getArtifactDocPath,
     getArtifactFileStoragePath,
     getArtifactKindForMimeType,
-    getArtifactPublicLinkDocPath,
     getArtifactStoragePrefix,
     getArtifactVersionsCollectionPath,
     getFileNameFromPath,
     getLostReaderIds,
     getMimeTypeForPath,
     getTitleFromFileName,
-    mapArtifactPublicLink,
     normalizeArtifactDescription,
     normalizeArtifactPath,
     normalizeArtifactTitle,
@@ -50,23 +48,6 @@ function newHistoryPath(projectId, artifactId, now) {
 
 function generateServeSecret() {
     return crypto.randomBytes(24).toString('base64url')
-}
-
-// 128 bits in 22 characters: short enough to read in a link, far too long to guess.
-function generatePublicLinkToken() {
-    return crypto.randomBytes(16).toString('base64url')
-}
-
-// Writes a new public link into the transaction: the artifact's field and the lookup document
-// serveArtifact resolves the token with. Returns the field's value.
-function createPublicLink(transaction, db, { projectId, artifactId, userId, now, newToken }) {
-    const publicLink = { token: newToken(), createdAt: now, createdBy: userId }
-    transaction.set(db.doc(getArtifactPublicLinkDocPath(publicLink.token)), {
-        projectId,
-        artifactId,
-        created: now,
-    })
-    return publicLink
 }
 
 function generateId() {
@@ -262,7 +243,6 @@ async function commitArtifactVersion({
     now = Date.now(),
     newId = generateId,
     newSecret = generateServeSecret,
-    newPublicToken = generatePublicLinkToken,
 }) {
     validateCaller(userId, projectId)
     const mergeWithCurrent = !!artifactId && keepUnchangedFiles === true
@@ -395,18 +375,6 @@ async function commitArtifactVersion({
             }
             if (vmOutputKey) artifact.vmOutputKey = vmOutputKey
             if (lastEditorVia) artifact.lastEditorVia = lastEditorVia
-            // On by default; a private artifact starts without one, since "only visible to you"
-            // and "anyone with the link" contradict each other.
-            artifact.publicLink =
-                isPrivate === true
-                    ? null
-                    : createPublicLink(transaction, db, {
-                          projectId,
-                          artifactId: targetArtifactId,
-                          userId,
-                          now,
-                          newToken: newPublicToken,
-                      })
             // Written together with the artifact, so it is in the creator's list the moment the call
             // returns instead of after a projection trigger has run.
             Object.assign(artifact, buildObjectAccessProjection(artifact, project.userIds, null, FOLLOWER_FIELD))
@@ -497,84 +465,6 @@ async function setArtifactDataAccess({
     })
 }
 
-const PUBLIC_LINK_ACTIONS = Object.freeze({ ENABLE: 'enable', DISABLE: 'disable', CHANGE: 'change' })
-
-// The public link on, off, or replaced by a new one. Whoever may read the artifact may do it, as
-// they may copy the link: a member who finds it shared too widely must be able to end that. Off and
-// change delete the old token's lookup, so the old address stops working within serveArtifact's
-// one-minute cache; turning it on again always gives a new address.
-async function setArtifactPublicLink({
-    userId,
-    projectId,
-    artifactId,
-    action,
-    actorChannel = null,
-    db = admin.firestore(),
-    now = Date.now(),
-    newToken = generatePublicLinkToken,
-}) {
-    validateCaller(userId, projectId)
-    if (!Object.values(PUBLIC_LINK_ACTIONS).includes(action)) {
-        throw new HttpsError('invalid-argument', 'action must be enable, disable or change.')
-    }
-    await assertProjectMember(db, projectId, userId)
-    return db.runTransaction(async transaction => {
-        const artifact = await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
-        const current = mapArtifactPublicLink(artifact.publicLink)
-        if (action === PUBLIC_LINK_ACTIONS.ENABLE && current) return { artifactId, publicLink: current, changed: false }
-        if (action === PUBLIC_LINK_ACTIONS.DISABLE && !current) return { artifactId, publicLink: null, changed: false }
-
-        if (current) transaction.delete(db.doc(getArtifactPublicLinkDocPath(current.token)))
-        const publicLink =
-            action === PUBLIC_LINK_ACTIONS.DISABLE
-                ? null
-                : createPublicLink(transaction, db, { projectId, artifactId, userId, now, newToken })
-        transaction.update(db.doc(getArtifactDocPath(projectId, artifactId)), { publicLink })
-        const type = !publicLink
-            ? ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_OFF
-            : current
-              ? ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_CHANGED
-              : ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_ON
-        transaction.set(
-            db.doc(newHistoryPath(projectId, artifactId, now)),
-            buildHistoryEvent(type, { date: now, actorId: userId, ...getActorChannelFields(actorChannel) })
-        )
-        return { artifactId, publicLink, changed: true }
-    })
-}
-
-// Runs on every artifact update. An artifact made private loses its public link: "only visible to
-// you" and "anyone with the link" cannot both hold. Making it visible to the project again does not
-// bring the link back; that is a deliberate act, and it gets a new address.
-async function withdrawPublicLinkWhenMadePrivate({
-    db = admin.firestore(),
-    projectId,
-    artifactId,
-    before,
-    after,
-    now = Date.now(),
-}) {
-    if (!after || after.isPrivate !== true || (before && before.isPrivate === true)) return false
-    if (!mapArtifactPublicLink(after.publicLink)) return false
-    return db.runTransaction(async transaction => {
-        const artifactRef = db.doc(getArtifactDocPath(projectId, artifactId))
-        const snapshot = await transaction.get(artifactRef)
-        const latest = snapshot.exists ? snapshot.data() || {} : null
-        const current = latest && latest.isPrivate === true ? mapArtifactPublicLink(latest.publicLink) : null
-        if (!current) return false
-        transaction.delete(db.doc(getArtifactPublicLinkDocPath(current.token)))
-        transaction.update(artifactRef, { publicLink: null })
-        transaction.set(
-            db.doc(newHistoryPath(projectId, artifactId, now)),
-            buildHistoryEvent(ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_WITHDRAWN, { date: now })
-        )
-        return true
-    })
-}
-
-// The old "Reset link" button: a new internal serve secret. The app no longer offers it (the public
-// link is what people share, and it has its own off and change); it stays callable for clients
-// that still show the button.
 async function resetArtifactLink({
     userId,
     projectId,
@@ -633,12 +523,7 @@ async function deleteArtifactData({
     bucket = admin.storage().bucket(),
     projectId,
     artifactId,
-    // The deleted artifact's public link, so its address dies with it rather than leaving a lookup
-    // that points at nothing.
-    publicLink = null,
 }) {
-    const link = mapArtifactPublicLink(publicLink)
-    if (link) await db.doc(getArtifactPublicLinkDocPath(link.token)).delete()
     const [versions, history] = await Promise.all([
         db.collection(getArtifactVersionsCollectionPath(projectId, artifactId)).get(),
         db.collection(getArtifactHistoryCollectionPath(projectId, artifactId)).get(),
@@ -655,15 +540,11 @@ async function deleteArtifactData({
 }
 
 module.exports = {
-    PUBLIC_LINK_ACTIONS,
     commitArtifactVersion,
     deleteArtifactData,
-    generatePublicLinkToken,
     generateServeSecret,
     resetArtifactLink,
     restoreArtifactVersion,
     rotateServeSecretOnLostReaders,
     setArtifactDataAccess,
-    setArtifactPublicLink,
-    withdrawPublicLinkWhenMadePrivate,
 }

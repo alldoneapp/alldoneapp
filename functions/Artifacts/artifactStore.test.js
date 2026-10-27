@@ -7,8 +7,6 @@ const {
     restoreArtifactVersion,
     rotateServeSecretOnLostReaders,
     setArtifactDataAccess,
-    setArtifactPublicLink,
-    withdrawPublicLinkWhenMadePrivate,
 } = require('./artifactStore')
 
 const PROJECT_ID = 'project-a'
@@ -17,7 +15,6 @@ const base64 = text => Buffer.from(text).toString('base64')
 
 let ids
 let secrets
-let tokens
 let db
 let bucket
 
@@ -27,10 +24,6 @@ function newId() {
 
 function newSecret() {
     return secrets.shift()
-}
-
-function newToken() {
-    return tokens.shift()
 }
 
 function artifactPath(artifactId) {
@@ -52,7 +45,6 @@ function commit(overrides = {}) {
         now: NOW,
         newId,
         newSecret,
-        newPublicToken: newToken,
         userId: 'owner',
         projectId: PROJECT_ID,
         files: [{ path: 'sales_dashboard.html', base64: base64('<h1>Sales</h1>') }],
@@ -63,7 +55,6 @@ function commit(overrides = {}) {
 beforeEach(() => {
     ids = ['artifact1', 'version1', 'version2', 'version3']
     secrets = ['secret-one-aaaaaaaaaaaaaaaaaaaaaa', 'secret-two-bbbbbbbbbbbbbbbbbbbbbb']
-    tokens = ['token-one-aaaaaaaaaaaa', 'token-two-bbbbbbbbbbbb', 'token-three-cccccccccc']
     db = new KnowledgeFirestoreDouble({ [`projects/${PROJECT_ID}`]: { userIds: ['owner', 'teammate'] } })
     bucket = new ArtifactBucketDouble()
 })
@@ -347,136 +338,6 @@ describe('serve secret', () => {
         ).resolves.toBe(false)
         await expect(rotate({ ...before, readerIds: ['owner'] })).resolves.toBe(true)
         expect(db.read(artifactPath('artifact1')).serveSecret).toBe('secret-two-bbbbbbbbbbbbbbbbbbbbbb')
-    })
-})
-
-describe('public link', () => {
-    const linkPath = token => `artifactPublicLinks/${token}`
-    const setLink = (action, overrides = {}) =>
-        setArtifactPublicLink({
-            db,
-            now: NOW + 1000,
-            newToken,
-            userId: 'teammate',
-            projectId: PROJECT_ID,
-            artifactId: 'artifact1',
-            action,
-            ...overrides,
-        })
-
-    it('is on for a new artifact, with a lookup that leads back to it', async () => {
-        await commit()
-        expect(db.read(artifactPath('artifact1')).publicLink).toEqual({
-            token: 'token-one-aaaaaaaaaaaa',
-            createdAt: NOW,
-            createdBy: 'owner',
-        })
-        expect(db.read(linkPath('token-one-aaaaaaaaaaaa'))).toEqual({
-            projectId: PROJECT_ID,
-            artifactId: 'artifact1',
-            created: NOW,
-        })
-    })
-
-    it('is off for a private artifact, and a new version does not change it', async () => {
-        await commit({ isPrivate: true })
-        expect(db.read(artifactPath('artifact1')).publicLink).toBeNull()
-        expect(tokens).toHaveLength(3)
-
-        await commit({ artifactId: 'artifact1', files: [{ path: 'report.pdf', base64: base64('%PDF') }] })
-        expect(db.read(artifactPath('artifact1')).publicLink).toBeNull()
-    })
-
-    it('is changed to a new address that replaces the old one', async () => {
-        await commit()
-        const result = await setLink('change')
-
-        expect(result).toEqual({
-            artifactId: 'artifact1',
-            changed: true,
-            publicLink: { token: 'token-two-bbbbbbbbbbbb', createdAt: NOW + 1000, createdBy: 'teammate' },
-        })
-        expect(db.read(artifactPath('artifact1')).publicLink.token).toBe('token-two-bbbbbbbbbbbb')
-        expect(db.read(linkPath('token-one-aaaaaaaaaaaa'))).toBeUndefined()
-        expect(db.read(linkPath('token-two-bbbbbbbbbbbb'))).toMatchObject({ artifactId: 'artifact1' })
-        // The preview's address is a different secret and stays as it was.
-        expect(db.read(artifactPath('artifact1')).serveSecret).toBe('secret-one-aaaaaaaaaaaaaaaaaaaaaa')
-    })
-
-    it('is switched off and on again, and on again means a new address', async () => {
-        await commit()
-        await expect(setLink('disable')).resolves.toMatchObject({ changed: true, publicLink: null })
-        expect(db.read(artifactPath('artifact1')).publicLink).toBeNull()
-        expect(db.read(linkPath('token-one-aaaaaaaaaaaa'))).toBeUndefined()
-        await expect(setLink('disable')).resolves.toMatchObject({ changed: false, publicLink: null })
-
-        await setLink('enable')
-        expect(db.read(artifactPath('artifact1')).publicLink.token).toBe('token-two-bbbbbbbbbbbb')
-        await expect(setLink('enable')).resolves.toMatchObject({ changed: false })
-        expect(db.read(artifactPath('artifact1')).publicLink.token).toBe('token-two-bbbbbbbbbbbb')
-    })
-
-    it('records who switched it in the history', async () => {
-        await commit()
-        await setLink('change')
-        await setLink('disable', { now: NOW + 2000 })
-        await setLink('enable', { now: NOW + 3000, userId: 'owner' })
-        expect(history('artifact1').map(({ type, actorId }) => [type, actorId])).toEqual([
-            ['created', 'owner'],
-            ['public_link_changed', 'teammate'],
-            ['public_link_off', 'teammate'],
-            ['public_link_on', 'owner'],
-        ])
-    })
-
-    it('can only be switched by somebody who can read the artifact, and only with a known action', async () => {
-        await commit({ isPrivate: true })
-        await expect(setLink('enable')).rejects.toMatchObject({ code: 'not-found' })
-        await expect(setLink('enable', { userId: 'stranger' })).rejects.toMatchObject({ code: 'permission-denied' })
-        await expect(setLink('publish', { userId: 'owner' })).rejects.toMatchObject({ code: 'invalid-argument' })
-    })
-
-    it('ends when the artifact is made private, and only then', async () => {
-        await commit()
-        const before = db.read(artifactPath('artifact1'))
-        const withdraw = after =>
-            withdrawPublicLinkWhenMadePrivate({
-                db,
-                now: NOW + 5000,
-                projectId: PROJECT_ID,
-                artifactId: 'artifact1',
-                before,
-                after,
-            })
-
-        await expect(withdraw({ ...before, title: 'Renamed' })).resolves.toBe(false)
-        db.documents.set(artifactPath('artifact1'), { ...before, isPrivate: true })
-        await expect(withdraw({ ...before, isPrivate: true })).resolves.toBe(true)
-        expect(db.read(artifactPath('artifact1')).publicLink).toBeNull()
-        expect(db.read(linkPath('token-one-aaaaaaaaaaaa'))).toBeUndefined()
-        expect(history('artifact1').pop()).toMatchObject({ type: 'public_link_withdrawn', actorId: '' })
-    })
-
-    it('stays when the artifact turned private and back before the trigger ran', async () => {
-        await commit()
-        const before = db.read(artifactPath('artifact1'))
-        await expect(
-            withdrawPublicLinkWhenMadePrivate({
-                db,
-                projectId: PROJECT_ID,
-                artifactId: 'artifact1',
-                before,
-                after: { ...before, isPrivate: true },
-            })
-        ).resolves.toBe(false)
-        expect(db.read(artifactPath('artifact1')).publicLink.token).toBe('token-one-aaaaaaaaaaaa')
-    })
-
-    it('goes with a deleted artifact', async () => {
-        await commit()
-        const { publicLink } = db.read(artifactPath('artifact1'))
-        await deleteArtifactData({ db, bucket, projectId: PROJECT_ID, artifactId: 'artifact1', publicLink })
-        expect(db.read(linkPath('token-one-aaaaaaaaaaaa'))).toBeUndefined()
     })
 })
 

@@ -592,7 +592,7 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'serveSecret', 'serveSecretRotatedAt', 'currentVersionId', 'versionCount', 'kind', 'mimeType',
         'entryPath', 'sizeBytes', 'fileCount', 'source', 'creatorId', 'created', 'creatorAssistantId',
-        'vmOutputKey', 'parentObject', 'dataAccess', 'publicLink'
+        'vmOutputKey', 'parentObject', 'dataAccess'
       ]);
     }
 

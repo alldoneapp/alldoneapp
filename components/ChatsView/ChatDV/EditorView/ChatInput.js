@@ -110,9 +110,23 @@ export default function ChatInput({
         : hasParentAssistantState
           ? parentObject.isAssistantEnabled === true
           : false
-    const isAssistantActive = persistedAssistantActive || assistantEnabled
+    // The composer's own assistant button writes the thread's `isAssistantEnabled` and shows the
+    // new state at once, but `chat` / `parentObject` only follow once the host's listener delivers
+    // the write — and some hosts never do (AT-2886: the task DV had silently dropped its task
+    // listener on the first tab change). The send decision below must use exactly the state the
+    // button shows, so a toggle made here wins until the persisted value moves on its own.
+    const [assistantToggle, setAssistantToggle] = useState(null)
+    const toggleIsCurrent = !!assistantToggle && assistantToggle.basis === persistedAssistantActive
+    const threadAssistantActive = toggleIsCurrent ? assistantToggle.enabled : persistedAssistantActive
+    const isAssistantActive = threadAssistantActive || assistantEnabled
     const explicitAssistantEnabled =
-        hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
+        toggleIsCurrent || hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled
+            ? isAssistantActive
+            : null
+    const onAssistantToggled = updatedObject => {
+        if (typeof updatedObject?.isAssistantEnabled !== 'boolean') return
+        setAssistantToggle({ enabled: updatedObject.isAssistantEnabled, basis: persistedAssistantActive })
+    }
     const disabledEdition = editing && loggedUserId !== creatorId
     const shouldAutoFocus = autoFocus && !disableAutoFocusInChat && !autoFocusDisabled
 
@@ -502,6 +516,7 @@ export default function ChatInput({
                 objectId={chat.id}
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
+                onAssistantToggled={onAssistantToggled}
             />
         </AttachmentDropZone>
     )

@@ -18,14 +18,12 @@ import {
     MAX_ARTIFACT_UPLOAD_BYTES,
     SERVE_ARTIFACT_FUNCTION,
     buildArtifactIsPublicFor,
-    buildArtifactPublicUrl,
     buildArtifactServeUrl,
     getArtifactDocPath,
     getArtifactVersionsCollectionPath,
     getArtifactsCollectionPath,
     mapArtifactData,
     mapArtifactVersionData,
-    resolveArtifactPublicBaseUrl,
     sortArtifactsByLastEdition,
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
@@ -276,22 +274,6 @@ export function getArtifactUrl(projectId, artifact, { versionId = null, path, br
     return url && bridge ? `${url}?${ARTIFACT_BRIDGE_QUERY_PARAM}=1` : url
 }
 
-// The address people share: artifacts.alldone.app/{token}/ in production, serveArtifact's own URL
-// elsewhere. Null while the artifact has no public link.
-export function getArtifactPublicUrl(artifact) {
-    const token = artifact?.publicLink?.token
-    if (!token) return null
-    return buildArtifactPublicUrl(
-        resolveArtifactPublicBaseUrl(getFirebaseProjectId(), getArtifactServeBaseUrl()),
-        token
-    )
-}
-
-// action: 'enable' | 'disable' | 'change' (functions/Artifacts/artifactStore.js).
-export function setArtifactPublicLink(projectId, artifactId, action) {
-    return runHttpsCallableFunction('setArtifactPublicLink', { projectId, artifactId, action })
-}
-
 // "Live project data" on or off; only the owner may (the server checks).
 export function setArtifactDataAccess(projectId, artifactId, enabled) {
     return runHttpsCallableFunction('setArtifactDataAccess', { projectId, artifactId, enabled })
@@ -413,4 +395,8 @@ export function restoreArtifactVersion(projectId, artifactId, versionId) {
 // reads the file it already stores, after checking the URL's own download token.
 export function saveAttachmentAsArtifact(projectId, url, fileName) {
     return runHttpsCallableFunction('saveAttachmentAsArtifact', { projectId, url, fileName })
+}
+
+export function resetArtifactLink(projectId, artifactId) {
+    return runHttpsCallableFunction('resetArtifactLink', { projectId, artifactId })
 }

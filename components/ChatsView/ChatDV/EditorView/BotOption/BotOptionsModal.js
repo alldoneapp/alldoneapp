@@ -78,9 +78,11 @@ export default function BotOptionsModal({
         setObjectAssistantEnabled(projectId, objectId, normalizedObjectType, isEnabled)
         if (parentObject) {
             const updatedObject = { ...parentObject, isAssistantEnabled: isEnabled }
-            if (normalizedObjectType === 'tasks') {
+            // The composer's button passes only `{ isAssistantEnabled }`; never let that stub
+            // replace the real object held for the detail view (AT-2886).
+            if (parentObject.id && normalizedObjectType === 'tasks') {
                 dispatch(setTaskInDetailView(updatedObject))
-            } else if (normalizedObjectType === 'notes') {
+            } else if (parentObject.id && normalizedObjectType === 'notes') {
                 dispatch(setSelectedNote(updatedObject))
             }
             if (updateObjectState) {
@@ -105,7 +107,7 @@ export default function BotOptionsModal({
         await setAssistantForObject(projectId, objectId, normalizedObjectType, selectedAssistantId, true)
 
         // Optimistic update for UI
-        if (parentObject) {
+        if (parentObject?.id) {
             const updatedObject = { ...parentObject, assistantId: selectedAssistantId }
             if (normalizedObjectType === 'tasks') {
                 dispatch(setTaskInDetailView(updatedObject))

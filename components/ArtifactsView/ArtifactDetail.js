@@ -8,12 +8,11 @@ import Button from '../UIControls/Button'
 import { translate } from '../../i18n/TranslationService'
 import {
     deleteArtifact,
-    getArtifactPublicUrl,
     getArtifactUrl,
+    resetArtifactLink,
     restoreArtifactVersion,
     setArtifactDataAccess,
     setArtifactPrivacy,
-    setArtifactPublicLink,
     updateArtifactMetadata,
 } from '../../utils/backends/Artifacts/artifactsFirestore'
 import {
@@ -202,129 +201,6 @@ function LiveDataSetting({ projectId, artifact, isOwner, onError }) {
     )
 }
 
-// Lazy: HelperFunctions reaches the store and much of the app.
-const copyToClipboard = text => require('../../utils/HelperFunctions').copyTextToClipboard(text)
-
-// The in-app address: it needs sign-in and access to the artifact, like a note link.
-function getArtifactAppUrl(projectId, artifactId) {
-    return `${window.location.origin}${getProjectArtifactsPath(projectId, artifactId)}`
-}
-
-const PUBLIC_LINK_ACTION_NOTICES = {
-    enable: 'Public link switched on',
-    disable: 'Public link switched off',
-    change: 'Public link changed',
-}
-
-// The address people outside the project open (artifacts.alldone.app/{token}/). It is on by
-// default; changing it or switching it off ends the old address, so both are confirmed by a second
-// press, like deleting. The preview keeps working either way: it uses the internal address.
-function PublicLinkSetting({ projectId, artifact, describeError }) {
-    const publicUrl = getArtifactPublicUrl(artifact)
-    const [confirming, setConfirming] = useState(null)
-    const [saving, setSaving] = useState(false)
-    const [message, setMessage] = useState('')
-
-    useEffect(() => {
-        setConfirming(null)
-        setMessage('')
-    }, [artifact.id])
-    useEffect(() => setConfirming(null), [publicUrl])
-
-    const run = action => {
-        if ((action === 'change' || action === 'disable') && confirming !== action) return setConfirming(action)
-        setSaving(true)
-        setConfirming(null)
-        setArtifactPublicLink(projectId, artifact.id, action)
-            .then(() => setMessage(translate(PUBLIC_LINK_ACTION_NOTICES[action])))
-            .catch(error => setMessage(describeError(error)))
-            .finally(() => setSaving(false))
-    }
-
-    const copy = (url, notice) => {
-        copyToClipboard(url)
-        setMessage(translate(notice))
-    }
-
-    return (
-        <View testID="artifact-public-link">
-            <SectionLabel>{translate('Public link')}</SectionLabel>
-            {publicUrl ? (
-                <>
-                    <Text style={localStyles.linkBox} selectable testID="artifact-public-link-url">
-                        {publicUrl}
-                    </Text>
-                    <Text style={localStyles.hint}>{translate('Artifact public link hint')}</Text>
-                </>
-            ) : (
-                <Text style={localStyles.body} testID="artifact-public-link-off">
-                    {translate('Artifact public link off')}
-                </Text>
-            )}
-            <View style={localStyles.actions}>
-                {publicUrl ? (
-                    <>
-                        <Button
-                            type="ghost"
-                            icon="copy"
-                            title={translate('Copy')}
-                            onPress={() => copy(publicUrl, 'Public link copied')}
-                            buttonStyle={localStyles.actionButton}
-                            testID="artifact-public-link-copy"
-                        />
-                        <Button
-                            type="ghost"
-                            icon="refresh-cw"
-                            title={translate(confirming === 'change' ? 'Really change link' : 'Change link')}
-                            onPress={() => run('change')}
-                            disabled={saving}
-                            buttonStyle={localStyles.actionButton}
-                            testID="artifact-public-link-change"
-                        />
-                        <Button
-                            type="ghost"
-                            icon="eye-off"
-                            title={translate(confirming === 'disable' ? 'Really switch off' : 'Switch off')}
-                            onPress={() => run('disable')}
-                            disabled={saving}
-                            buttonStyle={localStyles.actionButton}
-                            testID="artifact-public-link-disable"
-                        />
-                    </>
-                ) : (
-                    <Button
-                        type="ghost"
-                        icon="globe"
-                        title={translate('Switch on')}
-                        onPress={() => run('enable')}
-                        disabled={saving}
-                        buttonStyle={localStyles.actionButton}
-                        testID="artifact-public-link-enable"
-                    />
-                )}
-                <Button
-                    type="ghost"
-                    icon="link"
-                    title={translate('Copy link for project members')}
-                    onPress={() => copy(getArtifactAppUrl(projectId, artifact.id), 'Member link copied')}
-                    buttonStyle={localStyles.actionButton}
-                    testID="artifact-member-link-copy"
-                />
-            </View>
-            {!!confirming && (
-                <Text style={localStyles.warningText} testID="artifact-public-link-confirm">
-                    {translate('Artifact public link confirm')}
-                </Text>
-            )}
-            {!!message && (
-                <Text testID="artifact-public-link-notice" style={localStyles.hint}>
-                    {message}
-                </Text>
-            )}
-        </View>
-    )
-}
-
 function SectionLabel({ children }) {
     return <Text style={localStyles.sectionLabel}>{children}</Text>
 }
@@ -360,24 +236,11 @@ function EditableField({ testID, value, placeholder, multiline, maxLength, onSav
     )
 }
 
-function VersionList({ projectId, artifact, versions, onError, onUpload, uploading }) {
+function VersionList({ projectId, artifact, versions, onError }) {
+    if (versions.length === 0) return null
     return (
         <View testID="artifact-versions">
-            <View style={localStyles.versionsHeader}>
-                <SectionLabel>{translate('Versions')}</SectionLabel>
-                <TouchableOpacity
-                    testID="artifact-upload-version"
-                    onPress={onUpload}
-                    disabled={uploading}
-                    accessibilityRole="button"
-                    style={[localStyles.inlineAction, uploading && { opacity: 0.4 }]}
-                >
-                    <Icon name="upload" size={14} color={colors.Primary100} />
-                    <Text style={[localStyles.link, localStyles.inlineActionText]}>
-                        {translate('Upload new version')}
-                    </Text>
-                </TouchableOpacity>
-            </View>
+            <SectionLabel>{translate('Versions')}</SectionLabel>
             {versions.map(version => {
                 const current = version.id === artifact.currentVersionId
                 return (
@@ -421,25 +284,24 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
     const [notice, setNotice] = useState('')
     const [confirmDelete, setConfirmDelete] = useState(false)
     const [showAssistantForm, setShowAssistantForm] = useState(false)
-    const [copiedNotice, setCopiedNotice] = useState('')
-    const copiedTimer = useRef(null)
+    const [confirmOutsideShare, setConfirmOutsideShare] = useState(false)
     const [section, setSection] = useArtifactSection(projectId)
     const { uploading, error, uploadFiles } = useArtifactUploader({ projectId, artifactId })
 
     useEffect(() => {
         setNotice('')
         setConfirmDelete(false)
+        setConfirmOutsideShare(false)
         setShowAssistantForm(false)
-        setCopiedNotice('')
     }, [artifactId])
-    useEffect(() => () => clearTimeout(copiedTimer.current), [])
 
-    const describeError = actionError => {
+    const reportError = actionError => {
         console.warn('[artifacts] Action failed', { projectId, artifactId, error: actionError })
         // Offline every callable fails fast with code 'offline' (runHttpsCallableFunction).
-        return translate(actionError?.code === 'offline' ? 'Artifact action needs internet' : 'Artifact action failed')
+        setNotice(
+            translate(actionError?.code === 'offline' ? 'Artifact action needs internet' : 'Artifact action failed')
+        )
     }
-    const reportError = actionError => setNotice(describeError(actionError))
 
     const backLink = (
         <TouchableOpacity
@@ -477,15 +339,27 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
         if (Platform.OS === 'web' && url) window.open(url, '_blank', 'noopener,noreferrer')
     }
 
-    const publicUrl = getArtifactPublicUrl(artifact)
+    const resetLink = () =>
+        resetArtifactLink(projectId, artifact.id)
+            .then(() => setNotice(translate('Artifact link was reset')))
+            .catch(reportError)
 
-    // The header's link button hands out the public link; with it switched off, the address only
-    // project members can open, and the notice says which one it was.
-    const copyHeaderLink = () => {
-        copyToClipboard(publicUrl || getArtifactAppUrl(projectId, artifact.id))
-        setCopiedNotice(translate(publicUrl ? 'Public link copied' : 'Member link copied'))
-        clearTimeout(copiedTimer.current)
-        copiedTimer.current = setTimeout(() => setCopiedNotice(''), 2500)
+    // Lazy: HelperFunctions reaches the store and much of the app.
+    const copyToClipboard = text => require('../../utils/HelperFunctions').copyTextToClipboard(text)
+
+    // The in-app address: it needs sign-in and access to the artifact, like a note link.
+    const copyAppLink = () => {
+        copyToClipboard(`${window.location.origin}${getProjectArtifactsPath(projectId, artifact.id)}`)
+        setNotice(translate('Artifact app link copied'))
+    }
+
+    // The serve address works without signing in, so handing it out is a deliberate act: the first
+    // press explains what it means, the second copies.
+    const copyOutsideLink = () => {
+        if (!confirmOutsideShare) return setConfirmOutsideShare(true)
+        if (url) copyToClipboard(url)
+        setConfirmOutsideShare(false)
+        setNotice(translate('Artifact outside link copied'))
     }
 
     const remove = () => {
@@ -507,9 +381,7 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
     }
 
     // One row above the artifact and nothing below it (AT-2879): back, title, the four sections
-    // and the three things one does with the artifact itself: open it full screen, change it with
-    // the assistant, and copy its link. Everything else, uploading a new version included, lives
-    // under Details.
+    // and the three things one does to the artifact itself. Everything else lives under Details.
     const header = (
         <View style={localStyles.header} testID="artifact-header">
             <View style={[localStyles.titleGroup, mobile && localStyles.titleGroupMobile]}>
@@ -526,11 +398,6 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                 commentCount={Number(artifact.commentsData?.amount) || 0}
             />
             <View style={localStyles.headerActions}>
-                {!!copiedNotice && (
-                    <Text style={localStyles.copiedNotice} testID="artifact-link-copied">
-                        {copiedNotice}
-                    </Text>
-                )}
                 <HeaderAction
                     testID="artifact-open-full-screen"
                     icon="maximize-2"
@@ -545,10 +412,11 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                     active={showAssistantForm && section === ARTIFACT_SECTION_ARTIFACT}
                 />
                 <HeaderAction
-                    testID="artifact-copy-link"
-                    icon={copiedNotice ? 'check' : 'link'}
-                    label={translate(publicUrl ? 'Copy public link' : 'Copy link for project members')}
-                    onPress={copyHeaderLink}
+                    testID="artifact-upload-version"
+                    icon="upload"
+                    label={translate('Upload new version')}
+                    onPress={() => fileInput.current?.open()}
+                    disabled={uploading}
                 />
                 <ArtifactFileInput ref={fileInput} onFiles={uploadFiles} />
             </View>
@@ -631,27 +499,54 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
 
                     <ArtifactBacklinks projectId={projectId} artifactId={artifact.id} />
 
-                    <VersionList
-                        projectId={projectId}
-                        artifact={artifact}
-                        versions={versions}
-                        onError={reportError}
-                        onUpload={() => fileInput.current?.open()}
-                        uploading={uploading}
-                    />
+                    <VersionList projectId={projectId} artifact={artifact} versions={versions} onError={reportError} />
 
-                    <PublicLinkSetting projectId={projectId} artifact={artifact} describeError={describeError} />
-
-                    <View style={[localStyles.actions, localStyles.dangerZone]}>
+                    <SectionLabel>{translate('Link')}</SectionLabel>
+                    <Text style={localStyles.hint}>{translate('Artifact reset link hint')}</Text>
+                    <View style={localStyles.actions}>
+                        <Button
+                            type="ghost"
+                            icon="link"
+                            title={translate('Copy link')}
+                            onPress={copyAppLink}
+                            buttonStyle={localStyles.actionButton}
+                        />
+                        <Button
+                            type="ghost"
+                            icon="share-2"
+                            title={translate(
+                                confirmOutsideShare ? 'Copy link for outside' : 'Share outside the project'
+                            )}
+                            onPress={copyOutsideLink}
+                            buttonStyle={localStyles.actionButton}
+                        />
+                        <Button
+                            type="ghost"
+                            icon="refresh-cw"
+                            title={translate('Reset link')}
+                            onPress={resetLink}
+                            buttonStyle={localStyles.actionButton}
+                        />
                         <Button
                             type="ghost"
                             icon="trash-2"
                             title={translate(confirmDelete ? 'Really delete artifact' : 'Delete artifact')}
                             onPress={remove}
                             buttonStyle={localStyles.actionButton}
-                            testID="artifact-delete"
                         />
                     </View>
+                    {confirmOutsideShare && (
+                        <View testID="artifact-outside-share-warning" style={localStyles.warning}>
+                            <Text style={localStyles.warningText}>{translate('Artifact outside share warning')}</Text>
+                            <TouchableOpacity
+                                testID="artifact-outside-share-cancel"
+                                onPress={() => setConfirmOutsideShare(false)}
+                                accessible={false}
+                            >
+                                <Text style={localStyles.link}>{translate('Cancel')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                     {!!notice && (
                         <Text testID="artifact-notice" style={localStyles.hint}>
                             {notice}
@@ -772,11 +667,6 @@ const localStyles = StyleSheet.create({
     headerActionActive: {
         backgroundColor: colors.Grey200,
     },
-    copiedNotice: {
-        ...styles.caption2,
-        color: colors.Text02,
-        marginRight: 4,
-    },
     backLink: {
         width: 28,
         height: 28,
@@ -794,37 +684,6 @@ const localStyles = StyleSheet.create({
     actionButton: {
         marginRight: 8,
         marginBottom: 8,
-    },
-    dangerZone: {
-        marginTop: 24,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: colors.Grey300,
-    },
-    linkBox: {
-        ...styles.body2,
-        color: colors.Text01,
-        borderWidth: 1,
-        borderColor: colors.Grey300,
-        borderRadius: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        marginBottom: 6,
-        backgroundColor: '#FFFFFF',
-    },
-    versionsHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    inlineAction: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 16,
-        marginBottom: 6,
-    },
-    inlineActionText: {
-        marginLeft: 6,
     },
     preview: {
         marginTop: 8,
