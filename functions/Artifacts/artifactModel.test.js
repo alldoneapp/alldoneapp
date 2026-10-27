@@ -5,6 +5,7 @@ const {
     ARTIFACT_KINDS,
     ARTIFACT_SERVER_FIELDS,
     buildArtifactIsPublicFor,
+    buildArtifactPublicUrl,
     buildArtifactServePath,
     buildArtifactServeUrl,
     getArtifactKindForMimeType,
@@ -12,14 +13,62 @@ const {
     getMimeTypeForPath,
     getTitleFromFileName,
     isActiveMimeType,
+    mapArtifactData,
     normalizeArtifactPath,
+    parseArtifactPublicPath,
     parseArtifactServePath,
+    resolveArtifactPublicBaseUrl,
     resolveEntryPath,
     resolveRequestedFilePath,
     sortArtifactsByLastEdition,
 } = require('./artifactModel')
 
 const SECRET = 'abcdefghijklmnopqrstuvwxyz012345'
+const TOKEN = 'tok_abcdefghijklmnopqr'
+
+describe('public links', () => {
+    it('live on artifacts.alldone.app in production and on the serve function everywhere else', () => {
+        expect(resolveArtifactPublicBaseUrl('alldonealeph', 'https://fn.example/serveArtifact')).toBe(
+            'https://artifacts.alldone.app'
+        )
+        expect(resolveArtifactPublicBaseUrl('alldonestaging', 'https://fn.example/serveArtifact')).toBe(
+            'https://fn.example/serveArtifact'
+        )
+        expect(buildArtifactPublicUrl('https://artifacts.alldone.app/', TOKEN)).toBe(
+            `https://artifacts.alldone.app/${TOKEN}/`
+        )
+        expect(buildArtifactPublicUrl('https://artifacts.alldone.app', 'short')).toBeNull()
+    })
+
+    it('parse the token and the file under it, with or without the function name', () => {
+        expect(parseArtifactPublicPath(`/${TOKEN}/assets/Bericht%20Q3.html`)).toEqual({
+            publicToken: TOKEN,
+            path: 'assets/Bericht Q3.html',
+            trailingSlash: true,
+        })
+        expect(parseArtifactPublicPath(`/serveArtifact/${TOKEN}`)).toEqual({
+            publicToken: TOKEN,
+            path: '',
+            trailingSlash: false,
+        })
+    })
+
+    it('never mistake an internal address, a stray file or a short segment for a token', () => {
+        expect(parseArtifactPublicPath(`/a/project/artifact/${SECRET}/`)).toBeNull()
+        expect(parseArtifactPublicPath('/favicon.ico')).toBeNull()
+        expect(parseArtifactPublicPath('/')).toBeNull()
+        expect(parseArtifactPublicPath('/serveArtifact')).toBeNull()
+        expect(parseArtifactPublicPath(`/${TOKEN}/%E0%A4%A`)).toBeNull()
+    })
+
+    it('are read from the artifact only when the token is well formed', () => {
+        expect(
+            mapArtifactData('a1', { publicLink: { token: TOKEN, createdAt: 5, createdBy: 'u' } }).publicLink
+        ).toEqual({ token: TOKEN, createdAt: 5, createdBy: 'u' })
+        expect(mapArtifactData('a1', { publicLink: { token: 'x' } }).publicLink).toBeNull()
+        expect(mapArtifactData('a1', {}).publicLink).toBeNull()
+    })
+})
 
 describe('normalizeArtifactPath', () => {
     it('keeps a relative path as written', () => {

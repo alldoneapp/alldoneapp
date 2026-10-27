@@ -4,7 +4,7 @@ const { getArtifactDocPath } = require('./artifactModel')
 const { getActorChannelFields, getLastEditorChannelFields } = require('../shared/mcpActor')
 
 // What happened to an artifact, in order: who created it, who saved which version and how, who
-// renamed it, shared it or reset its link (the artifact's "Updates", ARTIFACTS_PLAN.md §8). One
+// renamed it, shared it or switched its public link (the artifact's "Updates", ARTIFACTS_PLAN.md §8). One
 // document per event in `artifactItems/{projectId}/artifacts/{id}/history`, written only by Cloud
 // Functions and readable by whoever may read the artifact (firestore.rules), so the timeline is a
 // record the client cannot rewrite.
@@ -23,8 +23,15 @@ const ARTIFACT_HISTORY_TYPES = Object.freeze({
     DESCRIPTION: 'description',
     MADE_PRIVATE: 'made_private',
     SHARED: 'shared',
+    // The internal serve address. Only written by artifacts from before public links existed (the
+    // "Reset link" button) and by the automatic rotation when somebody loses access.
     LINK_RESET: 'link_reset',
     LINK_ROTATED: 'link_rotated',
+    PUBLIC_LINK_ON: 'public_link_on',
+    PUBLIC_LINK_OFF: 'public_link_off',
+    PUBLIC_LINK_CHANGED: 'public_link_changed',
+    // Nobody pressed anything: the artifact was made private, which ends its public link.
+    PUBLIC_LINK_WITHDRAWN: 'public_link_withdrawn',
     DATA_ACCESS_ON: 'data_access_on',
     DATA_ACCESS_OFF: 'data_access_off',
 })
