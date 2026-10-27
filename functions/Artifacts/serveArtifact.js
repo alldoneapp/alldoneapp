@@ -4,13 +4,16 @@ const crypto = require('crypto')
 const admin = require('firebase-admin')
 
 const {
+    encodeArtifactPath,
     getArtifactDocPath,
     getArtifactFileStoragePath,
+    getArtifactPublicLinkDocPath,
     getArtifactVersionsCollectionPath,
     getFileNameFromPath,
     isActiveMimeType,
     isInlineMimeType,
     isTextMimeType,
+    parseArtifactPublicPath,
     parseArtifactServePath,
     resolveRequestedFilePath,
 } = require('./artifactModel')
@@ -22,19 +25,24 @@ const {
 } = require('./artifactDataBridge')
 const { appendFrameHeightScript, shouldReportFrameHeight } = require('./artifactFrameHeight')
 
-// Serves an artifact's files at /a/{projectId}/{artifactId}/{serveSecret}/[~{versionId}/]{path}.
+// Serves an artifact's files at two kinds of address:
+//
+//   /a/{projectId}/{artifactId}/{serveSecret}/[~{versionId}/]{path}   internal: the app's preview
+//   /{token}/{path}                                                  the public link
 //
 // This function must never be reachable on the app's own origin (a Hosting rewrite on
-// my.alldone.app or any other alldone.app host). An HTML or SVG artifact is code written by a model
-// or uploaded by somebody; on the app's origin it would run with the viewer's Firebase session,
-// which lives in that origin's IndexedDB, and could do anything the viewer can. It is served from
-// the function's own cloudfunctions.net origin instead, and every executable response additionally
-// carries a CSP sandbox without allow-same-origin, so it runs in an opaque origin that cannot read
-// any storage at all — not even another artifact's.
+// my.alldone.app or on the Hosting site that serves it). An HTML or SVG artifact is code written by
+// a model or uploaded by somebody; on the app's origin it would run with the viewer's Firebase
+// session, which lives in that origin's IndexedDB, and could do anything the viewer can. It is
+// served from the function's own cloudfunctions.net origin and from artifacts.alldone.app, a
+// separate Hosting site that only rewrites here (a sibling origin, so none of the app's storage),
+// and every executable response additionally carries a CSP sandbox without allow-same-origin, so
+// it runs in an opaque origin that cannot read any storage at all — not even another artifact's.
 //
 // Access is the note level (ARTIFACTS_PLAN.md §4): whoever holds the address can read the file,
-// like a note attachment's download-token URL, and the secret is rotated whenever somebody loses
-// read access (artifactStore.rotateServeSecretOnLostReaders) or a member presses "Reset link".
+// like a note attachment's download-token URL. The internal secret is rotated whenever somebody
+// loses read access (artifactStore.rotateServeSecretOnLostReaders); the public link is switched off
+// or changed by a member, and ends when the artifact is made private (artifactStore).
 
 const ARTIFACT_CACHE_MS = 60 * 1000
 const VERSION_CACHE_MS = 60 * 60 * 1000
@@ -70,6 +78,7 @@ function createCache() {
 
 const artifactCache = createCache()
 const versionCache = createCache()
+const publicLinkCache = createCache()
 
 function secretsMatch(expected, provided) {
     if (typeof expected !== 'string' || typeof provided !== 'string') return false
@@ -86,6 +95,18 @@ async function loadArtifact(db, projectId, artifactId, now) {
     const artifact = snapshot.exists ? snapshot.data() || {} : null
     artifactCache.set(key, artifact, ARTIFACT_CACHE_MS, now)
     return artifact
+}
+
+// The artifact a public token points at. Cached like the artifact itself, so a link switched off
+// or changed stops working within a minute.
+async function loadPublicLinkTarget(db, token, now) {
+    const cached = publicLinkCache.get(token, now)
+    if (cached !== undefined) return cached
+    const snapshot = await db.doc(getArtifactPublicLinkDocPath(token)).get()
+    const data = snapshot.exists ? snapshot.data() || {} : null
+    const target = data && data.projectId && data.artifactId ? data : null
+    publicLinkCache.set(token, target, ARTIFACT_CACHE_MS, now)
+    return target
 }
 
 // A version never changes once written, so it can be cached for long.
@@ -152,6 +173,14 @@ function sendPlain(res, status, message) {
     res.send(message)
 }
 
+// Relative, so it resolves the same under the function's own URL (`/serveArtifact/{token}`) and
+// under the Hosting site (`/{token}`).
+function sendRedirect(res, location) {
+    res.status(302)
+    res.set({ Location: location, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' })
+    return res.end()
+}
+
 function getQueryValue(req, name) {
     const value = req.query?.[name]
     return Array.isArray(value) ? value[0] : value
@@ -180,14 +209,37 @@ async function handleServeArtifactRequest(
         return sendPlain(res, 405, 'Method not allowed')
     }
 
-    const parsed = parseArtifactServePath(req.path || req.url || '')
-    if (!parsed) return sendPlain(res, 404, 'Not found')
+    const pathname = req.path || req.url || ''
+    const internal = parseArtifactServePath(pathname)
+    const publicRequest = internal ? null : parseArtifactPublicPath(pathname)
+    if (!internal && !publicRequest) return sendPlain(res, 404, 'Not found')
 
+    let parsed = internal
     try {
-        const artifact = await loadArtifact(db, parsed.projectId, parsed.artifactId, now)
-        // A missing artifact and a wrong secret look the same from outside.
-        if (!artifact || !secretsMatch(artifact.serveSecret, parsed.serveSecret)) {
-            return sendPlain(res, 404, 'Not found')
+        let artifact
+        if (internal) {
+            artifact = await loadArtifact(db, internal.projectId, internal.artifactId, now)
+            // A missing artifact and a wrong secret look the same from outside.
+            if (!artifact || !secretsMatch(artifact.serveSecret, internal.serveSecret)) {
+                return sendPlain(res, 404, 'Not found')
+            }
+        } else {
+            const target = await loadPublicLinkTarget(db, publicRequest.publicToken, now)
+            artifact = target ? await loadArtifact(db, target.projectId, target.artifactId, now) : null
+            // The lookup alone is not enough: the artifact itself must still carry this token.
+            if (
+                !artifact ||
+                !secretsMatch(artifact.publicLink && artifact.publicLink.token, publicRequest.publicToken)
+            ) {
+                return sendPlain(res, 404, 'Not found')
+            }
+            if (!publicRequest.trailingSlash) return sendRedirect(res, `${publicRequest.publicToken}/`)
+            parsed = {
+                projectId: target.projectId,
+                artifactId: target.artifactId,
+                versionId: null,
+                path: publicRequest.path,
+            }
         }
 
         // The bridge script belongs to no artifact; it is offered under every artifact's address so a
@@ -198,6 +250,12 @@ async function handleServeArtifactRequest(
         if (!versionId) return sendPlain(res, 404, 'Not found')
         const version = await loadVersion(db, parsed.projectId, parsed.artifactId, versionId, now)
         if (!version) return sendPlain(res, 404, 'Not found')
+
+        // The public link is the bare token. An entry file in a folder is redirected to, so its
+        // relative links resolve inside that folder as they do in the preview.
+        if (publicRequest && !parsed.path && String(version.entryPath || '').includes('/')) {
+            return sendRedirect(res, encodeArtifactPath(version.entryPath))
+        }
 
         const filePath = resolveRequestedFilePath(parsed.path, version.entryPath)
         const files = Array.isArray(version.files) ? version.files : []
@@ -213,7 +271,8 @@ async function handleServeArtifactRequest(
             size: Number(file.size),
             sha256: file.sha256,
             pinnedVersion: !!parsed.versionId,
-            bridge: getQueryValue(req, ARTIFACT_BRIDGE_QUERY_PARAM) === '1',
+            // The live data bridge only ever answers frames inside the app, never a public link.
+            bridge: !publicRequest && getQueryValue(req, ARTIFACT_BRIDGE_QUERY_PARAM) === '1',
             frameHeight,
         })
 
@@ -266,8 +325,9 @@ async function handleServeArtifactRequest(
         })
     } catch (error) {
         console.error('[artifacts] Could not serve an artifact', {
-            projectId: parsed.projectId,
-            artifactId: parsed.artifactId,
+            projectId: parsed && parsed.projectId,
+            artifactId: parsed && parsed.artifactId,
+            publicLink: !!publicRequest,
             error: error.message,
         })
         if (!res.headersSent) return sendPlain(res, 500, 'Could not serve the artifact')
@@ -278,6 +338,7 @@ async function handleServeArtifactRequest(
 function clearServeArtifactCaches() {
     artifactCache.clear()
     versionCache.clear()
+    publicLinkCache.clear()
 }
 
 module.exports = {

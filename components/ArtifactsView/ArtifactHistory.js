@@ -20,6 +20,10 @@ const ICONS = {
     [ARTIFACT_HISTORY_TYPES.SHARED]: 'users',
     [ARTIFACT_HISTORY_TYPES.LINK_RESET]: 'refresh-cw',
     [ARTIFACT_HISTORY_TYPES.LINK_ROTATED]: 'refresh-cw',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_ON]: 'globe',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_OFF]: 'eye-off',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_CHANGED]: 'refresh-cw',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_WITHDRAWN]: 'eye-off',
     [ARTIFACT_HISTORY_TYPES.DATA_ACCESS_ON]: 'bar-chart-2',
     [ARTIFACT_HISTORY_TYPES.DATA_ACCESS_OFF]: 'bar-chart-2',
 }
@@ -34,6 +38,10 @@ const TEXT_KEYS = {
     [ARTIFACT_HISTORY_TYPES.SHARED]: 'Artifact history shared',
     [ARTIFACT_HISTORY_TYPES.LINK_RESET]: 'Artifact history link reset',
     [ARTIFACT_HISTORY_TYPES.LINK_ROTATED]: 'Artifact history link rotated',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_ON]: 'Artifact history public link on',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_OFF]: 'Artifact history public link off',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_CHANGED]: 'Artifact history public link changed',
+    [ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_WITHDRAWN]: 'Artifact history public link withdrawn',
     [ARTIFACT_HISTORY_TYPES.DATA_ACCESS_ON]: 'Artifact history data access on',
     [ARTIFACT_HISTORY_TYPES.DATA_ACCESS_OFF]: 'Artifact history data access off',
 }
