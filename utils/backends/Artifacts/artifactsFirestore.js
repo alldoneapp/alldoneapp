@@ -29,6 +29,7 @@ import {
     sortArtifactsByLastEdition,
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
+import { firstArtifactTimestamp } from '../../../functions/Artifacts/artifactDates'
 import { UPLOAD_SOURCES, sourceTitle } from './linkedUploads'
 import { ARTIFACT_BRIDGE_QUERY_PARAM } from '../../../functions/Artifacts/artifactDataBridge'
 
@@ -188,7 +189,7 @@ export function watchArtifactBacklinks(projectId, artifactId, onChange, onError)
             id: doc.id,
             title: type === 'task' ? data.extendedName || data.name || '' : data.extendedTitle || data.title || '',
             done: type === 'task' && data.done === true,
-            lastEditionDate: Number(data.lastEditionDate) || Number(data.created) || 0,
+            lastEditionDate: firstArtifactTimestamp(data.lastEditionDate, data.created),
         }
     }
     const watch = (collectionPath, type) =>

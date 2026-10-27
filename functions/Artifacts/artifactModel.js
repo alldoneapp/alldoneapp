@@ -19,6 +19,8 @@
 //
 // Pure module: the web app imports it too, so it must not require anything server-only.
 
+const { firstArtifactTimestamp, toArtifactTimestamp } = require('./artifactDates')
+
 const ARTIFACT_ITEMS_COLLECTION = 'artifactItems'
 const ARTIFACTS_SUBCOLLECTION = 'artifacts'
 const ARTIFACT_VERSIONS_SUBCOLLECTION = 'versions'
@@ -444,11 +446,11 @@ function mapArtifactData(artifactId, data = {}) {
         currentVersionId: data.currentVersionId || null,
         versionCount: Number(data.versionCount) || 0,
         serveSecret: data.serveSecret || null,
-        created: Number(data.created) || 0,
+        created: toArtifactTimestamp(data.created),
         creatorId: data.creatorId || '',
         userId: data.userId || '',
         lastEditorId: data.lastEditorId || '',
-        lastEditionDate: Number(data.lastEditionDate) || Number(data.created) || 0,
+        lastEditionDate: firstArtifactTimestamp(data.lastEditionDate, data.created),
         isPrivate: data.isPrivate === true,
         isPublicFor,
         hasStar: data.hasStar || '#FFFFFF',
@@ -489,9 +491,10 @@ function buildArtifactAppPath(projectId, artifactId) {
     return `/projects/${projectId}/artifacts/${artifactId}`
 }
 
+// Newest first; an artifact with no trustworthy date (0) sorts last, ties by id so the order is stable.
 function sortArtifactsByLastEdition(artifacts) {
     return [...artifacts].sort((left, right) => {
-        const diff = (Number(right.lastEditionDate) || 0) - (Number(left.lastEditionDate) || 0)
+        const diff = toArtifactTimestamp(right.lastEditionDate) - toArtifactTimestamp(left.lastEditionDate)
         return diff !== 0 ? diff : String(left.id).localeCompare(String(right.id))
     })
 }

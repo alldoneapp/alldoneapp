@@ -5,6 +5,7 @@
 const { cleanTextMetaData } = require('../Utils/parseTextUtils')
 const { extractAttachmentReferences } = require('./attachmentModel')
 const { DEFAULT_MIME_TYPE, getArtifactKindForMimeType, getMimeTypeForPath } = require('./artifactModel')
+const { toArtifactTimestamp } = require('./artifactDates')
 
 const UPLOAD_SOURCES = [
     { type: 'tasks', path: 'items/{p}/tasks' },
@@ -88,7 +89,8 @@ function mergeLinkedUploads(entries) {
                 )
             )
                 file.linkedSources.push(source)
-            file.lastEditionDate = Math.max(file.lastEditionDate, Number(date) || 0)
+            // A sentinel or malformed date counts as unknown (0) instead of outranking every real one.
+            file.lastEditionDate = Math.max(file.lastEditionDate, toArtifactTimestamp(date))
             file.isPrivate = file.isPrivate && isPrivate
         }
     }

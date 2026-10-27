@@ -23,6 +23,7 @@ import {
     ALL_PROJECTS_ARTIFACTS_PREVIEW,
     PROJECT_ARTIFACTS_PREVIEW,
     filterArtifactsByKindGroup,
+    getNewestArtifactDate,
     getPresentArtifactKindGroups,
     limitArtifacts,
 } from './artifactPresentation'
@@ -104,9 +105,12 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
     )
     const { uploading, error, uploadFiles } = useArtifactUploader({ projectId: project.id, onUploaded })
 
+    // The count decides All projects' empty state, the newest date its project order (like Notes).
+    // Both are primitives, so the parent only re-renders when one of them actually changes.
+    const newestArtifactDate = getNewestArtifactDate(artifacts)
     useEffect(() => {
-        if (loaded && onLoaded) onLoaded(project.id, artifacts.length)
-    }, [loaded, artifacts.length])
+        if (loaded && onLoaded) onLoaded(project.id, artifacts.length, newestArtifactDate)
+    }, [loaded, artifacts.length, newestArtifactDate])
 
     // Where the artifact was made: the source a file was uploaded into, or the thread an assistant
     // created the artifact in.

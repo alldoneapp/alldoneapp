@@ -198,9 +198,33 @@ it('names an artifact after its file and sorts the newest edit first', () => {
     expect(getTitleFromFileName('README')).toBe('README')
     expect(
         sortArtifactsByLastEdition([
-            { id: 'a', lastEditionDate: 1 },
-            { id: 'b', lastEditionDate: 3 },
-            { id: 'c', lastEditionDate: 2 },
+            { id: 'a', lastEditionDate: T + 1 },
+            { id: 'b', lastEditionDate: T + 3 },
+            { id: 'c', lastEditionDate: T + 2 },
         ]).map(artifact => artifact.id)
     ).toEqual(['b', 'c', 'a'])
+})
+
+const T = Date.UTC(2026, 9, 1)
+
+describe('legacy and malformed dates (AT-2887)', () => {
+    // Legacy tasks from 2020 carry the old "Someday" sentinel as their edition stamp.
+    const SENTINEL = Number.MAX_SAFE_INTEGER
+
+    it('falls back to the creation time when the edition stamp is a sentinel', () => {
+        expect(mapArtifactData('a', { lastEditionDate: SENTINEL, created: T }).lastEditionDate).toBe(T)
+        expect(mapArtifactData('a', { lastEditionDate: SENTINEL }).lastEditionDate).toBe(0)
+        expect(mapArtifactData('a', { created: { seconds: T / 1000, nanoseconds: 0 } }).created).toBe(T)
+    })
+
+    it('sorts a sentinel last instead of above every real date, deterministically', () => {
+        expect(
+            sortArtifactsByLastEdition([
+                { id: 'sentinel', lastEditionDate: SENTINEL },
+                { id: 'old', lastEditionDate: T - 1000 },
+                { id: 'missing' },
+                { id: 'new', lastEditionDate: T },
+            ]).map(artifact => artifact.id)
+        ).toEqual(['new', 'old', 'missing', 'sentinel'])
+    })
 })

@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import { ARTIFACT_KINDS, ARTIFACT_SOURCES } from '../../functions/Artifacts/artifactModel'
+import { toArtifactTimestamp } from '../../functions/Artifacts/artifactDates'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { colors } from '../styles/global'
 
@@ -90,9 +91,29 @@ export function formatArtifactSize(bytes) {
     return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
+// An empty string when the value is not a trustworthy time (a legacy sentinel, a malformed stamp):
+// callers leave the date out rather than print "Invalid date" or make one up (AT-2887).
 export function formatArtifactDate(timestamp) {
-    if (!Number.isFinite(Number(timestamp)) || !timestamp) return ''
-    return moment(Number(timestamp)).format(`${getDateFormat()} ${getTimeFormat()}`)
+    const ms = toArtifactTimestamp(timestamp)
+    if (!ms) return ''
+    return moment(ms).format(`${getDateFormat()} ${getTimeFormat()}`)
+}
+
+// The newest artifact of a list, in epoch ms (0 when none carries a usable date). A list in any
+// order works, so a caller does not depend on it having been sorted first.
+export function getNewestArtifactDate(artifacts) {
+    if (!Array.isArray(artifacts)) return 0
+    return artifacts.reduce((newest, artifact) => Math.max(newest, toArtifactTimestamp(artifact?.lastEditionDate)), 0)
+}
+
+// All projects lists the project with the most recently edited artifact first, like Notes. A
+// project whose newest date is not known yet (still loading, or no dated artifact) keeps its place
+// in `projects` behind the dated ones, so the order is deterministic and never shuffles on ties.
+export function sortProjectsByNewestArtifact(projects, newestByProjectId = {}) {
+    return projects
+        .map((project, index) => ({ project, index, newest: toArtifactTimestamp(newestByProjectId[project.id]) }))
+        .sort((left, right) => right.newest - left.newest || left.index - right.index)
+        .map(entry => entry.project)
 }
 
 // Kinds the app can show in place. Everything else gets a download card instead.

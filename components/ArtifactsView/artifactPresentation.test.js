@@ -6,6 +6,7 @@ jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
 import {
     canPreviewArtifact,
     canShowLinkedUploadInline,
+    formatArtifactDate,
     formatArtifactSize,
     getArtifactThumbnail,
     limitArtifacts,
@@ -16,6 +17,17 @@ import {
 } from './artifactPresentation'
 
 describe('artifact presentation', () => {
+    // AT-2887: never "Invalid date", never a made-up date.
+    it('formats real times and leaves out sentinels and malformed stamps', () => {
+        const t = new Date(2023, 0, 11, 19, 45).getTime()
+        expect(formatArtifactDate(t)).toBe('11.01.2023 19:45')
+        expect(formatArtifactDate({ seconds: t / 1000, nanoseconds: 0 })).toBe('11.01.2023 19:45')
+        expect(formatArtifactDate(t / 1000)).toBe('11.01.2023 19:45')
+        for (const value of [Number.MAX_SAFE_INTEGER, undefined, null, 0, 'Invalid date', {}, NaN]) {
+            expect(formatArtifactDate(value)).toBe('')
+        }
+    })
+
     it('formats sizes the way a list row reads them', () => {
         expect(formatArtifactSize(512)).toBe('512 B')
         expect(formatArtifactSize(2048)).toBe('2 KB')
