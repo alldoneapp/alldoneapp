@@ -426,12 +426,17 @@ async function main() {
         check('the list shows the artifact', !!row)
         await shot(page, '06-list')
 
-        // 11. "Change with assistant" posts the request into the artifact's own chat.
+        // 11. The chat bubble opens the comment popup used everywhere else (AT-2888), and a message
+        // written there lands in the artifact's own chat.
         await page.getByTestId(`artifact-row-${artifact.id}`).click()
         await page.getByTestId(`artifact-detail-${artifact.id}`).waitFor({ timeout: 30000 })
-        await page.getByText('Change with assistant', { exact: true }).click()
-        await page.getByTestId('artifact-assistant-input').fill('Add a chart of done tasks per week')
-        await page.getByText('Send to assistant', { exact: true }).click()
+        await page.getByTestId('artifact-comments').click()
+        const popupEditor = page.getByTestId('modal-chat-image-drop-zone').locator('.ql-editor').first()
+        const popupOpen = await poll(() => popupEditor.isVisible(), { timeout: 15000 })
+        check('the chat bubble opens the standard comment popup', !!popupOpen)
+        await popupEditor.click()
+        await page.keyboard.type('Add a chart of done tasks per week')
+        await page.keyboard.press('Enter')
         const request = await poll(
             async () => {
                 const comments = await listDocs(`chatComments/${projectId}/artifacts/${artifact.id}/comments`)
@@ -439,9 +444,7 @@ async function main() {
             },
             { timeout: 30000 }
         )
-        check('"Change with assistant" posts the request into the artifact chat', !!request, request)
-        const inChat = await poll(() => page.getByTestId('artifact-chat').isVisible(), { timeout: 15000 })
-        check('and shows that chat', !!inChat)
+        check('the comment popup posts into the artifact chat', !!request, request)
         await shot(page, '07-assistant-request')
 
         // 12. In a note: a link to the artifact becomes a live preview card.

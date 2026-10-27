@@ -3,8 +3,9 @@ import renderer, { act } from 'react-test-renderer'
 import { Text, TouchableOpacity } from 'react-native'
 
 let mockArtifact
+let mockReduxState
 
-jest.mock('react-redux', () => ({ useSelector: selector => selector({ loggedUser: { uid: 'owner' } }) }))
+jest.mock('react-redux', () => ({ useSelector: selector => selector(mockReduxState) }))
 jest.mock('./useArtifacts', () => ({
     useArtifact: () => mockArtifact,
     useArtifactVersions: () => [],
@@ -16,14 +17,33 @@ jest.mock(
             return null
         }
 )
-jest.mock('./ArtifactAssistantForm', () => {
-    const { Text: MockText } = require('react-native')
-    return ({ artifact, onClose, onSent }) => (
-        <MockText testID="artifact-assistant-form" onPress={onClose} onLongPress={onSent}>
-            {artifact.id}
-        </MockText>
+// The comment popup used everywhere else (AT-2888): the real ArtifactCommentsPopup, with the
+// popover drawn inline and the modal reduced to the props it is given.
+jest.mock('../UIComponents/ModalShell/AppPopover', () => {
+    const { View: MockView } = require('react-native')
+    return ({ content, children, isOpen, onClickOutside }) => (
+        <MockView testID="mock-app-popover" isOpen={isOpen} onClickOutside={onClickOutside}>
+            {children}
+            {isOpen ? content : null}
+        </MockView>
     )
 })
+jest.mock('../UIComponents/FloatModals/RichCommentModal/RichCommentModal', () => {
+    const { View: MockView } = require('react-native')
+    return props => <MockView testID="artifact-comment-popup" {...props} />
+})
+jest.mock('../../hooks/useFloatPopupLock', () => () => ({ acquire: jest.fn(), release: jest.fn() }))
+jest.mock('../../utils/backends/Chats/chatsComments', () => ({ createObjectMessage: jest.fn(() => Promise.resolve()) }))
+jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({
+    RECORD_SCREEN_MODAL_ID: 'RECORD_SCREEN_MODAL_ID',
+    RECORD_VIDEO_MODAL_ID: 'RECORD_VIDEO_MODAL_ID',
+}))
+jest.mock('../ModalsManager/modalsManager', () => ({
+    BOT_OPTION_MODAL_ID: 'BOT_OPTION_MODAL_ID',
+    BOT_WARNING_MODAL_ID: 'BOT_WARNING_MODAL_ID',
+    MENTION_MODAL_ID: 'MENTION_MODAL_ID',
+    RUN_OUT_OF_GOLD_MODAL_ID: 'RUN_OUT_OF_GOLD_MODAL_ID',
+}))
 jest.mock('./ArtifactChat', () => {
     const { Text: MockText } = require('react-native')
     return ({ artifact }) => <MockText testID="artifact-chat">{artifact.id}</MockText>
@@ -136,6 +156,7 @@ afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())))
 
 beforeEach(() => {
     jest.clearAllMocks()
+    mockReduxState = { loggedUser: { uid: 'owner' }, openModals: {} }
     act(() => setArtifactSection('project-a', 'artifact'))
     mockArtifact = {
         id: 'a1',
@@ -153,17 +174,101 @@ beforeEach(() => {
 })
 
 describe('ArtifactDetail', () => {
-    it('opens and closes the change-with-assistant form for this artifact', () => {
-        const tree = render()
-        expect(tree.root.findAllByProps({ testID: 'artifact-assistant-form' })).toHaveLength(0)
+    describe('the chat bubble opens the comment popup used everywhere else (AT-2888)', () => {
+        const popups = tree => tree.root.findAllByProps({ testID: 'artifact-comment-popup' }, { deep: false })
 
-        pressButton(tree, 'Change with assistant')
-        const form = tree.root.findAllByProps({ testID: 'artifact-assistant-form' }, { deep: false })
-        expect(form).toHaveLength(1)
-        expect(textOf(form[0].children)).toBe('a1')
+        it("opens the artifact's own thread in RichCommentModal and closes it again", () => {
+            mockArtifact.assistantId = 'assistant-7'
+            const tree = render()
+            expect(popups(tree)).toHaveLength(0)
 
-        act(() => form[0].props.onPress())
-        expect(tree.root.findAllByProps({ testID: 'artifact-assistant-form' })).toHaveLength(0)
+            pressButton(tree, 'Comments')
+            const [popup] = popups(tree)
+            expect(popup.props).toEqual(
+                expect.objectContaining({
+                    projectId: 'project-a',
+                    objectType: 'artifacts',
+                    objectId: 'a1',
+                    objectName: 'Sales dashboard',
+                    showBotButton: true,
+                    externalAssistantId: 'assistant-7',
+                    initialObject: mockArtifact,
+                })
+            )
+            // It is a popup over the artifact, not a switch to the Chat section.
+            expect(tree.root.findAllByProps({ testID: 'artifact-chat' })).toHaveLength(0)
+            expect(tree.root.findAllByProps({ testID: 'artifact-preview-area' }).length).toBeGreaterThan(0)
+            expect(URLsArtifacts.push).not.toHaveBeenCalled()
+
+            act(() => popup.props.closeModal())
+            expect(popups(tree)).toHaveLength(0)
+        })
+
+        it('closes on a click outside the popup', () => {
+            const tree = render()
+            pressButton(tree, 'Comments')
+            const [popover] = tree.root.findAllByProps({ testID: 'mock-app-popover' }, { deep: false })
+            act(() => popover.props.onClickOutside())
+            expect(popups(tree)).toHaveLength(0)
+        })
+
+        it("posts a comment into the artifact's thread, with the assistant switch the popup reports", async () => {
+            const { createObjectMessage } = require('../../utils/backends/Chats/chatsComments')
+            const tree = render()
+            pressButton(tree, 'Comments')
+            await act(async () => popups(tree)[0].props.processDone('Add a chart', [], false, false, true))
+            expect(createObjectMessage).toHaveBeenCalledWith(
+                'project-a',
+                'a1',
+                'Add a chart',
+                'artifacts',
+                null,
+                null,
+                null,
+                false,
+                true
+            )
+        })
+
+        it('stays open while a nested popup of the composer (mentions) owns the click', () => {
+            const tree = render()
+            pressButton(tree, 'Comments')
+            mockReduxState = { ...mockReduxState, openModals: { MENTION_MODAL_ID: true } }
+            act(() => tree.update(<ArtifactDetail projectId="project-a" artifactId="a1" onBack={jest.fn()} />))
+            act(() => popups(tree)[0].props.closeModal())
+            expect(popups(tree)).toHaveLength(1)
+
+            mockReduxState = { ...mockReduxState, openModals: {} }
+            act(() => tree.update(<ArtifactDetail projectId="project-a" artifactId="a1" onBack={jest.fn()} />))
+            act(() => popups(tree)[0].props.closeModal())
+            expect(popups(tree)).toHaveLength(0)
+        })
+    })
+
+    describe('full screen (AT-2888)', () => {
+        let open
+        beforeEach(() => {
+            open = jest.spyOn(window, 'open').mockImplementation(() => null)
+        })
+        afterEach(() => open.mockRestore())
+
+        it('opens the public link, the same address the link button hands out', () => {
+            const tree = render()
+            pressButton(tree, 'Open full screen')
+            expect(open).toHaveBeenCalledWith(
+                'https://artifacts.example/tok_abcdefghijklmnopqrst/',
+                '_blank',
+                'noopener,noreferrer'
+            )
+        })
+
+        it('falls back to the internal address without a public link, making nothing public', () => {
+            mockArtifact = { ...mockArtifact, publicLink: null, isPrivate: true }
+            const tree = render()
+            pressButton(tree, 'Open full screen')
+            expect(open).toHaveBeenCalledWith('https://serve.example/a', '_blank', 'noopener,noreferrer')
+            expect(setArtifactPublicLink).not.toHaveBeenCalled()
+        })
     })
 
     it('switches between the artifact and its chat, and keeps the address in step', () => {
@@ -237,15 +342,6 @@ describe('ArtifactDetail', () => {
             'a1',
             'Sales dashboard'
         )
-    })
-
-    it('opens the chat once a change request has been sent to the assistant', () => {
-        const tree = render()
-        pressButton(tree, 'Change with assistant')
-        const form = tree.root.findAllByProps({ testID: 'artifact-assistant-form' }, { deep: false })[0]
-        act(() => form.props.onLongPress())
-        expect(tree.root.findAllByProps({ testID: 'artifact-assistant-form' })).toHaveLength(0)
-        expect(tree.root.findAllByProps({ testID: 'artifact-chat' }, { deep: false })).toHaveLength(1)
     })
 
     describe('the public link', () => {
@@ -399,7 +495,7 @@ describe('ArtifactDetail', () => {
             ])
             for (const testID of [
                 'artifact-open-full-screen',
-                'artifact-change-with-assistant',
+                'artifact-comments',
                 'artifact-copy-link',
                 'artifact-back',
             ])
@@ -437,19 +533,14 @@ describe('ArtifactDetail', () => {
             expect(preview.props.artifact).toBe(mockArtifact)
         })
 
-        it('changing with the assistant from another section goes back to the artifact first', () => {
+        it('opens the comment popup from any section without changing it', () => {
             const tree = render()
             showDetails(tree)
-            pressButton(tree, 'Change with assistant')
-            expect(tree.root.findAllByProps({ testID: 'artifact-assistant-form' }, { deep: false })).toHaveLength(1)
-            expect(tree.root.findAllByProps({ testID: 'artifact-preview-area' }).length).toBeGreaterThan(0)
-            expect(URLsArtifacts.push).toHaveBeenLastCalledWith(
-                'ARTIFACT_DETAILS',
-                null,
-                'project-a',
-                'a1',
-                'Sales dashboard'
-            )
+            URLsArtifacts.push.mockClear()
+            pressButton(tree, 'Comments')
+            expect(tree.root.findAllByProps({ testID: 'artifact-comment-popup' }, { deep: false })).toHaveLength(1)
+            expect(tree.root.findAllByProps({ testID: 'artifact-details' }).length).toBeGreaterThan(0)
+            expect(URLsArtifacts.push).not.toHaveBeenCalled()
         })
     })
 })
