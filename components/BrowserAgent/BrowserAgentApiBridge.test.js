@@ -17,9 +17,10 @@ jest.mock('firebase/compat/app', () => ({
 
 jest.mock('../../utils/firebaseEmulators', () => ({ shouldUseFirebaseEmulators: () => false }))
 
-import BrowserAgentApiBridge from './BrowserAgentApiBridge'
+import BrowserAgentApiBridge, { resolveBrowserAgentPageState } from './BrowserAgentApiBridge'
 
 const signedIn = (overrides = {}) => ({
+    loggedIn: true,
     loggedUser: { uid: 'user-1', isAnonymous: false, mcpEnabled: true, mcpDisabledTools: [], ...overrides },
 })
 
@@ -27,6 +28,7 @@ describe('BrowserAgentApiBridge (AT-2871)', () => {
     let renderer
 
     beforeEach(() => {
+        jest.spyOn(console, 'info').mockImplementation(() => {})
         mockCurrentUser = { uid: 'user-1', isAnonymous: false, getIdToken: jest.fn(async () => 'id-token') }
         global.fetch = jest.fn(async (url, init) => ({
             ok: true,
@@ -44,6 +46,7 @@ describe('BrowserAgentApiBridge (AT-2871)', () => {
         renderer = null
         delete window.alldone
         delete global.fetch
+        console.info.mockRestore()
     })
 
     const render = async state => {
@@ -75,11 +78,56 @@ describe('BrowserAgentApiBridge (AT-2871)', () => {
     test.each([
         ['MCP switched off', signedIn({ mcpEnabled: false })],
         ['browser agents switched off', signedIn({ browserAgentToolsEnabled: false })],
-        ['anonymous visitor', signedIn({ isAnonymous: true })],
-        ['nobody signed in', { loggedUser: {} }],
-    ])('installs nothing for: %s', async (_, state) => {
+    ])('installs nothing, not even the stub, for: %s', async (_, state) => {
         await render(state)
         expect(window.alldone).toBeUndefined()
+    })
+
+    test.each([
+        ['anonymous visitor', signedIn({ isAnonymous: true }), 'signed_out'],
+        ['nobody signed in', { loggedIn: false, loggedUser: {} }, 'signed_out'],
+        ['app still booting', { loggedIn: null, loggedUser: {} }, 'loading'],
+    ])('installs a stub without tools for: %s (AT-2890)', async (_, state, expected) => {
+        await render(state)
+        expect(window.alldone.state).toBe(expected)
+        await expect(window.alldone.callTool('get_tasks', {})).rejects.toThrow()
+        expect(global.fetch).not.toHaveBeenCalled()
+        expect(mockCurrentUser.getIdToken).not.toHaveBeenCalled()
+    })
+
+    test('a signed-in session that is not ready yet shows the loading stub, then the tools', async () => {
+        mockState = signedIn()
+        await act(async () => {
+            renderer = TestRenderer.create(<BrowserAgentApiBridge sessionReady={false} />)
+        })
+        expect(window.alldone.state).toBe('loading')
+        const ready = window.alldone.whenReady()
+
+        await act(async () => renderer.update(<BrowserAgentApiBridge sessionReady />))
+
+        const api = await ready
+        expect(api.state).toBe('ready')
+        await expect(api.callTool('get_tasks', {})).resolves.toEqual({ tasks: [] })
+    })
+
+    test('signing out replaces the tools with the signed-out stub', async () => {
+        await render(signedIn())
+        expect(window.alldone.state).toBe('ready')
+
+        mockState = { loggedIn: false, loggedUser: {} }
+        await act(async () => renderer.update(<BrowserAgentApiBridge />))
+        expect(window.alldone.state).toBe('signed_out')
+    })
+
+    test('resolveBrowserAgentPageState', () => {
+        const base = { loggedIn: true, uid: 'u', isAnonymous: false, enabled: true, sessionReady: true }
+        expect(resolveBrowserAgentPageState(base)).toBe('ready')
+        expect(resolveBrowserAgentPageState({ ...base, sessionReady: false })).toBe('loading')
+        expect(resolveBrowserAgentPageState({ ...base, uid: '' })).toBe('loading')
+        expect(resolveBrowserAgentPageState({ ...base, enabled: false })).toBeNull()
+        expect(resolveBrowserAgentPageState({ ...base, loggedIn: false })).toBe('signed_out')
+        expect(resolveBrowserAgentPageState({ ...base, isAnonymous: true })).toBe('signed_out')
+        expect(resolveBrowserAgentPageState({ ...base, loggedIn: null })).toBe('loading')
     })
 
     test('never sends the token of another account than the one the page shows', async () => {

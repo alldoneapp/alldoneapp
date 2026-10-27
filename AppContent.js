@@ -444,6 +444,8 @@ export default function AppContent() {
             <WorkspaceOverlayLayer>
                 <AnalyticsConsentManager />
             </WorkspaceOverlayLayer>
+            {/* Every state: a stub while loading/signed out, the tools once signed in (AT-2890). */}
+            <BrowserAgentApiBridge sessionReady={!!(loggedIn && processedInitialURL)} />
             {loggedIn === null && !publicPageUrl ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
@@ -461,7 +463,6 @@ export default function AppContent() {
                                 <EndDayStatisticsModal />
                             </WorkspaceOverlayLayer>
                             <Shortcuts />
-                            <BrowserAgentApiBridge />
                             <InitLoadView />
                             {heavyComponentsLoaded && (
                                 <>
