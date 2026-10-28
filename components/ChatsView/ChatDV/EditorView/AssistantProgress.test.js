@@ -198,6 +198,24 @@ describe('AssistantProgress', () => {
             expect(renderedText(tree)).not.toContain('|')
         })
 
+        test('renders a VM wait as waiting for a result instead of a raw tool name', () => {
+            const tree = renderer.create(
+                <AssistantProgress
+                    activity={{
+                        phase: 'tool',
+                        toolName: 'get_vm_job',
+                        startedAt: 1,
+                        actionKey: 'assistant_activity_vm_wait',
+                        subject: null,
+                    }}
+                />
+            )
+
+            expect(renderedText(tree)).toContain('⏳')
+            expect(renderedText(tree)).toContain('assistant_activity_vm_wait')
+            expect(renderedText(tree)).not.toContain('Get vm job')
+        })
+
         test('updates one combined progress line for a batch of tool calls', () => {
             let tree
             const activity = {
