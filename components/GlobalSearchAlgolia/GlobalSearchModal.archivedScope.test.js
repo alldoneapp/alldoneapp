@@ -42,7 +42,7 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import { getAllUserProjects } from '../../utils/backends/firestore'
 import { warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
-import { GLOBAL_SEARCH_ARTIFACTS_TAB } from './searchIndexes'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB, GLOBAL_SEARCH_WIKI_TAB } from './searchIndexes'
 
 const searchCalls = []
 const mockMultiSearchTypesense = jest.fn(async searches => {
@@ -53,18 +53,20 @@ const mockMultiSearchTypesense = jest.fn(async searches => {
 })
 
 // Artifacts are searched in their own request (GlobalSearchModal: `separateRequest`). This suite
-// is about the scope of the main request, so artifact-only requests are recorded apart and do
-// not count as a second search.
+// is about the scope of the main request, so artifact-only and wiki-only requests (also separate)
+// are recorded apart and do not count as a second search.
 const artifactSearchCalls = []
 const mockArtifactSearch = jest.fn(async searches => {
-    searches.forEach(({ query, filterBy }) => artifactSearchCalls.push({ text: query, filters: filterBy }))
+    searches.forEach(({ collection, query, filterBy }) =>
+        artifactSearchCalls.push({ collection, text: query, filters: filterBy })
+    )
     return searches.map(() => ({ hits: [] }))
 })
 
 jest.mock('../../utils/typesenseSearch', () => ({
     warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: (...args) =>
-        args[0].every(search => search.collection === 'dev_artifacts')
+        args[0].every(search => search.collection === 'dev_artifacts' || search.collection === 'dev_wiki')
             ? mockArtifactSearch(...args)
             : mockMultiSearchTypesense(...args),
 }))
@@ -345,11 +347,15 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         await refresh.resolve(ALL_PROJECTS)
         await act(async () => rejectEarlySearch(new Error('Superseded request failed')))
 
-        // The artifacts tab has its own request, which has already answered; every tab the
-        // pending main request owns must still be waiting for it.
-        const { [GLOBAL_SEARCH_ARTIFACTS_TAB]: artifactsProcessing, ...mainProcessing } =
-            component.root.findByType(ResultLists).props.processing
+        // The artifacts and wiki tabs have their own requests, which have already answered; every
+        // tab the pending main request owns must still be waiting for it.
+        const {
+            [GLOBAL_SEARCH_ARTIFACTS_TAB]: artifactsProcessing,
+            [GLOBAL_SEARCH_WIKI_TAB]: wikiProcessing,
+            ...mainProcessing
+        } = component.root.findByType(ResultLists).props.processing
         expect(artifactsProcessing).toBe(false)
+        expect(wikiProcessing).toBe(false)
         expect(Object.values(mainProcessing).every(Boolean)).toBe(true)
         expect(JSON.stringify(component.toJSON())).not.toContain('Search is temporarily unavailable')
 
@@ -453,8 +459,10 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
         expect(searchCalls).toHaveLength(5)
         expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
-        // Artifacts are searched in their own request, over exactly the same scope.
-        expect(artifactSearchCalls.at(-1).filters).toBe(searchCalls[0].filters)
+        // Artifacts and wiki pages are searched in their own requests, over exactly the same scope.
+        const separate = artifactSearchCalls.slice(-2)
+        expect(separate.map(call => call.collection).sort()).toEqual(['dev_artifacts', 'dev_wiki'])
+        separate.forEach(call => expect(call.filters).toBe(searchCalls[0].filters))
     })
 
     it('searches active AND archived projects by default (AT-2524)', async () => {

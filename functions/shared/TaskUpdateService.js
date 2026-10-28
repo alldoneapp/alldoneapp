@@ -636,7 +636,33 @@ class TaskUpdateService {
 
             // Handle dueDate with timezone conversion if it's a string
             let processedDueDate = updateFields.dueDate
-            if (updateFields.dueDate && typeof updateFields.dueDate === 'string') {
+            // AT-2891: a date-only value ("2026-10-27") means "make sure the task is due that
+            // day". When it already is, keep the stored timestamp: no write, no activity entry.
+            // A reminder request (alertEnabled) still treats dueDate as the reminder time.
+            let dueDateAlreadyOnDay = null
+            {
+                const { isDateOnlyDueDate, isAlreadyDueOnLocalDay } = require('./dueDateIntent')
+                if (
+                    updateFields.alertEnabled === undefined &&
+                    isDateOnlyDueDate(updateFields.dueDate) &&
+                    isAlreadyDueOnLocalDay(
+                        currentTask.dueDate,
+                        updateFields.dueDate,
+                        timezoneOffset,
+                        this.options.moment
+                    )
+                ) {
+                    dueDateAlreadyOnDay = updateFields.dueDate.trim()
+                    processedDueDate = undefined
+                    console.log('🔄 TaskUpdateService: dueDate already on requested day, keeping it', {
+                        taskId: currentTask.id,
+                        requestedDay: dueDateAlreadyOnDay,
+                        currentDueDate: currentTask.dueDate,
+                        timezoneOffset,
+                    })
+                }
+            }
+            if (processedDueDate && typeof processedDueDate === 'string') {
                 console.log('🔄 TaskUpdateService: Processing dueDate ISO string with timezone', {
                     originalDueDate: updateFields.dueDate,
                     timezoneOffset,
@@ -689,6 +715,7 @@ class TaskUpdateService {
                 focus: updateFields.focus,
                 focusUserId: userId,
                 initiatorId: userId,
+                keepCurrentDueDate: dueDateAlreadyOnDay !== null,
             })
 
             if (updateFields.parentGoalId !== undefined && result.persisted)
@@ -790,6 +817,10 @@ class TaskUpdateService {
                 message += ` (${changes.join(', ')})`
             }
             message += ` in project "${projectName}"`
+            if (dueDateAlreadyOnDay) {
+                // Tell the caller why the due date did not move, so it stops resending it.
+                message += `. Due date unchanged: the task is already due on ${dueDateAlreadyOnDay}; omit dueDate unless the day or time should change`
+            }
 
             return {
                 success: true,

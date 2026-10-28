@@ -826,7 +826,7 @@ const toolSchemas = {
                             },
                         ],
                         description:
-                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
+                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests. To only make sure a task is due on a day (e.g. today), pass the date alone as "YYYY-MM-DD": if the task is already due that day in the user\'s timezone nothing changes and its time is kept. Omit dueDate when you only add a comment or change other fields; do not resend it with every update.',
                     },
                     alertEnabled: {
                         type: 'boolean',
@@ -1417,7 +1417,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content, AND to look up a task by its human-readable task ID. Every task has an ID shaped like "FE-1452" (two-letter project prefix + number); the index also matches the ID written without the hyphen ("FE1452") or with a space ("FE 1452"), so pass whatever form the user typed straight through as the query. This is the correct and fastest way to answer "what is task FE-1452?" - never enumerate tasks with get_tasks to hunt for an ID. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats.',
+                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content, AND to look up a task by its human-readable task ID. Every task has an ID shaped like "FE-1452" (two-letter project prefix + number); the index also matches the ID written without the hyphen ("FE1452") or with a space ("FE 1452"), so pass whatever form the user typed straight through as the query. This is the correct and fastest way to answer "what is task FE-1452?" - never enumerate tasks with get_tasks to hunt for an ID. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats. Project wiki pages are not covered here: search them with search_knowledge.',
             parameters: {
                 type: 'object',
                 properties: {

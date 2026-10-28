@@ -37,11 +37,16 @@ import {
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
-import { ARTIFACTS_INDEX_NAME_PREFIX, GLOBAL_SEARCH_ARTIFACTS_TAB } from './searchIndexes'
+import {
+    ARTIFACTS_INDEX_NAME_PREFIX,
+    GLOBAL_SEARCH_ARTIFACTS_TAB,
+    GLOBAL_SEARCH_WIKI_TAB,
+    WIKI_INDEX_NAME_PREFIX,
+} from './searchIndexes'
 import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
 import { multiSearchTypesense, warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 import Backend from '../../utils/BackendBridge'
-import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
+import { convertNoteObjectType, getInitialTab, getWikiPagePath, goToObjectDetailView } from './searchFunctions'
 import SearchFilterChips from './Filter/SearchFilterChips'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
@@ -133,6 +138,7 @@ export default function GlobalSearchModal() {
         [MENTION_MODAL_TASKS_TAB]: false,
         [MENTION_MODAL_TOPICS_TAB]: false,
         [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
+        [GLOBAL_SEARCH_WIKI_TAB]: false,
     })
     const [tasksResult, setTasksResult] = useState({})
     const [tasksResultAmount, setTasksResultAmount] = useState(0)
@@ -146,6 +152,8 @@ export default function GlobalSearchModal() {
     const [chatsResultAmount, setChatsResultAmount] = useState(0)
     const [artifactsResult, setArtifactsResult] = useState({})
     const [artifactsResultAmount, setArtifactsResultAmount] = useState(0)
+    const [wikiResult, setWikiResult] = useState({})
+    const [wikiResultAmount, setWikiResultAmount] = useState(0)
 
     const [activeItemData, setActiveItemData] = useState({ projectId: '', activeIndex: -1 })
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
@@ -305,7 +313,8 @@ export default function GlobalSearchModal() {
             !processing?.[MENTION_MODAL_NOTES_TAB] &&
             !processing?.[MENTION_MODAL_CONTACTS_TAB] &&
             !processing?.[MENTION_MODAL_TOPICS_TAB] &&
-            !processing?.[GLOBAL_SEARCH_ARTIFACTS_TAB]
+            !processing?.[GLOBAL_SEARCH_ARTIFACTS_TAB] &&
+            !processing?.[GLOBAL_SEARCH_WIKI_TAB]
         ) {
             showNextPositiveResultsTab()
         }
@@ -329,11 +338,13 @@ export default function GlobalSearchModal() {
                     const url =
                         objectType === 'artifacts'
                             ? `/projects/${activeItemData.projectId}/artifacts/${objectId}`
-                            : objectType === 'notes' && parentObject
-                              ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
-                                    parentObject.id
-                                }/note`
-                              : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
+                            : objectType === 'wiki'
+                              ? getWikiPagePath(activeItemData.projectId, objectId)
+                              : objectType === 'notes' && parentObject
+                                ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
+                                      parentObject.id
+                                  }/note`
+                                : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
 
                     ProjectHelper.navigateToInactiveProject(projectType, url)
                 } else {
@@ -400,6 +411,13 @@ export default function GlobalSearchModal() {
                 resultsAmount: artifactsResultAmount,
                 objectType: 'artifacts',
                 detailedViewType: 'artifact',
+            }
+        } else if (activeTab === GLOBAL_SEARCH_WIKI_TAB) {
+            return {
+                resultsByProject: wikiResult,
+                resultsAmount: wikiResultAmount,
+                objectType: 'wiki',
+                detailedViewType: 'wiki',
             }
         }
     }
@@ -688,6 +706,14 @@ export default function GlobalSearchModal() {
                 // does not exist yet must not take the other tabs down with it.
                 separateRequest: true,
             },
+            {
+                indexPrefix: WIKI_INDEX_NAME_PREFIX,
+                setResults: setWikiResult,
+                setResultsAmount: setWikiResultAmount,
+                tab: GLOBAL_SEARCH_WIKI_TAB,
+                // Its own request too, for the same two reasons as artifacts.
+                separateRequest: true,
+            },
         ]
 
         tabsConfig.forEach(({ setResults, setResultsAmount }) => {
@@ -776,6 +802,7 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_TASKS_TAB]: false,
                 [MENTION_MODAL_TOPICS_TAB]: false,
                 [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
+                [GLOBAL_SEARCH_WIKI_TAB]: false,
             })
         }
     }
@@ -788,6 +815,7 @@ export default function GlobalSearchModal() {
             contactsResultAmount,
             chatsResultAmount,
             artifactsResultAmount,
+            wikiResultAmount,
         ]
         if (tabResults[activeTab] === 0) {
             for (let resultIdx in tabResults) {
@@ -812,6 +840,7 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_TASKS_TAB]: true,
                 [MENTION_MODAL_TOPICS_TAB]: true,
                 [GLOBAL_SEARCH_ARTIFACTS_TAB]: true,
+                [GLOBAL_SEARCH_WIKI_TAB]: true,
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
 
@@ -1008,6 +1037,8 @@ export default function GlobalSearchModal() {
                 chatsResult={chatsResult}
                 artifactsResultAmount={artifactsResultAmount}
                 artifactsResult={artifactsResult}
+                wikiResultAmount={wikiResultAmount}
+                wikiResult={wikiResult}
                 activeItemData={activeItemData}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}

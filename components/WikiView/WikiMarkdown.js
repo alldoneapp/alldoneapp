@@ -15,6 +15,7 @@ const SOURCE_TYPE_ICONS = {
     artifact: 'package',
     correction: 'edit-3',
     document: 'paperclip',
+    contribution: 'bookmark',
 }
 
 const SOURCE_TYPE_LABELS = {
@@ -26,11 +27,12 @@ const SOURCE_TYPE_LABELS = {
     artifact: 'Artifact',
     correction: 'Correction',
     document: 'Document',
+    contribution: 'Saved knowledge',
 }
 
-// Corrections and documents added to the wiki live inside it and have no view of their own.
+// Corrections, documents and saved knowledge live inside the wiki and have no view of their own.
 export function isOpenableWikiSource(objectType) {
-    return objectType !== 'correction' && objectType !== 'document'
+    return objectType !== 'correction' && objectType !== 'document' && objectType !== 'contribution'
 }
 
 export function getWikiSourceLabel(node, sourceLabels = {}) {

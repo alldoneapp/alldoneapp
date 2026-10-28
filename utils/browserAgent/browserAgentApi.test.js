@@ -14,6 +14,8 @@ import {
     installWindowApiStub,
     registerWebMcpTools,
     resetAgentApiAnnouncements,
+    SYSTEM_OF_RECORD_INSTRUCTIONS,
+    SYSTEM_OF_RECORD_SUMMARY,
 } from './browserAgentApi'
 import { ensureWebMcpOriginTrialToken } from './webMcpOriginTrial'
 
@@ -153,6 +155,8 @@ describe('tool annotations', () => {
     test.each([
         ['get_notes', true, false],
         ['read_knowledge_page', true, false],
+        ['search_knowledge', true, false],
+        ['save_knowledge_contribution', false, true],
         ['search', true, false],
         ['find_calendar_availability', true, false],
         ['update_task', false, false],
@@ -393,6 +397,22 @@ describe('discoverability (AT-2890)', () => {
         expect(Object.prototype.toString.call(window.alldone)).toBe('[object Alldone]')
         uninstall()
         expect(Object.keys(window)).not.toContain('alldone')
+    })
+
+    test('help(), the stubs and the manifest tell the agent that Alldone is the system of record (AT-2832)', async () => {
+        const uninstallStub = installWindowApiStub(window, { state: AGENT_API_STATES.SIGNED_OUT })
+        expect(window.alldone.help()).toContain(SYSTEM_OF_RECORD_SUMMARY)
+        expect(readManifest().systemOfRecord).toBe(SYSTEM_OF_RECORD_SUMMARY)
+        uninstallStub()
+
+        const uninstall = installWindowApi(window, { listTools: async () => [], callTool: jest.fn() })
+        const help = window.alldone.help()
+        for (const line of SYSTEM_OF_RECORD_INSTRUCTIONS) expect(help).toContain(line)
+        expect(help).toMatch(/system of record/)
+        expect(help).toMatch(/update_task with comment/)
+        // The manifest never names tools, so its summary must not either.
+        expect(SYSTEM_OF_RECORD_SUMMARY).not.toMatch(/\b[a-z]+_[a-z_]+\b/)
+        uninstall()
     })
 
     test('alldone.tools lists the tool names once they are loaded, and help() names them', async () => {

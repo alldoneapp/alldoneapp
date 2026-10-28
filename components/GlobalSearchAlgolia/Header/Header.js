@@ -9,7 +9,7 @@ import {
     MENTION_MODAL_TASKS_TAB,
     MENTION_MODAL_TOPICS_TAB,
 } from '../../Feeds/CommentsTextInput/textInputHelper'
-import { GLOBAL_SEARCH_ARTIFACTS_TAB } from '../searchIndexes'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB, GLOBAL_SEARCH_WIKI_TAB } from '../searchIndexes'
 
 export default function Header({
     activeTab,
@@ -20,6 +20,7 @@ export default function Header({
     notesResultAmount,
     chatsResultAmount,
     artifactsResultAmount = 0,
+    wikiResultAmount = 0,
     showShortcuts,
     mobile,
     compact,
@@ -38,7 +39,7 @@ export default function Header({
     const onKeyDown = event => {
         const { key } = event
         if (key === 'Tab') {
-            if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB) {
+            if (activeTab === GLOBAL_SEARCH_WIKI_TAB) {
                 changeTab(MENTION_MODAL_TASKS_TAB)
             } else {
                 changeTab(activeTab + 1)
@@ -64,6 +65,9 @@ export default function Header({
     const activeArtifactsTab = () => {
         changeTab(GLOBAL_SEARCH_ARTIFACTS_TAB)
     }
+    const activeWikiTab = () => {
+        changeTab(GLOBAL_SEARCH_WIKI_TAB)
+    }
 
     return (
         <View
@@ -78,7 +82,7 @@ export default function Header({
                 text={'Tasks'}
                 onPress={activeTasksTab}
                 isActive={activeTab === MENTION_MODAL_TASKS_TAB}
-                isNextShortcutTab={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
+                isNextShortcutTab={activeTab === GLOBAL_SEARCH_WIKI_TAB}
                 badgeValue={tasksResultAmount}
                 showShortcuts={showShortcuts}
                 mobile={mobile}
@@ -125,6 +129,15 @@ export default function Header({
                 isActive={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
                 isNextShortcutTab={activeTab === MENTION_MODAL_TOPICS_TAB}
                 badgeValue={artifactsResultAmount}
+                showShortcuts={showShortcuts}
+                mobile={mobile}
+            />
+            <HeaderTab
+                text={'Wiki'}
+                onPress={activeWikiTab}
+                isActive={activeTab === GLOBAL_SEARCH_WIKI_TAB}
+                isNextShortcutTab={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
+                badgeValue={wikiResultAmount}
                 showShortcuts={showShortcuts}
                 mobile={mobile}
             />

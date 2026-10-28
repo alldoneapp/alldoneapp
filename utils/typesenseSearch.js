@@ -51,6 +51,13 @@ export const TYPESENSE_QUERY_CONFIG = {
         identity_query_by: 'title',
         num_typos: 2,
     },
+    // Wiki pages: the title names one, the summary and the page text are its body. The text is
+    // matched but never returned (exclude_fields below, and the scoped key excludes it too).
+    dev_wiki: {
+        query_by: 'title,summary,content',
+        identity_query_by: 'title',
+        num_typos: 2,
+    },
 }
 
 // Global search queries five collections at once. Twenty results per collection is ample

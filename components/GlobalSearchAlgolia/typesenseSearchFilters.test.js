@@ -13,6 +13,7 @@ import {
     GOALS_INDEX_NAME_PREFIX,
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
+    WIKI_INDEX_NAME_PREFIX,
 } from './searchIndexes'
 
 const LOGGED_USER = { uid: 'me', isAnonymous: false, workstreams: {} }
@@ -144,5 +145,27 @@ describe('buildTypesenseSearchFilters', () => {
 
         expect(filters).toContain('`ws@one`')
         expect(filters).toContain('`ws@two`')
+    })
+})
+
+describe('wiki pages in global search', () => {
+    it('are searched in exactly the member project scope every other index uses', () => {
+        const filter = buildTypesenseSearchFilters({
+            indexPrefix: WIKI_INDEX_NAME_PREFIX,
+            projects: PROJECTS,
+            loggedUser: LOGGED_USER,
+        })
+        expect(filter).toBe(buildTypesenseProjectsAccessFilter(PROJECTS, LOGGED_USER))
+    })
+
+    it('are left out when only objects the user created are wanted, since nobody creates a wiki page', () => {
+        expect(
+            buildTypesenseSearchFilters({
+                indexPrefix: WIKI_INDEX_NAME_PREFIX,
+                projects: PROJECTS,
+                loggedUser: LOGGED_USER,
+                createdByMeOnly: true,
+            })
+        ).toBe('')
     })
 })

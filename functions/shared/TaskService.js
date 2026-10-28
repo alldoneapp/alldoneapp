@@ -13,6 +13,7 @@
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
 const { buildLastEditorVia } = require('./mcpActor')
+const { getRecurrenceOriginalDueDateUpdate } = require('./recurrenceOriginalDueDate')
 const TASK_PRIORITY_NONE = 'none'
 
 // Dynamic imports for cross-platform compatibility
@@ -693,6 +694,7 @@ class TaskService {
             focus,
             focusUserId,
             initiatorId,
+            keepCurrentDueDate,
             ...otherParams
         } = params
 
@@ -744,7 +746,14 @@ class TaskService {
             updateData.description = String(description)
             changes.push('description')
         }
-        if (dueDate !== undefined) {
+        // Re-sending the stored dueDate is not a change (AT-2891): MCP clients resend it with
+        // every progress comment, and each one used to write and post "updated task due".
+        const dueDateIsUnchanged =
+            dueDate !== undefined &&
+            dueDate !== null &&
+            Number.isFinite(Number(dueDate)) &&
+            Number(dueDate) === Number(currentTask.dueDate)
+        if (dueDate !== undefined && !dueDateIsUnchanged) {
             updateData.dueDate = dueDate
             changes.push('due date')
         }
@@ -756,6 +765,17 @@ class TaskService {
                 updateData.timesDone = 0
             }
             changes.push(`recurrence to "${recurrence}"`)
+        }
+        // AT-2803: postponing a recurring task keeps its originally planned date, so completing it
+        // can offer "count the next occurrence from the planned date". The app's own date picker,
+        // auto-postpone and project postpone already did this; assistant and MCP updates did not.
+        if (updateData.dueDate !== undefined) {
+            Object.assign(
+                updateData,
+                getRecurrenceOriginalDueDateUpdate(currentTask, currentTask.dueDate, updateData.dueDate, {
+                    recurrence: updateData.recurrence,
+                })
+            )
         }
         if (executionMode !== undefined && executionMode !== currentTask.executionMode) {
             if (executionMode !== 'workflow' && executionMode !== 'direct') {
@@ -862,7 +882,7 @@ class TaskService {
                 focusAction = {
                     type: 'set',
                     userId: effectiveFocusUserId,
-                    preserveDueDate: updateData.dueDate !== undefined,
+                    preserveDueDate: dueDate !== undefined || keepCurrentDueDate === true,
                 }
             } else {
                 changes.push('removed from focus')
