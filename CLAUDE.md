@@ -1145,17 +1145,6 @@ usage and WebMCP outcome but no tool or user data, plus `data-alldone-agent-api-
 Native WebMCP is still off in production until origin-trial tokens are registered (see
 `webMcpOriginTrial.js`).
 
-**Every agent surface tells the agent that Alldone is the system of record (AT-2832).** Durable work
-state and results go into Alldone objects (find and update the existing task or note, comment
-progress and results on the task, longer results in a note or artifact, no duplicates, nothing for
-throwaway steps) instead of living only in the agent's memory. The same guidance sits in four
-places that cannot share code: `/llms.txt`, `SYSTEM_OF_RECORD_INSTRUCTIONS` / `_SUMMARY` in
-`browserAgentApi.js` (`help()`, the stubs and the manifest's `systemOfRecord`; the summary names no
-tools because the manifest never does), the `ai-agent-api` meta tag, and the MCP `initialize`
-instructions (`functions/MCP/mcpAgentInstructions.js`). Keep them in step, and name only tools the
-MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text mentions against
-`tools/list`.
-
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
@@ -3143,6 +3132,27 @@ already due that day **in the user's timezone** keeps the stored timestamp, time
 is applied as before: another day (including an overdue or Someday task), any value carrying a time,
 and a request with `alertEnabled`, where dueDate is the reminder time. Pinned by
 `TaskUpdateService.dueDateIntent.test.js` and `TaskService.dueDateNoop.test.js`.
+
+### A recurring task remembers where it was planned, and asks when that matters (AT-2803)
+
+Postponing a recurring task to a later day (or to Someday) stores the date it had before as
+`recurrenceOriginalDueDate`, once: a further postponement never overwrites it, moving it earlier
+stores nothing, and every new occurrence starts without it. Every writer applies that rule: the
+client (`setTaskDueDate`, `updateTask`, `setTaskToBacklog`), auto-postpone, project postpone and,
+for assistant/MCP `update_task`, `TaskService.updateTask` via `functions/shared/recurrenceOriginalDueDate.js`.
+
+Completing such a task opens `RecurringTaskDateBasisModal` when the answer can matter: the task was
+postponed to another day, **or** it is overdue (`shouldShowRecurringTaskDateBasisModal` in
+`recurringTaskDateBasis.js`). It offers the original date, the current due date, today and a custom
+date, with rows that name the same day merged. The choice travels as `recurrenceBaseDateOverride`,
+normalised to local noon of the chosen day. `calculateNextRecurrenceDate` reads that day in the
+assignee's timezone (`timezone` on the user doc), adds the interval and, when the result is not after
+the completion, skips ahead on the series' own cadence (anchor + k intervals, so a monthly task on
+the 31st stays on month ends). A completion without the popup (on the planned day, early, assistant,
+MCP, status picker, bulk) keeps the legacy rule: completion time plus one interval. Pinned by
+`recurringTaskDateBasis.test.js`, `RecurringTaskDateBasisModal.test.js`,
+`recurrenceOriginalDueDateWrites.test.js`, `functions/shared/recurrenceOriginalDueDate.test.js` and
+the AT-2803 blocks of `functions/Tasks/recurringTasksCloud.test.js`.
 
 ### A recurrence copy must carry its goal's privacy, not just its goal id
 

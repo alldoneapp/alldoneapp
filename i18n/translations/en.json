@@ -1034,6 +1034,8 @@
     "Choose how Alldone should schedule the next recurring task": "Choose how Alldone should schedule the next recurring task.",
     "Original date": "Original date",
     "Current date": "Current date",
+    "Current due date": "Current due date",
+    "Choose the date the interval of the next recurring task is counted from": "Choose the date from which the interval of the next occurrence is counted.",
     "Select who will see the new skills": "Select who will see the new skills",
     "Select who will see this skill": "Select who will see this skill",
     "Select who will see this user": "Select who will see this user",
