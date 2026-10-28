@@ -43,8 +43,6 @@ const findTouch = (touchList, identifier) =>
  *   onPressEnd: (release: {
  *     heldMs: number, releasedInside: boolean, cancelled: boolean,
  *     dx: number, dy: number, distance: number,
- *     kind: 'pointer'|'touch'|'mouse',   // which stream ended the press (a mouse/pen press leaves a
- *                                        // trailing `click`, a touch press does not)
  *   }) => void,
  * }} options
  */
@@ -114,7 +112,7 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
             const releasedInside = cancelled ? false : isReleaseInsideRect(node.getBoundingClientRect(), point)
             const travel = travelFrom(point)
             origin = null
-            endRef.current?.({ heldMs, releasedInside, cancelled: !!cancelled, kind, ...travel })
+            endRef.current?.({ heldMs, releasedInside, cancelled: !!cancelled, ...travel })
         }
 
         const pointerId = event => (event.pointerId == null ? 'pointer' : event.pointerId)

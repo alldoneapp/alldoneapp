@@ -153,9 +153,6 @@ function CustomTextInput3(
         dictationTargetKind,
         alwaysShowDictation = false,
         onDictationSubmit,
-        // AT-2823: a press-and-hold handed over from another control (the board's floating "+"),
-        // which this input's mic takes over as its own push-to-talk hold.
-        pushToTalkHandoff,
         showAttachmentButton = false,
         getMentionViewport,
     },
@@ -1549,7 +1546,6 @@ function CustomTextInput3(
                                 onTextReady={insertDictatedText}
                                 onSubmit={submitDictatedText}
                                 visible={dictationButtonVisible}
-                                pushToTalkHandoff={pushToTalkHandoff}
                             />
                         )}
                     </View>
