@@ -197,11 +197,6 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_read_wiki_page',
         plainKey: 'assistant_activity_read_wiki_page_plain',
     },
-    search_knowledge: {
-        params: ['query'],
-        subjectKey: 'assistant_activity_search_wiki',
-        plainKey: 'assistant_activity_search_wiki_plain',
-    },
     correct_knowledge_page: {
         params: ['slug'],
         subjectKey: 'assistant_activity_correct_wiki_page',
@@ -222,16 +217,6 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_remove_wiki_document',
         plainKey: 'assistant_activity_remove_wiki_document',
     },
-    save_knowledge_contribution: {
-        params: ['title'],
-        subjectKey: 'assistant_activity_save_wiki_contribution',
-        plainKey: 'assistant_activity_save_wiki_contribution_plain',
-    },
-    remove_knowledge_contribution: {
-        params: [],
-        subjectKey: 'assistant_activity_remove_wiki_contribution',
-        plainKey: 'assistant_activity_remove_wiki_contribution',
-    },
 
     // --- Handing work off ------------------------------------------------------
     execute_task_in_vm: {
@@ -239,6 +224,7 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_vm_task',
         plainKey: 'assistant_activity_vm_task_plain',
     },
+    get_vm_job: { plainKey: 'assistant_activity_vm_wait' },
 }
 
 const TALK_TO_ASSISTANT_PREFIX = 'talk_to_assistant_'

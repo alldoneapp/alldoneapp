@@ -9,7 +9,6 @@ import { FEED_PUBLIC_FOR_ALL } from '../Feeds/Utils/FeedsConstants'
 import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamConstants'
 import {
     ARTIFACTS_INDEX_NAME_PREFIX,
-    WIKI_INDEX_NAME_PREFIX,
     CHATS_INDEX_NAME_PREFIX,
     CONTACTS_INDEX_NAME_PREFIX,
     GOALS_INDEX_NAME_PREFIX,
@@ -88,9 +87,6 @@ export const buildTypesenseSearchFilters = ({
     }
 
     if (createdByMeOnly) {
-        // Nobody creates a wiki page: the wiki writes them all. "Only what I created" therefore
-        // finds none, and the tab is skipped rather than searched unfiltered.
-        if (indexPrefix === WIKI_INDEX_NAME_PREFIX) return ''
         const createdByMeFilter = buildTypesenseCreatedByMeFilter(indexPrefix, loggedUser?.uid)
         if (createdByMeFilter) conjuncts.push(createdByMeFilter)
     }

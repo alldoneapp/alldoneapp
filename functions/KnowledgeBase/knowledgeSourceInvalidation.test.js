@@ -53,47 +53,6 @@ describe('invalidateKnowledgeSourcesOnUpdate', () => {
         expect(db.read('knowledgeBases/other/pages/kunden').needsRebuild).toBeUndefined()
     })
 
-    it('takes the hidden pages out of global search at once, not only when their trigger runs', async () => {
-        const db = createDb()
-        const removeFromSearch = jest.fn(async () => {})
-
-        await invalidateKnowledgeSourcesOnUpdate({
-            db,
-            fieldValue,
-            now: NOW,
-            projectId: PROJECT_ID,
-            objectType: 'tasks',
-            objectId: 't1',
-            before: { isPublicFor: [0, 'owner'] },
-            after: { isPublicFor: ['owner'] },
-            removeFromSearch,
-        })
-
-        expect(removeFromSearch).toHaveBeenCalledWith({
-            projectId: PROJECT_ID,
-            slugs: expect.arrayContaining(['kunden', 'entscheidungen']),
-        })
-
-        // A failing search service never undoes or blocks the withdrawal itself.
-        const failing = createDb()
-        await expect(
-            invalidateKnowledgeSourcesOnUpdate({
-                db: failing,
-                fieldValue,
-                now: NOW,
-                projectId: PROJECT_ID,
-                objectType: 'tasks',
-                objectId: 't1',
-                before: { isPublicFor: [0, 'owner'] },
-                after: { isPublicFor: ['owner'] },
-                removeFromSearch: async () => {
-                    throw new Error('search down')
-                },
-            })
-        ).resolves.toEqual({ pages: 2, redactedRevisions: 0 })
-        expect(failing.read(pagePath('kunden')).needsRebuild).toBe(true)
-    })
-
     it('does nothing when visibility was not taken away', async () => {
         const db = createDb()
         const cases = [

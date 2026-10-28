@@ -28,11 +28,8 @@ const MCP_TOOL_KEYS = [
     'create_artifact',
     'update_artifact',
     'read_knowledge_page',
-    'search_knowledge',
     'correct_knowledge_page',
     'undo_knowledge_correction',
-    'save_knowledge_contribution',
-    'remove_knowledge_contribution',
     'update_contact',
     'get_contacts',
     'search',
@@ -84,9 +81,6 @@ const MCP_TOOL_LABELS = {
     read_knowledge_page: 'Read wiki page',
     correct_knowledge_page: 'Correct wiki page',
     undo_knowledge_correction: 'Undo wiki correction',
-    search_knowledge: 'Search the project wiki',
-    save_knowledge_contribution: 'Save knowledge to the wiki',
-    remove_knowledge_contribution: 'Remove saved knowledge from the wiki',
 }
 
 // What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.

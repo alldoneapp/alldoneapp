@@ -173,7 +173,10 @@ function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], cur
  * host task) is deliberately excluded: its result never lands in this conversation, so this reply
  * is the only thing the user gets here and must still notify.
  */
-function startsVmJobInCurrentThread(startedVmJobs = [], currentThread = null) {
+function startsVmJobInCurrentThread(startedVmJobs = [], currentThread = null, settledThreads = null) {
+    // Once the caller has received the settled result, its final answer may contain dependent
+    // work (for example the prepared email). That answer is no longer just a VM handoff.
+    if (settledThreads?.has(JSON.stringify([currentThread?.projectId, currentThread?.objectId]))) return false
     return (Array.isArray(startedVmJobs) ? startedVmJobs : [])
         .map(normalizeStartedVmJob)
         .some(job => isVmJobHostedInThread(job, currentThread))

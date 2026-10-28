@@ -91,9 +91,9 @@ describe('Gmail assistant tool schemas', () => {
         expect(toolSchemas.create_gmail_reply_draft.function.parameters.required).toEqual([])
         expect(toolSchemas.update_gmail_draft.function.parameters.required).toEqual(['draftId'])
         expect(toolSchemas.update_gmail_email.function.parameters.required).toEqual(['messageId'])
-        expect(toolSchemas.create_gmail_draft.function.parameters.properties.attachments.items.required).toEqual([
-            'fileName',
-            'base64',
+        expect(toolSchemas.create_gmail_draft.function.parameters.properties.attachments.items.oneOf).toEqual([
+            { required: ['fileName', 'base64'] },
+            { required: ['artifactId'] },
         ])
         expect(toolSchemas.update_gmail_draft.function.parameters.properties.removeAttachmentFileNames).toBeDefined()
         expect(toolSchemas.update_gmail_draft.function.parameters.properties.replaceAttachments.type).toBe('boolean')
@@ -781,5 +781,17 @@ describe('Artifact assistant tool schemas', () => {
         expect(Object.keys(update.properties)).toEqual(
             expect.arrayContaining(['files', 'removePaths', 'title', 'description', 'changeSummary'])
         )
+    })
+})
+
+describe('VM job status capability', () => {
+    test('offers status and wait with the VM capability, and no extra tools without it', () => {
+        expect(getToolSchemas(['execute_task_in_vm']).map(schema => schema.function.name)).toEqual([
+            'execute_task_in_vm',
+            'get_vm_job',
+        ])
+        expect(getToolSchemas(['get_tasks']).map(schema => schema.function.name)).not.toContain('get_vm_job')
+        expect(toolSchemas.get_vm_job.function.parameters.required).toEqual(['correlationId'])
+        expect(toolSchemas.get_vm_job.function.parameters.properties.waitSeconds.maximum).toBe(30)
     })
 })

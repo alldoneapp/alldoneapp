@@ -449,6 +449,7 @@ function buildDraftAttachmentFromPendingPayload(pendingAttachmentPayload) {
 
 function shouldFillDraftAttachmentBase64(attachment, pendingAttachmentPayload) {
     if (!isObject(attachment)) return false
+    if (attachment.artifactId) return false
 
     const rawBase64 =
         typeof attachment.base64 === 'string'

@@ -3,9 +3,7 @@
 // What a project's assistants get from its wiki: the page index in their prompt, a tool to read a
 // page, and — when a project member is talking to them — tools to correct a page, to take a
 // correction back, and to add a document they sent to the wiki or take it out again
-// (knowledgeDocuments.js), and — only when they ask for it — to save knowledge from the
-// conversation (knowledgeContributions.js). Every member run can also search the pages' text
-// (knowledgeSearch.js).
+// (knowledgeDocuments.js).
 //
 // The tools have no Tools Access toggle, like load_skill: the wiki itself is the access control.
 // Reading is offered to member runs even when the conversation's project has no wiki: a question
@@ -35,35 +33,21 @@ const { FieldValue } = require('firebase-admin/firestore')
 const { buildMcpActorMarker, MCP_CHANNEL } = require('../shared/mcpActor')
 
 const {
-    getKnowledgeBaseLastSuccessfulRunAt,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
     getKnowledgePagesPath,
-    isKnowledgeBasePausedAtMonthlyCap,
-    isKnowledgeBasePausedForArchivedProject,
-    isKnowledgeBasePausedForInactiveOwner,
     isKnowledgePageVisible,
     normalizeKnowledgePageSlug,
-    splitKnowledgePageSources,
 } = require('./knowledgeBaseModel')
 const { buildKnowledgeIndex, restoreKnowledgePageRevision, writeKnowledgePage } = require('./knowledgePageStore')
 const { addKnowledgeDocument, listKnowledgeDocuments, removeKnowledgeDocument } = require('./knowledgeDocuments')
-const {
-    listKnowledgeContributions,
-    removeKnowledgeContribution,
-    saveKnowledgeContribution,
-} = require('./knowledgeContributions')
-const { searchKnowledgeBase } = require('./knowledgeSearch')
 const {
     ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     KNOWLEDGE_CORRECTION_MAX_CHARS,
     READ_KNOWLEDGE_PAGE_TOOL,
-    REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL,
     REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
-    SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
-    SEARCH_KNOWLEDGE_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
 } = require('./knowledgeBaseToolSchemas')
 
@@ -83,7 +67,7 @@ const KNOWLEDGE_RESEARCH_INSTRUCTIONS = [
     'PROJECT KNOWLEDGE — WIKI FIRST:',
     '- Questions about a project, customer, event, decision or who worked on something require looking up stored knowledge, even when the user does not explicitly say "search".',
     "- Choose the project that the question is ABOUT, using its name and description and the conversation. The project hosting this chat and the user's default project do not determine the subject. If the target project ID is not already known, call get_user_projects and use its names and descriptions to select it. Never invent a project ID.",
-    "- Before searching tasks, notes, chats or contacts for project knowledge, call read_knowledge_page in the relevant project. For a different project, first call it with that projectId and no slug to get its index, then read the relevant page(s) with the SAME projectId and their returned slugs. When the index does not show which page covers the question, call search_knowledge with a few words; it quotes matching passages. A page index, summary or search passage alone is not a page read. For this chat's project you may use the index below, but still read the relevant page.",
+    "- Before searching tasks, notes, chats or contacts for project knowledge, call read_knowledge_page in the relevant project. For a different project, first call it with that projectId and no slug to get its index, then read the relevant page(s) with the SAME projectId and their returned slugs. A page index or summary alone is not a page read. For this chat's project you may use the index below, but still read the relevant page.",
     "- Answer from the wiki when it is sufficient. Then use the original tasks, notes or chats only for missing details, an explicitly requested original record, or to verify newer or conflicting information. Keep those lookups scoped to the same relevant project. If the topic changes to another project, read that project's wiki first; for a comparison, consult each relevant project.",
     "- If the selected project has no wiki, no relevant page, a rebuilding page or a read error, continue with the available original sources in that project. An absent wiki in the chat project says nothing about another project's wiki. Never claim a wiki was read when it was unavailable.",
     '- Routine greetings, general knowledge, direct changes, task-ID lookups and task/calendar listings do not need a wiki detour. Respect an explicit request to use or skip particular sources.',
@@ -146,73 +130,21 @@ async function loadIndexPages(db, projectId) {
     return pages
 }
 
-function formatAge(ms) {
-    const hours = Math.floor(ms / (60 * 60 * 1000))
-    if (hours < 1) return 'less than an hour ago'
-    if (hours < 48) return `about ${hours} hour${hours === 1 ? '' : 's'} ago`
-    return `about ${Math.floor(hours / 24)} days ago`
-}
-
-/**
- * How current the wiki is, for a model: when it last caught up with its sources, and that anything
- * after that is not in it yet. `lastUpdatedAt` is an ISO time or null.
- */
-function describeKnowledgeBaseFreshness(knowledgeBase = {}, now = Date.now()) {
-    const lastSuccessfulRunAt = getKnowledgeBaseLastSuccessfulRunAt(knowledgeBase)
-    const sentences = []
-    if (Number.isFinite(lastSuccessfulRunAt)) {
-        sentences.push(
-            `It last caught up with its sources at ${new Date(lastSuccessfulRunAt).toISOString()} (${formatAge(
-                Math.max(0, now - lastSuccessfulRunAt)
-            )}); changes made in the project after that may not be included yet.`
-        )
-    } else {
-        sentences.push('When it last caught up with its sources is not known; recent changes may be missing.')
-    }
-    if (knowledgeBase.enabled !== true) {
-        sentences.push('It is switched off and is not being updated.')
-    } else if (
-        isKnowledgeBasePausedAtMonthlyCap(knowledgeBase, now) ||
-        isKnowledgeBasePausedForInactiveOwner(knowledgeBase) ||
-        isKnowledgeBasePausedForArchivedProject(knowledgeBase)
-    ) {
-        sentences.push('Its updates are paused at the moment.')
-    } else {
-        sentences.push(
-            'It is updated every night, and within minutes when a member adds a document or saved knowledge or a source is withdrawn.'
-        )
-    }
-    return {
-        lastUpdatedAt: Number.isFinite(lastSuccessfulRunAt) ? new Date(lastSuccessfulRunAt).toISOString() : null,
-        text: sentences.join(' '),
-    }
-}
-
-function buildKnowledgeBaseContextMessage({
-    projectId,
-    projectName,
-    pages,
-    access,
-    knowledgeBase = {},
-    now = Date.now(),
-}) {
+function buildKnowledgeBaseContextMessage({ projectId, projectName, pages, access }) {
     const index = buildKnowledgeIndex(pages, { maxChars: KNOWLEDGE_CONTEXT_INDEX_MAX_CHARS })
     const truncated = index.includes('more pages')
-    const freshness = describeKnowledgeBaseFreshness(knowledgeBase, now)
     const lines = [
         `Project wiki of "${projectName}":`,
         `- Project ID: ${projectId}. This index belongs to the chat project; use it only when that project is relevant to the question.`,
-        "- Context rule: The wiki is compiled automatically from the project's shared tasks, goals, notes, contacts, comment threads and artifacts, from documents and knowledge members added to it, and from member corrections. Use it as background knowledge about the project. It can be out of date: when it disagrees with the conversation or with a task, note or goal you look up, those win.",
-        `- Freshness: ${freshness.text} For anything recent, check the original sources too.`,
+        "- Context rule: The wiki is compiled automatically from the project's shared tasks, goals, notes and contacts and updated about once a day. Use it as background knowledge about the project. It can be out of date: when it disagrees with the conversation or with a task, note or goal you look up, those win.",
         `- To use a page, call ${READ_KNOWLEDGE_PAGE_TOOL} with its slug${
             truncated ? `; call it without a slug for the full list of pages` : ''
-        }. To find pages by their text, call ${SEARCH_KNOWLEDGE_TOOL}. Name pages by their title, never by [[...]] tokens.`,
+        }. Name pages by their title, never by [[...]] tokens.`,
     ]
     if (access === ACCESS_CORRECT) {
         lines.push(
             `- When the user says something in the wiki is wrong or missing, read the page, then call ${CORRECT_KNOWLEDGE_PAGE_TOOL} with their correction in their own words and the corrected page. Change only what they asked for, and never put anything into the wiki that you know from private tasks, notes or chats. To take a correction back, call ${UNDO_KNOWLEDGE_CORRECTION_TOOL}.`,
-            `- When the user asks to put a file they sent (a deck, a spreadsheet, a document) into the wiki, call ${ADD_KNOWLEDGE_DOCUMENT_TOOL}; the wiki then integrates it into its pages itself. Do not copy the file into a correction.`,
-            `- Only when the user explicitly asks to save something from this conversation to the wiki, call ${SAVE_KNOWLEDGE_CONTRIBUTION_TOOL} with the exact text to share. Never save on your own initiative. If it returns a draft, show the user its exact text and save only after they confirm. ${REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL} takes it out again.`
+            `- When the user asks to put a file they sent (a deck, a spreadsheet, a document) into the wiki, call ${ADD_KNOWLEDGE_DOCUMENT_TOOL}; the wiki then integrates it into its pages itself. Do not copy the file into a correction.`
         )
     }
     lines.push('Pages:', index)
@@ -223,7 +155,7 @@ function buildKnowledgeBaseContextMessage({
  * Wiki-first research instructions and the chat project's index when it has one; '' for ineligible
  * runs. Read the index fresh: a page that lost a source must disappear from the next prompt.
  */
-async function getKnowledgeBaseContextMessage({ db, context, now = Date.now() }) {
+async function getKnowledgeBaseContextMessage({ db, context }) {
     const access = resolveKnowledgeBaseAccess(context)
     if (access === ACCESS_NONE) return ''
     const project = await isProjectMember(db, context.projectId, context.requestUserId)
@@ -239,8 +171,6 @@ async function getKnowledgeBaseContextMessage({ db, context, now = Date.now() })
             projectName: project.name || context.projectId,
             pages,
             access,
-            knowledgeBase: knowledgeBase.data() || {},
-            now,
         }),
     ].join('\n\n')
 }
@@ -269,19 +199,11 @@ async function getKnowledgeBaseAvailability({ db, projectId, userId, now = Date.
     return availability
 }
 
-const READ_TOOLS = [READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL]
 const PAGE_TOOLS_BY_ACCESS = {
-    [ACCESS_CORRECT]: [...READ_TOOLS, CORRECT_KNOWLEDGE_PAGE_TOOL, UNDO_KNOWLEDGE_CORRECTION_TOOL],
-    [ACCESS_READ]: READ_TOOLS,
+    [ACCESS_CORRECT]: [READ_KNOWLEDGE_PAGE_TOOL, CORRECT_KNOWLEDGE_PAGE_TOOL, UNDO_KNOWLEDGE_CORRECTION_TOOL],
+    [ACCESS_READ]: [READ_KNOWLEDGE_PAGE_TOOL],
 }
-// Tools that add to the wiki's sources: offered as soon as the wiki is switched on, not only once it
-// has pages, because what a new wiki gets first is often a deck or a piece of saved knowledge.
-const DOCUMENT_TOOLS = [
-    ADD_KNOWLEDGE_DOCUMENT_TOOL,
-    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
-    SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
-    REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL,
-]
+const DOCUMENT_TOOLS = [ADD_KNOWLEDGE_DOCUMENT_TOOL, REMOVE_KNOWLEDGE_DOCUMENT_TOOL]
 
 function toolNamesForAccess(access) {
     if (access === ACCESS_CORRECT) return [...PAGE_TOOLS_BY_ACCESS[ACCESS_CORRECT], ...DOCUMENT_TOOLS]
@@ -300,7 +222,7 @@ async function getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext, now }) 
     })
     if (!isMember) return []
     return [
-        ...(hasPages ? PAGE_TOOLS_BY_ACCESS[access] || [] : READ_TOOLS),
+        ...(hasPages ? PAGE_TOOLS_BY_ACCESS[access] || [] : [READ_KNOWLEDGE_PAGE_TOOL]),
         ...(enabled && access === ACCESS_CORRECT ? DOCUMENT_TOOLS : []),
     ]
 }
@@ -320,34 +242,19 @@ function toIso(value) {
     return Number.isFinite(millis) && millis > 0 ? new Date(millis).toISOString() : null
 }
 
-async function readKnowledgeBaseFreshness(db, projectId, now) {
-    const snapshot = await db.doc(getKnowledgeBasePath(projectId)).get()
-    return describeKnowledgeBaseFreshness(snapshot.exists ? snapshot.data() || {} : {}, now)
-}
-
-// A page read returns the sources its body cites and only the COUNT of the others. The full list
-// stays on the page document, where the privacy withdrawal needs it (knowledgeSourceInvalidation.js):
-// a page can keep a sentence after its citation was dropped, so the list only ever grows. Returned
-// whole, it made a read several times larger than the page it described (on the reporting wiki 57%
-// of the listed sources were no longer cited, 187 KB of source lists against 104 KB of text).
-async function readKnowledgePage({ db, projectId, slug, now = Date.now() }) {
+async function readKnowledgePage({ db, projectId, slug }) {
     if (!slug) {
-        const [pages, documents, contributions, freshness] = await Promise.all([
+        const [pages, documents] = await Promise.all([
             loadIndexPages(db, projectId),
             listKnowledgeDocuments(db, projectId),
-            listKnowledgeContributions(db, projectId),
-            readKnowledgeBaseFreshness(db, projectId, now),
         ])
         return {
             success: true,
             projectId,
-            wikiLastUpdatedAt: freshness.lastUpdatedAt,
-            freshness: freshness.text,
             pages: [...pages.values()]
                 .sort((left, right) => String(left.title || left.slug).localeCompare(String(right.title || right.slug)))
                 .map(page => ({ slug: page.slug, title: page.title || page.slug, summary: page.summary || '' })),
             documents,
-            contributions,
         }
     }
     const key = normalizeKnowledgePageSlug(slug)
@@ -358,8 +265,6 @@ async function readKnowledgePage({ db, projectId, slug, now = Date.now() }) {
         return failure(`The wiki page "${key}" is being rebuilt because one of its sources changed. Try again later.`)
     }
     const labels = page.sourceLabels || {}
-    const { citedSourceKeys, otherSourceKeys } = splitKnowledgePageSources(page)
-    const freshness = await readKnowledgeBaseFreshness(db, projectId, now)
     return {
         success: true,
         projectId,
@@ -369,14 +274,11 @@ async function readKnowledgePage({ db, projectId, slug, now = Date.now() }) {
         body: page.body || '',
         revision: Number(page.revision) || 0,
         updatedAt: toIso(page.updatedAt),
-        wikiLastUpdatedAt: freshness.lastUpdatedAt,
-        sources: citedSourceKeys.map(sourceKey => ({ key: sourceKey, label: labels[sourceKey] || '' })),
-        otherSourceCount: otherSourceKeys.length,
-        note: `Tokens such as [[task:ID]] cite the project objects a statement comes from, and [[slug]] links another page. Keep them when you correct the page; never show them to the user. \`sources\` are the sources this text cites${
-            otherSourceKeys.length
-                ? `; the page was also compiled from ${otherSourceKeys.length} other source(s) it no longer cites`
-                : ''
-        }. ${freshness.text}`,
+        sources: (Array.isArray(page.sourceKeys) ? page.sourceKeys : []).map(sourceKey => ({
+            key: sourceKey,
+            label: labels[sourceKey] || '',
+        })),
+        note: 'Tokens such as [[task:ID]] cite the project objects a statement comes from, and [[slug]] links another page. Keep them when you correct the page; never show them to the user.',
     }
 }
 
@@ -520,7 +422,6 @@ async function executeKnowledgeBaseTool({
     readChatAttachment,
     extractText,
     enqueue,
-    loadTypesense,
     now = Date.now(),
     fieldValue = FieldValue,
 }) {
@@ -535,37 +436,7 @@ async function executeKnowledgeBaseTool({
 
     switch (toolName) {
         case READ_KNOWLEDGE_PAGE_TOOL:
-            return readKnowledgePage({ db, projectId, slug: args.slug, now })
-        case SEARCH_KNOWLEDGE_TOOL:
-            return searchKnowledgeBase({
-                db,
-                userId,
-                projectId,
-                query: args.query,
-                allProjects: args.allProjects === true,
-                limit: args.limit,
-                ...(loadTypesense ? { loadTypesense } : {}),
-            })
-        case SAVE_KNOWLEDGE_CONTRIBUTION_TOOL:
-            return saveKnowledgeContribution({
-                db,
-                projectId,
-                userId,
-                assistantId,
-                args,
-                toolRuntimeContext,
-                ...(enqueue ? { enqueue } : {}),
-                now,
-            })
-        case REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL:
-            return removeKnowledgeContribution({
-                db,
-                projectId,
-                userId,
-                contributionId: args.contributionId,
-                now,
-                fieldValue,
-            })
+            return readKnowledgePage({ db, projectId, slug: args.slug })
         case CORRECT_KNOWLEDGE_PAGE_TOOL:
             return correctKnowledgePage({
                 db,
@@ -611,7 +482,6 @@ module.exports = {
     resolveKnowledgeBaseAccess,
     canCorrectKnowledgeBaseOnChannel,
     buildKnowledgeBaseContextMessage,
-    describeKnowledgeBaseFreshness,
     getKnowledgeBaseContextMessage,
     getKnowledgeBaseToolNamesForRun,
     isKnowledgeBaseToolAllowed,

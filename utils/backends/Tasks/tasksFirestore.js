@@ -2823,9 +2823,6 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
             {
                 ...commonFields,
                 ...updateData,
-                // AT-2803: Someday is a postponement too; keep the planned date of a recurring task.
-                // Only on the task itself, not on the subtask update below.
-                ...getRecurrenceOriginalDueDateUpdate(task, task.dueDate, Number.MAX_SAFE_INTEGER, isObservedTask),
             },
             batch
         )

@@ -220,6 +220,7 @@ jest.mock('firebase-admin/firestore', () => ({
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
+    storage: jest.fn(() => ({ bucket: jest.fn(() => ({})) })),
     firestore: Object.assign(
         jest.fn(() => ({
             getAll: (...refs) => mockFirestoreGetAll(...refs),
@@ -3610,6 +3611,17 @@ describe('assistant attachment handoff helpers', () => {
             },
             usedPendingAttachment: true,
         })
+    })
+
+    test('never fills an artifact reference with an unrelated pending chat upload', () => {
+        const args = { attachments: [{ artifactId: 'artifact-1', versionNumber: 2 }] }
+        expect(
+            injectPendingAttachmentIntoToolArgs('create_gmail_draft', args, {
+                fileName: 'unrelated.pdf',
+                fileBase64: 'YWJjMTIz',
+                fileMimeType: 'application/pdf',
+            })
+        ).toEqual({ toolArgs: args, usedPendingAttachment: false })
     })
 
     test('redacts Gmail draft attachment base64 from conversation-safe tool args', () => {
@@ -8441,6 +8453,45 @@ describe('execute_task_in_vm existing task routing', () => {
         ensureChatExistsSpy.mockRestore()
     })
 
+    test('six execute/continue calls in one real tool runtime start only one VM job', async () => {
+        startVmJobSpy.mockResolvedValue({
+            success: true,
+            correlationId: 'vm-1',
+            status: 'started',
+            hostProjectId: 'project-1',
+            hostObjectId: 'ambient-task',
+        })
+        const runtime = { objectType: 'tasks', objectId: 'ambient-task', messageId: 'user-request' }
+        for (let i = 0; i < 6; i++) {
+            const result = await executeToolNatively(
+                'execute_task_in_vm',
+                {
+                    objective: i ? 'Check or finish the existing document' : 'Create the document',
+                    task_type: 'document',
+                    ...(i ? { continue_in_object_id: 'ambient-task' } : {}),
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                {},
+                runtime
+            )
+            expect(result.correlationId).toBe('vm-1')
+        }
+        expect(startVmJobSpy).toHaveBeenCalledTimes(1)
+        expect(resolveContinuationSpy).not.toHaveBeenCalled()
+        await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Revise the document', task_type: 'document' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            {},
+            { objectType: 'tasks', objectId: 'ambient-task', messageId: 'next-request' }
+        )
+        expect(startVmJobSpy).toHaveBeenCalledTimes(2)
+    })
+
     test('hosts a delegated VM run on target_task_id instead of creating a wrapper task', async () => {
         const result = await executeToolNatively(
             'execute_task_in_vm',
@@ -9946,4 +9997,70 @@ describe('streaming reply follows its task to a new project', () => {
             mockTransactionUpdate.mockReset()
         }
     })
+})
+
+describe('VM wait and artifact draft dispatch', () => {
+    test('authorises the wait tool exactly with VM access', async () => {
+        expect(await isToolAllowedForExecution(['execute_task_in_vm'], 'get_vm_job')).toBe(true)
+        expect(await isToolAllowedForExecution([], 'get_vm_job')).toBe(false)
+    })
+
+    test.each([
+        ['create_gmail_draft', 'createGmailDraftForAssistantRequest'],
+        ['create_gmail_reply_draft', 'createGmailReplyDraftForAssistantRequest'],
+        ['update_gmail_draft', 'updateGmailDraftForAssistantRequest'],
+    ])('%s resolves an artifact before invoking the mail integration', async (toolName, method) => {
+        const artifactTools = require('../Artifacts/artifactAssistant')
+        const drafts = require('../Gmail/assistantGmailDrafts')
+        const bytes = [{ fileName: 'letter.pdf', mimeType: 'application/pdf', base64: 'JVBERi0xLjQ=' }]
+        const resolve = jest.spyOn(artifactTools, 'resolveArtifactDraftAttachments').mockResolvedValue(bytes)
+        const draft = jest.spyOn(drafts, method).mockResolvedValue({ success: true, draftId: 'draft-1' })
+        try {
+            await executeToolNatively(
+                toolName,
+                { draftId: 'draft-1', attachments: [{ artifactId: 'a', versionNumber: 1 }] },
+                'p',
+                'assistant',
+                'user',
+                {},
+                {}
+            )
+            expect(resolve).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 'user',
+                    projectId: 'p',
+                    attachments: [{ artifactId: 'a', versionNumber: 1 }],
+                })
+            )
+            expect(draft).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', attachments: bytes }))
+        } finally {
+            resolve.mockRestore()
+            draft.mockRestore()
+        }
+    })
+})
+
+test('a settled VM wait restores notifications for the dependent final answer', async () => {
+    const status = require('./vmJobStatus')
+    const { startsVmJobInCurrentThread } = require('./vmHostTaskHelper')
+    const wait = jest.spyOn(status, 'getVmJobStatus').mockResolvedValue({
+        success: true,
+        correlationId: 'vm-1',
+        status: 'completed',
+        settled: true,
+        hostProjectId: 'p',
+        hostObjectId: 't',
+    })
+    const runtime = {}
+    const started = [{ projectId: 'p', objectId: 't', url: 'https://my.alldone.app/projects/p/tasks/t/chat' }]
+    expect(startsVmJobInCurrentThread(started, { projectId: 'p', objectId: 't' })).toBe(true)
+    try {
+        await executeToolNatively('get_vm_job', { correlationId: 'vm-1' }, 'p', 'assistant', 'user', {}, runtime)
+        expect(startsVmJobInCurrentThread(started, { projectId: 'p', objectId: 't' }, runtime.vmSettledThreads)).toBe(
+            false
+        )
+        expect(startsVmJobInCurrentThread(started, { projectId: 'p', objectId: 't' }, new Set(['other']))).toBe(true)
+    } finally {
+        wait.mockRestore()
+    }
 })

@@ -4835,6 +4835,10 @@ async function runVmJobByCorrelationId(correlationId) {
                 personalApiKeyUsed: credentialMode === 'byok',
                 tokenBillingExempt,
                 artifactCount: mediaContext.length,
+                resultArtifacts: publishedArtifacts.map(artifact => ({
+                    ...artifact,
+                    projectId: pendingWebhook.projectId,
+                })),
             })
             .catch(() => {})
         console.log('🖥️ VM JOB RUNNER: Completed', {

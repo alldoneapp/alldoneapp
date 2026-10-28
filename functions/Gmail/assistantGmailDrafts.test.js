@@ -393,3 +393,47 @@ describe('assistantGmailDrafts updates', () => {
         expect(mimeMessage).toContain('filename="replacement.txt"')
     })
 })
+
+test('an artifact reference becomes the original PDF attachment in the Gmail draft MIME', async () => {
+    const { KnowledgeFirestoreDouble } = require('../KnowledgeBase/__fixtures__/knowledgeFirestoreDouble')
+    const { ArtifactBucketDouble } = require('../Artifacts/__fixtures__/artifactBucketDouble')
+    const { commitArtifactVersion } = require('../Artifacts/artifactStore')
+    const { resolveArtifactDraftAttachments } = require('../Artifacts/artifactAssistant')
+    const db = new KnowledgeFirestoreDouble({ 'projects/p': { userIds: ['u'] } })
+    const bucket = new ArtifactBucketDouble()
+    const pdf = Buffer.from('%PDF-1.7\nletter\x00\xff', 'binary')
+    const { artifactId } = await commitArtifactVersion({
+        db,
+        bucket,
+        projectId: 'p',
+        userId: 'u',
+        files: [{ path: 'letter.pdf', base64: pdf.toString('base64') }],
+    })
+    const attachments = await resolveArtifactDraftAttachments({
+        db,
+        bucket,
+        projectId: 'p',
+        userId: 'u',
+        attachments: [{ artifactId, versionNumber: 1 }],
+    })
+    const create = jest.fn(async () => ({ data: { id: 'draft-1', message: { id: 'm', threadId: 't' } } }))
+    getConnectedGmailAccounts.mockResolvedValue([
+        { projectId: 'mail', gmailEmail: 'sender@example.com', gmailDefault: true },
+    ])
+    getConnectedMicrosoftEmailAccounts.mockResolvedValue([])
+    getGmailClient.mockResolvedValue({ users: { drafts: { create } } })
+    const result = await createGmailDraftForAssistantRequest({
+        userId: 'u',
+        projectId: 'p',
+        to: 'recipient@example.com',
+        subject: 'Letter',
+        body: 'Attached.',
+        attachments,
+    })
+    expect(result.success).toBe(true)
+    const mime = decodeBase64Url(create.mock.calls[0][0].requestBody.message.raw)
+    expect(mime).toContain('Content-Type: application/pdf; name="letter.pdf"')
+    expect(mime).toContain(pdf.toString('base64'))
+    expect(result.attachments).toEqual([expect.objectContaining({ fileName: 'letter.pdf', sizeBytes: pdf.length })])
+    expect(JSON.stringify(result)).not.toContain(pdf.toString('base64'))
+})

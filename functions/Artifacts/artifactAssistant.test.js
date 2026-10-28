@@ -1,6 +1,7 @@
 const { KnowledgeFirestoreDouble } = require('../KnowledgeBase/__fixtures__/knowledgeFirestoreDouble')
 const { ArtifactBucketDouble } = require('./__fixtures__/artifactBucketDouble')
-const { executeArtifactTool } = require('./artifactAssistant')
+const { executeArtifactTool, resolveArtifactDraftAttachments } = require('./artifactAssistant')
+const { commitArtifactVersion } = require('./artifactStore')
 
 const PROJECT_ID = 'project-a'
 const BASE_URL = 'https://my.alldone.app'
@@ -37,6 +38,74 @@ beforeEach(() => {
         [`items/${PROJECT_ID}/tasks/private-task`]: { isPrivate: true, isPublicFor: ['owner'] },
     })
     bucket = new ArtifactBucketDouble()
+})
+
+describe('artifact attachments for email drafts', () => {
+    const resolve = (attachments, userId = 'owner') =>
+        resolveArtifactDraftAttachments({ attachments, userId, projectId: PROJECT_ID, db, bucket })
+    const pdf = Buffer.from('%PDF-1.7\noriginal binary\x00\xff', 'binary')
+    const createPdf = options =>
+        commitArtifactVersion({
+            db,
+            bucket,
+            projectId: PROJECT_ID,
+            userId: 'owner',
+            files: [{ path: 'letter.pdf', base64: pdf.toString('base64') }],
+            ...options,
+        })
+
+    it('attaches the original bytes of the specified version, even after an update', async () => {
+        const { artifactId } = await createPdf()
+        await createPdf({
+            artifactId,
+            files: [{ path: 'letter.pdf', base64: Buffer.from('new version').toString('base64') }],
+        })
+        const result = await resolve([{ artifactId, versionNumber: 1 }])
+        expect(result).toEqual([
+            { fileName: 'letter.pdf', mimeType: 'application/pdf', base64: pdf.toString('base64') },
+        ])
+        expect(Buffer.from(result[0].base64, 'base64')).toEqual(pdf)
+        const info = await run('read_artifact', { artifactId, versionNumber: 1 })
+        expect(info).toMatchObject({
+            content: null,
+            attachment: { artifactId, projectId: PROJECT_ID, versionNumber: 1, path: 'letter.pdf' },
+        })
+        expect(await resolve([info.attachment])).toEqual(result)
+    })
+
+    it('rejects private and foreign project files before downloading', async () => {
+        const { artifactId } = await createPdf({ isPrivate: true })
+        const before = jest.spyOn(bucket, 'file')
+        await expect(resolve([{ artifactId }], 'teammate')).rejects.toThrow('Artifact not found')
+        await expect(resolve([{ artifactId, projectId: 'foreign' }])).rejects.toThrow('member')
+        expect(before).not.toHaveBeenCalled()
+    })
+
+    it('rejects unknown paths, traversal and ambiguous binary sources', async () => {
+        const { artifactId } = await createPdf()
+        await expect(resolve([{ artifactId, path: 'missing.pdf' }])).rejects.toThrow('not part')
+        await expect(resolve([{ artifactId, path: '../private.pdf' }])).rejects.toThrow()
+        await expect(resolve([{ artifactId, base64: 'YWJj' }])).rejects.toThrow('not both')
+    })
+
+    it('rejects oversized storage files before downloading', async () => {
+        const { artifactId } = await createPdf()
+        const originalFile = bucket.file.bind(bucket)
+        const download = jest.fn()
+        jest.spyOn(bucket, 'file').mockImplementation(path => ({
+            ...originalFile(path),
+            getMetadata: async () => [{ size: String(10 * 1024 * 1024 + 1) }],
+            download,
+        }))
+        await expect(resolve([{ artifactId }])).rejects.toThrow('10 MB')
+        expect(download).not.toHaveBeenCalled()
+    })
+
+    it('keeps existing base64 attachments intact in a mixed list', async () => {
+        const { artifactId } = await createPdf()
+        const existing = { fileName: 'note.txt', base64: 'YWJj' }
+        expect((await resolve([existing, { artifactId }]))[0]).toEqual(existing)
+    })
 })
 
 describe('create_artifact', () => {

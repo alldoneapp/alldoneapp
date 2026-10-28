@@ -276,7 +276,7 @@ const TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS = 8
 // execute_task_in_vm enabled answered that it had no access to a VM, GitLab or a deployment console,
 // in one round, without a tool search. Its schema description, which says to use it for any coding
 // or repository work, was never loaded, and the namespace it sat in only mentions "execution jobs".
-const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME])
+const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME, 'get_vm_job'])
 const ASSISTANT_PROMPT_CACHE_VERSION = 'assistant-prefix-v2'
 // Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
 // and interactive-chat entry points provide their longer budget through toolRuntimeContext when
@@ -2414,6 +2414,7 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (toolName === 'list_recent_chat_media' && assistantAllowedTools.includes('get_chat_attachment')) {
         return true
     }
+    if (toolName === 'get_vm_job' && assistantAllowedTools.includes(VM_JOB_TOOL_NAME)) return true
     // The six browser tools are gated by the single `browser_automation` toggle. Being permitted
     // here only means the assistant MAY browse; whether this particular action runs is decided by
     // the allowlist and the approval policy in ./browser, which no toggle can relax.
@@ -5368,15 +5369,47 @@ async function executeToolNatively(
     toolRuntimeContext = null
 ) {
     toolRuntimeContext?.whatsAppRunGuard?.assertActive()
-    const result = await executeToolNativelyImpl(
-        toolName,
-        toolArgs,
-        projectId,
-        assistantId,
-        requestUserId,
-        userContext,
-        toolRuntimeContext
-    )
+    if (
+        ['create_gmail_draft', 'create_gmail_reply_draft', 'update_gmail_draft'].includes(toolName) &&
+        Array.isArray(toolArgs.attachments) &&
+        toolArgs.attachments.some(attachment => attachment?.artifactId)
+    ) {
+        const { resolveArtifactDraftAttachments } = require('../Artifacts/artifactAssistant')
+        toolArgs = {
+            ...toolArgs,
+            attachments: await resolveArtifactDraftAttachments({
+                attachments: toolArgs.attachments,
+                projectId,
+                userId: requestUserId,
+                db: admin.firestore(),
+                bucket: admin.storage().bucket(),
+            }),
+        }
+    }
+    const execute = () =>
+        executeToolNativelyImpl(
+            toolName,
+            toolArgs,
+            projectId,
+            assistantId,
+            requestUserId,
+            userContext,
+            toolRuntimeContext
+        )
+    const result =
+        toolName === VM_JOB_TOOL_NAME
+            ? await require('./vmDispatchGuard').dispatchVmOnce({
+                  runtime: toolRuntimeContext,
+                  projectId,
+                  requestUserId,
+                  args: toolArgs,
+                  dispatch: execute,
+              })
+            : await execute()
+    if (toolName === 'get_vm_job' && result.settled && toolRuntimeContext) {
+        const settledThreads = (toolRuntimeContext.vmSettledThreads ||= new Set())
+        settledThreads.add(JSON.stringify([result.hostProjectId, result.hostObjectId]))
+    }
     if (toolRuntimeContext?.annaConversation) {
         try {
             const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
@@ -10209,6 +10242,16 @@ async function executeToolNativelyImpl(
             }
         }
 
+        case 'get_vm_job': {
+            const { getVmJobStatus } = require('./vmJobStatus')
+            return getVmJobStatus({
+                db: admin.firestore(),
+                userId: requestUserId,
+                correlationId: toolArgs.correlationId,
+                waitSeconds: toolArgs.waitSeconds,
+            })
+        }
+
         case 'execute_task_in_vm': {
             console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Starting VM job', {
                 taskType: toolArgs.task_type,
@@ -11694,7 +11737,11 @@ async function storeChunks(
         // failure/cancellation, or a question it needs answered. Notifying for the hand-off too
         // would show a red badge whose content is a spinner. The comment, the chat preview and the
         // last-assistant-comment data below are still written, so the thread reads normally.
-        const isVmHandoffReply = startsVmJobInCurrentThread(startedVmJobResults, { projectId, objectId })
+        const isVmHandoffReply = startsVmJobInCurrentThread(
+            startedVmJobResults,
+            { projectId, objectId },
+            runtimeContextForTools.vmSettledThreads
+        )
         if (isVmHandoffReply) {
             console.log('🖥️ VM JOB: Skipping notifications for the in-thread VM hand-off reply', {
                 projectId,
@@ -12786,13 +12833,19 @@ async function addBaseInstructions(
             'When the user asks about email history, what they discussed with someone in email, or to find emails by person or topic, use the search_gmail tool instead of guessing.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes(VM_JOB_TOOL_NAME)) {
+        messages.push([
+            'system',
+            'VM jobs run asynchronously. Dispatch the complete objective once with execute_task_in_vm. To check or wait for that job, use get_vm_job with its correlationId and waitSeconds=30. Calling execute_task_in_vm again queues new work, even with continue_in_object_id; never use it to poll, finish the same request, or extract existing file bytes. If another step depends on the VM result, wait using get_vm_job, then use its result and artifact references. If it is awaiting_user or failed, report that state and stop. A later user request can start a genuine follow-up.',
+        ])
+    }
     if (
         Array.isArray(allowedTools) &&
         allowedTools.some(toolName => ['create_gmail_reply_draft', 'create_gmail_draft'].includes(toolName))
     ) {
         messages.push([
             'system',
-            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything. Email and Calendar integrations belong to the user account and are available across projects. Never claim that an integration must be connected separately to the current project; if an account-selection tool error occurs, report its actual missing/default/ambiguity condition.',
+            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. For an existing artifact or VM output, pass its artifactId, projectId, versionNumber and optional path in attachments; the server attaches the original bytes directly. Use get_vm_job to wait for unfinished output. Never launch a VM to retrieve base64. If you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything. Email and Calendar integrations belong to the user account and are available across projects. Never claim that an integration must be connected separately to the current project; if an account-selection tool error occurs, report its actual missing/default/ambiguity condition.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('update_gmail_email')) {
@@ -13765,7 +13818,7 @@ function getToolSearchNamespaceName(toolName = '') {
     if (/artifact/.test(name)) return 'artifacts'
     if (/gmail|email/.test(name)) return 'gmail'
     if (/calendar|availability/.test(name)) return 'calendar'
-    if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
+    if (/task|goal|focus|execute_.*vm|vm_job/.test(name)) return 'tasks_and_goals'
     if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
     // The API reserves `notes`; a namespace with that name rejects `notes.update_note`.
     if (/note/.test(name)) return 'alldone_notes'

@@ -34,7 +34,6 @@ export default function MainModal({
     widthStyle,
     onFilesDropped,
     uploadingDraft,
-    pushToTalkHandoff,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [, windowHeight] = useWindowSize()
@@ -89,7 +88,6 @@ export default function MainModal({
                     showParentGoal={showParentGoal}
                     showMoreOptions={showMoreOptions}
                     uploadingDraft={uploadingDraft}
-                    pushToTalkHandoff={pushToTalkHandoff}
                 />
             </View>
         </CreateTaskFileDropZone>
