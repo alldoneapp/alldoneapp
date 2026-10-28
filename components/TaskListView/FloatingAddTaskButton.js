@@ -101,6 +101,9 @@ export default function FloatingAddTaskButton() {
                 autoOpenKey={pendingWebShareTarget?.id}
                 onAutoOpen={consumeWebShareTarget}
                 plusShortcutEnabled={taskEditorCount === 0 && !blockShortcuts}
+                // AT-2823: press and hold → the popup opens straight into the title mic's
+                // push-to-talk hold; release creates the task from what was said.
+                holdToDictate={true}
             />
         </View>
     )

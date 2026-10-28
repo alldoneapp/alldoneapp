@@ -26,6 +26,12 @@
 export const PUSH_TO_TALK_HOLD_MS = 400
 
 /**
+ * A pointer press leaves a trailing `click` that react-native-web turns into `onPress`. Controls
+ * that handle the press through the gesture ignore `onPress` for this long after it ended.
+ */
+export const POINTER_CLICK_SUPPRESSION_MS = 700
+
+/**
  * A hold that captured less than this much audio is thrown away instead of submitted. Auto-submit
  * means the result goes straight into a chat with no review step, so the cost of a misfire is a
  * junk message someone else reads — the cost of a false discard is one repeated sentence. Note
