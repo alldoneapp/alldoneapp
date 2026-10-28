@@ -2629,6 +2629,11 @@ const toolSchemas = {
                             'project and the requesting user has linked their token, a "prototype" task runs inside a checkout of that repo ' +
                             'and opens a Merge Request (GitLab) / Pull Request (GitHub) only when it actually changes repository files.',
                     },
+                    handoff_message: {
+                        type: 'string',
+                        description:
+                            'A short message in the user’s language explaining what you are asking the VM to do and what you will do afterwards. Written before starting the VM: do not include or predict its results. The host preserves this introduction separately from the VM answer and your later summary.',
+                    },
                     agent: {
                         type: 'string',
                         enum: ['claude', 'codex'],

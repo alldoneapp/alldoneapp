@@ -73,3 +73,12 @@ test('a new user message on a reused runtime can dispatch a genuine follow-up', 
     await call(runtime, dispatch, { continue_in_object_id: 'task' })
     expect(dispatch).toHaveBeenCalledTimes(2)
 })
+
+test('opening a separate Anna summary comment does not create a fresh VM dispatch scope', async () => {
+    const runtime = { objectId: 'task', assistantCommentId: 'introduction' }
+    const dispatch = jest.fn(async () => job)
+    await call(runtime, dispatch)
+    runtime.assistantCommentId = 'summary'
+    await call(runtime, dispatch, { continue_in_object_id: 'task' })
+    expect(dispatch).toHaveBeenCalledTimes(1)
+})

@@ -2405,8 +2405,11 @@ describe('VM outputs as project artifacts', () => {
 
     test('tells the agent how its outputs become artifacts', () => {
         const prompt = __private__.buildAgentPrompt({ objective: 'Build a dashboard', taskType: 'prototype' })
-        expect(prompt).toContain('a folder in /home/user/output/ that contains an index.html becomes one web artifact')
-        expect(prompt).toContain('write to the same folder or file name')
+        expect(prompt).toContain('containing index.html becomes one web artifact')
+        expect(prompt).toContain('write to the same output path')
+        expect(prompt).toContain('host publishes each deliverable once')
+        expect(prompt).toContain('unchanged output is reused')
+        expect(prompt).toContain('Do not repeat file links')
     })
 })
 

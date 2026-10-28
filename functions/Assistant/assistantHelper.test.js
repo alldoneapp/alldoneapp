@@ -10064,3 +10064,172 @@ test('a settled VM wait restores notifications for the dependent final answer', 
         wait.mockRestore()
     }
 })
+
+describe('Anna VM message order', () => {
+    const { storeChunks } = require('./assistantHelper')
+    const prefix = 'chatComments/presentation-project/tasks/presentation-task/comments/'
+    const intro = 'I’ll ask the VM to create the PDF, then prepare your email draft.'
+    const summary = 'The PDF is ready and I prepared the email draft.'
+    const textResponse = text => [
+        { type: 'response.output_text.delta', delta: text },
+        { type: 'response.completed', response: { output: [] } },
+    ]
+    let documents
+    let start
+    let count
+    let wait
+    let now
+    const messages = () => [...documents.entries()].filter(([path]) => path.startsWith(prefix)).map(([, doc]) => doc)
+    const run = () =>
+        storeChunks(
+            'presentation-project',
+            'tasks',
+            'presentation-task',
+            [],
+            [
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'launch-vm',
+                                type: 'function',
+                                function: {
+                                    name: 'execute_task_in_vm',
+                                    arguments: JSON.stringify({
+                                        objective: 'Create the PDF',
+                                        task_type: 'document',
+                                        handoff_message: intro,
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+            null,
+            'presentation-assistant',
+            [0],
+            [],
+            'Task',
+            'Anna',
+            'Project',
+            '',
+            'presentation-user',
+            { message: 'Create a PDF and prepare an email draft' },
+            [['user', 'Create a PDF and prepare an email draft']],
+            'MODEL_GPT6_SOL',
+            'TEMPERATURE_NORMAL',
+            ['execute_task_in_vm'],
+            {
+                projectId: 'presentation-project',
+                objectType: 'tasks',
+                objectId: 'presentation-task',
+                assistantId: 'presentation-assistant',
+                requestUserId: 'presentation-user',
+                messageId: 'request-1',
+                language: 'en',
+            }
+        )
+    beforeEach(() => {
+        jest.clearAllMocks()
+        documents = new Map()
+        let tick = 1000000
+        now = jest.spyOn(Date, 'now').mockImplementation(() => tick++)
+        mockDocSet.mockImplementation(async function (data) {
+            documents.set(this.path, { ...data })
+        })
+        mockDocUpdate.mockImplementation(async function (data) {
+            documents.set(this.path, { ...documents.get(this.path), ...data })
+        })
+        mockDocGet.mockImplementation(async function () {
+            return { exists: documents.has(this.path), data: () => documents.get(this.path) || {} }
+        })
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: true, id: 'presentation-assistant', data: () => ({ allowedTools: ['execute_task_in_vm'] }) },
+            { exists: false },
+        ])
+        count = jest.spyOn(require('./vmJob'), 'countActiveVmJobsForUser').mockResolvedValue(0)
+        start = jest.spyOn(require('./vmJob'), 'startVmJob').mockImplementation(async () => {
+            expect(messages()).toEqual([
+                expect.objectContaining({
+                    commentText: intro,
+                    vmHandoff: true,
+                    isLoading: false,
+                    suppressAssistantReply: true,
+                }),
+            ])
+            documents.set(`${prefix}vm-result`, { commentText: 'VM running', created: Date.now() })
+            return {
+                success: true,
+                correlationId: 'vm-1',
+                status: 'started',
+                hostProjectId: 'presentation-project',
+                hostObjectId: 'presentation-task',
+                hostObjectType: 'tasks',
+            }
+        })
+        wait = jest.spyOn(require('./vmJobStatus'), 'getVmJobStatus').mockImplementation(async () => {
+            documents.set(`${prefix}vm-result`, { commentText: 'VM produced the PDF.', created: Date.now() })
+            return {
+                success: true,
+                correlationId: 'vm-1',
+                status: 'completed',
+                settled: true,
+                hostProjectId: 'presentation-project',
+                hostObjectId: 'presentation-task',
+                output: 'VM produced the PDF.',
+            }
+        })
+        mockResponsesCreate.mockReset()
+    })
+    afterEach(() => {
+        start.mockRestore()
+        count.mockRestore()
+        wait.mockRestore()
+        now.mockRestore()
+        mockDocSet.mockResolvedValue(undefined)
+        mockDocUpdate.mockResolvedValue(undefined)
+    })
+    test('persists the introduction before dispatch, then VM answer, then a separate Anna summary', async () => {
+        mockResponsesCreate
+            .mockResolvedValueOnce([
+                {
+                    type: 'response.output_item.done',
+                    item: {
+                        id: 'wait-item',
+                        type: 'function_call',
+                        call_id: 'wait-call',
+                        name: 'get_vm_job',
+                        arguments: '{"correlationId":"vm-1"}',
+                    },
+                },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+            .mockResolvedValueOnce(textResponse(summary))
+        expect(await run()).toBe(summary)
+        expect(start).toHaveBeenCalledTimes(1)
+        expect(wait).toHaveBeenCalledTimes(1)
+        const ordered = messages().sort((a, b) => a.created - b.created)
+        expect(ordered.map(doc => doc.commentText)).toEqual([intro, 'VM produced the PDF.', summary])
+        expect(ordered[0]).toMatchObject({ vmHandoff: true, originalContent: intro, isLoading: false })
+        expect(ordered[2]).toMatchObject({ isLoading: false, fromAssistant: true })
+        expect(ordered[2].created).toBeGreaterThan(ordered[1].created)
+    })
+    test('an asynchronous handoff stays an introduction when the model tries to include results before waiting', async () => {
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('The PDF is already ready.'))
+        expect(await run()).toBe(intro)
+        expect(start).toHaveBeenCalledTimes(1)
+        expect(wait).not.toHaveBeenCalled()
+        expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running'])
+    })
+    test('a launch failure has its own Anna message and leaves the introduction intact', async () => {
+        start.mockResolvedValueOnce({ success: false, message: 'The VM is unavailable.' })
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('The VM is unavailable. Please try again later.'))
+        await run()
+        expect(messages().map(doc => doc.commentText)).toEqual([
+            intro,
+            'The VM is unavailable. Please try again later.',
+        ])
+    })
+})
