@@ -696,9 +696,11 @@ even to the run rebuilding it. Only the page id (its slug) survives. Pinned by
 the read_page cases in `knowledgeBaseIngest.test.js`.
 
 **Assistants read it, and a member corrects it through them** (`knowledgeBaseAssistant.js`). The
-index of visible pages goes into the system prompt right after the project description, and three
-tools have no Tools Access toggle, like `load_skill` — the wiki itself is the access control:
-`read_knowledge_page`, `correct_knowledge_page`, `undo_knowledge_correction`.
+index of visible pages goes into the system prompt right after the project description, and the
+wiki tools have no Tools Access toggle, like `load_skill` — the wiki itself is the access control:
+`read_knowledge_page` and `search_knowledge` for every member run, `correct_knowledge_page` and
+`undo_knowledge_correction` for runs that may correct, plus the document and saved-knowledge tools
+(`add/remove_knowledge_document`, `save/remove_knowledge_contribution`) once the wiki is on.
 `resolveKnowledgeBaseAccess` decides per run, and the same answer drives the prompt, the offered
 tools and the execution gate:
 
@@ -714,8 +716,9 @@ tools and the execution gate:
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
-  and membership is still checked per call. The three tools are separate switches under Settings →
-  MCP (`mcpDisabledTools`), so correcting can be switched off while reading stays on. Over MCP
+  and membership is still checked per call. Each wiki tool served there (read, search, correct,
+  undo, save and remove saved knowledge) is a separate switch under Settings → MCP
+  (`mcpDisabledTools`), so correcting can be switched off while reading stays on. Over MCP
   there is no page index in a prompt and no conversation project: `read_knowledge_page` without a
   slug lists the pages, `projectId` defaults to the user's default project, and
   `adaptToolSchemaForMcp` in `mcpServerSimple.js` rewrites exactly those parts of the shared
@@ -831,6 +834,36 @@ wiki change. The current-state pass and rebuilds load all its parts through
 turned private — pages emptied, hidden and rebuilt, revisions redacted — after deleting the stored
 text, because members can read the whole tree. The same text hash already active answers
 `alreadyAdded` instead of feeding the document twice.
+
+**A page read is the text plus what it cites; the full source list is provenance, not payload
+(AT-2614).** `sourceKeys` only grows outside a rebuild, because the withdrawal needs every source a
+page ever leaned on, and on the reporting wiki 57% of listed sources were no longer cited, so a read
+was mostly source list. `read_knowledge_page` returns the cited ones (`splitKnowledgePageSources`)
+plus `otherSourceCount`, and the wiki view folds the rest away. Never prune `sourceKeys` to fix this.
+The assistant context and every read say when the wiki last caught up (`lastSuccessfulRunAt`,
+written only by completed or partial runs) and that later changes may be missing.
+
+**Wiki search answers from Firestore, the index only narrows where to look.** `search_knowledge`
+(`knowledgeSearch.js`) scans the target project's visible pages fresh and quotes passages, so a page
+hidden for a rebuild is never quoted however stale `dev_wiki` is. Global search has a Wiki tab on
+`dev_wiki` (records `isPublicFor: ['0']`; the scoped key's `projectId` filter is the access rule,
+page text is matched but excluded from responses). `onWriteKnowledgePageSecondGen` mirrors each
+page, and `invalidateKnowledgeSource` deletes withdrawn pages from the index itself. "Only what I
+created" skips the Wiki tab: the wiki writes every page.
+
+**"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
+(`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
+assistant summary, possibly private text or a different target project first becomes a draft in the
+server-only `knowledgeContributionDrafts` collection, NOT in the wiki tree (members read that tree
+straight from Firestore). Confirming needs `confirmed: true` and, where the channel has message
+ids, a later message than the draft's. The card says it is a member's statement, not a verified
+record, and the ingest keeps conflicts with other sources as open questions.
+
+**The weekly health check may only spend the first 80% of the cap (`knowledgeLint.js`).** A
+rule-based `lintReport` is written on runs that changed pages; the model pass runs once the run
+has caught up, at most every 7 days, only if a page changed, changes at most 10 pages, never one
+corrected in the last 14 days, and records revision mode `lint` with a `lint:` reason. It must not
+settle a contradiction by recency alone; it adds an "Open questions" section instead.
 
 **PowerPoint and Excel are read as text everywhere a file reaches an assistant.**
 `functions/Utils/officeDocumentText.js` turns .pptx (slides in the deck's own order from
@@ -1144,6 +1177,17 @@ also a JSON manifest, `<script type="application/json" id="alldone-agent-api">`,
 usage and WebMCP outcome but no tool or user data, plus `data-alldone-agent-api-state` on `<html>`.
 Native WebMCP is still off in production until origin-trial tokens are registered (see
 `webMcpOriginTrial.js`).
+
+**Every agent surface tells the agent that Alldone is the system of record (AT-2832).** Durable work
+state and results go into Alldone objects (find and update the existing task or note, comment
+progress and results on the task, longer results in a note or artifact, no duplicates, nothing for
+throwaway steps) instead of living only in the agent's memory. The same guidance sits in four
+places that cannot share code: `/llms.txt`, `SYSTEM_OF_RECORD_INSTRUCTIONS` / `_SUMMARY` in
+`browserAgentApi.js` (`help()`, the stubs and the manifest's `systemOfRecord`; the summary names no
+tools because the manifest never does), the `ai-agent-api` meta tag, and the MCP `initialize`
+instructions (`functions/MCP/mcpAgentInstructions.js`). Keep them in step, and name only tools the
+MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text mentions against
+`tools/list`.
 
 ### Assistant Tool Checklist
 
@@ -2861,6 +2905,26 @@ row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 
+### Holding the floating "+" is a hold on the add-task mic (AT-2823)
+
+Pressing and holding the task board's floating "+" (`FloatingAddTaskButton` → `AddTaskTag`
+`holdToDictate`) enters the same push-to-talk mode as holding the mic inside the open add-task popup:
+ring, slide-to-cancel, timer, and release → transcribe → create the task. It is **not** a second
+recorder. After `PUSH_TO_TALK_HOLD_MS` (400ms) the "+" opens the popup and hands the press still in
+progress to the title input's `RambleButton` through `components/UIControls/pushToTalkHandoff.js`
+(`AddTaskTag` → `RichCreateTaskModal` → `MainModal` → `TaskEditForm` → `InputArea` →
+`CustomTextInput3` → `RambleButton`, prop `pushToTalkHandoff`). The "+" keeps tracking the gesture
+with `usePushToTalkGesture`; the mic claims the handoff once, starts recording and shows the ring
+immediately, and the forwarded release takes the ordinary `resolvePushToTalkRelease` path. Unlike the
+mic, nothing records on press-down, because a tap on "+" must never switch the microphone on, so the
+first ~400ms are not captured (product decision). A tap shorter than that opens the popup on release,
+as before. Two click traps are handled: the mouse press's trailing `click` would reach the popover's
+outside-click dismissal, since the "+" stops taking pointer events once a task editor is open, so
+`utils/swallowNextClick.js` consumes it (mouse/pen only, since touch produces none). RNW's
+`onPress` is also suppressed for `POINTER_CLICK_SUPPRESSION_MS` so the popup is not remounted, and
+keyboard activation still opens it. Pinned by `components/Tags/AddTaskTagHoldToDictate.test.js`
+(real `AddTaskTag` + real `RambleButton`, real DOM events) and `pushToTalkHandoff.test.js`.
+
 ### Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
 
 Transcription biases towards a curated product glossary in **two** places, and both are required.
@@ -3118,6 +3182,41 @@ labeling etc.) still fails fast. **And each `update_note` took ~50s** because
 sequential reads) and then probed each for the note (up to ~190 more). With both `noteId` and
 `projectId` it now does three reads (`findNoteInProject`, same membership + visibility rules);
 the fallback paths read projects at bounded concurrency and check the caller's project first.
+
+### A date-only dueDate is "due on that day", not a new timestamp (AT-2891)
+
+Codex resent `update_task` with `dueDate: "2026-10-27"` next to every progress comment to keep a
+task in Today, and each call wrote the task and posted another "updated task due" feed entry
+(eleven in 40 minutes on one task) although every call resolved to the same midnight timestamp.
+`TaskService.updateTask` never compared the new dueDate with the stored one. Two rules now apply. An
+identical timestamp is no change at all (no write, no `lastEditionDate`, no feed). In the
+assistant/MCP funnel (`TaskUpdateService.performTaskUpdate`), a bare `YYYY-MM-DD` on a task that is
+already due that day **in the user's timezone** keeps the stored timestamp, time of day included
+(`shared/dueDateIntent.js`), and the tool result tells the model to stop resending it. Anything else
+is applied as before: another day (including an overdue or Someday task), any value carrying a time,
+and a request with `alertEnabled`, where dueDate is the reminder time. Pinned by
+`TaskUpdateService.dueDateIntent.test.js` and `TaskService.dueDateNoop.test.js`.
+
+### A recurring task remembers where it was planned, and asks when that matters (AT-2803)
+
+Postponing a recurring task to a later day (or to Someday) stores the date it had before as
+`recurrenceOriginalDueDate`, once: a further postponement never overwrites it, moving it earlier
+stores nothing, and every new occurrence starts without it. Every writer applies that rule: the
+client (`setTaskDueDate`, `updateTask`, `setTaskToBacklog`), auto-postpone, project postpone and,
+for assistant/MCP `update_task`, `TaskService.updateTask` via `functions/shared/recurrenceOriginalDueDate.js`.
+
+Completing such a task opens `RecurringTaskDateBasisModal` when the answer can matter: the task was
+postponed to another day, **or** it is overdue (`shouldShowRecurringTaskDateBasisModal` in
+`recurringTaskDateBasis.js`). It offers the original date, the current due date, today and a custom
+date, with rows that name the same day merged. The choice travels as `recurrenceBaseDateOverride`,
+normalised to local noon of the chosen day. `calculateNextRecurrenceDate` reads that day in the
+assignee's timezone (`timezone` on the user doc), adds the interval and, when the result is not after
+the completion, skips ahead on the series' own cadence (anchor + k intervals, so a monthly task on
+the 31st stays on month ends). A completion without the popup (on the planned day, early, assistant,
+MCP, status picker, bulk) keeps the legacy rule: completion time plus one interval. Pinned by
+`recurringTaskDateBasis.test.js`, `RecurringTaskDateBasisModal.test.js`,
+`recurrenceOriginalDueDateWrites.test.js`, `functions/shared/recurrenceOriginalDueDate.test.js` and
+the AT-2803 blocks of `functions/Tasks/recurringTasksCloud.test.js`.
 
 ### A recurrence copy must carry its goal's privacy, not just its goal id
 

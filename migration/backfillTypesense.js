@@ -27,7 +27,7 @@
 //   --concurrency=N                   projects processed in parallel (default 1)
 //   --force                           reprocess projects already marked complete
 //   --stats                           print live Typesense collection counts and exit
-//   --types=artifacts                 only these object types (comma-separated)
+//   --types=artifacts                 only these object types (comma-separated), e.g. --types=wiki
 //
 // Note: the dry run performs the same Firestore/Storage reads as a real run (it builds the
 // full record lists to count them) — it only skips the Typesense writes and progress marks.
@@ -42,6 +42,7 @@ const ASSISTANTS_OBJECTS_TYPE = 'assistants'
 const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
 const ARTIFACTS_OBJECTS_TYPE = 'artifacts'
+const WIKI_OBJECTS_TYPE = 'wiki'
 
 function getArgument(name) {
     const prefix = `--${name}=`
@@ -70,6 +71,9 @@ const buildRecordsForType = async (objectsType, projectId, usersMap, db) => {
     } else if (objectsType === ARTIFACTS_OBJECTS_TYPE) {
         const { buildProjectArtifactSearchRecords } = require('../functions/Artifacts/artifactSearch')
         records.push(...(await buildProjectArtifactSearchRecords({ projectId, db })))
+    } else if (objectsType === WIKI_OBJECTS_TYPE) {
+        const { buildProjectKnowledgeSearchRecords } = require('../functions/KnowledgeBase/knowledgeSearch')
+        records.push(...(await buildProjectKnowledgeSearchRecords({ projectId, db })))
     }
     return records
 }
@@ -183,6 +187,7 @@ async function main() {
         ASSISTANTS_OBJECTS_TYPE,
         USERS_OBJECTS_TYPE,
         ARTIFACTS_OBJECTS_TYPE,
+        WIKI_OBJECTS_TYPE,
     ]
     // --types=artifacts indexes one newly searchable type without redoing the rest (combine with
     // --force, since projects backfilled before it existed are marked complete).

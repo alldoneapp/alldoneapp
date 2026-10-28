@@ -12,7 +12,10 @@ const {
     ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     READ_KNOWLEDGE_PAGE_TOOL,
+    REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL,
     REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+    SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+    SEARCH_KNOWLEDGE_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
 } = require('./knowledgeBaseToolSchemas')
 
@@ -158,6 +161,31 @@ describe('getKnowledgeBaseContextMessage', () => {
         expect(correcting).toContain(UNDO_KNOWLEDGE_CORRECTION_TOOL)
     })
 
+    it('tells the assistant what the wiki is built from and how fresh it is', async () => {
+        const db = createDb()
+        db.write(
+            KB_PATH,
+            { lastRunAt: NOW - 1000, lastRunStatus: 'failed', lastSuccessfulRunAt: NOW - 30 * 60 * 60 * 1000 },
+            {
+                merge: true,
+            }
+        )
+        const message = await getKnowledgeBaseContextMessage({ db, context: chatRun(), now: NOW })
+
+        expect(message).toContain('comment threads and artifacts, from documents and knowledge members added to it')
+        expect(message).not.toContain('updated about once a day')
+        expect(message).toContain(
+            `Freshness: It last caught up with its sources at ${new Date(NOW - 30 * 60 * 60 * 1000).toISOString()}`
+        )
+        expect(message).toContain('changes made in the project after that may not be included yet')
+        expect(message).toContain(SEARCH_KNOWLEDGE_TOOL)
+        expect(message).toContain(`Only when the user explicitly asks to save something from this conversation`)
+
+        db.write(KB_PATH, { enabled: false }, { merge: true })
+        const paused = await getKnowledgeBaseContextMessage({ db, context: chatRun(), now: NOW })
+        expect(paused).toContain('It is switched off and is not being updated.')
+    })
+
     it('keeps project selection and wiki-first research instructions when the chat has no wiki', async () => {
         const db = createDb()
         db.documents.delete(KB_PATH)
@@ -190,13 +218,16 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
 
         await expect(
             getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun({ allowKnowledgeCorrections: false }) })
-        ).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
+        ).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL])
         await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
             READ_KNOWLEDGE_PAGE_TOOL,
+            SEARCH_KNOWLEDGE_TOOL,
             CORRECT_KNOWLEDGE_PAGE_TOOL,
             UNDO_KNOWLEDGE_CORRECTION_TOOL,
             ADD_KNOWLEDGE_DOCUMENT_TOOL,
             REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+            SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+            REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL,
         ])
     })
 
@@ -210,7 +241,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
             db,
             toolRuntimeContext: chatRun({ writingDraft: true }),
         })
-        expect(offered).toEqual([READ_KNOWLEDGE_PAGE_TOOL])
+        expect(offered).toEqual([READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL])
         offered.forEach(toolName => expect(WRITING_READ_TOOLS.has(toolName)).toBe(true))
     })
 
@@ -224,13 +255,16 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         // A new wiki's first content is often a deck: adding one must not wait for a first page.
         await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
             READ_KNOWLEDGE_PAGE_TOOL,
+            SEARCH_KNOWLEDGE_TOOL,
             ADD_KNOWLEDGE_DOCUMENT_TOOL,
             REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+            SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+            REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL,
         ])
         _resetKnowledgeBaseAvailabilityCacheForTests()
         await expect(
             getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun({ allowKnowledgeCorrections: false }) })
-        ).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
+        ).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL])
     })
 
     it('offers reading without a local wiki, but never to a nonmember or the email channel', async () => {
@@ -239,6 +273,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         for (const context of [chatRun(), chatRun({ writingDraft: true })]) {
             await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: context })).resolves.toEqual([
                 READ_KNOWLEDGE_PAGE_TOOL,
+                SEARCH_KNOWLEDGE_TOOL,
             ])
         }
         for (const context of [chatRun({ requestUserId: 'stranger' }), chatRun({ channel: 'email' })]) {
@@ -251,6 +286,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
 
         await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
             READ_KNOWLEDGE_PAGE_TOOL,
+            SEARCH_KNOWLEDGE_TOOL,
             CORRECT_KNOWLEDGE_PAGE_TOOL,
             UNDO_KNOWLEDGE_CORRECTION_TOOL,
         ])
@@ -260,11 +296,11 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         const db = new KnowledgeFirestoreDouble({ [`projects/${PROJECT_ID}`]: { userIds: ['member'] } })
         const ask = now => getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun(), now })
 
-        await expect(ask(NOW)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
+        await expect(ask(NOW)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL])
         db.write(KB_PATH, { enabled: true })
         db.write(pagePath('kunden'), { title: 'Kunden', archived: false, needsRebuild: false })
-        await expect(ask(NOW + 10_000)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL])
-        await expect(ask(NOW + 31_000)).resolves.toHaveLength(5)
+        await expect(ask(NOW + 10_000)).resolves.toEqual([READ_KNOWLEDGE_PAGE_TOOL, SEARCH_KNOWLEDGE_TOOL])
+        await expect(ask(NOW + 31_000)).resolves.toHaveLength(8)
     })
 })
 
@@ -311,6 +347,44 @@ describe('read_knowledge_page', () => {
                 { key: 'contact:c1', label: 'Frau Berg' },
             ],
         })
+    })
+
+    it('returns only the sources the text cites and counts the others, which stay on the page', async () => {
+        const db = createDb()
+        db.write(
+            pagePath('kunden'),
+            {
+                sourceKeys: ['task:t1', 'contact:c1', 'note:old1', 'task:old2'],
+                sourceLabels: { 'task:t1': 'Acme gewinnen', 'contact:c1': 'Frau Berg', 'note:old1': 'Alte Notiz' },
+            },
+            { merge: true }
+        )
+
+        const result = await run(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'kunden' })
+
+        expect(result.sources).toEqual([
+            { key: 'task:t1', label: 'Acme gewinnen' },
+            { key: 'contact:c1', label: 'Frau Berg' },
+        ])
+        expect(result.otherSourceCount).toBe(2)
+        expect(JSON.stringify(result)).not.toContain('Alte Notiz')
+        expect(result.note).toContain('2 other source(s) it no longer cites')
+        // The full provenance is untouched: the privacy withdrawal still finds the page by it.
+        expect(db.read(pagePath('kunden')).sourceKeys).toHaveLength(4)
+    })
+
+    it('says when the wiki last caught up, on a page and in the index', async () => {
+        const db = createDb()
+        db.write(KB_PATH, { lastSuccessfulRunAt: NOW - 5 * 60 * 60 * 1000 }, { merge: true })
+
+        const pageRead = await run(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'kunden' })
+        const index = await run(db, READ_KNOWLEDGE_PAGE_TOOL, {})
+
+        const iso = new Date(NOW - 5 * 60 * 60 * 1000).toISOString()
+        expect(pageRead.wikiLastUpdatedAt).toBe(iso)
+        expect(pageRead.note).toContain(`last caught up with its sources at ${iso} (about 5 hours ago)`)
+        expect(pageRead.note).toContain('may not be included yet')
+        expect(index).toMatchObject({ wikiLastUpdatedAt: iso, freshness: expect.stringMatching(/about 5 hours ago/) })
     })
 
     it('lists every visible page and the documents in the wiki when no slug is given', async () => {
@@ -649,5 +723,48 @@ describe('over MCP', () => {
             })
         ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/members/) })
         expect(db.read(pagePath('kunden')).revision).toBe(2)
+    })
+})
+
+describe('search_knowledge, save_knowledge_contribution and remove_knowledge_contribution', () => {
+    it('searches the pages of the chosen project, checking membership like a read', async () => {
+        const db = createDb()
+        const result = await run(db, SEARCH_KNOWLEDGE_TOOL, { query: 'Pilotkunde' })
+        expect(result).toMatchObject({ success: true, projectId: PROJECT_ID })
+        expect(result.results.map(page => page.slug)).toEqual(['kunden'])
+        expect(result.results[0].passages[0].text).toBe('Acme ist Pilotkunde . Ansprechpartnerin ist Frau Berg .')
+
+        await expect(run(db, SEARCH_KNOWLEDGE_TOOL, { query: 'Acme', projectId: 'project-b' })).resolves.toMatchObject({
+            success: false,
+            error: expect.stringMatching(/members/),
+        })
+    })
+
+    it('saves only for a run answering a member directly', async () => {
+        const db = createDb()
+        const args = { text: 'Acme zahlt jährlich.', origin: 'user_statement', mayContainPrivateInformation: false }
+
+        await expect(
+            run(db, SAVE_KNOWLEDGE_CONTRIBUTION_TOOL, args, chatRun({ allowKnowledgeCorrections: false }))
+        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/not permitted/) })
+
+        const saved = await executeKnowledgeBaseTool({
+            db,
+            toolName: SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+            args,
+            assistantId: 'anna',
+            toolRuntimeContext: chatRun(),
+            enqueue: async () => {},
+            now: NOW,
+            fieldValue,
+        })
+        expect(saved).toMatchObject({ success: true, contributionId: expect.any(String) })
+
+        const index = await run(db, READ_KNOWLEDGE_PAGE_TOOL, {})
+        expect(index.contributions).toEqual([expect.objectContaining({ contributionId: saved.contributionId })])
+
+        await expect(
+            run(db, REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL, { contributionId: saved.contributionId })
+        ).resolves.toMatchObject({ success: true, alreadyRemoved: false })
     })
 })

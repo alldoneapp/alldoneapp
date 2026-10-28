@@ -23,6 +23,7 @@ export default function TaskEditForm({
     showParentGoal,
     showMoreOptions,
     uploadingDraft,
+    pushToTalkHandoff,
 }) {
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [linkedParentNotesUrl, setLinkedParentNotesUrl] = useState([])
@@ -123,6 +124,7 @@ export default function TaskEditForm({
                 onChangeInputText={onChangeInputText}
                 enterKeyAction={enterKeyAction}
                 setMentionsModalActive={setMentionsModalActive}
+                pushToTalkHandoff={pushToTalkHandoff}
             />
             {(uploadingDraft || task.description?.includes('blob:')) && (
                 <Text style={localStyles.attachmentHint} accessibilityLiveRegion="polite">

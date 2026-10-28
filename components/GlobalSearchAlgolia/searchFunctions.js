@@ -18,14 +18,20 @@ import {
     DV_TAB_ROOT_UPDATES,
 } from '../../utils/TabNavigationConstants'
 
+export const getWikiPagePath = (projectId, slug) => `/projects/${projectId}/wiki/${slug}`
+
+const getSearchResultPath = (projectId, objectId, objectType, tabView) => {
+    if (objectType === 'artifacts') return `/projects/${projectId}/artifacts/${objectId}`
+    if (objectType === 'wiki') return getWikiPagePath(projectId, objectId)
+    return `/projects/${projectId}/${objectType}/${objectId}/${tabView}`
+}
+
 export const goToObjectDetailView = (projectId, objectId, objectType, detailedViewType) => {
     store.dispatch([hideFloatPopup(), setGlobalSearchResults(null), hideGlobalSearchPopup()])
     const tabView = objectType === 'chats' ? 'chat' : objectType === 'notes' ? 'editor' : 'properties'
-    // An artifact opens in place in the Artifacts tab, which has no properties sub-route.
-    let linkUrl =
-        objectType === 'artifacts'
-            ? `/projects/${projectId}/artifacts/${objectId}`
-            : `/projects/${projectId}/${objectType}/${objectId}/${tabView}`
+    // An artifact opens in place in the Artifacts tab, which has no properties sub-route; a wiki
+    // page opens in the project's wiki.
+    let linkUrl = getSearchResultPath(projectId, objectId, objectType, tabView)
     URLTrigger.directProcessUrl(NavigationService, linkUrl)
 }
 

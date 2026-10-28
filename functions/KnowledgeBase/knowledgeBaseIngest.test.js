@@ -29,6 +29,9 @@ function createDb(extra = {}, knowledgeBase = {}) {
             instructions: 'Eine Seite pro Kunde.',
             nextRunAt: NOW - 1,
             cursor: { tasks: { ms: NOW - 10 * DAY, ids: [] }, tasksCompleted: { ms: NOW - 10 * DAY, ids: [] } },
+            // The weekly health check ran just now, so it stays out of the tests about everything
+            // else; the `health check` block below sets its own state.
+            lint: { lastLlmLintAt: NOW },
             ...knowledgeBase,
         },
         ...extra,
@@ -1166,5 +1169,179 @@ describe('the one-time current-state pass', () => {
 
         expect(result).toMatchObject({ status: 'stopped', stopReason: 'insufficient_gold' })
         expect(db.read(KB_PATH).currentStateRewrite.pendingSlugs).toEqual(['kunden'])
+    })
+})
+
+describe('the weekly health check', () => {
+    const lintPage = (slug, data = {}) => ({
+        title: slug,
+        summary: `About ${slug}.`,
+        body: `About ${slug} [[task:${slug}-source]].`,
+        sourceKeys: [`task:${slug}-source`],
+        revision: 1,
+        archived: false,
+        needsRebuild: false,
+        updatedAt: NOW - DAY,
+        ...data,
+    })
+    const lintDb = (pages, knowledgeBase = {}, extra = {}) =>
+        createDb(
+            {
+                ...Object.fromEntries(Object.entries(pages).map(([slug, data]) => [pagePath(slug), data])),
+                ...extra,
+            },
+            { lint: {}, ...knowledgeBase }
+        )
+
+    it('fixes what it can prove, leaves recently corrected pages alone and records why in the history', async () => {
+        const db = lintDb(
+            { preise: lintPage('preise'), team: lintPage('team'), vertrieb: lintPage('vertrieb') },
+            {},
+            {
+                [`${KB_PATH}/corrections/k1`]: {
+                    text: 'Das Team ist kleiner.',
+                    pageSlug: 'team',
+                    status: 'applied',
+                    createdAt: NOW - 2 * DAY,
+                },
+            }
+        )
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.read_page({ slug: 'preise' })
+            await tools.write_page({
+                slug: 'preise',
+                title: 'preise',
+                summary: 'About preise.',
+                body: 'About preise [[task:preise-source]], sold by [[vertrieb]].\n\n## Open questions\n\n- Team size [[task:team-source]]?',
+                sourceKeys: ['task:preise-source', 'task:team-source', 'task:invented'],
+                reason: 'linked the sales page',
+            })
+            await tools.read_page({ slug: 'team' })
+            await tools.write_page({
+                slug: 'team',
+                title: 'team',
+                summary: 'x',
+                body: 'Changed.',
+                sourceKeys: [],
+                reason: 'x',
+            })
+        })
+
+        const result = await run(db, { runConversation })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].system).toContain('Health check of the wiki (today is 2026-10-24)')
+        expect(calls[0].system).toContain('must not be changed: [[team]]')
+        expect(calls[0].user).toContain('=== [[preise]]')
+        const refused = calls[0].results.find(entry => entry.name === 'write_page' && entry.args.slug === 'team')
+        expect(refused.result).toMatchObject({
+            success: false,
+            error: expect.stringMatching(/corrected by a project member/),
+        })
+
+        expect(db.read(pagePath('preise'))).toMatchObject({
+            revision: 2,
+            sourceKeys: ['task:preise-source', 'task:team-source'],
+        })
+        expect(db.read(`${pagePath('preise')}/revisions/000002`)).toMatchObject({
+            mode: 'lint',
+            reason: 'lint: linked the sales page',
+        })
+        expect(db.read(pagePath('team')).revision).toBe(1)
+        expect(result).toMatchObject({ status: 'completed', lintEdits: 1 })
+        const knowledgeBase = db.read(KB_PATH)
+        expect(knowledgeBase.lint).toMatchObject({ lastLlmLintAt: NOW, lastLlmLintRunId: 'run-1', lastLlmLintEdits: 1 })
+        expect(knowledgeBase.lintReport).toMatchObject({ pageCount: 3, counts: expect.any(Object) })
+        expect(knowledgeBase.lastSuccessfulRunAt).toBe(NOW)
+    })
+
+    it('stops at its share of the monthly cap and never spends the reserve', async () => {
+        const pages = { preise: lintPage('preise'), team: lintPage('team') }
+        const reserved = lintDb(pages, { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 80 } })
+        const { runConversation } = scriptedModel()
+
+        const result = await run(reserved, { runConversation })
+
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ status: 'completed', lintStop: 'budget', stopReason: null })
+        expect(reserved.read(KB_PATH).lint).toEqual({})
+
+        // A pass that crosses its share mid-way ends there; the run itself is not stopped.
+        const crossing = lintDb(
+            Object.fromEntries(
+                Array.from({ length: 6 }, (_, index) => [
+                    `p${index}`,
+                    lintPage(`p${index}`, { body: 'x '.repeat(9000) }),
+                ])
+            ),
+            { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 70 } }
+        )
+        const scripted = scriptedModel()
+        const crossed = await run(crossing, {
+            runConversation: scripted.runConversation,
+            measureRound: () => ({ tokens: 1, gold: 15 }),
+        })
+        expect(scripted.calls).toHaveLength(1)
+        expect(crossed).toMatchObject({ status: 'completed', stopReason: null, lintStop: 'budget' })
+        expect(crossing.read(KB_PATH).monthlyGold.spent).toBe(85)
+    })
+
+    it('changes at most ten pages in one pass', async () => {
+        const slugs = Array.from({ length: 12 }, (_, index) => `seite-${index}`)
+        const db = lintDb(Object.fromEntries(slugs.map(slug => [slug, lintPage(slug)])))
+        const { runConversation, calls } = scriptedModel(async tools => {
+            for (const slug of slugs) {
+                await tools.read_page({ slug })
+                await tools.write_page({
+                    slug,
+                    title: slug,
+                    summary: 's',
+                    body: `Linked [[task:${slug}-source]] [[seite-0]].`,
+                    sourceKeys: [],
+                    reason: 'links',
+                })
+            }
+        })
+
+        const result = await run(db, { runConversation })
+
+        const writes = calls[0].results.filter(entry => entry.name === 'write_page')
+        expect(writes.filter(entry => entry.result.success)).toHaveLength(10)
+        expect(writes[10].result.error).toMatch(/at most 10 pages/)
+        expect(result.lintEdits).toBe(10)
+    })
+
+    it('waits a week after a pass, and does not run while the wiki is still catching up', async () => {
+        const pages = { preise: lintPage('preise', { updatedAt: NOW }), team: lintPage('team') }
+        const recent = lintDb(pages, { lint: { lastLlmLintAt: NOW - 3 * DAY } })
+        const { runConversation } = scriptedModel()
+        await run(recent, { runConversation })
+        expect(runConversation).not.toHaveBeenCalled()
+
+        // More pages waiting for a rebuild than one run takes: the next run continues right away.
+        const rebuilding = Object.fromEntries(
+            Array.from({ length: 11 }, (_, index) => [
+                `alt-${index}`,
+                lintPage(`alt-${index}`, { needsRebuild: true, sourceKeys: [] }),
+            ])
+        )
+        const catchingUp = lintDb({ ...pages, ...rebuilding })
+        const second = scriptedModel()
+        const result = await run(catchingUp, { runConversation: second.runConversation })
+        expect(result.status).toBe('partial')
+        expect(second.runConversation).not.toHaveBeenCalled()
+    })
+
+    it('records when the wiki last caught up only for a run that did', async () => {
+        const db = createDb({}, { lastSuccessfulRunAt: NOW - 3 * DAY })
+        const failing = jest.fn(async () => {
+            throw new Error('boom')
+        })
+        db.write(taskPath('t1'), { name: 'Neu', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY })
+
+        const result = await run(db, { runConversation: failing })
+
+        expect(result.status).toBe('failed')
+        expect(db.read(KB_PATH).lastSuccessfulRunAt).toBe(NOW - 3 * DAY)
     })
 })
