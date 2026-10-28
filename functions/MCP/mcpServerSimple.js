@@ -3,7 +3,6 @@ const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
-const { buildMcpServerInstructions } = require('./mcpAgentInstructions')
 const { Timestamp } = require('firebase-admin/firestore')
 
 // ---------------------------------------------------------------------------
@@ -1706,9 +1705,8 @@ class AlldoneSimpleMCPServer {
                             name: 'alldone-mcp-server',
                             version: '1.0.0',
                         },
-                        instructions: buildMcpServerInstructions(
-                            'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 authorization code flow with PKCE. No alternative authentication methods are supported. Use the /authorize endpoint to begin the authentication process.'
-                        ),
+                        instructions:
+                            'This is the Alldone MCP Server providing access to task management, project organization, and productivity tools. AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 authorization code flow with PKCE. No alternative authentication methods are supported. Use the /authorize endpoint to begin the authentication process.',
                     },
                 })
                 return
@@ -2066,9 +2064,8 @@ class AlldoneSimpleMCPServer {
                         name: 'alldone-mcp-server',
                         version: '1.0.0',
                     },
-                    instructions: buildMcpServerInstructions(
-                        'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 (authorization_code for users or client_credentials for services). Use the /authorize endpoint to begin the authentication process.'
-                    ),
+                    instructions:
+                        'This is the Alldone MCP Server providing access to task management, project organization, and productivity tools. AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 (authorization_code for users or client_credentials for services). Use the /authorize endpoint to begin the authentication process.',
                 }
 
                 console.log('✅ MCP Initialize complete:', {
