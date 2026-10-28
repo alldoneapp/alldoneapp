@@ -15,27 +15,22 @@ import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import { RECURRENCE_DATE_BASIS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
-import { RECURRENCE_NEVER, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import {
+    getRecurrenceDateBasisOptions,
+    RECURRENCE_BASIS_ORIGINAL,
+    RECURRENCE_BASIS_SCHEDULED,
+    RECURRENCE_BASIS_TODAY,
+    toRecurrenceBaseDate,
+} from './recurringTaskDateBasis'
 
-export const getTaskRecurrenceValue = task => {
-    const recurrence = task?.recurrence
-    return recurrence && typeof recurrence === 'object' ? recurrence.type : recurrence
-}
+// Kept here so the completion paths (and the suites that mock this module) keep their import.
+export { getTaskRecurrenceValue, shouldShowRecurringTaskDateBasisModal } from './recurringTaskDateBasis'
 
-export const shouldShowRecurringTaskDateBasisModal = task => {
-    const recurrence = getTaskRecurrenceValue(task)
-    return (
-        !!task &&
-        !task.done &&
-        !task.parentId &&
-        task.assigneeType !== TASK_ASSIGNEE_ASSISTANT_TYPE &&
-        recurrence &&
-        recurrence !== RECURRENCE_NEVER &&
-        typeof task.recurrenceOriginalDueDate === 'number' &&
-        Array.isArray(task.userIds) &&
-        task.userIds.length === 1
-    )
+const OPTION_PRESENTATION = {
+    [RECURRENCE_BASIS_ORIGINAL]: { icon: 'rotate-cw', text: 'Original date' },
+    [RECURRENCE_BASIS_SCHEDULED]: { icon: 'calendar-up', text: 'Current due date' },
+    [RECURRENCE_BASIS_TODAY]: { icon: 'clock', text: 'Today' },
 }
 
 function RecurrenceDateBasisOption({ icon, text, date, shortcut, onPress }) {
@@ -57,7 +52,9 @@ function RecurrenceDateBasisOption({ icon, text, date, shortcut, onPress }) {
                         {date && (
                             <Text style={[styles.body1, localStyles.date]}>
                                 {' • '}
-                                {moment(date).format('D MMM')}
+                                {moment(date).format(
+                                    moment(date).isSame(moment(), 'year') ? 'ddd, D MMM' : 'ddd, D MMM YYYY'
+                                )}
                             </Text>
                         )}
                     </View>
@@ -72,6 +69,10 @@ function RecurrenceDateBasisOption({ icon, text, date, shortcut, onPress }) {
 
 function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDateBasis, windowSize }) {
     const [visibleCalendar, setVisibleCalendar] = useState(false)
+    // One "now" for the whole popup, so the rows cannot change under the user around midnight.
+    const [now] = useState(() => Date.now())
+    const options = getRecurrenceDateBasisOptions(task, now)
+    const customShortcut = String(options.length + 1)
 
     useEffect(() => {
         storeModal(RECURRENCE_DATE_BASIS_MODAL_ID)
@@ -80,16 +81,8 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
         }
     }, [])
 
-    const selectOriginalDate = () => {
-        selectDateBasis(task.recurrenceOriginalDueDate)
-    }
-
-    const selectCurrentDate = () => {
-        selectDateBasis(Date.now())
-    }
-
-    const selectCustomDate = date => {
-        selectDateBasis(date)
+    const selectDate = date => {
+        selectDateBasis(toRecurrenceBaseDate(date))
     }
 
     const close = event => {
@@ -101,14 +94,15 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
     const title = visibleCalendar ? translate('Pick date') : translate('Select recurring task date')
     const description = visibleCalendar
         ? translate('Select the custom base date for the next recurring task')
-        : translate('Choose how Alldone should schedule the next recurring task')
+        : translate('Choose the date the interval of the next recurring task is counted from')
     const maxHeight = getSafeAreaModalMaxHeight(windowSize?.[1] || 600)
 
     return (
         <View style={[localStyles.container, applyPopoverWidth(), { maxHeight }]}>
             <Hotkeys
                 keyName={'esc,enter'}
-                onKeyDown={(sht, event) => (sht === 'enter' ? selectCurrentDate() : close(event))}
+                // Enter keeps what a completion without this popup does: count from today.
+                onKeyDown={(sht, event) => (sht === 'enter' ? selectDate(now) : close(event))}
                 filter={e => true}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -119,8 +113,8 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
                                 task={task}
                                 projectId={projectId}
                                 closePopover={() => {}}
-                                saveDueDateBeforeSaveTask={selectCustomDate}
-                                initialDate={Date.now()}
+                                saveDueDateBeforeSaveTask={selectDate}
+                                initialDate={now}
                                 isObservedTabActive={false}
                             />
                             <View style={localStyles.sectionSeparator} />
@@ -128,24 +122,20 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
                         </View>
                     ) : (
                         <View style={localStyles.options}>
-                            <RecurrenceDateBasisOption
-                                icon={'rotate-cw'}
-                                text={'Original date'}
-                                date={task.recurrenceOriginalDueDate}
-                                shortcut={'1'}
-                                onPress={selectOriginalDate}
-                            />
-                            <RecurrenceDateBasisOption
-                                icon={'clock'}
-                                text={'Current date'}
-                                date={Date.now()}
-                                shortcut={'2'}
-                                onPress={selectCurrentDate}
-                            />
+                            {options.map((option, index) => (
+                                <RecurrenceDateBasisOption
+                                    key={option.key}
+                                    icon={OPTION_PRESENTATION[option.key].icon}
+                                    text={OPTION_PRESENTATION[option.key].text}
+                                    date={option.date}
+                                    shortcut={String(index + 1)}
+                                    onPress={() => selectDate(option.date)}
+                                />
+                            ))}
                             <RecurrenceDateBasisOption
                                 icon={'calendar'}
                                 text={'Custom date'}
-                                shortcut={'3'}
+                                shortcut={customShortcut}
                                 onPress={() => setVisibleCalendar(true)}
                             />
                         </View>

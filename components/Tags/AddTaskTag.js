@@ -25,6 +25,11 @@ import {
     FLOATING_ACTION_VIEWPORT_GAP,
 } from '../UIComponents/floatingActionLayout'
 import { isEditableElementFocused } from '../../utils/editingGuard'
+import usePushToTalkGesture from '../../hooks/usePushToTalkGesture'
+import { isDictationSupported } from '../../hooks/useRambleRecorder'
+import { POINTER_CLICK_SUPPRESSION_MS, PUSH_TO_TALK_HOLD_MS } from '../UIControls/pushToTalk'
+import { createPushToTalkHandoff } from '../UIControls/pushToTalkHandoff'
+import { swallowNextClick } from '../../utils/swallowNextClick'
 
 function AddTaskTag({
     projectId,
@@ -53,6 +58,10 @@ function AddTaskTag({
     autoOpenKey,
     onAutoOpen,
     plusShortcutEnabled,
+    // AT-2823: holding this button opens the popup straight into the title mic's push-to-talk
+    // hold (release → transcribe → create the task), exactly as holding that mic would. A short
+    // tap still just opens the popup. Only the board's floating "+" opts in.
+    holdToDictate,
     openPopover,
     closePopover,
     isOpen,
@@ -72,7 +81,7 @@ function AddTaskTag({
     const autoOpenInitialTaskNameRef = useRef('')
     const popupLock = useFloatPopupLock()
     const taskEditorLock = useTaskEditorLock()
-    const [opening, setOpening] = useState({ projectId, sequence: 0 })
+    const [opening, setOpening] = useState({ projectId, sequence: 0, pushToTalkHandoff: null })
     const { maxHeight: popupMaxHeight, isSheet, windowHeight, safeAreaInsets } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
     const floatingPopupMaxHeight = Math.max(
@@ -87,14 +96,80 @@ function AddTaskTag({
     )
     const resolvedPopupMaxHeight = floating ? Math.min(popupMaxHeight, floatingPopupMaxHeight) : popupMaxHeight
 
-    const handleOpen = useCallback(() => {
-        // Resolve before opening: focusing the editor or locking the mobile scroller can change layout.
-        const initialProjectId = getInitialProjectId ? getInitialProjectId() : projectId
-        setOpening(previous => ({ projectId: initialProjectId, sequence: previous.sequence + 1 }))
-        openPopover()
-        popupLock.acquire()
-        taskEditorLock.acquire()
-    }, [getInitialProjectId, projectId, openPopover, popupLock, taskEditorLock])
+    const handleOpen = useCallback(
+        pushToTalkHandoff => {
+            // Resolve before opening: focusing the editor or locking the mobile scroller can change layout.
+            const initialProjectId = getInitialProjectId ? getInitialProjectId() : projectId
+            setOpening(previous => ({
+                projectId: initialProjectId,
+                sequence: previous.sequence + 1,
+                // Only a real handoff object; `onPress` passes the press event here.
+                pushToTalkHandoff: pushToTalkHandoff?.claim ? pushToTalkHandoff : null,
+            }))
+            openPopover()
+            popupLock.acquire()
+            taskEditorLock.acquire()
+        },
+        [getInitialProjectId, projectId, openPopover, popupLock, taskEditorLock]
+    )
+    const handleOpenRef = useRef(handleOpen)
+    handleOpenRef.current = handleOpen
+
+    // --- hold to dictate (AT-2823) -------------------------------------------------------------
+    // The press is tracked with the mic's own gesture hook so mouse, touch and pen behave exactly
+    // like a hold on the mic. Unlike the mic, nothing is recorded on press-down: a tap on "+" must
+    // never switch the microphone on. Once the press has lasted `PUSH_TO_TALK_HOLD_MS` it counts
+    // as a hold, the popup opens, and the hold is handed to the popup's title mic, which records,
+    // draws the ring and decides on release (submit, or discard after sliding out of the ring).
+    const holdToDictateEnabled = !!holdToDictate && !disabled && isDictationSupported()
+    const [triggerNode, setTriggerNode] = useState(null)
+    const holdTimerRef = useRef(null)
+    const handoffRef = useRef(null)
+    const gestureEndedAtRef = useRef(0)
+    const clearHoldTimer = () => {
+        if (holdTimerRef.current) {
+            clearTimeout(holdTimerRef.current)
+            holdTimerRef.current = null
+        }
+    }
+    useEffect(() => clearHoldTimer, [])
+
+    usePushToTalkGesture(triggerNode, {
+        enabled: holdToDictateEnabled,
+        onPressStart: point => {
+            clearHoldTimer()
+            handoffRef.current = null
+            holdTimerRef.current = setTimeout(() => {
+                holdTimerRef.current = null
+                const handoff = createPushToTalkHandoff({ origin: point })
+                handoffRef.current = handoff
+                handleOpenRef.current(handoff)
+            }, PUSH_TO_TALK_HOLD_MS)
+        },
+        onPressMove: travel => handoffRef.current?.move(travel),
+        onPressEnd: release => {
+            clearHoldTimer()
+            gestureEndedAtRef.current = Date.now()
+            const handoff = handoffRef.current
+            handoffRef.current = null
+            if (handoff) {
+                // A mouse/pen press leaves a trailing `click`, and by now the popup is open with its
+                // outside-click dismissal armed while this button no longer takes pointer events —
+                // so that click would close the popup the hold just opened, mid-dictation.
+                if (release.kind !== 'touch') swallowNextClick(POINTER_CLICK_SUPPRESSION_MS)
+                // The timer fired at the hold threshold, so this press IS a hold even if the clock
+                // the gesture reads lands a hair short of it.
+                handoff.end({ ...release, heldMs: Math.max(release.heldMs, PUSH_TO_TALK_HOLD_MS) })
+                return
+            }
+            // A tap. Same rule a plain button follows: dragging off before letting go is a no.
+            if (release.cancelled || !release.releasedInside) return
+            // Opening on pointerup instead of on click: the click that follows must not reach the
+            // just-armed outside-click dismissal either.
+            if (release.kind !== 'touch') swallowNextClick(POINTER_CLICK_SUPPRESSION_MS)
+            handleOpen()
+        },
+    })
 
     useEffect(() => {
         if (!autoOpenKey || autoOpenedKeyRef.current === autoOpenKey) return
@@ -163,7 +238,17 @@ function AddTaskTag({
                     taskHierarchyStyles.headerAddButtonMobile,
                 style,
             ]}
-            onPress={handleOpen}
+            ref={holdToDictate ? setTriggerNode : undefined}
+            onPress={() => {
+                // With hold-to-dictate on, mouse and touch are owned by the gesture above;
+                // react-native-web still fires `onPress` from a pointer press's trailing click,
+                // which must not open (and so remount) the popup a second time. What remains is
+                // keyboard activation (Enter/Space).
+                if (holdToDictateEnabled && Date.now() - gestureEndedAtRef.current < POINTER_CLICK_SUPPRESSION_MS) {
+                    return
+                }
+                handleOpen()
+            }}
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel={translate('Add task')}
@@ -253,6 +338,7 @@ function AddTaskTag({
                         showProjectSelector={showProjectSelector}
                         expandTaskListIfNeeded={expandTaskListIfNeeded}
                         initialTaskName={autoOpenInitialTaskNameRef.current || initialTaskName}
+                        pushToTalkHandoff={opening.pushToTalkHandoff}
                     />
                 </div>
             }

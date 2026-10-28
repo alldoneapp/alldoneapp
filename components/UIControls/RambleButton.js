@@ -9,6 +9,7 @@ import usePushToTalkGesture from '../../hooks/usePushToTalkGesture'
 import RambleHoldOverlay from './RambleHoldOverlay'
 import { HAPTIC_CANCEL_ARMED_MS, HAPTIC_CANCEL_DISARMED_MS, vibrate } from '../../utils/haptics'
 import {
+    POINTER_CLICK_SUPPRESSION_MS,
     PUSH_TO_TALK_DISCARD,
     PUSH_TO_TALK_MIN_RECORDING_MS,
     PUSH_TO_TALK_STOP,
@@ -24,7 +25,8 @@ import { setShowLimitedFeatureModal } from '../../redux/actions'
 
 // A pointer press leaves a trailing `click`; react-native-web turns that into `onPress`, which
 // would toggle the recorder a second time right after the gesture already handled the release.
-export const POINTER_CLICK_SUPPRESSION_MS = 700
+// Defined in the pure pushToTalk module so lightweight hosts (AddTaskTag) can share it.
+export { POINTER_CLICK_SUPPRESSION_MS }
 
 /**
  * How long a press has to last before the hold overlay (AT-2408) appears. Comfortably above an
@@ -276,6 +278,9 @@ export default function RambleButton({
     disabled,
     visible = true,
     style,
+    // AT-2823: a press-and-hold that started on another control (the task board's floating "+")
+    // and is handed to this mic while the finger is still down. See pushToTalkHandoff.js.
+    pushToTalkHandoff,
 }) {
     const { phase, elapsedSeconds, toggle, getInputLevel, handlePressStart, handlePressEnd } = useRambleController({
         projectId,
@@ -321,7 +326,7 @@ export default function RambleButton({
     // react-native-web's responder never grants and its own `activeOpacity` never runs. Holding a
     // button with no feedback at all reads as a dead control, so the pressed state is driven here.
     const onGesturePressStart = useCallback(
-        point => {
+        (point, { immediateOverlay = false } = {}) => {
             setPressed(true)
             const startedRecording = handlePressStart()
             cancelProgress.setValue(0)
@@ -329,6 +334,13 @@ export default function RambleButton({
             setCancelArmed(false)
             clearHoldTimer()
             if (!startedRecording || !point) return
+            // A handed-over hold (AT-2823) is a hold by definition — it only exists once the
+            // press on the "+" already passed the hold threshold — so there is no tap to protect
+            // from a flashing ring, and the ring goes up at once.
+            if (immediateOverlay) {
+                setHold({ x: point.clientX, y: point.clientY })
+                return
+            }
             // Deliberately delayed. A tap is 80–150ms and also comes through here, so showing the
             // ring on press-down would flash a 190px circle over the screen every time somebody
             // taps the mic to start a normal dictation. The delay is still well under the 400ms
@@ -369,6 +381,39 @@ export default function RambleButton({
         },
         [handlePressEnd, cancelProgress]
     )
+
+    // AT-2823: take over a hold handed in from another control. From here on it is the ordinary
+    // push-to-talk path: press-start now, the forwarded moves drive the cancel ring, and the
+    // forwarded release decides submit / discard exactly as a release on this button would. The
+    // handoff can only be claimed once, so a remount cannot open the microphone a second time.
+    useEffect(() => {
+        if (!pushToTalkHandoff || disabled) return undefined
+        if (pushToTalkHandoff.isEnded?.()) {
+            // Released before this mic could take over: nothing was recorded, nothing to do.
+            pushToTalkHandoff.claim({ onEnd: () => {} })
+            return undefined
+        }
+        let started = false
+        const stopListening = pushToTalkHandoff.claim({
+            onMove: travel => {
+                if (started) onGesturePressMove(travel)
+            },
+            onEnd: release => {
+                if (!started) return
+                started = false
+                onGesturePressEnd(release)
+            },
+        })
+        if (!stopListening) return undefined
+        started = true
+        onGesturePressStart(pushToTalkHandoff.origin, { immediateOverlay: true })
+        const lastMove = pushToTalkHandoff.getLastMove?.()
+        if (lastMove) onGesturePressMove(lastMove)
+        return stopListening
+        // Keyed on the handoff object only: the gesture callbacks are stable for the lifetime of a
+        // hold, and re-running on their identity would re-claim (and be refused).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pushToTalkHandoff, disabled])
 
     usePushToTalkGesture(buttonNode, {
         enabled: phase !== RAMBLE_PHASE_PROCESSING,
