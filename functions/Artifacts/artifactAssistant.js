@@ -83,6 +83,47 @@ async function readFileText(bucket, projectId, artifactId, versionId, path) {
     return bytes.toString('utf8')
 }
 
+// File bytes stay on the server. Resolve an immutable, authorised artifact version directly
+// into a mail attachment instead of asking the model to copy a binary/base64 chat response.
+async function resolveArtifactDraftAttachments({ attachments, projectId, userId, db, bucket }) {
+    if (!Array.isArray(attachments)) return attachments
+    if (attachments.length > 10) fail('A draft supports at most 10 attachments.')
+    const resolved = []
+    for (const attachment of attachments) {
+        if (!attachment?.artifactId) {
+            resolved.push(attachment)
+            continue
+        }
+        if (attachment.base64 || attachment.fileBase64 || attachment.data) {
+            fail('Use an artifact reference or base64 for an attachment, not both.')
+        }
+        const targetProjectId = attachment.projectId || projectId
+        if (
+            ![targetProjectId, attachment.artifactId].every(id => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id))
+        ) {
+            fail('A valid projectId and artifactId are required for an artifact attachment.')
+        }
+        await assertMember(db, targetProjectId, userId)
+        const artifact = await readArtifact(db, targetProjectId, attachment.artifactId, userId)
+        const version = await readVersion(db, targetProjectId, artifact, attachment.versionNumber)
+        const path = attachment.path ? normalizeArtifactPath(attachment.path) : version.entryPath
+        const file = version.files.find(candidate => candidate.path === path)
+        if (!file) fail(`The file ${path} is not part of version ${version.versionNumber}.`)
+        const storedFile = bucket.file(getArtifactFileStoragePath(targetProjectId, artifact.id, version.id, path))
+        const limit = 10 * 1024 * 1024
+        const [metadata] = await storedFile.getMetadata()
+        if (Number(metadata.size) > limit) fail('An artifact attachment exceeds the 10 MB draft attachment limit.')
+        const [bytes] = await storedFile.download()
+        if (bytes.length > limit) fail('An artifact attachment exceeds the 10 MB draft attachment limit.')
+        resolved.push({
+            fileName: attachment.fileName || path.split('/').pop(),
+            mimeType: file.mimeType || getMimeTypeForPath(path),
+            base64: bytes.toString('base64'),
+        })
+    }
+    return resolved
+}
+
 function summarizeArtifact(artifact, projectId, baseUrl) {
     return {
         artifactId: artifact.id,
@@ -213,6 +254,7 @@ async function readArtifactTool({ db, bucket, projectId, userId, args, baseUrl }
         isCurrentVersion: version.id === artifact.currentVersionId,
         files: version.files.map(({ path: filePath, size, mimeType }) => ({ path: filePath, size, mimeType })),
         path,
+        attachment: { artifactId: artifact.id, projectId, versionNumber: version.versionNumber, path },
     }
     if (!isTextMimeType(file.mimeType || getMimeTypeForPath(path))) {
         return { ...result, content: null, note: 'This file is not text, so its content is not shown.' }
@@ -395,4 +437,5 @@ module.exports = {
     buildArtifactAppUrl,
     executeArtifactTool,
     isThreadPrivate,
+    resolveArtifactDraftAttachments,
 }

@@ -163,9 +163,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await mount()
         await search('invoice')
 
-        // Six object indexes plus the wiki pages (dev_wiki), each in the same project scope.
-        expect(searchCalls).toHaveLength(7)
-        expect(searchCalls.map(call => call.indexName)).toContain('dev_wiki')
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).toContain(projectConjunct('project-1'))
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
@@ -214,9 +212,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(true)
 
-        // Nobody creates a wiki page, so the wiki index is not searched at all with this filter on.
         expect(searchCalls).toHaveLength(6)
-        expect(searchCalls.map(call => call.indexName)).not.toContain('dev_wiki')
         expect(Object.keys(CREATOR_ATTRIBUTE_BY_INDEX).sort()).toEqual(searchCalls.map(c => c.indexName).sort())
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
@@ -264,7 +260,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(false)
 
-        expect(searchCalls).toHaveLength(7)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
@@ -293,7 +289,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await act(async () => openTasksChip().props.onPress())
 
-        expect(searchCalls).toHaveLength(7)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
             if (call.indexName === 'dev_tasks') {

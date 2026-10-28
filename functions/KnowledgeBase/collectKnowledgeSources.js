@@ -14,11 +14,6 @@
 // enough for one prompt, because chunkKnowledgeSources cuts a card that is too large rather than
 // splitting it, and a deck's last slides matter as much as its first.
 //
-// Knowledge a member saved from a conversation (knowledgeContributions.js, `contribution:ID`) is read
-// the same way and for the same reason: it lives inside the wiki tree, and one that was removed is no
-// source any more. Its card says who saved it and whether the text is the member's own words or an
-// assistant's summary that the member confirmed, because neither is a verified project record.
-//
 // Comment threads are sources too, one card per thread (`chat:ID`, the id of its chat object). A
 // thread belongs to the task, note, goal, contact or artifact it is attached to and is exactly as
 // visible as that object, whatever its own chat object says, so the object is read and filtered
@@ -68,7 +63,6 @@ const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
 const {
     buildKnowledgeSourceKey,
     estimateTextTokens,
-    getKnowledgeContributionsPath,
     getKnowledgeDocumentsPath,
     parseKnowledgeSourceKey,
 } = require('./knowledgeBaseModel')
@@ -159,16 +153,6 @@ const SOURCE_QUERIES = [
         pageLimit: 5,
         initialLookbackMs: null,
     },
-    {
-        cursorKey: 'contributions',
-        // At most 4,000 characters each.
-        type: 'contribution',
-        collectionPath: projectId => getKnowledgeContributionsPath(projectId),
-        field: 'lastEditionDate',
-        direction: 'asc',
-        pageLimit: 30,
-        initialLookbackMs: null,
-    },
 ]
 
 const TASK_DESCRIPTION_MAX_CHARS = 1500
@@ -224,7 +208,7 @@ function toMillis(value) {
 // other type a missing array is treated as private. A document added to the wiki is visible to the
 // wiki's audience until it is removed.
 function isVisibleToWholeProject(data, type) {
-    if (type === 'document' || type === 'contribution') return !!data && data.status === 'active'
+    if (type === 'document') return !!data && data.status === 'active'
     if (!data || data.isPrivate === true) return false
     if (!Array.isArray(data.isPublicFor)) return type === 'goal'
     return data.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
@@ -439,25 +423,6 @@ function buildDocumentCards(id, data) {
         lines.push(`Content:\n${part}`)
         return { title, text: lines.join('\n'), part: index }
     })
-}
-
-const CONTRIBUTION_ORIGIN_LABELS = {
-    user_statement: "the member's own words",
-    assistant_summary: "an assistant's summary of the conversation, which the member confirmed",
-}
-
-// Knowledge a member saved from a conversation. The card says plainly what it is: a statement by a
-// member (or a summary they confirmed), not a project record anybody checked.
-function buildContributionCard(id, data) {
-    const title = cleanText(data.title, 300) || '(untitled)'
-    const author = cleanText(data.authorName, 200) || 'a project member'
-    const savedOn = formatDate(toMillis(data.createdAt))
-    const origin = CONTRIBUTION_ORIGIN_LABELS[data.origin] || CONTRIBUTION_ORIGIN_LABELS.user_statement
-    const lines = [
-        `[[contribution:${id}]] "${title}" (saved to the wiki by ${author}${savedOn ? ` on ${savedOn}` : ''} from a conversation; ${origin}; not verified against project records)`,
-        `Content:\n${cleanText(data.text, 4000)}`,
-    ]
-    return { title, text: lines.join('\n') }
 }
 
 // Name, role, company and description only. Phone numbers and email addresses describe how to
@@ -872,9 +837,7 @@ async function buildSourceCards({
                           ? [buildCorrectionCard(entry.id, entry.data)]
                           : entry.type === 'document'
                             ? buildDocumentCards(entry.id, entry.data)
-                            : entry.type === 'contribution'
-                              ? [buildContributionCard(entry.id, entry.data)]
-                              : [buildContactCard(entry.id, entry.data)]
+                            : [buildContactCard(entry.id, entry.data)]
         return cards.map((card, index) => ({
             key: entry.key,
             type: entry.type,
@@ -914,7 +877,6 @@ const SOURCE_DOC_PATHS = {
     artifact: (projectId, id) => `artifactItems/${projectId}/artifacts/${id}`,
     correction: (projectId, id) => `knowledgeBases/${projectId}/corrections/${id}`,
     document: (projectId, id) => `${getKnowledgeDocumentsPath(projectId)}/${id}`,
-    contribution: (projectId, id) => `${getKnowledgeContributionsPath(projectId)}/${id}`,
 }
 
 /**
@@ -1028,7 +990,6 @@ module.exports = {
     loadKnowledgeSourcesByKeys,
     buildCorrectionCard,
     buildDocumentCards,
-    buildContributionCard,
     splitDocumentText,
     advanceKnowledgeCursor,
     chunkKnowledgeSources,

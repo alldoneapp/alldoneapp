@@ -22,7 +22,6 @@ const NOTES_COLLECTION = 'dev_notes'
 const CONTACTS_COLLECTION = 'dev_contacts'
 const CHATS_COLLECTION = 'dev_updates'
 const ARTIFACTS_COLLECTION = 'dev_artifacts'
-const WIKI_COLLECTION = 'dev_wiki'
 
 const ALL_COLLECTIONS = [
     TASKS_COLLECTION,
@@ -31,7 +30,6 @@ const ALL_COLLECTIONS = [
     CONTACTS_COLLECTION,
     CHATS_COLLECTION,
     ARTIFACTS_COLLECTION,
-    WIKI_COLLECTION,
 ]
 
 const IMPORT_BATCH_SIZE = 500
@@ -132,23 +130,6 @@ const COLLECTION_SCHEMAS = {
             { name: 'kind', type: 'string', facet: true, optional: true },
             { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
             { name: 'isPrivate', type: 'bool', facet: true, optional: true },
-            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
-            { name: 'created', type: 'int64', optional: true },
-            { name: '.*', type: 'auto' },
-        ],
-    },
-    // Project wiki pages (functions/KnowledgeBase/knowledgeSearch.js). `content` is the page text,
-    // searched but never returned to a client.
-    [WIKI_COLLECTION]: {
-        name: WIKI_COLLECTION,
-        fields: [
-            { name: 'title', type: 'string', optional: true },
-            { name: 'summary', type: 'string', optional: true },
-            { name: 'content', type: 'string', optional: true },
-            { name: 'slug', type: 'string', optional: true },
-            { name: 'projectId', type: 'string', facet: true, optional: true },
-            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
-            { name: 'revision', type: 'int32', optional: true },
             { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
             { name: 'created', type: 'int64', optional: true },
             { name: '.*', type: 'auto' },
@@ -393,10 +374,6 @@ const SEARCH_QUERY_CONFIG = {
         query_by: 'title,description,content',
         num_typos: 2,
     },
-    [WIKI_COLLECTION]: {
-        query_by: 'title,summary,content',
-        num_typos: 2,
-    },
 }
 
 // Read path (server-side consumers: SearchService, TaskSearchService). THROWS on failure —
@@ -483,7 +460,6 @@ module.exports = {
     CONTACTS_COLLECTION,
     CHATS_COLLECTION,
     ARTIFACTS_COLLECTION,
-    WIKI_COLLECTION,
     ALL_COLLECTIONS,
     COLLECTION_SCHEMAS,
     isTypesenseConfigured,

@@ -63,6 +63,31 @@ const calendarRecurrenceSchema = {
     required: ['frequency'],
 }
 
+const draftAttachmentSchema = {
+    type: 'object',
+    properties: {
+        fileName: { type: 'string', description: 'Attachment filename. Optional for artifact references.' },
+        mimeType: {
+            type: 'string',
+            description: 'MIME type for a base64 attachment. Artifact types are resolved by the server.',
+        },
+        base64: { type: 'string', description: 'Base64 from an attachment tool. Omit when using artifactId.' },
+        artifactId: {
+            type: 'string',
+            description:
+                'Existing artifact to attach directly, including PDFs produced by a VM. Do not fetch or copy its bytes.',
+        },
+        projectId: { type: 'string', description: 'Project containing the artifact. Defaults to the current project.' },
+        versionNumber: {
+            type: 'integer',
+            minimum: 1,
+            description: 'Version returned by get_vm_job or read_artifact. Omit for the current version.',
+        },
+        path: { type: 'string', description: 'File path inside the artifact. Omit for its entry file.' },
+    },
+    oneOf: [{ required: ['fileName', 'base64'] }, { required: ['artifactId'] }],
+}
+
 const toolSchemas = {
     show_workspace: require('./annaWorkspaceContract').showWorkspaceSchema,
     highlight_workspace: require('./annaWorkspaceContract').highlightWorkspaceSchema,
@@ -801,7 +826,7 @@ const toolSchemas = {
                             },
                         ],
                         description:
-                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests. To only make sure a task is due on a day (e.g. today), pass the date alone as "YYYY-MM-DD": if the task is already due that day in the user\'s timezone nothing changes and its time is kept. Omit dueDate when you only add a comment or change other fields; do not resend it with every update.',
+                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
                     },
                     alertEnabled: {
                         type: 'boolean',
@@ -1392,7 +1417,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content, AND to look up a task by its human-readable task ID. Every task has an ID shaped like "FE-1452" (two-letter project prefix + number); the index also matches the ID written without the hyphen ("FE1452") or with a space ("FE 1452"), so pass whatever form the user typed straight through as the query. This is the correct and fastest way to answer "what is task FE-1452?" - never enumerate tasks with get_tasks to hunt for an ID. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats. Project wiki pages are not covered here: search them with search_knowledge.',
+                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content, AND to look up a task by its human-readable task ID. Every task has an ID shaped like "FE-1452" (two-letter project prefix + number); the index also matches the ID written without the hyphen ("FE1452") or with a space ("FE 1452"), so pass whatever form the user typed straight through as the query. This is the correct and fastest way to answer "what is task FE-1452?" - never enumerate tasks with get_tasks to hunt for an ID. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1965,25 +1990,7 @@ const toolSchemas = {
                     },
                     attachments: {
                         type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                fileName: {
-                                    type: 'string',
-                                    description: 'Attachment file name to show in Gmail.',
-                                },
-                                mimeType: {
-                                    type: 'string',
-                                    description: 'Attachment MIME type, such as application/pdf.',
-                                },
-                                base64: {
-                                    type: 'string',
-                                    description:
-                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
-                                },
-                            },
-                            required: ['fileName', 'base64'],
-                        },
+                        items: draftAttachmentSchema,
                         description: 'Optional files to attach to the reply draft.',
                     },
                     instructions: {
@@ -2046,25 +2053,7 @@ const toolSchemas = {
                     },
                     attachments: {
                         type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                fileName: {
-                                    type: 'string',
-                                    description: 'Attachment file name to show in Gmail.',
-                                },
-                                mimeType: {
-                                    type: 'string',
-                                    description: 'Attachment MIME type, such as application/pdf.',
-                                },
-                                base64: {
-                                    type: 'string',
-                                    description:
-                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
-                                },
-                            },
-                            required: ['fileName', 'base64'],
-                        },
+                        items: draftAttachmentSchema,
                         description: 'Optional files to attach to the new draft.',
                     },
                 },
@@ -2126,25 +2115,7 @@ const toolSchemas = {
                     },
                     attachments: {
                         type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                fileName: {
-                                    type: 'string',
-                                    description: 'Attachment file name to show in Gmail.',
-                                },
-                                mimeType: {
-                                    type: 'string',
-                                    description: 'Attachment MIME type, such as application/pdf.',
-                                },
-                                base64: {
-                                    type: 'string',
-                                    description:
-                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
-                                },
-                            },
-                            required: ['fileName', 'base64'],
-                        },
+                        items: draftAttachmentSchema,
                         description:
                             'Optional files to add to the draft. Existing attachments are preserved unless removed or replaced.',
                     },
@@ -2592,6 +2563,32 @@ const toolSchemas = {
         },
     },
 
+    get_vm_job: {
+        type: 'function',
+        function: {
+            name: 'get_vm_job',
+            description:
+                'Read the status and result of an existing VM job. Set waitSeconds=30 to wait for completion without launching or queuing any work. If still working, wait again. Completed results include artifact references for Gmail draft attachments. Stop and report failed/cancelled/awaiting_user states.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    correlationId: {
+                        type: 'string',
+                        description: 'Exact correlationId returned by execute_task_in_vm.',
+                    },
+                    waitSeconds: {
+                        type: 'number',
+                        minimum: 0,
+                        maximum: 30,
+                        description:
+                            'Maximum seconds to wait for this job. Defaults to 0 (status only); use 30 when the next step depends on its result.',
+                    },
+                },
+                required: ['correlationId'],
+            },
+        },
+    },
+
     execute_task_in_vm: {
         type: 'function',
         function: {
@@ -2604,6 +2601,7 @@ const toolSchemas = {
                 'research and a written report, generating a document/spreadsheet/slide deck, or pulling and analyzing data. ' +
                 'This is asynchronous: the tool returns immediately with a "started" ' +
                 'status, the VM works on its own, and the finished result is posted back into this conversation when it is ready. ' +
+                'Dispatch once per thread per user request. Use get_vm_job with its correlationId and waitSeconds=30 to check/wait; never call this tool again to poll or retrieve existing file bytes. ' +
                 'When the user asks to execute an existing task and its ID is known, pass target_task_id so the VM runs on that ' +
                 'task instead of creating a duplicate host task. Include target_project_id when the task project is known, ' +
                 'especially when a delegated assistant belongs to a different project. ' +
@@ -2756,6 +2754,9 @@ function getToolSchemas(allowedTools) {
     }
 
     const effectiveTools = [...allowedTools]
+    if (effectiveTools.includes('execute_task_in_vm') && !effectiveTools.includes('get_vm_job')) {
+        effectiveTools.push('get_vm_job')
+    }
     if (effectiveTools.includes('get_chat_attachment') && !effectiveTools.includes('list_recent_chat_media')) {
         effectiveTools.push('list_recent_chat_media')
     }

@@ -3,9 +3,7 @@
 // One ingest run of a project wiki: rebuild the pages that lost a source, rewrite the pages a
 // one-time current-state pass is still waiting for (knowledgeCurrentStateRewrite.js), then work
 // through what changed since the last run, a prompt-sized chunk at a time, and let the model fold
-// it into the pages with three tools of its own (read_page, write_page, archive_page). Last comes
-// the health check (knowledgeLint.js): rule-based checks whenever pages changed, and at most once a
-// week a bounded model pass that may only spend below the reserve it leaves for the ingest. Runs
+// it into the pages with three tools of its own (read_page, write_page, archive_page). Runs
 // unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
 //
 // Order matters: rebuilds come first so that the ingest prompts never see a page that still repeats
@@ -67,19 +65,6 @@ const {
     writeKnowledgePage,
 } = require('./knowledgePageStore')
 const { readPendingRewriteSlugs } = require('./knowledgeCurrentStateRewrite')
-const {
-    MAX_LINT_EDITS,
-    buildKnowledgeLintReport,
-    buildLintTask,
-    buildLintUserPrompt,
-    collectBatchSourceKeys,
-    collectBatchSourceLabels,
-    getLintSpendLimit,
-    getProtectedSlugs,
-    isLlmLintDue,
-    selectLintBatches,
-    withLintReason,
-} = require('./knowledgeLint')
 const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
 
 // The run shares the heartbeat's budget for the same reason: it is delivered through Cloud Tasks,
@@ -116,9 +101,6 @@ class KnowledgeBaseRunStop extends Error {
         this.reason = reason
     }
 }
-
-// The lint pass reached the share of the monthly cap it may use. Ends the pass, not the run.
-class LintBudgetStop extends Error {}
 
 function startOfNextMonthUtc(now) {
     const date = new Date(now)
@@ -231,12 +213,10 @@ const WIKI_RULES = [
     '- When a source changes or settles something a page already says, rewrite that statement to the new state and remove the outdated one together with its citation, instead of adding the new version next to the old. Source cards are listed oldest first; a later card describes a more recent state than an earlier one and than what the pages say about the same object.',
     '- Prefer extending an existing page over creating a new one. Keep each page focused on one subject; split a page that grows past about 1500 words and link the parts.',
     '- Read a page with read_page before you replace it. write_page replaces the whole body: keep what is still true, leave out what no longer is, and bring any older passage that still narrates history up to the current state.',
-    '- Cite every statement with the token of the source it came from, exactly as given: [[task:ID]], [[goal:ID]], [[note:ID]], [[contact:ID]], [[chat:ID]], [[artifact:ID]], [[correction:ID]], [[document:ID]], [[contribution:ID]]. List every source you used in sourceKeys.',
+    '- Cite every statement with the token of the source it came from, exactly as given: [[task:ID]], [[goal:ID]], [[note:ID]], [[contact:ID]], [[chat:ID]], [[artifact:ID]], [[correction:ID]], [[document:ID]]. List every source you used in sourceKeys.',
     "- A conversation (a [[chat:ID]] card) holds the comments of a chat topic or of the object it names, oldest first; a delta card holds only the comments written since the wiki last looked. Take from it what is worth knowing: a decision and its reason, an agreed date, a fact someone stated or confirmed. A later comment can revise an earlier one. What an assistant wrote is an answer or a suggestion, not a decision, until a member agreed with it. A member's conversation with their assistant (a daily WhatsApp, email, heartbeat or menubar topic) can be about anything, and an email day topic lists the emails of one day: keep only what concerns this project, and nothing personal. Most comments are routine coordination, status and newsletters; leave those out.",
     '- An artifact (an [[artifact:ID]] card) is something the project produced, such as a report, a dashboard or a presentation. Take what it states into the pages it concerns, and name the artifact where a reader should open it.',
     '- A document (a [[document:ID]] card) was added by a project member so that the wiki takes it in: work its substance into the pages it concerns and update what it supersedes, rather than writing a page that only summarizes the document; create a new page only for a subject no page covers yet. When the member said what to take from it, follow that. A long document arrives in parts; each part is a card of its own.',
-    '- A saved contribution (a [[contribution:ID]] card) is knowledge a project member saved from a conversation: their own statement, or an assistant\'s summary they confirmed. It is a member\'s statement, not a verified record. Work what it says into the pages it concerns; where nothing else supports it, say whose statement it is ("according to …"). It does not override a task, note, document or correction; when it disagrees with one, keep both and record the disagreement under "Open questions" instead of choosing.',
-    '- When sources genuinely disagree and the cards do not show which is right (a later card that settles it, a correction), do not pick one: keep both with their citations under a heading "Open questions" on the page concerned, and remove the question once a source settles it.',
     '- Link other wiki pages with [[slug]] or [[slug|label]].',
     '- A correction by a project member overrides older sources. Never bring back what a correction rejected.',
     '- Never copy email addresses, phone numbers, passwords, keys or other credentials into a page.',
@@ -334,36 +314,15 @@ function createWikiTools({
     now,
     fieldValue,
     onChange,
-    // Lint only: pages a member corrected recently, and a counter of the edits the pass may still make.
-    protectedSlugs = new Set(),
-    lintEdits = null,
 }) {
     const readRevisions = new Map()
     const schemas = buildWikiToolSchemas()
-    const outOfScope = slug => {
-        if ((mode === 'rebuild' || mode === 'rewrite') && slug !== targetSlug) {
-            return `Only the page "${targetSlug}" may be changed in this run.`
-        }
-        if (mode === 'lint') {
-            if (protectedSlugs.has(slug)) {
-                return `The page "${slug}" was corrected by a project member recently; the health check leaves it alone.`
-            }
-            if (lintEdits && lintEdits.remaining <= 0) {
-                return `The health check may change at most ${MAX_LINT_EDITS} pages, and that is used up. Stop here.`
-            }
-        }
-        return null
-    }
-    const reasonOf = reason => (mode === 'lint' ? withLintReason(reason) : reason)
-    const countLintEdit = () => {
-        if (mode === 'lint' && lintEdits) {
-            lintEdits.remaining -= 1
-            lintEdits.made += 1
-        }
-    }
+    const outOfScope = slug =>
+        (mode === 'rebuild' || mode === 'rewrite') && slug !== targetSlug
+            ? `Only the page "${targetSlug}" may be changed in this run.`
+            : null
     // A current-state rewrite is an ordinary edit as far as the store is concerned: the page was
-    // read first and keeps the sources it had. Only a rebuild replaces them. A lint edit is one too,
-    // recorded as `lint` so that the history can tell it apart.
+    // read first and keeps the sources it had. Only a rebuild replaces them.
     const storeMode = mode === 'rewrite' ? 'ingest' : mode
 
     return {
@@ -419,13 +378,12 @@ function createWikiTools({
                                 : Number(existing?.revision) || 0,
                     mode: storeMode,
                     runId,
-                    reason: reasonOf(args.reason),
+                    reason: args.reason,
                     now: now(),
                     activePageCount: countActivePages(pages),
                     fieldValue,
                 })
                 if (!result.success) return result
-                countLintEdit()
                 pages.set(result.slug, { ...result.page })
                 readRevisions.set(result.slug, result.revision)
                 onChange({ type: result.created ? 'created' : 'updated', slug: result.slug })
@@ -450,12 +408,11 @@ function createWikiTools({
                     expectedRevision: readRevisions.has(key) ? readRevisions.get(key) : null,
                     mode: storeMode,
                     runId,
-                    reason: reasonOf(reason),
+                    reason,
                     now: now(),
                     fieldValue,
                 })
                 if (!result.success) return result
-                countLintEdit()
                 pages.set(key, { ...(pages.get(key) || {}), archived: true, revision: result.revision })
                 onChange({ type: 'archived', slug: key })
                 return { success: true, slug: key, archived: true }
@@ -555,13 +512,9 @@ async function runKnowledgeBaseIngest({
         rebuildArchived: 0,
         rewritten: 0,
         rewriteUnchanged: 0,
-        lintEdits: 0,
-        lintStop: null,
         goldSpent: 0,
         truncated: [],
     }
-    let lintReport = null
-    let lintState = null
     let cursor = knowledgeBase.cursor || {}
     let stopReason = null
     let moreWork = false
@@ -575,11 +528,9 @@ async function runKnowledgeBaseIngest({
         await runRef.set({ status: 'running', trigger, startedAt, model: modelKey, ownerUserId })
     }
 
-    // `spendLimit`: the lint pass only spends while the month is below its share of the cap.
-    const conversation = async ({ systemPrompt, userPrompt, tools, label, spendLimit = null }) => {
+    const conversation = async ({ systemPrompt, userPrompt, tools, label }) => {
         if (clock() + MIN_CONVERSATION_TIME_MS > deadline) throw new KnowledgeBaseRunStop('time')
         if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
-        if (spendLimit !== null && monthlyGold.spent >= spendLimit) throw new LintBudgetStop()
         await ensureRunDoc()
         const assertActive = async () => {
             if (clock() > deadline) throw new KnowledgeBaseRunStop('time')
@@ -618,7 +569,6 @@ async function runKnowledgeBaseIngest({
                     }
                 }
                 if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
-                if (spendLimit !== null && monthlyGold.spent >= spendLimit) throw new LintBudgetStop()
             },
         })
     }
@@ -795,7 +745,7 @@ async function runKnowledgeBaseIngest({
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,
-                        task: 'The next message holds source cards for what changed in the project (tasks, goals, notes, contacts, comment threads, artifacts) and for documents and knowledge members added to the wiki. Fold what is worth knowing into the wiki.',
+                        task: 'The next message holds source cards for objects that changed in the project (tasks, goals, notes, contacts) and for documents members added to the wiki. Fold what is worth knowing into the wiki.',
                     }),
                     userPrompt: `Source cards, oldest first:\n\n${chunk.map(source => source.text).join('\n\n')}`,
                     tools: createWikiTools({
@@ -821,66 +771,6 @@ async function runKnowledgeBaseIngest({
             await db.doc(getKnowledgeBasePath(projectId)).update({ cursor })
             if (collected.exhausted) break
             if (round === MAX_COLLECT_ROUNDS - 1) moreWork = true
-        }
-
-        // 4. The health check (knowledgeLint.js). The rule-based report whenever pages changed in this
-        //    run or there is none yet; the model pass only once the run has caught up, at most once a
-        //    week, and only below its share of the monthly cap.
-        if (changes.length || !knowledgeBase.lintReport) lintReport = buildKnowledgeLintReport(pages, { now: clock() })
-        lintState = { ...(knowledgeBase.lint || {}) }
-        if (!moreWork && isLlmLintDue(lintState, pages, clock())) {
-            const spendLimit = getLintSpendLimit(goldCap)
-            if (monthlyGold.spent >= spendLimit) {
-                stats.lintStop = 'budget'
-            } else {
-                // Claimed before the first conversation: a pass that stops half-way (time, budget)
-                // waits for next week rather than starting over on every continuation run.
-                lintState = { ...lintState, lastLlmLintAt: clock(), lastLlmLintRunId: leaseId }
-                await db.doc(getKnowledgeBasePath(projectId)).update({ lint: lintState })
-                const report = lintReport || buildKnowledgeLintReport(pages, { now: clock() })
-                const protectedSlugs = getProtectedSlugs(corrections, clock())
-                const lintEdits = { remaining: MAX_LINT_EDITS, made: 0 }
-                try {
-                    for (const [index, batch] of selectLintBatches(pages, report).entries()) {
-                        if (lintEdits.remaining <= 0) break
-                        const batchKeys = collectBatchSourceKeys(batch)
-                        await conversation({
-                            label: `lint-${index}`,
-                            spendLimit,
-                            systemPrompt: buildSystemPrompt({
-                                projectName,
-                                projectDescription,
-                                instructions: knowledgeBase.instructions,
-                                index: buildKnowledgeIndex(pages),
-                                corrections,
-                                task: buildLintTask({ now: clock(), report, protectedSlugs, batch }),
-                            }),
-                            userPrompt: buildLintUserPrompt(batch),
-                            tools: createWikiTools({
-                                db,
-                                projectId,
-                                pages,
-                                runId: leaseId,
-                                mode: 'lint',
-                                allowedSourceKeys: new Set([...batchKeys, ...correctionKeys]),
-                                sourceLabels: { ...collectBatchSourceLabels(batch), ...correctionLabels },
-                                now: clock,
-                                fieldValue,
-                                onChange,
-                                protectedSlugs,
-                                lintEdits,
-                            }),
-                        })
-                    }
-                } catch (error) {
-                    if (!(error instanceof LintBudgetStop)) throw error
-                    stats.lintStop = 'budget'
-                } finally {
-                    stats.lintEdits = lintEdits.made
-                }
-                if (lintEdits.made) lintReport = buildKnowledgeLintReport(pages, { now: clock() })
-                lintState = { ...lintState, lastLlmLintEdits: lintEdits.made }
-            }
         }
     } catch (error) {
         if (error instanceof KnowledgeBaseRunStop) {
@@ -940,7 +830,6 @@ async function runKnowledgeBaseIngest({
                 finishedAt,
                 changes,
                 ...stats,
-                ...(lintReport ? { lintCounts: lintReport.counts } : {}),
                 error: failure ? String(failure.message || failure).slice(0, 500) : null,
             },
             { merge: true }
@@ -957,10 +846,6 @@ async function runKnowledgeBaseIngest({
             monthlyGold,
             lastRunAt: finishedAt,
             lastRunStatus: status,
-            // When the wiki last caught up with its sources: what assistants are told about its freshness.
-            ...(status === 'completed' || status === 'partial' ? { lastSuccessfulRunAt: finishedAt } : {}),
-            ...(lintReport ? { lintReport } : {}),
-            ...(lintState ? { lint: lintState } : {}),
             lastRunStopReason: stopReason,
             ...(runDocWritten ? { lastRunId: leaseId } : {}),
             nextRunAt,

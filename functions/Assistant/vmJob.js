@@ -857,7 +857,9 @@ async function startVmJob({
     const hostThreadHint =
         `The work lives in this thread: ${hostThread.hostThreadUrl} — include that link in your answer so the user ` +
         `can follow progress, check the source, or continue there. To continue this same VM later (keeping its files ` +
-        `and conversation), call execute_task_in_vm again with continue_in_object_id="${objectId}".`
+        `and conversation) after a new user request, call execute_task_in_vm with continue_in_object_id="${objectId}". ` +
+        `For this request, wait/check with get_vm_job({correlationId:"${correlationId}",waitSeconds:30}); do not queue another job. ` +
+        'Completed results include artifact references that Gmail draft tools can attach directly without base64.'
 
     // Queued follow-up: don't launch a Cloud Run execution now. The running job's drain (or the
     // stalled-queue sweeper) flips this to 'pending' and launches it on the same thread sandbox when

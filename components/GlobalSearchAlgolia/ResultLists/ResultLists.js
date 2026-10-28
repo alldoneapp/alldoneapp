@@ -19,8 +19,7 @@ import { colors } from '../../styles/global'
 import ContactResults from './Contacts/ContactResults'
 import ChatsResults from './Chats/ChatsResults'
 import ArtifactResults from './Artifacts/ArtifactResults'
-import WikiResults from './Wiki/WikiResults'
-import { GLOBAL_SEARCH_ARTIFACTS_TAB, GLOBAL_SEARCH_WIKI_TAB } from '../searchIndexes'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB } from '../searchIndexes'
 
 export default function ResultLists({
     projects,
@@ -36,8 +35,6 @@ export default function ResultLists({
     chatsResult,
     artifactsResultAmount = 0,
     artifactsResult = {},
-    wikiResultAmount = 0,
-    wikiResult = {},
     processing,
     activeItemData,
     activeTab,
@@ -63,8 +60,6 @@ export default function ResultLists({
             return false
         } else if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB && artifactsResultAmount > 0) {
             return false
-        } else if (activeTab === GLOBAL_SEARCH_WIKI_TAB && wikiResultAmount > 0) {
-            return false
         }
         return true
     }
@@ -80,7 +75,6 @@ export default function ResultLists({
                 contactsResultAmount={contactsResultAmount}
                 chatsResultAmount={chatsResultAmount}
                 artifactsResultAmount={artifactsResultAmount}
-                wikiResultAmount={wikiResultAmount}
                 showShortcuts={showShortcuts}
                 mobile={mobile}
                 compact={compact}
@@ -147,16 +141,6 @@ export default function ResultLists({
                                         <ChatsResults
                                             activeTab={activeTab}
                                             chatsResult={chatsResult}
-                                            activeItemData={activeItemData}
-                                            activeItemRef={activeItemRef}
-                                            projects={projects}
-                                        />
-                                    )
-                                }
-                                case GLOBAL_SEARCH_WIKI_TAB: {
-                                    return (
-                                        <WikiResults
-                                            wikiResult={wikiResult}
                                             activeItemData={activeItemData}
                                             activeItemRef={activeItemRef}
                                             projects={projects}

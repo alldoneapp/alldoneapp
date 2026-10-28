@@ -6118,27 +6118,6 @@ exports.onCreateKnowledgePageRevisionSecondGen = onDocumentCreated(
     }
 )
 
-// Keeps a wiki page's global-search record in step with the page: indexed while it may be shown,
-// removed the moment it is archived or hidden for a rebuild. A privacy withdrawal removes the record
-// itself as well; see KnowledgeBase/knowledgeSearch.js. The only trigger on the page documents.
-exports.onWriteKnowledgePageSecondGen = onDocumentWritten(
-    {
-        document: 'knowledgeBases/{projectId}/pages/{pageId}',
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { onKnowledgePageWritten } = require('./KnowledgeBase/knowledgeSearch')
-        await onKnowledgePageWritten({
-            projectId: event.params.projectId,
-            slug: event.params.pageId,
-            before: event.data?.before?.exists ? event.data.before.data() : null,
-            after: event.data?.after?.exists ? event.data.after.data() : null,
-        })
-    }
-)
-
 // Only enqueues due wiki runs; the run itself lives in runKnowledgeBaseIngest.
 exports.dispatchKnowledgeBaseIngests = onSchedule(
     {

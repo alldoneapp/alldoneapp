@@ -315,6 +315,8 @@ describe('assistantHelper wires VM job collection through the shared helper', ()
     })
 
     it('asks the shared predicate whether the reply is an in-thread VM hand-off', () => {
-        expect(source).toMatch(/startsVmJobInCurrentThread\(startedVmJobResults, \{ projectId, objectId \}\)/)
+        expect(source).toMatch(
+            /startsVmJobInCurrentThread\(\s*startedVmJobResults,\s*\{ projectId, objectId \},\s*runtimeContextForTools.vmSettledThreads\s*\)/
+        )
     })
 })

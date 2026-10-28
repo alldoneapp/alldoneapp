@@ -45,9 +45,6 @@ const CONSEQUENTIAL_TOOLS = new Set([
     'delete_calendar_event',
     'browser_click',
     'browser_type',
-    // Shares text with every member of a project through its wiki, or takes it out again.
-    'save_knowledge_contribution',
-    'remove_knowledge_contribution',
 ])
 const UNTRUSTED_CONTENT_TOOLS = new Set([
     'web_search',
@@ -280,21 +277,6 @@ const NON_TOOL_PROPERTIES = new Set(['then', 'constructor', 'inspect', 'prototyp
 const isToolPropertyName = property =>
     typeof property === 'string' && TOOL_NAME_PATTERN.test(property) && !NON_TOOL_PROPERTIES.has(property)
 
-// Alldone is the user's system of record (AT-2832): what an agent learns, decides or produces for
-// the user's work belongs in Alldone, where the user and every later session can find it, not only
-// in the agent's own memory or chat. Kept in step with /llms.txt and the MCP server's `initialize`
-// instructions (functions/MCP/mcpAgentInstructions.js; Functions code cannot enter the web bundle).
-// The summary carries no tool names because it also goes into the manifest, which never names tools.
-export const SYSTEM_OF_RECORD_SUMMARY =
-    "Alldone is the user's system of record: keep durable work state and results in Alldone objects (tasks, notes, artifacts), not only in your own memory or chat."
-export const SYSTEM_OF_RECORD_INSTRUCTIONS = [
-    `System of record: ${SYSTEM_OF_RECORD_SUMMARY}`,
-    '- Look for the existing object first (get_tasks, get_notes, search) and update it rather than creating a duplicate.',
-    '- Work that needs follow-up is a task. Add progress, decisions, blockers and results as a comment on the task it belongs to (update_task with comment), and complete the task when the work is done.',
-    '- Put longer results in a note (create_note / update_note) or an artifact (create_artifact / update_artifact) and mention it in the task comment instead of repeating it.',
-    '- Skip trivial or throwaway steps and do not record the same thing in several places. If a tool you need is not in listTools(), tell the user rather than keeping the state elsewhere.',
-]
-
 export const buildAgentInstructions = ({ webMcpSupported, toolNames } = {}) =>
     [
         'Alldone browser API (window.alldone). It acts as the user signed in to this tab, with exactly their permissions.',
@@ -309,7 +291,6 @@ export const buildAgentInstructions = ({ webMcpSupported, toolNames } = {}) =>
         webMcpSupported
             ? 'The same tools are also registered with WebMCP (document.modelContext).'
             : 'WebMCP (document.modelContext) is not available in this browser; use window.alldone.',
-        ...SYSTEM_OF_RECORD_INSTRUCTIONS,
         `Docs: ${DOCS_PATH}`,
     ].join('\n')
 
@@ -326,7 +307,6 @@ export const buildStubInstructions = state =>
         STUB_MESSAGES[state] || STUB_MESSAGES[AGENT_API_STATES.SIGNED_OUT],
         'Once ready: await alldone.listTools(), await alldone.callTool(name, args), alldone.help().',
         'Every call acts as the signed-in user, with exactly their permissions.',
-        SYSTEM_OF_RECORD_SUMMARY,
         `Docs: ${DOCS_PATH}`,
     ].join('\n')
 
@@ -351,7 +331,6 @@ export const buildAgentManifest = ({ state, webMcpSupported = false, webMcpRegis
             ? ['alldone.help()', 'await alldone.listTools()', "await alldone.callTool('get_user_projects', {})"]
             : ['await alldone.whenReady()', 'alldone.help()'],
     readyEvent: BROWSER_AGENT_READY_EVENT,
-    systemOfRecord: SYSTEM_OF_RECORD_SUMMARY,
     webMcp: { available: !!webMcpSupported, registeredTools: webMcpRegistered || 0 },
     docs: DOCS_PATH,
 })

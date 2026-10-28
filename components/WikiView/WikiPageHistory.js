@@ -15,11 +15,6 @@ function describeRevision(revision) {
     const name = revision.author?.name || ''
     if (revision.mode === 'correction') return `${translate('Correction by', { name })}: ${revision.reason || ''}`
     if (revision.mode === 'undo') return translate('Correction undone by', { name })
-    // The weekly health check (knowledgeLint.js) writes its reasons as "lint: …".
-    if (revision.mode === 'lint') {
-        const reason = String(revision.reason || '').replace(/^lint:\s*/i, '')
-        return `${translate('Wiki health check')}${reason ? `: ${reason}` : ''}`
-    }
     return revision.reason || translate(revision.mode === 'rebuild' ? 'Page rebuilt' : 'Page updated')
 }
 

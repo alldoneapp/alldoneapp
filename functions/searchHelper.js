@@ -31,8 +31,6 @@ const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
 const ARTIFACTS_OBJECTS_TYPE = 'artifacts'
 const ARTIFACTS_INDEX_NAME_PREFIX = 'dev_artifacts'
-const WIKI_OBJECTS_TYPE = 'wiki'
-const WIKI_INDEX_NAME_PREFIX = 'dev_wiki'
 const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
 const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
 
@@ -472,8 +470,6 @@ const getIndexName = objectsType => {
         namePrefix = UPDATES_INDEX_NAME_PREFIX
     } else if (objectsType === ARTIFACTS_OBJECTS_TYPE) {
         namePrefix = ARTIFACTS_INDEX_NAME_PREFIX
-    } else if (objectsType === WIKI_OBJECTS_TYPE) {
-        namePrefix = WIKI_INDEX_NAME_PREFIX
     }
     const indexName = namePrefix
     return indexName
@@ -526,5 +522,4 @@ module.exports = {
     GOALS_OBJECTS_TYPE,
     CHATS_OBJECTS_TYPE,
     ARTIFACTS_OBJECTS_TYPE,
-    WIKI_OBJECTS_TYPE,
 }

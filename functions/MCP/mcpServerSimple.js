@@ -3,7 +3,6 @@ const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
-const { buildMcpServerInstructions } = require('./mcpAgentInstructions')
 const { Timestamp } = require('firebase-admin/firestore')
 
 // ---------------------------------------------------------------------------
@@ -44,11 +43,8 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     // Project wiki. In the app these come with the assistant rather than Tools Access; over MCP each
     // one is a separate switch under Settings → MCP, so correcting can be turned off on its own.
     'read_knowledge_page',
-    'search_knowledge',
     'correct_knowledge_page',
     'undo_knowledge_correction',
-    'save_knowledge_contribution',
-    'remove_knowledge_contribution',
     // Contacts
     'update_contact',
     'get_contacts',
@@ -99,11 +95,8 @@ const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
 
 const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
     'read_knowledge_page',
-    'search_knowledge',
     'correct_knowledge_page',
     'undo_knowledge_correction',
-    'save_knowledge_contribution',
-    'remove_knowledge_contribution',
 ])
 
 // The wiki schemas are written for an assistant, which has the page index in its prompt and a
@@ -111,11 +104,7 @@ const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
 // their descriptions that say otherwise.
 const MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS = {
     read_knowledge_page:
-        "Read a page of a project's wiki: what the project knows, compiled from its shared tasks, goals, notes, contacts, comment threads and artifacts and from what members added. Call it without a slug first to list the pages of the project, then pass a page's slug to read it. Use get_user_projects to find the projectId. A page read returns the sources the page cites and when the wiki last caught up; later changes may be missing.",
-    search_knowledge:
-        "Full-text search over a project's wiki: returns matching pages with short passages quoted from their current text. Pass the projectId (see get_user_projects; defaults to the user's default project), or allProjects: true to search the wikis of all the user's projects. Read a page with read_knowledge_page before relying on details.",
-    save_knowledge_contribution:
-        "Save knowledge to a project's wiki, ONLY when the user explicitly asks for it. Every member of the project can read it; it is cited on the pages it changes as saved by the user and stays marked as a member's statement, not a verified record. Pass the exact text, origin (user_statement or assistant_summary) and mayContainPrivateInformation. Never include private information the user did not ask to share, email addresses, phone numbers or credentials. When the text is your summary, may contain private information or goes to another project's wiki, the call returns a draft that is NOT saved: show the user the exact text and call again with { draftId, confirmed: true } only after they agree. Remove it again with remove_knowledge_contribution.",
+        "Read a page of a project's wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts. Call it without a slug first to list the pages of the project, then pass a page's slug to read it. Use get_user_projects to find the projectId.",
 }
 const MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION =
     "The ID of the project whose wiki to use (see get_user_projects). Defaults to the user's default project."
@@ -1716,9 +1705,8 @@ class AlldoneSimpleMCPServer {
                             name: 'alldone-mcp-server',
                             version: '1.0.0',
                         },
-                        instructions: buildMcpServerInstructions(
-                            'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 authorization code flow with PKCE. No alternative authentication methods are supported. Use the /authorize endpoint to begin the authentication process.'
-                        ),
+                        instructions:
+                            'This is the Alldone MCP Server providing access to task management, project organization, and productivity tools. AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 authorization code flow with PKCE. No alternative authentication methods are supported. Use the /authorize endpoint to begin the authentication process.',
                     },
                 })
                 return
@@ -2076,9 +2064,8 @@ class AlldoneSimpleMCPServer {
                         name: 'alldone-mcp-server',
                         version: '1.0.0',
                     },
-                    instructions: buildMcpServerInstructions(
-                        'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 (authorization_code for users or client_credentials for services). Use the /authorize endpoint to begin the authentication process.'
-                    ),
+                    instructions:
+                        'This is the Alldone MCP Server providing access to task management, project organization, and productivity tools. AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 (authorization_code for users or client_credentials for services). Use the /authorize endpoint to begin the authentication process.',
                 }
 
                 console.log('✅ MCP Initialize complete:', {
