@@ -1,6 +1,7 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const { createHash } = require('crypto')
 
 const { canAccessObject } = require('../shared/privacyAccess')
 const { commitArtifactVersion } = require('./artifactStore')
@@ -121,6 +122,27 @@ async function findThreadArtifact(db, projectId, userId, vmOutputKey) {
     return doc ? doc.id : null
 }
 
+async function identicalCurrentVersion(db, projectId, artifactId, files) {
+    if (!artifactId) return null
+    const artifact = await db.doc(`${getArtifactsCollectionPath(projectId)}/${artifactId}`).get()
+    const versionId = artifact.data()?.currentVersionId
+    if (!versionId) return null
+    const version = await db.doc(`${getArtifactsCollectionPath(projectId)}/${artifactId}/versions/${versionId}`).get()
+    const stored = version.data()?.files || []
+    if (
+        stored.length !== files.length ||
+        !files.every(file =>
+            stored.some(
+                previous =>
+                    previous.path === file.path &&
+                    previous.sha256 === createHash('sha256').update(Buffer.from(file.base64, 'base64')).digest('hex')
+            )
+        )
+    )
+        return null
+    return { artifactId, versionNumber: version.data().versionNumber, created: false, unchanged: true }
+}
+
 // Publishes the planned groups. `readFile(relativePath)` returns the bytes. Best effort per group:
 // a failure is logged and the rest still publish, and nothing here can fail the VM run.
 async function publishVmOutputArtifacts({
@@ -149,21 +171,23 @@ async function publishVmOutputArtifacts({
             if (!existingId && threadPrivate === null) {
                 threadPrivate = await isThreadPrivate(db, { projectId, objectType, objectId })
             }
-            const result = await commitArtifactVersion({
-                db,
-                bucket,
-                userId: requestUserId,
-                projectId,
-                artifactId: existingId,
-                files,
-                title: existingId ? undefined : readHtmlTitle(entryFile) || group.title || undefined,
-                isPrivate: threadPrivate === true,
-                changeSummary: existingId ? 'Updated by a VM run' : undefined,
-                source: ARTIFACT_SOURCES.VM,
-                parentObject: { type: objectType || 'tasks', id: objectId, projectId },
-                assistantId: assistantId || null,
-                vmOutputKey,
-            })
+            const result =
+                (await identicalCurrentVersion(db, projectId, existingId, files)) ||
+                (await commitArtifactVersion({
+                    db,
+                    bucket,
+                    userId: requestUserId,
+                    projectId,
+                    artifactId: existingId,
+                    files,
+                    title: existingId ? undefined : readHtmlTitle(entryFile) || group.title || undefined,
+                    isPrivate: threadPrivate === true,
+                    changeSummary: existingId ? 'Updated by a VM run' : undefined,
+                    source: ARTIFACT_SOURCES.VM,
+                    parentObject: { type: objectType || 'tasks', id: objectId, projectId },
+                    assistantId: assistantId || null,
+                    vmOutputKey,
+                }))
             const snapshot = await db.doc(`${getArtifactsCollectionPath(projectId)}/${result.artifactId}`).get()
             published.push({
                 artifactId: result.artifactId,
@@ -171,6 +195,8 @@ async function publishVmOutputArtifacts({
                 created: result.created,
                 title: (snapshot.exists && snapshot.data().title) || group.outputPath,
                 url: buildArtifactAppUrl(projectId, result.artifactId, baseUrl),
+                outputPaths: group.files.map(file => file.relativePath),
+                ...(result.unchanged ? { unchanged: true } : {}),
             })
         } catch (error) {
             console.warn('🖥️ VM JOB: could not publish an output as an artifact', {
@@ -198,8 +224,22 @@ function buildVmArtifactLinksText(published) {
 function appendVmArtifactLinks(text, published) {
     const links = buildVmArtifactLinksText(published)
     if (!links) return text
-    const body = String(text || '').trim()
+    const urls = new Set(published.map(artifact => artifact.url))
+    const body = String(text || '')
+        .replace(/\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\)/g, (match, url) => (urls.has(url) ? '' : match))
+        .split('\n')
+        .map(line => [...urls].reduce((value, url) => value.split(url).join(''), line))
+        .map(line => (/^\s*[-*•]\s*$/.test(line) ? '' : line))
+        .join('\n')
+        .trim()
     return body ? `${body}\n\n${links}` : links
+}
+
+// A successfully published file is returned only as its artifact. Chat attachments are a
+// fallback for files whose publication failed, never a second upload of the same deliverable.
+function unpublishedVmFiles(files, published) {
+    const paths = new Set((published || []).flatMap(artifact => artifact.outputPaths || []))
+    return (files || []).filter(file => !paths.has(file.relativePath || file.fileName))
 }
 
 module.exports = {
@@ -209,4 +249,5 @@ module.exports = {
     buildVmOutputKey,
     planVmOutputArtifacts,
     publishVmOutputArtifacts,
+    unpublishedVmFiles,
 }

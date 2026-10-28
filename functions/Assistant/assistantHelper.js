@@ -5409,7 +5409,9 @@ async function executeToolNatively(
     if (toolName === 'get_vm_job' && result.settled && toolRuntimeContext) {
         const settledThreads = (toolRuntimeContext.vmSettledThreads ||= new Set())
         settledThreads.add(JSON.stringify([result.hostProjectId, result.hostObjectId]))
+        await toolRuntimeContext.onVmResult?.(result)
     }
+    if (toolName === VM_JOB_TOOL_NAME && result?.success === false) await toolRuntimeContext?.onVmLaunchFailed?.()
     if (toolRuntimeContext?.annaConversation) {
         try {
             const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
@@ -10452,6 +10454,7 @@ async function executeToolNativelyImpl(
                     userContext?.message || userContext?.content
                 )
 
+                await toolRuntimeContext?.onVmHandoff?.({ message: toolArgs.handoff_message })
                 const { startVmJob } = require('./vmJob')
                 const vmResult = await startVmJob({
                     objective: toolArgs.objective,
@@ -10569,7 +10572,7 @@ async function storeChunks(
         // Step 1: Create initial comment
         const step1Start = Date.now()
         const initialStatusMessage = buildInitialAssistantRunStatusMessage()
-        const { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
+        let { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
         const assistantRun =
             assistantRunMetadata && assistantRunMetadata.runId
                 ? {
@@ -10596,6 +10599,9 @@ async function storeChunks(
         let fatalToolExecutionError = null
         const createdNoteResults = []
         const startedVmJobResults = []
+        let vmHandoffFrozen = false
+        let vmHandoffText = ''
+        let vmFollowupStarted = false
 
         const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
         let committed = false
@@ -10613,7 +10619,7 @@ async function storeChunks(
         }
 
         // Create a reference to the comment document for updates
-        const commentRef = admin
+        let commentRef = admin
             .firestore()
             .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
         const assistantRunLockRef =
@@ -10773,6 +10779,7 @@ async function storeChunks(
         // writes to this comment in one chain so the newest accumulated text always wins.
         let commentUpdateWriteChain = Promise.resolve()
         const queueCommentUpdate = updateData => {
+            if (vmHandoffFrozen) return Promise.resolve()
             if (typeof updateData.commentText === 'string') {
                 updateData = { ...updateData, commentText: sanitizeAssistantResponseText(updateData.commentText) }
             }
@@ -10848,7 +10855,89 @@ async function storeChunks(
             await queueCommentUpdate(updateData)
         }
 
+        // The introduction is a finished message, not the stream that later becomes the
+        // result. Keep it immutable while the VM runs, then open a new Anna follow-up.
+        runtimeContextForTools.onVmHandoff = async ({ message } = {}) => {
+            if (vmHandoffFrozen) return
+            await ensureCommitted()
+            vmHandoffFrozen = true
+            if (updateTimeout) clearTimeout(updateTimeout)
+            updateTimeout = null
+            pendingUpdate = null
+            await commentUpdateWriteChain
+            const language = String(runtimeContextForTools.language || '').toLowerCase()
+            const fallback = language.startsWith('de')
+                ? 'Ich übergebe diese Aufgabe jetzt an die VM. Das Ergebnis erscheint hier im Chat.'
+                : language.startsWith('es')
+                  ? 'Voy a encargar este trabajo a la VM. El resultado aparecerá aquí en el chat.'
+                  : 'I’m handing this work to the VM. Its result will appear here in the chat.'
+            vmHandoffText = sanitizeAssistantResponseText(
+                String(message || fallback)
+                    .trim()
+                    .slice(0, 1500)
+            )
+            await commentRefRawUpdate({
+                commentText: vmHandoffText,
+                originalContent: vmHandoffText,
+                isLoading: false,
+                isThinking: false,
+                suppressAssistantReply: true,
+                ...(assistantRun
+                    ? { assistantRun: { ...assistantRun, status: 'completed', completedAt: Date.now() } }
+                    : {}),
+                vmHandoff: true,
+            })
+            await Promise.all([
+                admin
+                    .firestore()
+                    .doc(`chatObjects/${projectId}/chats/${objectId}`)
+                    .update({
+                        lastEditionDate: Date.now(),
+                        'commentsData.lastCommentOwnerId': assistantId,
+                        'commentsData.lastComment': vmHandoffText,
+                        'commentsData.lastCommentType': STAYWARD_COMMENT,
+                        'commentsData.amount': FieldValue.increment(1),
+                    }),
+                updateLastCommentDataOfChatParentObject(
+                    projectId,
+                    objectId,
+                    objectType,
+                    vmHandoffText,
+                    STAYWARD_COMMENT
+                ),
+                updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId),
+            ])
+            commentText = ''
+            answerContent = ''
+        }
+        const openVmFollowup = async () => {
+            if (!vmHandoffFrozen) return
+            await commentUpdateWriteChain
+            if (updateTimeout) clearTimeout(updateTimeout)
+            updateTimeout = null
+            pendingUpdate = null
+            ;({ commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId))
+            comment.isLoading = true
+            comment.isThinking = false
+            if (assistantRun) comment.assistantRun = { ...assistantRun, status: 'running' }
+            commentRef = admin
+                .firestore()
+                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+            committed = false
+            vmHandoffFrozen = false
+            vmFollowupStarted = true
+            commentText = ''
+            answerContent = ''
+            runtimeContextForTools.assistantCommentId = commentId
+            await ensureCommitted()
+            if (assistantRunLockRef)
+                await recordAssistantRunComment(assistantRunLockRef, { projectId, objectType, objectId, commentId })
+        }
+        runtimeContextForTools.onVmResult = openVmFollowup
+        runtimeContextForTools.onVmLaunchFailed = openVmFollowup
+
         finalizeCancelledComment = async () => {
+            await openVmFollowup()
             if (updateTimeout) {
                 clearTimeout(updateTimeout)
                 updateTimeout = null
@@ -10885,6 +10974,7 @@ async function storeChunks(
         }
 
         finalizeFailedAssistantRunComment = async failureMessage => {
+            await openVmFollowup()
             if (!assistantRun && !failureMessage) return
             if (updateTimeout) {
                 clearTimeout(updateTimeout)
@@ -11598,6 +11688,12 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
+        if (vmHandoffFrozen) {
+            if (updateTimeout) clearTimeout(updateTimeout)
+            pendingUpdate = null
+            await commentUpdateWriteChain
+            return vmHandoffText
+        }
         const sanitizedCommentText = sanitizeAssistantResponseText(commentText)
         if (sanitizedCommentText !== commentText) {
             console.warn('Assistant transcript artifacts removed', { projectId, objectType, objectId, commentId })
@@ -11681,6 +11777,7 @@ async function storeChunks(
             const finalUpdate = {
                 isLoading: false,
                 isThinking: false,
+                ...(vmFollowupStarted ? { created: Date.now() } : {}),
             }
             if (truncationMarked) {
                 // The provider hit its max-token ceiling mid-answer. Persist a visible marker
@@ -12836,7 +12933,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(VM_JOB_TOOL_NAME)) {
         messages.push([
             'system',
-            'VM jobs run asynchronously. Dispatch the complete objective once with execute_task_in_vm. To check or wait for that job, use get_vm_job with its correlationId and waitSeconds=30. Calling execute_task_in_vm again queues new work, even with continue_in_object_id; never use it to poll, finish the same request, or extract existing file bytes. If another step depends on the VM result, wait using get_vm_job, then use its result and artifact references. If it is awaiting_user or failed, report that state and stop. A later user request can start a genuine follow-up.',
+            'VM jobs run asynchronously. Dispatch the complete objective once with execute_task_in_vm and supply handoff_message: a short explanation in the user’s language of the work you are handing over, written before the VM has produced any result. To check or wait for that job, use get_vm_job with its correlationId and waitSeconds=30. Calling execute_task_in_vm again queues new work, even with continue_in_object_id; never use it to poll, finish the same request, or extract existing file bytes. If another step depends on the VM result, wait using get_vm_job, then use its result and artifact references. If it is awaiting_user or failed, report that state and stop. The host preserves your introduction, shows the VM answer, and creates a separate message for your follow-up after a settled result. In that follow-up, briefly summarize what matters or report additional actions you completed; do not repeat the whole VM answer or its artifact listing. If no follow-up is needed, a handoff acknowledgement can end the turn while the VM works. A later user request can start a genuine follow-up.',
         ])
     }
     if (

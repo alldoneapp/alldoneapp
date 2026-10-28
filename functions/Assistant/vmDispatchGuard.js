@@ -9,7 +9,7 @@ async function dispatchVmOnce({ runtime, projectId, requestUserId, args, dispatc
         args.continue_in_object_id === 'latest' && runtime.objectId ? runtime.objectId : args.continue_in_object_id
     const target = args.target_task_id || continuation || runtime.objectId || 'new'
     const targetProject = args.target_project_id || projectId
-    const scope = runtime.messageId || runtime.assistantCommentId || ''
+    const scope = runtime.messageId || (runtime.vmDispatchScope ||= runtime.assistantCommentId || 'request')
     const keyFor = (project, object) => JSON.stringify([scope, requestUserId, project, object])
     const key = keyFor(targetProject, target)
     if (jobs.has(key)) {

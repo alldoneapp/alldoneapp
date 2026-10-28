@@ -128,6 +128,21 @@ describe('publishVmOutputArtifacts', () => {
         expect(second.title).toBe('Renamed by the user')
     })
 
+    it('reuses identical output instead of writing another artifact version or storage copy', async () => {
+        contents.set('report.pdf', '%PDF-original')
+        const [first] = await publish([entry('report.pdf')])
+        const filesBefore = bucket.paths()
+        const [again] = await publish([entry('report.pdf')])
+        expect(again).toMatchObject({
+            artifactId: first.artifactId,
+            versionNumber: 1,
+            unchanged: true,
+            outputPaths: ['report.pdf'],
+        })
+        expect(bucket.paths()).toEqual(filesBefore)
+        expect(db.read(`artifactItems/${PROJECT_ID}/artifacts/${first.artifactId}`).versionCount).toBe(1)
+    })
+
     it('keeps the same output path in another thread a separate artifact, private when the thread is', async () => {
         contents.set('report.md', '# Report')
         const [inPublic] = await publish([entry('report.md')], 'task-1')
@@ -165,4 +180,30 @@ it('adds one link line per artifact under the answer', () => {
     ])
     expect(text).toBe('Done.\n\n📦 Sales Q3: https://x/a\n📦 Report (v3): https://x/b')
     expect(appendVmArtifactLinks('Done.', [])).toBe('Done.')
+})
+
+describe('single artifact presentation', () => {
+    const { unpublishedVmFiles } = require('./vmArtifactPublisher')
+    test('successful artifacts have no second chat upload, including files inside a web bundle', () => {
+        const files = [
+            { relativePath: 'report.pdf' },
+            { relativePath: 'site/index.html' },
+            { relativePath: 'site/style.css' },
+            { relativePath: 'fallback.txt' },
+        ]
+        const published = [{ outputPaths: ['report.pdf'] }, { outputPaths: ['site/index.html', 'site/style.css'] }]
+        expect(unpublishedVmFiles(files, published)).toEqual([{ relativePath: 'fallback.txt' }])
+        expect(unpublishedVmFiles(files, [])).toEqual(files)
+    })
+    test('a link already mentioned by the VM appears once as the host artifact link', () => {
+        const artifact = { title: 'Report', versionNumber: 1, url: 'https://my.alldone.app/projects/p/artifacts/a' }
+        const text = appendVmArtifactLinks(
+            `Done. [Report](${artifact.url})\n${artifact.url}\nVerified the figures: ${artifact.url}\nSource: https://example.com`,
+            [artifact]
+        )
+        expect(text.match(/https:\/\/my\.alldone\.app/g)).toHaveLength(1)
+        expect(text).toContain('Source: https://example.com')
+        expect(text).toContain('Done.')
+        expect(text).toContain('Verified the figures:')
+    })
 })

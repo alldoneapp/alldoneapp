@@ -1317,8 +1317,8 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
         'The VM host owns all task-thread delivery and attributes it to the invoking assistant. Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result, progress, status, or questions into the originating task/thread yourself; that would create a duplicate user-authored comment. Return normal output in your final message. In interactive mode, ask through the native interaction mechanism so the host can present the question with the correct assistant identity.',
         'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
-        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.',
-        'Deliverables are also published as project artifacts that open live in Alldone: a folder in /home/user/output/ that contains an index.html becomes one web artifact (relative links between its files keep working, give the page a <title>), and every other file becomes an artifact of its own. To update a deliverable from an earlier run in this thread, write to the same folder or file name; it becomes a new version of the same artifact. The links are added to your result automatically.'
+        'If you produce deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) outside the repository, SAVE them into /home/user/output/ using an absolute path. The host publishes each deliverable once as a project artifact and adds its user-facing link automatically. Do not repeat file links, storage URLs, local output paths, attachment listings, or claims that a file is attached in your final answer. Do not paste file contents or base64; return your findings and let the host present the artifact.',
+        'A folder in /home/user/output/ containing index.html becomes one web artifact (relative links keep working, give the page a <title>); every other file becomes its own artifact. To revise an earlier deliverable, write to the same output path. Changed content becomes a new version; unchanged output is reused. Do not recreate a file merely to inspect, download, or attach it elsewhere.'
     )
     return parts.join('\n')
 }
@@ -4757,13 +4757,11 @@ async function runVmJobByCorrelationId(correlationId) {
             activeRuntimeMs = 0,
         } = agentResult
 
-        // Upload any generated files and attach them to the result comment as real chat
-        // attachment tokens (render as inline downloadable FileDownloadableTags). Keep the
-        // tokens on their own first line so generated artifacts are visible before the VM answer.
-        const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
-        // The same deliverables as project artifacts that open live, linked under the answer.
-        const { appendVmArtifactLinks } = require('../Artifacts/vmArtifactPublisher')
+        // Publish deliverables once. Only files that failed artifact publication need a
+        // downloadable chat attachment as a fallback.
+        const { appendVmArtifactLinks, unpublishedVmFiles } = require('../Artifacts/vmArtifactPublisher')
         const publishedArtifacts = await publishVmOutputs(pendingWebhook, vmJob, outputArtifactGroups)
+        const mediaContext = await uploadArtifacts(pendingWebhook, unpublishedVmFiles(artifacts, publishedArtifacts))
         const finalText = appendVmArtifactLinks(buildVmFinalCommentText(output, mediaContext), publishedArtifacts)
 
         // Coding agents already return the MR/PR URL in their final result. Associate that
