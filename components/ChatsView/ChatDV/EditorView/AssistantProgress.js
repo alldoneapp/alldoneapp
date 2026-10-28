@@ -100,6 +100,7 @@ export const ACTION_EMOJI = {
     assistant_activity_remove_wiki_document: '🗑️',
     assistant_activity_vm_task: '🤝',
     assistant_activity_vm_task_plain: '🤝',
+    assistant_activity_vm_wait: '⏳',
     assistant_activity_ask_assistant: '🤝',
     assistant_activity_ask_assistant_plain: '🤝',
     assistant_activity_browser_navigate: '🌐',
