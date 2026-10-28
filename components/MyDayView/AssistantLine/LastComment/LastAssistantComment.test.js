@@ -21,7 +21,11 @@ jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedAllProjects: () => false,
 }))
 
-jest.mock('./ProjectTagIndicator', () => () => null)
+jest.mock('./ProjectTagIndicator', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return ({ projectId }) => <View testID="project-tag-indicator" projectId={projectId} />
+})
 jest.mock('./UnreadCommentsBadge', () => () => null)
 
 const SHORT_TEXT = 'Ok'
@@ -86,6 +90,45 @@ describe('LastAssistantComment preview height (AT-2344)', () => {
 
         expect(shortCompact.height).toBe(24)
         expect(longCompact.height).toBe(24)
+    })
+})
+
+describe('LastAssistantComment title line (AT-2902)', () => {
+    const titleRowOf = tree => tree.root.findByProps({ testID: 'last-comment-title-row' })
+    // The row's own element children, in render order: the tag is the only one carrying projectId.
+    const titleChildren = tree =>
+        [titleRowOf(tree).props.children]
+            .flat()
+            .filter(Boolean)
+            .map(child => (child.props.projectId ? 'tag' : child.props.children))
+
+    it('puts the project tag at the beginning of the topic name', () => {
+        const tree = renderPreview(SHORT_TEXT, { objectName: 'A chat title' })
+
+        expect(titleChildren(tree)).toEqual(['tag', 'A chat title'])
+        expect(titleRowOf(tree).props.children[0].props.projectId).toBe('project-1')
+        expect(StyleSheet.flatten(titleRowOf(tree).props.style).flexDirection).toBe('row')
+    })
+
+    it('truncates the topic name to one line next to the tag', () => {
+        const tree = renderPreview(SHORT_TEXT, { objectName: 'A very long chat title '.repeat(10) })
+        const title = titleRowOf(tree).findAll(node => node.props.numberOfLines !== undefined)[0]
+
+        expect(title.props.numberOfLines).toBe(1)
+        expect(StyleSheet.flatten(title.props.style).flexShrink).toBe(1)
+    })
+
+    it('still shows the tag when the chat has no title, and no tag anywhere else', () => {
+        const tree = renderPreview(SHORT_TEXT, { objectName: '' })
+
+        expect(titleChildren(tree)).toEqual(['tag'])
+        // Only the title line carries a tag; the old top-right corner tag is gone.
+        expect(tree.root.findAllByType(require('./ProjectTagIndicator'))).toHaveLength(1)
+    })
+
+    it('keeps the compact variant without a tag', () => {
+        const tree = renderPreview(SHORT_TEXT, { compact: true })
+        expect(tree.root.findAllByType(require('./ProjectTagIndicator'))).toHaveLength(0)
     })
 })
 

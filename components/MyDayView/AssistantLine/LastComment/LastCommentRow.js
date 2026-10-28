@@ -15,8 +15,11 @@ import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
  *
  * It carries the card's former padding, because the card itself no longer has any — the roll is
  * clipped by a viewport that fills the card's whole box, so the padding has to live on the rows
- * inside it. That is what keeps `ProjectTagIndicator`'s `right: 10 / top: 10` measured against the
- * same edges it always was.
+ * inside it.
+ *
+ * AT-2902 — the project tag leads the title line and the topic name starts right after it,
+ * truncated to one line, instead of the tag sitting in the card's top-right corner over the end
+ * of the topic name.
  *
  * Purely presentational: no motion, no arrival state, no press handling. The card owns all three.
  */
@@ -34,9 +37,10 @@ const LastCommentRow = ({ projectId, commentText, objectName, compact = false })
         <>
             <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
             <View style={localStyles.textContainer}>
-                <View style={localStyles.titleRow}>
+                <View style={localStyles.titleRow} testID="last-comment-title-row">
+                    <ProjectTagIndicator projectId={projectId} />
                     {!!objectName && (
-                        <Text numberOfLines={2} style={localStyles.title}>
+                        <Text numberOfLines={1} style={localStyles.title}>
                             {objectName}
                         </Text>
                     )}
@@ -53,7 +57,6 @@ const LastCommentRow = ({ projectId, commentText, objectName, compact = false })
                     </View>
                 </View>
             </View>
-            <ProjectTagIndicator projectId={projectId} />
         </>
     )
 }
@@ -74,14 +77,17 @@ const localStyles = StyleSheet.create({
         // Reserved even when the chat has no title, so the body text never shifts upwards.
         height: PREVIEW_TITLE_HEIGHT,
         flexShrink: 0,
-        overflow: 'hidden',
+        flexDirection: 'row',
+        alignItems: 'center',
+        // Not clipped: the 24px project tag is centred on this 22px line and overhangs it by a
+        // pixel on each side, inside the card's 12px padding. The title truncates on its own.
     },
     title: {
         ...styles.subtitle2,
         color: colors.Text03,
         fontWeight: 'bold',
-        overflow: 'hidden',
-        maxHeight: PREVIEW_TITLE_HEIGHT,
+        flexShrink: 1,
+        minWidth: 0,
     },
     parsedTextContainer: {
         height: PREVIEW_BODY_HEIGHT,

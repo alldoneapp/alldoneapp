@@ -38,8 +38,8 @@ import { LAST_COMMENT_PREVIEW_HEIGHT } from './lastCommentLayout'
  * Everything is `transform`, and the card's fixed `LAST_COMMENT_PREVIEW_HEIGHT` contract is
  * preserved to the pixel, so the assistant line cannot reflow. The roll is clipped by a viewport
  * that fills the CARD's whole box rather than its content box — see `LastAssistantComment` — which
- * is both what keeps the unread badge (at `top/right: -5`, outside the card) unclipped, and what
- * keeps `ProjectTagIndicator` measured against the same edges as before.
+ * is what keeps the unread badge (at `top/right: -5`, outside the card) unclipped, and what keeps
+ * the rows (which carry the card's padding) laid out against the same edges as before.
  *
  * ## Reduced motion, and renderers that cannot measure
  *

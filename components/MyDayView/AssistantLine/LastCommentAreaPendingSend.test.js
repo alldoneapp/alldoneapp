@@ -29,6 +29,7 @@ const mockState = {
     projectChatLastNotification: {},
 }
 
+jest.mock('./LastComment/ProjectTagIndicator', () => () => null)
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
