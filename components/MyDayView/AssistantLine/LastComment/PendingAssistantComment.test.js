@@ -35,6 +35,12 @@ jest.mock('../../../UIComponents/Ghosts/ghostAnimation', () => ({
     useReducedMotion: () => mockReducedMotion,
 }))
 
+jest.mock('./ProjectTagIndicator', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return ({ projectId }) => <View testID="project-tag-indicator" projectId={projectId} />
+})
+
 const pending = (overrides = {}) => ({
     id: 'assistant-line-send-1',
     projectId: 'project-1',
@@ -88,6 +94,16 @@ describe('PendingAssistantComment (AT-2504)', () => {
         expect(bodyContainers[0].overflow).toBe('hidden')
         expect(PREVIEW_TITLE_HEIGHT + PREVIEW_BODY_HEIGHT).toBeLessThan(LAST_COMMENT_PREVIEW_HEIGHT)
 
+        act(() => tree.unmount())
+    })
+
+    it('puts the project tag at the beginning of the status line (AT-2902)', async () => {
+        const tree = await render({ assistantName: 'Anna' })
+        const titleRow = tree.root.findByProps({ testID: 'assistant-pending-send-title-row' })
+        const children = [titleRow.props.children].flat().filter(Boolean)
+
+        expect(children[0].props.projectId).toBe('project-1')
+        expect(children[children.length - 1].props.testID).toBe('assistant-pending-send-status')
         act(() => tree.unmount())
     })
 

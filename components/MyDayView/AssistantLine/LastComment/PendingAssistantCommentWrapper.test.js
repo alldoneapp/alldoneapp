@@ -11,6 +11,7 @@ import { PENDING_SEND_AWAITING_REPLY, PENDING_SEND_FAILED, PENDING_SEND_SENDING 
 const mockState = { openModals: {}, assistantEnabled: false, isQuillTagEditorOpen: false }
 const mockDispatch = jest.fn()
 
+jest.mock('./ProjectTagIndicator', () => () => null)
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
     useDispatch: () => mockDispatch,

@@ -143,8 +143,8 @@ const localStyles = StyleSheet.create({
     },
     /**
      * Fills the CARD's box, not its content box — the card's padding was moved onto the rows for
-     * exactly this reason. A viewport inset by the padding would shift `ProjectTagIndicator`
-     * (absolute at `right: 10 / top: 10`) by that padding, moving a tag that has never moved.
+     * exactly this reason. A viewport inset by the padding would shift every row's content (the
+     * title line with its leading project tag, AT-2902) by that padding.
      */
     viewport: {
         ...StyleSheet.absoluteFillObject,
