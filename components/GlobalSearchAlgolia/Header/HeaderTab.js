@@ -33,8 +33,8 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    // Six tabs share a phone-wide row (Artifacts made it six). Equal widths left ~50px each on a
-    // 320px phone, less than "Contacts" needs; sizing each tab by its label fits all six.
+    // Seven tabs share a phone-wide row (Artifacts made it six, Wiki seven). Equal widths left ~50px
+    // each on a 320px phone, less than "Contacts" needs; sizing each tab by its label fits them.
     mobileContainer: {
         flexBasis: 'auto',
     },

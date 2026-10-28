@@ -218,9 +218,6 @@ export default function RichCreateTaskModal({
     // Called once a creation is actually submitted (after any attachment upload succeeded),
     // so the opener can drop the inline draft text it handed over.
     onDraftSubmitted,
-    // AT-2823: set when the popup was opened by holding the board's floating "+"; the title
-    // input's mic takes that hold over and runs it as an ordinary push-to-talk dictation.
-    pushToTalkHandoff,
 }) {
     const dispatch = useDispatch()
     // One measurement shared by the form and the in-place project picker, so
@@ -893,7 +890,6 @@ export default function RichCreateTaskModal({
                     selectedProject={selectedProject}
                     activeGoal={activeGoal}
                     widthStyle={widthStyle}
-                    pushToTalkHandoff={pushToTalkHandoff}
                 />
             )}
         </CustomScrollView>
