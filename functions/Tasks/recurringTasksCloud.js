@@ -64,10 +64,7 @@ async function createRecurringTaskInCloudFunction(projectId, originalTaskId, com
 
         // Calculate next occurrence date
         console.log('📅 CALCULATING NEXT RECURRENCE DATE...')
-        const hasBaseDateOverride =
-            typeof completedTask.recurrenceBaseDateOverride === 'number' && completedTask.recurrenceBaseDateOverride > 0
-        const utcOffsetMinutes = hasBaseDateOverride ? await getAssigneeUtcOffsetMinutes(completedTask) : undefined
-        const nextDate = calculateNextRecurrenceDate(completedTask, Date.now(), { utcOffsetMinutes })
+        const nextDate = calculateNextRecurrenceDate(completedTask)
 
         if (!nextDate) {
             console.error('❌ ERROR: Failed to calculate next recurrence date')
@@ -190,69 +187,17 @@ function getNextDateFromBaseDate(baseDate, recurrence) {
     }
 }
 
-// Recurrences that advance by a fixed calendar unit. Skipping ahead from a stale anchor multiplies
-// the step (anchor + k * step) instead of chaining single steps, so a monthly task anchored on the
-// 31st stays on the last day of each month instead of drifting to the 28th after February.
-const FIXED_RECURRENCE_STEPS = {
-    [RECURRENCE_DAILY]: [1, 'days'],
-    [RECURRENCE_WEEKLY]: [1, 'weeks'],
-    [RECURRENCE_EVERY_2_WEEKS]: [2, 'weeks'],
-    [RECURRENCE_EVERY_3_WEEKS]: [3, 'weeks'],
-    [RECURRENCE_MONTHLY]: [1, 'months'],
-    [RECURRENCE_EVERY_3_MONTHS]: [3, 'months'],
-    [RECURRENCE_EVERY_6_MONTHS]: [6, 'months'],
-    [RECURRENCE_ANNUALLY]: [1, 'years'],
-}
-
-function getFixedRecurrenceStep(recurrence) {
-    if (FIXED_RECURRENCE_STEPS[recurrence]) return FIXED_RECURRENCE_STEPS[recurrence]
-    const customDays = getCustomRecurrenceDays(recurrence)
-    return customDays ? [customDays, 'days'] : null
-}
-
-const MAX_SKIP_AHEAD_STEPS = 100000
-
-/**
- * AT-2803: the chosen base date is a CALENDAR DAY of the user. A timestamp alone does not name one:
- * a due date at 00:30 in Berlin is 23:30 UTC the day before, and this function runs in UTC. When
- * the user's offset is known the day is read in it; the time of day still comes from `startTime`
- * exactly as before, so a series keeps the time its earlier occurrences had.
- */
-function resolveBaseDay(timestamp, utcOffsetMinutes) {
-    if (typeof utcOffsetMinutes === 'number' && Number.isFinite(utcOffsetMinutes)) {
-        return moment(moment(timestamp).utcOffset(utcOffsetMinutes).format('YYYY-MM-DD'), 'YYYY-MM-DD')
-    }
-    return moment(timestamp)
-}
-
-/**
- * Next occurrence of a recurring task that has just been completed.
- *
- * Without `recurrenceBaseDateOverride` this is the legacy rule: the completion moment plus one
- * interval. With it (the user picked the original, the current or a custom date in the completion
- * popup) the interval is applied to that date, and when the result is not after the completion the
- * series skips ahead on its own cadence to the first occurrence that is - the next occurrence of a
- * series is never created overdue.
- *
- * @param {object} task the completed task
- * @param {number} [now]
- * @param {object} [options]
- * @param {number} [options.utcOffsetMinutes] the assignee's offset, used to read the override's day
- */
-function calculateNextRecurrenceDate(task, now = Date.now(), options = {}) {
+function calculateNextRecurrenceDate(task, now = Date.now()) {
     const startMoment = moment(task.startDate || task.created)
     const startTime = task.startTime || startMoment.format('HH:mm')
     const [hours, minutes] = startTime.split(':').map(Number)
     const baseDateOverride =
-        typeof task.recurrenceBaseDateOverride === 'number' &&
-        Number.isFinite(task.recurrenceBaseDateOverride) &&
-        task.recurrenceBaseDateOverride > 0 &&
-        task.recurrenceBaseDateOverride < Number.MAX_SAFE_INTEGER
+        typeof task.recurrenceBaseDateOverride === 'number' && Number.isFinite(task.recurrenceBaseDateOverride)
             ? task.recurrenceBaseDateOverride
             : null
 
     // Use the selected recurrence base when present. Otherwise keep the legacy now-based behavior.
-    let baseDate = baseDateOverride ? resolveBaseDay(baseDateOverride, options.utcOffsetMinutes) : moment(now)
+    let baseDate = moment(baseDateOverride || now)
     // Set the time to match the original task's scheduled time
     baseDate = baseDate.hour(hours).minute(minutes).second(0).millisecond(0)
 
@@ -264,16 +209,15 @@ function calculateNextRecurrenceDate(task, now = Date.now(), options = {}) {
 
     if (baseDateOverride) {
         const completedMoment = moment(task.completed || now)
-        const fixedStep = getFixedRecurrenceStep(task.recurrence)
-        let steps = 1
-        while (!nextDate.isAfter(completedMoment) && steps < MAX_SKIP_AHEAD_STEPS) {
-            steps++
-            nextDate = fixedStep
-                ? baseDate.clone().add(fixedStep[0] * steps, fixedStep[1])
-                : getNextDateFromBaseDate(nextDate, task.recurrence)
+        let safetyCounter = 0
+        // High cap only to guard against a non-advancing recurrence; each step moves the
+        // date forward by >= 1 day, so for any real recurrence this terminates quickly.
+        while (!nextDate.isAfter(completedMoment) && safetyCounter < 100000) {
+            nextDate = getNextDateFromBaseDate(nextDate, task.recurrence)
+            safetyCounter++
         }
 
-        if (!nextDate.isAfter(completedMoment)) {
+        if (safetyCounter >= 100000) {
             console.error('Failed to advance recurring task date to a future occurrence:', {
                 recurrence: task.recurrence,
                 baseDateOverride,
@@ -290,33 +234,9 @@ function calculateNextRecurrenceDate(task, now = Date.now(), options = {}) {
         nextDate: nextDate.format('YYYY-MM-DD HH:mm:ss'),
         baseDate: baseDate.format('YYYY-MM-DD HH:mm:ss'),
         baseDateOverride,
-        utcOffsetMinutes: options.utcOffsetMinutes,
     })
 
     return nextDate
-}
-
-/**
- * The assignee's UTC offset in minutes, or undefined when it cannot be read. Only needed when the
- * user chose a base date, so the legacy path pays no extra read.
- */
-async function getAssigneeUtcOffsetMinutes(task) {
-    const userId = task?.userId
-    if (!userId || typeof userId !== 'string') return undefined
-    try {
-        const userDoc = await admin.firestore().collection('users').doc(userId).get()
-        if (!userDoc.exists) return undefined
-        const userData = userDoc.data() || {}
-        const hasTimezone = ['timezone', 'timezoneOffset', 'timezoneMinutes'].some(
-            key => userData[key] !== undefined && userData[key] !== null
-        )
-        if (!hasTimezone) return undefined
-        const { resolveUserTimezone, resolveTimezoneOffsetMinutes } = require('../GoogleCalendar/calendarUserDay')
-        return resolveTimezoneOffsetMinutes(resolveUserTimezone(userData))
-    } catch (error) {
-        console.warn('Could not read assignee timezone for recurring task, using server day:', error.message)
-        return undefined
-    }
 }
 
 /**
@@ -648,7 +568,6 @@ module.exports = {
     createRecurringTaskInCloudFunction,
     calculateNextRecurrenceDate,
     getNextDateFromBaseDate,
-    getAssigneeUtcOffsetMinutes,
     createNewRecurringTask,
     updateOriginalTaskRecurrence,
 }

@@ -13,6 +13,7 @@ export default function InputArea({
     onChangeInputText,
     enterKeyAction,
     setMentionsModalActive,
+    pushToTalkHandoff,
 }) {
     const inputTask = useRef(null)
 
@@ -54,6 +55,7 @@ export default function InputArea({
                     projectId={projectId}
                     styleTheme={CREATE_TASK_MODAL_THEME}
                     forceTriggerEnterActionForBreakLines={enterKeyAction}
+                    pushToTalkHandoff={pushToTalkHandoff}
                 />
             </View>
         </View>
