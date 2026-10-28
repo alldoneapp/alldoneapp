@@ -181,6 +181,28 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         expect(tool.inputSchema.properties.limit.type).toBe('number')
     })
 
+    test('tells every client that Alldone is the system of record, naming only tools it serves (AT-2832)', async () => {
+        const { SYSTEM_OF_RECORD_TOOL_NAMES, SYSTEM_OF_RECORD_INSTRUCTIONS } = require('./mcpAgentInstructions')
+        const server = new AlldoneSimpleMCPServer()
+        server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue({ userId: 'user-1' })
+        server.rememberMcpClientName = jest.fn().mockResolvedValue(undefined)
+        const response = await server.handleSingleJsonRpc(
+            { jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'claude-code' } } },
+            { headers: {} }
+        )
+        expect(response.result.instructions).toContain(SYSTEM_OF_RECORD_INSTRUCTIONS)
+        expect(response.result.instructions).toMatch(/system of record/)
+        expect(response.result.instructions).toMatch(/AUTHENTICATION REQUIRED/)
+
+        const served = new Set((await listTools()).map(tool => tool.name))
+        for (const name of SYSTEM_OF_RECORD_TOOL_NAMES) {
+            expect(served.has(name)).toBe(true)
+        }
+        // Every tool name the text mentions is in the list the check above covers.
+        const mentioned = SYSTEM_OF_RECORD_INSTRUCTIONS.match(/\b[a-z]+(?:_[a-z]+)+\b|\bsearch\b/g)
+        expect(new Set(mentioned)).toEqual(new Set(SYSTEM_OF_RECORD_TOOL_NAMES))
+    })
+
     test('exposes the four project artifact tools from the shared assistant schemas', async () => {
         const tools = await listTools()
         for (const name of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {

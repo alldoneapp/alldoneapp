@@ -1145,6 +1145,17 @@ usage and WebMCP outcome but no tool or user data, plus `data-alldone-agent-api-
 Native WebMCP is still off in production until origin-trial tokens are registered (see
 `webMcpOriginTrial.js`).
 
+**Every agent surface tells the agent that Alldone is the system of record (AT-2832).** Durable work
+state and results go into Alldone objects (find and update the existing task or note, comment
+progress and results on the task, longer results in a note or artifact, no duplicates, nothing for
+throwaway steps) instead of living only in the agent's memory. The same guidance sits in four
+places that cannot share code: `/llms.txt`, `SYSTEM_OF_RECORD_INSTRUCTIONS` / `_SUMMARY` in
+`browserAgentApi.js` (`help()`, the stubs and the manifest's `systemOfRecord`; the summary names no
+tools because the manifest never does), the `ai-agent-api` meta tag, and the MCP `initialize`
+instructions (`functions/MCP/mcpAgentInstructions.js`). Keep them in step, and name only tools the
+MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text mentions against
+`tools/list`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
