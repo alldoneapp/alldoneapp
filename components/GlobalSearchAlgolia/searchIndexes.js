@@ -13,3 +13,7 @@ export const ARTIFACTS_INDEX_NAME_PREFIX = 'dev_artifacts'
 // Global search's own sixth tab. The other five share their numbers with the @-mention picker
 // (MENTION_MODAL_*_TAB in textInputHelper.js), which has no artifacts tab, so this one lives here.
 export const GLOBAL_SEARCH_ARTIFACTS_TAB = 5
+
+// Project wiki pages (functions/KnowledgeBase/knowledgeSearch.js), global search's seventh tab.
+export const WIKI_INDEX_NAME_PREFIX = 'dev_wiki'
+export const GLOBAL_SEARCH_WIKI_TAB = 6

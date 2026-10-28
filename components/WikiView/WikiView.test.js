@@ -232,7 +232,13 @@ describe('WikiView', () => {
     it('says for every page when it last changed, in the index and on the page', () => {
         const component = mount()
         deliver({
-            knowledgeBase: { enabled: true, lastRunAt: Date.UTC(2026, 9, 25, 8) },
+            knowledgeBase: {
+                enabled: true,
+                lastRunAt: Date.UTC(2026, 9, 26, 8),
+                lastRunStatus: 'failed',
+                // The last run that caught up, not the failed attempt after it.
+                lastSuccessfulRunAt: Date.UTC(2026, 9, 25, 8),
+            },
             pages: [PAGES[0], { ...PAGES[1], updatedAt: Date.UTC(2026, 9, 24, 8) }],
         })
 
@@ -384,10 +390,59 @@ describe('WikiView', () => {
 
         const sources = component.root.findByProps({ testID: 'wiki-page-source-task:t1' })
         expect(textOf(sources.findByType(Text).children)).toBe('Acme gewinnen')
-        expect(component.root.findByProps({ testID: 'wiki-page-source-correction:k1' }).props.disabled).toBe(true)
 
         act(() => sources.props.onPress())
         expect(openWikiSource).toHaveBeenCalledWith('p1', expect.objectContaining({ objectType: 'task', id: 't1' }))
+    })
+
+    it('shows the sources the text cites and folds away the ones it no longer cites', () => {
+        setWikiSelectedSlug('p1', 'kunden')
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+
+        // The page lists a correction its current text does not cite: kept for the privacy
+        // withdrawal, but not shown as if it supported the text.
+        expect(component.root.findAllByProps({ testID: 'wiki-page-source-task:t1' })).not.toHaveLength(0)
+        expect(component.root.findAllByProps({ testID: 'wiki-page-source-correction:k1' })).toHaveLength(0)
+        const toggle = component.root.findByProps({ testID: 'wiki-page-other-sources-toggle' })
+        expect(textOf(toggle.findByType(Text).children)).toContain('Show 1 more sources')
+
+        press(component, 'wiki-page-other-sources-toggle')
+        const folded = component.root.findByProps({ testID: 'wiki-page-other-sources' })
+        expect(textOf(folded.children)).toContain('no longer cites them')
+        expect(component.root.findByProps({ testID: 'wiki-page-source-correction:k1' }).props.disabled).toBe(true)
+
+        press(component, 'wiki-page-other-sources-toggle')
+        expect(component.root.findAllByProps({ testID: 'wiki-page-other-sources' })).toHaveLength(0)
+    })
+
+    it('has no fold for a page that cites every source it lists', () => {
+        setWikiSelectedSlug('p1', 'kunden')
+        const component = mount()
+        deliver({
+            knowledgeBase: { enabled: true },
+            pages: [{ ...PAGES[1], sourceKeys: ['task:t1'] }],
+        })
+
+        expect(component.root.findAllByProps({ testID: 'wiki-page-source-task:t1' })).not.toHaveLength(0)
+        expect(component.root.findAllByProps({ testID: 'wiki-page-other-sources-toggle' })).toHaveLength(0)
+    })
+
+    it('labels the changes of the weekly health check in the history', async () => {
+        getKnowledgePageRevisions.mockResolvedValue([
+            { id: '000004', revision: 4, mode: 'lint', reason: 'lint: linked the pricing page' },
+        ])
+        setWikiSelectedSlug('p1', 'entscheidungen')
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+
+        await act(async () => {
+            pressText(component, 'Show history')
+        })
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-history' }).children)).toContain(
+            'Health check: linked the pricing page'
+        )
     })
 
     it('tells people that pages are hidden until they are rebuilt and that a paused wiki stays readable', () => {

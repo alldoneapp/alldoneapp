@@ -10,6 +10,7 @@
 //   knowledgeBases/{projectId}/pages/{pageId}/revisions/{id}   every change, with its run and reason
 //   knowledgeBases/{projectId}/corrections/{id}                user corrections, a source of their own
 //   knowledgeBases/{projectId}/documents/{id}                  files members added, as extracted text
+//   knowledgeBases/{projectId}/contributions/{id}              knowledge a member saved from a chat
 //   knowledgeBases/{projectId}/runs/{runId}                    ingest runs (the wiki's log)
 //
 // The whole tree has ONE audience, the project's members, because only sources every member
@@ -32,6 +33,7 @@ const KNOWLEDGE_PAGES_COLLECTION = 'pages'
 const KNOWLEDGE_PAGE_REVISIONS_COLLECTION = 'revisions'
 const KNOWLEDGE_CORRECTIONS_COLLECTION = 'corrections'
 const KNOWLEDGE_DOCUMENTS_COLLECTION = 'documents'
+const KNOWLEDGE_CONTRIBUTIONS_COLLECTION = 'contributions'
 const KNOWLEDGE_RUNS_COLLECTION = 'runs'
 
 const KNOWLEDGE_PAGE_SLUG_MAX_CHARS = 80
@@ -62,11 +64,29 @@ const KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON = 'project_archived'
 const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
 const KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS = 200
 const KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS = 1000
+// What a member saves from a conversation ("save this to the wiki"): a few paragraphs, not a
+// document. A file goes through add_knowledge_document instead.
+const KNOWLEDGE_CONTRIBUTION_MAX_CHARS = 4000
+const KNOWLEDGE_CONTRIBUTION_TITLE_MAX_CHARS = 200
+// The statuses of a run after which the wiki is as current as its sources were when it started:
+// 'partial' processed what it could and continues soon, and is progress too.
+const KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES = ['completed', 'partial']
 
 // A `chat` source is one comment thread, keyed by its chat object's id: chatObjects/{projectId}/chats
 // holds the threads of tasks, notes, goals, contacts and artifacts next to the project's topics, and
 // a thread's chat object has the id of the object it belongs to, so the id is unique in the project.
-const KNOWLEDGE_SOURCE_TYPES = ['task', 'goal', 'note', 'contact', 'chat', 'artifact', 'correction', 'document']
+// A `contribution` is knowledge a member saved from a conversation (knowledgeContributions.js).
+const KNOWLEDGE_SOURCE_TYPES = [
+    'task',
+    'goal',
+    'note',
+    'contact',
+    'chat',
+    'artifact',
+    'correction',
+    'document',
+    'contribution',
+]
 
 // Object collections name their types in the plural (`tasks`); source keys use the singular.
 const OBJECT_TYPE_TO_SOURCE_TYPE = {
@@ -83,7 +103,8 @@ const OBJECT_TYPE_TO_SOURCE_TYPE = {
 }
 
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
-const SOURCE_TOKEN_PATTERN = /^(task|goal|note|contact|chat|artifact|correction|document):([A-Za-z0-9_-]{1,128})$/
+const SOURCE_TOKEN_PATTERN =
+    /^(task|goal|note|contact|chat|artifact|correction|document|contribution):([A-Za-z0-9_-]{1,128})$/
 // [[slug]], [[slug|Label]], [[task:ID]] and [[task:ID|Label]]. No brackets, pipes or line
 // breaks inside, so a stray "[[" in prose can never swallow the rest of a page.
 const KNOWLEDGE_TOKEN_REGEX = /\[\[([^[\]\n|]{1,200})(?:\|([^[\]\n]{1,200}))?\]\]/g
@@ -110,6 +131,10 @@ function getKnowledgeCorrectionsPath(projectId) {
 
 function getKnowledgeDocumentsPath(projectId) {
     return `${getKnowledgeBasePath(projectId)}/${KNOWLEDGE_DOCUMENTS_COLLECTION}`
+}
+
+function getKnowledgeContributionsPath(projectId) {
+    return `${getKnowledgeBasePath(projectId)}/${KNOWLEDGE_CONTRIBUTIONS_COLLECTION}`
 }
 
 function getKnowledgeRunsPath(projectId) {
@@ -185,6 +210,31 @@ function rewriteKnowledgeSourceTokens(markdown, isAllowedSourceKey) {
         return label ? label.trim() : ''
     })
     return { text, removed }
+}
+
+// The sources a page cites in its current body, in the order of `sourceKeys`. `sourceKeys` itself
+// only ever grows (outside a rebuild): it is the provenance the privacy withdrawal relies on
+// (knowledgeSourceInvalidation.js), because a sentence can stay on a page after its citation was
+// dropped. Readers want the cited ones; the rest are counted, never shown as if they supported
+// the text.
+function splitKnowledgePageSources(page) {
+    const keys = Array.isArray(page?.sourceKeys) ? page.sourceKeys.filter(isKnowledgeSourceKey) : []
+    const cited = new Set(extractKnowledgeTokens(page?.body).sourceKeys)
+    return {
+        citedSourceKeys: keys.filter(key => cited.has(key)),
+        otherSourceKeys: keys.filter(key => !cited.has(key)),
+    }
+}
+
+// When the wiki last caught up with its sources. `lastSuccessfulRunAt` is written by every run that
+// finished its work or made progress; wikis whose last run predates the field fall back to it when
+// that run succeeded. null when nothing is known, never the time of a failed run.
+function getKnowledgeBaseLastSuccessfulRunAt(data = {}) {
+    if (Number.isFinite(data.lastSuccessfulRunAt)) return data.lastSuccessfulRunAt
+    if (Number.isFinite(data.lastRunAt) && KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES.includes(data.lastRunStatus)) {
+        return data.lastRunAt
+    }
+    return null
 }
 
 // A page waiting for a rebuild still contains what the source it lost contributed, so it is
@@ -324,6 +374,7 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
         ownerUserId: data.ownerUserId || null,
         nextRunAt: Number.isFinite(data.nextRunAt) ? data.nextRunAt : null,
         lastRunAt: Number.isFinite(data.lastRunAt) ? data.lastRunAt : null,
+        lastSuccessfulRunAt: getKnowledgeBaseLastSuccessfulRunAt(data),
     }
 }
 
@@ -348,6 +399,7 @@ module.exports = {
     KNOWLEDGE_PAGE_REVISIONS_COLLECTION,
     KNOWLEDGE_CORRECTIONS_COLLECTION,
     KNOWLEDGE_DOCUMENTS_COLLECTION,
+    KNOWLEDGE_CONTRIBUTIONS_COLLECTION,
     KNOWLEDGE_RUNS_COLLECTION,
     KNOWLEDGE_PAGE_SLUG_MAX_CHARS,
     KNOWLEDGE_PAGE_TITLE_MAX_CHARS,
@@ -368,6 +420,9 @@ module.exports = {
     KNOWLEDGE_DOCUMENT_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
+    KNOWLEDGE_CONTRIBUTION_MAX_CHARS,
+    KNOWLEDGE_CONTRIBUTION_TITLE_MAX_CHARS,
+    KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES,
     KNOWLEDGE_SOURCE_TYPES,
     KnowledgeBaseSettingsError,
     getKnowledgeBasePath,
@@ -376,6 +431,7 @@ module.exports = {
     getKnowledgePageRevisionsPath,
     getKnowledgeCorrectionsPath,
     getKnowledgeDocumentsPath,
+    getKnowledgeContributionsPath,
     getKnowledgeRunsPath,
     normalizeKnowledgePageSlug,
     toKnowledgeSourceType,
@@ -385,6 +441,8 @@ module.exports = {
     extractKnowledgeTokens,
     rewriteKnowledgeSourceTokens,
     isKnowledgePageVisible,
+    splitKnowledgePageSources,
+    getKnowledgeBaseLastSuccessfulRunAt,
     isKnowledgeBasePausedForInactiveOwner,
     isKnowledgeBasePausedForArchivedProject,
     isProjectArchivedForUser,

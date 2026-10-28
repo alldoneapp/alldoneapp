@@ -34,16 +34,23 @@ import { getDefaultWikiRangeBase } from './wikiRecentChanges'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import { getWikiIndexPages } from './wikiIndexOrder'
 import {
+    getKnowledgeBaseLastSuccessfulRunAt,
     isKnowledgeBasePausedAtMonthlyCap,
     isKnowledgeBasePausedForArchivedProject,
     parseKnowledgeSourceKey,
+    splitKnowledgePageSources,
 } from '../../functions/KnowledgeBase/knowledgeBaseModel'
 
 function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
     const lines = []
     if (isKnowledgeBaseRunning(knowledgeBase)) lines.push(translate('The wiki is being updated right now'))
-    else if (knowledgeBase?.lastRunAt) {
-        lines.push(translate('Wiki last updated', { date: formatWikiDate(knowledgeBase.lastRunAt) }))
+    else if (getKnowledgeBaseLastSuccessfulRunAt(knowledgeBase || {})) {
+        // The last run that caught up, not merely the last attempt: a failed run updated nothing.
+        lines.push(
+            translate('Wiki last updated', {
+                date: formatWikiDate(getKnowledgeBaseLastSuccessfulRunAt(knowledgeBase)),
+            })
+        )
     }
     if (knowledgeBase && knowledgeBase.enabled !== true) lines.push(translate('Wiki paused hint'))
     if (isKnowledgeBasePausedForArchivedProject(knowledgeBase || {})) {
@@ -159,19 +166,87 @@ function WikiIndex({ pages, selectedSlug, onSelect }) {
     )
 }
 
+function toSourceChips(keys) {
+    return keys
+        .map(key => {
+            const parsed = parseKnowledgeSourceKey(key)
+            return parsed ? { key, objectType: parsed.type, id: parsed.id, label: '' } : null
+        })
+        .filter(Boolean)
+}
+
+function WikiSourceChips({ projectId, sources, sourceLabels }) {
+    return (
+        <View style={localStyles.sourceList}>
+            {sources.map(source => (
+                <TouchableOpacity
+                    key={source.key}
+                    testID={`wiki-page-source-${source.key}`}
+                    style={localStyles.sourceItem}
+                    disabled={!isOpenableWikiSource(source.objectType)}
+                    onPress={() => openWikiSource(projectId, source)}
+                    accessible={false}
+                >
+                    <Text style={localStyles.sourceItemText} numberOfLines={1}>
+                        {getWikiSourceLabel(source, sourceLabels)}
+                    </Text>
+                </TouchableOpacity>
+            ))}
+        </View>
+    )
+}
+
+// The sources the text cites, and folded away below them the ones the page was also compiled from
+// but no longer cites. Those stay on the page for the privacy withdrawal
+// (knowledgeSourceInvalidation.js), so they are kept visible on request, never presented as if they
+// backed the text.
+function WikiPageSources({ projectId, page }) {
+    const [showOthers, setShowOthers] = useState(false)
+    const { cited, others } = useMemo(() => {
+        const { citedSourceKeys, otherSourceKeys } = splitKnowledgePageSources(page)
+        return { cited: toSourceChips(citedSourceKeys), others: toSourceChips(otherSourceKeys) }
+    }, [page.sourceKeys, page.body])
+
+    useEffect(() => {
+        setShowOthers(false)
+    }, [page.slug])
+
+    if (!cited.length && !others.length) return null
+    return (
+        <View testID="wiki-page-sources" style={localStyles.sources}>
+            <Text style={localStyles.sectionLabel}>{translate('Sources')}</Text>
+            {cited.length > 0 && (
+                <WikiSourceChips projectId={projectId} sources={cited} sourceLabels={page.sourceLabels} />
+            )}
+            {others.length > 0 && (
+                <TouchableOpacity
+                    testID="wiki-page-other-sources-toggle"
+                    onPress={() => setShowOthers(!showOthers)}
+                    accessible={false}
+                >
+                    <Text style={localStyles.historyToggle}>
+                        {translate(showOthers ? 'Hide other wiki sources' : 'Show other wiki sources', {
+                            amount: others.length,
+                        })}
+                    </Text>
+                </TouchableOpacity>
+            )}
+            {showOthers && others.length > 0 && (
+                <View testID="wiki-page-other-sources" style={localStyles.otherSources}>
+                    <Text style={localStyles.otherSourcesHint}>{translate('Other wiki sources hint')}</Text>
+                    <WikiSourceChips projectId={projectId} sources={others} sourceLabels={page.sourceLabels} />
+                </View>
+            )}
+        </View>
+    )
+}
+
 function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
     const [showHistory, setShowHistory] = useState(false)
 
     useEffect(() => {
         setShowHistory(false)
     }, [page.slug])
-
-    const sources = page.sourceKeys
-        .map(key => {
-            const parsed = parseKnowledgeSourceKey(key)
-            return parsed ? { key, objectType: parsed.type, id: parsed.id, label: '' } : null
-        })
-        .filter(Boolean)
 
     return (
         <View testID={`wiki-page-${page.slug}`}>
@@ -216,27 +291,7 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                 onPressSource={source => openWikiSource(projectId, source)}
             />
 
-            {sources.length > 0 && (
-                <View style={localStyles.sources}>
-                    <Text style={localStyles.sectionLabel}>{translate('Sources')}</Text>
-                    <View style={localStyles.sourceList}>
-                        {sources.map(source => (
-                            <TouchableOpacity
-                                key={source.key}
-                                testID={`wiki-page-source-${source.key}`}
-                                style={localStyles.sourceItem}
-                                disabled={!isOpenableWikiSource(source.objectType)}
-                                onPress={() => openWikiSource(projectId, source)}
-                                accessible={false}
-                            >
-                                <Text style={localStyles.sourceItemText} numberOfLines={1}>
-                                    {getWikiSourceLabel(source, page.sourceLabels)}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-            )}
+            <WikiPageSources projectId={projectId} page={page} />
 
             <View style={localStyles.pageFooter}>
                 <Text style={localStyles.footerText}>
@@ -611,6 +666,14 @@ const localStyles = StyleSheet.create({
     sourceItemText: {
         ...styles.body2,
         color: colors.Text02,
+    },
+    otherSources: {
+        marginTop: 8,
+    },
+    otherSourcesHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginBottom: 6,
     },
     pageFooter: {
         flexDirection: 'row',

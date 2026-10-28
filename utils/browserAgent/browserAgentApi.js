@@ -45,6 +45,9 @@ const CONSEQUENTIAL_TOOLS = new Set([
     'delete_calendar_event',
     'browser_click',
     'browser_type',
+    // Shares text with every member of a project through its wiki, or takes it out again.
+    'save_knowledge_contribution',
+    'remove_knowledge_contribution',
 ])
 const UNTRUSTED_CONTENT_TOOLS = new Set([
     'web_search',

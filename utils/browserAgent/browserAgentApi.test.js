@@ -155,6 +155,8 @@ describe('tool annotations', () => {
     test.each([
         ['get_notes', true, false],
         ['read_knowledge_page', true, false],
+        ['search_knowledge', true, false],
+        ['save_knowledge_contribution', false, true],
         ['search', true, false],
         ['find_calendar_availability', true, false],
         ['update_task', false, false],

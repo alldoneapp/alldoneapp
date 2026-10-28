@@ -19,6 +19,10 @@
 // withdrawn by its chat object's triggers. Deleting an object deletes its chat object too, whose
 // trigger withdraws the thread again: the second call finds no page citing it and does nothing.
 //
+// A page that must not be shown any more also leaves the global search index right here, before the
+// page trigger (knowledgeSearch.onKnowledgePageWritten) would remove it a moment later: a search
+// result must not keep showing the title or summary of a page whose text was just withdrawn.
+//
 // Runs from the existing object triggers, so no new trigger is deployed. Only a change that takes
 // visibility AWAY does any work, and the work is two array-contains queries on the project's pages
 // plus one on the revisions of each page they return.
@@ -64,6 +68,11 @@ function createBatchWriter(db) {
     }
 }
 
+function defaultRemoveFromSearch({ projectId, slugs }) {
+    const { removeKnowledgePagesFromSearch } = require('./knowledgeSearch')
+    return removeKnowledgePagesFromSearch({ projectId, slugs })
+}
+
 async function invalidateKnowledgeSource({
     db,
     projectId,
@@ -71,6 +80,7 @@ async function invalidateKnowledgeSource({
     reason,
     now = Date.now(),
     fieldValue = FieldValue,
+    removeFromSearch = defaultRemoveFromSearch,
 }) {
     const result = { pages: 0, redactedRevisions: 0 }
     if (!db || !projectId || !sourceKey) return result
@@ -86,6 +96,7 @@ async function invalidateKnowledgeSource({
     if (!pages.size) return result
 
     const writer = createBatchWriter(db)
+    const hiddenSlugs = []
     for (const { doc, citesNow } of pages.values()) {
         const revisions = await db
             .collection(getKnowledgePageRevisionsPath(projectId, doc.id))
@@ -121,6 +132,7 @@ async function invalidateKnowledgeSource({
             if (data.archived !== true) {
                 Object.assign(patch, { needsRebuild: true, needsRebuildSince: now, needsRebuildReason: reason })
                 result.pages += 1
+                hiddenSlugs.push(doc.id)
             }
         }
         await writer.update(doc.ref, patch)
@@ -135,6 +147,18 @@ async function invalidateKnowledgeSource({
         )
     }
     await writer.flush()
+
+    if (hiddenSlugs.length) {
+        try {
+            await removeFromSearch({ projectId, slugs: hiddenSlugs })
+        } catch (error) {
+            // The page trigger removes them as well; a failed removal here only loses the head start.
+            console.warn('[knowledge base] Could not remove withdrawn pages from search', {
+                projectId,
+                error: error.message,
+            })
+        }
+    }
 
     return result
 }
@@ -169,6 +193,7 @@ async function invalidateKnowledgeSourcesOnUpdate({
     after,
     now,
     fieldValue,
+    removeFromSearch,
 }) {
     const type = toKnowledgeSourceType(objectType)
     if (!type) return { pages: 0, redactedRevisions: 0 }
@@ -183,10 +208,20 @@ async function invalidateKnowledgeSourcesOnUpdate({
         reason: 'privacy',
         now,
         fieldValue,
+        ...(removeFromSearch ? { removeFromSearch } : {}),
     })
 }
 
-async function invalidateKnowledgeSourcesOnDelete({ db, projectId, objectType, objectId, data, now, fieldValue }) {
+async function invalidateKnowledgeSourcesOnDelete({
+    db,
+    projectId,
+    objectType,
+    objectId,
+    data,
+    now,
+    fieldValue,
+    removeFromSearch,
+}) {
     const type = toKnowledgeSourceType(objectType)
     if (!type) return { pages: 0, redactedRevisions: 0 }
     // An object the whole project could never see was never compiled into a page.
@@ -199,6 +234,7 @@ async function invalidateKnowledgeSourcesOnDelete({ db, projectId, objectType, o
         reason: 'deleted',
         now,
         fieldValue,
+        ...(removeFromSearch ? { removeFromSearch } : {}),
     })
 }
 
