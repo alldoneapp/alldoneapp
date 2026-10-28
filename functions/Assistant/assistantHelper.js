@@ -11688,11 +11688,16 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
-        if (vmHandoffFrozen) {
+        const isVmHandoffOnlyReply = vmHandoffFrozen
+        if (isVmHandoffOnlyReply) {
             if (updateTimeout) clearTimeout(updateTimeout)
             pendingUpdate = null
             await commentUpdateWriteChain
-            return vmHandoffText
+            // Finalize the saved introduction through the normal link/notification path.
+            // Discard any later model text while preserving links to a different VM host.
+            commentText = vmHandoffText
+            answerContent = vmHandoffText
+            vmHandoffFrozen = false
         }
         const sanitizedCommentText = sanitizeAssistantResponseText(commentText)
         if (sanitizedCommentText !== commentText) {
@@ -11890,7 +11895,8 @@ async function storeChunks(
                     [`commentsData.lastCommentOwnerId`]: assistantId,
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                    [`commentsData.amount`]: FieldValue.increment(1), // Fixed: increment counter instead of resetting to 1
+                    // The introduction was already counted before dispatch.
+                    ...(!isVmHandoffOnlyReply ? { 'commentsData.amount': FieldValue.increment(1) } : {}),
                 })
         )
 

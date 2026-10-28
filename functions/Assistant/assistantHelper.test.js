@@ -10080,7 +10080,7 @@ describe('Anna VM message order', () => {
     let wait
     let now
     const messages = () => [...documents.entries()].filter(([path]) => path.startsWith(prefix)).map(([, doc]) => doc)
-    const run = () =>
+    const run = (vmArgs = {}) =>
         storeChunks(
             'presentation-project',
             'tasks',
@@ -10099,6 +10099,7 @@ describe('Anna VM message order', () => {
                                         objective: 'Create the PDF',
                                         task_type: 'document',
                                         handoff_message: intro,
+                                        ...vmArgs,
                                     }),
                                 },
                             },
@@ -10167,6 +10168,7 @@ describe('Anna VM message order', () => {
                 hostProjectId: 'presentation-project',
                 hostObjectId: 'presentation-task',
                 hostObjectType: 'tasks',
+                hostThreadUrl: 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat',
             }
         })
         wait = jest.spyOn(require('./vmJobStatus'), 'getVmJobStatus').mockImplementation(async () => {
@@ -10222,6 +10224,38 @@ describe('Anna VM message order', () => {
         expect(start).toHaveBeenCalledTimes(1)
         expect(wait).not.toHaveBeenCalled()
         expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running'])
+        expect(mockDocUpdate.mock.calls.filter(([data]) => data['commentsData.amount'])).toHaveLength(1)
+    })
+    test('an asynchronous handoff retains the link to a VM hosted in another chat', async () => {
+        const hostUrl = 'https://my.alldone.app/projects/other-project/tasks/other-task/chat'
+        const target = jest.spyOn(require('./vmTargetTask'), 'resolveVmTargetTask').mockResolvedValue({
+            ok: true,
+            projectId: 'other-project',
+            objectType: 'tasks',
+            objectId: 'other-task',
+            isPublicFor: [0],
+        })
+        const ensureChat = jest.spyOn(require('./assistantStatusHelper'), 'ensureChatExists').mockResolvedValue()
+        start.mockResolvedValueOnce({
+            success: true,
+            correlationId: 'vm-1',
+            status: 'started',
+            hostProjectId: 'other-project',
+            hostObjectId: 'other-task',
+            hostObjectType: 'tasks',
+            hostThreadUrl: hostUrl,
+        })
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
+        try {
+            const answer = await run({ target_task_id: 'other-task', target_project_id: 'other-project' })
+            expect(answer).toBe(`${intro}\n\nFollow it here: ${hostUrl}`)
+            expect(messages()).toEqual([expect.objectContaining({ commentText: answer, vmHandoff: true })])
+            expect(start).toHaveBeenCalledTimes(1)
+            expect(mockDocUpdate.mock.calls.filter(([data]) => data['commentsData.amount'])).toHaveLength(1)
+        } finally {
+            target.mockRestore()
+            ensureChat.mockRestore()
+        }
     })
     test('a launch failure has its own Anna message and leaves the introduction intact', async () => {
         start.mockResolvedValueOnce({ success: false, message: 'The VM is unavailable.' })
