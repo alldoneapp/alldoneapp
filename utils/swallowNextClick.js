@@ -6,7 +6,7 @@
  * mid-hold) and the browser's synthesized click would otherwise act on it a second time — most
  * importantly as an "outside click" that dismisses the popup the hold just opened. The listener is
  * on `window` in the CAPTURE phase, which runs before every bubble-phase listener in the page,
- * including react-tiny-popover's window `click` dismissal and react-dom's root listeners.
+ * including the vendored popover's window `click` dismissal and react-dom's root listeners.
  *
  * Consume-once with a short cap (the same shape as the nested-popover dismiss guard in
  * CLAUDE.md): a click that never arrives cannot linger and eat a genuine later click.
