@@ -109,6 +109,144 @@ describe('recurringTasksCloud recurrence base dates', () => {
     })
 })
 
+describe('recurringTasksCloud AT-2803 date basis choices', () => {
+    // Tests run with TZ=UTC (package.json), like Cloud Functions.
+    const utc = value => moment.utc(value).valueOf()
+    const buildTask = overrides => ({
+        recurrence: 'weekly',
+        created: utc('2026-06-01T09:00:00'),
+        startDate: utc('2026-06-01T09:00:00'),
+        startTime: '09:00',
+        ...overrides,
+    })
+    const format = date => date.utc().format('YYYY-MM-DD HH:mm')
+
+    test('current scheduled date: weekly from the postponed due date', () => {
+        // Planned Mon 1 Jun, postponed to Thu 4 Jun, completed on Thu 4 Jun.
+        const completed = utc('2026-06-04T15:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({ recurrenceBaseDateOverride: utc('2026-06-04T12:00:00'), completed }),
+            completed
+        )
+        expect(format(nextDate)).toBe('2026-06-11 09:00')
+    })
+
+    test('original date: the series keeps its planned weekday', () => {
+        const completed = utc('2026-06-04T15:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({ recurrenceBaseDateOverride: utc('2026-06-01T12:00:00'), completed }),
+            completed
+        )
+        expect(format(nextDate)).toBe('2026-06-08 09:00')
+    })
+
+    test('an overdue current date skips ahead on its own cadence, never into the past', () => {
+        // Scheduled Thu 4 Jun, completed three weeks late on Wed 24 Jun.
+        const completed = utc('2026-06-24T10:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({ recurrenceBaseDateOverride: utc('2026-06-04T12:00:00'), completed }),
+            completed
+        )
+        expect(format(nextDate)).toBe('2026-06-25 09:00')
+    })
+
+    test('the base day is read in the user timezone, not in UTC', () => {
+        // 00:30 in Berlin (UTC+2) on Thu 4 Jun is 22:30 UTC on Wed 3 Jun.
+        const scheduled = utc('2026-06-03T22:30:00')
+        const completed = utc('2026-06-04T08:00:00')
+        const task = buildTask({ recurrenceBaseDateOverride: scheduled, completed })
+
+        expect(format(calculateNextRecurrenceDate(task, completed, { utcOffsetMinutes: 120 }))).toBe('2026-06-11 09:00')
+        // Without a known offset the old UTC-day reading still applies.
+        expect(format(calculateNextRecurrenceDate(task, completed))).toBe('2026-06-10 09:00')
+    })
+
+    test('a west-of-UTC user keeps their own day too', () => {
+        // 20:00 in New York (UTC-4) on Thu 4 Jun is 00:00 UTC on Fri 5 Jun.
+        const scheduled = utc('2026-06-05T00:00:00')
+        const completed = utc('2026-06-05T01:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({ recurrence: 'daily', recurrenceBaseDateOverride: scheduled, completed }),
+            completed,
+            { utcOffsetMinutes: -240 }
+        )
+        expect(format(nextDate)).toBe('2026-06-05 09:00')
+    })
+
+    test('skipping ahead monthly from the 31st stays on month ends', () => {
+        const completed = utc('2026-04-15T10:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({
+                recurrence: 'monthly',
+                recurrenceBaseDateOverride: utc('2026-01-31T12:00:00'),
+                completed,
+            }),
+            completed
+        )
+        // Jan 31 + 3 months, not Jan 31 -> Feb 28 -> Mar 28 -> Apr 28.
+        expect(format(nextDate)).toBe('2026-04-30 09:00')
+    })
+
+    test('every workday skips ahead over weekends', () => {
+        // Scheduled Fri 5 Jun, completed Sat 13 Jun.
+        const completed = utc('2026-06-13T10:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({
+                recurrence: 'everyWorkday',
+                recurrenceBaseDateOverride: utc('2026-06-05T12:00:00'),
+                completed,
+            }),
+            completed
+        )
+        expect(format(nextDate)).toBe('2026-06-15 09:00')
+    })
+
+    test('a Someday (MAX_SAFE_INTEGER) override is ignored and the legacy rule applies', () => {
+        const completed = utc('2026-06-08T10:00:00')
+        const nextDate = calculateNextRecurrenceDate(
+            buildTask({ recurrence: 'daily', recurrenceBaseDateOverride: Number.MAX_SAFE_INTEGER, completed }),
+            completed
+        )
+        expect(format(nextDate)).toBe('2026-06-09 09:00')
+    })
+})
+
+describe('recurringTasksCloud assignee timezone lookup', () => {
+    beforeEach(() => {
+        jest.resetModules()
+    })
+
+    const mockUser = data => {
+        jest.doMock('firebase-admin', () => ({
+            firestore: () => ({
+                collection: () => ({
+                    doc: () => ({ get: async () => ({ exists: !!data, data: () => data }) }),
+                }),
+            }),
+        }))
+        jest.doMock('firebase-admin/firestore', () => ({ FieldValue: {} }))
+        jest.doMock('../Utils/HelperFunctionsCloud', () => ({ getTaskNameWithoutMeta: text => text }))
+    }
+
+    test('an hour offset on the user doc becomes minutes', async () => {
+        mockUser({ timezone: 2 })
+        const { getAssigneeUtcOffsetMinutes } = require('./recurringTasksCloud')
+        await expect(getAssigneeUtcOffsetMinutes({ userId: 'user-1' })).resolves.toBe(120)
+    })
+
+    test('no timezone on the user doc means unknown, not UTC', async () => {
+        mockUser({ name: 'No Zone' })
+        const { getAssigneeUtcOffsetMinutes } = require('./recurringTasksCloud')
+        await expect(getAssigneeUtcOffsetMinutes({ userId: 'user-1' })).resolves.toBeUndefined()
+    })
+
+    test('a missing user is unknown', async () => {
+        mockUser(null)
+        const { getAssigneeUtcOffsetMinutes } = require('./recurringTasksCloud')
+        await expect(getAssigneeUtcOffsetMinutes({ userId: 'user-1' })).resolves.toBeUndefined()
+    })
+})
+
 describe('recurringTasksCloud goal privacy on the next occurrence', () => {
     // The completed task is cloned wholesale into TaskService, which builds the new document
     // through TaskModelBuilder. That builder used to hardcode `parentGoalIsPublicFor: null`
