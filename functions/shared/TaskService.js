@@ -13,6 +13,7 @@
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
 const { buildLastEditorVia } = require('./mcpActor')
+const { getRecurrenceOriginalDueDateUpdate } = require('./recurrenceOriginalDueDate')
 const TASK_PRIORITY_NONE = 'none'
 
 // Dynamic imports for cross-platform compatibility
@@ -764,6 +765,17 @@ class TaskService {
                 updateData.timesDone = 0
             }
             changes.push(`recurrence to "${recurrence}"`)
+        }
+        // AT-2803: postponing a recurring task keeps its originally planned date, so completing it
+        // can offer "count the next occurrence from the planned date". The app's own date picker,
+        // auto-postpone and project postpone already did this; assistant and MCP updates did not.
+        if (updateData.dueDate !== undefined) {
+            Object.assign(
+                updateData,
+                getRecurrenceOriginalDueDateUpdate(currentTask, currentTask.dueDate, updateData.dueDate, {
+                    recurrence: updateData.recurrence,
+                })
+            )
         }
         if (executionMode !== undefined && executionMode !== currentTask.executionMode) {
             if (executionMode !== 'workflow' && executionMode !== 'direct') {

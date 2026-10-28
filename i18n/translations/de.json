@@ -916,6 +916,8 @@
     "Choose how Alldone should schedule the next recurring task": "Wähle aus, wie Alldone die nächste wiederkehrende Aufgabe planen soll.",
     "Original date": "Ursprüngliches Datum",
     "Current date": "Aktuelles Datum",
+    "Current due date": "Aktueller Termin",
+    "Choose the date the interval of the next recurring task is counted from": "Wähle, ab welchem Datum das Intervall für den nächsten Termin gerechnet wird.",
     "Select who will see this user": "Wähle aus, wer diesen User sehen kann",
     "Select who will see this contact": "Wähle aus, wer diesen Kontakt sehen kann",
     "Select who will see this project": "Wähle aus, wer dieses Projekt sehen kann",
