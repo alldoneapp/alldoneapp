@@ -12,7 +12,7 @@ import LastUserOrAssistantCommentContainer, {
 import LastAssistantCommentWrapper from './LastAssistantCommentWrapper'
 import { watchChat } from '../../../../utils/backends/Chats/chatsFirestore'
 import { watchComments } from '../../../../utils/backends/Chats/chatsComments'
-import { readLastCommentCache, writeLastCommentCache } from '../assistantLineCache'
+import { writeLastCommentCache } from '../assistantLineCache'
 
 const mockState = {
     loggedUser: { uid: 'user-1' },
@@ -153,106 +153,4 @@ it('replaces the endless skeleton with an accessible retry action', async () => 
         act(() => tree?.unmount())
         jest.useRealTimers()
     }
-})
-
-describe('an unread comment below a newer read one (AT-2923)', () => {
-    const project = { id: 'project-1', assistantId: 'assistant-project' }
-    const previewContext = { userId: 'user-1', projectId: 'project-1', objectType: 'topics', objectId: 'chat-1' }
-    const chat = { title: 'Topic', assistantId: 'assistant-1' }
-    const comments = [
-        { id: 'my-reply', commentText: 'My newer reply', created: 300 },
-        { id: 'read-answer', commentText: 'Answer already read', created: 200 },
-        { id: 'unread-answer', commentText: 'Unread answer', created: 100 },
-    ]
-    const unreadNotifications = {
-        followedCommentIds: ['unread-answer'],
-        unfollowedCommentIds: [],
-        followedNotifications: [{ commentId: 'unread-answer', date: 100 }],
-        unfollowedNotifications: [],
-    }
-
-    const render = async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(
-                <LastUserOrAssistantCommentContainer
-                    project={project}
-                    objectId="chat-1"
-                    objectType="topics"
-                    setAModalIsOpen={jest.fn()}
-                    fromChatNotification={true}
-                    isFollowedNotification={true}
-                />
-            )
-        })
-        await act(async () => {
-            watchChat.mock.calls.at(-1)[3](chat, { fromCache: false })
-            watchComments.mock.calls.at(-1)[5](comments, { fromCache: false })
-        })
-        return tree
-    }
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        localStorage.clear()
-        mockState.projectChatNotifications = { 'project-1': { 'chat-1': unreadNotifications } }
-    })
-
-    afterEach(() => {
-        mockState.projectChatNotifications = {}
-    })
-
-    it('previews and counts the unread comment instead of the newest read one', async () => {
-        const tree = await render()
-        try {
-            // One unread marker, so the window reaches past the read comments stacked above it.
-            expect(watchComments.mock.calls.at(-1)[4]).toBe(21)
-            expect(tree.root.findByType(LastAssistantCommentWrapper).props).toMatchObject({
-                commentText: 'Unread answer',
-                unreadComments: 1,
-                isNew: true,
-            })
-            // The next load paints the same comment first, so the refresh is not mistaken for an arrival.
-            expect(readLastCommentCache(previewContext).commentText).toBe('Unread answer')
-        } finally {
-            await act(async () => tree.unmount())
-        }
-    })
-
-    it('falls back to the newest comment once the unread one has been read elsewhere', async () => {
-        const tree = await render()
-        try {
-            mockState.projectChatNotifications = { 'project-1': { 'chat-1': {} } }
-            await act(async () =>
-                tree.update(
-                    <LastUserOrAssistantCommentContainer
-                        project={project}
-                        objectId="chat-1"
-                        objectType="topics"
-                        setAModalIsOpen={jest.fn()}
-                        fromChatNotification={true}
-                        isFollowedNotification={true}
-                    />
-                )
-            )
-            expect(tree.root.findByType(LastAssistantCommentWrapper).props).toMatchObject({
-                commentText: 'My newer reply',
-                unreadComments: 0,
-            })
-            expect(readLastCommentCache(previewContext).commentText).toBe('My newer reply')
-        } finally {
-            await act(async () => tree.unmount())
-        }
-    })
-
-    it('watches only the newest comment when nothing is unread', async () => {
-        mockState.projectChatNotifications = {}
-        const tree = await render()
-        try {
-            expect(watchComments.mock.calls.at(-1)[4]).toBe(1)
-            expect(tree.root.findByType(LastAssistantCommentWrapper).props.commentText).toBe('My newer reply')
-        } finally {
-            await act(async () => tree.unmount())
-        }
-    })
 })

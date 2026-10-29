@@ -542,6 +542,46 @@ behaviour. Pinned by `functions/Assistant/assistantMissedRunCatchUp.test.js` (in
 `utils/backends/Chats/chatsComments.outbox.test.js`. `generatePreConfigTaskResultSecondGen` has no
 catch-up: its requests carry task-completion semantics a server rerun would have to reproduce.
 
+### One assistant turn at a time per thread (AT-2922)
+
+A message that asks the assistant for an answer is **held on this device** while the previous
+answer in the same thread is still being produced, and is written into the thread only once that
+answer is complete, so the history always reads question, answer, question, answer. Before this,
+the comment outbox already stored messages in order, but every send started its own `askToBot` at
+once: two runs worked in parallel, the second never saw the first answer, and the answers could
+land in either order. "Complete" includes every tool round **and a VM job the answer started in
+that thread** (product decision: the next message waits for the VM too). Other conversations are
+never blocked, and a message that does not ask the assistant (assistant off, webhook task) is
+never held.
+
+`utils/backends/Chats/threadRunGate.js` decides "still processing" from three signals, because
+each covers a gap the others cannot see: runs this tab started (`beginThreadRun`/`settleThreadRun`,
+the cold-start seconds before the server creates its comment); a comment in the thread that is
+still being written (a chat run's `assistantRun.status`, a VM status comment while queued,
+running, `awaiting_user` or `cancel_requested`, found by two small listeners that exist only
+while something waits), which is what makes other tabs, devices and members count; and a newest
+user comment carrying `assistantRunRequest` with no answer after it yet (the cold start of a run
+another device started). Every signal **expires** (local run 65 min, chat run 70 min, VM run 6 h,
+VM question 25 h after its last change; a pending request after 150 s; a missing snapshot after
+4 s), so a crashed run delays a message but cannot strand it, and the user can always **send a
+queued message now or remove it** from the bubble. A failed or stopped answer releases the queue.
+
+Where it is enforced: in the comment outbox, inside `sendObjectMessage`, after the parent read
+decided that the message triggers a run and **before anything is written** (the outbox pauses its
+30 s delivery timeout through `hold` while it waits, and a message that really waited is prepared
+again from scratch). The released message is dated `max(now, newest comment + 1)`, because the
+answer it waited for was timestamped by the server's clock. Anna starts its runs itself, so
+`useAnnaMessageSends` waits on the same gate before persisting and passes `threadGateCleared`.
+While waiting the outbox entry has `status: 'queued'`; `useGetMessages` sorts queued entries after
+everything saved, and `MessageSendStatus` renders "Queued" plus Send now / Remove. A failed
+delivery drops `threadGateCleared`/`forceSend`, so a retry waits for its turn again. Out of scope:
+WhatsApp (its inbound queue is already serial per user), voice calls and pre-configured prompt
+buttons (their runs still hold chat messages in the thread). Known limit: a VM job hosted in a
+**different** thread (a contextless dispatch creates its own task) is not visible to the
+conversation that started it. Pinned by `threadRunGate.test.js`, the `one assistant turn at a time
+per thread` block of `chatsComments.outbox.test.js`, the AT-2922 cases in `commentOutbox.test.js`,
+`AnnaConversation.test.js`, `MessageSendStatus.test.js` and `useGetMessages.pending.test.js`.
+
 ### A thread can pin its own assistant model (AT-2502)
 
 **The model lives on the THREAD's own document, next to the assistant that answers there.**

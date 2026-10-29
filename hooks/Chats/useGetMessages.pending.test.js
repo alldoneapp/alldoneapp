@@ -190,3 +190,17 @@ it('never shows the previous account or thread snapshot when switching destinati
     act(() => tree.update(<Harness {...annaProps(cache)} />))
     expect(messages).toHaveLength(0)
 })
+
+it('keeps a queued message after the answer it is waiting for, whatever its submission time (AT-2922)', () => {
+    mount()
+    act(() => commentOutbox.enqueue(entry('queued', { created: 1000 })))
+    act(() => commentOutbox.update('user', 'queued', { status: 'queued' }))
+    act(() =>
+        mockNext([
+            { id: 'question', creatorId: 'user', created: 500, commentText: 'First' },
+            { id: 'answer', creatorId: 'assistant', fromAssistant: true, created: 2000, commentText: 'Working' },
+        ])
+    )
+    expect(messages.map(message => message.id)).toEqual(['question', 'answer', 'queued'])
+    expect(messages[2].pendingSend.status).toBe('queued')
+})

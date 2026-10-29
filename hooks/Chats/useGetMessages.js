@@ -37,7 +37,13 @@ const toMillis = value => {
     return 0
 }
 
+// AT-2922: a message queued behind the current answer is not part of the history yet. It stays
+// after everything the thread already holds, including the answer it is waiting for.
+const queuedRank = message => (message?.pendingSend?.status === 'queued' ? 1 : 0)
+
 const compareMessages = (a, b) => {
+    const rank = queuedRank(a) - queuedRank(b)
+    if (rank) return rank
     const aCreated = toMillis(a?.created) || toMillis(a?.lastChangeDate)
     const bCreated = toMillis(b?.created) || toMillis(b?.lastChangeDate)
     return aCreated - bCreated || (a?.id || '').localeCompare(b?.id || '')

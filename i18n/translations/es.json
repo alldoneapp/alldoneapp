@@ -3715,5 +3715,8 @@
     "Visible to project members": "Visible para los miembros del proyecto",
     "Finish the call or dictation and stay online to change the project": "Termina la llamada o el dictado y mantente en línea para cambiar el proyecto",
     "Continuing in your default project.": "Continúa en tu proyecto predeterminado.",
-    "The project chat could not be opened. Continuing in your default project.": "No se pudo abrir el chat del proyecto. Continúa en tu proyecto predeterminado."
+    "The project chat could not be opened. Continuing in your default project.": "No se pudo abrir el chat del proyecto. Continúa en tu proyecto predeterminado.",
+    "Queued. Sends when the current answer is finished.": "En cola. Se enviará cuando termine la respuesta actual.",
+    "Send now": "Enviar ahora",
+    "Remove queued message": "Quitar"
 }
