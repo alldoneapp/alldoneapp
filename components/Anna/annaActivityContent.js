@@ -75,6 +75,8 @@ async function readAnnaActivityContent(notice, userId) {
         const message = await read(`chatComments/${projectId}/${chatType}/${objectOrChatId}/comments/${lastId}`)
         if (!message) return null
         content.objectName = nameOf(chat)
+        // Lets the row open the object itself instead of the chat inbox (AT-2906).
+        content.objectType = chatType
         content.preview = annaActivityPreview(message?.previewText || message?.commentText)
         content.actorName = await author(
             message?.creatorId || notice.source?.creatorId,

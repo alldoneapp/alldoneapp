@@ -78,6 +78,7 @@
     "Anna activity assigned to": "Asignado a %{name}",
     "Anna activity workflow changed": "Flujo de trabajo cambiado: %{from} → %{to}",
     "Anna activity item updated": "Elemento actualizado",
+    "Anna activity new messages": "%{count} mensajes de chat nuevos",
     "%{count} open tasks today": "%{count} tareas abiertas hoy",
     "Close chat — Alldone only": "Cerrar chat — solo Alldone",
     "Assistant chat open": "Chat del asistente abierto",
@@ -317,6 +318,7 @@
     "Wiki paid by": "Lo paga %{name}. Las actualizaciones se cobran de su Oro.",
     "Wiki switched on by default": "La wiki está activada por defecto en los proyectos de miembros que usan Alldone.",
     "Wiki paused while its payer is inactive": "En pausa: el miembro que paga no ha usado Alldone en 30 días. La wiki continúa cuando vuelva.",
+    "Wiki paused while its payer has archived the project": "En pausa: el miembro que paga ha archivado este proyecto. La wiki continúa cuando lo vuelva a activar.",
     "Only the paying member can change the wiki": "Solo el miembro que paga la wiki puede cambiar estos ajustes.",
     "Instructions for the wiki": "Instrucciones para la wiki",
     "Wiki instructions placeholder": "Por ejemplo: Escribe en alemán. Una página por cliente. Ignora las tareas administrativas internas.",
@@ -3694,14 +3696,5 @@
     "Actor via MCP client": "%{name} (vía %{client})",
     "Browser agent": "Agente del navegador",
     "Browser agents (WebMCP & JavaScript)": "Agentes del navegador (WebMCP y JavaScript)",
-    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "Los asistentes de IA que manejan tu navegador (por ejemplo Gemini en Chrome, Claude en Chrome o el agente de ChatGPT) pueden usar las mismas herramientas en esta pestaña sin un conector. Los navegadores con WebMCP las descubren automáticamente; otros agentes pueden llamar a window.alldone desde JavaScript. Actúan como la cuenta con la sesión iniciada en esta pestaña y solo con las herramientas permitidas abajo.",
-    "Project: %{projectName}": "Proyecto: %{projectName}",
-    "Choose project for this chat": "Elegir proyecto para este chat",
-    "Search projects": "Buscar proyectos",
-    "No projects found": "No se encontraron proyectos",
-    "%{assistantName} (default assistant)": "%{assistantName} (asistente predeterminado)",
-    "Visible to project members": "Visible para los miembros del proyecto",
-    "Finish the call or dictation and stay online to change the project": "Termina la llamada o el dictado y mantente en línea para cambiar el proyecto",
-    "Continuing in your default project.": "Continúa en tu proyecto predeterminado.",
-    "The project chat could not be opened. Continuing in your default project.": "No se pudo abrir el chat del proyecto. Continúa en tu proyecto predeterminado."
+    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "Los asistentes de IA que manejan tu navegador (por ejemplo Gemini en Chrome, Claude en Chrome o el agente de ChatGPT) pueden usar las mismas herramientas en esta pestaña sin un conector. Los navegadores con WebMCP las descubren automáticamente; otros agentes pueden llamar a window.alldone desde JavaScript. Actúan como la cuenta con la sesión iniciada en esta pestaña y solo con las herramientas permitidas abajo."
 }

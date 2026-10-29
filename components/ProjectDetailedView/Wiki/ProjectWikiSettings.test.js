@@ -243,10 +243,9 @@ describe('ProjectWikiSettings', () => {
                 lastRunStopReason: 'project_archived',
             })
         )
-        // AT-2893: archiving no longer pauses a wiki, so a leftover paused state announces nothing
-        // (the default sweep resumes it).
-        expect(component.root.findAllByProps({ testID: 'project-wiki-archived-hint' })).toHaveLength(0)
-        expect(textOf(component.toJSON())).not.toContain('archived this project')
+        expect(textOf(component.root.findByProps({ testID: 'project-wiki-archived-hint' }).children)).toContain(
+            'Paused: the paying member has archived this project.'
+        )
 
         // A wiki a member switched on themselves says neither.
         act(() => mockWatchers.knowledgeBase({ enabled: true, ownerUserId: 'owner', nextRunAt: 5 }))

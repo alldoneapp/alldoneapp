@@ -6,6 +6,7 @@ const validContent = content =>
         key => typeof content[key] === 'string' && content[key].length <= 240
     ) &&
     (content.entryText === undefined || typeof content.entryText === 'string') &&
+    (content.objectType === undefined || validId(content.objectType)) &&
     (content.actionKey === undefined || typeof content.actionKey === 'string') &&
     (content.actionParams === undefined ||
         (content.actionParams &&

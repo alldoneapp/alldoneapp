@@ -14,7 +14,6 @@ export const loadQuill = () => {}
 export const getDvMainTabLink = (projectId, id, type) => `/projects/${projectId}/${type}/${id}/editor`
 export const formatUrl = text => text
 export const getUrlObject = url => ({ url, type: 'plain' })
-export const isValidArtifactLink = () => false
 const Fake = () => null
 Fake.getProjectIndexById = () => 0
 Fake.getPeopleTypeUsingId = () => 'contacts'

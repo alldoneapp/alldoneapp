@@ -116,10 +116,7 @@ let mockAssistant
 let mockSidebarNumbers
 let mockDefaultAssistant
 let mockUnmounts = 0
-let mockProjectsMap = {}
-let mockExtraAssistants = {}
 jest.mock('react-redux', () => ({
-    shallowEqual: (a, b) => a === b,
     useDispatch: () => mockDispatch,
     useSelector: selector =>
         selector({
@@ -127,8 +124,7 @@ jest.mock('react-redux', () => ({
             currentUser: mockUser,
             selectedProjectIndex: -1,
             defaultAssistant: mockDefaultAssistant,
-            projectAssistants: { p1: [mockAssistant], ...mockExtraAssistants },
-            loggedUserProjectsMap: mockProjectsMap,
+            projectAssistants: { p1: [mockAssistant] },
             sidebarNumbers: mockSidebarNumbers,
             smallScreenNavigation: mockMobileNavigation,
         }),
@@ -604,8 +600,6 @@ beforeEach(() => {
     setAnnaMode(true)
     mockAssistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
     mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
-    mockProjectsMap = {}
-    mockExtraAssistants = {}
     mockUnmounts = 0
     mockBrowserProps = null
     mockConversationProps = null
@@ -1674,57 +1668,4 @@ it.each(['updates', 'chats'])('opens linked %s activity from chat-only mode insi
     expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, path)
     expect(document.querySelector('.anna-chat-only')).toBeNull()
     expect(document.querySelector('.anna-shell').classList.contains('anna-mobile-workspace')).toBe(true)
-})
-
-describe('selected project (AT-2903)', () => {
-    const cto = { uid: 'cto', displayName: 'Alldone CTO', photoURL50: 'cto.png' }
-    beforeEach(() => {
-        Object.assign(mockUser, { defaultProjectId: 'p1', projectIds: ['p1', 'p2'] })
-        mockProjectsMap = {
-            p1: { id: 'p1', name: 'Home', userIds: ['u1'] },
-            p2: { id: 'p2', name: 'Alldone Product', userIds: ['u1', 'teammate'], assistantId: 'cto' },
-        }
-        mockExtraAssistants = { p2: [cto] }
-    })
-    afterEach(() => {
-        delete mockUser.defaultProjectId
-        delete mockUser.projectIds
-    })
-    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
-
-    it('offers the projects in the composer and continues the chat in the chosen one', () => {
-        const view = render(content(1))
-        expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
-        expect(switcher().props).toMatchObject({ activeProjectId: undefined, busy: undefined })
-        expect(switcher().props.choices.map(choice => [choice.id, choice.assistant?.uid])).toEqual([
-            ['p1', 'anna'],
-            ['p2', 'cto'],
-        ])
-        act(() => switcher().props.onSelect('p2'))
-        expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p2' }))
-        // While the project chat resolves, the header previews the project's assistant.
-        useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
-        view.rerender(content(1))
-        expect(screen.getByLabelText('Alldone CTO – Latest messages')).toBeTruthy()
-        expect(document.querySelector('.anna-small-avatar img').getAttribute('src')).toBe('cto.png')
-        expect(mockConversationProps).toMatchObject({ switching: true, assistant: cto })
-        expect(switcher().props).toMatchObject({ activeProjectId: 'p2', busy: true })
-    })
-
-    it('returns to the default project with a notice when the chosen project is refused', () => {
-        render(content(1))
-        act(() => switcher().props.onSelect('p2'))
-        const { onProjectUnavailable } = useAnnaConversation.mock.calls.at(-1)[1]
-        act(() => onProjectUnavailable('p2', 'You are no longer a member of this project.'))
-        expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
-        expect(document.querySelector('.anna-error[role="alert"]').textContent).toContain(
-            'You are no longer a member of this project. Continuing in your default project.'
-        )
-    })
-
-    it('cannot switch project during a voice call', () => {
-        render(content(1))
-        expect(switcher().props.disabled).toBe(false)
-        expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
-    })
 })

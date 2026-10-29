@@ -36,6 +36,7 @@ import { getWikiIndexPages } from './wikiIndexOrder'
 import {
     getKnowledgeBaseLastSuccessfulRunAt,
     isKnowledgeBasePausedAtMonthlyCap,
+    isKnowledgeBasePausedForArchivedProject,
     parseKnowledgeSourceKey,
     splitKnowledgePageSources,
 } from '../../functions/KnowledgeBase/knowledgeBaseModel'
@@ -52,6 +53,9 @@ function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
         )
     }
     if (knowledgeBase && knowledgeBase.enabled !== true) lines.push(translate('Wiki paused hint'))
+    if (isKnowledgeBasePausedForArchivedProject(knowledgeBase || {})) {
+        lines.push(translate('Wiki paused while its payer has archived the project'))
+    }
     if (isKnowledgeBasePausedAtMonthlyCap(knowledgeBase || {})) {
         lines.push(translate('Wiki paused at monthly cap', { date: formatWikiDate(knowledgeBase.nextRunAt) }))
     }

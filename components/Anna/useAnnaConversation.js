@@ -38,10 +38,7 @@ const initialState = (scope, cached, historyDay) => ({
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const accessDenied = error => ['permission-denied', 'unauthenticated'].some(code => error?.code?.endsWith(code))
 
-export default function useAnnaConversation(
-    userId,
-    { enabled = true, user = {}, hold = false, projectId = null, onProjectUnavailable } = {}
-) {
+export default function useAnnaConversation(userId, { enabled = true, user = {}, hold = false } = {}) {
     const connectionState = useSelector(state => state.connectionState)
     const offline = connectionState === 'offline' || isBrowserOffline()
     const offlineRef = useRef(offline)
@@ -49,14 +46,6 @@ export default function useAnnaConversation(
     const scope = `${userId || ''}/${user.defaultProjectId || ''}`
     const scopeRef = useRef(scope)
     scopeRef.current = scope
-    // AT-2903: the project the conversation continues in. History, cache and the
-    // draft stay keyed on the account's default project, so switching projects
-    // keeps one continuous timeline instead of starting a new scope.
-    const activeProjectId = validId(projectId) ? projectId : user.defaultProjectId || null
-    const activeProjectRef = useRef(activeProjectId)
-    activeProjectRef.current = activeProjectId
-    const unavailableRef = useRef(onProjectUnavailable)
-    unavailableRef.current = onProjectUnavailable
     const historyWindow = getAnnaHistoryWindow(user)
     const [state, setState] = useState(() =>
         initialState(scope, readAnnaConversationCache(userId, user), historyWindow.today)
@@ -71,90 +60,58 @@ export default function useAnnaConversation(
     const holdRef = useRef(hold)
     holdRef.current = hold
 
-    const resolveConversation = useCallback(
-        async (targetProjectId = activeProjectRef.current) => {
-            if (!userId) return null
-            if (offlineRef.current || isBrowserOffline()) throw Object.assign(new Error('Offline'), { code: 'offline' })
-            const target = validId(targetProjectId) ? targetProjectId : user.defaultProjectId || null
-            if (flight.current?.projectId === target) return flight.current.request
-            const currentGeneration = generation.current
-            const current = () =>
-                currentGeneration === generation.current &&
-                scopeRef.current === scope &&
-                activeProjectRef.current === target
-            const otherProject = !!target && target !== user.defaultProjectId
-            const request = runHttpsCallableFunction('getAnnaConversationSecondGen', {
-                includeHistory: false,
-                ...(otherProject ? { projectId: target } : {}),
+    const resolveConversation = useCallback(async () => {
+        if (!userId) return null
+        if (offlineRef.current || isBrowserOffline()) throw Object.assign(new Error('Offline'), { code: 'offline' })
+        if (flight.current) return flight.current
+        const currentGeneration = generation.current
+        const current = () => currentGeneration === generation.current && scopeRef.current === scope
+        const request = runHttpsCallableFunction('getAnnaConversationSecondGen', { includeHistory: false })
+            .then(result => {
+                if (!current()) return null
+                nextRollover.current = result.nextRolloverAt || Date.now() + 30000
+                setReference({ ...result, scope })
+                setState(previous => ({
+                    ...previous,
+                    error: '',
+                    // The server already validated this chat. Do not wait for a
+                    // second network response before mounting its composer.
+                    ...(result.conversation ? { conversation: result.conversation, loading: false } : {}),
+                    threads: mergeThreads(previous.threads, [
+                        threadReference(result, result.conversation?.created),
+                        ...(result.threads || []),
+                    ]),
+                    // Older deployed backends still return history together.
+                    historyLoaded: previous.historyLoaded || Array.isArray(result.threads),
+                    nextBefore:
+                        Array.isArray(result.threads) && !previous.historyLoaded
+                            ? result.nextBefore
+                            : previous.nextBefore,
+                }))
+                return { ...result, id: result.chatId }
             })
-                .then(result => {
-                    // A message submitted before a project switch still reaches the
-                    // project it was written for; only the visible state follows the switch.
-                    if (scopeRef.current !== scope) return null
-                    if (otherProject && result.projectId !== target) {
-                        // An older backend ignores the selection. Never post to a
-                        // project other than the one the message was written for.
-                        if (current()) unavailableRef.current?.(target, '')
-                        return null
-                    }
-                    if (!current()) return { ...result, id: result.chatId }
-                    nextRollover.current = result.nextRolloverAt || Date.now() + 30000
-                    setReference({ ...result, scope })
+            .catch(error => {
+                if (current()) {
+                    const denied = accessDenied(error)
+                    if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
                     setState(previous => ({
                         ...previous,
-                        error: '',
-                        // The server already validated this chat. Do not wait for a
-                        // second network response before mounting its composer.
-                        ...(result.conversation ? { conversation: result.conversation, loading: false } : {}),
-                        threads: mergeThreads(previous.threads, [
-                            threadReference(result, result.conversation?.created),
-                            ...(result.threads || []),
-                        ]),
-                        // Older deployed backends still return history together.
-                        historyLoaded: previous.historyLoaded || Array.isArray(result.threads),
-                        nextBefore:
-                            Array.isArray(result.threads) && !previous.historyLoaded
-                                ? result.nextBefore
-                                : previous.nextBefore,
+                        loading: false,
+                        ...(denied ? { conversation: null, threads: [] } : {}),
+                        error:
+                            error.code === 'offline'
+                                ? ''
+                                : error.message || 'Your conversation could not be loaded. Please try again.',
                     }))
-                    return { ...result, id: result.chatId }
-                })
-                .catch(error => {
-                    if (current() && otherProject && error.code !== 'offline') {
-                        // Losing one selected project must not wipe the shared history.
-                        unavailableRef.current?.(target, error.message || '')
-                    } else if (current()) {
-                        const denied = accessDenied(error)
-                        if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
-                        setState(previous => ({
-                            ...previous,
-                            loading: false,
-                            ...(denied ? { conversation: null, threads: [] } : {}),
-                            error:
-                                error.code === 'offline'
-                                    ? ''
-                                    : error.message || 'Your conversation could not be loaded. Please try again.',
-                        }))
-                    }
-                    throw error
-                })
-                .finally(() => {
-                    if (flight.current?.request === request) flight.current = null
-                })
-            flight.current = { projectId: target, request }
-            return request
-        },
-        [
-            scope,
-            userId,
-            activeProjectId,
-            user.defaultProjectId,
-            user.timezone,
-            user.preferredTimezone,
-            user.timezoneOffset,
-            user.timezoneMinutes,
-        ]
-    )
+                }
+                throw error
+            })
+            .finally(() => {
+                if (flight.current === request) flight.current = null
+            })
+        flight.current = request
+        return request
+    }, [scope, userId, user.timezone, user.preferredTimezone, user.timezoneOffset, user.timezoneMinutes])
 
     const loadHistory = useCallback(
         async before => {
@@ -235,7 +192,7 @@ export default function useAnnaConversation(
                     const pointer = snapshot.data()
                     const chatId = pointer.chatId || `anna_${userId}`
                     if (
-                        pointer.projectId !== activeProjectRef.current ||
+                        pointer.projectId !== user.defaultProjectId ||
                         !validId(pointer.assistantId) ||
                         !validId(userId) ||
                         !(chatId === `anna_${userId}` || new RegExp(`^AnnaChat[0-9]{8}${userId}$`).test(chatId))
@@ -252,7 +209,7 @@ export default function useAnnaConversation(
             cancelled = true
             stop()
         }
-    }, [scope, userId, user.defaultProjectId, user.isAnonymous, activeReference, activeProjectId])
+    }, [scope, userId, user.defaultProjectId, user.isAnonymous, activeReference])
 
     useEffect(() => {
         if (!enabled || !userId) return
@@ -359,12 +316,8 @@ export default function useAnnaConversation(
         }
     }, [enabled, offline, scope, state.scope, !!state.conversation, state.historyLoaded, loadHistory])
 
-    const visibleState = state.scope === scope ? state : initialState(scope)
     return {
-        ...visibleState,
-        activeProjectId,
-        // The previous project's chat stays visible until the selected one is ready.
-        switching: !!visibleState.conversation && visibleState.conversation.projectId !== activeProjectId,
+        ...(state.scope === scope ? state : initialState(scope)),
         threads:
             state.scope !== scope
                 ? []
