@@ -8,6 +8,7 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
+import { installAppResumeListener } from '../../utils/appResume'
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
     ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
     useReducedMotion: () => true,
@@ -1666,11 +1667,19 @@ describe('a request whose connection dropped while the app was in the background
     const alert = () => container.querySelector('.anna-message-user [role="alert"]')
     const retryButton = () => [...container.querySelectorAll('button')].find(node => node.textContent === 'Retry')
     let visibility
+    let uninstallAppResume
     beforeEach(() => {
         visibility = 'visible'
         jest.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
         mockCreators.a1 = { displayName: 'Carl', isAssistant: true }
+        // The real lifecycle owner, as AppNavigator installs it, with its network side effects stubbed.
+        uninstallAppResume = installAppResumeListener({
+            evaluateConnection: () => {},
+            runIntegrityCheck: () => {},
+            updateServiceWorker: () => {},
+        })
     })
+    afterEach(() => uninstallAppResume())
     const setVisibility = value =>
         act(() => {
             visibility = value
