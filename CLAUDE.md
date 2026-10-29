@@ -1761,22 +1761,6 @@ pane changes size: drafts must survive desktop/sheet transitions. Browser covera
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
 
-**Activity rows open their object, checked first (AT-2906).** Each row's first line is
-`Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
-(`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
-object (`/projects/{p}/chats/{id}/chat`), never to the followed chats inbox. On click
-(`data-anna-activity-link`) `AnnaShell` runs `resolveAnnaActivityPath` (one read-only `get`):
-a chat object is rewritten to its task/goal/note/contact, and a deleted object, a lost access or
-a project this session cannot select shows an inline error instead of the router's silent
-fallback to "All projects". Offline/transient errors do not block. Navigations are serialised
-(the later of two quick clicks lands last), which is why `processUrlAsLoggedIn` now awaits the
-route handler. The crash behind the report: `TasksHelper.getUserInProject` answers `undefined`
-(not null) for a project whose members are still loading, `processURLProjectsUserChats` tested
-`!== null` and stored `undefined` as `currentUser`, and every `currentUser.uid` reader plus the
-members-snapshot reducer threw. Never compare that lookup with `null`; the `Store current user`
-reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
-`__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
-
 **Assistant mutation feedback**: `annaWorkspaceChanges.js` publishes short-lived,
 bounded visual cues after successful native task/note/contact mutations in the
 owner's sidebar conversation. Use the final persisted object/project identity
@@ -3530,6 +3514,25 @@ not read further pages.
 - Do not rewrite or sanitize the task title text for Gmail follow-up tasks. If the assistant-created title contains a Gmail link, leave it as-is.
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
+
+### The email line summary is reused while the mailbox is unchanged (AT-2913)
+
+`getEmailLineSummarySecondGen` runs on every app load, and the app asks for the same mailbox twice:
+once under a project key (My Day, the task board) and once under a connection key (the email line),
+and the client's 60-second cooldown is per key. Each request rebuilt the Gmail label summary: a thread
+list and an unread count for up to 60 labels plus the `has:userlabels` scan, about 125 Gmail calls and
+1,300 quota units against a per-user limit of 250 per second. Measured on 2026-10-29: p50 7.5s, p90
+10.8s, and half of all calls came within 5 seconds of the previous one from the same device.
+`gmailLabelSummaryCache.js` keeps the summary per user and mailbox address, tagged with the mailbox
+`historyId` (`users.getProfile`, 1 quota unit), and `getGmailLabelSummary` reuses it while that id is
+unchanged. Every mailbox change (new mail, read state, labels, archiving) moves the id, so a hit is exact;
+`SUMMARY_MAX_AGE_MS` (10 min) only bounds a label renamed or created without one. Concurrent requests at
+the same id share one computation, and a `getProfile` that fails for any reason but a rejected token
+computes the summary uncached rather than failing it. `getEmailLineSummary` now also loads the label
+configuration and the needs-reply state in parallel with the provider summary. Each summary logs
+`[emailLine] label summary` with `cache` (`hit`, `miss`, `joined`, `uncached`) and `durationMs`.
+Microsoft is unchanged. Pinned by `gmailLabelSummaryCache.test.js`, the reuse block of
+`gmailEmailLine.test.js` and the mailbox-key case in `emailLineService.test.js`.
 
 ### An email handled in Gmail marks its Alldone email comment as read (AT-2376)
 
