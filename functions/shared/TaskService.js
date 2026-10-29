@@ -14,7 +14,6 @@
 let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
 const { buildLastEditorVia } = require('./mcpActor')
 const { getRecurrenceOriginalDueDateUpdate } = require('./recurrenceOriginalDueDate')
-const { buildTaskUpdateFeedEntryText } = require('./taskUpdateFeedText')
 const TASK_PRIORITY_NONE = 'none'
 
 // Dynamic imports for cross-platform compatibility
@@ -896,10 +895,7 @@ class TaskService {
 
         // Generate feed data if enabled and feedUser provided
         let feedData = null
-        // A completion/reopen is reported by the onUpdateTask trigger's status feed; only the
-        // remaining changes get a feed here, or the same completion shows up twice (AT-2906).
-        const entryText = buildTaskUpdateFeedEntryText(changes)
-        if (this.options.enableFeeds && feedUser && entryText) {
+        if (this.options.enableFeeds && feedUser && changes.length > 0) {
             try {
                 console.log('TaskService: Generating update feeds for task:', {
                     taskId,
@@ -908,6 +904,18 @@ class TaskService {
                     enableFeeds: this.options.enableFeeds,
                     hasFeedUser: !!feedUser,
                 })
+                // Generate entry text based on changes
+                let entryText = 'updated task'
+                if (changes.length > 0) {
+                    if (changes.length === 1) {
+                        entryText = changes[0].includes('marked as')
+                            ? changes[0]
+                            : `updated task ${changes[0].split(' ')[0]}`
+                    } else {
+                        const changeTypes = changes.map(c => c.split(' ')[0]).join(', ')
+                        entryText = `updated task (${changeTypes})`
+                    }
+                }
 
                 // Get existing task feed object for visibility/followers
                 let taskFeedObject = null

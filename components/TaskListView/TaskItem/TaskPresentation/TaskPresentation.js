@@ -349,7 +349,12 @@ function TaskPresentation(
     const leadingVmStatusTag = (
         <>
             <AssistantWorkflowRunTag projectId={projectId} task={task} />
-            <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
+            <TaskVmStatusTag
+                projectId={projectId}
+                taskId={task.id}
+                hasVmSession={task.hasVmSession === true}
+                style={{ marginRight: 8 }}
+            />
         </>
     )
     // AT-2598 — keep the reminder in the same wrapping flow as the title. When this chip lived

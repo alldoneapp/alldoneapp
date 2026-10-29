@@ -40,6 +40,7 @@
  */
 import { isBrowserOffline } from './connectionState'
 import { runExclusiveFirestoreRestart } from './backends/firestoreRestartLease'
+import { isFirestoreNetworkReleasedToVisibleTab } from './backends/firestoreNetworkRelease'
 import { requestFirestoreClientReload } from './firestoreFatalRecovery'
 
 export const CONNECTION_HEALTH_LIVE = 'live'
@@ -405,7 +406,10 @@ const restartTransport = async trigger => {
         const db = getDbSafe()
         if (!db || typeof db.disableNetwork !== 'function') return
         await db.disableNetwork()
-        if (!browserIsOffline() && !manualOffline) await db.enableNetwork()
+        // A hidden tab that handed its connection to a visible tab keeps it handed over.
+        if (!browserIsOffline() && !manualOffline && !isFirestoreNetworkReleasedToVisibleTab()) {
+            await db.enableNetwork()
+        }
     })
 
     let timeoutTimer

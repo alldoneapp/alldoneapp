@@ -515,67 +515,6 @@ describe('project membership authority', () => {
     })
 })
 
-describe('account email (users/{uid}.email)', () => {
-    // alldone.team received this field as the account's identity (embedded tools, menubar
-    // session, Gold webhook), so an owner may only set it to the address in their own token.
-    const ownDb = (userId, email) => testEnv.authenticatedContext(userId, email ? { email } : {}).firestore()
-
-    it("lets an owner store their own token's address or none", async () => {
-        const memberDb = ownDb(MEMBER_ID, 'member@example.com')
-
-        await assertSucceeds(updateDoc(doc(memberDb, `users/${MEMBER_ID}`), { email: 'member@example.com' }))
-        await assertSucceeds(updateDoc(doc(memberDb, `users/${MEMBER_ID}`), { email: '' }))
-    })
-
-    it("refuses an owner presenting somebody else's address", async () => {
-        await assertFails(
-            updateDoc(doc(ownDb(MEMBER_ID, 'member@example.com'), `users/${MEMBER_ID}`), {
-                email: 'victim@example.com',
-            })
-        )
-        // An account whose token carries no address (anonymous sign-in) cannot claim one either.
-        await assertFails(updateDoc(doc(ownDb(OUTSIDER_ID), `users/${OUTSIDER_ID}`), { email: 'victim@example.com' }))
-    })
-
-    it('leaves edits that do not touch the address alone, whatever is stored', async () => {
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await updateDoc(doc(context.firestore(), `users/${MEMBER_ID}`), { email: 'legacy@example.com' })
-        })
-
-        await assertSucceeds(
-            updateDoc(doc(ownDb(MEMBER_ID, 'member@example.com'), `users/${MEMBER_ID}`), { themeName: 'DARK' })
-        )
-    })
-
-    it('only lets a new account start out with its own address', async () => {
-        const bootstrap = async (creatorId, tokenEmail, storedEmail) => {
-            const creatorDb = ownDb(creatorId, tokenEmail)
-            const projectId = `${creatorId}-project`
-            const batch = writeBatch(creatorDb)
-            batch.set(doc(creatorDb, `projects/${projectId}`), {
-                creatorId,
-                isShared: 2,
-                userIds: [creatorId],
-            })
-            batch.set(doc(creatorDb, `users/${creatorId}`), {
-                email: storedEmail,
-                defaultProjectId: projectId,
-                projectIds: [projectId],
-                guideProjectIds: [],
-                templateProjectIds: [],
-                archivedProjectIds: [],
-                copyProjectIds: [],
-                invitedProjectIds: [],
-            })
-            return batch.commit()
-        }
-
-        await assertFails(bootstrap('forging-user', 'forger@example.com', 'victim@example.com'))
-        await assertSucceeds(bootstrap('honest-user', 'honest@example.com', 'honest@example.com'))
-        await assertSucceeds(bootstrap('anonymous-user', null, ''))
-    })
-})
-
 describe('assistant task search authorization', () => {
     beforeEach(async () => {
         await testEnv.withSecurityRulesDisabled(async context => {

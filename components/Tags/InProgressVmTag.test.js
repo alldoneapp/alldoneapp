@@ -51,7 +51,7 @@ describe('TaskVmStatusTag', () => {
     test('updates from active to paused, failed, and hidden states', () => {
         let tree
         act(() => {
-            tree = renderer.create(<TaskVmStatusTag projectId="project-1" taskId="task-1" />)
+            tree = renderer.create(<TaskVmStatusTag projectId="project-1" taskId="task-1" hasVmSession />)
         })
 
         expect(watchVmSessionStatus).toHaveBeenCalledWith('project-1', 'task-1', expect.any(Function))
@@ -69,6 +69,20 @@ describe('TaskVmStatusTag', () => {
         act(() => emitStatus({ status: 'stopped' }))
         expect(tree.root.findAllByType(Text)).toHaveLength(0)
 
+        act(() => tree.unmount())
+        expect(unwatch).toHaveBeenCalledTimes(1)
+    })
+
+    test('does not watch a session for a task that never hosted a VM job (AT-2907)', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<TaskVmStatusTag projectId="project-1" taskId="task-1" hasVmSession={false} />)
+        })
+        expect(watchVmSessionStatus).not.toHaveBeenCalled()
+        expect(tree.root.findAllByType(Text)).toHaveLength(0)
+
+        act(() => tree.update(<TaskVmStatusTag projectId="project-1" taskId="task-1" hasVmSession />))
+        expect(watchVmSessionStatus).toHaveBeenCalledWith('project-1', 'task-1', expect.any(Function))
         act(() => tree.unmount())
         expect(unwatch).toHaveBeenCalledTimes(1)
     })

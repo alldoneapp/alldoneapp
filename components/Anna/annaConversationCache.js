@@ -22,11 +22,9 @@ export const readAnnaConversationCache = (userId, user) => {
     try {
         const cached = JSON.parse(localStorage.getItem(keyFor(userId, user.defaultProjectId)) || 'null')
         const conversation = cached?.conversation
-        // AT-2903: the conversation may continue in another member project.
-        const projects = new Set([user.defaultProjectId, ...(user.projectIds || [])])
         if (
             cached?.userId !== userId ||
-            !projects.has(conversation?.projectId) ||
+            conversation?.projectId !== user.defaultProjectId ||
             !validThread(referenceFor(conversation), userId) ||
             !validId(conversation.assistantId) ||
             conversation.annaOwnerId !== userId ||
@@ -35,6 +33,7 @@ export const readAnnaConversationCache = (userId, user) => {
             !Array.isArray(cached.threads)
         )
             return null
+        const projects = new Set([user.defaultProjectId, ...(user.projectIds || [])])
         const accessibleThreads = cached.threads.filter(
             thread => validThread(thread, userId) && projects.has(thread.projectId)
         )
@@ -61,9 +60,7 @@ export const readAnnaConversationCache = (userId, user) => {
 
 export const saveAnnaConversationCache = (userId, projectId, state, user = {}) => {
     const chat = state.conversation
-    // `projectId` names the cache (the account's default project); the current
-    // chat itself may live in another project the user selected (AT-2903).
-    if (!chat || !validId(chat.projectId) || chat.annaOwnerId !== userId || chat.creatorId !== userId) return
+    if (!chat || chat.projectId !== projectId || chat.annaOwnerId !== userId || chat.creatorId !== userId) return
     const window = getAnnaHistoryWindow(user)
     const recentThreads = state.threads.filter(thread => isRecentAnnaThread(thread, window))
     const threads = recentThreads

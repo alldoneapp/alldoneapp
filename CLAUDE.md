@@ -1539,6 +1539,35 @@ degrades to today's behaviour rather than breaking.
   not be burned offline). A doc "missing" in a cache-only snapshot is **unknown, not
   deleted** — the `firestoreDirectRead` verification paths already treat a failed direct
   read as retryable, keep it that way.
+- **One tab holds the connection for all tabs, and it must not be a hidden one (AT-2907)**.
+  With the multi-tab cache only the primary tab talks to Firestore; every other Alldone tab
+  gets its listeners served through IndexedDB. The SDK prefers a visible tab when the lease
+  is free but never takes a valid lease from a hidden one, so a tab left in the background
+  kept serving the tab the user was looking at while Chrome throttled it. Measured on
+  2026-10-29 with four tabs (~900 listeners): the visible tab had no server snapshot for its
+  tasks after 109s and hit `page_timeout`; with `?perfDisablePersistence=1` the same page had
+  it after 2.3s. `utils/backends/firestoreTabHandoff.js` (installed only when persistence is
+  on) makes a tab hidden for 30s call `disableNetwork()` while another Alldone tab is visible,
+  which makes the SDK give up the lease at once, and `enableNetwork()` again when it becomes
+  visible or no visible tab is left. Tabs learn about each other over a BroadcastChannel, not
+  from the SDK's IndexedDB bookkeeping; without a visible peer a hidden tab keeps its network,
+  because a lone hidden tab with the network off would also stop sending its own writes.
+  Every other owner of the network (the offline gate, connection health restarts, the boot
+  integrity healer, `restartFirestoreNetwork`) checks `isFirestoreNetworkReleasedToVisibleTab()`
+  (`firestoreNetworkRelease.js`, deliberately import-free) before `enableNetwork()`, and the
+  handoff never releases or re-enables while the network is parked for offline or "Continue
+  offline". To see which tab holds the lease: IndexedDB `firestore/[DEFAULT]/alldonealeph/main`,
+  stores `owner` and `clientMetadata` (`inForeground`, `networkEnabled`); `?perfDebug=1` logs
+  `firestore_tab_handoff` released/reacquired. Pinned by `firestoreTabHandoff.test.js` and the
+  AT-2907 cases in `firestoreNetworkGate.test.js` and `connectionHealth.test.js`.
+- **VM badges watch only tasks marked `hasVmSession` (AT-2907).** The task list's VM badge and
+  the VM filter counts used to open a `vmSessions/{projectId}__{taskId}` listener for every open
+  task and subtask, about 100 per tab, while production held 39 session documents. The server
+  now sets `hasVmSession: true` on the task when its thread first admits a VM job
+  (`functions/Assistant/vmTaskSessionMarker.js`, called from `startVmJob`; no edition data, never
+  cleared), and `collectTaskVmSessionRefs` / `TaskVmStatusTag` skip unmarked tasks. Sessions from
+  before the marker need `node migration/backfillTaskVmSessionMarker.js
+--firebase-project-id=<project> --execute` once, or their badges stay hidden.
 - **Cached-snapshot delivery (`utils/backends/cachedSnapshotGate.js`)**: the list
   watchers (open/done/workflow tasks, the notes watchers via
   `createNotesSnapshotHandler`) buffer `fromCache` snapshots online but must render them
@@ -3637,23 +3666,6 @@ nothing claims a connected mailbox. Pinned by `functions/Email/emailIdentityAtte
 `functions/Email/emailUserRouting.test.js`, the AT-2483 blocks in
 `functions/Email/emailIncomingHandler.test.js` and the credential-document cases in
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
-
-### `users/{uid}.email` is not an identity another system may trust (AT-2908)
-
-alldone.team identifies an alldone.app account by the email address we hand it: embedded tools
-key their data on it (`app:<email>`), and it names the same address again when it charges Gold
-through `/api/menubar/gold`. That address used to come from `users/{uid}.email`, which the owner
-could overwrite from the client (the users update rule only protected membership fields), so an
-account could present somebody else's address to external tools, the menubar session and the Gold
-webhook. Every address another system treats as an identity now comes from
-`functions/shared/verifiedAccountEmail.js`: the Firebase Auth login email, only when verified
-(`getVerifiedAccountEmail`), and the reverse lookup through `auth.getUserByEmail`
-(`findUserIdByVerifiedEmail`), which holds one account per address. Never fall back to
-`notificationEmail` or the document field. The rules additionally allow `users/{uid}.email` only to
-be empty or the address in the writer's own token, because the client still forwards it
-(`IframeModal`'s `GET_USER_DATA`). Pinned by `functions/shared/verifiedAccountEmail.test.js`
-(including source checks of the call sites), `functions/MenubarApp/menubarIdentity.test.js` and the
-`account email` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 

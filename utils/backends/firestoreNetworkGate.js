@@ -1,5 +1,10 @@
 import store from '../../redux/store'
 import { isManualOfflineMode } from '../connectionHealth'
+import { isFirestoreNetworkReleasedToVisibleTab } from './firestoreNetworkRelease'
+
+/** The network is parked while the browser is offline or the user chose "Continue offline". */
+export const isFirestoreNetworkParked = ({ getState = store.getState, isManualOffline = isManualOfflineMode } = {}) =>
+    getState().connectionState === 'offline' || isManualOffline()
 
 /**
  * Stands Firestore's network down while the app is offline (offline log/battery
@@ -24,11 +29,16 @@ import { isManualOfflineMode } from '../connectionHealth'
  */
 export const installFirestoreNetworkGate = (
     db,
-    { getState = store.getState, subscribe = store.subscribe, isManualOffline = isManualOfflineMode } = {}
+    {
+        getState = store.getState,
+        subscribe = store.subscribe,
+        isManualOffline = isManualOfflineMode,
+        isReleasedToVisibleTab = isFirestoreNetworkReleasedToVisibleTab,
+    } = {}
 ) => {
     if (!db || typeof db.disableNetwork !== 'function') return () => {}
 
-    const shouldParkNetwork = () => getState().connectionState === 'offline' || isManualOffline()
+    const shouldParkNetwork = () => isFirestoreNetworkParked({ getState, isManualOffline })
     let wasParked = shouldParkNetwork()
     return subscribe(() => {
         const shouldPark = shouldParkNetwork()
@@ -39,7 +49,9 @@ export const installFirestoreNetworkGate = (
             db.disableNetwork().catch(error =>
                 console.warn('Failed to park the Firestore network while offline:', error)
             )
-        } else {
+        } else if (!isReleasedToVisibleTab()) {
+            // A hidden tab that handed the connection to a visible one (firestoreTabHandoff.js)
+            // takes it back itself when it becomes visible again.
             db.enableNetwork().catch(error =>
                 console.warn('Failed to resume the Firestore network after reconnect:', error)
             )

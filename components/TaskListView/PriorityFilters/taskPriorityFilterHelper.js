@@ -227,6 +227,9 @@ export const collectTaskVmStateCounts = (instances, vmStatesByTask) => {
 export const collectTaskVmSessionRefs = instances => {
     const refsByKey = {}
     const collectTask = (task, projectId) => {
+        // Only a task whose thread hosted a VM job can have a session (AT-2907). Watching every
+        // open task cost about a hundred listeners per tab for a few dozen sessions in total.
+        if (task.hasVmSession !== true) return
         const taskProjectId = projectId || task.projectId
         if (!taskProjectId || !task.id) return
         const key = getVmSessionDocId(taskProjectId, task.id)
