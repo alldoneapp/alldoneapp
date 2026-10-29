@@ -166,12 +166,36 @@ export default function AnnaShell({ children, routeId }) {
             ? defaultAssistant
             : (switching ? activeChoice?.assistant : resolvedAssistant) || activeChoice?.assistant || defaultAssistant
     const headerAssistantName = headerAssistant.displayName?.trim() || translate('Assistant')
+    // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
+    const [projectSwitch, setProjectSwitch] = useState(null)
+    const projectSwitchSequence = useRef(0)
     const selectProject = useCallback(
         projectId => {
             setProjectNotice('')
+            const targetId = projectId || user.defaultProjectId
+            const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
+            if (targetId && targetId !== currentId) {
+                projectSwitchSequence.current += 1
+                setProjectSwitch({
+                    id: projectSwitchSequence.current,
+                    projectId: targetId,
+                    name:
+                        projectChoices.find(choice => choice.id === targetId)?.name ||
+                        projectsMap?.[targetId]?.name ||
+                        '',
+                    created: Date.now(),
+                })
+            }
             projectSelection.select(projectId)
         },
-        [projectSelection.select]
+        [
+            projectSelection.select,
+            user.defaultProjectId,
+            activeProjectId,
+            conversation?.projectId,
+            projectChoices,
+            projectsMap,
+        ]
     )
     const [mobilePane, setMobilePane] = useState('chat')
     const [latestChatRequest, setLatestChatRequest] = useState(0)
@@ -901,6 +925,7 @@ export default function AnnaShell({ children, routeId }) {
                                     onBeforeSend={resumeForMessage}
                                     pageContext={chatPageContext}
                                     switching={switching}
+                                    projectSwitch={projectSwitch}
                                     renderProjectSwitcher={({ disabled }) => (
                                         <AnnaProjectSwitcher
                                             choices={projectChoices}
