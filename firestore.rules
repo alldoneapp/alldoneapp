@@ -70,6 +70,21 @@ service cloud.firestore {
         userId in projectDocAfter(projectId).data.get('userIds', []);
     }
 
+    // users/{uid}.email is the account's login address as Firebase Auth holds it. Other systems
+    // received it as the account's identity (alldone.team keys embedded tool data and Gold on
+    // it), so an owner may only leave it empty or set it to the address in their own token.
+    // Servers read the verified Auth email instead (functions/shared/verifiedAccountEmail.js);
+    // this keeps the copy the client shows and forwards honest too.
+    function emailMatchesAuthToken(userData) {
+      let email = userData.get('email', '');
+      return email == '' || email == request.auth.token.get('email', '');
+    }
+
+    function ownerUpdateKeepsEmailHonest() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email']) ||
+        emailMatchesAuthToken(request.resource.data);
+    }
+
     function ownerUpdatePreservesProjectMembership() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'projectIds', 'guideProjectIds', 'templateProjectIds',
@@ -494,10 +509,12 @@ service cloud.firestore {
         )
       );
       allow create: if signedIn() && request.auth.uid == userId &&
+        emailMatchesAuthToken(request.resource.data) &&
         hasValidDefaultProject(userId, request.resource.data) &&
         hasValidInitialProjectMembership(userId, request.resource.data);
       allow update: if signedIn() && request.auth.uid == userId &&
         ownerUpdatePreservesProjectMembership() &&
+        ownerUpdateKeepsEmailHonest() &&
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['defaultProjectId']) ||
           hasValidDefaultProject(userId, request.resource.data)

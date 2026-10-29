@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaActivityNotice from './AnnaActivityNotice'
+import AnnaActivityNotice, { AnnaActivityGroup } from './AnnaActivityNotice'
 import { annaActivityHistory } from './annaActivityHistory'
 import { loadAnnaActivityContent } from './annaActivityContent'
 import { publishAnnaActivityContext } from './annaActivityContext'
@@ -46,7 +46,9 @@ afterEach(() => {
 
 it('renders a meaningful linked preview and persists it unchanged for later offline reading', async () => {
     await render()
-    expect(container.querySelector('.anna-activity-title').textContent).toBe('Neue Chatnachricht: Sprintplanung')
+    // The object is the title; what happened to it is a chip (AT-2906).
+    expect(container.querySelector('.anna-activity-title').textContent).toBe('Sprintplanung')
+    expect(container.querySelector('.anna-activity-actions').textContent).toBe('Neue Chatnachricht')
     expect(container.querySelector('.anna-activity-preview').textContent).toBe(details.preview)
     expect(container.querySelector('.anna-activity-meta').textContent).toBe('Anna Alldone · Familie')
     expect(container.querySelector('a').getAttribute('href')).toBe(notice.path)
@@ -98,4 +100,78 @@ it('ignores a late response after switching accounts', async () => {
     expect(container.textContent).not.toContain(details.preview)
     expect(annaActivityHistory.read('u1')[0].content).toBeUndefined()
     expect(annaActivityHistory.read('other')).toEqual([])
+})
+
+const feedNotice = (feedId, created, entryText, objectId = 'task1') =>
+    annaActivityHistory.append('u1', {
+        id: `feed/p1/tasks/${objectId}/${feedId}`,
+        kind: 'feed',
+        sourceProjectId: 'p1',
+        projectId: 'home',
+        chatId: 'anna',
+        created,
+        path: '/projects/p1/user/u1/updates/followed',
+        projectName: 'Alldone Team',
+        entryText,
+    })
+
+describe('one row per object (AT-2906)', () => {
+    const renderGroup = notices => act(async () => root.render(<AnnaActivityGroup notices={notices} />))
+    const taskDetails = {
+        version: 1,
+        objectName: 'Vorstellungsgespräch üben basierend auf einer Jobanzeige',
+        actorName: 'Karsten Wysk',
+        preview: '',
+    }
+
+    it('shows a completion once, in the user language, even when the old English duplicate was saved', async () => {
+        loadAnnaActivityContent.mockResolvedValue(taskDetails)
+        await renderGroup([
+            feedNotice('status', 1000, 'checked task as Done'),
+            feedNotice('legacy', 1001, 'marked as complete'),
+        ])
+        expect(container.querySelectorAll('.anna-activity-notice')).toHaveLength(1)
+        expect(container.querySelector('.anna-activity-title').textContent).toBe(taskDetails.objectName)
+        expect(container.querySelector('.anna-activity-actions').textContent).toBe('Aufgabe als erledigt markiert')
+        expect(container.querySelector('.anna-activity-meta').textContent).toBe('Karsten Wysk · Alldone Team')
+        expect(container.querySelector('a').getAttribute('href')).toBe('/projects/p1/tasks/task1/properties')
+        // Every arrival still reaches the assistant context on its own.
+        expect(publishAnnaActivityContext.mock.calls.map(([, published]) => published.id)).toEqual(
+            expect.arrayContaining(['feed/p1/tasks/task1/status', 'feed/p1/tasks/task1/legacy'])
+        )
+    })
+
+    it('opens the chat of the object for a new message and shows links as compact chips', async () => {
+        loadAnnaActivityContent.mockImplementation(async item =>
+            item.kind === 'chat'
+                ? {
+                      ...taskDetails,
+                      objectType: 'tasks',
+                      preview: 'Release ist live. Deployment: https://github.com/kwkrass/alldone_team/actions/runs/42.',
+                  }
+                : taskDetails
+        )
+        const chat = annaActivityHistory.append('u1', {
+            id: 'chat/p1/task1/message1',
+            kind: 'chat',
+            sourceProjectId: 'p1',
+            projectId: 'home',
+            chatId: 'anna',
+            created: 1002,
+            path: '/projects/p1/user/u1/chats/followed',
+            projectName: 'Alldone Team',
+        })
+        await renderGroup([feedNotice('status', 1000, 'checked task as Done'), chat])
+        expect(container.querySelector('a').getAttribute('href')).toBe('/projects/p1/tasks/task1/chat')
+        expect([...container.querySelectorAll('.anna-activity-action')].map(chip => chip.textContent)).toEqual([
+            'Aufgabe als erledigt markiert',
+            'Neue Chatnachricht',
+        ])
+        const link = container.querySelector('.anna-activity-link')
+        expect(link.textContent).toBe('GitHub · Actions')
+        expect(link.getAttribute('title')).toBe('https://github.com/kwkrass/alldone_team/actions/runs/42')
+        expect(container.querySelector('.anna-activity-preview').textContent).toBe(
+            'Release ist live. Deployment: GitHub · Actions.'
+        )
+    })
 })

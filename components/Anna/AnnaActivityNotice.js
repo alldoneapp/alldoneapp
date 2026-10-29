@@ -3,69 +3,156 @@ import { useSelector } from 'react-redux'
 import Icon from '../Icon'
 import AnnaTimestamp from './AnnaTimestamp'
 import { isBrowserOffline } from '../../utils/connectionState'
+import { translate } from '../../i18n/TranslationService'
 import { loadAnnaActivityContent } from './annaActivityContent'
 import { annaActivityHistory } from './annaActivityHistory'
-import { getAnnaActivityLabel } from './annaActivityText'
+import { getAnnaActivityAction, getAnnaActivityLabel } from './annaActivityText'
 import { publishAnnaActivityContext } from './annaActivityContext'
+import { getAnnaActivityTarget } from './annaActivityGroups'
+import { splitActivityPreview } from './annaActivityLinks'
 
-export default function AnnaActivityNotice({ notice, onChange }) {
+const isOffline = connectionState => connectionState === 'offline' || isBrowserOffline()
+
+// Saved content first, then what this mount enriched. Every notice keeps its own history entry
+// and its own assistant-context document; grouping changes only how they are drawn.
+function useAnnaActivityContents(notices, onChange) {
     const userId = useSelector(state => state.loggedUser?.uid)
     const connectionState = useSelector(state => state.connectionState)
-    const [resolved, setResolved] = useState(null)
-    const savedContent = useMemo(
-        () => notice.content || annaActivityHistory.readNotice(userId, notice.id)?.content,
-        [userId, notice.id, notice.content]
+    const [resolved, setResolved] = useState({})
+    const ids = notices.map(notice => notice.id).join('\n')
+    const saved = useMemo(
+        () => notices.map(notice => notice.content || annaActivityHistory.readNotice(userId, notice.id)?.content),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [userId, ids, ...notices.map(notice => notice.content)]
     )
-    const content = resolved?.userId === userId && resolved.id === notice.id ? resolved.content : savedContent
+    const contents = notices.map((notice, index) => resolved[`${userId}/${notice.id}`] || saved[index])
+    const contentsKey = contents.map(content => (content?.version === 1 ? JSON.stringify(content) : '')).join('\n')
 
     useEffect(() => {
-        if (!userId || notice.userId !== userId || connectionState === 'offline' || isBrowserOffline()) return
-        publishAnnaActivityContext(userId, {
-            ...notice,
-            ...(content?.version === 1
-                ? { content: { ...content, label: getAnnaActivityLabel({ ...notice, content }) } }
-                : {}),
-        }).catch(() => {}) // Keep the timeline usable; a reconnect/remount retries the reference sync.
-    }, [userId, notice, content, connectionState])
+        if (!userId || isOffline(connectionState)) return
+        notices.forEach((notice, index) => {
+            if (notice.userId !== userId) return
+            const content = contents[index]
+            publishAnnaActivityContext(userId, {
+                ...notice,
+                ...(content?.version === 1
+                    ? { content: { ...content, label: getAnnaActivityLabel({ ...notice, content }) } }
+                    : {}),
+            }).catch(() => {}) // Keep the timeline usable; a reconnect/remount retries the reference sync.
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId, ids, contentsKey, connectionState])
 
     useLayoutEffect(() => {
         // Enrichment can add several wrapped lines. Use the conversation's existing follow/anchor
         // policy so readers at the bottom see them without pulling readers out of older messages.
         onChange?.()
-    }, [content, onChange])
+    }, [contentsKey, onChange])
 
     useEffect(() => {
-        if (
-            !userId ||
-            notice.userId !== userId ||
-            content?.version === 1 ||
-            connectionState === 'offline' ||
-            isBrowserOffline()
-        )
-            return
+        if (!userId || isOffline(connectionState)) return
         let active = true
-        loadAnnaActivityContent(notice, userId).then(details => {
-            if (!active || !details) return
-            const enriched = annaActivityHistory.enrich(userId, notice, details)
-            setResolved({ userId, id: notice.id, content: enriched.content })
+        notices.forEach((notice, index) => {
+            if (notice.userId !== userId || contents[index]?.version === 1) return
+            loadAnnaActivityContent(notice, userId).then(details => {
+                if (!active || !details) return
+                const enriched = annaActivityHistory.enrich(userId, notice, details)
+                setResolved(previous => ({ ...previous, [`${userId}/${notice.id}`]: enriched.content }))
+            })
         })
         return () => {
             active = false
         }
-    }, [userId, notice.id, connectionState, content])
+        // Not keyed on contents: one row resolving must not discard the loads of the others.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId, ids, connectionState])
 
-    const metadata = [content?.actorName, notice.projectName].filter(Boolean).join(' · ')
+    return contents
+}
+
+function ActivityPreview({ text }) {
     return (
-        <p className="anna-context-notice anna-activity-notice">
-            <a href={notice.path}>
+        <span className="anna-activity-preview">
+            {splitActivityPreview(text).map((part, index) =>
+                part.type === 'link' ? (
+                    <span className="anna-activity-link" key={index} title={part.url}>
+                        <Icon name="link" size={10} color="currentColor" />
+                        {part.label}
+                    </span>
+                ) : (
+                    <React.Fragment key={index}>{part.text}</React.Fragment>
+                )
+            )}
+        </span>
+    )
+}
+
+// The actions of one row. Repeated state changes ("Notiz aktualisiert" twice, or the old German +
+// English pair of one completion) read once; each chat message is distinct content, so those count.
+export function summarizeAnnaActivityActions(entries) {
+    const actions = []
+    const feedActions = new Set()
+    let messages = 0
+    entries.forEach(entry => {
+        if (entry.kind === 'chat') {
+            messages++
+            return
+        }
+        const action = getAnnaActivityAction(entry)
+        if (feedActions.has(action)) return
+        feedActions.add(action)
+        actions.push(action)
+    })
+    if (messages === 1) actions.push(translate('New chat message'))
+    if (messages > 1) actions.push(translate('Anna activity new messages', { count: messages }))
+    return actions
+}
+
+export function AnnaActivityGroup({ notices, onChange }) {
+    const contents = useAnnaActivityContents(notices, onChange)
+    const entries = notices.map((notice, index) => ({ ...notice, content: contents[index] }))
+    const last = entries[entries.length - 1]
+    const objectName = [...entries].reverse().find(entry => entry.content?.objectName)?.content.objectName || ''
+    const actions = summarizeAnnaActivityActions(entries)
+    const preview = [...entries].reverse().find(entry => entry.content?.preview)?.content.preview || ''
+    const actors = [...new Set(entries.map(entry => entry.content?.actorName).filter(Boolean))]
+    const metadata = [actors.join(', '), last.projectName].filter(Boolean).join(' · ')
+    const target = getAnnaActivityTarget(entries)
+
+    return (
+        <p
+            className="anna-context-notice anna-activity-notice"
+            data-anna-activity-count={entries.length > 1 ? entries.length : undefined}
+        >
+            <a href={target}>
                 <span className="anna-activity-content">
-                    <span className="anna-activity-title">{getAnnaActivityLabel({ ...notice, content })}</span>
-                    {content?.preview ? <span className="anna-activity-preview">{content.preview}</span> : null}
+                    {objectName ? (
+                        <>
+                            <span className="anna-activity-title" title={objectName}>
+                                {objectName}
+                            </span>
+                            <span className="anna-activity-actions">
+                                {actions.map((action, index) => (
+                                    <span className="anna-activity-action" key={index}>
+                                        {action}
+                                    </span>
+                                ))}
+                            </span>
+                        </>
+                    ) : (
+                        // Not enriched (yet, or unreadable): the action is the most useful title.
+                        <span className="anna-activity-title">{actions.join(' · ')}</span>
+                    )}
+                    {preview ? <ActivityPreview text={preview} /> : null}
                     {metadata ? <span className="anna-activity-meta">{metadata}</span> : null}
                 </span>
                 <Icon name="arrow-right" size={14} color="currentColor" />
             </a>
-            <AnnaTimestamp timestamp={notice.created} />
+            <AnnaTimestamp timestamp={last.created} />
         </p>
     )
+}
+
+export default function AnnaActivityNotice({ notice, onChange }) {
+    return <AnnaActivityGroup notices={[notice]} onChange={onChange} />
 }

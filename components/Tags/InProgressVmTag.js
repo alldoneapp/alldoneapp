@@ -49,15 +49,13 @@ export function VmStatusTag({ session, status, style }) {
     )
 }
 
-export default function TaskVmStatusTag({ projectId, taskId, hasVmSession, style }) {
+export default function TaskVmStatusTag({ projectId, taskId, style }) {
     const [session, setSession] = useState(null)
 
     useEffect(() => {
         setSession(null)
-        // A task whose thread never hosted a VM job has no session to watch (AT-2907).
-        if (!hasVmSession) return undefined
         return watchVmSessionStatus(projectId, taskId, setSession)
-    }, [projectId, taskId, hasVmSession])
+    }, [projectId, taskId])
 
     return <VmStatusTag session={session} style={style} />
 }
