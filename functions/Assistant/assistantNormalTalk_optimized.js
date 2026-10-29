@@ -152,7 +152,9 @@ async function askToOpenAIBotOptimized(
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })
         if (annaContext) {
             baseToolRuntimeContext.annaConversation = true
-            annaContext.history = await loadAnnaHistoryContext(admin.firestore(), baseToolRuntimeContext)
+            annaContext.history = await loadAnnaHistoryContext(admin.firestore(), baseToolRuntimeContext, {
+                projectOnly: annaContext.project?.projectOnlyContext === true,
+            })
         }
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction

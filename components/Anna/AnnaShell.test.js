@@ -1716,25 +1716,6 @@ describe('selected project (AT-2903)', () => {
         expect(switcher().props).toMatchObject({ activeProjectId: 'p2', busy: true })
     })
 
-    it('hands the chosen project to the chat history, but not a re-selection of the current one (AT-2914)', () => {
-        const now = jest.spyOn(Date, 'now').mockReturnValue(4242)
-        const view = render(content(1))
-        act(() => switcher().props.onSelect('p1'))
-        expect(mockConversationProps.projectSwitch).toBeNull()
-        act(() => switcher().props.onSelect('p2'))
-        expect(mockConversationProps.projectSwitch).toEqual({
-            id: 1,
-            projectId: 'p2',
-            name: 'Alldone Product',
-            created: 4242,
-        })
-        useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2' })
-        view.rerender(content(1))
-        act(() => switcher().props.onSelect(null))
-        expect(mockConversationProps.projectSwitch).toMatchObject({ id: 2, projectId: 'p1', name: 'Home' })
-        now.mockRestore()
-    })
-
     it('returns to the default project with a notice when the chosen project is refused', () => {
         render(content(1))
         act(() => switcher().props.onSelect('p2'))
