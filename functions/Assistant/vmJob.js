@@ -656,7 +656,7 @@ async function startVmJob({
     // it's later cancelled/fails). On admission failure, refund and bail before posting anything.
     let admission
     try {
-        admission = await admitVmJobToThread(threadSessionRef, correlationId)
+        admission = await admitVmJobToThread(threadSessionRef, correlationId, Date.now, { requestUserId })
     } catch (error) {
         console.error('🖥️ VM JOB: thread admission failed — refunding', { correlationId, error: error.message })
         const { refundGold } = require('../Gold/goldHelper')
@@ -674,7 +674,7 @@ async function startVmJob({
     const queued = admission.decision === 'queue'
 
     // The task list only watches VM session status for tasks carrying this marker (AT-2907).
-    await markTaskHasVmSession({ projectId, objectType, objectId })
+    await markTaskHasVmSession({ projectId, objectType, objectId, sessionRef: threadSessionRef })
 
     // Read existing chat visibility, if any, to mirror it on notifications.
     let isPublicFor = []

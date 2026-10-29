@@ -71,12 +71,15 @@ let mockTakeoverProps
 let mockTakeoverMounts = 0
 let mockVmJobs = []
 let mockVmError = false
+// The selected VM card (a thread since AT-2916) and the run that card last showed.
 let mockSelectedRunId
+let mockSelectedCardRunId
 const mockRetryVms = jest.fn()
 jest.mock('./useAnnaVmJobs', () => ({
     __esModule: true,
-    default: (userId, { selectedRunId }) => {
-        mockSelectedRunId = selectedRunId
+    default: (userId, { selectedId, selectedRunId }) => {
+        mockSelectedRunId = selectedId
+        mockSelectedCardRunId = selectedRunId
         return { jobs: mockVmJobs, error: mockVmError, retry: mockRetryVms }
     },
     vmJobPath: job => `/projects/${job.projectId}/tasks/${job.objectId}/chat`,
@@ -861,6 +864,25 @@ it.each(['desktop', 'mobile'])('shows every VM panel and preserves selection and
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
+})
+
+it('asks discovery to keep the run the selected VM card showed, so its result survives settling (AT-2916)', () => {
+    mockVmJobs = [
+        { id: 'p1__t1', runId: 'run-a', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' },
+        { id: 'p1__t2', runId: 'run-b', projectId: 'p1', objectId: 't2', title: 'Review plan', status: 'paused' },
+    ]
+    const view = render(content(1))
+    chooseSurface('vm:p1__t2')
+    view.rerender(content(1))
+    expect(mockSelectedRunId).toBe('p1__t2')
+    expect(mockSelectedCardRunId).toBe('run-b')
+    // The run settled and its task was closed: the card stays, by the run it showed.
+    mockVmJobs = [mockVmJobs[0]]
+    view.rerender(content(1))
+    expect(mockSelectedCardRunId).toBe('run-b')
+    chooseSurface('vm:p1__t1')
+    view.rerender(content(1))
+    expect(mockSelectedCardRunId).toBe('run-a')
 })
 
 it('keeps other VM panels available if the selected session disappears, and allows retrying discovery', () => {
