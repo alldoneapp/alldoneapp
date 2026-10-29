@@ -21,9 +21,25 @@ const isDenied = error =>
             .replace(/_/g, '-')
     )
 
-export default function useLastCommentPreview(context, commentsToWatch) {
+const newestComment = comments => comments?.[0] ?? null
+
+/**
+ * The comment a snapshot puts in the preview. `selectComment` picks it (AT-2923: the newest UNREAD
+ * comment may sit below a newer read one); a pick without text falls back to the newest comment so
+ * a selection can never empty a preview that had something to show.
+ */
+const resolvePreviewComment = (selectComment, comments) => {
+    const selected = (selectComment || newestComment)(comments)
+    return typeof selected?.commentText === 'string' ? selected : newestComment(comments)
+}
+
+export default function useLastCommentPreview(context, commentsToWatch, selectComment = null) {
     const { userId, projectId, objectType, objectId } = context
     const scope = `${userId}:${projectId}:${objectType}:${objectId}`
+    // Read through a ref: the selection depends on unread state that changes without a new comment
+    // snapshot, and making it an effect dependency would rebuild both listeners on every change.
+    const selectCommentRef = useRef(selectComment)
+    selectCommentRef.current = selectComment
     const [attempt, setAttempt] = useState(0)
     const [preview, setPreview] = useState(() => {
         const cached = readLastCommentCache(context)
@@ -85,7 +101,7 @@ export default function useLastCommentPreview(context, commentsToWatch) {
             if (!active || denied || ((metadata.fromCache || direct) && commentsAuthoritative)) return
             if (metadata.fromCache && (!comments.length || ready())) return
             if (!metadata.fromCache) commentsAuthoritative = true
-            const commentText = comments[0]?.commentText
+            const commentText = resolvePreviewComment(selectCommentRef.current, comments)?.commentText
             if (typeof commentText !== 'string') removeLastCommentCache(context)
             publish({ comments, commentText, ...(typeof commentText !== 'string' ? { failed: true } : {}) })
         }
@@ -137,6 +153,26 @@ export default function useLastCommentPreview(context, commentsToWatch) {
         }
     }, [scope, commentsToWatch, attempt])
 
+    // The unread state can change without a comment snapshot (a message is marked read elsewhere), so
+    // the selection is re-applied on every render rather than only when a snapshot lands.
+    const ownPreview = preview.scope === scope ? preview : null
+    const previewComment = ownPreview?.comments?.length
+        ? resolvePreviewComment(selectComment, ownPreview.comments)
+        : null
+    const commentText = previewComment ? previewComment.commentText : ownPreview?.commentText
+
+    // Keep the first paint of the next load on the comment shown now; a cache holding a different
+    // comment would swap on refresh and read as a new arrival (AT-2511).
+    useEffect(() => {
+        if (!ownPreview?.chat || !previewComment || ownPreview.commentText === commentText) return
+        current.current = { ...current.current, commentText }
+        writeLastCommentCache(context, current.current)
+    }, [scope, commentText, ownPreview?.chat])
+
     // Never expose another account/chat's preview during the effect handoff.
-    return { ...(preview.scope === scope ? preview : {}), retry: () => setAttempt(value => value + 1) }
+    return {
+        ...(ownPreview || {}),
+        ...(ownPreview ? { commentText, previewComment } : {}),
+        retry: () => setAttempt(value => value + 1),
+    }
 }
