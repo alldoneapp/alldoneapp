@@ -1,6 +1,5 @@
 const {
     ensureAnnaConversation,
-    findProjectAssistantId,
     listAnnaConversations,
     loadAnnaHistoryContext,
     loadAnnaContext,
@@ -38,9 +37,7 @@ function database(overrides = {}) {
             const query = {
                 orderBy: () => query,
                 where: (field, op, value) => {
-                    filters.push(data =>
-                        op === '==' ? data[field] === value : op === '>=' ? data[field] >= value : data[field] < value
-                    )
+                    filters.push(data => (op === '>=' ? data[field] >= value : data[field] < value))
                     return query
                 },
                 startAfter: (created, id) => {
@@ -154,97 +151,6 @@ describe('Anna conversation and presentation boundary', () => {
         expect((await listAnnaConversations({ db, userId: 'u1' })).threads).toEqual(
             expect.arrayContaining([expect.objectContaining({ projectId: 'p1', chatId: 'anna_u1' })])
         )
-    })
-    describe('selected project (AT-2903)', () => {
-        const now = Date.parse('2026-10-29T08:00:00Z')
-        it("continues in the selected project's daily chat with its own assistant", async () => {
-            const { db, data } = database({
-                'projects/p2': { userIds: ['u1', 'teammate'], assistantId: 'cto' },
-                'assistants/p2/items/cto': { displayName: 'Alldone CTO' },
-            })
-            const resolveAssistantId = jest.fn().mockResolvedValue('anna')
-            const result = await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, projectId: 'p2', now })
-            expect(result).toMatchObject({ projectId: 'p2', chatId: 'AnnaChat20261029u1', assistantId: 'cto' })
-            expect(resolveAssistantId).not.toHaveBeenCalled()
-            // Project sharing, exactly like the default project's daily chat.
-            expect(data.get('chatObjects/p2/chats/AnnaChat20261029u1')).toMatchObject({
-                assistantId: 'cto',
-                annaOwnerId: 'u1',
-                isPublicFor: [0],
-                readerIds: expect.arrayContaining(['u1', 'teammate']),
-            })
-            expect(data.get('users/u1/private/annaConversation/threads/p2__AnnaChat20261029u1')).toMatchObject({
-                projectId: 'p2',
-                assistantId: 'cto',
-            })
-        })
-        it('keeps one chat per project and day, so both appear in the shared history', async () => {
-            const { db } = database()
-            const resolveAssistantId = async () => 'anna'
-            await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, now })
-            await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, projectId: 'p2', now: now + 1 })
-            const { threads } = await listAnnaConversations({ db, userId: 'u1' })
-            expect(threads.map(thread => thread.projectId).sort()).toEqual(['p1', 'p2'])
-        })
-        it('lets the default assistant answer in a project without an assistant of its own', async () => {
-            const { db } = database()
-            const resolveAssistantId = jest.fn().mockResolvedValue('anna')
-            expect(
-                await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, projectId: 'p2', now })
-            ).toMatchObject({ projectId: 'p2', assistantId: 'anna' })
-            expect(resolveAssistantId).toHaveBeenCalledWith(expect.anything(), 'p1')
-        })
-        it('treats the default project like no selection', async () => {
-            const { db } = database()
-            const resolveProjectAssistantId = jest.fn()
-            expect(
-                await ensureAnnaConversation({
-                    db,
-                    userId: 'u1',
-                    resolveAssistantId: async () => 'anna',
-                    resolveProjectAssistantId,
-                    projectId: 'p1',
-                    now,
-                })
-            ).toMatchObject({ projectId: 'p1', assistantId: 'anna' })
-            expect(resolveProjectAssistantId).not.toHaveBeenCalled()
-        })
-        it.each([
-            [
-                'a project the user is not a member of',
-                { 'projects/p3': { userIds: ['teammate'] } },
-                'p3',
-                'permission-denied',
-            ],
-            [
-                'an archived project',
-                { 'users/u1': { defaultProjectId: 'p1', archivedProjectIds: ['p2'] } },
-                'p2',
-                'failed-precondition',
-            ],
-            ['a malformed id', {}, '../p2', 'invalid-argument'],
-        ])('refuses %s without writing', async (_, overrides, projectId, code) => {
-            const { db, writes } = database(overrides)
-            await expect(
-                ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId: async () => 'anna', projectId, now })
-            ).rejects.toMatchObject({ code })
-            expect(writes).toHaveLength(0)
-        })
-        it('prefers the flagged project default and ignores a deleted configured assistant', async () => {
-            const flagged = database({
-                'projects/p2': { userIds: ['u1'], assistantId: 'cto' },
-                'assistants/p2/items/cto': {},
-                'assistants/p2/items/designer': { isDefault: true },
-            })
-            expect(await findProjectAssistantId(flagged.db, 'p2')).toBe('designer')
-            const global = database({
-                'projects/p2': { userIds: ['u1'], assistantId: 'shared' },
-                'assistants/globalProject/items/shared': {},
-            })
-            expect(await findProjectAssistantId(global.db, 'p2')).toBe('shared')
-            const deleted = database({ 'projects/p2': { userIds: ['u1'], assistantId: 'gone' } })
-            expect(await findProjectAssistantId(deleted.db, 'p2')).toBeNull()
-        })
     })
     it('refuses lost project access without silently replacing the conversation', async () => {
         const { db, writes } = database({ 'projects/p1': { userIds: ['teammate'] } })

@@ -1235,88 +1235,6 @@ async function checkCallAudioControls(page, width) {
     )
 }
 
-// AT-2903: the composer's project chip switches the chat to another project and its assistant.
-async function checkProjectSwitcher(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&projects=1`)
-    const chip = page.locator('.anna-project-chip')
-    await chip.waitFor({ state: 'visible' })
-    assert.equal(await chip.locator('.anna-project-chip-name').textContent(), 'Launch')
-    const fits = () =>
-        page.evaluate(() => {
-            const toolbar = document.querySelector('.anna-composer-toolbar')
-            const box = toolbar.getBoundingClientRect()
-            const items = [...toolbar.querySelectorAll('button, .anna-project-chip')].map(node =>
-                node.getBoundingClientRect()
-            )
-            return {
-                inside: items.every(item => item.left >= box.left - 1 && item.right <= box.right + 1),
-                toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
-                pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-                send: document.querySelector('.anna-send').getBoundingClientRect().right <= box.right + 1,
-            }
-        })
-    let geometry = await fits()
-    assert.ok(
-        geometry.inside && geometry.send && geometry.toolbarOverflow <= 1 && geometry.pageOverflow <= 0,
-        JSON.stringify(geometry)
-    )
-    const input = page.getByLabel('Message Carl Code Mentor')
-    await input.fill('Unsent for the product team')
-    await chip.click()
-    const menu = page.locator('.anna-project-menu')
-    await menu.waitFor({ state: 'visible' })
-    const placement = await page.evaluate(() => {
-        const menu = document.querySelector('.anna-project-menu').getBoundingClientRect()
-        const pane = document.querySelector('.anna-conversation').getBoundingClientRect()
-        return {
-            inside:
-                menu.left >= pane.left - 1 &&
-                menu.right <= pane.right + 1 &&
-                menu.top >= 0 &&
-                menu.bottom <= innerHeight,
-            menu: menu.toJSON(),
-            pane: pane.toJSON(),
-        }
-    })
-    assert.ok(placement.inside, JSON.stringify(placement))
-    const rows = await menu.locator('.anna-project-option-text').allTextContents()
-    assert.deepEqual(rows, [
-        'LaunchCarl Code Mentor · Default project',
-        'Alldone Product with a rather long project nameAlldone CTO · Visible to project members',
-        'FamilyCarl Code Mentor (default assistant)',
-    ])
-    await page.waitForTimeout(400)
-    await page.screenshot({ path: path.join(BUILD, `project-switcher-menu-${width}.png`) })
-    await menu.locator('.anna-project-option', { hasText: 'Alldone Product' }).click()
-    await menu.waitFor({ state: 'detached' })
-    const product = page.getByLabel('Message Alldone CTO')
-    await product.waitFor()
-    assert.equal(await readInput(product), 'Unsent for the product team', 'The draft survives the switch')
-    assert.ok((await chip.locator('.anna-project-chip-name').textContent()).startsWith('Alldone Product'))
-    await page.getByLabel('Alldone CTO – Latest messages').waitFor()
-    await page.waitForFunction(() =>
-        [...document.querySelectorAll('.anna-date-divider')].some(node => node.textContent.includes('Alldone CTO'))
-    )
-    geometry = await fits()
-    assert.ok(
-        geometry.inside && geometry.send && geometry.toolbarOverflow <= 1 && geometry.pageOverflow <= 0,
-        JSON.stringify(geometry)
-    )
-    await page.screenshot({ path: path.join(BUILD, `project-switcher-switched-${width}.png`) })
-    // Reloading on the same day keeps the selection.
-    await page.reload()
-    await page.getByLabel('Message Alldone CTO').waitFor()
-    // And switching back returns to the default project's assistant.
-    await chip.click()
-    await page.locator('.anna-project-option', { hasText: 'Launch' }).click()
-    await page.getByLabel('Message Carl Code Mentor').waitFor()
-    const sections = await page.locator('.anna-date-divider').allTextContents()
-    assert.ok(sections.at(-1).includes('Launch'), JSON.stringify(sections))
-    console.info(
-        `PASS ${width}px: project chip, menu inside the chat pane, assistant switch, draft kept, reload and switch back`
-    )
-}
-
 async function main() {
     const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -1335,8 +1253,7 @@ async function main() {
         process.env.NOTE_WIDTH_ONLY ||
         process.env.ASSISTANT_FOCUS_ONLY ||
         process.env.CALL_AUDIO_ONLY ||
-        process.env.VM_ONLY ||
-        process.env.PROJECT_SWITCH_ONLY
+        process.env.VM_ONLY
             ? [1440, 1024, 390, 320]
             : [1440, 1024, 390]) {
             const page = await browser.newPage({
@@ -1349,12 +1266,6 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
-            if (process.env.PROJECT_SWITCH_ONLY) {
-                await checkProjectSwitcher(page, width)
-                assert.deepEqual(errors, [])
-                await page.close()
-                continue
-            }
             if (process.env.CALL_AUDIO_ONLY) {
                 await checkCallAudioControls(page, width)
                 assert.deepEqual(errors, [])

@@ -74,9 +74,7 @@ export default function useAnnaMessageSends({
             .then(async () => {
                 if (!isActive()) return null
                 if (!job.resolved) {
-                    // Resolve in the project the message was written in, even if the
-                    // user switches project while it waits behind earlier sends (AT-2903).
-                    const thread = resolveConversation ? await resolveConversation(job.thread?.projectId) : conversation
+                    const thread = resolveConversation ? await resolveConversation() : conversation
                     if (!thread?.id)
                         throw new Error(translate('Your conversation could not be loaded. Please try again.'))
                     job.thread = thread

@@ -1,14 +1,9 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { shallowEqual, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
-import useAnnaProjectSelection from './useAnnaProjectSelection'
-import { getAnnaProjectChoices } from './annaProjectSelection'
-import AnnaProjectSwitcher from './AnnaProjectSwitcher'
-import useProjectData from '../../hooks/useProjectData'
-import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
 import AnnaConversation from './AnnaConversation'
 import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
 import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
@@ -38,8 +33,6 @@ import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallP
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
-
-const NO_ASSISTANT = {}
 
 function useMobilePane() {
     const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 760px)').matches || false)
@@ -75,90 +68,18 @@ export default function AnnaShell({ children, routeId }) {
     const [visited, setVisited] = useState(active)
     const [textBusy, setTextBusy] = useState(false)
     const [workState, setWorkState] = useState(null)
-    // AT-2903: the chat continues in the selected project, with that project's assistant.
-    const projectSelection = useAnnaProjectSelection(user)
-    const [projectNotice, setProjectNotice] = useState('')
-    const onProjectUnavailable = useCallback(
-        (projectId, message) => {
-            projectSelection.select(null)
-            setProjectNotice(
-                message
-                    ? `${message} ${translate('Continuing in your default project.')}`
-                    : translate('The project chat could not be opened. Continuing in your default project.')
-            )
-        },
-        [projectSelection.select]
-    )
-    const {
-        conversation,
-        loading,
-        error,
-        retry,
-        threads,
-        resolveConversation,
-        loadEarlier,
-        nextBefore,
-        offline,
-        activeProjectId,
-        switching,
-    } = useAnnaConversation(user.uid, {
-        enabled: active,
-        user,
-        hold: textBusy || call.status !== 'idle',
-        projectId: projectSelection.projectId,
-        onProjectUnavailable,
-    })
-    useProjectData(activeProjectId, PROJECT_DATA_ASSISTANTS)
-    const projectsMap = useSelector(state => state.loggedUserProjectsMap)
-    const projectAssistants = useSelector(state => state.projectAssistants)
-    const globalAssistants = useSelector(state => state.globalAssistants, shallowEqual)
-    const defaultAssistant = useSelector(state => state.defaultAssistant) || NO_ASSISTANT
-    const projectChoices = useMemo(
-        () =>
-            getAnnaProjectChoices({
-                user,
-                projectsMap: projectsMap || {},
-                projectAssistants: projectAssistants || {},
-                globalAssistants: globalAssistants || [],
-                defaultAssistant,
-            }),
-        [
-            user.uid,
-            user.defaultProjectId,
-            user.projectIds,
-            user.archivedProjectIds,
-            user.templateProjectIds,
-            user.guideProjectIds,
-            projectsMap,
-            projectAssistants,
-            globalAssistants,
-            defaultAssistant,
-        ]
-    )
-    const activeChoice = projectChoices.find(choice => choice.id === activeProjectId)
+    const { conversation, loading, error, retry, threads, resolveConversation, loadEarlier, nextBefore, offline } =
+        useAnnaConversation(user.uid, { enabled: active, user, hold: textBusy || call.status !== 'idle' })
     const resolvedAssistant = useSelector(state =>
         conversation?.assistantId
             ? getAssistantFromState(state, conversation.assistantId) ||
               (state.defaultAssistant?.uid === conversation.assistantId ? state.defaultAssistant : null)
             : state.defaultAssistant
     )
-    // While the selected project's chat resolves, preview the assistant that will answer there.
-    const assistant = (switching ? activeChoice?.assistant : resolvedAssistant) || resolvedAssistant || NO_ASSISTANT
+    const assistant = resolvedAssistant || {}
     const assistantName = assistant.displayName?.trim() || translate('Assistant')
-    // The header names whoever answers next: the current default assistant in the
-    // default project, the selected project's assistant everywhere else.
-    const headerAssistant =
-        !activeProjectId || activeProjectId === user.defaultProjectId
-            ? defaultAssistant
-            : (switching ? activeChoice?.assistant : resolvedAssistant) || activeChoice?.assistant || defaultAssistant
-    const headerAssistantName = headerAssistant.displayName?.trim() || translate('Assistant')
-    const selectProject = useCallback(
-        projectId => {
-            setProjectNotice('')
-            projectSelection.select(projectId)
-        },
-        [projectSelection.select]
-    )
+    const defaultAssistant = useSelector(state => state.defaultAssistant) || {}
+    const defaultAssistantName = defaultAssistant.displayName?.trim() || translate('Assistant')
     const [mobilePane, setMobilePane] = useState('chat')
     const [latestChatRequest, setLatestChatRequest] = useState(0)
     const [surface, setSurface] = useState('alldone')
@@ -644,7 +565,7 @@ export default function AnnaShell({ children, routeId }) {
         event.stopPropagation()
         present({ path, id: `link-${Date.now()}`, view: 'link', manual: true })
     }
-    const photo = headerAssistant.photoURL50 || headerAssistant.photoURL300 || headerAssistant.photoURL
+    const photo = defaultAssistant.photoURL50 || defaultAssistant.photoURL300 || defaultAssistant.photoURL
     const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
     const chatPageContext =
         !active || chatOnly
@@ -683,14 +604,14 @@ export default function AnnaShell({ children, routeId }) {
                 <button
                     type="button"
                     className="anna-header-assistant"
-                    title={`${headerAssistantName} – ${translate('Latest messages')}`}
-                    aria-label={`${headerAssistantName} – ${translate('Latest messages')}`}
+                    title={`${defaultAssistantName} – ${translate('Latest messages')}`}
+                    aria-label={`${defaultAssistantName} – ${translate('Latest messages')}`}
                     onClick={showLatestChat}
                 >
                     <span className="anna-small-avatar">
-                        {photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}
+                        {photo ? <img src={photo} alt="" /> : defaultAssistantName.charAt(0)}
                     </span>
-                    <strong className="anna-brand">{headerAssistantName}</strong>
+                    <strong className="anna-brand">{defaultAssistantName}</strong>
                 </button>
                 {!mobile && (
                     <button
@@ -810,12 +731,6 @@ export default function AnnaShell({ children, routeId }) {
                                     {translate('Loading conversation…')}
                                 </div>
                             )}
-                            {projectNotice && (
-                                <div className="anna-error" role="alert">
-                                    {projectNotice}
-                                    <button onClick={() => setProjectNotice('')}>{translate('Dismiss')}</button>
-                                </div>
-                            )}
                             {error && (
                                 <div className="anna-error" role="alert">
                                     {error}
@@ -851,20 +766,6 @@ export default function AnnaShell({ children, routeId }) {
                                     onWorkStateChange={setWorkState}
                                     onBeforeSend={resumeForMessage}
                                     pageContext={chatPageContext}
-                                    switching={switching}
-                                    renderProjectSwitcher={({ disabled }) => (
-                                        <AnnaProjectSwitcher
-                                            choices={projectChoices}
-                                            activeProjectId={activeProjectId}
-                                            onSelect={selectProject}
-                                            disabled={disabled || call.status !== 'idle'}
-                                            busy={switching}
-                                            getViewport={() => {
-                                                const pane = chatPane.current?.getBoundingClientRect?.()
-                                                return pane && { ...pane.toJSON(), active: true }
-                                            }}
-                                        />
-                                    )}
                                 />
                             )}
                         </>

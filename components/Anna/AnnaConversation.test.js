@@ -569,8 +569,9 @@ it('shows linked red activity between messages without posting to the assistant'
     render()
     act(() => jest.advanceTimersByTime(300))
     const links = [...container.querySelectorAll('.anna-activity-notice a')]
+    // A task opens itself; a chat whose object type is not known yet keeps its inbox (AT-2906).
     expect(links.map(link => link.getAttribute('href'))).toEqual([
-        '/projects/p1/user/u1/updates/followed',
+        '/projects/p1/tasks/task1/properties',
         '/projects/p1/user/u1/chats/followed',
     ])
     expect(links[0].querySelector('.anna-activity-title').textContent).toBe('created task')
@@ -1543,53 +1544,4 @@ it('exposes audio recovery outside the hidden composer while connecting', async 
     expect(enable.closest('[aria-hidden="true"]')).toBeNull()
     await act(async () => enable.click())
     expect(playCallAudio).toHaveBeenCalledTimes(1)
-})
-
-describe('selected project (AT-2903)', () => {
-    const threads = [
-        { projectId: 'p1', chatId: 'AnnaChat20261029u1', dateKey: '20261029', assistantId: 'a1', created: 1 },
-        { projectId: 'p2', chatId: 'AnnaChat20261029u1', dateKey: '20261029', assistantId: 'cto', created: 2 },
-    ]
-    const sections = () => [...container.querySelectorAll('.anna-date-divider')].map(divider => divider.textContent)
-    beforeEach(() => {
-        mockActivityState = {
-            ...mockActivityState,
-            loggedUserProjectsMap: { p1: { id: 'p1', name: 'Home' }, p2: { id: 'p2', name: 'Alldone Product' } },
-            projectAssistants: { p2: [{ uid: 'cto', displayName: 'Alldone CTO' }] },
-        }
-    })
-
-    it('labels each project section and keeps the composer’s chat last after switching back', () => {
-        render({
-            threads,
-            conversation: { projectId: 'p1', id: 'AnnaChat20261029u1', assistantId: 'a1' },
-            assistant: { uid: 'a1', displayName: 'Anna' },
-            user: { uid: 'u1', gold: 100, defaultProjectId: 'p1' },
-        })
-        expect(sections()).toEqual(['2026-10-29 · Alldone Product · Alldone CTO', '2026-10-29 · Home · Anna'])
-    })
-
-    it('shows no project label while every section is in the default project', () => {
-        render({
-            threads: [threads[0]],
-            conversation: { projectId: 'p1', id: 'AnnaChat20261029u1', assistantId: 'a1' },
-            user: { uid: 'u1', gold: 100, defaultProjectId: 'p1' },
-        })
-        expect(sections()).toEqual(['2026-10-29'])
-    })
-
-    it('holds sending and calls until the selected project’s chat is ready, keeping the draft', async () => {
-        const renderProjectSwitcher = jest.fn(() => <span data-testid="project-chip" />)
-        render({ switching: true, renderProjectSwitcher })
-        type('For the product project')
-        expect(container.querySelector('.anna-send').disabled).toBe(true)
-        expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(true)
-        await submit()
-        expect(createObjectMessage).not.toHaveBeenCalled()
-        expect(container.querySelector('textarea').value).toBe('For the product project')
-        expect(container.querySelector('.anna-composer-tools [data-testid="project-chip"]')).not.toBeNull()
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ switching: false, renderProjectSwitcher })
-        expect(container.querySelector('.anna-send').disabled).toBe(false)
-    })
 })
