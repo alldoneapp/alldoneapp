@@ -581,12 +581,9 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
         minWidth: 20,
     },
-    // One Text per item, laid out as a plain column. Never `flexWrap: 'wrap'` here: a wrapping
-    // column sizes its line to the widest unbreakable token (a file path in a list item), which
-    // pushed the item, and with it the whole chat, wider than the pane (AT-2917).
     bulletContent: {
         flex: 1,
-        minWidth: 0,
+        flexWrap: 'wrap',
     },
     checkboxIcon: {
         marginRight: 8,

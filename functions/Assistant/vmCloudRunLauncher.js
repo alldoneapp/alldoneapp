@@ -262,25 +262,8 @@ async function launchVmCloudRunJob(correlationId, options = {}) {
     throw new VmCloudRunLaunchError('Cloud Run Job launch result is unknown', { ambiguous: true, cause: lastCause })
 }
 
-const EXECUTION_NAME_PATTERN = /^projects\/[^/]+\/locations\/[^/]+\/jobs\/[^/]+\/executions\/[^/]+$/
-
-// Direct lookup of one execution by its stored name. findVmCloudRunExecution pages newest-first and
-// gives up after MAX_RECONCILIATION_PAGES, so an execution from hours ago can fall off that list;
-// this one cannot. A deleted/expired execution answers null rather than throwing.
-async function getVmCloudRunExecution(executionName, options = {}) {
-    if (!executionName || !EXECUTION_NAME_PATTERN.test(executionName)) return null
-    const accessToken = options.accessToken || (await getAccessToken(options))
-    const response = await fetch(`https://run.googleapis.com/v2/${executionName}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    if (response.status === 404) return null
-    const body = await readJsonResponse(response)
-    if (!response.ok) throw responseError('execution read', response, body)
-    return body
-}
-
 async function cancelVmCloudRunExecution(executionName, options = {}) {
-    if (!executionName || !EXECUTION_NAME_PATTERN.test(executionName)) {
+    if (!executionName || !/^projects\/[^/]+\/locations\/[^/]+\/jobs\/[^/]+\/executions\/[^/]+$/.test(executionName)) {
         throw new Error('A fully-qualified Cloud Run execution name is required')
     }
     const accessToken = await getAccessToken(options)
@@ -301,7 +284,6 @@ module.exports = {
     VmCloudRunLaunchError,
     launchVmCloudRunJob,
     findVmCloudRunExecution,
-    getVmCloudRunExecution,
     cancelVmCloudRunExecution,
     __private__: {
         resolveProjectId,

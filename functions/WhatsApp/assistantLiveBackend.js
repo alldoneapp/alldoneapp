@@ -73,9 +73,7 @@ async function runLiveAssistant({
     const annaContext = await loadAnnaContext(db, runtime, { includeActivity: true })
     if (annaContext) {
         runtime.annaConversation = true
-        annaContext.history = await loadAnnaHistoryContext(db, runtime, {
-            projectOnly: annaContext.project?.projectOnlyContext === true,
-        })
+        annaContext.history = await loadAnnaHistoryContext(db, runtime)
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtime)
     const toolProgress = createLiveToolProgress({ publish: onProgress })

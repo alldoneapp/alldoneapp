@@ -50,11 +50,8 @@ it('renders a meaningful linked preview and persists it unchanged for later offl
     expect(container.querySelector('.anna-activity-title').textContent).toBe('Sprintplanung')
     expect(container.querySelector('.anna-activity-actions').textContent).toBe('Neue Chatnachricht')
     expect(container.querySelector('.anna-activity-preview').textContent).toBe(details.preview)
-    expect(container.querySelector('.anna-activity-meta').textContent).toBe('Familie · Anna Alldone')
-    // A thread whose type is not known yet opens its own chat object, never the followed chats
-    // inbox (which crashed on cold projects, AT-2906).
-    expect(container.querySelector('a').getAttribute('href')).toBe('/projects/p1/chats/chat1/chat')
-    expect(container.querySelector('a').hasAttribute('data-anna-activity-link')).toBe(true)
+    expect(container.querySelector('.anna-activity-meta').textContent).toBe('Anna Alldone · Familie')
+    expect(container.querySelector('a').getAttribute('href')).toBe(notice.path)
     expect(publishAnnaActivityContext).toHaveBeenLastCalledWith(
         'u1',
         expect.objectContaining({
@@ -136,7 +133,7 @@ describe('one row per object (AT-2906)', () => {
         expect(container.querySelectorAll('.anna-activity-notice')).toHaveLength(1)
         expect(container.querySelector('.anna-activity-title').textContent).toBe(taskDetails.objectName)
         expect(container.querySelector('.anna-activity-actions').textContent).toBe('Aufgabe als erledigt markiert')
-        expect(container.querySelector('.anna-activity-meta').textContent).toBe('Alldone Team · Karsten Wysk')
+        expect(container.querySelector('.anna-activity-meta').textContent).toBe('Karsten Wysk · Alldone Team')
         expect(container.querySelector('a').getAttribute('href')).toBe('/projects/p1/tasks/task1/properties')
         // Every arrival still reaches the assistant context on its own.
         expect(publishAnnaActivityContext.mock.calls.map(([, published]) => published.id)).toEqual(
@@ -176,55 +173,5 @@ describe('one row per object (AT-2906)', () => {
         expect(container.querySelector('.anna-activity-preview').textContent).toBe(
             'Release ist live. Deployment: GitHub · Actions.'
         )
-    })
-})
-
-describe('the project and the people come first (AT-2906)', () => {
-    const renderGroup = notices => act(async () => root.render(<AnnaActivityGroup notices={notices} />))
-    const firstLine = () => container.querySelector('.anna-activity-content').firstElementChild
-    const lines = () => [...container.querySelector('.anna-activity-content').children].map(node => node.className)
-
-    it('is the first line, project then name, above title, actions and preview', async () => {
-        loadAnnaActivityContent.mockResolvedValue({ ...details, actorName: 'Karsten Wysk' })
-        await render()
-        expect(firstLine().className).toBe('anna-activity-meta')
-        expect(firstLine().textContent).toBe('Familie · Karsten Wysk')
-        expect(lines()).toEqual([
-            'anna-activity-meta',
-            'anna-activity-title',
-            'anna-activity-actions',
-            'anna-activity-preview',
-        ])
-    })
-
-    it('is still the first line before the row is enriched, and when enrichment fails', async () => {
-        loadAnnaActivityContent.mockResolvedValue(null)
-        await render()
-        expect(firstLine().className).toBe('anna-activity-meta')
-        expect(firstLine().textContent).toBe('Familie')
-        expect(lines()).toEqual(['anna-activity-meta', 'anna-activity-title'])
-    })
-
-    it('names every actor of a grouped row once, after the project', async () => {
-        loadAnnaActivityContent.mockImplementation(async item => ({
-            version: 1,
-            objectName: 'Release',
-            actorName: item.id.endsWith('/a') ? 'Karsten Wysk' : 'Anna Alldone',
-            preview: '',
-        }))
-        await renderGroup([feedNotice('a', 1000, 'x'), feedNotice('b', 1001, 'y'), feedNotice('c', 1002, 'z')])
-        expect(firstLine().textContent).toBe('Alldone Team · Karsten Wysk, Anna Alldone')
-    })
-
-    it("uses the project's current name, and never leaves the project blank", async () => {
-        loadAnnaActivityContent.mockResolvedValue(details)
-        mockState.loggedUserProjectsMap = { p1: { id: 'p1', index: 0, name: 'Familie (neu)' } }
-        await render()
-        expect(firstLine().textContent).toBe('Familie (neu) · Anna Alldone')
-        act(() => root.unmount())
-        root = createRoot(container)
-        mockState.loggedUserProjectsMap = {}
-        await act(async () => root.render(<AnnaActivityNotice notice={{ ...notice, projectName: '' }} />))
-        expect(firstLine().textContent).toBe('Unbekanntes Projekt · Anna Alldone')
     })
 })

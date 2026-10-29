@@ -2907,11 +2907,9 @@ exports.refundGoldSecondGen = onCall(
         })
 
         if (auth) {
-            // A client may only give back one of its own recent charges (refundClientSpend);
-            // crediting the requested amount outright let every account mint Gold.
-            const { refundClientSpend } = require('./Gold/goldHelper')
+            const { refundGold } = require('./Gold/goldHelper')
             const { gold, source, projectId, goalId, objectId, objectType, channel, note } = data
-            const result = await refundClientSpend(auth.uid, gold, {
+            const result = await refundGold(auth.uid, gold, {
                 source,
                 projectId,
                 goalId,
@@ -4764,23 +4762,6 @@ async function captureCalendarGoalRoutingFeedbackIfChanged(event) {
     }
 }
 
-// AT-2916: keeps `vmSessions.taskDone` in step so the Anna VM overview shows paused VMs on open
-// tasks only, like the task list does. Writes only when a VM task's `done` flips; never fails the
-// trigger, since the task update itself has already happened.
-async function syncVmSessionTaskDoneIfChanged(event) {
-    try {
-        const { syncVmSessionTaskDoneOnTaskUpdate } = require('./Assistant/vmTaskSessionMarker')
-        await syncVmSessionTaskDoneOnTaskUpdate({
-            projectId: event.params.projectId,
-            taskId: event.params.taskId,
-            before: event.data.before.data() || {},
-            after: event.data.after.data() || {},
-        })
-    } catch (error) {
-        console.warn('[onUpdateTask] VM session task state sync failed', { error: error?.message || error })
-    }
-}
-
 exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
         document: 'items/{projectId}/tasks/{taskId}',
@@ -4796,7 +4777,6 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
             captureCalendarGoalRoutingFeedbackIfChanged(event),
-            syncVmSessionTaskDoneIfChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
             invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
         ])

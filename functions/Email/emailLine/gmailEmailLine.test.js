@@ -6,13 +6,11 @@ const mockBatchModify = jest.fn()
 const mockThreadsList = jest.fn()
 const mockThreadsGet = jest.fn()
 const mockThreadsModify = jest.fn()
-const mockGetProfile = jest.fn()
 
 jest.mock('googleapis', () => ({
     google: {
         gmail: () => ({
             users: {
-                getProfile: (...args) => mockGetProfile(...args),
                 labels: {
                     list: (...args) => mockLabelsList(...args),
                     get: (...args) => mockLabelsGet(...args),
@@ -52,7 +50,6 @@ const {
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
 const { getAuthorizedOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
-const { resetLabelSummaryCacheForTests } = require('./gmailLabelSummaryCache')
 
 test('message context preserves the thread, date, and full body for task comments', async () => {
     const body = 'Email text '.repeat(600)
@@ -927,105 +924,5 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsModify).toHaveBeenCalledWith(
             expect.objectContaining({ id: 't_clean', requestBody: { removeLabelIds: ['INBOX'] } })
         )
-    })
-})
-
-describe('label summary reuse while the mailbox is unchanged', () => {
-    const labels = [
-        { id: 'INBOX', name: 'INBOX', type: 'system' },
-        { id: 'Label_ads', name: 'Alldone/Ads', type: 'user' },
-    ]
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        resetLabelSummaryCacheForTests()
-        getAuthorizedOAuth2Client.mockResolvedValue(makeAuthClient())
-        setupLabels(labels)
-        mockGetProfile.mockResolvedValue({ data: { historyId: '100' } })
-        jest.spyOn(console, 'log').mockImplementation(() => {})
-    })
-
-    afterEach(() => {
-        console.log.mockRestore()
-    })
-
-    test('reuses the summary while the historyId is unchanged', async () => {
-        const first = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-        const second = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(second).toEqual(first)
-        expect(mockLabelsList).toHaveBeenCalledTimes(1)
-        expect(mockGetProfile).toHaveBeenCalledTimes(2)
-    })
-
-    test('recomputes after any change to the mailbox', async () => {
-        await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-        mockGetProfile.mockResolvedValue({ data: { historyId: '101' } })
-        await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(mockLabelsList).toHaveBeenCalledTimes(2)
-    })
-
-    test('the project key and the connection key of one mailbox share the summary', async () => {
-        await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'Me@Example.com' })
-        await getGmailLabelSummary('user1', 'email_google_1', { mailboxKey: 'me@example.com' })
-
-        expect(mockLabelsList).toHaveBeenCalledTimes(1)
-    })
-
-    test('never shares a summary between users', async () => {
-        await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'shared@example.com' })
-        await getGmailLabelSummary('user2', 'proj1', { mailboxKey: 'shared@example.com' })
-
-        expect(mockLabelsList).toHaveBeenCalledTimes(2)
-    })
-
-    test('concurrent requests for the same mailbox compute it once', async () => {
-        const [first, second] = await Promise.all([
-            getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' }),
-            getGmailLabelSummary('user1', 'email_google_1', { mailboxKey: 'me@example.com' }),
-        ])
-
-        expect(second).toEqual(first)
-        expect(mockLabelsList).toHaveBeenCalledTimes(1)
-    })
-
-    test('hands out copies, so changing one result cannot change the next', async () => {
-        const first = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-        first.labels[0].threadCount = 999
-        const second = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(second.labels[0].threadCount).not.toBe(999)
-    })
-
-    test('computes without the cache when the historyId cannot be read', async () => {
-        mockGetProfile.mockRejectedValue(Object.assign(new Error('backend error'), { code: 500 }))
-        const first = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-        await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(first.labels.map(label => label.labelId)).toContain('Label_ads')
-        expect(mockLabelsList).toHaveBeenCalledTimes(2)
-    })
-
-    test('a rejected token still gets the one refresh-and-retry', async () => {
-        mockGetProfile.mockRejectedValueOnce(makeUnauthorizedError())
-
-        const summary = await getGmailLabelSummary('retry-user', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(summary.labels.map(label => label.labelId)).toContain('INBOX')
-        expect(getAuthorizedOAuth2Client).toHaveBeenLastCalledWith('retry-user', 'proj1', 'gmail', {
-            forceRefresh: true,
-        })
-    })
-
-    test('a failed computation is not cached', async () => {
-        mockLabelsList.mockRejectedValueOnce(Object.assign(new Error('rate limited'), { code: 429 }))
-        await expect(getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })).rejects.toMatchObject({
-            code: 429,
-        })
-        const summary = await getGmailLabelSummary('user1', 'proj1', { mailboxKey: 'me@example.com' })
-
-        expect(summary.labels.map(label => label.labelId)).toContain('INBOX')
-        expect(mockLabelsList).toHaveBeenCalledTimes(2)
     })
 })

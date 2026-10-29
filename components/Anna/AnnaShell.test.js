@@ -28,7 +28,6 @@ afterEach(() => {
 import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
-import { resolveAnnaActivityPath } from './annaActivityNavigation'
 import NavigationService from '../../utils/NavigationService'
 import { restoreAnnaLayout, setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
@@ -71,15 +70,12 @@ let mockTakeoverProps
 let mockTakeoverMounts = 0
 let mockVmJobs = []
 let mockVmError = false
-// The selected VM card (a thread since AT-2916) and the run that card last showed.
 let mockSelectedRunId
-let mockSelectedCardRunId
 const mockRetryVms = jest.fn()
 jest.mock('./useAnnaVmJobs', () => ({
     __esModule: true,
-    default: (userId, { selectedId, selectedRunId }) => {
-        mockSelectedRunId = selectedId
-        mockSelectedCardRunId = selectedRunId
+    default: (userId, { selectedRunId }) => {
+        mockSelectedRunId = selectedRunId
         return { jobs: mockVmJobs, error: mockVmError, retry: mockRetryVms }
     },
     vmJobPath: job => `/projects/${job.projectId}/tasks/${job.objectId}/chat`,
@@ -202,10 +198,6 @@ jest.mock('../../redux/actions', () => ({
     setSelectedSidebarTab: tab => ({ type: 'SIDEBAR_TAB', tab }),
     setTaskViewToggleIndex: index => ({ type: 'TASK_INDEX', index }),
     setTaskViewToggleSection: section => ({ type: 'TASK_SECTION', section }),
-}))
-jest.mock('./annaActivityNavigation', () => ({
-    resolveAnnaActivityPath: jest.fn(async path => ({ path })),
-    getAnnaTargetErrorMessage: reason => `target:${reason}`,
 }))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
@@ -418,6 +410,47 @@ it('shows an empty VM workspace without a session dropdown', () => {
     expect(document.querySelector('.anna-vms').textContent).toContain('No VM sessions yet')
     expect(document.querySelector('.anna-header-picker select').options).toHaveLength(3)
     expect(document.querySelector('.anna-vms select')).toBeNull()
+})
+
+it('frames the workspace with the assistant accent only while it answers in this conversation (AT-2911)', async () => {
+    render(content(1))
+    const stage = document.querySelector('.anna-stage')
+    const label = () => document.querySelector('.anna-working-label')
+    expect(stage.classList.contains('anna-stage-working')).toBe(false)
+    expect(label()).toBeNull()
+    const report = running =>
+        act(async () =>
+            mockConversationProps.onWorkStateChange({
+                projectId: 'p1',
+                chatId: 'anna_u1',
+                busy: running,
+                running,
+                completedRequests: [],
+            })
+        )
+    await report(true)
+    expect(stage.classList.contains('anna-stage-working')).toBe(true)
+    expect(label().textContent).toBe('Carl Code Mentor is working here')
+    await report(false)
+    expect(stage.classList.contains('anna-stage-working')).toBe(false)
+    expect(label()).toBeNull()
+    // Another conversation's run never lights this workspace.
+    await act(async () =>
+        mockConversationProps.onWorkStateChange({
+            projectId: 'p1',
+            chatId: 'other',
+            busy: true,
+            running: true,
+            completedRequests: [],
+        })
+    )
+    expect(label()).toBeNull()
+    // Sending a message is the moment the chat starts driving the workspace.
+    await act(async () => mockConversationProps.onSendingChange(true))
+    expect(label()).toBeTruthy()
+    // Hidden workspace: nothing to frame.
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    expect(label()).toBeNull()
 })
 
 it('saves keyboard resizing independently of pane visibility', () => {
@@ -864,25 +897,6 @@ it.each(['desktop', 'mobile'])('shows every VM panel and preserves selection and
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
-})
-
-it('asks discovery to keep the run the selected VM card showed, so its result survives settling (AT-2916)', () => {
-    mockVmJobs = [
-        { id: 'p1__t1', runId: 'run-a', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' },
-        { id: 'p1__t2', runId: 'run-b', projectId: 'p1', objectId: 't2', title: 'Review plan', status: 'paused' },
-    ]
-    const view = render(content(1))
-    chooseSurface('vm:p1__t2')
-    view.rerender(content(1))
-    expect(mockSelectedRunId).toBe('p1__t2')
-    expect(mockSelectedCardRunId).toBe('run-b')
-    // The run settled and its task was closed: the card stays, by the run it showed.
-    mockVmJobs = [mockVmJobs[0]]
-    view.rerender(content(1))
-    expect(mockSelectedCardRunId).toBe('run-b')
-    chooseSurface('vm:p1__t1')
-    view.rerender(content(1))
-    expect(mockSelectedCardRunId).toBe('run-a')
 })
 
 it('keeps other VM panels available if the selected session disappears, and allows retrying discovery', () => {
@@ -1738,25 +1752,6 @@ describe('selected project (AT-2903)', () => {
         expect(switcher().props).toMatchObject({ activeProjectId: 'p2', busy: true })
     })
 
-    it('hands the chosen project to the chat history, but not a re-selection of the current one (AT-2914)', () => {
-        const now = jest.spyOn(Date, 'now').mockReturnValue(4242)
-        const view = render(content(1))
-        act(() => switcher().props.onSelect('p1'))
-        expect(mockConversationProps.projectSwitch).toBeNull()
-        act(() => switcher().props.onSelect('p2'))
-        expect(mockConversationProps.projectSwitch).toEqual({
-            id: 1,
-            projectId: 'p2',
-            name: 'Alldone Product',
-            created: 4242,
-        })
-        useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2' })
-        view.rerender(content(1))
-        act(() => switcher().props.onSelect(null))
-        expect(mockConversationProps.projectSwitch).toMatchObject({ id: 2, projectId: 'p1', name: 'Home' })
-        now.mockRestore()
-    })
-
     it('returns to the default project with a notice when the chosen project is refused', () => {
         render(content(1))
         act(() => switcher().props.onSelect('p2'))
@@ -1772,87 +1767,5 @@ describe('selected project (AT-2903)', () => {
         render(content(1))
         expect(switcher().props.disabled).toBe(false)
         expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
-    })
-})
-
-describe('opening an activity row (AT-2906)', () => {
-    const deferred = () => {
-        let resolve
-        const promise = new Promise(done => {
-            resolve = done
-        })
-        return { promise, resolve }
-    }
-    const renderRows = paths => {
-        setAnnaLayout('chat')
-        render(
-            <AnnaShell>
-                {paths.map(path => (
-                    <a key={path} href={path} data-anna-activity-link="">
-                        {path}
-                    </a>
-                ))}
-            </AnnaShell>
-        )
-        return [...testContainer.querySelectorAll('a')]
-    }
-    afterEach(() => {
-        resolveAnnaActivityPath.mockReset().mockImplementation(async path => ({ path }))
-        URLTrigger.processUrl.mockReset().mockResolvedValue(undefined)
-    })
-
-    it('opens the resolved object, not the path the row was saved with', async () => {
-        resolveAnnaActivityPath.mockResolvedValueOnce({ path: '/projects/p1/tasks/t1/chat' })
-        const [row] = renderRows(['/projects/p1/chats/t1/chat'])
-        await act(async () => row.click())
-        expect(resolveAnnaActivityPath).toHaveBeenCalledWith('/projects/p1/chats/t1/chat')
-        expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/p1/tasks/t1/chat')
-        expect(document.querySelector('.anna-chat-only')).toBeNull()
-    })
-
-    it('says why a missing target cannot open and does not navigate anywhere', async () => {
-        resolveAnnaActivityPath.mockResolvedValueOnce({ error: 'missing' })
-        const [row] = renderRows(['/projects/p1/tasks/gone/properties'])
-        await act(async () => row.click())
-        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
-        expect(document.querySelector('.anna-error[role="alert"]').textContent).toContain('target:missing')
-        // The assistant stays where it was: no workspace switch on a failed click.
-        expect(document.querySelector('.anna-chat-only')).toBeTruthy()
-    })
-
-    it('ordinary links are not checked', async () => {
-        setAnnaLayout('chat')
-        render(
-            <AnnaShell>
-                <a href="/projects/p1/user/u1/updates/followed">Inbox</a>
-            </AnnaShell>
-        )
-        await act(async () => testContainer.querySelector('a').click())
-        expect(resolveAnnaActivityPath).not.toHaveBeenCalled()
-        expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/p1/user/u1/updates/followed')
-    })
-
-    it('opens only the last of two quick clicks, even when the first resolves later', async () => {
-        const first = deferred()
-        resolveAnnaActivityPath.mockImplementationOnce(() => first.promise)
-        const [a, b] = renderRows(['/projects/p1/tasks/a/properties', '/projects/p1/notes/b/editor'])
-        await act(async () => a.click())
-        await act(async () => b.click())
-        await act(async () => first.resolve({ path: '/projects/p1/tasks/a/properties' }))
-        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(['/projects/p1/notes/b/editor'])
-    })
-
-    it('waits for a navigation still in progress so the later click lands last', async () => {
-        const firstRoute = deferred()
-        URLTrigger.processUrl.mockImplementationOnce(() => firstRoute.promise)
-        const [a, b] = renderRows(['/projects/p1/tasks/a/properties', '/projects/p1/notes/b/editor'])
-        await act(async () => a.click())
-        await act(async () => b.click())
-        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(['/projects/p1/tasks/a/properties'])
-        await act(async () => firstRoute.resolve())
-        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual([
-            '/projects/p1/tasks/a/properties',
-            '/projects/p1/notes/b/editor',
-        ])
     })
 })
