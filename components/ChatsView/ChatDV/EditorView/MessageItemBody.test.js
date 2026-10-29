@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { ScrollView, StyleSheet, TouchableOpacity } from 'react-native'
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import MessageItemBody from './MessageItemBody'
@@ -84,6 +84,25 @@ describe('MessageItemBody markdown heading spacing', () => {
         expect(StyleSheet.flatten(headings[0].props.style).marginTop).toBeUndefined()
         expect(StyleSheet.flatten(headings[1].props.style).marginTop).toBe(16)
         expect(StyleSheet.flatten(headings[2].props.style).marginTop).toBe(16)
+    })
+})
+
+describe('MessageItemBody list items in a narrow chat (AT-2917)', () => {
+    // A wrapping column sizes its flex line to the widest unbreakable token, so a file path in a
+    // list item pushed the item (and the Assistant Mode chat with it) wider than the pane.
+    test.each([
+        ['bullet', '- components/ChatsView/ChatDV/EditorView/MessageItemBody.js'],
+        ['numbered', '1. components/ChatsView/ChatDV/EditorView/MessageItemBody.js'],
+        ['checkbox', '- [ ] components/ChatsView/ChatDV/EditorView/MessageItemBody.js'],
+    ])('%s content may shrink and never wraps as a flex column', (_kind, commentText) => {
+        const tree = renderer.create(
+            <MessageItemBody projectId="project-1" commentText={commentText} creatorData={{ isAssistant: true }} />
+        )
+        const content = tree.root.findAllByType(View).filter(node => StyleSheet.flatten(node.props.style)?.flex === 1)
+        expect(content).toHaveLength(1)
+        const style = StyleSheet.flatten(content[0].props.style)
+        expect(style.flexWrap).toBeUndefined()
+        expect(style.minWidth).toBe(0)
     })
 })
 
