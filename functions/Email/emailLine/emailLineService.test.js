@@ -334,6 +334,26 @@ describe('emailLineService', () => {
         expect(summary.emailAddress).toBe('me@gmail.com')
     })
 
+    test('names the mailbox for the summary cache and loads needs-reply alongside it', async () => {
+        let resolveSummary
+        gmailEmailLine.getGmailLabelSummary.mockReturnValue(
+            new Promise(resolve => {
+                resolveSummary = resolve
+            })
+        )
+        gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue([])
+
+        const pending = getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
+        await new Promise(resolve => setImmediate(resolve))
+
+        // The needs-reply read started while the Gmail summary was still running.
+        expect(gmailEmailLine.getUnreadInboxMessageIds).toHaveBeenCalled()
+        expect(gmailEmailLine.getGmailLabelSummary).toHaveBeenCalledWith('u', 'p1', { mailboxKey: 'me@gmail.com' })
+
+        resolveSummary({ labels: [{ labelId: 'INBOX', threadCount: 0, kind: 'inbox' }] })
+        await expect(pending).resolves.toMatchObject({ connected: true, inboxZero: true })
+    })
+
     test('summary excludes Inbox and No label from label feedback options', async () => {
         gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
             labels: [
