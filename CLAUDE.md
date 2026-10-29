@@ -1557,9 +1557,13 @@ degrades to today's behaviour rather than breaking.
   (`firestoreNetworkRelease.js`, deliberately import-free) before `enableNetwork()`, and the
   handoff never releases or re-enables while the network is parked for offline or "Continue
   offline". To see which tab holds the lease: IndexedDB `firestore/[DEFAULT]/alldonealeph/main`,
-  stores `owner` and `clientMetadata` (`inForeground`, `networkEnabled`); `?perfDebug=1` logs
-  `firestore_tab_handoff` released/reacquired. Pinned by `firestoreTabHandoff.test.js` and the
-  AT-2907 cases in `firestoreNetworkGate.test.js` and `connectionHealth.test.js`.
+  stores `owner` and `clientMetadata` (`inForeground`, `networkEnabled`). The handoff logs
+  `firestore_tab_handoff` released/reacquired records, but only with localStorage
+  `alldone.performance.debug=1`: `?perfDebug=1` is re-read from the URL on every record and the
+  app drops the query after boot, so it covers boot records only. Pinned by
+  `firestoreTabHandoff.test.js` and the AT-2907 cases in `firestoreNetworkGate.test.js`,
+  `connectionHealth.test.js` and `ConnectionStateGuardrails.test.js`. Verified live with real
+  Chrome tabs on 2026-10-29.
 - **VM badges watch only tasks marked `hasVmSession` (AT-2907).** The task list's VM badge and
   the VM filter counts used to open a `vmSessions/{projectId}__{taskId}` listener for every open
   task and subtask, about 100 per tab, while production held 39 session documents. The server
