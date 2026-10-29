@@ -14674,9 +14674,6 @@ async function getOptimizedContextMessages(
         projectId,
         assistantId,
         requestUserId: userId,
-        objectType,
-        objectId,
-        messageId,
         // Only a run answering a member directly may correct the project wiki.
         allowKnowledgeCorrections: options.allowKnowledgeCorrections === true,
     })

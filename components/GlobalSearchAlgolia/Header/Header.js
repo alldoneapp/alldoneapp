@@ -11,6 +11,36 @@ import {
 } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { GLOBAL_SEARCH_ARTIFACTS_TAB, GLOBAL_SEARCH_WIKI_TAB } from '../searchIndexes'
 
+// The order the tabs are SHOWN in, which is not the order of their numbers: the numbers are
+// shared with the @-mention picker (tabs 0-4) and the two global-search-only tabs were appended
+// as 5 and 6. Artifacts sits before Chats (AT-2905), matching the main navigation, where
+// Artifacts took the Chats slot. The Tab key, its shortcut hint and the "jump to the first tab
+// with results" fallback all walk this list, never `activeTab + 1`.
+export const GLOBAL_SEARCH_TAB_ORDER = [
+    MENTION_MODAL_TASKS_TAB,
+    MENTION_MODAL_GOALS_TAB,
+    MENTION_MODAL_NOTES_TAB,
+    MENTION_MODAL_CONTACTS_TAB,
+    GLOBAL_SEARCH_ARTIFACTS_TAB,
+    MENTION_MODAL_TOPICS_TAB,
+    GLOBAL_SEARCH_WIKI_TAB,
+]
+
+export const getNextGlobalSearchTab = activeTab => {
+    const index = GLOBAL_SEARCH_TAB_ORDER.indexOf(activeTab)
+    return GLOBAL_SEARCH_TAB_ORDER[(index + 1) % GLOBAL_SEARCH_TAB_ORDER.length]
+}
+
+const TAB_LABELS = {
+    [MENTION_MODAL_TASKS_TAB]: 'Tasks',
+    [MENTION_MODAL_GOALS_TAB]: 'Goals',
+    [MENTION_MODAL_NOTES_TAB]: 'Notes',
+    [MENTION_MODAL_CONTACTS_TAB]: 'Contacts',
+    [GLOBAL_SEARCH_ARTIFACTS_TAB]: 'Artifacts',
+    [MENTION_MODAL_TOPICS_TAB]: 'Chats',
+    [GLOBAL_SEARCH_WIKI_TAB]: 'Wiki',
+}
+
 export default function Header({
     activeTab,
     setActiveTab,
@@ -39,35 +69,20 @@ export default function Header({
     const onKeyDown = event => {
         const { key } = event
         if (key === 'Tab') {
-            if (activeTab === GLOBAL_SEARCH_WIKI_TAB) {
-                changeTab(MENTION_MODAL_TASKS_TAB)
-            } else {
-                changeTab(activeTab + 1)
-            }
+            changeTab(getNextGlobalSearchTab(activeTab))
         }
     }
 
-    const activeTasksTab = () => {
-        changeTab(MENTION_MODAL_TASKS_TAB)
+    const badgeValues = {
+        [MENTION_MODAL_TASKS_TAB]: tasksResultAmount,
+        [MENTION_MODAL_GOALS_TAB]: goalsResultAmount,
+        [MENTION_MODAL_NOTES_TAB]: notesResultAmount,
+        [MENTION_MODAL_CONTACTS_TAB]: contactsResultAmount,
+        [GLOBAL_SEARCH_ARTIFACTS_TAB]: artifactsResultAmount,
+        [MENTION_MODAL_TOPICS_TAB]: chatsResultAmount,
+        [GLOBAL_SEARCH_WIKI_TAB]: wikiResultAmount,
     }
-    const activeNotesTab = () => {
-        changeTab(MENTION_MODAL_NOTES_TAB)
-    }
-    const activeGoalsTab = () => {
-        changeTab(MENTION_MODAL_GOALS_TAB)
-    }
-    const activeContactsTab = () => {
-        changeTab(MENTION_MODAL_CONTACTS_TAB)
-    }
-    const activeTopicsTab = () => {
-        changeTab(MENTION_MODAL_TOPICS_TAB)
-    }
-    const activeArtifactsTab = () => {
-        changeTab(GLOBAL_SEARCH_ARTIFACTS_TAB)
-    }
-    const activeWikiTab = () => {
-        changeTab(GLOBAL_SEARCH_WIKI_TAB)
-    }
+    const nextShortcutTab = getNextGlobalSearchTab(activeTab)
 
     return (
         <View
@@ -78,69 +93,18 @@ export default function Header({
                 compact && localStyles.compactContainer,
             ]}
         >
-            <HeaderTab
-                text={'Tasks'}
-                onPress={activeTasksTab}
-                isActive={activeTab === MENTION_MODAL_TASKS_TAB}
-                isNextShortcutTab={activeTab === GLOBAL_SEARCH_WIKI_TAB}
-                badgeValue={tasksResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Goals'}
-                onPress={activeGoalsTab}
-                isActive={activeTab === MENTION_MODAL_GOALS_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_TASKS_TAB}
-                badgeValue={goalsResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Notes'}
-                onPress={activeNotesTab}
-                isActive={activeTab === MENTION_MODAL_NOTES_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_GOALS_TAB}
-                badgeValue={notesResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Contacts'}
-                onPress={activeContactsTab}
-                isActive={activeTab === MENTION_MODAL_CONTACTS_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_NOTES_TAB}
-                badgeValue={contactsResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Chats'}
-                onPress={activeTopicsTab}
-                isActive={activeTab === MENTION_MODAL_TOPICS_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_CONTACTS_TAB}
-                badgeValue={chatsResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Artifacts'}
-                onPress={activeArtifactsTab}
-                isActive={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_TOPICS_TAB}
-                badgeValue={artifactsResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
-            <HeaderTab
-                text={'Wiki'}
-                onPress={activeWikiTab}
-                isActive={activeTab === GLOBAL_SEARCH_WIKI_TAB}
-                isNextShortcutTab={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
-                badgeValue={wikiResultAmount}
-                showShortcuts={showShortcuts}
-                mobile={mobile}
-            />
+            {GLOBAL_SEARCH_TAB_ORDER.map(tab => (
+                <HeaderTab
+                    key={tab}
+                    text={TAB_LABELS[tab]}
+                    onPress={() => changeTab(tab)}
+                    isActive={activeTab === tab}
+                    isNextShortcutTab={tab === nextShortcutTab}
+                    badgeValue={badgeValues[tab]}
+                    showShortcuts={showShortcuts}
+                    mobile={mobile}
+                />
+            ))}
         </View>
     )
 }

@@ -137,7 +137,7 @@ describe('setKnowledgeBaseSettings', () => {
         expect(db.read(KB_PATH).nextRunAt).toBe(NOW)
     })
 
-    it('runs a wiki paused for an archived project before AT-2893 again when its payer saves it', async () => {
+    it('runs a wiki paused for an archived project again when its payer saves it', async () => {
         const db = createDb({
             enabled: true,
             ownerUserId: 'owner',
@@ -154,8 +154,7 @@ describe('setKnowledgeBaseSettings', () => {
             settings: { instructions: 'neu' },
         })
 
-        expect(view.nextRunAt).toBe(NOW)
-        expect(view).not.toHaveProperty('pausedForArchivedProject')
+        expect(view).toMatchObject({ nextRunAt: NOW, pausedForArchivedProject: false })
     })
 
     it('lets any member edit a wiki that is off without becoming its owner', async () => {
