@@ -22,6 +22,7 @@ import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNa
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
+import { getAnnaTargetErrorMessage, resolveAnnaActivityPath } from './annaActivityNavigation'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
@@ -52,6 +53,19 @@ function useMobilePane() {
     }, [])
     return mobile
 }
+
+// A route that never settles must not hold every later click (AT-2906).
+const NAVIGATION_SETTLE_MS = 5000
+const settleWithin = (promise, ms) =>
+    new Promise(resolve => {
+        const timer = setTimeout(resolve, ms)
+        Promise.resolve(promise)
+            .catch(() => {})
+            .then(() => {
+                clearTimeout(timer)
+                resolve()
+            })
+    })
 
 // Always mounted around the same route subtree, including in fullscreen Alldone. A layout switch
 // must never destroy a note editor, an unsent message, a selection, or the workspace scroll state.
@@ -152,12 +166,36 @@ export default function AnnaShell({ children, routeId }) {
             ? defaultAssistant
             : (switching ? activeChoice?.assistant : resolvedAssistant) || activeChoice?.assistant || defaultAssistant
     const headerAssistantName = headerAssistant.displayName?.trim() || translate('Assistant')
+    // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
+    const [projectSwitch, setProjectSwitch] = useState(null)
+    const projectSwitchSequence = useRef(0)
     const selectProject = useCallback(
         projectId => {
             setProjectNotice('')
+            const targetId = projectId || user.defaultProjectId
+            const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
+            if (targetId && targetId !== currentId) {
+                projectSwitchSequence.current += 1
+                setProjectSwitch({
+                    id: projectSwitchSequence.current,
+                    projectId: targetId,
+                    name:
+                        projectChoices.find(choice => choice.id === targetId)?.name ||
+                        projectsMap?.[targetId]?.name ||
+                        '',
+                    created: Date.now(),
+                })
+            }
             projectSelection.select(projectId)
         },
-        [projectSelection.select]
+        [
+            projectSelection.select,
+            user.defaultProjectId,
+            activeProjectId,
+            conversation?.projectId,
+            projectChoices,
+            projectsMap,
+        ]
     )
     const [mobilePane, setMobilePane] = useState('chat')
     const [latestChatRequest, setLatestChatRequest] = useState(0)
@@ -168,15 +206,20 @@ export default function AnnaShell({ children, routeId }) {
     const vmSurface = surface === 'vms' || !!selectedVmId
     const lastVmId = useRef(null)
     if (selectedVmId) lastVmId.current = selectedVmId
+    // A card is a thread (AT-2916); remembering the run it showed keeps that run's result on screen
+    // after it settles, even when its task is done and the thread therefore leaves the list.
+    const selectedVmRun = useRef({ id: null, runId: null })
     const {
         jobs: vmJobs,
         error: vmError,
         retry: retryVms,
     } = useAnnaVmJobs(user.uid, {
         enabled: active,
-        selectedRunId: selectedVmId,
+        selectedId: selectedVmId,
+        selectedRunId: selectedVmRun.current.id === selectedVmId ? selectedVmRun.current.runId : null,
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
+    if (selectedVm?.runId) selectedVmRun.current = { id: selectedVmId, runId: selectedVm.runId }
     const vmPointerDown = useRef(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
@@ -205,6 +248,7 @@ export default function AnnaShell({ children, routeId }) {
     const browserRef = useRef(null)
     const nextBrowserRef = useRef(null)
     const requestGeneration = useRef(0)
+    const navigationTail = useRef(Promise.resolve())
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
@@ -474,7 +518,35 @@ export default function AnnaShell({ children, routeId }) {
                 return
             }
             try {
-                await URLTrigger.processUrl(NavigationService.createNavigationProp(), presentation.path)
+                let path = presentation.path
+                if (presentation.resolveTarget) {
+                    // Activity rows check their target first, so a deleted object or a project the
+                    // user cannot open is reported here instead of the router silently landing on
+                    // "All projects" (AT-2906). A later click supersedes this one.
+                    const resolved = await resolveAnnaActivityPath(path)
+                    if (generation !== requestGeneration.current) return
+                    if (resolved.error) {
+                        setNavigationError(getAnnaTargetErrorMessage(resolved.error))
+                        acknowledge(presentation, 'failed')
+                        return
+                    }
+                    path = resolved.path
+                }
+                // The routes resolve their target asynchronously (they read the object first), so
+                // two quick clicks could otherwise finish in the wrong order and leave the first
+                // one open. Wait for the previous navigation (bounded), then only the latest runs.
+                const previous = navigationTail.current
+                let settle
+                navigationTail.current = new Promise(resolve => {
+                    settle = resolve
+                })
+                try {
+                    await settleWithin(previous, NAVIGATION_SETTLE_MS)
+                    if (generation !== requestGeneration.current) return
+                    await URLTrigger.processUrl(NavigationService.createNavigationProp(), path)
+                } finally {
+                    settle()
+                }
                 if (generation !== requestGeneration.current) return
                 setSurface('alldone')
                 if (presentation.manual) {
@@ -651,7 +723,13 @@ export default function AnnaShell({ children, routeId }) {
         if (!path) return
         event.preventDefault()
         event.stopPropagation()
-        present({ path, id: `link-${Date.now()}`, view: 'link', manual: true })
+        present({
+            path,
+            id: `link-${Date.now()}`,
+            view: 'link',
+            manual: true,
+            resolveTarget: anchor.hasAttribute('data-anna-activity-link'),
+        })
     }
     const photo = headerAssistant.photoURL50 || headerAssistant.photoURL300 || headerAssistant.photoURL
     const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
@@ -862,6 +940,7 @@ export default function AnnaShell({ children, routeId }) {
                                     onBeforeSend={resumeForMessage}
                                     pageContext={chatPageContext}
                                     switching={switching}
+                                    projectSwitch={projectSwitch}
                                     renderProjectSwitcher={({ disabled }) => (
                                         <AnnaProjectSwitcher
                                             choices={projectChoices}

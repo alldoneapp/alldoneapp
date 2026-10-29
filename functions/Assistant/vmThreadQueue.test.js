@@ -119,6 +119,22 @@ describe('vmThreadQueue', () => {
         expect(mockStore[SESSION_PATH].sandboxId).toBe('sbx-1')
     })
 
+    test('records who asked last and which run the thread carries, for the Anna VM overview (AT-2916)', async () => {
+        const now = () => 3_000_000
+        await admitVmJobToThread(ref(), 'job-1', now, { requestUserId: 'user-a' })
+        expect(mockStore[SESSION_PATH]).toEqual(
+            expect.objectContaining({ lastRequestUserId: 'user-a', lastRunCorrelationId: 'job-1' })
+        )
+        // A queued follow-up is the latest request, but not yet the run the thread carries.
+        await admitVmJobToThread(ref(), 'job-2', now, { requestUserId: 'user-b' })
+        expect(mockStore[SESSION_PATH]).toEqual(
+            expect.objectContaining({ lastRequestUserId: 'user-b', lastRunCorrelationId: 'job-1' })
+        )
+        mockStore[SESSION_PATH].activeLeaseExpiresAt = 0
+        expect(await advanceVmThreadQueue(ref(), now)).toBe('job-2')
+        expect(mockStore[SESSION_PATH].lastRunCorrelationId).toBe('job-2')
+    })
+
     test('jobs dispatched while busy queue in FIFO order, then drain one at a time onto the same thread', async () => {
         const now = () => 2_000_000
         expect((await admitVmJobToThread(ref(), 'job-1', now)).decision).toBe('launch')

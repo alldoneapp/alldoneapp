@@ -1096,10 +1096,11 @@ class TasksHelper {
         }
 
         if (!user) {
-            console.log('TasksHelper: Navigation failed - Task user not found')
-            navigation.navigate('Root')
-            store.dispatch(navigateToAllProjectsTasks())
-            return
+            // The assignee left the project or was deleted. The task itself exists and is readable,
+            // so open it in the logged user's context instead of silently landing on "All
+            // projects" — the same rule notes follow (`getNoteDVUserContext`, AT-2356; AT-2906).
+            console.log('TasksHelper: Task user not found, opening with the logged user')
+            user = loggedUser
         }
 
         const backlinkSection = {
