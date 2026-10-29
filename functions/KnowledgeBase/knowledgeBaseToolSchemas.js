@@ -213,7 +213,8 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
                     },
                     draftId: {
                         type: 'string',
-                        description: 'Only to confirm a draft: the draftId an earlier call returned.',
+                        description:
+                            'Only to confirm a draft: the draftId an earlier call returned or the pending wiki draft in this conversation context. Reuse that draft after the user agrees; do not create a new one.',
                     },
                     confirmed: {
                         type: 'boolean',
@@ -223,7 +224,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
                     projectId: {
                         type: 'string',
                         description:
-                            "Optional: the ID of the project whose wiki gets it. Defaults to this conversation's project.",
+                            "Optional: the ID of the project whose wiki gets it. When confirming, use the draft's projectId; if omitted, the server uses the draft's destination. A new save defaults to this conversation's project.",
                     },
                 },
                 required: [],

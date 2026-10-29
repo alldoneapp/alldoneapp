@@ -50,6 +50,8 @@ const {
 const { buildKnowledgeIndex, restoreKnowledgePageRevision, writeKnowledgePage } = require('./knowledgePageStore')
 const { addKnowledgeDocument, listKnowledgeDocuments, removeKnowledgeDocument } = require('./knowledgeDocuments')
 const {
+    getOwnedKnowledgeContributionDraft,
+    loadPendingKnowledgeContributionDrafts,
     listKnowledgeContributions,
     removeKnowledgeContribution,
     saveKnowledgeContribution,
@@ -228,12 +230,31 @@ async function getKnowledgeBaseContextMessage({ db, context, now = Date.now() })
     if (access === ACCESS_NONE) return ''
     const project = await isProjectMember(db, context.projectId, context.requestUserId)
     if (!project) return ''
+    const sections = [KNOWLEDGE_RESEARCH_INSTRUCTIONS]
+    if (access === ACCESS_CORRECT) {
+        const pending = await loadPendingKnowledgeContributionDrafts({
+            db,
+            userId: context.requestUserId,
+            context,
+            now,
+        })
+        const readable = []
+        for (const draft of pending.slice(0, 5)) {
+            if (await isProjectMember(db, draft.projectId, context.requestUserId)) {
+                readable.push({ draftId: draft.draftId, projectId: draft.projectId, textToShare: draft.text })
+            }
+        }
+        if (readable.length)
+            sections.push(
+                `Pending wiki drafts for this conversation (NOT saved): ${JSON.stringify(readable)}\nIf the user agrees to the exact text and destination, confirm the existing draft with draftId, projectId and confirmed: true. Do not create another draft. If they change the text, create a new draft and wait for confirmation.`
+            )
+    }
     const knowledgeBase = await db.doc(getKnowledgeBasePath(context.projectId)).get()
-    if (!knowledgeBase.exists) return KNOWLEDGE_RESEARCH_INSTRUCTIONS
+    if (!knowledgeBase.exists) return sections.join('\n\n')
     const pages = await loadIndexPages(db, context.projectId)
-    if (!pages.size) return KNOWLEDGE_RESEARCH_INSTRUCTIONS
+    if (!pages.size) return sections.join('\n\n')
     return [
-        KNOWLEDGE_RESEARCH_INSTRUCTIONS,
+        ...sections,
         buildKnowledgeBaseContextMessage({
             projectId: context.projectId,
             projectName: project.name || context.projectId,
@@ -527,8 +548,14 @@ async function executeKnowledgeBaseTool({
     const access = resolveKnowledgeBaseAccess(toolRuntimeContext)
     if (!toolNamesForAccess(access).includes(toolName)) return failure(`Tool not permitted here: ${toolName}`)
     const userId = toolRuntimeContext.requestUserId
-    const projectId =
-        typeof args.projectId === 'string' && args.projectId ? args.projectId : toolRuntimeContext.projectId
+    let projectId = typeof args.projectId === 'string' && args.projectId ? args.projectId : toolRuntimeContext.projectId
+    if (toolName === SAVE_KNOWLEDGE_CONTRIBUTION_TOOL && args.draftId) {
+        const draft = await getOwnedKnowledgeContributionDraft(db, userId, args.draftId)
+        if (!draft) return failure('There is no such draft to confirm. Save it again to make a new one.')
+        // A draft's audience is immutable. An omitted target means the draft's project, not
+        // the chat's project; an explicit conflicting target is refused by confirmDraft.
+        if (!args.projectId) projectId = draft.projectId
+    }
     if (!(await isProjectMember(db, projectId, userId))) {
         return failure('The wiki of that project is only available to its members.')
     }

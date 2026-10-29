@@ -54,6 +54,69 @@ const drafts = db =>
     [...db.documents.entries()].filter(([path]) => path.startsWith(`${CONTRIBUTION_DRAFTS_COLLECTION}/`))
 
 describe('saving knowledge from a conversation', () => {
+    it('reuses an unchanged pending draft on the next reply, without bypassing the same-message guard', async () => {
+        const db = createDb()
+        const args = { text: 'The launch is in May.', origin: 'assistant_summary', mayContainPrivateInformation: true }
+        const first = await save(db, args)
+        const repeated = await save(db, args)
+        expect(repeated).toMatchObject({ draftId: first.draftId, reusedDraft: true, saved: false })
+        await expect(save(db, { draftId: first.draftId, confirmed: true })).resolves.toMatchObject({
+            success: false,
+            error: expect.stringMatching(/has not answered/),
+        })
+        const later = { context: conversation({ messageId: 'message-2' }) }
+        const recovered = await save(db, args, later)
+        expect(recovered.draftId).toBe(first.draftId)
+        expect(drafts(db)).toHaveLength(1)
+        await expect(save(db, { draftId: recovered.draftId, confirmed: true }, later)).resolves.toMatchObject({
+            success: true,
+        })
+    })
+
+    it('keeps the earlier exact-text boundary when the member chooses a destination on their reply', async () => {
+        const db = createDb({ 'knowledgeBases/project-b': { enabled: true } })
+        const args = { text: 'The launch is in May.', origin: 'user_statement', mayContainPrivateInformation: true }
+        await save(db, args)
+        const context = conversation({ messageId: 'message-2' })
+        const targetSave = args =>
+            saveKnowledgeContribution({
+                db,
+                projectId: 'project-b',
+                userId: 'member',
+                args,
+                toolRuntimeContext: context,
+                enqueue: async () => {},
+                now: NOW,
+            })
+        const retargeted = await targetSave(args)
+        await expect(targetSave({ draftId: retargeted.draftId, confirmed: true })).resolves.toMatchObject({
+            success: true,
+            projectId: 'project-b',
+        })
+        const changed = await targetSave({ ...args, text: 'The launch is in June.' })
+        await expect(targetSave({ draftId: changed.draftId, confirmed: true })).resolves.toMatchObject({
+            success: false,
+            error: expect.stringMatching(/has not answered/),
+        })
+    })
+
+    it('does not recover a matching draft from another conversation', async () => {
+        const db = createDb()
+        const args = { text: 'The launch is in May.', origin: 'assistant_summary', mayContainPrivateInformation: true }
+        const first = await save(db, args)
+        const other = await save(db, args, {
+            context: conversation({ objectId: 'another-task', messageId: 'message-2' }),
+        })
+        expect(other.draftId).not.toBe(first.draftId)
+        await expect(
+            save(
+                db,
+                { draftId: other.draftId, confirmed: true },
+                { context: conversation({ objectId: 'another-task', messageId: 'message-2' }) }
+            )
+        ).resolves.toMatchObject({ success: false })
+    })
+
     it("saves the member's own words straight away and asks for a run", async () => {
         const db = createDb()
         const enqueue = jest.fn(async () => {})

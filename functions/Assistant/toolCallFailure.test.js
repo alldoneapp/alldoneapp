@@ -61,6 +61,23 @@ describe('countConsecutiveFailedRounds', () => {
     const failed = { failed: true, error: new Error('x') }
     const ok = { conversationSafeToolResult: { success: true } }
 
+    test('bounds alternating pending drafts and structured confirmation failures', () => {
+        const draft = {
+            toolName: 'save_knowledge_contribution',
+            conversationSafeToolResult: { success: true, saved: false, needsConfirmation: true },
+        }
+        const rejected = {
+            toolName: 'save_knowledge_contribution',
+            conversationSafeToolResult: { success: false, error: 'Wrong destination.' },
+        }
+        let count = 0
+        for (const execution of [draft, rejected, draft]) count = countConsecutiveFailedRounds(count, [execution])
+        expect(count).toBe(MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS)
+        expect(getRoundFailure([draft]).message).toMatch(/wait for the user/)
+        expect(getRoundFailure([rejected]).message).toBe('Wrong destination.')
+        expect(countConsecutiveFailedRounds(count, [ok])).toBe(0)
+    })
+
     test('counts only rounds in which every call failed, and resets on any success', () => {
         let count = 0
         count = countConsecutiveFailedRounds(count, [failed])

@@ -145,6 +145,56 @@ async function deleteExpiredDrafts(db, userId, now) {
     }
 }
 
+async function getOwnedKnowledgeContributionDraft(db, userId, draftId) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(draftId || ''))) return null
+    const snapshot = await db.doc(`${CONTRIBUTION_DRAFTS_COLLECTION}/${draftId}`).get()
+    const draft = snapshot.exists ? snapshot.data() : null
+    return draft?.userId === userId ? { ...draft, draftId } : null
+}
+
+// A reply receives the visible chat, not the previous run's tool results. Recover only this
+// member's drafts from this exact conversation; another chat (or an unscoped MCP client) must
+// never inherit a pending confirmation.
+async function loadPendingKnowledgeContributionDrafts({ db, userId, context, now = Date.now() }) {
+    if (!context?.projectId || !context.objectType || !context.objectId) return []
+    const snapshot = await db.collection(CONTRIBUTION_DRAFTS_COLLECTION).where('userId', '==', userId).get()
+    return snapshot.docs
+        .map(doc => ({ ...doc.data(), draftId: doc.id }))
+        .filter(
+            draft =>
+                Number(draft.expiresAt) > now &&
+                draft.sourceProjectId === context.projectId &&
+                draft.objectType === context.objectType &&
+                draft.objectId === context.objectId
+        )
+        .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+function describeDraft(draft, reusedDraft = false, context = {}) {
+    const canConfirmInCurrentMessage = !!(
+        draft.requestMessageId &&
+        context.messageId &&
+        draft.requestMessageId !== context.messageId
+    )
+    return {
+        success: true,
+        saved: false,
+        needsConfirmation: true,
+        reusedDraft,
+        canConfirmInCurrentMessage,
+        projectId: draft.projectId,
+        draftId: draft.draftId,
+        title: draft.title,
+        textToShare: draft.text,
+        reasons: draft.reasons,
+        note: `NOT saved yet, because ${draft.reasons
+            .map(reason => CONFIRMATION_REASON_TEXT[reason])
+            .join(
+                '; and '
+            )}. ${canConfirmInCurrentMessage ? 'This exact text was already drafted before the current reply. If the current reply explicitly agrees to this text and destination, confirm this draft now; otherwise show the exact text and destination and ask.' : 'Show the user this exact text, say that every member of the project will be able to read it in the wiki, and ask whether to save it as it is. Stop and wait for their reply; do not create or confirm another draft in this turn.'} After they agree, call ${SAVE_TOOL} with ${JSON.stringify({ draftId: draft.draftId, projectId: draft.projectId, confirmed: true })}. If they want changes, save the changed text again instead. If they decline, do nothing.`,
+    }
+}
+
 async function storeContribution({
     db,
     projectId,
@@ -249,8 +299,13 @@ async function confirmDraft({ db, projectId, userId, assistantId, args, toolRunt
     const draftRef = db.doc(`${CONTRIBUTION_DRAFTS_COLLECTION}/${draftId}`)
     const snapshot = await draftRef.get()
     const draft = snapshot.exists ? snapshot.data() || {} : null
-    if (!draft || draft.userId !== userId || draft.projectId !== projectId) {
+    if (!draft || draft.userId !== userId) {
         return failure('There is no such draft to confirm. Save it again to make a new one.')
+    }
+    if (draft.projectId !== projectId) {
+        return failure(
+            `This draft belongs to project ${draft.projectId}. Confirm it with that projectId; do not create a new draft.`
+        )
     }
     if (!(Number(draft.expiresAt) > now)) {
         await draftRef.delete().catch(() => {})
@@ -353,34 +408,37 @@ async function saveKnowledgeContribution({
         })
     }
 
+    const pending = await loadPendingKnowledgeContributionDrafts({ db, userId, context: toolRuntimeContext, now })
+    const sameText = pending.filter(draft => draft.text === text && draft.origin === args.origin)
+    const existing = sameText.find(draft => draft.projectId === projectId)
+    if (existing) return describeDraft(existing, true, toolRuntimeContext)
+
     await deleteExpiredDrafts(db, userId, now)
     const draftId = crypto.randomBytes(10).toString('hex')
-    await db.doc(`${CONTRIBUTION_DRAFTS_COLLECTION}/${draftId}`).set({
+    // If the member chooses a different destination after seeing this exact text, keep the
+    // earlier message boundary. Changed text still needs a fresh, later confirmation.
+    const previous = sameText.find(
+        draft => draft.requestMessageId && draft.requestMessageId !== toolRuntimeContext?.messageId
+    )
+    const draft = {
         userId,
         projectId,
         title,
         text,
         origin: args.origin,
         reasons,
-        requestMessageId: toolRuntimeContext?.messageId || null,
+        sourceProjectId: toolRuntimeContext?.projectId || null,
+        objectType: toolRuntimeContext?.objectType || null,
+        objectId: toolRuntimeContext?.objectId || null,
+        requestMessageId: previous?.requestMessageId || toolRuntimeContext?.messageId || null,
         createdAt: now,
         expiresAt: now + CONTRIBUTION_DRAFT_TTL_MS,
-    })
-    return {
-        success: true,
-        saved: false,
-        needsConfirmation: true,
-        projectId,
-        draftId,
-        title,
-        textToShare: text,
-        reasons,
-        note: `NOT saved yet, because ${reasons
-            .map(reason => CONFIRMATION_REASON_TEXT[reason])
-            .join(
-                '; and '
-            )}. Show the user this exact text, say that every member of the project will be able to read it in the wiki, and ask whether to save it as it is. If they confirm, call ${SAVE_TOOL} with { draftId: "${draftId}", confirmed: true }. If they want changes, save the changed text again instead. If they decline, do nothing.`,
     }
+    await db.doc(`${CONTRIBUTION_DRAFTS_COLLECTION}/${draftId}`).set(draft)
+    // The newly chosen audience supersedes the earlier draft of the same exact text.
+    if (previous)
+        await Promise.all(sameText.map(old => db.doc(`${CONTRIBUTION_DRAFTS_COLLECTION}/${old.draftId}`).delete()))
+    return describeDraft({ ...draft, draftId }, false, toolRuntimeContext)
 }
 
 async function removeKnowledgeContribution({
@@ -449,6 +507,8 @@ module.exports = {
     CONTRIBUTION_ORIGINS,
     findForbiddenContent,
     getConfirmationReasons,
+    getOwnedKnowledgeContributionDraft,
+    loadPendingKnowledgeContributionDrafts,
     normalizeContributionText,
     saveKnowledgeContribution,
     removeKnowledgeContribution,

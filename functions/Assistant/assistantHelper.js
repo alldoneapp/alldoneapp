@@ -2476,6 +2476,8 @@ async function collectAssistantTextWithToolCalls({
     }
     let currentToolCalls = null
     let toolCallRound = 0
+    let consecutiveFailedToolRounds = 0
+    const toolCallFailure = require('./toolCallFailure')
     let executedToolCallsCount = 0
     const executedToolNames = []
     const createdTaskResults = []
@@ -2613,6 +2615,13 @@ async function collectAssistantTextWithToolCalls({
             }
         )
 
+        consecutiveFailedToolRounds = toolCallFailure.countConsecutiveFailedRounds(
+            consecutiveFailedToolRounds,
+            toolExecutions
+        )
+        if (consecutiveFailedToolRounds >= toolCallFailure.MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS) {
+            throw toolCallFailure.getRoundFailure(toolExecutions) || new Error('Tool calls kept failing.')
+        }
         currentConversation = buildConversationAfterToolExecutions({
             currentConversation,
             responseText: collectedStream.assistantText,

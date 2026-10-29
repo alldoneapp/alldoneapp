@@ -115,7 +115,7 @@ const MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS = {
     search_knowledge:
         "Full-text search over a project's wiki: returns matching pages with short passages quoted from their current text. Pass the projectId (see get_user_projects; defaults to the user's default project), or allProjects: true to search the wikis of all the user's projects. Read a page with read_knowledge_page before relying on details.",
     save_knowledge_contribution:
-        "Save knowledge to a project's wiki, ONLY when the user explicitly asks for it. Every member of the project can read it; it is cited on the pages it changes as saved by the user and stays marked as a member's statement, not a verified record. Pass the exact text, origin (user_statement or assistant_summary) and mayContainPrivateInformation. Never include private information the user did not ask to share, email addresses, phone numbers or credentials. When the text is your summary, may contain private information or goes to another project's wiki, the call returns a draft that is NOT saved: show the user the exact text and call again with { draftId, confirmed: true } only after they agree. Remove it again with remove_knowledge_contribution.",
+        "Save knowledge to a project's wiki, ONLY when the user explicitly asks for it. Every member of the project can read it; it is cited on the pages it changes as saved by the user and stays marked as a member's statement, not a verified record. Pass the exact text, origin (user_statement or assistant_summary) and mayContainPrivateInformation. Never include private information the user did not ask to share, email addresses, phone numbers or credentials. When the text is your summary, may contain private information or goes to another project's wiki, the call returns a draft that is NOT saved: show the user the exact text, stop and wait, then call again with { draftId, projectId, confirmed: true } only after they agree. Reuse the draft's projectId; if omitted on confirmation the server resolves its destination. Remove it again with remove_knowledge_contribution.",
 }
 const MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION =
     "The ID of the project whose wiki to use (see get_user_projects). Defaults to the user's default project."
@@ -125,7 +125,13 @@ function adaptToolSchemaForMcp(schema) {
     if (!MCP_KNOWLEDGE_BASE_TOOL_SET.has(name)) return { name, description, inputSchema: parameters }
     const properties = { ...(parameters.properties || {}) }
     if (properties.projectId) {
-        properties.projectId = { ...properties.projectId, description: MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION }
+        properties.projectId = {
+            ...properties.projectId,
+            description:
+                name === 'save_knowledge_contribution'
+                    ? `${MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION} When confirming a draft, use its projectId; if omitted, its destination is used.`
+                    : MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION,
+        }
     }
     return {
         name,

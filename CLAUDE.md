@@ -859,6 +859,14 @@ straight from Firestore). Confirming needs `confirmed: true` and, where the chan
 ids, a later message than the draft's. The card says it is a member's statement, not a verified
 record, and the ingest keeps conflicts with other sources as open questions.
 
+Confirmation resolves an owned draft's destination before checking current project membership,
+so a cross-project confirmation without `projectId` never falls back to the chat project. An
+explicit conflicting target is refused. Pending drafts are scoped to the requesting user and
+exact conversation, included in the next reply's context, and reused for unchanged text. Choosing
+a new destination for the same text preserves its earlier message boundary; changed text needs
+a new confirmation. Draft creation (`saved: false`, `needsConfirmation: true`) and structured
+tool failures do not reset the tool loop's three-round no-progress guard (AT-2904).
+
 **The weekly health check may only spend the first 80% of the cap (`knowledgeLint.js`).** A
 rule-based `lintReport` is written on runs that changed pages; the model pass runs once the run
 has caught up, at most every 7 days, only if a page changed, changes at most 10 pages, never one

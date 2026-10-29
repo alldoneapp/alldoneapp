@@ -9349,6 +9349,92 @@ describe('parallel tool execution in both assistant paths', () => {
     )
 })
 
+test.each(['chat', 'collector'])(
+    'stops a draft/failure/draft retry cycle after three calls in the %s loop',
+    async channel => {
+        const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
+        const toolCall = id => ({ id, function: { name: 'save_knowledge_contribution', arguments: '{}' } })
+        const response = id => [
+            {
+                type: 'response.output_item.done',
+                item: { type: 'function_call', id, call_id: id, name: 'save_knowledge_contribution', arguments: '{}' },
+            },
+            { type: 'response.completed', response: { output: [] } },
+        ]
+        const pending = {
+            success: true,
+            saved: false,
+            needsConfirmation: true,
+            draftId: 'pending',
+            projectId: 'target',
+        }
+        const execute = jest
+            .fn()
+            .mockResolvedValueOnce(pending)
+            .mockResolvedValueOnce({ success: false, error: 'Wrong project.' })
+            .mockResolvedValueOnce(pending)
+        mockResponsesCreate
+            .mockReset()
+            .mockResolvedValueOnce(response('retry-1'))
+            .mockResolvedValueOnce(response('retry-2'))
+        const stream = [{ additional_kwargs: { tool_calls: [toolCall('initial')] } }]
+        const runtime = {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            failOnToolExecutionError: true,
+        }
+        try {
+            let running
+            if (channel === 'collector') {
+                running = collectAssistantTextWithToolCalls({
+                    stream,
+                    conversationHistory: [['user', 'Save this.']],
+                    modelKey: 'MODEL_GPT6_LUNA',
+                    temperatureKey: 'TEMPERATURE_NORMAL',
+                    allowedTools: [],
+                    toolRuntimeContext: runtime,
+                    localTools: { save_knowledge_contribution: { execute } },
+                })
+            } else {
+                mockKnowledgeBase.isKnowledgeBaseToolAllowed.mockResolvedValue(true)
+                mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockResolvedValue(['save_knowledge_contribution'])
+                mockKnowledgeBase.executeKnowledgeBaseTool.mockImplementation(execute)
+                running = storeBotAnswerStream(
+                    'project-1',
+                    'topics',
+                    'chat-1',
+                    stream,
+                    ['user-1'],
+                    ['PUBLIC'],
+                    null,
+                    'assistant-1',
+                    ['user-1'],
+                    'Anna',
+                    'user-1',
+                    null,
+                    [['user', 'Save this.']],
+                    'MODEL_GPT6_LUNA',
+                    'TEMPERATURE_NORMAL',
+                    [],
+                    { project: { name: 'Project' }, chat: { title: 'Chat' }, chatLink: '' },
+                    null,
+                    runtime
+                )
+            }
+            await expect(running).rejects.toThrow(/wait for the user/)
+            expect(execute).toHaveBeenCalledTimes(3)
+            expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+        } finally {
+            mockKnowledgeBase.executeKnowledgeBaseTool.mockReset().mockResolvedValue({ success: true })
+            mockKnowledgeBase.isKnowledgeBaseToolAllowed.mockReset().mockResolvedValue(false)
+            mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockReset().mockResolvedValue([])
+        }
+    }
+)
+
 test('a multi-call round keeps attachment handoff ordered and strips binary data from model context', async () => {
     const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
     mockResponsesCreate.mockReset().mockResolvedValue([
