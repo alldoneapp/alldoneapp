@@ -47,14 +47,12 @@ const {
 const {
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
-    KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON,
     getKnowledgeBaseMonthKey,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
     getKnowledgeRunsPath,
     isKnowledgePageVisible,
-    isProjectArchivedForUser,
     normalizeKnowledgePageSlug,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
@@ -630,9 +628,8 @@ async function runKnowledgeBaseIngest({
         if (ownerSnapshot.exists && !isKnowledgeBaseOwnerActive(ownerData, startedAt)) {
             throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON)
         }
-        if (isProjectArchivedForUser(ownerData, projectId)) {
-            throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON)
-        }
+        // A payer who archived the project still pays for its wiki (AT-2893): an archived project's
+        // knowledge stays usable, and once caught up a run without changed sources calls no model.
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
         if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
@@ -912,8 +909,7 @@ async function runKnowledgeBaseIngest({
         !!failure && isTransientModelError(failure) && previousTransientRetries < MAX_TRANSIENT_FAILURE_RETRIES
     const transientFailureRetries = retryTransientFailure ? previousTransientRetries + 1 : 0
     const nextRunAt =
-        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON ||
-        stopReason === KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON
+        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
             ? null
             : stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON
               ? startOfNextMonthUtc(finishedAt)
