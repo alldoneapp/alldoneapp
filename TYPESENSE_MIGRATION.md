@@ -67,11 +67,6 @@
 > Contacts, and Topics. That produces eight engine searches in one `multi_search`. Keep
 > `MAX_MULTI_SEARCHES` at eight (or update it together with that plan); a scoped key capped at
 > five rejects the whole request with HTTP 400.
-> **Self-provisioned parent key (2026-10-29, AT-2905):** the hand-made parent key above listed
-> only the five original collections, so the Artifacts and Wiki tabs got HTTP 401 and showed no
-> results. `functions/Typesense/scopedSearchParentKey.js` now creates the parent with the admin key
-> from `ALL_COLLECTIONS` (deterministic HMAC-derived value, `documents:search` only, 409 = already
-> exists). `TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY` is only a logged fallback when that fails.
 > **QA gate (run before Phase 4, two accounts A/B):**
 >
 > 1. B's private task/note never appears for A (isPublicFor).

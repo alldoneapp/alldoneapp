@@ -536,9 +536,12 @@ exports.getAnnaConversationSecondGen = onCall(
                     before: request.data.before || null,
                     recentOnly: request.data.recentOnly === true,
                 })
+            const requestedProjectId = request.data?.projectId
             const reference = await ensureAnnaConversation({
                 db: admin.firestore(),
                 userId: request.auth.uid,
+                // AT-2903: the project chosen in the chat's project switcher.
+                projectId: typeof requestedProjectId === 'string' && requestedProjectId ? requestedProjectId : null,
                 resolveAssistantId: async (user, projectId) => {
                     // Match the app's default assistant preference before its project fallback.
                     const defaults = await admin
@@ -560,7 +563,15 @@ exports.getAnnaConversationSecondGen = onCall(
                 ...(await listAnnaConversations({ db: admin.firestore(), userId: request.auth.uid })),
             }
         } catch (error) {
-            if (['unauthenticated', 'not-found', 'failed-precondition', 'permission-denied'].includes(error.code))
+            if (
+                [
+                    'unauthenticated',
+                    'not-found',
+                    'failed-precondition',
+                    'permission-denied',
+                    'invalid-argument',
+                ].includes(error.code)
+            )
                 throw new HttpsError(error.code, error.message)
             throw error
         }
