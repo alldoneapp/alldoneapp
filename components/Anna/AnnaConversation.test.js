@@ -569,11 +569,10 @@ it('shows linked red activity between messages without posting to the assistant'
     render()
     act(() => jest.advanceTimersByTime(300))
     const links = [...container.querySelectorAll('.anna-activity-notice a')]
-    // A task opens itself; a chat whose object type is not known yet opens its own chat object,
-    // which is resolved on click — never the followed chats inbox (AT-2906).
+    // A task opens itself; a chat whose object type is not known yet keeps its inbox (AT-2906).
     expect(links.map(link => link.getAttribute('href'))).toEqual([
         '/projects/p1/tasks/task1/properties',
-        '/projects/p1/chats/otherChat/chat',
+        '/projects/p1/user/u1/chats/followed',
     ])
     expect(links[0].querySelector('.anna-activity-title').textContent).toBe('created task')
     expect(links[1].querySelector('.anna-activity-title').textContent).toBe('New chat message')
@@ -638,6 +637,7 @@ it('reports persisted run completion to the workspace without waiting for the sp
         projectId: 'p1',
         chatId: 'anna_u1',
         busy: true,
+        running: true,
         completedRequests: [],
     })
     mockMessages = [
@@ -648,6 +648,7 @@ it('reports persisted run completion to the workspace without waiting for the sp
         projectId: 'p1',
         chatId: 'anna_u1',
         busy: false,
+        running: false,
         completedRequests: ['request'],
     })
 })

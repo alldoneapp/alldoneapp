@@ -5,20 +5,10 @@ import { subscribePageVisible } from '../../utils/appResume'
 export const isActiveVmJob = job =>
     ['queued', 'pending', 'initiated', 'awaiting_user', 'cancel_requested'].includes(job.status)
 
-// Since AT-2916 the overview shows one entry per task/topic thread — like the task list's VM badge —
-// including the user's paused VMs on open tasks. `id` is the thread, `runId` the run it shows.
-export const isListedVmThread = thread => isActiveVmJob(thread) || thread.status === 'paused'
-
-// Functions deployed before AT-2916 answer with per-run `jobs` only.
-const toThreads = result =>
-    Array.isArray(result?.threads)
-        ? result.threads
-        : (result?.jobs || []).map(job => ({ ...job, runId: job.id, waitingCount: 0 }))
-
 export const vmJobPath = job =>
     `/projects/${job.projectId}/${job.objectType === 'topics' ? 'chats' : 'tasks'}/${job.objectId}/chat`
 
-export default function useAnnaVmJobs(userId, { enabled, selectedId = null, selectedRunId = null }) {
+export default function useAnnaVmJobs(userId, { enabled, selectedRunId }) {
     const [state, setState] = useState({ userId, jobs: [], error: false })
     const [attempt, setAttempt] = useState(0)
     const retry = useCallback(() => setAttempt(value => value + 1), [])
@@ -31,7 +21,7 @@ export default function useAnnaVmJobs(userId, { enabled, selectedId = null, sele
             inFlight = true
             try {
                 const result = await runHttpsCallableFunction('listActiveVmJobsSecondGen', { selectedRunId })
-                if (!disposed) setState({ userId, jobs: toThreads(result), error: false })
+                if (!disposed) setState({ userId, jobs: result.jobs || [], error: false })
             } catch (error) {
                 if (!disposed)
                     setState(previous => ({
@@ -57,15 +47,7 @@ export default function useAnnaVmJobs(userId, { enabled, selectedId = null, sele
         }
     }, [userId, enabled, selectedRunId, attempt])
     return {
-        jobs:
-            state.userId === userId
-                ? state.jobs.filter(
-                      thread =>
-                          isListedVmThread(thread) ||
-                          (selectedId && thread.id === selectedId) ||
-                          (selectedRunId && thread.runId === selectedRunId)
-                  )
-                : [],
+        jobs: state.userId === userId ? state.jobs.filter(job => isActiveVmJob(job) || job.id === selectedRunId) : [],
         error: state.userId === userId && state.error,
         retry,
     }

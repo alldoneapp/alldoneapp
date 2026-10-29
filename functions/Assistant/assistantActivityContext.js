@@ -4,17 +4,14 @@ const {
     normalizeAssistantActivityNotice,
 } = require('../shared/assistantActivityContext')
 
-// `projectId` limits the notices to one project, for a conversation other people can read.
-async function loadAssistantActivityContext(db, userId, { projectId = null } = {}) {
+async function loadAssistantActivityContext(db, userId) {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(userId || '')) return ''
     const snapshot = await db
         .collection(`users/${userId}/private/assistantActivity/notices`)
         .orderBy('created', 'desc')
         .limit(ACTIVITY_CONTEXT_LIMIT)
         .get()
-    const notices = snapshot.docs
-        .map(doc => normalizeAssistantActivityNotice(doc.data(), userId))
-        .filter(notice => notice && (!projectId || notice.sourceProjectId === projectId))
+    const notices = snapshot.docs.map(doc => normalizeAssistantActivityNotice(doc.data(), userId)).filter(Boolean)
     if (!notices.length) return ''
     const ids = [...new Set(notices.map(notice => notice.sourceProjectId))]
     const projects = await db.getAll(...ids.map(id => db.doc(`projects/${id}`)))

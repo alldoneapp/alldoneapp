@@ -87,26 +87,3 @@ it('makes discovery failures retryable and clears retained data on access failur
     await act(async () => latest.retry())
     expect(latest.error).toBe(false)
 })
-
-// AT-2916: one entry per thread, paused VMs included, like the task list's VM badge.
-it('lists threads, including paused VMs, and keeps the selected thread after its run settles', async () => {
-    runHttpsCallableFunction.mockResolvedValue({
-        jobs: [],
-        threads: [
-            { id: 'p1__t1', runId: 'r1', status: 'initiated', waitingCount: 1 },
-            { id: 'p1__t2', runId: 'r2', status: 'paused' },
-            { id: 'p1__t3', runId: 'r3', status: 'completed' },
-        ],
-    })
-    await render()
-    expect(latest.jobs.map(thread => thread.id)).toEqual(['p1__t1', 'p1__t2'])
-    await render({ selectedId: 'p1__t3', selectedRunId: 'r3' })
-    expect(latest.jobs.map(thread => thread.id)).toEqual(['p1__t1', 'p1__t2', 'p1__t3'])
-    expect(runHttpsCallableFunction).toHaveBeenLastCalledWith('listActiveVmJobsSecondGen', { selectedRunId: 'r3' })
-})
-
-it('still works against Functions that only answer with runs', async () => {
-    runHttpsCallableFunction.mockResolvedValue({ jobs: [{ id: 'r1', status: 'initiated' }] })
-    await render()
-    expect(latest.jobs).toEqual([{ id: 'r1', runId: 'r1', status: 'initiated', waitingCount: 0 }])
-})
