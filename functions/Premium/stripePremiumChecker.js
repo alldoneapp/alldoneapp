@@ -1,7 +1,7 @@
 const functions = require('firebase-functions')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { applyGoldChange, applyGoldChangeInTransaction } = require('../Gold/goldHelper')
+const { applyGoldChangeInTransaction } = require('../Gold/goldHelper')
 const { purchaseEvent, refundEvent } = require('../GAnalytics/GAnalytics')
 const {
     checkPremiumStatusByEmail,
@@ -409,35 +409,6 @@ const checkPremiumStatusById = async (userId, trackingId = null) => {
     }
 }
 
-// A new account that turns out to be a paying customer starts with PREMIUM_SIGNUP_GOLD instead of
-// the default start balance. The signup flow used to write that balance from the client, which is
-// the one field a client must never set; the server now grants the difference, once per account
-// (idempotency key) and only while the Auth account is less than a day old.
-const PREMIUM_SIGNUP_GOLD = 1000
-const DEFAULT_START_GOLD = 100
-const PREMIUM_SIGNUP_WINDOW_MS = 24 * 60 * 60 * 1000
-
-const grantPremiumSignupGold = async (userId, { now = Date.now() } = {}) => {
-    const userRecord = await admin.auth().getUser(userId)
-    const createdAt = Date.parse(userRecord?.metadata?.creationTime || '')
-    if (!Number.isFinite(createdAt) || now - createdAt > PREMIUM_SIGNUP_WINDOW_MS) {
-        return { granted: false, reason: 'account_not_new' }
-    }
-
-    const result = await applyGoldChange({
-        userId,
-        delta: PREMIUM_SIGNUP_GOLD - DEFAULT_START_GOLD,
-        direction: 'earn',
-        source: 'premium_signup_bonus',
-        idempotencyKey: `premium_signup_bonus:${userId}`,
-    })
-
-    return {
-        granted: !!result.success && !result.alreadyProcessed,
-        newBalance: result.newBalance,
-    }
-}
-
 /**
  * Firebase HTTP callable function to check premium status
  * Updated to work with v2 functions wrapper and tracking ID support
@@ -465,17 +436,6 @@ const checkUserPremiumStatus = async (data, context) => {
     try {
         functions.logger.info('Calling checkPremiumStatusById', { userId, trackingId })
         const result = await checkPremiumStatusById(userId, trackingId)
-
-        let signupGold = null
-        if (data?.isSignup === true && result.success && result.premiumStatus === PLAN_STATUS_PREMIUM) {
-            try {
-                signupGold = await grantPremiumSignupGold(userId)
-                functions.logger.info('Premium signup gold', { userId, ...signupGold })
-            } catch (error) {
-                // A missing bonus must not fail the premium check the signup flow is waiting on.
-                functions.logger.error('Premium signup gold failed', { userId, error: error.message })
-            }
-        }
 
         functions.logger.info('checkPremiumStatusById result', {
             userId,
@@ -506,7 +466,6 @@ const checkUserPremiumStatus = async (data, context) => {
             customer: result.customer,
             linkedViaTracking: result.linkedViaTracking,
             trackingId: result.trackingId,
-            signupGold,
         }
 
         functions.logger.info('checkUserPremiumStatus response', {
@@ -869,5 +828,4 @@ module.exports = {
     updateUserPremiumStatus,
     createStripePortalSession,
     linkStripeAccount,
-    grantPremiumSignupGold,
 }

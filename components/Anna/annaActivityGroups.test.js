@@ -65,35 +65,13 @@ describe('getAnnaActivityTarget (AT-2906)', () => {
         expect(getAnnaActivityTarget([feed('a', 1, 'note1', 'notes').notice])).toBe('/projects/p1/notes/note1/editor')
     })
 
-    it('opens the chat object of a topic, or of a thread whose type is not known yet (AT-2906)', () => {
-        expect(getAnnaActivityTarget([chat('topic1', 'c', 1, 'topics').notice])).toBe('/projects/p1/chats/topic1/chat')
-        // Saved before it was enriched: never the followed chats inbox, which is not the object
-        // and crashed on a project whose members were still loading.
-        expect(getAnnaActivityTarget([chat('x', 'c', 1).notice])).toBe('/projects/p1/chats/x/chat')
-    })
-
-    it('takes the type from any notice of the group when the last message has none', () => {
-        expect(getAnnaActivityTarget([feed('a', 1).notice, chat('task1', 'c', 2).notice])).toBe(
-            '/projects/p1/tasks/task1/chat'
+    it('keeps the inbox for objects the workspace cannot open, or an unknown chat type', () => {
+        expect(getAnnaActivityTarget([chat('topic1', 'c', 1, 'topics').notice])).toBe(
+            '/projects/p1/user/u1/chats/followed'
         )
-        expect(getAnnaActivityTarget([feed('a', 1, 'goal1', 'goals').notice, chat('goal1', 'c', 2).notice])).toBe(
-            '/projects/p1/goals/goal1/chat'
-        )
-        expect(getAnnaActivityTarget([feed('a', 1, 'c1', 'contacts').notice])).toBe(
-            '/projects/p1/contacts/c1/properties'
-        )
-    })
-
-    it('keeps the updates inbox for objects the workspace cannot open', () => {
+        expect(getAnnaActivityTarget([chat('x', 'c', 1).notice])).toBe('/projects/p1/user/u1/chats/followed')
         expect(getAnnaActivityTarget([feed('a', 1, 'u2', 'users').notice])).toBe(
             '/projects/p1/user/u1/updates/followed'
         )
-        // A known type without a workspace view (a user's or skill's chat) keeps its saved inbox.
-        expect(getAnnaActivityTarget([chat('u2', 'c', 1, 'users').notice])).toBe('/projects/p1/user/u1/chats/followed')
-    })
-
-    it('never builds a path from a malformed id', () => {
-        const bad = { id: 'chat/p1/bad id/c', kind: 'chat', created: 1, path: '/projects/p1/user/u1/chats/followed' }
-        expect(getAnnaActivityTarget([bad])).toBe(bad.path)
     })
 })

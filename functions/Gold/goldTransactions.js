@@ -17,8 +17,6 @@ const GOLD_CONTEXT_FIELDS = [
     // needed a manual, approximate match on projectId + objectId + timestamp.
     'model',
     'correlationId',
-    // The spend a client refund gave back (see refundClientSpend in goldHelper.js).
-    'refundOf',
 ]
 
 // Booleans need their own list because the string sanitizer below drops everything that is
@@ -62,16 +60,6 @@ function buildGoldTransaction({ amount, direction, source, balanceBefore, balanc
     }
 }
 
-// The sign each ledger direction must carry. Client callables pass their amount straight
-// through (deductGold negates it), so without this a "spend" of -500 credited 500 Gold.
-// `adjustment` is the admin correction and may go either way.
-const DIRECTION_SIGNS = { spend: -1, earn: 1, refund: 1 }
-
-function deltaMatchesDirection(direction, delta) {
-    const sign = DIRECTION_SIGNS[direction]
-    return !sign || Math.sign(delta) === sign
-}
-
 function applyGoldChangeInTransaction({
     transaction,
     userRef,
@@ -86,11 +74,7 @@ function applyGoldChangeInTransaction({
     const normalizedDelta = Number(delta)
     const currentGold = Number(userData.gold) || 0
 
-    if (
-        !Number.isFinite(normalizedDelta) ||
-        normalizedDelta === 0 ||
-        !deltaMatchesDirection(direction, normalizedDelta)
-    ) {
+    if (!Number.isFinite(normalizedDelta) || normalizedDelta === 0) {
         return { success: false, message: 'Invalid gold amount', currentGold }
     }
 

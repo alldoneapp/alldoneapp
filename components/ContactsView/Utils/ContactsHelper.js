@@ -127,7 +127,7 @@ class ContactsHelper {
 
     static processURLProjectPeople = (navigation, projectId, userId, tab = FOLLOWED_TAB, contactStatus = null) => {
         const user = TasksHelper.getUserInProject(projectId, userId) || getWorkstreamInProject(projectId, userId)
-        const currentUser = user || store.getState().loggedUser
+        const currentUser = user !== null ? user : store.getState().loggedUser
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
         navigation.navigate('Root')
         store.dispatch([
