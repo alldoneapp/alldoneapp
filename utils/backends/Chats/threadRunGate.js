@@ -89,13 +89,10 @@ export const getReleasedMessageCreated = ({ comments = [], now, originalCreated 
     return Math.max(waited ? now : originalCreated || now, latest ? latest + 1 : 0)
 }
 
-const defaultNow = () => {
-    try {
-        return require('../../serverClock').getServerNow()
-    } catch (_) {
-        return Date.now()
-    }
-}
+// Deliberately the plain client clock: utils/serverClock imports the redux store, which is far too
+// heavy to pull into the send path, and the ordering does not depend on it, because a released
+// message is always dated after the newest comment the thread already holds.
+const defaultNow = () => Date.now()
 
 const defaultWatchThread = (thread, onUpdate) => {
     const { getDb } = require('../firestore')
