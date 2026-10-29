@@ -226,11 +226,6 @@ export default function ProjectWikiSettings({ project }) {
                     {translate('Wiki paused while its payer is inactive')}
                 </Text>
             )}
-            {settings.pausedForArchivedProject && (
-                <Text testID="project-wiki-archived-hint" style={localStyles.hint}>
-                    {translate('Wiki paused while its payer has archived the project')}
-                </Text>
-            )}
             {!canManage && (
                 <Text style={localStyles.hint}>{translate('Only the paying member can change the wiki')}</Text>
             )}
