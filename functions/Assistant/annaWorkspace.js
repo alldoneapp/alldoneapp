@@ -19,20 +19,61 @@ const isAnnaChatId = (chatId, userId) =>
     (chatId === conversationId(userId) ||
         (typeof chatId === 'string' && new RegExp(`^AnnaChat[0-9]{8}${userId}$`).test(chatId)))
 
+// AT-2903: the project's own assistant is the one flagged as its default, otherwise
+// its configured `project.assistantId` when that assistant still exists in the
+// project or the global pool. Null means "no assistant of its own": the caller
+// then lets the user's default assistant answer in that project's context.
+async function findProjectAssistantId(db, projectId, project = null) {
+    if (!validId(projectId)) return null
+    const flagged = await db.collection(`assistants/${projectId}/items`).where('isDefault', '==', true).limit(1).get()
+    const first = flagged.docs?.[0]
+    if (first && validId(first.id)) return first.id
+    const projectData = project || (await db.doc(`projects/${projectId}`).get()).data() || {}
+    const configured = typeof projectData.assistantId === 'string' ? projectData.assistantId.trim() : ''
+    if (!validId(configured)) return null
+    const [own, global] = await db.getAll(
+        db.doc(`assistants/${projectId}/items/${configured}`),
+        db.doc(`assistants/globalProject/items/${configured}`)
+    )
+    return own.exists || global.exists ? configured : null
+}
+
+const isUnavailableProject = (user, projectId) =>
+    ['archivedProjectIds', 'templateProjectIds', 'guideProjectIds'].some(
+        field => Array.isArray(user[field]) && user[field].includes(projectId)
+    )
+
 // The pointer lives in an owner-only document; project collaborators can read user profiles.
-async function ensureAnnaConversation({ db, userId, resolveAssistantId, now = Date.now() }) {
+// `projectId` selects the project the conversation continues in (AT-2903). Without it,
+// or when it names the default project, the behaviour is unchanged.
+async function ensureAnnaConversation({
+    db,
+    userId,
+    resolveAssistantId,
+    resolveProjectAssistantId = (user, projectId) => findProjectAssistantId(db, projectId),
+    projectId: requestedProjectId = null,
+    now = Date.now(),
+}) {
     if (!validId(userId)) fail('unauthenticated', 'Sign in to talk with Anna.')
     const userDoc = await db.doc(`users/${userId}`).get()
     if (!userDoc.exists) fail('not-found', 'Your alldone account could not be loaded.')
     const user = userDoc.data()
     const defaultProjectId = user.defaultProjectId
     if (!validId(defaultProjectId)) fail('failed-precondition', 'Choose a default project in alldone first.')
-    const assistantId = await resolveAssistantId(user, defaultProjectId)
+    if (requestedProjectId != null && !validId(requestedProjectId))
+        fail('invalid-argument', 'The selected project is invalid.')
+    const targetProjectId = requestedProjectId || defaultProjectId
+    const otherProject = targetProjectId !== defaultProjectId
+    if (otherProject && isUnavailableProject(user, targetProjectId))
+        fail('failed-precondition', 'This project is not available for your assistant chat.')
+    let assistantId = otherProject ? await resolveProjectAssistantId(user, targetProjectId) : null
+    // A project without its own assistant is answered by the default assistant.
+    if (!validId(assistantId)) assistantId = await resolveAssistantId(user, defaultProjectId)
     if (!validId(assistantId)) fail('failed-precondition', 'Your default assistant is not available.')
     const { dateKey, dateLabel } = getUserLocalDateContext(user, now)
     const pointerRef = db.doc(`users/${userId}/private/annaConversation`)
     return db.runTransaction(async transaction => {
-        const projectId = defaultProjectId
+        const projectId = targetProjectId
         if (!validId(projectId)) fail('failed-precondition', 'The Anna conversation reference is invalid.')
         const projectRef = db.doc(`projects/${projectId}`)
         const chatId = conversationId(userId, dateKey)
@@ -47,7 +88,12 @@ async function ensureAnnaConversation({ db, userId, resolveAssistantId, now = Da
         )
         const members = projectDoc.data()?.userIds || []
         if (!members.includes(userId))
-            fail('permission-denied', 'Your Anna conversation project is no longer accessible.')
+            fail(
+                'permission-denied',
+                otherProject
+                    ? 'You are no longer a member of this project.'
+                    : 'Your Anna conversation project is no longer accessible.'
+            )
         let conversation
         if (chatDoc.exists) {
             const chat = chatDoc.data()
@@ -297,6 +343,7 @@ module.exports = {
     listAnnaConversations,
     loadAnnaHistoryContext,
     ensureAnnaConversation,
+    findProjectAssistantId,
     loadAnnaContext,
     annaInstructions,
     showWorkspaceSchema,

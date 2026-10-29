@@ -612,19 +612,26 @@ when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefau
 also what reached the projects that existed before the default — there is no migration. The payer
 is the project's creator when they are an active member, otherwise the member being processed.
 Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
-template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archiving
-is per member** (`users/{uid}.archivedProjectIds`, the list `projectScope.js` reads), not the
-project-wide `project.active` flag the first version checked, which switched on 33 projects the
-dogfooding account had archived. A member who archived a project neither switches its wiki on nor
-pays for it (`isProjectArchivedForUser`), and a run whose payer has the project archived stops
-with `project_archived` and clears `nextRunAt`, like `owner_inactive`; the sweep resumes it when the
-payer reactivates the project, and hands a default wiki to a member for whom it is still active. When the
+template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archived
+projects get the wiki too (AT-2893)**: archiving (`users/{uid}.archivedProjectIds`, per member) means
+"done with this project", not "forget what we learned in it", and the wiki is what keeps a past
+project's knowledge usable in search, `read_knowledge_page`/`search_knowledge` and global search
+(which includes archived projects by default, AT-2524). An archived project is built and kept current
+by the same nightly run, with the same payer rules and the same 500-Gold monthly cap; once caught up
+it costs no Gold, because a run that finds no changed source makes no model call. The sweep orders a
+member's archived projects after the active ones, so `MAX_PROJECTS_PER_USER` cuts past projects
+first. (`project.active === false` is a different, project-wide flag — no member opened it in 30
+days — and stays excluded.) Until AT-2893 a member who archived a project neither switched its wiki on
+nor paid for it, and a run stopped with `project_archived` and cleared `nextRunAt`. No run writes that
+reason any more; `isKnowledgeBasePausedForArchivedProject` only recognises the leftover state, which
+the sweep and a save in the settings resume like `owner_inactive`. When the
 payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
 model call); the payer's return resumes it, and a wiki the default switched on moves to another
 active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
 or no field on wikis that predate the default) never changes hands that way — it waits. Note
 `releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
-`knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
+`knowledgeBaseDefaults.test.js` and the `owner_inactive` and archived-project cases in
+`knowledgeBaseIngest.test.js`.
 
 **A wiki that reaches its monthly Gold limit says so, and raising the limit resumes it.** The run
 stops with `monthly_cap` and schedules itself for the first of next month (UTC); before this, that

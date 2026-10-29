@@ -7,7 +7,9 @@ import React, {
     useRef,
     useState,
 } from 'react'
+import { useSelector } from 'react-redux'
 import useGetMessages from '../../hooks/Chats/useGetMessages'
+import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
 import AnnaMessageBody from './AnnaMessageBody'
 import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
@@ -74,6 +76,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         onResumeHandled,
         onBeforeSend,
         pageContext,
+        // AT-2903: true while the selected project's chat is still being resolved.
+        switching = false,
+        renderProjectSwitcher,
     },
     ref
 ) {
@@ -181,7 +186,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             await call.startCall({
                 assistant,
                 resolveTarget: async () => {
-                    const thread = resolveConversation ? await resolveConversation() : conversation
+                    const thread = resolveConversation
+                        ? await resolveConversation(conversation.projectId)
+                        : conversation
                     if (!mounted.current || request !== voiceRequest.current) return null
                     if (!thread?.id)
                         throw new Error(translate('Your conversation could not be loaded. Please try again.'))
@@ -242,6 +249,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         event?.preventDefault()
         const text = continuation?.text || draftRef.current.trim()
         if (voiceActive || dictationBusy || !text || offline || isBrowserOffline()) return
+        // Wait for the selected project's chat, so a message never lands in the previous one.
+        if (switching && !continuation) return
         if (!(user.gold > 0)) {
             setError(translate('You need Gold to talk with %{assistantName}.', { assistantName }))
             return
@@ -271,6 +280,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             !resumeRequest ||
             resumed.current === resumeRequest.id ||
             sending ||
+            switching ||
             voiceActive ||
             dictationBusy ||
             offline ||
@@ -280,7 +290,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         resumed.current = resumeRequest.id
         send(null, resumeRequest)
         onResumeHandled?.(resumeRequest.id)
-    }, [resumeRequest, sending, voiceActive, dictationBusy, offline])
+    }, [resumeRequest, sending, switching, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
     const displayedThreads = [...(threads || [{ ...conversation, chatId: conversation.id }])]
@@ -294,6 +304,16 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         )
             displayedThreads.push(thread)
     })
+    const isCurrentThread = thread =>
+        thread.projectId === conversation.projectId && (thread.chatId || thread.id) === conversation.id
+    // AT-2903: the composer writes into the current thread, so it is always the last
+    // section, also after switching back to a project whose chat started earlier today.
+    const currentIndex = displayedThreads.findIndex(isCurrentThread)
+    if (currentIndex >= 0 && currentIndex < displayedThreads.length - 1)
+        displayedThreads.push(...displayedThreads.splice(currentIndex, 1))
+    const showProject =
+        new Set(displayedThreads.map(thread => thread.projectId)).size > 1 ||
+        conversation.projectId !== user.defaultProjectId
     const latest = useCallback(() => {
         scrollAnchor.current = null
         chatScroll.latest()
@@ -348,10 +368,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             assistant={assistant}
                             user={user}
                             scroll={scroll}
-                            current={
-                                thread.projectId === conversation.projectId &&
-                                (thread.chatId || thread.id) === conversation.id
-                            }
+                            current={isCurrentThread(thread)}
+                            showProject={showProject}
                             localMessages={localMessages.filter(
                                 message =>
                                     message.thread?.projectId === thread.projectId &&
@@ -423,6 +441,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             </div>
                             <div className="anna-composer-toolbar">
                                 <div className="anna-composer-tools">
+                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
                                     {!offline && conversation.projectId && isDictationSupported() && (
                                         <RambleButton
                                             projectId={conversation.projectId}
@@ -473,7 +492,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                         className="anna-voice-button"
                                         aria-label={translate('Talk with %{assistantName}', { assistantName })}
                                         title={voiceHint}
-                                        disabled={voiceActive || offline || sending || dictationBusy}
+                                        disabled={voiceActive || offline || sending || dictationBusy || switching}
                                         onClick={toggleVoiceCall}
                                     >
                                         <Icon name="phone-call" size={20} color="currentColor" />
@@ -481,7 +500,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     <button
                                         type="submit"
                                         className="anna-send"
-                                        disabled={offline || voiceActive || dictationBusy || !hasText}
+                                        disabled={offline || voiceActive || dictationBusy || switching || !hasText}
                                         aria-label={translate('Send message')}
                                     >
                                         <Icon name="arrow-up" size={20} color="currentColor" />
@@ -594,7 +613,18 @@ function AnnaThreadMessages({
     onAcknowledge,
     onWorkStateChange,
     reducedMotion,
+    showProject = false,
 }) {
+    // Earlier sections can belong to another project and its assistant (AT-2903).
+    const threadAssistant = useSelector(state =>
+        !current && thread.assistantId && thread.assistantId !== assistant?.uid
+            ? getAssistantFromState(state, thread.assistantId)
+            : null
+    )
+    assistant = threadAssistant || assistant
+    const projectName = useSelector(state =>
+        showProject ? state.loggedUserProjectsMap?.[thread.projectId]?.name || '' : ''
+    )
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
@@ -675,8 +705,16 @@ function AnnaThreadMessages({
     }
     return (
         <section aria-label={thread.dateKey || translate('Earlier conversation')}>
-            {thread.dateKey && (
-                <div className="anna-date-divider">{thread.dateKey.replace(/^(....)(..)(..)$/, '$1-$2-$3')}</div>
+            {(thread.dateKey || projectName) && (
+                <div className="anna-date-divider">
+                    {[
+                        thread.dateKey && thread.dateKey.replace(/^(....)(..)(..)$/, '$1-$2-$3'),
+                        projectName,
+                        projectName && assistantName,
+                    ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                </div>
             )}
             {messages.length >= limit && (
                 <button className="anna-text-button" onClick={expandEarlier}>
