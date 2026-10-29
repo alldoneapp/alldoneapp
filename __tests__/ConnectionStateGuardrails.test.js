@@ -95,10 +95,13 @@ describe('PT-4660: every Firestore transport restart goes through the shared lea
     it('no other module cycles the network on its own', () => {
         // firestoreNetworkGate parks and resumes the transport on the offline/online
         // transitions — separate branches, never a cycle — so it is not a restart owner.
+        // firestoreTabHandoff does the same when a hidden tab hands the connection to a
+        // visible one and takes it back (AT-2907).
         const allowed = new Set([
             ...RESTART_OWNERS,
             'utils/backends/firestoreNetworkGate.js',
             'utils/backends/firestoreRestartLease.js',
+            'utils/backends/firestoreTabHandoff.js',
         ])
 
         const offenders = sourceFiles()
@@ -110,6 +113,14 @@ describe('PT-4660: every Firestore transport restart goes through the shared lea
             .filter(file => !allowed.has(file))
 
         expect(offenders).toEqual([])
+    })
+
+    it('every other module that resumes the network respects a hidden-tab handoff (AT-2907)', () => {
+        // A hidden tab that handed the shared connection to a visible tab must not take it
+        // back through a restart or the offline gate's recovery; the handoff owns that.
+        ;[...RESTART_OWNERS, 'utils/backends/firestoreNetworkGate.js'].forEach(owner => {
+            expect(read(path.join(ROOT, owner))).toContain('isFirestoreNetworkReleasedToVisibleTab')
+        })
     })
 })
 
