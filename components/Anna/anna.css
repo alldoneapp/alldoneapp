@@ -1266,6 +1266,10 @@
     font-size: 12px;
     font-weight: 500;
 }
+.anna-vm-paused-hint {
+    font-size: 13px;
+    margin-bottom: 16px;
+}
 .anna-vm-task-link {
     color: var(--anna-accent);
     flex-shrink: 0;

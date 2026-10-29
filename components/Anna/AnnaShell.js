@@ -206,15 +206,20 @@ export default function AnnaShell({ children, routeId }) {
     const vmSurface = surface === 'vms' || !!selectedVmId
     const lastVmId = useRef(null)
     if (selectedVmId) lastVmId.current = selectedVmId
+    // A card is a thread (AT-2916); remembering the run it showed keeps that run's result on screen
+    // after it settles, even when its task is done and the thread therefore leaves the list.
+    const selectedVmRun = useRef({ id: null, runId: null })
     const {
         jobs: vmJobs,
         error: vmError,
         retry: retryVms,
     } = useAnnaVmJobs(user.uid, {
         enabled: active,
-        selectedRunId: selectedVmId,
+        selectedId: selectedVmId,
+        selectedRunId: selectedVmRun.current.id === selectedVmId ? selectedVmRun.current.runId : null,
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
+    if (selectedVm?.runId) selectedVmRun.current = { id: selectedVmId, runId: selectedVm.runId }
     const vmPointerDown = useRef(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
