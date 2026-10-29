@@ -1777,6 +1777,15 @@ members-snapshot reducer threw. Never compare that lookup with `null`; the `Stor
 reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
 `__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
 
+**The chat shows the view open NOW, not a list of visited views (AT-2914).**
+`useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
+(chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
+newer messages. Re-opening the same view keeps its original time. A project picked in the
+composer's switcher becomes a local "Switched to project: …" entry
+(`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to, and
+re-picking the active project adds nothing. Neither is written to Firestore or seen by the
+assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
+
 **Assistant mutation feedback**: `annaWorkspaceChanges.js` publishes short-lived,
 bounded visual cues after successful native task/note/contact mutations in the
 owner's sidebar conversation. Use the final persisted object/project identity
