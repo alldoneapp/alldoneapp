@@ -196,7 +196,7 @@ describe('getKnowledgeBaseContextMessage', () => {
         expect(message).toContain('SAME projectId')
         expect(message).not.toContain('Pages:')
         expect(message).not.toContain(CORRECT_KNOWLEDGE_PAGE_TOOL)
-        expect(db.queries).toHaveLength(0)
+        expect(db.queries.filter(query => query.collectionPath !== 'knowledgeContributionDrafts')).toHaveLength(0)
     })
 
     it('says nothing to someone outside the project or on the email channel', async () => {
@@ -727,6 +727,108 @@ describe('over MCP', () => {
 })
 
 describe('search_knowledge, save_knowledge_contribution and remove_knowledge_contribution', () => {
+    it('confirms a cross-project draft without a project argument, rechecking its destination access', async () => {
+        const db = createDb({
+            'projects/project-b': { name: 'Other', userIds: ['member'] },
+            'knowledgeBases/project-b': { enabled: true },
+        })
+        const execute = (args, messageId = 'message-1') =>
+            executeKnowledgeBaseTool({
+                db,
+                toolName: SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+                args,
+                toolRuntimeContext: chatRun({ messageId }),
+                enqueue: async () => {},
+                now: NOW,
+            })
+        const draft = await execute({
+            projectId: 'project-b',
+            text: 'The meeting is on Tuesday.',
+            origin: 'user_statement',
+            mayContainPrivateInformation: true,
+        })
+        expect(draft.note).toContain('"projectId":"project-b"')
+        await expect(
+            execute({ draftId: draft.draftId, confirmed: true, projectId: PROJECT_ID }, 'message-2')
+        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/belongs to project/) })
+        await expect(execute({ draftId: draft.draftId, confirmed: true }, 'message-2')).resolves.toMatchObject({
+            success: true,
+            projectId: 'project-b',
+        })
+        expect([...db.documents.keys()].filter(path => path.includes('/contributions/'))).toEqual([
+            expect.stringMatching(/^knowledgeBases\/project-b\/contributions\//),
+        ])
+
+        const second = await execute({
+            projectId: 'project-b',
+            text: 'The launch is in May.',
+            origin: 'user_statement',
+            mayContainPrivateInformation: true,
+        })
+        db.write('projects/project-b', { userIds: [] })
+        await expect(execute({ draftId: second.draftId, confirmed: true }, 'message-2')).resolves.toMatchObject({
+            success: false,
+            error: expect.stringMatching(/members/),
+        })
+        db.write('projects/project-b', { userIds: ['someone-else'] })
+        await expect(
+            executeKnowledgeBaseTool({
+                db,
+                toolName: SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+                args: { draftId: second.draftId, confirmed: true },
+                toolRuntimeContext: chatRun({ requestUserId: 'someone-else', messageId: 'message-2' }),
+                now: NOW,
+            })
+        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/no such draft/) })
+    })
+
+    it('restores only this member’s live pending drafts in this conversation, even with no wiki pages', async () => {
+        const { loadPendingKnowledgeContributionDrafts } = require('./knowledgeContributions')
+        const db = createDb({
+            'projects/project-b': { name: 'Other', userIds: ['member'] },
+            'knowledgeBases/project-b': { enabled: true },
+        })
+        const context = chatRun({ messageId: 'message-1' })
+        const draft = await executeKnowledgeBaseTool({
+            db,
+            toolName: SAVE_KNOWLEDGE_CONTRIBUTION_TOOL,
+            args: {
+                projectId: 'project-b',
+                text: 'Confirmed wording.',
+                origin: 'assistant_summary',
+                mayContainPrivateInformation: true,
+            },
+            toolRuntimeContext: context,
+            now: NOW,
+        })
+        db.documents.delete(KB_PATH)
+        const prompt = await getKnowledgeBaseContextMessage({
+            db,
+            context: { ...context, messageId: 'message-2' },
+            now: NOW,
+        })
+        expect(prompt).toContain(draft.draftId)
+        expect(prompt).toContain('Confirmed wording.')
+        for (const changed of [{ objectId: 'another-chat' }, { requestUserId: 'teammate' }, { writingDraft: true }]) {
+            expect(
+                await getKnowledgeBaseContextMessage({ db, context: { ...context, ...changed }, now: NOW })
+            ).not.toContain(draft.draftId)
+        }
+        expect(
+            await loadPendingKnowledgeContributionDrafts({
+                db,
+                userId: 'member',
+                context: { ...context, objectId: null },
+                now: NOW,
+            })
+        ).toEqual([])
+        expect(await getKnowledgeBaseContextMessage({ db, context, now: NOW + 3 * 60 * 60 * 1000 })).not.toContain(
+            draft.draftId
+        )
+        db.write('projects/project-b', { userIds: [] })
+        expect(await getKnowledgeBaseContextMessage({ db, context, now: NOW })).not.toContain(draft.draftId)
+    })
+
     it('searches the pages of the chosen project, checking membership like a read', async () => {
         const db = createDb()
         const result = await run(db, SEARCH_KNOWLEDGE_TOOL, { query: 'Pilotkunde' })

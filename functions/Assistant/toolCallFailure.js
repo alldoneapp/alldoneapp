@@ -77,20 +77,43 @@ function buildSkippedToolExecution(toolCall) {
 }
 
 /**
- * Count rounds in which every call failed. Returns the new count; a round with any success
- * resets it.
+ * Count rounds without executable progress. A pending confirmation is not a completed write:
+ * treating draft creation as success used to reset the guard between every failed confirmation.
+ * Structured failures matter too, even when the tool did not throw.
  */
 function countConsecutiveFailedRounds(previousCount, toolExecutions) {
     const executions = Array.isArray(toolExecutions) ? toolExecutions.filter(Boolean) : []
     if (executions.length === 0) return previousCount
-    return executions.every(execution => execution.failed) ? previousCount + 1 : 0
+    return executions.every(execution => {
+        const result = execution.conversationSafeToolResult
+        return (
+            execution.failed ||
+            result?.success === false ||
+            (result?.saved === false && result?.needsConfirmation === true)
+        )
+    })
+        ? previousCount + 1
+        : 0
 }
 
 /** The error that actually happened in a round (skipped calls carry none). */
 function getRoundFailure(toolExecutions) {
     const executions = Array.isArray(toolExecutions) ? toolExecutions : []
     const failed = executions.filter(execution => execution?.failed && execution.error)
-    return failed.length > 0 ? failed[failed.length - 1].error : null
+    if (failed.length) return failed[failed.length - 1].error
+    const blocked = executions.findLast(
+        execution =>
+            execution.conversationSafeToolResult?.success === false ||
+            execution.conversationSafeToolResult?.needsConfirmation === true
+    )
+    if (!blocked) return null
+    const result = blocked.conversationSafeToolResult
+    const error = new Error(
+        result.error ||
+            'The wiki draft is not saved. Show its exact text and wait for the user to confirm; do not retry in this turn.'
+    )
+    error.toolName = blocked.toolName
+    return error
 }
 
 module.exports = {
