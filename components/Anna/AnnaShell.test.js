@@ -420,6 +420,47 @@ it('shows an empty VM workspace without a session dropdown', () => {
     expect(document.querySelector('.anna-vms select')).toBeNull()
 })
 
+it('frames the workspace with the assistant accent only while it answers in this conversation (AT-2911)', async () => {
+    render(content(1))
+    const stage = document.querySelector('.anna-stage')
+    const label = () => document.querySelector('.anna-working-label')
+    expect(stage.classList.contains('anna-stage-working')).toBe(false)
+    expect(label()).toBeNull()
+    const report = running =>
+        act(async () =>
+            mockConversationProps.onWorkStateChange({
+                projectId: 'p1',
+                chatId: 'anna_u1',
+                busy: running,
+                running,
+                completedRequests: [],
+            })
+        )
+    await report(true)
+    expect(stage.classList.contains('anna-stage-working')).toBe(true)
+    expect(label().textContent).toBe('Carl Code Mentor is working here')
+    await report(false)
+    expect(stage.classList.contains('anna-stage-working')).toBe(false)
+    expect(label()).toBeNull()
+    // Another conversation's run never lights this workspace.
+    await act(async () =>
+        mockConversationProps.onWorkStateChange({
+            projectId: 'p1',
+            chatId: 'other',
+            busy: true,
+            running: true,
+            completedRequests: [],
+        })
+    )
+    expect(label()).toBeNull()
+    // Sending a message is the moment the chat starts driving the workspace.
+    await act(async () => mockConversationProps.onSendingChange(true))
+    expect(label()).toBeTruthy()
+    // Hidden workspace: nothing to frame.
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    expect(label()).toBeNull()
+})
+
 it('saves keyboard resizing independently of pane visibility', () => {
     render(content(1))
     const divider = document.querySelector('.anna-divider')

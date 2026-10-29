@@ -697,6 +697,15 @@ export default function AnnaShell({ children, routeId }) {
             workState?.busy !== false,
         completedRequests: workState?.completedRequests || [],
     }
+    // Lights the workspace frame while the assistant is answering in this conversation,
+    // so the chat reads as the control surface for the app beside it (AT-2911).
+    const assistantWorking =
+        visibleWorkspace &&
+        !mobile &&
+        (textBusy ||
+            (workState?.projectId === conversation?.projectId &&
+                workState?.chatId === conversation?.id &&
+                workState?.running === true))
 
     const interceptLink = event => {
         if (
@@ -859,6 +868,7 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-tint': colors.UtilityBlue100,
                 '--anna-hover': colors.UtilityBlue112,
                 '--anna-border': colors.Grey300,
+                '--anna-bezel': colors.Grey400,
                 '--anna-focus': colors.UtilityBlue150,
                 '--anna-surface': colors.Grey100,
             }}
@@ -979,13 +989,19 @@ export default function AnnaShell({ children, routeId }) {
                     }}
                 />
                 <section
-                    className="anna-stage"
+                    className={`anna-stage ${assistantWorking ? 'anna-stage-working' : ''}`}
                     ref={workspaceStage}
                     tabIndex={-1}
                     aria-label={translate('Alldone workspace')}
                     aria-hidden={active && !visibleWorkspace}
                     inert={active && !visibleWorkspace ? '' : undefined}
                 >
+                    {assistantWorking && (
+                        <div className="anna-working-label" role="status">
+                            <span className="anna-working-dot" aria-hidden="true" />
+                            {translate('%{assistantName} is working here', { assistantName })}
+                        </div>
+                    )}
                     {visibleWorkspace && pendingNotice}
                     {visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">

@@ -641,6 +641,37 @@ If Playwright is installed outside the repository, set `PLAYWRIGHT_MODULE` to it
 module path and, when needed, `PLAYWRIGHT_BROWSERS_PATH` to its browser directory.
 `--skip-build` reuses the previous harness bundle.
 
+### `at2911/` — the assistant workspace bezel and the real floating "+"
+
+Renders the real `FloatingAddTaskButton`, `AddTaskTag`, `AppPopover`/`BottomSheet`,
+`RichCreateTaskModal` with its due-date, assignee, recurrence and project menus, the
+global `LoadingData` spinner and the real Redux store inside the assistant shell's
+workspace column. That column is AnnaShell's markup, with the same class names,
+`anna.css` and `useWorkspaceViewportOwner`. The shell itself needs the chat transport
+and is covered by `anna-workspace/`. Checked at 1600, 1440, 1373, 1100, 1024 and 900px:
+
+- a 6px gray bezel on all four sides fills the column from the divider to the window
+  edge, with white padding inside it on the left and right only;
+- the measured workspace viewport equals the app box;
+- the "+" sits 24px from the app's right and bottom edges, on the loader's baseline;
+- the "working" bezel is blue, and its label is centred on the bottom edge, clear of
+  the "+";
+- every popup and menu stays inside the app, including while the window or the
+  divider is resized.
+
+Below a 640px app the popup becomes a bottom sheet. The sheet must end at the app edge
+and leave the bottom bezel visible: its fixed 48px overdrag bleed used to paint over
+it. An upward overdrag must still be backed. Chat-only, non-assistant and mobile
+(760/390px) keep their previous layout with no bezel and no padding.
+
+The run also prints, without asserting it, where the create-task popup opens the
+second time. That popup lands lower than on the first open, the same way on master
+and outside assistant mode.
+
+```bash
+node browser-tests/at2911/run.js
+```
+
 ### `section-tabs/` — every root tab label fits on a phone
 
 Renders the real `MainSectionTabsHeader` at the widths the app gives it on 320–419 px phones (a
