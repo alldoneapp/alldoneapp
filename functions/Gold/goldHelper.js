@@ -382,91 +382,6 @@ const refundGold = async (userId, gold, context = {}) => {
     return result
 }
 
-// refundGoldSecondGen is callable by any signed-in client, and it used to credit whatever amount it
-// was sent: every account could mint Gold. A client refund now names the source it spent under,
-// and gives back part or all of one of the user's own recent spends of that source, never more in
-// total than was spent. The ledger entries it matches are server-written (clients cannot write
-// goldTransactions), so a spend cannot be forged to refund against. Server code that refunds its
-// own charges (VM runs, calls) keeps using refundGold.
-const REFUNDABLE_CLIENT_SPENDS = {
-    // IframeModal REFUND_GOLD: an embedded alldone.team tool charged and then failed.
-    iframe_refund: 'iframe_deduction',
-    // refundGoldForGoalUnlock: a goal unlock whose write failed after the charge.
-    goal_unlock: 'goal_unlock',
-}
-const CLIENT_REFUND_WINDOW_MS = 24 * 60 * 60 * 1000
-const CLIENT_REFUND_CANDIDATE_LIMIT = 200
-
-const refundClientSpend = async (userId, gold, context = {}, { now = Date.now() } = {}) => {
-    const amount = Number(gold)
-    if (!Number.isInteger(amount) || amount <= 0) {
-        return { success: false, message: 'Invalid gold amount' }
-    }
-
-    const source = typeof context.source === 'string' ? context.source.trim() : ''
-    const spendSource = REFUNDABLE_CLIENT_SPENDS[source]
-    if (!spendSource) {
-        return { success: false, message: 'This charge cannot be refunded' }
-    }
-
-    const db = admin.firestore()
-    const userRef = db.doc(`users/${userId}`)
-    const recent = await userRef
-        .collection('goldTransactions')
-        .where('createdAt', '>=', new Date(now - CLIENT_REFUND_WINDOW_MS))
-        .orderBy('createdAt', 'desc')
-        .limit(CLIENT_REFUND_CANDIDATE_LIMIT)
-        .get()
-
-    const refundable = entry =>
-        entry.direction === 'spend' &&
-        entry.source === spendSource &&
-        (Number(entry.amount) || 0) - (Number(entry.refundedAmount) || 0) >= amount &&
-        (!context.objectId || !entry.objectId || entry.objectId === context.objectId)
-
-    // The newest matching spend: the query is ordered newest first.
-    const candidate = recent.docs.find(doc => refundable(doc.data() || {}))
-
-    if (!candidate) {
-        return { success: false, message: 'No matching charge to refund' }
-    }
-
-    let result = { success: false, message: 'No matching charge to refund' }
-    await db.runTransaction(async transaction => {
-        const [userDoc, spendDoc] = await Promise.all([transaction.get(userRef), transaction.get(candidate.ref)])
-        if (!userDoc.exists) {
-            result = { success: false, message: 'User not found' }
-            return
-        }
-        // Re-checked inside the transaction: two refunds racing for the same spend must not
-        // both succeed.
-        const spend = spendDoc.exists ? spendDoc.data() || {} : {}
-        if (!refundable(spend)) {
-            result = { success: false, message: 'No matching charge to refund' }
-            return
-        }
-
-        result = applyGoldChangeInTransaction({
-            transaction,
-            userRef,
-            userData: userDoc.data() || {},
-            delta: amount,
-            direction: 'refund',
-            source,
-            context: { ...context, refundOf: candidate.id },
-        })
-        if (result.success) {
-            transaction.update(candidate.ref, { refundedAmount: (Number(spend.refundedAmount) || 0) + amount })
-        }
-    })
-
-    if (result.success) {
-        await logGoldAnalytics(userId, 'refund_gold', result.amount, source, context)
-    }
-
-    return result
-}
-
 const adjustGold = async (userId, delta, context = {}) => {
     const source = context.source || 'admin_adjustment'
     const result = await applyGoldChange({
@@ -498,5 +413,4 @@ module.exports = {
     resetDailyGoldLimit,
     deductGold,
     refundGold,
-    refundClientSpend,
 }
