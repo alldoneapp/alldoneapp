@@ -28,6 +28,7 @@ afterEach(() => {
 import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
+import { resolveAnnaActivityPath } from './annaActivityNavigation'
 import NavigationService from '../../utils/NavigationService'
 import { restoreAnnaLayout, setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
@@ -198,6 +199,10 @@ jest.mock('../../redux/actions', () => ({
     setSelectedSidebarTab: tab => ({ type: 'SIDEBAR_TAB', tab }),
     setTaskViewToggleIndex: index => ({ type: 'TASK_INDEX', index }),
     setTaskViewToggleSection: section => ({ type: 'TASK_SECTION', section }),
+}))
+jest.mock('./annaActivityNavigation', () => ({
+    resolveAnnaActivityPath: jest.fn(async path => ({ path })),
+    getAnnaTargetErrorMessage: reason => `target:${reason}`,
 }))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
@@ -1726,5 +1731,87 @@ describe('selected project (AT-2903)', () => {
         render(content(1))
         expect(switcher().props.disabled).toBe(false)
         expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
+    })
+})
+
+describe('opening an activity row (AT-2906)', () => {
+    const deferred = () => {
+        let resolve
+        const promise = new Promise(done => {
+            resolve = done
+        })
+        return { promise, resolve }
+    }
+    const renderRows = paths => {
+        setAnnaLayout('chat')
+        render(
+            <AnnaShell>
+                {paths.map(path => (
+                    <a key={path} href={path} data-anna-activity-link="">
+                        {path}
+                    </a>
+                ))}
+            </AnnaShell>
+        )
+        return [...testContainer.querySelectorAll('a')]
+    }
+    afterEach(() => {
+        resolveAnnaActivityPath.mockReset().mockImplementation(async path => ({ path }))
+        URLTrigger.processUrl.mockReset().mockResolvedValue(undefined)
+    })
+
+    it('opens the resolved object, not the path the row was saved with', async () => {
+        resolveAnnaActivityPath.mockResolvedValueOnce({ path: '/projects/p1/tasks/t1/chat' })
+        const [row] = renderRows(['/projects/p1/chats/t1/chat'])
+        await act(async () => row.click())
+        expect(resolveAnnaActivityPath).toHaveBeenCalledWith('/projects/p1/chats/t1/chat')
+        expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/p1/tasks/t1/chat')
+        expect(document.querySelector('.anna-chat-only')).toBeNull()
+    })
+
+    it('says why a missing target cannot open and does not navigate anywhere', async () => {
+        resolveAnnaActivityPath.mockResolvedValueOnce({ error: 'missing' })
+        const [row] = renderRows(['/projects/p1/tasks/gone/properties'])
+        await act(async () => row.click())
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(document.querySelector('.anna-error[role="alert"]').textContent).toContain('target:missing')
+        // The assistant stays where it was: no workspace switch on a failed click.
+        expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    })
+
+    it('ordinary links are not checked', async () => {
+        setAnnaLayout('chat')
+        render(
+            <AnnaShell>
+                <a href="/projects/p1/user/u1/updates/followed">Inbox</a>
+            </AnnaShell>
+        )
+        await act(async () => testContainer.querySelector('a').click())
+        expect(resolveAnnaActivityPath).not.toHaveBeenCalled()
+        expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/p1/user/u1/updates/followed')
+    })
+
+    it('opens only the last of two quick clicks, even when the first resolves later', async () => {
+        const first = deferred()
+        resolveAnnaActivityPath.mockImplementationOnce(() => first.promise)
+        const [a, b] = renderRows(['/projects/p1/tasks/a/properties', '/projects/p1/notes/b/editor'])
+        await act(async () => a.click())
+        await act(async () => b.click())
+        await act(async () => first.resolve({ path: '/projects/p1/tasks/a/properties' }))
+        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(['/projects/p1/notes/b/editor'])
+    })
+
+    it('waits for a navigation still in progress so the later click lands last', async () => {
+        const firstRoute = deferred()
+        URLTrigger.processUrl.mockImplementationOnce(() => firstRoute.promise)
+        const [a, b] = renderRows(['/projects/p1/tasks/a/properties', '/projects/p1/notes/b/editor'])
+        await act(async () => a.click())
+        await act(async () => b.click())
+        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(['/projects/p1/tasks/a/properties'])
+        await act(async () => firstRoute.resolve())
+        expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual([
+            '/projects/p1/tasks/a/properties',
+            '/projects/p1/notes/b/editor',
+        ])
     })
 })
