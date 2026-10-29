@@ -326,9 +326,10 @@ function isProjectArchivedForUser(userData, projectId) {
     return Array.isArray(userData?.archivedProjectIds) && userData.archivedProjectIds.includes(projectId)
 }
 
-// A wiki whose payer has archived its project stops running, like one whose payer stopped using
-// Alldone: the run clears nextRunAt and records why, and the default sweep resumes it once the
-// payer reactivates the project (or hands a default wiki to a member for whom it is active).
+// Before AT-2893 a wiki whose payer had archived its project stopped running: the run cleared
+// nextRunAt and recorded `project_archived`. No run writes that reason any more (archived projects
+// keep their wiki), but documents paused that way may still exist; the default sweep and a save in
+// the settings resume them, so this only recognises that leftover state.
 function isKnowledgeBasePausedForArchivedProject(data = {}) {
     return (
         data.enabled === true &&
@@ -366,7 +367,6 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
         enabled: data.enabled === true,
         enabledByDefault: data.enabled === true && data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
         pausedForInactiveOwner: isKnowledgeBasePausedForInactiveOwner(data),
-        pausedForArchivedProject: isKnowledgeBasePausedForArchivedProject(data),
         pausedAtMonthlyCap: isKnowledgeBasePausedAtMonthlyCap(data, now),
         instructions: typeof data.instructions === 'string' ? data.instructions : '',
         model: resolveKnowledgeBaseModel(data.model),

@@ -317,7 +317,6 @@
     "Wiki paid by": "Paid by %{name}. Updates are charged to their Gold.",
     "Wiki switched on by default": "The wiki is on by default in projects of members who use Alldone.",
     "Wiki paused while its payer is inactive": "Paused: the paying member has not used Alldone for 30 days. The wiki continues when they are back.",
-    "Wiki paused while its payer has archived the project": "Paused: the paying member has archived this project. The wiki continues when they reactivate it.",
     "Only the paying member can change the wiki": "Only the member who pays for the wiki can change these settings.",
     "Instructions for the wiki": "Instructions for the wiki",
     "Wiki instructions placeholder": "For example: Write in German. Keep one page per customer. Ignore internal admin tasks.",
