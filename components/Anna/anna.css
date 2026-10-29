@@ -227,14 +227,54 @@
     gap: 3px;
 }
 .anna-activity-title {
+    overflow: hidden;
+    color: var(--anna-ink);
     font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-activity-content > span,
+.anna-activity-actions > span {
+    flex: none;
+}
+.anna-activity-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.anna-activity-action,
+.anna-activity-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--anna-tint);
+    font-size: 10px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+.anna-activity-link {
+    gap: 3px;
+    margin: 0 2px;
+    vertical-align: baseline;
+    color: var(--anna-accent);
 }
 .anna-activity-preview,
 .anna-activity-meta {
     color: var(--anna-muted);
 }
+/* A preview hints at the message; the object holds the rest (AT-2906). */
+.anna-activity-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
 .anna-activity-meta {
+    overflow: hidden;
     font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .anna-activity-notice a > :last-child {
     flex-shrink: 0;
@@ -1600,6 +1640,151 @@
 }
 @media (max-width: 360px) {
     .anna-header .anna-small-avatar {
+        display: none;
+    }
+}
+
+/* AT-2903: project chip in the composer toolbar and its menu. The menu renders in
+   a body portal, outside .anna-shell, so every colour carries a fallback. */
+.anna-composer-tools {
+    min-width: 0;
+}
+.anna-project-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 220px;
+    height: 32px;
+    padding: 0 8px 0 10px;
+    border: 1px solid var(--anna-border, #dfe3ea);
+    border-radius: 16px;
+    background: white;
+    color: var(--anna-ink, #04142f);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.anna-project-chip:hover:not(:disabled) {
+    background: var(--anna-hover, #eef4ff);
+}
+.anna-project-chip:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+.anna-project-chip:focus-visible {
+    outline: 2px solid var(--anna-accent, #0c66ff);
+    outline-offset: 2px;
+}
+.anna-project-chip-busy .anna-project-chip-name {
+    opacity: 0.6;
+}
+.anna-project-chip-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-project-dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--anna-neutral, #b9c1cf);
+}
+.anna-project-menu {
+    box-sizing: border-box;
+    font-family: Roboto, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: min(320px, calc(100vw - 24px));
+    max-height: min(360px, 60dvh);
+    padding: 8px;
+    border: 1px solid #dfe3ea;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 8px 24px #04142f26;
+    color: #04142f;
+    font-size: 13px;
+}
+.anna-project-search {
+    box-sizing: border-box;
+    width: 100%;
+    height: 34px;
+    padding: 6px 10px;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    font: inherit;
+}
+.anna-project-options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    min-height: 0;
+}
+.anna-project-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.anna-project-option:hover,
+.anna-project-option:focus-visible {
+    background: #eef4ff;
+    outline: none;
+}
+.anna-project-option-selected {
+    color: #0c66ff;
+}
+.anna-project-option-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+.anna-project-option-text > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-project-option-text > span {
+    color: #536786;
+    font-size: 11px;
+}
+.anna-project-menu .anna-muted {
+    margin: 4px 8px;
+    color: #536786;
+}
+@container anna-composer (max-width: 420px) {
+    .anna-project-chip {
+        max-width: 132px;
+    }
+}
+/* Keep a readable part of the name on the narrowest phones: the chip gives up
+   its chevron and spacing before it gives up the project name. */
+@container anna-composer (max-width: 340px) {
+    .anna-composer-toolbar,
+    .anna-composer-tools,
+    .anna-composer-actions {
+        gap: 4px;
+    }
+    .anna-project-chip {
+        flex: 0 1 auto;
+        min-width: 72px;
+        padding: 0 8px;
+        gap: 5px;
+    }
+    .anna-project-chip > :last-child {
         display: none;
     }
 }

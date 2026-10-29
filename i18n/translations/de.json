@@ -78,6 +78,7 @@
     "Anna activity assigned to": "Zugewiesen an %{name}",
     "Anna activity workflow changed": "Workflow geändert: %{from} → %{to}",
     "Anna activity item updated": "Eintrag aktualisiert",
+    "Anna activity new messages": "%{count} neue Chatnachrichten",
     "%{count} open tasks today": "%{count} offene Aufgaben heute",
     "Close chat — Alldone only": "Chat schließen — nur Alldone",
     "Assistant chat open": "Assistenten-Chat geöffnet",
@@ -3304,5 +3305,15 @@
     "Actor via MCP client": "%{name} (via %{client})",
     "Browser agent": "Browser-Agent",
     "Browser agents (WebMCP & JavaScript)": "Browser-Agents (WebMCP & JavaScript)",
-    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "KI-Assistenten, die deinen Browser bedienen (zum Beispiel Gemini in Chrome, Claude in Chrome oder der ChatGPT-Agent), können dieselben Tools in diesem Tab ohne Connector nutzen. Browser mit WebMCP finden sie automatisch; andere Agents können window.alldone per JavaScript aufrufen. Sie handeln als das in diesem Tab angemeldete Konto und nur mit den unten erlaubten Tools."
+    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "KI-Assistenten, die deinen Browser bedienen (zum Beispiel Gemini in Chrome, Claude in Chrome oder der ChatGPT-Agent), können dieselben Tools in diesem Tab ohne Connector nutzen. Browser mit WebMCP finden sie automatisch; andere Agents können window.alldone per JavaScript aufrufen. Sie handeln als das in diesem Tab angemeldete Konto und nur mit den unten erlaubten Tools.",
+    "Project: %{projectName}": "Projekt: %{projectName}",
+    "Choose project for this chat": "Projekt für diesen Chat wählen",
+    "Search projects": "Projekte suchen",
+    "No projects found": "Keine Projekte gefunden",
+    "Default project": "Standardprojekt",
+    "%{assistantName} (default assistant)": "%{assistantName} (Standard-Assistent)",
+    "Visible to project members": "Für Projektmitglieder sichtbar",
+    "Finish the call or dictation and stay online to change the project": "Beende Anruf oder Diktat und bleib online, um das Projekt zu wechseln",
+    "Continuing in your default project.": "Es geht in deinem Standardprojekt weiter.",
+    "The project chat could not be opened. Continuing in your default project.": "Der Projekt-Chat konnte nicht geöffnet werden. Es geht in deinem Standardprojekt weiter."
 }
