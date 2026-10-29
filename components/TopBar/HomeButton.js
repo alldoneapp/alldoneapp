@@ -3,7 +3,11 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Icon from '../Icon'
-import navigateToHome from '../../utils/navigateToHome'
+import { navigateToAllProjectsTasks, setSelectedSidebarTab, switchProject } from '../../redux/actions'
+import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
+import { dismissAllPopups } from '../../utils/HelperFunctions'
+import { ALL_PROJECTS_INDEX } from '../SettingsView/ProjectsSettings/ProjectHelper'
+import NavigationService from '../../utils/NavigationService'
 import store from '../../redux/store'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
@@ -31,7 +35,13 @@ export default function HomeButton({ color, style, expandSecondaryBar }) {
         e?.preventDefault()
         if (store.getState().expandedNavPicker) expandSecondaryBar?.()
 
-        navigateToHome(dispatch)
+        dismissAllPopups()
+        dispatch([
+            switchProject(ALL_PROJECTS_INDEX),
+            setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
+            navigateToAllProjectsTasks({ taskViewToggleSection: 'Open', taskViewToggleIndex: 0 }),
+        ])
+        NavigationService.navigate('Root')
     }
 
     return (

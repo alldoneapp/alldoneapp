@@ -23,6 +23,7 @@ import useAnnaContextNotices from './useAnnaContextNotices'
 import useAnnaProjectSwitchNotices from './useAnnaProjectSwitchNotices'
 import useAnnaActivityNotices from './useAnnaActivityNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
+import { getAssistantReplies, replyConfirmsProcessing } from './annaSubmissionReconciliation'
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
@@ -654,19 +655,24 @@ function AnnaThreadMessages({
                 message.assistantRun
             )
     )
+    // A request whose connection dropped (app backgrounded) is still awaited, not failed (AT-2921).
     const pendingMessage =
         !hasLegacyLiveActivity &&
-        localMessages.findLast(message => message.running && !repliedMessageIds.has(message.id))
+        localMessages.findLast(
+            message => (message.running || message.status === 'confirming') && !repliedMessageIds.has(message.id)
+        )
     const workStateKey = JSON.stringify(getAnnaWorkspaceWorkState(messages))
     useEffect(() => {
         if (current) onWorkStateChange?.({ projectId: thread.projectId, chatId, ...JSON.parse(workStateKey) })
     }, [current, thread.projectId, chatId, workStateKey, onWorkStateChange])
     useAnnaMessageReadState(thread.projectId, chatId, scroll, messages, visible)
     const savedMessageIds = JSON.stringify(messages.map(message => message.id))
-    const localMessageIds = JSON.stringify(localMessages.map(message => message.id))
+    const localMessageIds = JSON.stringify(localMessages.map(message => [message.id, message.status]))
+    const replyStates = JSON.stringify(getAssistantReplies(messages))
     useEffect(() => {
-        onAcknowledge(thread.projectId, chatId, JSON.parse(savedMessageIds))
-    }, [thread.projectId, chatId, savedMessageIds, localMessageIds, onAcknowledge])
+        onAcknowledge(thread.projectId, chatId, JSON.parse(savedMessageIds), JSON.parse(replyStates))
+    }, [thread.projectId, chatId, savedMessageIds, localMessageIds, replyStates, onAcknowledge])
+    const replies = JSON.parse(replyStates)
     const localById = new Map(localMessages.filter(message => message.id).map(message => [message.id, message]))
     const savedIds = new Set(messages.map(message => message.id))
     const displayedMessages = [
@@ -793,7 +799,7 @@ function AnnaThreadMessages({
                             assistantRun={message.assistantRun}
                             containerStyle={{ margin: 0, padding: 0 }}
                         />
-                        {message.submission?.error && (
+                        {message.submission?.error && !replyConfirmsProcessing(replies[message.id]) && (
                             <div className="anna-error" role="alert">
                                 {message.submission.error}{' '}
                                 <button type="button" onClick={() => onRetry(message.submission.key)}>

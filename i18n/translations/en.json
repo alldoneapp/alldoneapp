@@ -3423,6 +3423,8 @@
     "End call": "End call",
     "You need Gold to talk with Anna.": "You need Gold to talk with Anna.",
     "Your message could not be sent. Please try again.": "Your message could not be sent. Please try again.",
+    "The connection was interrupted. Please try again.": "The connection was interrupted. Please try again.",
+    "The assistant could not answer this message. Please try again.": "The assistant could not answer this message. Please try again.",
     "Earlier messages": "Earlier messages",
     "Loading your conversation…": "Loading your conversation…",
     "What’s on your mind?": "What’s on your mind?",

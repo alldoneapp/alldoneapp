@@ -22,3 +22,31 @@ describe('Assistant Mode conversation horizontal overflow (AT-2917)', () => {
         expect(messages).not.toMatch(/(^|[\s;])overflow:\s*(auto|scroll)/)
     })
 })
+
+// AT-2918: an activity chip ("Mit Ziel verknüpft: <long goal name>") is one line with an ellipsis
+// and never wider than its row. `browser-tests/at2917` measures it in a real browser.
+describe('Assistant Mode activity chips (AT-2918)', () => {
+    const block = selector => {
+        const escaped = selector.replace(/[.>]/g, match => `\\${match}`).replace(/\s+/g, '\\s*')
+        const match = css.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
+        return match ? match[1] : null
+    }
+
+    test('chips are capped at the row width and may shrink', () => {
+        const chips = css.match(/\n\.anna-activity-action,\n\.anna-activity-link\s*\{([^}]*)\}/)?.[1]
+        expect(chips).toMatch(/max-width:\s*100%\s*;/)
+        expect(chips).toMatch(/min-width:\s*0\s*;/)
+        expect(chips).toMatch(/overflow:\s*hidden\s*;/)
+        expect(chips).toMatch(/white-space:\s*nowrap\s*;/)
+    })
+
+    test('the action chip is a block with an ellipsis and is allowed to shrink', () => {
+        const action = block('.anna-activity-actions > .anna-activity-action')
+        expect(action).toMatch(/display:\s*block\s*;/)
+        expect(action).toMatch(/text-overflow:\s*ellipsis\s*;/)
+        expect(action).toMatch(/flex:\s*0 1 auto\s*;/)
+        // The old `flex: none` on every chip is what kept them at their text width.
+        expect(css).not.toMatch(/\.anna-activity-actions > span\s*\{[^}]*flex:\s*none/)
+        expect(block('.anna-activity-link > .anna-activity-link-label')).toMatch(/text-overflow:\s*ellipsis\s*;/)
+    })
+})
