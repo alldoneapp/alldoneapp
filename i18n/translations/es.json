@@ -317,7 +317,6 @@
     "Wiki paid by": "Lo paga %{name}. Las actualizaciones se cobran de su Oro.",
     "Wiki switched on by default": "La wiki está activada por defecto en los proyectos de miembros que usan Alldone.",
     "Wiki paused while its payer is inactive": "En pausa: el miembro que paga no ha usado Alldone en 30 días. La wiki continúa cuando vuelva.",
-    "Wiki paused while its payer has archived the project": "En pausa: el miembro que paga ha archivado este proyecto. La wiki continúa cuando lo vuelva a activar.",
     "Only the paying member can change the wiki": "Solo el miembro que paga la wiki puede cambiar estos ajustes.",
     "Instructions for the wiki": "Instrucciones para la wiki",
     "Wiki instructions placeholder": "Por ejemplo: Escribe en alemán. Una página por cliente. Ignora las tareas administrativas internas.",

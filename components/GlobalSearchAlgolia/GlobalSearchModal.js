@@ -23,7 +23,6 @@ import Icon from '../Icon'
 import SearchForm from './Form/SearchForm'
 import { GLOBAL_SEARCH_MODAL_ID, removeModal, storeModal } from '../ModalsManager/modalsManager'
 import ResultLists from './ResultLists/ResultLists'
-import { GLOBAL_SEARCH_TAB_ORDER } from './Header/Header'
 import {
     MENTION_MODAL_CONTACTS_TAB,
     MENTION_MODAL_GOALS_TAB,
@@ -809,19 +808,22 @@ export default function GlobalSearchModal() {
     }
 
     const showNextPositiveResultsTab = () => {
-        const tabResults = {
-            [MENTION_MODAL_TASKS_TAB]: tasksResultAmount,
-            [MENTION_MODAL_GOALS_TAB]: goalsResultAmount,
-            [MENTION_MODAL_NOTES_TAB]: notesResultAmount,
-            [MENTION_MODAL_CONTACTS_TAB]: contactsResultAmount,
-            [MENTION_MODAL_TOPICS_TAB]: chatsResultAmount,
-            [GLOBAL_SEARCH_ARTIFACTS_TAB]: artifactsResultAmount,
-            [GLOBAL_SEARCH_WIKI_TAB]: wikiResultAmount,
-        }
+        const tabResults = [
+            tasksResultAmount,
+            goalsResultAmount,
+            notesResultAmount,
+            contactsResultAmount,
+            chatsResultAmount,
+            artifactsResultAmount,
+            wikiResultAmount,
+        ]
         if (tabResults[activeTab] === 0) {
-            // First tab with results in the order the tabs are shown, not by tab number.
-            const firstTabWithResults = GLOBAL_SEARCH_TAB_ORDER.find(tab => tabResults[tab] > 0)
-            if (firstTabWithResults !== undefined) setActiveTab(firstTabWithResults)
+            for (let resultIdx in tabResults) {
+                if (tabResults[resultIdx] > 0) {
+                    setActiveTab(parseInt(resultIdx))
+                    break
+                }
+            }
         }
     }
 
