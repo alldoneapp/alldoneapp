@@ -25,8 +25,12 @@ export function resolveFirebaseAuthDomain({ location, hostingUrl, fallbackAuthDo
     return fallbackAuthDomain
 }
 
-export function shouldUseGoogleRedirect({ isMobile, isLocalDev, authDomain, location }) {
-    if (!location || (!isMobile && !isLocalDev)) return false
+// Google sign-in stays in the same window wherever Firebase's auth handler is same-origin
+// (AT-2919): desktop as well as mobile. A cross-origin handler (*.firebaseapp.com) cannot
+// complete a redirect in browsers that partition third-party storage (Safari 16.1+, Firefox
+// 109+, Chrome with storage partitioning), so only those hosts keep the popup fallback.
+export function shouldUseGoogleRedirect({ authDomain, location }) {
+    if (!location || !authDomain) return false
 
     return location.protocol === 'https:' && authDomain === location.host
 }

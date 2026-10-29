@@ -103,7 +103,7 @@ const CopyProjectModal = ({ setIsOpen, project }) => {
 
             <View style={localStyles.bottomSection}>
                 {isAnonymous ? (
-                    <LogInButton btnId={'google-sign-in-btn22'} />
+                    <LogInButton />
                 ) : (
                     <Button
                         disabled={selectedOptions.size === 0}

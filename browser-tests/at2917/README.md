@@ -15,8 +15,3 @@ table keeps its own scroller. Needs `web-bundler/node_modules` (with `replacemen
 applied to the root `node_modules`) and Playwright/Chromium (`PLAYWRIGHT_MODULE`,
 `CHROMIUM_EXECUTABLE_PATH`). Against the unfixed code it reports `scrollWidth` 956 for a 325px
 pane and a 236–400px sideways shift after one swipe.
-
-AT-2918 extends it with the activity chips from that report (a goal-link chip far wider than the
-pane, a long workflow change): every chip stays inside its row, is one line with an ellipsis, keeps
-its full text in `title`, and the goal chip is shortened at ≤560px. Against the unfixed CSS the
-pane gets a horizontal scroll range at 340–560px.

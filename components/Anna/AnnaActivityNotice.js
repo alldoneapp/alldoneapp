@@ -85,7 +85,7 @@ function ActivityPreview({ text }) {
                 part.type === 'link' ? (
                     <span className="anna-activity-link" key={index} title={part.url}>
                         <Icon name="link" size={10} color="currentColor" />
-                        <span className="anna-activity-link-label">{part.label}</span>
+                        {part.label}
                     </span>
                 ) : (
                     <React.Fragment key={index}>{part.text}</React.Fragment>
@@ -145,9 +145,7 @@ export function AnnaActivityGroup({ notices, onChange }) {
                             </span>
                             <span className="anna-activity-actions">
                                 {actions.map((action, index) => (
-                                    // One line with an ellipsis at the row's width (AT-2918);
-                                    // the title keeps the full text reachable.
-                                    <span className="anna-activity-action" key={index} title={action}>
+                                    <span className="anna-activity-action" key={index}>
                                         {action}
                                     </span>
                                 ))}
@@ -155,9 +153,7 @@ export function AnnaActivityGroup({ notices, onChange }) {
                         </>
                     ) : (
                         // Not enriched (yet, or unreadable): the action is the most useful title.
-                        <span className="anna-activity-title" title={actions.join(' · ')}>
-                            {actions.join(' · ')}
-                        </span>
+                        <span className="anna-activity-title">{actions.join(' · ')}</span>
                     )}
                     {preview ? <ActivityPreview text={preview} /> : null}
                 </span>

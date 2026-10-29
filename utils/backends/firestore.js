@@ -451,6 +451,21 @@ const firebaseConfig = {
 // somebody else must wait for this first — see loginWithGoogleWebAnonymously.
 let redirectResultSettled = Promise.resolve(null)
 
+// The error a Google redirect came back with, if any. Since every web sign-in is a redirect
+// (AT-2919), a failure no longer surfaces on the page that started it: the page that receives
+// it is a fresh load of the login screen, so the login button asks for it instead.
+let lastGoogleRedirectError = null
+
+// Resolves with the error the last Google redirect came back with (or null), once the redirect
+// result has been processed. Reading it clears it, so a reload or a second button does not
+// repeat the message.
+export async function consumeGoogleRedirectError() {
+    await redirectResultSettled.catch(() => null)
+    const error = lastGoogleRedirectError
+    lastGoogleRedirectError = null
+    return error
+}
+
 export async function initFirebase(onComplete) {
     // Determine if we should use Firebase emulators BEFORE initializing
     const useEmulator = shouldUseFirebaseEmulators()
@@ -560,6 +575,7 @@ export async function initFirebase(onComplete) {
         })
         .catch(error => {
             console.error('❌ Error getting redirect result:', error.code, error.message)
+            lastGoogleRedirectError = error
         })
 
     // Restore pending-write monitoring after persistence/emulator configuration,
@@ -796,31 +812,6 @@ export const getGoogleClientId = () => {
     return GOOGLE_FIREBASE_WEB_CLIENT_ID
 }
 
-export function loginWithGoogleWeb() {
-    // window.google
-    // from Google Identity Services ( GSI )
-    initializeGoogleIdentity({
-        accountsId: window.google.accounts.id,
-        clientId: GOOGLE_FIREBASE_WEB_CLIENT_ID,
-        callback: handleGSICredentialResponseOnLogin,
-    })
-}
-
-export const handleGSICredentialResponseOnLogin = async response => {
-    const credentials = await firebase.auth.GoogleAuthProvider.credential(response.credential)
-    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-    firebase
-        .auth()
-        .signInWithCredential(credentials)
-        .then(data => {
-            if (data.additionalUserInfo && data.additionalUserInfo.isNewUser) {
-                NavigationService.navigate('LoginScreen')
-
-                store.dispatch(setRegisteredNewUser(true))
-            }
-        })
-}
-
 // Helper to detect if running on mobile
 export function isMobileDevice() {
     if (typeof window === 'undefined') return false
@@ -835,8 +826,9 @@ export function isLocalDevHost() {
     return hostname === 'localhost' || hostname === '127.0.0.1'
 }
 
-// Mobile browsers use redirect because popup windows are frequently blocked on iOS. Redirect is
-// only selected when Firebase's auth handler is same-origin; other hosts keep the popup fallback.
+// Google sign-in runs in the same window on every web context (AT-2919): popups are blocked by
+// iOS, by embedded/built-in browsers and by many desktop popup blockers. Redirect is only
+// selected when Firebase's auth handler is same-origin; other hosts keep the popup fallback.
 export async function signInWithGoogleRedirect() {
     // Capacitor iOS shell: Google blocks OAuth inside WKWebView (both the
     // popup and the redirect land on disallowed_useragent), so the shell signs
@@ -900,14 +892,13 @@ export async function signInWithAppleNative() {
 
 async function signInWithGoogleRedirectWeb(provider) {
     const useRedirect = shouldUseGoogleRedirect({
-        isMobile: isMobileDevice(),
-        isLocalDev: isLocalDevHost(),
         authDomain: firebaseAuthDomain,
         location: typeof window === 'undefined' ? null : window.location,
     })
 
     if (useRedirect) {
         if (__DEV__) console.log('🔐 Using Google sign-in with same-origin redirect...')
+        lastGoogleRedirectError = null
         await firebase.auth().signInWithRedirect(provider)
         return null
     }
