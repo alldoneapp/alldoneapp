@@ -9,7 +9,6 @@ module.exports = (config, webpack) => {
         'AnnaMessageBody',
         'useAnnaMessageReadState',
         'useAnnaContextNotices',
-        'useAnnaProjectSwitchNotices',
         'useAnnaActivityNotices',
         'useAnnaMessageSends',
         'annaWorkspaceWorkState',
@@ -51,14 +50,11 @@ module.exports = (config, webpack) => {
                         ? 'sends.js'
                         : resource.request.endsWith('useGetMessages')
                           ? 'messages.js'
-                          : // The baseline AnnaConversation predates AT-2914 and expects a list.
-                            resource.request.endsWith('useAnnaContextNotices') && !process.env.AT2778_BASELINE
-                            ? 'viewNotice.js'
-                            : /useAnna(?:MessageReadState|ProjectSwitchNotices|ActivityNotices)$/.test(resource.request)
-                              ? 'notices.js'
-                              : resource.request.endsWith('AnnaChatComposer')
-                                ? 'composer.js'
-                                : 'stubs.js'
+                          : /useAnna(?:MessageReadState|ContextNotices|ActivityNotices)$/.test(resource.request)
+                            ? 'notices.js'
+                            : resource.request.endsWith('AnnaChatComposer')
+                              ? 'composer.js'
+                              : 'stubs.js'
                 )
             }),
         ],
