@@ -14,6 +14,15 @@ import {
 import { getDb, getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
 import { flushAnnaActivityContext } from './annaActivityContext'
+import {
+    REPLY_FAILED,
+    getConfirmationDeadline,
+    isConnectionLoss,
+    replyConfirmsProcessing,
+} from './annaSubmissionReconciliation'
+
+const isPageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+const threadKey = (projectId, chatId) => `${projectId}/${chatId}`
 
 const hasNewAttachments = text =>
     text.split(' ').some(word => {
@@ -38,6 +47,8 @@ export default function useAnnaMessageSends({
     const owner = useRef(userId)
     const mounted = useRef(true)
     const preparation = useRef(Promise.resolve())
+    // Latest persisted replies per thread, keyed by the message that triggered them (AT-2921).
+    const replies = useRef(new Map())
     owner.current = userId
     const publish = useCallback(() => {
         if (mounted.current) setMessages([...jobs.current.values()].map(job => ({ ...job })))
@@ -49,7 +60,9 @@ export default function useAnnaMessageSends({
     useEffect(() => () => onSendingChange?.(false), [onSendingChange])
     useEffect(() => {
         jobs.current.forEach((job, key) => {
-            if (job.userId !== userId) jobs.current.delete(key)
+            if (job.userId === userId) return
+            job.stopConfirming?.()
+            jobs.current.delete(key)
         })
         publish()
     }, [userId, publish])
@@ -57,12 +70,71 @@ export default function useAnnaMessageSends({
         mounted.current = true
         return () => {
             mounted.current = false
+            jobs.current.forEach(job => job.stopConfirming?.())
         }
     }, [])
 
+    const replyFor = job =>
+        job.id && job.thread?.id ? replies.current.get(threadKey(job.thread.projectId, job.thread.id))?.[job.id] : null
+
+    // The server took the request: drop any transport error and let the persisted reply speak.
+    const settleProcessed = job => {
+        job.stopConfirming?.()
+        job.status = 'sent'
+        job.error = ''
+        if (job.acknowledged) jobs.current.delete(job.key)
+    }
+    const settleFailed = (job, error) => {
+        job.stopConfirming?.()
+        job.status = 'failed'
+        job.error = error
+    }
+
+    // A connection lost after dispatch says nothing about the run. Wait for the reply the server
+    // writes either way (its own run, or the missed-run catch-up), and only report a failure if
+    // none arrives while the page is visible. While waiting there is no Retry, so a resumed app
+    // cannot start a second submission of a message that is already being answered.
+    const confirm = job => {
+        job.status = 'confirming'
+        job.error = ''
+        let timer = null
+        let onVisible = null
+        const stop = () => {
+            clearTimeout(timer)
+            if (onVisible) document.removeEventListener('visibilitychange', onVisible)
+            timer = null
+            onVisible = null
+            if (job.stopConfirming === stop) job.stopConfirming = null
+        }
+        const arm = () => {
+            stop()
+            job.stopConfirming = stop
+            if (isPageHidden()) {
+                onVisible = () => {
+                    if (!isPageHidden()) arm()
+                }
+                document.addEventListener('visibilitychange', onVisible)
+                return
+            }
+            const now = Date.now()
+            timer = setTimeout(
+                () => {
+                    if (job.status !== 'confirming' || !jobs.current.has(job.key)) return stop()
+                    if (isPageHidden()) return arm()
+                    settleFailed(job, translate('The connection was interrupted. Please try again.'))
+                    publish()
+                },
+                getConfirmationDeadline({ now, savedAt: job.savedAt }) - now
+            )
+        }
+        arm()
+    }
+
     const run = job => {
         if (job.running || job.userId !== owner.current) return
+        job.stopConfirming?.()
         job.running = true
+        job.dispatched = false
         job.error = ''
         job.status = 'sending'
         publish()
@@ -120,6 +192,7 @@ export default function useAnnaMessageSends({
                     )
                     if (!job.id) throw new Error(translate('Your message could not be sent. Please try again.'))
                     job.locallySaved = true
+                    job.savedAt = Date.now()
                     publish()
                 }
                 // createObjectMessage acknowledges local storage, not Firestore.
@@ -133,6 +206,7 @@ export default function useAnnaMessageSends({
                 publish()
                 await flushAnnaActivityContext(job.userId)
                 if (!isActive()) return null
+                job.dispatched = true
                 return {
                     response: runHttpsCallableFunction(
                         'askToBotSecondGen',
@@ -159,8 +233,20 @@ export default function useAnnaMessageSends({
                 job.status = 'sent'
             })
             .catch(failure => {
-                job.status = 'failed'
-                job.error = failure.message || translate('Your message could not be sent. Please try again.')
+                const reply = replyFor(job)
+                if (job.dispatched && replyConfirmsProcessing(reply)) {
+                    // The answer is already in the chat; how the response got lost is irrelevant.
+                    job.status = 'sent'
+                    job.error = ''
+                } else if (job.dispatched && isConnectionLoss(failure)) {
+                    // Never surface the SDK's bare "internal" for a lost connection.
+                    if (reply === REPLY_FAILED)
+                        settleFailed(job, translate('The assistant could not answer this message. Please try again.'))
+                    else confirm(job)
+                } else {
+                    job.status = 'failed'
+                    job.error = failure.message || translate('Your message could not be sent. Please try again.')
+                }
             })
             .finally(() => {
                 job.running = false
@@ -185,15 +271,28 @@ export default function useAnnaMessageSends({
     }
     const retry = key => {
         const job = jobs.current.get(key)
-        if (job?.status === 'failed') run(job)
+        // A message the server is already answering must never be submitted twice.
+        if (job?.status === 'failed' && !replyConfirmsProcessing(replyFor(job))) run(job)
     }
     const acknowledge = useCallback(
-        (projectId, chatId, ids) => {
+        (projectId, chatId, ids, threadReplies = {}) => {
+            replies.current.set(threadKey(projectId, chatId), threadReplies)
             let changed = false
             jobs.current.forEach((job, key) => {
-                if (job.thread?.projectId !== projectId || job.thread?.id !== chatId || !ids.includes(job.id)) return
-                job.acknowledged = true
-                if (job.status === 'sent') {
+                if (job.thread?.projectId !== projectId || job.thread?.id !== chatId) return
+                if (ids.includes(job.id)) job.acknowledged = true
+                const reply = threadReplies[job.id]
+                if (!job.running && job.dispatched && (job.status === 'confirming' || job.status === 'failed')) {
+                    if (replyConfirmsProcessing(reply)) {
+                        settleProcessed(job)
+                        changed = true
+                    } else if (reply === REPLY_FAILED && job.status === 'confirming') {
+                        // The run really failed; its reason is in the assistant's reply above.
+                        settleFailed(job, translate('The assistant could not answer this message. Please try again.'))
+                        changed = true
+                    }
+                }
+                if (job.status === 'sent' && job.acknowledged && jobs.current.has(key)) {
                     jobs.current.delete(key)
                     changed = true
                 }
