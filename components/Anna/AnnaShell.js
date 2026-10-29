@@ -166,36 +166,12 @@ export default function AnnaShell({ children, routeId }) {
             ? defaultAssistant
             : (switching ? activeChoice?.assistant : resolvedAssistant) || activeChoice?.assistant || defaultAssistant
     const headerAssistantName = headerAssistant.displayName?.trim() || translate('Assistant')
-    // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
-    const [projectSwitch, setProjectSwitch] = useState(null)
-    const projectSwitchSequence = useRef(0)
     const selectProject = useCallback(
         projectId => {
             setProjectNotice('')
-            const targetId = projectId || user.defaultProjectId
-            const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
-            if (targetId && targetId !== currentId) {
-                projectSwitchSequence.current += 1
-                setProjectSwitch({
-                    id: projectSwitchSequence.current,
-                    projectId: targetId,
-                    name:
-                        projectChoices.find(choice => choice.id === targetId)?.name ||
-                        projectsMap?.[targetId]?.name ||
-                        '',
-                    created: Date.now(),
-                })
-            }
             projectSelection.select(projectId)
         },
-        [
-            projectSelection.select,
-            user.defaultProjectId,
-            activeProjectId,
-            conversation?.projectId,
-            projectChoices,
-            projectsMap,
-        ]
+        [projectSelection.select]
     )
     const [mobilePane, setMobilePane] = useState('chat')
     const [latestChatRequest, setLatestChatRequest] = useState(0)
@@ -206,15 +182,20 @@ export default function AnnaShell({ children, routeId }) {
     const vmSurface = surface === 'vms' || !!selectedVmId
     const lastVmId = useRef(null)
     if (selectedVmId) lastVmId.current = selectedVmId
+    // A card is a thread (AT-2916); remembering the run it showed keeps that run's result on screen
+    // after it settles, even when its task is done and the thread therefore leaves the list.
+    const selectedVmRun = useRef({ id: null, runId: null })
     const {
         jobs: vmJobs,
         error: vmError,
         retry: retryVms,
     } = useAnnaVmJobs(user.uid, {
         enabled: active,
-        selectedRunId: selectedVmId,
+        selectedId: selectedVmId,
+        selectedRunId: selectedVmRun.current.id === selectedVmId ? selectedVmRun.current.runId : null,
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
+    if (selectedVm?.runId) selectedVmRun.current = { id: selectedVmId, runId: selectedVm.runId }
     const vmPointerDown = useRef(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
@@ -925,7 +906,6 @@ export default function AnnaShell({ children, routeId }) {
                                     onBeforeSend={resumeForMessage}
                                     pageContext={chatPageContext}
                                     switching={switching}
-                                    projectSwitch={projectSwitch}
                                     renderProjectSwitcher={({ disabled }) => (
                                         <AnnaProjectSwitcher
                                             choices={projectChoices}

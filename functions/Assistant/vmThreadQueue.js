@@ -82,7 +82,9 @@ function isOrphanedQueuedVmJob(job = {}, correlationId = '', session = null, now
  * position is 1-based (0 for launch). sequence + admittedAt establish a stable thread-run order
  * used by downstream metadata writers to prevent older runs from replacing newer results.
  */
-async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
+// `lastRequestUserId` / `lastRunCorrelationId` let the Anna VM overview find a user's threads and the
+// run a paused thread last carried (AT-2916); a session has no other link to its user or its jobs.
+async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now, { requestUserId = null } = {}) {
     return admin.firestore().runTransaction(async transaction => {
         const now = nowFn()
         const snapshot = await transaction.get(sessionRef)
@@ -116,6 +118,7 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
                     queueLength: queue.length,
                     lastJobSequence: sequence,
                     lastJobAdmittedAt: admittedAt,
+                    ...(requestUserId ? { lastRequestUserId: requestUserId } : {}),
                 },
                 { merge: true }
             )
@@ -132,6 +135,8 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
                 activeJobAdmittedAt: admittedAt,
                 lastJobSequence: sequence,
                 lastJobAdmittedAt: admittedAt,
+                lastRunCorrelationId: correlationId,
+                ...(requestUserId ? { lastRequestUserId: requestUserId } : {}),
             },
             { merge: true }
         )
@@ -219,6 +224,7 @@ async function advanceVmThreadQueue(sessionRef, nowFn = Date.now) {
                 activeLeaseOwner: dispatchLeaseOwner(next),
                 activeLeaseExpiresAt: now + VM_DISPATCH_LEASE_MS,
                 activeCorrelationId: next,
+                lastRunCorrelationId: next,
             },
             { merge: true }
         )

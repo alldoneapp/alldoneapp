@@ -20,7 +20,6 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
-import useAnnaProjectSwitchNotices from './useAnnaProjectSwitchNotices'
 import useAnnaActivityNotices from './useAnnaActivityNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
@@ -80,16 +79,12 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         // AT-2903: true while the selected project's chat is still being resolved.
         switching = false,
         renderProjectSwitcher,
-        // AT-2914: the latest project chosen in the switcher ({ id, projectId, name, created }).
-        projectSwitch = null,
     },
     ref
 ) {
-    // AT-2914: one indicator of the view open right now, always at the end of the chat.
-    const viewNotice = useAnnaContextNotices(user.uid, conversation, pageContext)
-    const projectNotices = useAnnaProjectSwitchNotices(user.uid, conversation, projectSwitch)
+    const pageNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
-    const contextNotices = [...projectNotices, ...activityNotices].sort((a, b) => a.created - b.created)
+    const contextNotices = [...pageNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     // The draft belongs to the continuous conversation, including across midnight.
     const {
@@ -393,7 +388,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     notice.projectId === thread.projectId &&
                                     notice.chatId === (thread.chatId || thread.id)
                             )}
-                            viewNotice={isCurrentThread(thread) ? viewNotice : null}
                             onSuggest={text => {
                                 changeDraft(text)
                                 composer.current?.setContent(text)
@@ -614,7 +608,6 @@ function AnnaThreadMessages({
     visible,
     offline,
     contextNotices,
-    viewNotice = null,
     localMessages,
     onRetry,
     onAcknowledge,
@@ -693,7 +686,6 @@ function AnnaThreadMessages({
         last?.submission?.status,
         contextNotices.length,
         contextNotices.at(-1)?.id,
-        viewNotice?.id,
         pendingMessage?.key,
         pendingMessage?.status,
         onChange,
@@ -756,13 +748,9 @@ function AnnaThreadMessages({
                     return <AnnaActivityGroup key={`context-${notices[0].id}`} notices={notices} onChange={onChange} />
                 if (notice)
                     return (
-                        <p
-                            className="anna-context-notice anna-project-switch-notice"
-                            key={`context-${notice.id}`}
-                            data-anna-project-switch={notice.projectId}
-                        >
+                        <p className="anna-context-notice" key={`context-${notice.id}`}>
                             <span>
-                                {translate('Switched to project:')} {notice.title}
+                                {translate('Looking at:')} {notice.title}
                             </span>
                             <AnnaTimestamp timestamp={notice.created} />
                         </p>
@@ -816,14 +804,6 @@ function AnnaThreadMessages({
                         )}
                     />
                 </div>
-            )}
-            {viewNotice && (
-                <p className="anna-context-notice anna-view-notice" key="view-notice">
-                    <span>
-                        {translate('Looking at:')} {viewNotice.title}
-                    </span>
-                    <AnnaTimestamp timestamp={viewNotice.created} />
-                </p>
             )}
         </section>
     )
