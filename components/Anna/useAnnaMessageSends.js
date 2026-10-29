@@ -13,6 +13,7 @@ import {
 } from '../../functions/Utils/parseTextUtils'
 import { getDb, getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
+import { subscribePageVisible } from '../../utils/appResume'
 import { flushAnnaActivityContext } from './annaActivityContext'
 import {
     REPLY_FAILED,
@@ -98,22 +99,23 @@ export default function useAnnaMessageSends({
         job.status = 'confirming'
         job.error = ''
         let timer = null
-        let onVisible = null
+        let unsubscribeVisible = null
         const stop = () => {
             clearTimeout(timer)
-            if (onVisible) document.removeEventListener('visibilitychange', onVisible)
+            if (unsubscribeVisible) unsubscribeVisible()
             timer = null
-            onVisible = null
+            unsubscribeVisible = null
             if (job.stopConfirming === stop) job.stopConfirming = null
         }
         const arm = () => {
             stop()
             job.stopConfirming = stop
             if (isPageHidden()) {
-                onVisible = () => {
+                // utils/appResume.js owns the resume signals (PT-4660); it also covers the
+                // pageshow/resume paths a bare visibilitychange listener would miss.
+                unsubscribeVisible = subscribePageVisible(() => {
                     if (!isPageHidden()) arm()
-                }
-                document.addEventListener('visibilitychange', onVisible)
+                })
                 return
             }
             const now = Date.now()
