@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
+import { threadRunGate } from '../../utils/backends/Chats/threadRunGate'
 import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { NEW_ATTACHMENT } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
@@ -33,8 +34,15 @@ const hasNewAttachments = text =>
         return false
     })
 
+const threadOf = thread => ({ projectId: thread.projectId, objectType: 'topics', objectId: thread.id })
+const removedError = () => Object.assign(new Error('removed'), { code: 'removed-by-user' })
+
 // Keep each submission separate from the next draft and from other assistant
 // runs. Its permanent outbox ID is also the backend's idempotency key on retry.
+//
+// AT-2922: one turn at a time. A message written while the previous answer (or a VM job it
+// started) is still running waits as "queued" and is only written into the thread once that
+// answer is complete, so the history reads question, answer, question, answer.
 export default function useAnnaMessageSends({
     userId,
     conversation,
@@ -135,14 +143,20 @@ export default function useAnnaMessageSends({
     const run = job => {
         if (job.running || job.userId !== owner.current) return
         job.stopConfirming?.()
+        // Anything ahead of it in this tab, or an answer already running in its thread, makes it
+        // wait. The wait itself happens in turn below; this only decides what the user sees now.
+        const queued =
+            !job.locallySaved &&
+            ([...jobs.current.values()].some(other => other !== job && other.running && other.userId === job.userId) ||
+                (job.thread?.id && threadRunGate.isThreadBusyLocally(threadOf(job.thread))))
         job.running = true
         job.dispatched = false
         job.error = ''
-        job.status = 'sending'
+        job.status = queued ? 'queued' : 'sending'
         publish()
         const isActive = () => mounted.current && owner.current === job.userId
-        // Preserve submission order through persistence and request dispatch,
-        // without making the next message wait for the assistant's answer.
+        // Preserve submission order through persistence and request dispatch; the
+        // thread gate below also makes the next message wait for the previous answer.
         const prepared = preparation.current
             .catch(() => {})
             .then(async () => {
@@ -159,6 +173,32 @@ export default function useAnnaMessageSends({
                 if (!isActive()) return null
                 const thread = job.thread
                 if (!thread?.id) throw new Error(translate('Your conversation could not be loaded. Please try again.'))
+                if (job.removed) throw removedError()
+                if (!job.locallySaved && !job.gateCleared) {
+                    const outcome = await threadRunGate.waitForThreadIdle(threadOf(thread), {
+                        isActive,
+                        excludeId: job.id,
+                        originalCreated: job.created,
+                        shouldCancel: () => !!job.removed,
+                        shouldRelease: () => !!job.sendNow,
+                        subscribe: listener => {
+                            job.poke = listener
+                            return () => {
+                                if (job.poke === listener) job.poke = null
+                            }
+                        },
+                        onQueued: () => {
+                            job.status = 'queued'
+                            publish()
+                        },
+                    })
+                    if (outcome.status === 'cancelled') throw removedError()
+                    if (!isActive()) return null
+                    // Written after the answer it waited for, so it is also dated after it.
+                    job.created = outcome.created
+                    job.gateCleared = true
+                    job.status = 'sending'
+                }
                 publish()
                 if (!job.continuation) await onBeforeSend?.()
                 if (!isActive()) return null
@@ -190,7 +230,7 @@ export default function useAnnaMessageSends({
                         null,
                         // The run is started below, but the comment still records it so the server can
                         // start it if this page goes away before the request is sent.
-                        { id: job.id, created: job.created, requestsAssistantRun: true }
+                        { id: job.id, created: job.created, requestsAssistantRun: true, threadGateCleared: true }
                     )
                     if (!job.id) throw new Error(translate('Your message could not be sent. Please try again.'))
                     job.locallySaved = true
@@ -209,6 +249,9 @@ export default function useAnnaMessageSends({
                 await flushAnnaActivityContext(job.userId)
                 if (!isActive()) return null
                 job.dispatched = true
+                // Until this request settles, the next message in this thread waits (AT-2922).
+                job.runThread = threadOf(thread)
+                threadRunGate.beginThreadRun(job.runThread, job.id)
                 return {
                     response: runHttpsCallableFunction(
                         'askToBotSecondGen',
@@ -235,6 +278,10 @@ export default function useAnnaMessageSends({
                 job.status = 'sent'
             })
             .catch(failure => {
+                if (failure?.code === 'removed-by-user') {
+                    job.status = 'removed'
+                    return
+                }
                 const reply = replyFor(job)
                 if (job.dispatched && replyConfirmsProcessing(reply)) {
                     // The answer is already in the chat; how the response got lost is irrelevant.
@@ -247,11 +294,17 @@ export default function useAnnaMessageSends({
                     else confirm(job)
                 } else {
                     job.status = 'failed'
+                    // A retry before the message was saved waits for its turn again (AT-2922).
+                    if (!job.locallySaved) job.gateCleared = false
+                    job.sendNow = false
                     job.error = failure.message || translate('Your message could not be sent. Please try again.')
                 }
             })
             .finally(() => {
+                if (job.runThread) threadRunGate.settleThreadRun(job.runThread, job.id)
+                job.runThread = null
                 job.running = false
+                if (job.status === 'removed') jobs.current.delete(job.key)
                 if (job.status === 'sent' && job.acknowledged) jobs.current.delete(job.key)
                 publish()
             })
@@ -275,6 +328,24 @@ export default function useAnnaMessageSends({
         const job = jobs.current.get(key)
         // A message the server is already answering must never be submitted twice.
         if (job?.status === 'failed' && !replyConfirmsProcessing(replyFor(job))) run(job)
+    }
+    // A queued message can be sent at once or withdrawn while it waits (AT-2922).
+    const sendNow = key => {
+        const job = jobs.current.get(key)
+        if (job?.status !== 'queued') return
+        job.sendNow = true
+        job.poke?.()
+    }
+    const remove = key => {
+        const job = jobs.current.get(key)
+        if (job?.status !== 'queued') return
+        job.removed = true
+        job.poke?.()
+        // A job still waiting behind an earlier one in this tab never reached the gate.
+        if (!job.poke) {
+            jobs.current.delete(key)
+            publish()
+        }
     }
     const acknowledge = useCallback(
         (projectId, chatId, ids, threadReplies = {}) => {
@@ -303,5 +374,13 @@ export default function useAnnaMessageSends({
         },
         [publish]
     )
-    return { messages: messages.filter(message => message.userId === userId), sending, submit, retry, acknowledge }
+    return {
+        messages: messages.filter(message => message.userId === userId),
+        sending,
+        submit,
+        retry,
+        acknowledge,
+        sendNow,
+        remove,
+    }
 }

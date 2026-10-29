@@ -71,34 +71,55 @@ export const createCommentOutbox = ({
                 if (activeUser() !== current.userId || !canSend(current)) return
                 let expired = false
                 let timer
+                let rejectTimeout
+                const timeout = new Promise((_, reject) => {
+                    rejectTimeout = reject
+                })
+                const arm = () => {
+                    clearTimeout(timer)
+                    timer = setTimeout(() => {
+                        expired = true
+                        rejectTimeout(Object.assign(new Error('Comment sync timed out'), { code: 'deadline-exceeded' }))
+                    }, sendTimeoutMs)
+                }
+                // AT-2922: a message may wait behind the assistant's previous answer for as long as
+                // that answer takes. The sync timeout measures delivery, so it is paused meanwhile.
+                const hold = async wait => {
+                    clearTimeout(timer)
+                    try {
+                        return await wait()
+                    } finally {
+                        if (!expired) arm()
+                    }
+                }
+                arm()
                 try {
                     await Promise.race([
-                        sender(current, () => !expired && activeUser() === current.userId),
-                        new Promise((_, reject) => {
-                            timer = setTimeout(() => {
-                                expired = true
-                                reject(
-                                    Object.assign(new Error('Comment sync timed out'), { code: 'deadline-exceeded' })
-                                )
-                            }, sendTimeoutMs)
-                        }),
+                        sender(current, () => !expired && activeUser() === current.userId, { hold }),
+                        timeout,
                     ])
                     // A tombstone also protects against removeItem failing after an
                     // acknowledged send. The server transaction deduplicates replay.
-                    save({ ...current, status: 'sent' })
+                    save({ ...(read(current.userId, current.id) || current), status: 'sent' })
                     try {
                         storage().removeItem(itemKey)
                     } catch (_) {}
                     notify()
                 } catch (error) {
+                    // The user removed a queued message: nothing is left to keep.
+                    if (error?.code === 'removed-by-user') return
                     const permanent = ['permission-denied', 'invalid-argument', 'not-found'].includes(error?.code)
                     // Another tab may already have acknowledged and removed it.
-                    if (read(current.userId, current.id)?.status !== 'sent' && read(current.userId, current.id))
+                    const latest = read(current.userId, current.id)
+                    if (latest && latest.status !== 'sent') {
+                        // A retry waits for its turn in the thread again (AT-2922).
+                        const { threadGateCleared, forceSend, ...retryable } = latest
                         save({
-                            ...current,
+                            ...retryable,
                             status: permanent ? 'failed' : 'pending',
                             errorCode: error?.code || 'unavailable',
                         })
+                    }
                     throw error
                 } finally {
                     expired = true
@@ -119,6 +140,24 @@ export const createCommentOutbox = ({
         enqueue: values => save({ ...values, created: values.created || now(), status: 'pending' }),
         flushOne,
         flush: () => Promise.allSettled(list(activeUser()).map(flushOne)),
+        // AT-2922: a queued message is marked, sent at once or removed by the user.
+        update: (userId, id, patch) => {
+            const entry = read(userId, id)
+            return entry && entry.status !== 'sent' ? save({ ...entry, ...patch }) : null
+        },
+        remove: (userId, id) => {
+            const entry = read(userId, id)
+            // Only a message still waiting for its turn can be withdrawn; one already being
+            // delivered may have reached the server.
+            if (!entry || entry.status !== 'queued') return false
+            try {
+                storage().removeItem(key(userId, id))
+            } catch (_) {
+                return false
+            }
+            notify()
+            return true
+        },
         retry: (userId, id) => {
             const entry = read(userId, id)
             if (entry && activeUser() === userId) return flushOne(save({ ...entry, status: 'pending', errorCode: '' }))
@@ -146,13 +185,13 @@ export const installCommentOutbox = (db, auth, store, { subscribeVisible, subscr
             !isOffline() &&
             store.getState().loggedUser?.uid === entry.userId &&
             !!store.getState().loggedUserProjectsMap?.[entry.projectId],
-        send: async (entry, isActive) => {
+        send: async (entry, isActive, controls) => {
             // New tasks and their access projections may still be in the SDK's
             // original queue. Wait for them without ever replaying those writes.
             await db.waitForPendingWrites()
             if (!isActive()) throw Object.assign(new Error('Account changed'), { code: 'cancelled' })
             const { sendQueuedObjectMessage } = require('./chatsComments')
-            await sendQueuedObjectMessage(entry, isActive)
+            await sendQueuedObjectMessage(entry, isActive, controls)
         },
     })
     const flush = () => void commentOutbox.flush()

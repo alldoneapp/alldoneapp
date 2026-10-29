@@ -111,6 +111,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         submit,
         retry,
         acknowledge,
+        sendNow,
+        remove: removeQueued,
     } = useAnnaMessageSends({
         userId: user.uid,
         conversation,
@@ -382,6 +384,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     message.thread?.id === (thread.chatId || thread.id)
                             )}
                             onRetry={retryMessage}
+                            onSendNow={sendNow}
+                            onRemoveQueued={removeQueued}
                             onAcknowledge={acknowledge}
                             onWorkStateChange={onWorkStateChange}
                             onChange={messagesChanged}
@@ -618,6 +622,8 @@ function AnnaThreadMessages({
     viewNotice = null,
     localMessages,
     onRetry,
+    onSendNow,
+    onRemoveQueued,
     onAcknowledge,
     onWorkStateChange,
     reducedMotion,
@@ -659,7 +665,10 @@ function AnnaThreadMessages({
     const pendingMessage =
         !hasLegacyLiveActivity &&
         localMessages.findLast(
-            message => (message.running || message.status === 'confirming') && !repliedMessageIds.has(message.id)
+            message =>
+                (message.running || message.status === 'confirming') &&
+                message.status !== 'queued' &&
+                !repliedMessageIds.has(message.id)
         )
     const workStateKey = JSON.stringify(getAnnaWorkspaceWorkState(messages))
     useEffect(() => {
@@ -708,7 +717,12 @@ function AnnaThreadMessages({
         [
             ...displayedMessages.map(message => ({
                 message,
-                created: getTimestampInMilliseconds(message.created || message.lastChangeDate),
+                // AT-2922: a queued message is not part of the history yet; it stays at the end,
+                // after the answer it is waiting for.
+                created:
+                    message.submission?.status === 'queued'
+                        ? Number.MAX_SAFE_INTEGER // sort() is stable: queued messages keep their order
+                        : getTimestampInMilliseconds(message.created || message.lastChangeDate),
             })),
             ...contextNotices.map(notice => ({ notice, created: notice.created })),
         ].sort((a, b) => a.created - b.created)
@@ -781,9 +795,17 @@ function AnnaThreadMessages({
                         data-anna-message-id={message.id}
                         data-anna-chat-id={chatId}
                         data-anna-project-id={thread.projectId}
-                        className={`anna-message ${own ? 'anna-message-user' : ''}`}
+                        className={`anna-message ${own ? 'anna-message-user' : ''}${
+                            message.submission?.status === 'queued' ? ' anna-message-queued' : ''
+                        }`}
                     >
-                        <AnnaMessageAuthor message={message} creator={creator} own={own} />
+                        <AnnaMessageAuthor
+                            message={message}
+                            creator={creator}
+                            own={own}
+                            onSendNow={() => onSendNow?.(message.submission?.key)}
+                            onRemove={() => onRemoveQueued?.(message.submission?.key)}
+                        />
                         <AnnaMessageBody
                             reducedMotion={reducedMotion}
                             messageId={message.id}

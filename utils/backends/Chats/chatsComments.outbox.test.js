@@ -1,5 +1,6 @@
 import { createObjectMessage, sendQueuedObjectMessage } from './chatsComments'
 import { commentOutbox } from './commentOutbox'
+import { threadRunGate } from './threadRunGate'
 import { getDb, getTaskData, runHttpsCallableFunction } from '../firestore'
 import { getChatMeta } from './chatsFirestore'
 
@@ -131,6 +132,7 @@ beforeEach(() => {
         },
     }
     getDb.mockReturnValue(db)
+    threadRunGate.reset()
     commentOutbox.configure({ activeUser: () => 'u', canSend: () => false, send: sendQueuedObjectMessage })
 })
 
@@ -373,5 +375,143 @@ describe('recording the assistant run a comment expects', () => {
             expect.anything(),
             expect.anything()
         )
+    })
+})
+
+// AT-2922: a message for the assistant waits until the thread's previous answer is complete, and
+// only then enters the thread, so the history keeps question and answer together.
+describe('one assistant turn at a time per thread', () => {
+    const thread = { projectId: 'p', objectType: 'tasks', objectId: 't' }
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+    const ask = (text, id) =>
+        createObjectMessage('p', 't', text, 'tasks', 2, null, null, false, true, 'project-assistant', null, {
+            id,
+            created: Date.now() - 1000,
+        })
+    const deferred = () => {
+        let resolve
+        const promise = new Promise(done => {
+            resolve = done
+        })
+        return { promise, resolve }
+    }
+
+    it('holds a message behind a running answer and writes it after that answer, dated after it', async () => {
+        threadRunGate.beginThreadRun(thread, 'earlier-question')
+        docs.set('chatComments/p/tasks/t/comments/answer', { created: Date.now() + 5000 })
+        runHttpsCallableFunction.mockResolvedValue({})
+        await ask('Next question', 'next')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        expect(commentOutbox.read('u', 'next')).toMatchObject({ status: 'queued', comment: 'Next question' })
+        expect(commits).toHaveLength(0)
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+
+        const releasedAt = Date.now()
+        threadRunGate.settleThreadRun(thread, 'earlier-question')
+        await flushing
+        expect(docs.get('chatComments/p/tasks/t/comments/next')).toMatchObject({ commentText: 'Next question' })
+        expect(docs.get('chatComments/p/tasks/t/comments/next').created).toBeGreaterThanOrEqual(releasedAt)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'askToBotSecondGen',
+            expect.objectContaining({ messageId: 'next' }),
+            expect.any(Object)
+        )
+        expect(commentOutbox.list('u')).toHaveLength(0)
+    })
+
+    it('keeps FIFO order: the second message waits for the run the first one started', async () => {
+        const firstRun = deferred()
+        runHttpsCallableFunction.mockReturnValueOnce(firstRun.promise).mockResolvedValue({})
+        await ask('First', 'first')
+        await ask('Second', 'second')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        await settle()
+        expect(docs.has('chatComments/p/tasks/t/comments/first')).toBe(true)
+        expect(docs.has('chatComments/p/tasks/t/comments/second')).toBe(false)
+        expect(commentOutbox.read('u', 'second').status).toBe('queued')
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+
+        firstRun.resolve({})
+        await flushing
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(docs.get('chatComments/p/tasks/t/comments/second').created).toBeGreaterThan(
+            docs.get('chatComments/p/tasks/t/comments/first').created
+        )
+    })
+
+    it('a failed answer releases the queue as well', async () => {
+        runHttpsCallableFunction
+            .mockReturnValueOnce(Promise.reject(Object.assign(new Error('boom'), { code: 'internal' })))
+            .mockResolvedValue({})
+        await ask('First', 'first')
+        await ask('Second', 'second')
+        goOnline()
+        await commentOutbox.flush()
+        await settle()
+        await commentOutbox.flush()
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+    })
+
+    it('a removed queued message is never written and nothing is left behind', async () => {
+        threadRunGate.beginThreadRun(thread, 'earlier-question')
+        await ask('Never mind', 'withdrawn')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        expect(commentOutbox.read('u', 'withdrawn').status).toBe('queued')
+        expect(commentOutbox.remove('u', 'withdrawn')).toBe(true)
+        await flushing
+        threadRunGate.settleThreadRun(thread, 'earlier-question')
+        await settle()
+        expect(docs.has('chatComments/p/tasks/t/comments/withdrawn')).toBe(false)
+        expect(commentOutbox.list('u')).toHaveLength(0)
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('"send now" skips the wait', async () => {
+        threadRunGate.beginThreadRun(thread, 'earlier-question')
+        runHttpsCallableFunction.mockResolvedValue({})
+        await ask('Urgent', 'urgent')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        expect(commentOutbox.read('u', 'urgent').status).toBe('queued')
+        commentOutbox.update('u', 'urgent', { forceSend: true })
+        await flushing
+        expect(docs.has('chatComments/p/tasks/t/comments/urgent')).toBe(true)
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+        threadRunGate.settleThreadRun(thread, 'earlier-question')
+    })
+
+    it('does not hold a message that does not ask the assistant, nor a thread elsewhere', async () => {
+        threadRunGate.beginThreadRun(thread, 'earlier-question')
+        threadRunGate.beginThreadRun({ ...thread, objectId: 'other' }, 'other-run')
+        await submit()
+        goOnline()
+        await commentOutbox.flush()
+        expect(docs.has('chatComments/p/tasks/t/comments/stable-id')).toBe(true)
+        runHttpsCallableFunction.mockResolvedValue({})
+        await createObjectMessage(
+            'p',
+            'elsewhere',
+            'Hi',
+            'tasks',
+            2,
+            null,
+            null,
+            false,
+            true,
+            'project-assistant',
+            null,
+            {
+                id: 'elsewhere-message',
+            }
+        )
+        await commentOutbox.flush()
+        expect(docs.has('chatComments/p/tasks/elsewhere/comments/elsewhere-message')).toBe(true)
     })
 })

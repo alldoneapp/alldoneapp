@@ -146,7 +146,14 @@ export default function MessageItem({
                 {...swipeCloseGuard}
             >
                 <Animated.View
-                    style={{ backgroundColor: backColor, marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 4 }}
+                    style={{
+                        backgroundColor: backColor,
+                        marginHorizontal: -8,
+                        paddingHorizontal: 8,
+                        borderRadius: 4,
+                        // AT-2922: a queued message is not sent yet.
+                        opacity: message.pendingSend?.status === 'queued' ? 0.6 : 1,
+                    }}
                 >
                     <MessageItemHeader
                         projectId={projectId}
