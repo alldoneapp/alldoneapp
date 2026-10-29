@@ -1557,13 +1557,9 @@ degrades to today's behaviour rather than breaking.
   (`firestoreNetworkRelease.js`, deliberately import-free) before `enableNetwork()`, and the
   handoff never releases or re-enables while the network is parked for offline or "Continue
   offline". To see which tab holds the lease: IndexedDB `firestore/[DEFAULT]/alldonealeph/main`,
-  stores `owner` and `clientMetadata` (`inForeground`, `networkEnabled`). The handoff logs
-  `firestore_tab_handoff` released/reacquired records, but only with localStorage
-  `alldone.performance.debug=1`: `?perfDebug=1` is re-read from the URL on every record and the
-  app drops the query after boot, so it covers boot records only. Pinned by
-  `firestoreTabHandoff.test.js` and the AT-2907 cases in `firestoreNetworkGate.test.js`,
-  `connectionHealth.test.js` and `ConnectionStateGuardrails.test.js`. Verified live with real
-  Chrome tabs on 2026-10-29.
+  stores `owner` and `clientMetadata` (`inForeground`, `networkEnabled`); `?perfDebug=1` logs
+  `firestore_tab_handoff` released/reacquired. Pinned by `firestoreTabHandoff.test.js` and the
+  AT-2907 cases in `firestoreNetworkGate.test.js` and `connectionHealth.test.js`.
 - **VM badges watch only tasks marked `hasVmSession` (AT-2907).** The task list's VM badge and
   the VM filter counts used to open a `vmSessions/{projectId}__{taskId}` listener for every open
   task and subtask, about 100 per tab, while production held 39 session documents. The server
@@ -3424,6 +3420,16 @@ catches and logs, because the object update itself has already happened. Pinned 
 - When adding a new gold spend or refund, always pass a descriptive `source` (a new machine key, e.g. `meeting_transcription`, `gmail_labeling`) plus as much linking context as you have: `projectId`, `goalId`, `objectId`, `objectType`, `channel`, and an optional human `note`. The sanitized fields are defined in `functions/Gold/goldTransactions.js` — add new fields there if you need more link context.
 - Add a human label for every new `source` in `components/SettingsView/Profile/Properties/GoldTransactionsModal.js` (`getTransactionLabel`) and a matching translation key in `i18n/translations/en.json`, `de.json`, and `es.json`. The modal falls back to `Gold transaction` if the source is unknown.
 - Prefer storing enough context that the transaction can deep-link back to its source (chat/topic, goal, contact, Gmail message, etc.). The modal's `getTransactionLink` builds the URL from `projectId` + `objectId` + `objectType` / `channel`; extend it when adding a new source type that has a natural destination.
+
+#### Nothing a client sends can create Gold
+
+Until October 2026 any signed-in account could mint Gold three ways: write `users/{uid}.gold` itself (the users update rule only protected membership fields), call `refundGoldSecondGen` with any amount (it credited whatever it was sent), or call `deductGoldSecondGen` with a negative amount (the ledger only checked "finite and not zero"). Three rules now hold, and a new gold path must keep them:
+
+- **`gold`, `dailyGold`, `premium` and `stripeCustomerId` on `users/{uid}` are server-owned** (`ownerUpdateKeepsServerFields` in `firestore.rules`; a new account may only start with `getNewDefaultUser`'s defaults). So are the `goldTransactions`, `goldRewardClaims` and `goldChangeClaims` subcollections (owner-readable, never client-writable), because a forged spend could be refunded and a deleted claim re-earned. Never write any of them from the client; a client-triggered grant is a callable that decides the amount itself (the premium signup bonus is `grantPremiumSignupGold`, once per account via an idempotency key, only on the signup check of an account less than a day old).
+- **A ledger direction carries its sign** (`deltaMatchesDirection` in `goldTransactions.js`): `spend` negative, `earn` and `refund` positive, only `adjustment` either way.
+- **A client refund gives back one of the caller's own charges** (`refundClientSpend`): the refund source must be paired with a spend source in `REFUNDABLE_CLIENT_SPENDS` (`iframe_refund` ↔ `iframe_deduction`, `goal_unlock` ↔ `goal_unlock`), it is matched to the newest spend of that source in the last 24h (and the same `objectId` when given), and the spend's `refundedAmount` caps the total. A new client flow that needs to refund adds its pair there. Server code refunding its own charges keeps using `refundGold`.
+
+`earnGoldSecondGen` still accepts a `userId` other than the caller's (task workflows reward the reviewer); what bounds it is the server-owned `dailyGold`. Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Premium/premiumSignupGold.test.js` and the `server-owned` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
 #### Gold analytics & rollups (tracking earn/spend over time)
 

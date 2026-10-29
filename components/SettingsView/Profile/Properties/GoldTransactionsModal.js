@@ -52,6 +52,7 @@ function getTransactionLabel(source) {
         linkedin_search: 'LinkedIn search',
         contact_enrichment: 'Contact enrichment',
         monthly_gold: 'Monthly gold',
+        premium_signup_bonus: 'Premium start gold',
         gold_pack_purchase: 'Gold pack purchase',
         rage_mode_item: 'Rage mode weapon',
         meeting_transcription: 'Meeting transcription',

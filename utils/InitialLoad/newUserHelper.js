@@ -1,5 +1,5 @@
 import store from '../../redux/store'
-import { setEndDataForNewUser, setInitialDataForNewUser, initLogInForLoggedUser } from '../../redux/actions'
+import { setEndDataForNewUser, setInitialDataForNewUser } from '../../redux/actions'
 import {
     mapUserData,
     addToMarketingList,
@@ -14,7 +14,7 @@ import {
     getFirestoreTime,
     uploadNewProject,
 } from '../backends/firestore'
-import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
+import { addNewUserToAlldoneTemplate, uploadNewUser } from '../backends/Users/usersFirestore'
 import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
@@ -34,7 +34,6 @@ import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelp
 import { storeVersion } from '../Observers'
 import NavigationService from '../NavigationService'
 import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
-import { PLAN_STATUS_PREMIUM } from '../../components/Premium/PremiumHelper'
 import { createChat } from '../backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
@@ -304,25 +303,12 @@ export const processNewUser = async firebaseUser => {
             userId: userId,
         })
 
-        const premiumResult = await checkUserPremiumStatusStripe()
+        // A premium signup gets its start Gold from the server (the client may not write `gold`);
+        // watchLoggedUserData above carries the new balance into the store.
+        const premiumResult = await checkUserPremiumStatusStripe(null, { isSignup: true })
         console.log('Premium status check completed during signup:', premiumResult)
-
-        // If user is premium, update their initial gold to 1000 instead of default 100
-        if (premiumResult?.success && premiumResult?.premiumStatus === PLAN_STATUS_PREMIUM) {
-            console.log('🥇 New premium user detected - updating initial gold to 1000')
-            try {
-                // Update in Firestore
-                await updateUserData(userId, { gold: 1000 }, null)
-
-                // Update in Redux store
-                const currentState = store.getState()
-                const updatedUser = { ...currentState.loggedUser, gold: 1000 }
-                store.dispatch(initLogInForLoggedUser(updatedUser))
-
-                console.log('✅ Premium user initial gold updated successfully')
-            } catch (goldUpdateError) {
-                console.warn('Failed to update premium user gold:', goldUpdateError)
-            }
+        if (premiumResult?.signupGold?.granted) {
+            console.log('🥇 New premium user received start gold', premiumResult.signupGold)
         }
     } catch (error) {
         console.warn('Premium status check failed during signup:', error)
