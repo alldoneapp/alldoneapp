@@ -536,7 +536,7 @@ it('ignores empty dictation and hides the microphone during calls or without bro
     expect(container.querySelector('textarea').disabled).toBe(false)
 })
 
-it('adds one chat hint per context change without posting a message or starting an assistant run', () => {
+it('shows only the currently opened view, without posting a message or starting an assistant run (AT-2914)', () => {
     const tasks = { surface: 'alldone', path: '/tasks', title: 'Alldone.app - Tasks' }
     render({ pageContext: tasks })
     render({ pageContext: { ...tasks } })
@@ -544,8 +544,11 @@ it('adds one chat hint per context change without posting a message or starting 
     expect(container.querySelector('.anna-context-notice').textContent).toContain('Looking at: Tasks')
     render({ pageContext: { ...tasks, path: '/other-project/tasks' } })
     render({ pageContext: { surface: 'browser', path: 'https://example.com', title: 'Example' } })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
+    expect(container.querySelector('.anna-context-notice').textContent).toContain('Looking at: Example')
     render({ pageContext: tasks })
-    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(4)
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
+    expect(container.querySelector('.anna-context-notice').textContent).toContain('Looking at: Tasks')
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
@@ -652,24 +655,71 @@ it('reports persisted run completion to the workspace without waiting for the sp
     })
 })
 
-it('places context changes between messages chronologically', () => {
+it('keeps the current view as the last entry of the chat, after newer messages (AT-2914)', () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+    const entries = () =>
+        [...container.querySelectorAll('.anna-context-notice, [data-anna-message-id]')].map(
+            node => node.dataset.annaMessageId || node.querySelector('span').textContent
+        )
     render({ pageContext: { surface: 'alldone', path: '/tasks', title: 'Tasks' } })
     mockMessages = [{ id: 'm1', creatorId: 'u1', created: 2000, commentText: 'Open a note' }]
+    render({ pageContext: { surface: 'alldone', path: '/tasks', title: 'Tasks' } })
+    expect(entries()).toEqual(['m1', 'Looking at: Tasks'])
     now.mockReturnValue(3000)
     render({ pageContext: { surface: 'alldone', path: '/notes', title: 'Notes' } })
-    const entries = [...container.querySelectorAll('.anna-context-notice, [data-anna-message-id]')]
-    expect(entries.map(node => node.dataset.annaMessageId || node.querySelector('span').textContent)).toEqual([
-        'Looking at: Tasks',
-        'm1',
-        'Looking at: Notes',
+    expect(entries()).toEqual(['m1', 'Looking at: Notes'])
+})
+
+it('records a project chosen in the switcher in the chat history of that project (AT-2914)', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(5000)
+    const p1 = { projectId: 'p1', id: 'anna_u1', assistantId: 'a1' }
+    const p2 = { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' }
+    const threads = [
+        { projectId: 'p1', chatId: 'anna_u1', created: 1 },
+        { projectId: 'p2', chatId: 'anna_p2', created: 2 },
+    ]
+    Object.assign(mockThreadMessages, {
+        anna_u1: [{ id: 'm1', creatorId: 'u1', created: 1000, commentText: 'Hello' }],
+        anna_p2: [{ id: 'm2', creatorId: 'u1', created: 3000, commentText: 'Earlier in Familie' }],
+    })
+    const pageContext = { surface: 'alldone', path: '/tasks', title: 'Alldone Product - Tasks' }
+    const switchNotices = () =>
+        [...container.querySelectorAll('[data-anna-project-switch]')].map(node => [
+            node.dataset.annaProjectSwitch,
+            node.closest('section').querySelector('[data-anna-message-id]')?.dataset.annaMessageId,
+            node.querySelector('span').textContent,
+        ])
+    render({ conversation: p1, threads, pageContext })
+    // While the chosen project's chat is still resolving nothing is recorded yet.
+    const toFamilie = { id: 1, projectId: 'p2', name: 'Familie', created: 4000 }
+    render({ conversation: p1, threads, pageContext, projectSwitch: toFamilie })
+    expect(switchNotices()).toEqual([])
+    render({ conversation: p2, threads, pageContext, projectSwitch: toFamilie })
+    expect(switchNotices()).toEqual([['p2', 'm2', 'Switched to project: Familie']])
+    // The current view moves with the conversation and exists only once.
+    expect(container.querySelectorAll('.anna-view-notice')).toHaveLength(1)
+    expect(
+        container.querySelector('.anna-view-notice').closest('section').querySelector('[data-anna-message-id]').dataset
+            .annaMessageId
+    ).toBe('m2')
+    // Re-rendering the same choice does not add a second entry; switching back adds one to that thread.
+    render({ conversation: p2, threads, pageContext, projectSwitch: { ...toFamilie } })
+    const back = { id: 2, projectId: 'p1', name: 'Alldone Product', created: 6000 }
+    render({ conversation: p1, threads, pageContext, projectSwitch: back })
+    expect(switchNotices()).toEqual([
+        ['p2', 'm2', 'Switched to project: Familie'],
+        ['p1', 'm1', 'Switched to project: Alldone Product'],
     ])
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
 
 it('keeps context hints scoped to the account and daily conversation', () => {
     const pageContext = { surface: 'alldone', path: '/tasks', title: 'Tasks' }
     render({ pageContext })
     render({ pageContext: null })
+    // No open view (chat-only mode) means no view indicator.
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(0)
     render({ pageContext })
     expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
     render({ pageContext, conversation: { projectId: 'p1', id: 'tomorrow', assistantId: 'a1' } })

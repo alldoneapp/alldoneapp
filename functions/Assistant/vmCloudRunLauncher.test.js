@@ -12,7 +12,6 @@ jest.mock('firebase-admin', () => ({
 const {
     launchVmCloudRunJob,
     findVmCloudRunExecution,
-    getVmCloudRunExecution,
     cancelVmCloudRunExecution,
     __private__,
 } = require('./vmCloudRunLauncher')
@@ -241,27 +240,6 @@ describe('vmCloudRunLauncher', () => {
             `https://run.googleapis.com/v2/${executionName}:cancel`,
             expect.objectContaining({ method: 'POST', body: '{}' })
         )
-    })
-
-    test('reads one execution by its stored name, and answers null once it is gone (AT-2916)', async () => {
-        const executionName =
-            'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/vm-job-runner-abcde'
-        fetch.mockResolvedValueOnce(response({ name: executionName, cancelledCount: 1 }))
-        await expect(getVmCloudRunExecution(executionName)).resolves.toEqual({ name: executionName, cancelledCount: 1 })
-        expect(fetch).toHaveBeenCalledWith(
-            `https://run.googleapis.com/v2/${executionName}`,
-            expect.objectContaining({ headers: { Authorization: 'Bearer test-token' } })
-        )
-
-        fetch.mockResolvedValueOnce(response({ error: { message: 'gone' } }, { ok: false, status: 404 }))
-        await expect(getVmCloudRunExecution(executionName)).resolves.toBeNull()
-
-        fetch.mockResolvedValueOnce(response({ error: { message: 'boom' } }, { ok: false, status: 500 }))
-        await expect(getVmCloudRunExecution(executionName)).rejects.toThrow('boom')
-
-        fetch.mockClear()
-        await expect(getVmCloudRunExecution('not/an/execution')).resolves.toBeNull()
-        expect(fetch).not.toHaveBeenCalled()
     })
 
     test('extracts only execution resource names from operation metadata', () => {

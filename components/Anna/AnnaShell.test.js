@@ -71,15 +71,12 @@ let mockTakeoverProps
 let mockTakeoverMounts = 0
 let mockVmJobs = []
 let mockVmError = false
-// The selected VM card (a thread since AT-2916) and the run that card last showed.
 let mockSelectedRunId
-let mockSelectedCardRunId
 const mockRetryVms = jest.fn()
 jest.mock('./useAnnaVmJobs', () => ({
     __esModule: true,
-    default: (userId, { selectedId, selectedRunId }) => {
-        mockSelectedRunId = selectedId
-        mockSelectedCardRunId = selectedRunId
+    default: (userId, { selectedRunId }) => {
+        mockSelectedRunId = selectedRunId
         return { jobs: mockVmJobs, error: mockVmError, retry: mockRetryVms }
     },
     vmJobPath: job => `/projects/${job.projectId}/tasks/${job.objectId}/chat`,
@@ -864,25 +861,6 @@ it.each(['desktop', 'mobile'])('shows every VM panel and preserves selection and
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
-})
-
-it('asks discovery to keep the run the selected VM card showed, so its result survives settling (AT-2916)', () => {
-    mockVmJobs = [
-        { id: 'p1__t1', runId: 'run-a', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' },
-        { id: 'p1__t2', runId: 'run-b', projectId: 'p1', objectId: 't2', title: 'Review plan', status: 'paused' },
-    ]
-    const view = render(content(1))
-    chooseSurface('vm:p1__t2')
-    view.rerender(content(1))
-    expect(mockSelectedRunId).toBe('p1__t2')
-    expect(mockSelectedCardRunId).toBe('run-b')
-    // The run settled and its task was closed: the card stays, by the run it showed.
-    mockVmJobs = [mockVmJobs[0]]
-    view.rerender(content(1))
-    expect(mockSelectedCardRunId).toBe('run-b')
-    chooseSurface('vm:p1__t1')
-    view.rerender(content(1))
-    expect(mockSelectedCardRunId).toBe('run-a')
 })
 
 it('keeps other VM panels available if the selected session disappears, and allows retrying discovery', () => {
@@ -1736,6 +1714,25 @@ describe('selected project (AT-2903)', () => {
         expect(document.querySelector('.anna-small-avatar img').getAttribute('src')).toBe('cto.png')
         expect(mockConversationProps).toMatchObject({ switching: true, assistant: cto })
         expect(switcher().props).toMatchObject({ activeProjectId: 'p2', busy: true })
+    })
+
+    it('hands the chosen project to the chat history, but not a re-selection of the current one (AT-2914)', () => {
+        const now = jest.spyOn(Date, 'now').mockReturnValue(4242)
+        const view = render(content(1))
+        act(() => switcher().props.onSelect('p1'))
+        expect(mockConversationProps.projectSwitch).toBeNull()
+        act(() => switcher().props.onSelect('p2'))
+        expect(mockConversationProps.projectSwitch).toEqual({
+            id: 1,
+            projectId: 'p2',
+            name: 'Alldone Product',
+            created: 4242,
+        })
+        useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2' })
+        view.rerender(content(1))
+        act(() => switcher().props.onSelect(null))
+        expect(mockConversationProps.projectSwitch).toMatchObject({ id: 2, projectId: 'p1', name: 'Home' })
+        now.mockRestore()
     })
 
     it('returns to the default project with a notice when the chosen project is refused', () => {
