@@ -4,6 +4,7 @@ const {
     applyKnowledgeBaseDefaultForNewProject,
     applyKnowledgeBaseDefaultsForActiveUsers,
     applyKnowledgeBaseDefaultsForUser,
+    MAX_PROJECTS_PER_USER,
 } = require('./knowledgeBaseDefaults')
 const { nextNightlyRunAt } = require('./knowledgeBaseSchedule')
 
@@ -85,39 +86,66 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
         expect(db.read(kbPath('p2')).ownerUserId).toBe('member')
     })
 
-    it('leaves guides, templates and archived projects alone', async () => {
+    it('leaves guides, templates and projects nobody has opened for 30 days alone', async () => {
         const db = createDb({
             'projects/guide': project({ parentTemplateId: 'template-1' }),
             'projects/template': project({ isTemplate: true }),
-            'projects/archived': project({ active: false }),
+            // project.active is the project-wide inactivity flag, not a member's archive.
+            'projects/inactive': project({ active: false }),
             'projects/elsewhere': project({ userIds: ['someone-else'] }),
         })
 
         const stats = await applyKnowledgeBaseDefaultsForUser({
             db,
             userId: 'creator',
-            userData: user(ACTIVE, ['guide', 'template', 'archived', 'elsewhere', 'missing']),
+            userData: user(ACTIVE, ['guide', 'template', 'inactive', 'elsewhere', 'missing']),
             now: NOW,
         })
 
         expect(stats).toMatchObject({ enabled: 0, ineligible: 5 })
-        for (const id of ['guide', 'template', 'archived', 'elsewhere', 'missing']) {
+        for (const id of ['guide', 'template', 'inactive', 'elsewhere', 'missing']) {
             expect(db.read(kbPath(id))).toBeUndefined()
         }
     })
 
-    it('neither switches on nor pays for a project the member archived, without reading it', async () => {
+    // AT-2893: a past project keeps its knowledge usable, so archiving it does not keep the wiki off.
+    it('switches on the wiki of a project the member archived, paid by them', async () => {
         const db = createDb({ 'projects/p1': project(), 'projects/p2': project() })
         const member = { ...user(ACTIVE, ['p1', 'p2']), archivedProjectIds: ['p1', 'p2'] }
 
         const stats = await applyKnowledgeBaseDefaultsForUser({ db, userId: 'creator', userData: member, now: NOW })
 
-        expect(stats).toMatchObject({ enabled: 0, archived: 2 })
-        expect(db.read(kbPath('p1'))).toBeUndefined()
-        expect(db.read(kbPath('p2'))).toBeUndefined()
+        expect(stats).toMatchObject({ enabled: 2 })
+        expect(stats).not.toHaveProperty('archived')
+        for (const id of ['p1', 'p2']) {
+            expect(db.read(kbPath(id))).toMatchObject({
+                enabled: true,
+                enabledBy: 'default',
+                ownerUserId: 'creator',
+                monthlyGoldCap: 500,
+                nextRunAt: TONIGHT,
+            })
+        }
     })
 
-    it('lets a member who has the project active pay when its creator archived it', async () => {
+    it('switches on an archived project for a single-project caller too', async () => {
+        const db = createDb({ 'users/creator': user(ACTIVE), 'projects/p1': project() })
+
+        const result = await applyKnowledgeBaseDefault({
+            db,
+            projectId: 'p1',
+            project: project(),
+            userId: 'member',
+            userData: { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            loadUser: async id => db.read(`users/${id}`) || null,
+            now: NOW,
+        })
+
+        expect(result).toBe('enabled')
+        expect(db.read(kbPath('p1'))).toMatchObject({ enabled: true, ownerUserId: 'creator' })
+    })
+
+    it('still lets an active creator pay when they archived the project', async () => {
         const db = createDb({
             'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
             'projects/p1': project(),
@@ -131,10 +159,28 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
         })
 
         expect(stats.enabled).toBe(1)
-        expect(db.read(kbPath('p1'))).toMatchObject({ enabled: true, enabledBy: 'default', ownerUserId: 'member' })
+        expect(db.read(kbPath('p1'))).toMatchObject({ enabled: true, enabledBy: 'default', ownerUserId: 'creator' })
     })
 
-    it('resumes a wiki paused for an archived project once its payer reactivates it', async () => {
+    it('reaches active projects before archived ones when an account has more than the bound', async () => {
+        const ids = Array.from({ length: MAX_PROJECTS_PER_USER + 2 }, (_, index) => `p${index}`)
+        const archivedProjectIds = ids.slice(0, 2)
+        const db = createDb(Object.fromEntries(ids.map(id => [`projects/${id}`, project()])))
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'creator',
+            userData: { ...user(ACTIVE, ids), archivedProjectIds },
+            now: NOW,
+        })
+
+        expect(stats.enabled).toBe(MAX_PROJECTS_PER_USER)
+        expect(db.read(kbPath(ids[ids.length - 1]))).toMatchObject({ enabled: true })
+        // The two archived projects come last, so they are the ones the bound leaves out.
+        expect(archivedProjectIds.filter(id => db.read(kbPath(id))).length).toBe(0)
+    })
+
+    it('resumes a wiki paused for an archived project before AT-2893, while the payer keeps it archived', async () => {
         const paused = {
             enabled: true,
             enabledBy: 'default',
@@ -144,28 +190,44 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
         }
         const db = createDb({ 'projects/p1': project(), [kbPath('p1')]: paused })
 
-        const stillArchived = await applyKnowledgeBaseDefaultsForUser({
+        const stats = await applyKnowledgeBaseDefaultsForUser({
             db,
             userId: 'creator',
             userData: { ...user(ACTIVE), archivedProjectIds: ['p1'] },
             now: NOW,
         })
-        expect(stillArchived).toMatchObject({ archived: 1, resumed: 0 })
-        expect(db.read(kbPath('p1')).nextRunAt).toBeNull()
 
-        const reactivated = await applyKnowledgeBaseDefaultsForUser({
-            db,
-            userId: 'creator',
-            userData: { ...user(ACTIVE), archivedProjectIds: [] },
-            now: NOW,
-        })
-        expect(reactivated.resumed).toBe(1)
+        expect(stats.resumed).toBe(1)
         expect(db.read(kbPath('p1'))).toMatchObject({ ownerUserId: 'creator', nextRunAt: TONIGHT })
     })
 
-    it('hands a default wiki to a member for whom the project is active once its payer archived it', async () => {
+    it('keeps a default wiki with a payer who archived the project but still uses Alldone', async () => {
+        const kb = {
+            enabled: true,
+            enabledBy: 'default',
+            ownerUserId: 'creator',
+            nextRunAt: TONIGHT,
+        }
         const db = createDb({
             'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
+            'projects/p1': project(),
+            [kbPath('p1')]: kb,
+        })
+
+        const stats = await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'member',
+            userData: user(ACTIVE),
+            now: NOW,
+        })
+
+        expect(stats.unchanged).toBe(1)
+        expect(db.read(kbPath('p1'))).toEqual(kb)
+    })
+
+    it('hands a legacy archive-paused default wiki to an active member once its payer is inactive', async () => {
+        const db = createDb({
+            'users/creator': { ...user(INACTIVE), archivedProjectIds: ['p1'] },
             'projects/p1': project(),
             [kbPath('p1')]: {
                 enabled: true,
@@ -179,37 +241,12 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
         const stats = await applyKnowledgeBaseDefaultsForUser({
             db,
             userId: 'member',
-            userData: user(ACTIVE),
+            userData: { ...user(ACTIVE), archivedProjectIds: ['p1'] },
             now: NOW,
         })
 
         expect(stats.taken_over).toBe(1)
         expect(db.read(kbPath('p1'))).toMatchObject({ ownerUserId: 'member', nextRunAt: TONIGHT })
-    })
-
-    it('leaves a wiki a member switched on themselves with them while they have it archived', async () => {
-        const paused = {
-            enabled: true,
-            enabledBy: 'member',
-            ownerUserId: 'creator',
-            nextRunAt: null,
-            lastRunStopReason: 'project_archived',
-        }
-        const db = createDb({
-            'users/creator': { ...user(ACTIVE), archivedProjectIds: ['p1'] },
-            'projects/p1': project(),
-            [kbPath('p1')]: paused,
-        })
-
-        const stats = await applyKnowledgeBaseDefaultsForUser({
-            db,
-            userId: 'member',
-            userData: user(ACTIVE),
-            now: NOW,
-        })
-
-        expect(stats.unchanged).toBe(1)
-        expect(db.read(kbPath('p1'))).toEqual(paused)
     })
 
     it('does nothing for a user who has not used Alldone for 30 days', async () => {
