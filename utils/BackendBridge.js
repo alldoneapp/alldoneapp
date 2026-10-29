@@ -204,8 +204,8 @@ export default class Backend {
         return bridge.findTask(taskId, projectsTasks)
     }
 
-    static consumeGoogleRedirectError() {
-        return bridge.consumeGoogleRedirectError()
+    static loginWithGoogle() {
+        return bridge.loginWithGoogleWeb()
     }
 
     static isMobileDevice() {

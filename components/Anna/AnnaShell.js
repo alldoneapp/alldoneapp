@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { shallowEqual, useSelector } from 'react-redux'
+import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
@@ -33,6 +33,7 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { setAnnaMode, setAnnaLayout, useAnnaLayout } from '../../utils/annaMode'
 import useAnnaChatWidth, { MIN_CHAT_WIDTH } from './useAnnaChatWidth'
 import NavigationService from '../../utils/NavigationService'
+import navigateToHome from '../../utils/navigateToHome'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
@@ -283,6 +284,13 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(false)
     }, [])
+    const dispatch = useDispatch()
+    // The header's Home button always lands on the open task list, never on whatever
+    // page the workspace happened to show last (AT-2920). The X keeps that page.
+    const goHome = useCallback(() => {
+        closeChat()
+        navigateToHome(dispatch)
+    }, [closeChat, dispatch])
     const toggleWorkspace = () => {
         requestGeneration.current++
         followedBrowser.current = null
@@ -798,7 +806,7 @@ export default function AnnaShell({ children, routeId }) {
                     className="anna-header-tasks"
                     aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
                     title={translate('%{count} open tasks today', { count: openTasksAmount })}
-                    onClick={closeChat}
+                    onClick={goHome}
                 >
                     <span aria-hidden="true" className="anna-task-icon">
                         <Icon name="home" size={24} color="currentColor" />
