@@ -53,7 +53,11 @@ jest.mock('../SidebarMenu/ProjectFolding/ProjectItem/ProjectItemName', () => ({ 
 ))
 jest.mock('../SidebarMenu/ProjectFolding/ProjectItem/ProjectRightArea', () => () => null)
 jest.mock('../SidebarMenu/ProjectFolding/ProjectSectionList', () => () => null)
-jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({ checkIfSelectedProject: index => index >= 0 }))
+jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    ALL_PROJECTS_INDEX: -1,
+    checkIfSelectedProject: index => index >= 0,
+}))
+jest.mock('../../utils/HelperFunctions', () => ({ dismissAllPopups: jest.fn() }))
 jest.mock('../ModalsManager/modalsManager', () => ({ exitsOpenModals: () => false }))
 jest.mock('../../utils/backends/Users/usersFirestore', () => ({ updateShowAllProjectsByTime: jest.fn() }))
 jest.mock('../../redux/store', () => ({
@@ -1187,6 +1191,8 @@ it.each([
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
         else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
+        // Setup may leave through the Home button, which navigates on its own (AT-2920).
+        NavigationService.navigate.mockClear()
 
         for (const opens of [start === 'alldone', start !== 'alldone']) {
             fireEvent.click(assistantToggle())
@@ -1728,6 +1734,53 @@ it.each(['desktop', 'mobile'])('opens the app view from the header controls on %
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
+})
+
+const HOME_NAVIGATION = [
+    { type: 'PROJECT', index: -1 },
+    { type: 'SIDEBAR_TAB', tab: 'ROOT_TASKS' },
+    { type: 'ALL_PROJECTS_TASKS', options: { taskViewToggleSection: 'Open', taskViewToggleIndex: 0 } },
+]
+
+it.each(['chat-only', 'mobile'])('opens the open task list from the Home button (%s, AT-2920)', layout => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({
+        matches: layout === 'mobile',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        if (layout === 'chat-only') setAnnaLayout('chat')
+        render(content(1))
+        const workspace = screen.getByLabelText('Real workspace editor')
+        workspace.value = 'Keep my note'
+        mockDispatch.mockClear()
+        NavigationService.navigate.mockClear()
+        const home = document.querySelector('.anna-header-tasks')
+        expect(home).toBeTruthy()
+        fireEvent.click(home)
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
+        expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
+        // Leaving the assistant must not cost the workspace its editors.
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('keeps the current Alldone page when the chat is closed with the X (AT-2920)', () => {
+    setAnnaLayout('chat')
+    render(content(1))
+    mockDispatch.mockClear()
+    NavigationService.navigate.mockClear()
+    fireEvent.click(screen.getByLabelText('Close assistant chat'))
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(mockDispatch).not.toHaveBeenCalledWith(HOME_NAVIGATION)
+    expect(NavigationService.navigate).not.toHaveBeenCalledWith('Root')
 })
 
 it.each(['updates', 'chats'])('opens linked %s activity from chat-only mode inside Alldone', async feature => {
