@@ -60,7 +60,9 @@ export const clearTrialTrackingId = () => {
  * @param {string} trackingId - Optional tracking ID from trial signup
  * @returns {Promise<Object>} Premium status result
  */
-export const checkUserPremiumStatusStripe = async (trackingId = null) => {
+// `isSignup` lets the server grant a new premium account its start Gold (the client must not
+// write `gold` itself; see grantPremiumSignupGold in functions/Premium/stripePremiumChecker.js).
+export const checkUserPremiumStatusStripe = async (trackingId = null, { isSignup = false } = {}) => {
     try {
         // If no tracking ID provided, try to get it from localStorage
         const finalTrackingId = trackingId || getTrialTrackingId()
@@ -81,6 +83,7 @@ export const checkUserPremiumStatusStripe = async (trackingId = null) => {
 
         const result = await runHttpsCallableFunction('checkUserPremiumStatus', {
             trackingId: finalTrackingId,
+            isSignup,
         })
 
         if (__DEV__) console.log('🔧 Raw result from Firebase function:', result)
@@ -110,6 +113,7 @@ export const checkUserPremiumStatusStripe = async (trackingId = null) => {
             customer: result.customer,
             linkedViaTracking: result.linkedViaTracking,
             trackingId: result.trackingId,
+            signupGold: result.signupGold || null,
         }
     } catch (error) {
         // One line for a real failure; the full object only when debugging.

@@ -8,7 +8,7 @@ import { loadAnnaActivityContent } from './annaActivityContent'
 import { annaActivityHistory } from './annaActivityHistory'
 import { getAnnaActivityAction, getAnnaActivityLabel } from './annaActivityText'
 import { publishAnnaActivityContext } from './annaActivityContext'
-import { getAnnaActivityObject, getAnnaActivityTarget } from './annaActivityGroups'
+import { getAnnaActivityTarget } from './annaActivityGroups'
 import { splitActivityPreview } from './annaActivityLinks'
 
 const isOffline = connectionState => connectionState === 'offline' || isBrowserOffline()
@@ -70,14 +70,6 @@ function useAnnaActivityContents(notices, onChange) {
     return contents
 }
 
-// The project's current name (it may have been renamed since the notice was saved), then the
-// saved one; a project this session does not know is still named, never left blank.
-function useAnnaActivityProjectName(notice) {
-    const projectId = getAnnaActivityObject(notice)?.projectId || notice.sourceProjectId
-    const liveName = useSelector(state => (projectId ? state.loggedUserProjectsMap?.[projectId]?.name : '') || '')
-    return liveName || notice.projectName || translate('Anna activity unknown project')
-}
-
 function ActivityPreview({ text }) {
     return (
         <span className="anna-activity-preview">
@@ -124,10 +116,7 @@ export function AnnaActivityGroup({ notices, onChange }) {
     const actions = summarizeAnnaActivityActions(entries)
     const preview = [...entries].reverse().find(entry => entry.content?.preview)?.content.preview || ''
     const actors = [...new Set(entries.map(entry => entry.content?.actorName).filter(Boolean))]
-    const projectName = useAnnaActivityProjectName(last)
-    // Always the first line, project before people (AT-2906): rows from several projects are
-    // told apart before reading them.
-    const metadata = [projectName, actors.join(', ')].filter(Boolean).join(' · ')
+    const metadata = [actors.join(', '), last.projectName].filter(Boolean).join(' · ')
     const target = getAnnaActivityTarget(entries)
 
     return (
@@ -135,9 +124,8 @@ export function AnnaActivityGroup({ notices, onChange }) {
             className="anna-context-notice anna-activity-notice"
             data-anna-activity-count={entries.length > 1 ? entries.length : undefined}
         >
-            <a href={target} data-anna-activity-link="">
+            <a href={target}>
                 <span className="anna-activity-content">
-                    <span className="anna-activity-meta">{metadata}</span>
                     {objectName ? (
                         <>
                             <span className="anna-activity-title" title={objectName}>
@@ -156,6 +144,7 @@ export function AnnaActivityGroup({ notices, onChange }) {
                         <span className="anna-activity-title">{actions.join(' · ')}</span>
                     )}
                     {preview ? <ActivityPreview text={preview} /> : null}
+                    {metadata ? <span className="anna-activity-meta">{metadata}</span> : null}
                 </span>
                 <Icon name="arrow-right" size={14} color="currentColor" />
             </a>

@@ -185,7 +185,7 @@ class SharedHelper {
             const params = matchedSharedObj.matches.groups
 
             if (isLoggedIn && SharedHelper.isMember(params.projectId)) {
-                await onIsMember(URL)
+                onIsMember(URL)
             } else {
                 const isSharedResource = isLoggedIn
 
@@ -457,7 +457,7 @@ class SharedHelper {
 
                 for (let key in matchersList) {
                     if (matchersList[key].match(URL) !== URL_NOT_MATCH) {
-                        await onIsMember(URL)
+                        onIsMember(URL)
                         return
                     }
                 }
@@ -497,10 +497,8 @@ class SharedHelper {
 
     static processUrlAsLoggedIn = async (navigation, URL, backAction = false) => {
         const { loggedIn } = store.getState()
-        // Returned, so a caller that awaits processUrl waits for the route's own (often async)
-        // handler — the Anna workspace serialises rapid clicks on that (AT-2906).
         const onIsMember = URL => {
-            return URLTrigger.directProcessUrl(navigation, URL)
+            URLTrigger.directProcessUrl(navigation, URL)
         }
 
         const onNotMatch = () => {
