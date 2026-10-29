@@ -790,6 +790,7 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-tint': colors.UtilityBlue100,
                 '--anna-hover': colors.UtilityBlue112,
                 '--anna-border': colors.Grey300,
+                '--anna-bezel': colors.Grey400,
                 '--anna-focus': colors.UtilityBlue150,
                 '--anna-surface': colors.Grey100,
             }}

@@ -1154,50 +1154,41 @@
     min-width: 0;
 }
 /* AT-2911: the app beside the chat is framed as the workspace the assistant acts on,
-   like a screen in a monitor: a thin bezel of the same thickness on all four sides,
-   with plain white space around it. The bezel is a border of the pane that owns the
-   workspace viewport, so everything measured inside it (the floating "+", inline fixed
-   overlays, popover bounds via useWorkspaceViewportOwner) starts at the bezel's inner
-   edge and needs no compensation of its own. */
+   like a screen in a monitor. The bezel is a gray border of the same thickness on all
+   four sides and sits on the outermost box of the workspace column (.anna-stage), so it
+   fills the full width and height to the right of the divider. The white space between
+   bezel and app is padding of .anna-workspace, horizontal only: the app touches the
+   bezel's inner top and bottom edge. That padding is outside .anna-workspace-content,
+   the box useWorkspaceViewportOwner measures, so the floating "+", inline fixed overlays
+   and popover bounds start at the app's own edge with no compensation of their own. */
 .anna-zoom-active {
     --anna-workspace-gutter: clamp(24px, 3.5vw, 48px);
-    --anna-workspace-gutter-block: 16px;
     --anna-workspace-bezel: 6px;
-    --anna-workspace-bezel-color: var(--anna-ink);
+    --anna-workspace-bezel-color: var(--anna-bezel);
     --anna-workspace-radius: 14px;
 }
 @media (max-width: 1100px) {
     .anna-zoom-active {
         --anna-workspace-gutter: clamp(16px, 2.5vw, 24px);
-        --anna-workspace-gutter-block: 12px;
         --anna-workspace-radius: 12px;
     }
 }
 @media (min-width: 761px) {
+    /* One border width for every edge; the stage clips its content to the inner
+       corners (outer radius minus bezel), as on a real display. */
     .anna-zoom-active:not(.anna-chat-only) .anna-stage {
-        padding: var(--anna-workspace-gutter-block) var(--anna-workspace-gutter);
-        background: #fff;
-    }
-    /* One border width for every edge; the inner corners follow the outer radius
-       (outer radius minus bezel), as on a real display. */
-    .anna-zoom-active:not(.anna-chat-only) .anna-stage > :is(.anna-workspace, .anna-vms, .anna-browser-surface) {
         border: var(--anna-workspace-bezel) solid var(--anna-workspace-bezel-color);
         border-radius: var(--anna-workspace-radius);
-        box-shadow: 0 8px 24px #0a1e4a1f;
-        overflow: hidden;
-        transition:
-            border-color 200ms ease,
-            box-shadow 200ms ease;
+        background: #fff;
+        transition: border-color 200ms ease;
     }
     .anna-zoom-active:not(.anna-chat-only) .anna-stage > .anna-workspace {
+        padding-inline: var(--anna-workspace-gutter);
         background: #fff;
     }
     /* While the assistant answers, the bezel takes its accent: the chat visibly drives it. */
-    .anna-zoom-active:not(.anna-chat-only)
-        .anna-stage-working
-        > :is(.anna-workspace, .anna-vms, .anna-browser-surface) {
+    .anna-zoom-active:not(.anna-chat-only) .anna-stage.anna-stage-working {
         border-color: var(--anna-accent);
-        box-shadow: 0 8px 28px color-mix(in srgb, var(--anna-accent) 24%, transparent);
     }
     .anna-zoom-active .anna-divider {
         position: relative;
@@ -1237,32 +1228,32 @@
     display: none;
 }
 @media (min-width: 761px) {
-    /* Sits centred on the top bezel like a camera notch; never intercepts a click
-       on the app beneath it. */
+    /* Rises from the middle of the bottom bezel like a notch, in the bezel's working
+       colour. Bottom rather than top: the app touches the top bezel, and a notch there
+       would cover the middle of Alldone's top bar. Never intercepts a click. */
     .anna-working-label {
         position: absolute;
         z-index: 40;
-        top: calc(var(--anna-workspace-gutter-block) + var(--anna-workspace-bezel) / 2 - 10px);
+        bottom: 0;
         left: 50%;
         transform: translateX(-50%);
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        height: 20px;
+        height: 18px;
         max-width: calc(100% - 2 * var(--anna-workspace-gutter) - 32px);
         padding: 0 10px;
-        border-radius: 10px;
+        border-radius: 9px 9px 0 0;
         background: var(--anna-accent);
         color: #fff;
         font-family: Roboto, Arial, sans-serif;
-        font-size: 12px !important;
+        font-size: 11px !important;
         font-weight: 500;
-        line-height: 20px;
+        line-height: 18px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         pointer-events: none;
-        box-shadow: 0 2px 8px #0a1e4a26;
     }
     .anna-working-dot {
         flex: none;
@@ -1286,7 +1277,7 @@
     .anna-working-dot {
         animation: none;
     }
-    .anna-zoom-active .anna-stage > :is(.anna-workspace, .anna-vms, .anna-browser-surface) {
+    .anna-zoom-active .anna-stage {
         transition: none;
     }
 }
