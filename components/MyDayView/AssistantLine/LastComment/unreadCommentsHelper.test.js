@@ -1,4 +1,9 @@
-import { getAllUnreadCommentIds, getUnreadCommentIds, getUnreadCommentsCount } from './unreadCommentsHelper'
+import {
+    getAllUnreadCommentIds,
+    getPreviewComment,
+    getUnreadCommentIds,
+    getUnreadCommentsCount,
+} from './unreadCommentsHelper'
 
 describe('unread comments helpers', () => {
     const chatNotifications = {
@@ -19,7 +24,7 @@ describe('unread comments helpers', () => {
         ])
     })
 
-    it('counts only the genuinely new grey tail instead of the inflated cumulative total', () => {
+    it('counts every loaded unread comment, also below a newer read one (AT-2923), not the inflated total', () => {
         const commentsNewestFirst = [
             'grey-new-2',
             'grey-new-1',
@@ -29,7 +34,8 @@ describe('unread comments helpers', () => {
             'grey-old-1',
         ]
 
-        expect(getUnreadCommentsCount(chatNotifications, false, commentsNewestFirst)).toBe(2)
+        expect(getUnreadCommentsCount(chatNotifications, false, commentsNewestFirst)).toBe(5)
+        expect(getUnreadCommentsCount({ ...chatNotifications, totalUnfollowed: 40 }, false, ['read-1'])).toBe(0)
     })
 
     it('counts red comments in a mixed unread tail without counting grey comments', () => {
@@ -42,12 +48,13 @@ describe('unread comments helpers', () => {
         expect(getUnreadCommentsCount(mixedNotifications, false, ['grey-1', 'red-2', 'red-1', 'read-1'])).toBe(1)
     })
 
-    it('deduplicates IDs and returns zero when the newest comment is already read', () => {
+    it('deduplicates IDs and still counts an unread comment below a newer read one (AT-2923)', () => {
         expect(getUnreadCommentIds({ unfollowedCommentIds: ['grey-1', 'grey-1'] }, false)).toEqual(['grey-1'])
         expect(getAllUnreadCommentIds({ followedCommentIds: ['same'], unfollowedCommentIds: ['same'] })).toEqual([
             'same',
         ])
-        expect(getUnreadCommentsCount({ unfollowedCommentIds: ['grey-1'] }, false, ['read-1', 'grey-1'])).toBe(0)
+        expect(getUnreadCommentsCount({ unfollowedCommentIds: ['grey-1'] }, false, ['read-1', 'grey-1'])).toBe(1)
+        expect(getUnreadCommentsCount({ unfollowedCommentIds: [] }, false, ['read-1', 'grey-1'])).toBe(0)
         expect(getUnreadCommentsCount(undefined, false, undefined)).toBe(0)
     })
 
@@ -95,7 +102,7 @@ describe('unread comments helpers', () => {
         expect(getUnreadCommentsCount(notifications, true, stableCommentSnapshot)).toBe(1)
     })
 
-    it('does not count stale markers while a newer notification is still pending', () => {
+    it('counts a loaded unread comment behind a read one while a newer notification is still pending', () => {
         const notifications = {
             followedCommentIds: ['red-stale', 'red-pending'],
             unfollowedCommentIds: [],
@@ -111,10 +118,21 @@ describe('unread comments helpers', () => {
             { id: 'red-stale', created: 50 },
         ]
 
-        expect(getUnreadCommentsCount(notifications, true, commentsNewestFirst)).toBe(1)
+        expect(getUnreadCommentsCount(notifications, true, commentsNewestFirst)).toBe(2)
     })
 
-    it('preserves grey counts while skipping live comments and hides stale-only badges', () => {
+    it('does not revive a marker whose comment is outside the loaded window and older than a read comment', () => {
+        const notifications = {
+            followedCommentIds: ['red-deleted-or-old'],
+            unfollowedCommentIds: [],
+            followedNotifications: [{ commentId: 'red-deleted-or-old', date: 50 }],
+            unfollowedNotifications: [],
+        }
+
+        expect(getUnreadCommentsCount(notifications, true, [{ id: 'already-read', created: 100 }])).toBe(0)
+    })
+
+    it('preserves grey counts while skipping live comments and hides badges of markers without a comment', () => {
         const notifications = {
             followedCommentIds: [],
             unfollowedCommentIds: ['grey-new', 'grey-stale'],
@@ -133,10 +151,9 @@ describe('unread comments helpers', () => {
         const liveThenRead = [
             { id: 'vm-status', created: 300, assistantRun: { status: 'running' } },
             { id: 'already-read', created: 100 },
-            { id: 'grey-stale', created: 50 },
         ]
 
-        expect(getUnreadCommentsCount(notifications, false, liveThenUnread)).toBe(1)
+        expect(getUnreadCommentsCount(notifications, false, liveThenUnread)).toBe(2)
         expect(
             getUnreadCommentsCount(
                 {
@@ -148,5 +165,54 @@ describe('unread comments helpers', () => {
                 liveThenRead
             )
         ).toBe(0)
+    })
+
+    describe('getPreviewComment (AT-2923)', () => {
+        const notifications = {
+            followedCommentIds: ['unread-older', 'unread-newer'],
+            unfollowedCommentIds: [],
+        }
+
+        it('shows the newest unread comment even when a newer comment is already read', () => {
+            const comments = [
+                { id: 'my-own-reply', commentText: 'Thanks!' },
+                { id: 'read-assistant', commentText: 'Read answer' },
+                { id: 'unread-newer', commentText: 'Unread answer' },
+                { id: 'unread-older', commentText: 'Older unread answer' },
+            ]
+
+            expect(getPreviewComment(notifications, comments)).toBe(comments[2])
+        })
+
+        it('keeps the newest comment when nothing in the chat is unread', () => {
+            const comments = [{ id: 'read-2' }, { id: 'read-1' }]
+
+            expect(getPreviewComment(undefined, comments)).toBe(comments[0])
+            expect(getPreviewComment({ followedCommentIds: [] }, comments)).toBe(comments[0])
+            expect(getPreviewComment(notifications, [])).toBeNull()
+            expect(getPreviewComment(notifications, undefined)).toBeNull()
+        })
+
+        it('keeps the newest comment when the unread one is not loaded yet', () => {
+            const comments = [{ id: 'read-2' }, { id: 'read-1' }]
+
+            expect(getPreviewComment(notifications, comments)).toBe(comments[0])
+        })
+
+        it('lets a reply that is still being written stay on top of an older unread comment', () => {
+            const comments = [
+                { id: 'streaming', isLoading: true, assistantRun: { status: 'running' } },
+                { id: 'read-1' },
+                { id: 'unread-newer' },
+            ]
+
+            expect(getPreviewComment(notifications, comments)).toBe(comments[0])
+        })
+
+        it('treats grey (unfollowed) unread markers of the chat as unread too', () => {
+            const comments = [{ id: 'read-1' }, { id: 'grey-unread' }]
+
+            expect(getPreviewComment({ unfollowedCommentIds: ['grey-unread'] }, comments)).toBe(comments[1])
+        })
     })
 })
