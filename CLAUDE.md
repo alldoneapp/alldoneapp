@@ -858,6 +858,27 @@ page text is matched but excluded from responses). `onWriteKnowledgePageSecondGe
 page, and `invalidateKnowledgeSource` deletes withdrawn pages from the index itself. "Only what I
 created" skips the Wiki tab: the wiki writes every page.
 
+**A search collection the browser key's PARENT does not list answers 401, and global search shows
+that as "no results" (AT-2905).** Every browser search key is a scoped key derived from a parent
+search key, and a scoped key can only reach the parent's collections. The parent was created by
+hand in Typesense Cloud for the original five collections (`TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY`),
+so when the Artifacts and Wiki tabs were added, every request to `dev_artifacts` and `dev_wiki` came
+back 401. The client re-fetched a key from the same parent, got 401 again, and printed only a
+`console.log`. Both tabs looked as if they were not searching at all. In the logs this shows up as two
+`getTypesenseScopedSearchCredentialsSecondGen` POSTs in the same second, one forced refresh per
+failing tab. `functions/Typesense/scopedSearchParentKey.js` now provisions the parent with the
+admin key, from `ALL_COLLECTIONS`, under a value derived from the admin key and the collection list
+(an HMAC). Every instance therefore computes the same key, a 409 "already exists" counts as success,
+and adding a collection creates a new parent on the next cold start. Superseded parents are kept
+because an older instance may still issue keys from them. The parent may only `documents:search`,
+which Typesense requires for scoped keys. The configured key is now only a fallback when provisioning
+fails, and that failure is logged as an error. Add a new search collection to `ALL_COLLECTIONS`,
+never to a hand-made key. Global search shows its tabs in `GLOBAL_SEARCH_TAB_ORDER` (`Header.js`):
+Artifacts before Chats, like the main navigation. The tab numbers stay as they are because the
+@-mention picker shares 0-4. Tab-key cycling and the fallback to the first tab with results follow
+the shown order. Pinned by `functions/Typesense/scopedSearchParentKey.test.js`, the AT-2905 cases in
+`scopedSearchCredentials.test.js` and `components/GlobalSearchAlgolia/Header/Header.test.js`.
+
 **"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
 (`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
 assistant summary, possibly private text or a different target project first becomes a draft in the
