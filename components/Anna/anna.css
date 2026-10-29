@@ -281,10 +281,7 @@
     color: var(--anna-accent);
 }
 .anna-messages {
-    /* The conversation scrolls vertically only (AT-2917). Wide content owns its own
-       horizontal scroller (tables) or wraps; a sideways swipe must never move the chat. */
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: auto;
     flex: 1;
     min-height: 0;
     padding: 16px 24px 24px;
@@ -1265,6 +1262,10 @@
     color: var(--anna-accent);
     font-size: 12px;
     font-weight: 500;
+}
+.anna-vm-paused-hint {
+    font-size: 13px;
+    margin-bottom: 16px;
 }
 .anna-vm-task-link {
     color: var(--anna-accent);

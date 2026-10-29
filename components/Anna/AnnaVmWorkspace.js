@@ -17,6 +17,8 @@ export const vmStatusLabel = status => {
             return translate('vm_workspace_running')
         case 'awaiting_user':
             return translate('vm_workspace_awaiting')
+        case 'paused':
+            return translate('vm_workspace_paused')
         case 'cancel_requested':
             return translate('vm_workspace_stopping')
         case 'completed':
@@ -33,6 +35,9 @@ export const vmStatusLabel = status => {
 }
 
 export default function AnnaVmWorkspace({ job, active }) {
+    // A card is a thread since AT-2916; `runId` is the run whose status comment it follows.
+    const runId = job.runId || job.id
+    const paused = job.status === 'paused'
     const [message, setMessage] = useState(null)
     const [error, setError] = useState(false)
     const [attempt, setAttempt] = useState(0)
@@ -48,7 +53,7 @@ export default function AnnaVmWorkspace({ job, active }) {
                 snapshot => {
                     if (disposed) return
                     const next = snapshot.exists ? snapshot.data() : null
-                    if (next?.assistantRun?.runId === job.id) {
+                    if (next?.assistantRun?.runId === runId) {
                         setMessage(next)
                         setError(false)
                     } else {
@@ -66,14 +71,16 @@ export default function AnnaVmWorkspace({ job, active }) {
             disposed = true
             stop()
         }
-    }, [active, job.id, job.projectId, job.objectType, job.objectId, job.commentId, attempt])
+    }, [active, runId, job.projectId, job.objectType, job.objectId, job.commentId, attempt])
     useEffect(() => {
         if (active && following.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight
     }, [active, message])
-    const status =
-        ['queued', 'pending'].includes(job.status) && message?.assistantRun?.status === 'running'
-            ? job.status
-            : message?.assistantRun?.status || job.status
+    // A paused VM's comment says how its last run ended; the card says what the VM is now.
+    const status = paused
+        ? 'paused'
+        : ['queued', 'pending'].includes(job.status) && message?.assistantRun?.status === 'running'
+          ? job.status
+          : message?.assistantRun?.status || job.status
     const live = ['queued', 'pending', 'initiated', 'running', 'awaiting_user', 'cancel_requested'].includes(status)
     const messageProps = {
         messageId: job.commentId,
@@ -91,6 +98,12 @@ export default function AnnaVmWorkspace({ job, active }) {
                 <div className="anna-vm-identity">
                     <span className="anna-vm-status" role="status">
                         {vmStatusLabel(status)}
+                        {job.waitingCount > 0 && (
+                            <span className="anna-vm-waiting">
+                                {' · '}
+                                {translate('vm_workspace_waiting', { count: job.waitingCount })}
+                            </span>
+                        )}
                     </span>
                     <h2>{job.title}</h2>
                     <div className="anna-muted">{[job.projectName, job.model].filter(Boolean).join(' · ')}</div>
@@ -109,6 +122,11 @@ export default function AnnaVmWorkspace({ job, active }) {
                     following.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
                 }}
             >
+                {paused && (
+                    <div className="anna-muted anna-vm-paused-hint" role="note">
+                        {translate('vm_workspace_paused_hint')}
+                    </div>
+                )}
                 {error ? (
                     <div className="anna-error" role="alert">
                         {translate('vm_workspace_unavailable')}

@@ -92,3 +92,33 @@ it('unsubscribes when the pane is hidden and restores the listener when opened a
     publish('completed', 'Finished in the background')
     expect(container.textContent).toContain('Finished in the background')
 })
+
+// AT-2916: a card is a thread; `runId` is the run it follows, and a paused VM says so.
+describe('thread cards', () => {
+    const thread = { ...job, id: 'p1__t1', runId: 'r2', commentId: 'c2' }
+
+    it('follows the run a thread card points at, not the thread id', () => {
+        act(() => root.render(<AnnaVmWorkspace job={thread} active />))
+        publish('running', 'Second run output', 'r2')
+        expect(container.querySelector('pre').textContent).toBe('Second run output')
+        publish('running', 'First run output', 'r1')
+        expect(container.textContent).not.toContain('First run output')
+    })
+
+    it('labels a paused VM as paused and shows the result of its last run', () => {
+        act(() => root.render(<AnnaVmWorkspace job={{ ...thread, status: 'paused' }} active />))
+        publish('completed', 'Merged and deployed', 'r2')
+        expect(container.querySelector('.anna-vm-status').textContent).toBe('vm_workspace_paused')
+        expect(container.textContent).toContain('vm_workspace_paused_hint')
+        expect(container.querySelector('pre')).toBeNull()
+        expect(container.textContent).toContain('Merged and deployed')
+        expect(container.querySelector('.anna-vm-task-link').getAttribute('href')).toBe('/projects/p1/tasks/t1/chat')
+    })
+
+    it('counts the follow-ups waiting on the same thread', () => {
+        act(() => root.render(<AnnaVmWorkspace job={{ ...thread, waitingCount: 2 }} active />))
+        expect(container.querySelector('.anna-vm-waiting').textContent).toContain('vm_workspace_waiting')
+        act(() => root.render(<AnnaVmWorkspace job={thread} active />))
+        expect(container.querySelector('.anna-vm-waiting')).toBeNull()
+    })
+})
