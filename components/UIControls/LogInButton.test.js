@@ -2,25 +2,24 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import Backend from '../../utils/BackendBridge'
-import LogInButton from './LogInButton'
+import LogInButton, { getGoogleSignInErrorMessage } from './LogInButton'
 
 jest.mock('../../utils/BackendBridge', () => ({
     __esModule: true,
     default: {
-        isMobileDevice: jest.fn(),
-        isLocalDevHost: jest.fn(),
-        loginWithGoogle: jest.fn(),
         signInWithGoogleRedirect: jest.fn(),
+        consumeGoogleRedirectError: jest.fn(),
     },
 }))
+
+const GSI_SCRIPT = 'script[src="https://accounts.google.com/gsi/client"]'
 
 describe('LogInButton', () => {
     let tree
 
     beforeEach(() => {
-        Backend.isMobileDevice.mockReturnValue(true)
-        Backend.isLocalDevHost.mockReturnValue(false)
         Backend.signInWithGoogleRedirect.mockResolvedValue(null)
+        Backend.consumeGoogleRedirectError.mockResolvedValue(null)
         document.body.innerHTML = ''
     })
 
@@ -39,16 +38,25 @@ describe('LogInButton', () => {
         })
     }
 
-    test('starts the custom Google flow on mobile', async () => {
+    const googleButton = () => tree.root.findByProps({ accessibilityLabel: 'Sign in with Google' })
+
+    test('starts the same-window Google flow from our own button', async () => {
         await renderButton()
 
-        const button = tree.root.findByProps({ accessibilityLabel: 'Sign in with Google' })
         await act(async () => {
-            await button.props.onPress()
+            await googleButton().props.onPress()
         })
 
         expect(Backend.signInWithGoogleRedirect).toHaveBeenCalledTimes(1)
-        expect(tree.root.findByProps({ accessibilityLabel: 'Sign in with Google' }).props.disabled).toBe(true)
+        // A redirect is in flight: the button stays busy until the page navigates away.
+        expect(googleButton().props.disabled).toBe(true)
+    })
+
+    test('never loads the popup-based Google Identity Services button (AT-2919)', async () => {
+        await renderButton()
+
+        expect(document.querySelector(GSI_SCRIPT)).toBeNull()
+        expect(tree.root.findAllByProps({ accessibilityLabel: 'Sign in with Google' }).length).toBeGreaterThan(0)
     })
 
     test('shows an actionable error and re-enables the button when sign-in cannot start', async () => {
@@ -58,10 +66,10 @@ describe('LogInButton', () => {
         await renderButton()
 
         await act(async () => {
-            await tree.root.findByProps({ accessibilityLabel: 'Sign in with Google' }).props.onPress()
+            await googleButton().props.onPress()
         })
 
-        expect(tree.root.findByProps({ accessibilityLabel: 'Sign in with Google' }).props.disabled).toBe(false)
+        expect(googleButton().props.disabled).toBe(false)
         expect(tree.root.findByProps({ accessibilityLiveRegion: 'polite' }).props.children).toBe(
             'Google sign-in could not be started. Please try again.'
         )
@@ -69,12 +77,77 @@ describe('LogInButton', () => {
         consoleError.mockRestore()
     })
 
-    test('keeps the Google Identity Services button on desktop', async () => {
-        Backend.isMobileDevice.mockReturnValue(false)
+    test('reports a redirect that came back with an error on the page that receives it', async () => {
+        Backend.consumeGoogleRedirectError.mockResolvedValue(
+            Object.assign(new Error('boom'), { code: 'auth/internal-error' })
+        )
         await renderButton()
 
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'Sign in with Google' })).toHaveLength(0)
-        expect(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')).not.toBeNull()
-        expect(Backend.signInWithGoogleRedirect).not.toHaveBeenCalled()
+        expect(Backend.consumeGoogleRedirectError).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByProps({ accessibilityLiveRegion: 'polite' }).props.children).toBe(
+            'Google sign-in did not complete. Please try again.'
+        )
+        expect(googleButton().props.disabled).toBe(false)
+    })
+
+    test('stays quiet when there was no failed redirect', async () => {
+        await renderButton()
+
+        expect(tree.root.findAllByProps({ accessibilityLiveRegion: 'polite' })).toHaveLength(0)
+    })
+
+    test('re-enables the button when the page is restored from the back/forward cache', async () => {
+        await renderButton()
+        await act(async () => {
+            await googleButton().props.onPress()
+        })
+        expect(googleButton().props.disabled).toBe(true)
+
+        await act(async () => {
+            const event = new Event('pageshow')
+            event.persisted = true
+            window.dispatchEvent(event)
+        })
+
+        expect(googleButton().props.disabled).toBe(false)
+    })
+
+    test('ignores an ordinary page show', async () => {
+        await renderButton()
+        await act(async () => {
+            await googleButton().props.onPress()
+        })
+
+        await act(async () => {
+            window.dispatchEvent(new Event('pageshow'))
+        })
+
+        expect(googleButton().props.disabled).toBe(true)
+    })
+})
+
+describe('getGoogleSignInErrorMessage', () => {
+    test('sends browsers that cannot run the sign-in to the default browser', () => {
+        for (const code of [
+            'auth/web-storage-unsupported',
+            'auth/operation-not-supported-in-this-environment',
+            'auth/popup-blocked',
+        ]) {
+            expect(getGoogleSignInErrorMessage({ code })).toBe(
+                'This browser cannot complete Google sign-in. Please open Alldone in your default browser.'
+            )
+            expect(getGoogleSignInErrorMessage({ code }, { redirect: true })).toBe(
+                'This browser cannot complete Google sign-in. Please open Alldone in your default browser.'
+            )
+        }
+    })
+
+    test('asks to retry anything else', () => {
+        expect(getGoogleSignInErrorMessage({ code: 'auth/network-request-failed' })).toBe(
+            'Google sign-in could not be started. Please try again.'
+        )
+        expect(getGoogleSignInErrorMessage(null, { redirect: true })).toBe(
+            'Google sign-in did not complete. Please try again.'
+        )
     })
 })
