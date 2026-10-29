@@ -75,6 +75,10 @@ describe('countConsecutiveFailedRounds', () => {
         expect(count).toBe(MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS)
         expect(getRoundFailure([draft]).message).toMatch(/wait for the user/)
         expect(getRoundFailure([rejected]).message).toBe('Wrong destination.')
+        expect(
+            getRoundFailure([{ conversationSafeToolResult: { success: false, message: 'Calendar unavailable.' } }])
+                .message
+        ).toBe('Calendar unavailable.')
         expect(countConsecutiveFailedRounds(count, [ok])).toBe(0)
     })
 

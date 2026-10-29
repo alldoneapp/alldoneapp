@@ -110,7 +110,10 @@ function getRoundFailure(toolExecutions) {
     const result = blocked.conversationSafeToolResult
     const error = new Error(
         result.error ||
-            'The wiki draft is not saved. Show its exact text and wait for the user to confirm; do not retry in this turn.'
+            result.message ||
+            (result.needsConfirmation === true
+                ? 'The wiki draft is not saved. Show its exact text and wait for the user to confirm; do not retry in this turn.'
+                : 'The tool did not complete after repeated attempts.')
     )
     error.toolName = blocked.toolName
     return error
