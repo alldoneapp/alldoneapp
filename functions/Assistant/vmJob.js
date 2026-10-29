@@ -31,6 +31,7 @@ const {
     resolveTokensPerGold,
     formatTokenDiscountNote,
 } = require('./vmTokenPricing')
+const { markTaskHasVmSession } = require('./vmTaskSessionMarker')
 const {
     vmThreadSessionRef,
     admitVmJobToThread,
@@ -671,6 +672,9 @@ async function startVmJob({
         return { success: false, message: 'Could not start the VM task right now. Your Gold has been refunded.' }
     }
     const queued = admission.decision === 'queue'
+
+    // The task list only watches VM session status for tasks carrying this marker (AT-2907).
+    await markTaskHasVmSession({ projectId, objectType, objectId })
 
     // Read existing chat visibility, if any, to mirror it on notifications.
     let isPublicFor = []

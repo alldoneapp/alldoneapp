@@ -22,6 +22,7 @@ import {
     startConnectionLatencySample,
 } from './connectionHealth'
 import { resetFirestoreRestartLeaseForTests } from './backends/firestoreRestartLease'
+import { setFirestoreNetworkReleasedToVisibleTab } from './backends/firestoreNetworkRelease'
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
@@ -502,6 +503,19 @@ describe('connectionHealth', () => {
             await recoverStalledTaskWrites()
             expect(db.calls.enableNetwork).toBe(0)
             stop()
+        })
+
+        it('keeps a connection this hidden tab handed to a visible tab handed over (AT-2907)', async () => {
+            const db = createFakeDb(['ok'])
+            const { stop } = install({ db })
+            setFirestoreNetworkReleasedToVisibleTab(true)
+            try {
+                expect(await recoverStalledTaskWrites()).toBe(true)
+                expect(db.calls).toEqual({ get: 0, disableNetwork: 1, enableNetwork: 0 })
+            } finally {
+                setFirestoreNetworkReleasedToVisibleTab(false)
+                stop()
+            }
         })
 
         it('replaces a blocked client only after the grace period and an independent server check', async () => {

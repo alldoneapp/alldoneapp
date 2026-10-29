@@ -47,7 +47,9 @@ import {
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { applyPendingFirestoreCacheReset, scheduleFirestoreCacheResetCheck } from './firestoreCacheReset'
-import { installFirestoreNetworkGate } from './firestoreNetworkGate'
+import { installFirestoreNetworkGate, isFirestoreNetworkParked } from './firestoreNetworkGate'
+import { isFirestoreNetworkReleasedToVisibleTab } from './firestoreNetworkRelease'
+import { installFirestoreTabHandoff } from './firestoreTabHandoff'
 import { scheduleFirestoreWebStorageSweep } from './firestoreWebStorageSweep'
 import { installTaskWriteMonitor } from './taskWriteMonitor'
 import { installCommentOutbox } from './Chats/commentOutbox'
@@ -497,7 +499,11 @@ export async function initFirebase(onComplete) {
         // operation. The helper is intentionally non-blocking and preserves the
         // in-memory fallback for emulator and diagnostic sessions.
         enableFirestorePersistence(db, { useEmulator }).then(enabled => {
-            if (enabled) scheduleFirestoreCacheResetCheck(db, { projectId: firebase.app().options.projectId })
+            if (!enabled) return
+            scheduleFirestoreCacheResetCheck(db, { projectId: firebase.app().options.projectId })
+            // Only the multi-tab cache shares one connection between tabs, so only it needs
+            // a hidden tab to hand that connection to a visible one (AT-2907).
+            installFirestoreTabHandoff(db, { isParked: () => isFirestoreNetworkParked() })
         })
         // Offline is a designed state now, not an error: silence the SDK's WARN
         // chatter (`WebChannelConnection RPC 'Listen' transport errored` on every
@@ -972,14 +978,15 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
         try {
             await db.disableNetwork()
             networkDisabled = true
-            await db.enableNetwork()
+            // A hidden tab that handed its connection to a visible tab keeps it handed over.
+            if (!isFirestoreNetworkReleasedToVisibleTab()) await db.enableNetwork()
             networkDisabled = false
             console.warn(`[Firestore] Restarted the realtime connection to ${reason}`)
         } catch (error) {
             capturedError = error
             // Never leave the whole app intentionally offline just because the restart failed
             // halfway through. A second enable is harmless if the first one partially succeeded.
-            if (networkDisabled) {
+            if (networkDisabled && !isFirestoreNetworkReleasedToVisibleTab()) {
                 try {
                     await db.enableNetwork()
                 } catch (enableError) {
@@ -3985,6 +3992,9 @@ export function mapTaskData(taskId, task) {
         // Populated by a completed coding VM run. Keep the backend-provided URL and
         // normalized status intact so task-list/detail consumers can render the tag.
         vmMergeRequest: getTaskMergeRequest(task),
+        // Set by the server when the task's thread first hosts a VM job. The task list watches
+        // VM session status only for these tasks (AT-2907).
+        hasVmSession: task.hasVmSession === true,
     }
 
     // Only include humanReadableId if it has a value
