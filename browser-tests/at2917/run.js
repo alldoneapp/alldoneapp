@@ -90,23 +90,7 @@ const measure = () => {
     const scrollers = Array.from(log.querySelectorAll('*')).filter(
         node => /(auto|scroll)/.test(getComputedStyle(node).overflowX) && node.scrollWidth > node.clientWidth + 1
     )
-    // AT-2918: every activity chip stays inside its own row (not just the pane: a chip running
-    // under the arrow/timestamp is the same bug), keeps its full text in the title, and a chip
-    // too long for one line is ellipsised instead of wrapping or widening the row.
-    const chips = Array.from(log.querySelectorAll('.anna-activity-action')).map(chip => {
-        const row = chip.closest('.anna-activity-content').getBoundingClientRect()
-        const rect = chip.getBoundingClientRect()
-        return {
-            text: chip.textContent.slice(0, 40),
-            inside: rect.left >= row.left - 0.5 && rect.right <= row.right + 0.5,
-            titled: chip.getAttribute('title') === chip.textContent,
-            oneLine: rect.height <= 17,
-            truncated: chip.scrollWidth > chip.clientWidth + 1,
-            ellipsis: getComputedStyle(chip).textOverflow === 'ellipsis',
-        }
-    })
     return {
-        chips,
         clientWidth: log.clientWidth,
         scrollWidth: log.scrollWidth,
         offenders: offenders.slice(0, 20),
@@ -146,19 +130,6 @@ const measure = () => {
                 assert.equal(scrollLeft, 0, `sideways swipe moved the chat at ${width}px`)
                 assert.deepEqual(result.offenders, [], `content outside the pane at ${width}px`)
                 assert.ok(result.innerScrollers >= 1, `wide content lost its own scroller at ${width}px`)
-                assert.ok(result.chips.length >= 4, `activity chips missing at ${width}px`)
-                for (const chip of result.chips) {
-                    assert.ok(chip.inside, `chip "${chip.text}" leaves its row at ${width}px`)
-                    assert.ok(chip.titled, `chip "${chip.text}" lost its full text at ${width}px`)
-                    assert.ok(chip.oneLine, `chip "${chip.text}" wraps at ${width}px`)
-                    assert.ok(chip.ellipsis, `chip "${chip.text}" has no ellipsis at ${width}px`)
-                }
-                // ~650px of chip text: shortened in a narrow pane, whole where it fits (720px).
-                if (width <= 560)
-                    assert.ok(
-                        result.chips.some(chip => chip.text.startsWith('Linked to goal') && chip.truncated),
-                        `long goal chip was not shortened at ${width}px`
-                    )
             } catch (error) {
                 failures.push(error.message)
             }

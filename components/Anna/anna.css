@@ -233,26 +233,19 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.anna-activity-content > span {
+.anna-activity-content > span,
+.anna-activity-actions > span {
     flex: none;
 }
 .anna-activity-actions {
     display: flex;
     flex-wrap: wrap;
-    min-width: 0;
     gap: 4px;
 }
 .anna-activity-action,
 .anna-activity-link {
     display: inline-flex;
     align-items: center;
-    box-sizing: border-box;
-    /* A chip never gets wider than its row (AT-2918): "Mit Ziel verknüpft: <long goal name>"
-       otherwise pushed the row past a narrow chat pane. One line, ellipsis, full text in the
-       title; the whole row stays the link to the object. */
-    max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
     padding: 0 6px;
     border-radius: 999px;
     background: var(--anna-tint);
@@ -260,24 +253,11 @@
     line-height: 16px;
     white-space: nowrap;
 }
-/* text-overflow needs a block container, not a flex container, so the action chip (text only)
-   is a block; it still sits in the wrapping .anna-activity-actions row. */
-.anna-activity-actions > .anna-activity-action {
-    display: block;
-    flex: 0 1 auto;
-    text-overflow: ellipsis;
-}
 .anna-activity-link {
     gap: 3px;
     margin: 0 2px;
     vertical-align: baseline;
     color: var(--anna-accent);
-}
-.anna-activity-link > .anna-activity-link-label {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 .anna-activity-preview,
 .anna-activity-meta {

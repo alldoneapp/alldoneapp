@@ -2979,6 +2979,8 @@
     "End call": "Anruf beenden",
     "You need Gold to talk with Anna.": "Du brauchst Gold, um mit Anna zu sprechen.",
     "Your message could not be sent. Please try again.": "Deine Nachricht konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "The connection was interrupted. Please try again.": "Die Verbindung wurde unterbrochen. Bitte versuche es erneut.",
+    "The assistant could not answer this message. Please try again.": "Der Assistent konnte diese Nachricht nicht beantworten. Bitte versuche es erneut.",
     "Earlier messages": "Ältere Nachrichten",
     "Loading your conversation…": "Dein Gespräch wird geladen…",
     "What’s on your mind?": "Was beschäftigt dich?",

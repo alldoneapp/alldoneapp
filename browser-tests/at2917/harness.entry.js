@@ -129,20 +129,6 @@ const notice = (id, title, preview) => ({
         actorName: 'Alldone CTO',
     },
 })
-// AT-2918: the feed chips from the report — one goal-link chip far longer than the pane.
-const feedNotice = (id, actionKey, actionParams) => ({
-    ...notice(id, 'Judy Job auf Story-Pattern: ein Tool-Registry für alldone.team/mcp', ''),
-    id: `feed/${PROJECT_ID}/tasks/task1/${id}`,
-    kind: 'feed',
-    content: {
-        version: 1,
-        objectName: 'Judy Job auf Story-Pattern: ein Tool-Registry für alldone.team/mcp',
-        preview: 'Angelegt für die Umsetzung, Branch: https://gitlab.com/alldonegmbh/alldone/-/merge_requests/2918',
-        actorName: 'Karsten Wysk, Anna Alldone',
-        actionKey,
-        actionParams,
-    },
-})
 const NOTICES = [
     notice(
         'n1',
@@ -150,13 +136,6 @@ const NOTICES = [
         'Der VM-Lauf ist am 5-Stunden-Limit deines Claude-Abos gescheitert. Die Umsetzung ist noch offen.'
     ),
     notice('n2', longWord, `${longWord} ${longWord}`),
-    feedNotice('n3', 'Anna activity linked goal', {
-        name: 'bewerbungs-helfer mit anschreiben / lebenslauf feedback etc. / get regularly new job offers and track them weekly',
-    }),
-    feedNotice('n4', 'Anna activity workflow changed', {
-        from: 'AI: Please merge',
-        to: 'Test on Production once build is ready and the pipeline has passed',
-    }),
 ]
 
 const assistant = { uid: 'a1', displayName: 'Anna Alldone', isAssistant: true }
