@@ -375,15 +375,17 @@ describe('VM state task list filters', () => {
         expect(result).toEqual({ counts: { in_progress: 1, failed: 1 }, total: 3, available: 2 })
     })
 
+    const makeVmTask = id => ({ ...makePersistedTask(id), hasVmSession: true })
+
     test('collects unique session references for listed tasks and subtasks', () => {
-        const repeatedTask = makePersistedTask('a')
+        const repeatedTask = makeVmTask('a')
         const instance = {
             projectId: 'project-1',
             sections: [
                 makeSection('0', { mainTasks: [['goal-1', [repeatedTask]]] }),
                 makeSection('later', { mainTasks: [['goal-1', [repeatedTask]]] }),
             ],
-            subtasksByParentId: { a: [makePersistedTask('sub-1')] },
+            subtasksByParentId: { a: [makeVmTask('sub-1')] },
         }
 
         expect(collectTaskVmSessionRefs([instance])).toEqual([
@@ -395,12 +397,25 @@ describe('VM state task list filters', () => {
     test('keeps identical task ids distinct across all-project list contexts', () => {
         const instances = ['project-1', 'project-2'].map(projectId => ({
             projectId,
-            sections: [makeSection('0', { mainTasks: [['goal-1', [makePersistedTask('same-task-id')]]] })],
+            sections: [makeSection('0', { mainTasks: [['goal-1', [makeVmTask('same-task-id')]]] })],
         }))
 
         expect(collectTaskVmSessionRefs(instances)).toEqual([
             { key: 'project-1__same-task-id', projectId: 'project-1', taskId: 'same-task-id' },
             { key: 'project-2__same-task-id', projectId: 'project-2', taskId: 'same-task-id' },
+        ])
+    })
+
+    test('watches no session for a task whose thread never hosted a VM job (AT-2907)', () => {
+        const instance = {
+            projectId: 'project-1',
+            sections: [makeSection('0', { mainTasks: [['goal-1', [makePersistedTask('a'), makeVmTask('b')]]] })],
+            subtasksByParentId: { a: [makePersistedTask('sub-1'), makeVmTask('sub-2')] },
+        }
+
+        expect(collectTaskVmSessionRefs([instance])).toEqual([
+            { key: 'project-1__sub-2', projectId: 'project-1', taskId: 'sub-2' },
+            { key: 'project-1__b', projectId: 'project-1', taskId: 'b' },
         ])
     })
 })

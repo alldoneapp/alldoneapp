@@ -4,6 +4,7 @@ import { recoverDroppedProject } from './projectRecovery'
 import { getActiveGlobalDataLoadPromise, loadGlobalData, watchProjectData } from './initialLoadHelper'
 import { isBrowserOffline } from '../connectionState'
 import { runExclusiveFirestoreRestart } from '../backends/firestoreRestartLease'
+import { isFirestoreNetworkReleasedToVisibleTab } from '../backends/firestoreNetworkRelease'
 import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
 
 /**
@@ -201,12 +202,13 @@ const cycleFirestoreNetwork = async () => {
         const db = getDb()
         try {
             await db.disableNetwork()
-            await db.enableNetwork()
+            // A hidden tab that handed its connection to a visible tab keeps it handed over.
+            if (!isFirestoreNetworkReleasedToVisibleTab()) await db.enableNetwork()
             console.warn('[BootIntegrity] Cycled the Firestore network connection to recover missing data')
         } catch (error) {
             console.warn('[BootIntegrity] Failed to cycle the Firestore network:', error)
             try {
-                await db.enableNetwork()
+                if (!isFirestoreNetworkReleasedToVisibleTab()) await db.enableNetwork()
             } catch (enableError) {
                 // Nothing else to do — the SDK keeps its previous state.
             }

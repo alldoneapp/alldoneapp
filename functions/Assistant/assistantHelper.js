@@ -113,7 +113,6 @@ const {
 } = require('./contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
-const { getVerifiedAccountEmail } = require('../shared/verifiedAccountEmail')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
@@ -1016,6 +1015,8 @@ function buildGmailContactTargetFromRuntimeContext(toolRuntimeContext = null) {
 
 // Cache OpenAI clients (performance optimization)
 const openAIClients = new Map()
+const externalToolUserIdentityCache = new Map()
+const EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL = 5 * 60 * 1000
 const delegationCapabilitiesCache = new Map()
 const DELEGATION_CAPABILITIES_CACHE_TTL = 5 * 60 * 1000
 const MAX_DELEGATION_CAPABILITY_EXAMPLES = 5
@@ -1039,15 +1040,55 @@ function getOpenAIClient(apiKey) {
     return openAIClients.get(apiKey)
 }
 
-// The address external tools receive is an identity claim (alldone.team keys embedded tool
-// data and Gold charges on it), so it comes from Firebase Auth via verifiedAccountEmail and
-// never from users/{uid}.email or notificationEmail, both of which the owner can overwrite.
 async function getExternalToolUserIdentity(userId) {
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
-    return {
-        userId: normalizedUserId,
-        email: normalizedUserId ? await getVerifiedAccountEmail(normalizedUserId) : '',
+    if (!normalizedUserId) {
+        return { userId: '', email: '', notificationEmail: '' }
     }
+
+    const now = Date.now()
+    const cached = externalToolUserIdentityCache.get(normalizedUserId)
+    if (cached && now - cached.timestamp < EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL) {
+        return cached.data
+    }
+
+    let email = ''
+    let notificationEmail = ''
+    try {
+        const userDoc = await admin.firestore().doc(`users/${normalizedUserId}`).get()
+        if (userDoc.exists) {
+            const userData = userDoc.data() || {}
+            if (typeof userData.email === 'string' && userData.email.trim()) {
+                email = userData.email.trim().toLowerCase()
+            }
+            if (typeof userData.notificationEmail === 'string' && userData.notificationEmail.trim()) {
+                notificationEmail = userData.notificationEmail.trim().toLowerCase()
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ EXTERNAL TOOL: Failed loading user identity', {
+            userId: normalizedUserId,
+            error: error.message,
+        })
+    }
+
+    const identity = {
+        userId: normalizedUserId,
+        email,
+        notificationEmail,
+    }
+
+    externalToolUserIdentityCache.set(normalizedUserId, {
+        timestamp: now,
+        data: identity,
+    })
+
+    if (externalToolUserIdentityCache.size > 1000) {
+        const oldestKey = externalToolUserIdentityCache.keys().next().value
+        externalToolUserIdentityCache.delete(oldestKey)
+    }
+
+    return identity
 }
 
 /**
@@ -4940,7 +4981,7 @@ async function executeExternalIntegrationTool({
     const method = target.execution.method || 'POST'
     const timeoutMs = Number(target.execution.timeoutMs) || 10000
     const userIdentity = await getExternalToolUserIdentity(requestUserId)
-    const userEmail = userIdentity.email
+    const userEmail = userIdentity.email || userIdentity.notificationEmail || ''
     const payload = {
         toolKey: target.toolKey,
         arguments: isObject(toolArgs) ? toolArgs : {},

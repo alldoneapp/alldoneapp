@@ -55,6 +55,22 @@ describe('installFirestoreNetworkGate', () => {
         stop()
     })
 
+    it('leaves a connection handed to a visible tab with that tab on recovery (AT-2907)', () => {
+        const db = createDbMock()
+        let released = true
+        const stop = installFirestoreNetworkGate(db, { isReleasedToVisibleTab: () => released })
+
+        store.dispatch(setConnectionState('offline'))
+        store.dispatch(setConnectionState('online'))
+        expect(db.enableNetwork).not.toHaveBeenCalled()
+
+        released = false
+        store.dispatch(setConnectionState('offline'))
+        store.dispatch(setConnectionState('online'))
+        expect(db.enableNetwork).toHaveBeenCalledTimes(1)
+        stop()
+    })
+
     it('does nothing after being uninstalled', () => {
         const db = createDbMock()
         const stop = installFirestoreNetworkGate(db)

@@ -8,25 +8,6 @@ import { getAnnaHistoryWindow } from '../../functions/Assistant/annaHistoryWindo
 export const useDispatch = () => () => {}
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
-// AT-2903 `?projects`: three member projects, one with its own assistant.
-const projectAssistant = { uid: 'cto', displayName: 'Alldone CTO' }
-const projectsMode = () => new URLSearchParams(window.location.search).has('projects')
-const projectFixtures = {
-    loggedUser: { ...user, projectIds: ['p1', 'p2', 'p3'], archivedProjectIds: [], templateProjectIds: [] },
-    loggedUserProjectsMap: {
-        p1: { id: 'p1', name: 'Launch', color: '#0c66ff', userIds: ['demo'], sortIndexByUser: { demo: 3 } },
-        p2: {
-            id: 'p2',
-            name: 'Alldone Product with a rather long project name',
-            color: '#ff8a00',
-            userIds: ['demo', 'karsten'],
-            assistantId: 'cto',
-            sortIndexByUser: { demo: 2 },
-        },
-        p3: { id: 'p3', name: 'Family', color: '#2fb46c', userIds: ['demo'], sortIndexByUser: { demo: 1 } },
-    },
-    projectAssistants: { p1: [], p2: [projectAssistant], p3: [] },
-}
 const dateKey = getAnnaHistoryWindow(user).today
 const chat = {
     id: `AnnaChat${dateKey}demo`,
@@ -91,7 +72,6 @@ const getState = () => {
         assignee: user,
         selectedNavItem: DV_TAB_NOTE_EDITOR,
         showLoadingDataSpinner: new URLSearchParams(window.location.search).has('floating'),
-        ...(projectsMode() ? projectFixtures : {}),
         ...activityState,
     }
 }
@@ -342,23 +322,6 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
         await new Promise(resolve => setTimeout(resolve, 6000))
     const history = { threads: [{ ...chat, chatId: chat.id, dateKey }], nextBefore: null }
     if (request.historyOnly) return history
-    if (request.projectId && request.projectId !== 'p1') {
-        const projectChat = {
-            ...chat,
-            projectId: request.projectId,
-            assistantId: request.projectId === 'p2' ? 'cto' : 'a1',
-            created: data[`chatObjects/${request.projectId}/chats/${chat.id}`]?.created || Date.now(),
-        }
-        data[`chatObjects/${request.projectId}/chats/${chat.id}`] = projectChat
-        console.info(`Anna fixture project conversation: ${request.projectId}`)
-        return {
-            chatId: chat.id,
-            projectId: request.projectId,
-            assistantId: projectChat.assistantId,
-            conversation: projectChat,
-            nextRolloverAt: Date.now() + 86400000,
-        }
-    }
     console.info('Anna fixture conversation validated')
     return {
         chatId: chat.id,
@@ -459,8 +422,7 @@ export default {
     },
 }
 
-export const getUserPresentationData = id =>
-    id === 'a1' ? { ...assistant, isAssistant: true } : id === 'cto' ? { ...projectAssistant, isAssistant: true } : user
+export const getUserPresentationData = id => (id === 'a1' ? { ...assistant, isAssistant: true } : user)
 
 const approvalListeners = new Set()
 export const watchBrowserApprovals = (projectId, objectId, userId, callback) => {
