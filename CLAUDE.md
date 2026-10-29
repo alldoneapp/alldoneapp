@@ -1761,6 +1761,22 @@ pane changes size: drafts must survive desktop/sheet transitions. Browser covera
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
 
+**Activity rows open their object, checked first (AT-2906).** Each row's first line is
+`Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
+(`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
+object (`/projects/{p}/chats/{id}/chat`), never to the followed chats inbox. On click
+(`data-anna-activity-link`) `AnnaShell` runs `resolveAnnaActivityPath` (one read-only `get`):
+a chat object is rewritten to its task/goal/note/contact, and a deleted object, a lost access or
+a project this session cannot select shows an inline error instead of the router's silent
+fallback to "All projects". Offline/transient errors do not block. Navigations are serialised
+(the later of two quick clicks lands last), which is why `processUrlAsLoggedIn` now awaits the
+route handler. The crash behind the report: `TasksHelper.getUserInProject` answers `undefined`
+(not null) for a project whose members are still loading, `processURLProjectsUserChats` tested
+`!== null` and stored `undefined` as `currentUser`, and every `currentUser.uid` reader plus the
+members-snapshot reducer threw. Never compare that lookup with `null`; the `Store current user`
+reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
+`__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
+
 **Assistant mutation feedback**: `annaWorkspaceChanges.js` publishes short-lived,
 bounded visual cues after successful native task/note/contact mutations in the
 owner's sidebar conversation. Use the final persisted object/project identity

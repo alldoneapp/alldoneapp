@@ -56,21 +56,36 @@ const DETAIL_PATHS = {
     goals: (projectId, id, chat) => `/projects/${projectId}/goals/${id}/${chat ? 'chat' : 'properties'}`,
     notes: (projectId, id) => `/projects/${projectId}/notes/${id}/editor`,
     contacts: (projectId, id) => `/projects/${projectId}/contacts/${id}/properties`,
+    // A topic IS its chat.
+    topics: (projectId, id) => `/projects/${projectId}/chats/${id}/chat`,
 }
 
-// Open the object itself; a new message opens its chat. Objects the workspace cannot show
-// directly (topics, users, skills, …) keep the followed inbox they always linked to.
+// The chat object of any thread. Its type is resolved when the row is opened
+// (`resolveAnnaActivityPath`), so an activity row never needs the followed chats inbox.
+export const getAnnaChatObjectPath = (projectId, chatId) => `/projects/${projectId}/chats/${chatId}/chat`
+
+// Open the object itself; a new message opens its chat. A chat message whose thread type is not
+// known yet (saved before it was enriched) opens its own chat object, never the followed chats
+// inbox: that list is not the object, and routing there looked the target user up in a project
+// whose members may not be loaded yet (AT-2906). Objects the workspace cannot show directly
+// (users, skills, …) keep the followed updates inbox they always linked to.
 export function getAnnaActivityTarget(notices) {
     const last = notices[notices.length - 1]
-    const object = getAnnaActivityObject(last)
-    const build = object && DETAIL_PATHS[object.objectType]
-    if (build && validId(object.projectId) && validId(object.objectId)) {
-        const path = build(
-            object.projectId,
-            object.objectId,
-            notices.some(notice => notice.kind === 'chat')
-        )
-        if (isAnnaNavigationPath(path)) return path
+    const objects = notices.map(getAnnaActivityObject)
+    const object = objects[objects.length - 1]
+    if (object && validId(object.projectId) && validId(object.objectId)) {
+        // Every notice of a group is the same object; a feed notice always knows its type.
+        const objectType =
+            [...objects].reverse().find(candidate => candidate && DETAIL_PATHS[candidate.objectType])?.objectType ||
+            object.objectType
+        const build = DETAIL_PATHS[objectType]
+        const chat = notices.some(notice => notice.kind === 'chat')
+        const path = build
+            ? build(object.projectId, object.objectId, chat)
+            : last.kind === 'chat' && !objectType
+              ? getAnnaChatObjectPath(object.projectId, object.objectId)
+              : null
+        if (path && isAnnaNavigationPath(path)) return path
     }
     return last.path
 }
