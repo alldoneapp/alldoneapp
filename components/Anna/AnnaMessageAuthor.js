@@ -5,7 +5,7 @@ import { translate } from '../../i18n/TranslationService'
 import MessageSendStatus from '../ChatsView/ChatDV/EditorView/MessageSendStatus'
 import AnnaTimestamp from './AnnaTimestamp'
 
-export default function AnnaMessageAuthor({ message, creator, own, onSendNow, onRemove }) {
+export default function AnnaMessageAuthor({ message, creator, own }) {
     return (
         <div className="anna-message-author">
             {!own && creator?.isAssistant && (
@@ -25,13 +25,9 @@ export default function AnnaMessageAuthor({ message, creator, own, onSendNow, on
                     message.submission
                         ? message.submission.status === 'sending'
                             ? { status: 'pending' }
-                            : message.submission.status === 'queued'
-                              ? { status: 'queued' }
-                              : null
+                            : null
                         : message.pendingSend
                 }
-                onSendNow={onSendNow}
-                onRemove={onRemove}
             />
         </div>
     )
