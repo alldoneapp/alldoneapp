@@ -1,21 +1,14 @@
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const {
-    ALL_COLLECTIONS,
-    formatTypesenseFilterValue,
-    generateTypesenseScopedSearchKey,
-    getTypesenseClient,
-} = require('../typesenseHelper')
-const { resolveScopedSearchParentKey } = require('./scopedSearchParentKey')
+const { formatTypesenseFilterValue, generateTypesenseScopedSearchKey } = require('../typesenseHelper')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 const DEFAULT_WORKSTREAM_ID = 'ws@default'
 const PUBLIC_FOR_ALL = '0'
 const SCOPED_KEY_TTL_SECONDS = 5 * 60
 const EXCLUDED_RESPONSE_FIELDS = 'content,cleanComments'
-// Global search's five original tabs share one request. Identity-first ranking expands Notes,
-// Contacts, and Topics into identity + full-text pages, so that request contains eight engine
-// searches; Artifacts and Wiki each send their own request of two. Keep this bound aligned with
-// that client-side plan.
+// Global search has five logical tabs. Identity-first ranking expands Notes,
+// Contacts, and Topics into identity + full-text pages, so one request contains
+// eight engine searches. Keep this bound aligned with that client-side plan.
 const MAX_MULTI_SEARCHES = 8
 const MAX_RESULTS_PER_COLLECTION = 20
 
@@ -75,16 +68,8 @@ const normalizeTypesenseOrigin = host => {
 const createTypesenseScopedSearchCredentials = async ({ db, userId, isAnonymous = false, now = Date.now() }) => {
     if (!userId) throw new TypesenseSearchCredentialsError('permission-denied', 'User must be authenticated')
 
-    const { TYPESENSE_HOST, TYPESENSE_ADMIN_API_KEY, TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY } = getEnvFunctions()
-    // Provisioned from ALL_COLLECTIONS, so a new searchable collection can never again be
-    // silently missing from the key (AT-2905, see scopedSearchParentKey.js).
-    const parentKey = await resolveScopedSearchParentKey({
-        client: getTypesenseClient(),
-        adminApiKey: TYPESENSE_ADMIN_API_KEY,
-        collections: ALL_COLLECTIONS,
-        configuredParentKey: TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY,
-    })
-    if (!parentKey) {
+    const { TYPESENSE_HOST, TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY } = getEnvFunctions()
+    if (!TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY) {
         throw new TypesenseSearchCredentialsError(
             'failed-precondition',
             'Typesense scoped-search parent key is not configured'
@@ -95,7 +80,7 @@ const createTypesenseScopedSearchCredentials = async ({ db, userId, isAnonymous 
     const workstreamIds = isAnonymous ? [] : await getAuthorizedWorkstreamIds(db, projectIds, userId)
     const filterBy = buildEmbeddedAccessFilter({ projectIds, userId, isAnonymous, workstreamIds })
     const expiresAt = Math.floor(now / 1000) + SCOPED_KEY_TTL_SECONDS
-    const apiKey = generateTypesenseScopedSearchKey(parentKey, {
+    const apiKey = generateTypesenseScopedSearchKey(TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY, {
         filter_by: filterBy,
         exclude_fields: EXCLUDED_RESPONSE_FIELDS,
         limit_multi_searches: MAX_MULTI_SEARCHES,

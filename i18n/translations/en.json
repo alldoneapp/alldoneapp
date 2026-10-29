@@ -317,6 +317,7 @@
     "Wiki paid by": "Paid by %{name}. Updates are charged to their Gold.",
     "Wiki switched on by default": "The wiki is on by default in projects of members who use Alldone.",
     "Wiki paused while its payer is inactive": "Paused: the paying member has not used Alldone for 30 days. The wiki continues when they are back.",
+    "Wiki paused while its payer has archived the project": "Paused: the paying member has archived this project. The wiki continues when they reactivate it.",
     "Only the paying member can change the wiki": "Only the member who pays for the wiki can change these settings.",
     "Instructions for the wiki": "Instructions for the wiki",
     "Wiki instructions placeholder": "For example: Write in German. Keep one page per customer. Ignore internal admin tasks.",
@@ -3746,5 +3747,14 @@
     "Actor via MCP client": "%{name} (via %{client})",
     "Browser agent": "Browser agent",
     "Browser agents (WebMCP & JavaScript)": "Browser agents (WebMCP & JavaScript)",
-    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below."
+    "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.": "AI assistants that operate your browser (for example Gemini in Chrome, Claude in Chrome or ChatGPT agent) can use the same tools in this tab without a connector. Browsers with WebMCP discover them automatically; other agents can call window.alldone from JavaScript. They act as the account signed in to this tab, and only with the tools allowed below.",
+    "Project: %{projectName}": "Project: %{projectName}",
+    "Choose project for this chat": "Choose project for this chat",
+    "Search projects": "Search projects",
+    "No projects found": "No projects found",
+    "%{assistantName} (default assistant)": "%{assistantName} (default assistant)",
+    "Visible to project members": "Visible to project members",
+    "Finish the call or dictation and stay online to change the project": "Finish the call or dictation and stay online to change the project",
+    "Continuing in your default project.": "Continuing in your default project.",
+    "The project chat could not be opened. Continuing in your default project.": "The project chat could not be opened. Continuing in your default project."
 }

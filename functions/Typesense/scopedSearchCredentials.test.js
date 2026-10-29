@@ -2,24 +2,10 @@ jest.mock('../envFunctionsHelper', () => ({ getEnvFunctions: jest.fn() }))
 jest.mock('../typesenseHelper', () => ({
     formatTypesenseFilterValue: value => '`' + String(value).replace(/`/g, '') + '`',
     generateTypesenseScopedSearchKey: jest.fn(),
-    getTypesenseClient: jest.fn(),
-    ALL_COLLECTIONS: [
-        'dev_tasks',
-        'dev_goals',
-        'dev_notes',
-        'dev_contacts',
-        'dev_updates',
-        'dev_artifacts',
-        'dev_wiki',
-    ],
 }))
 
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { ALL_COLLECTIONS, generateTypesenseScopedSearchKey, getTypesenseClient } = require('../typesenseHelper')
-const {
-    __resetScopedSearchParentKeyCacheForTests,
-    deriveScopedSearchParentKeyValue,
-} = require('./scopedSearchParentKey')
+const { generateTypesenseScopedSearchKey } = require('../typesenseHelper')
 const {
     SCOPED_KEY_TTL_SECONDS,
     TypesenseSearchCredentialsError,
@@ -54,9 +40,6 @@ const makeDb = ({ projectIds = [], workstreamsByProject = {} } = {}) => {
 
 beforeEach(() => {
     jest.clearAllMocks()
-    __resetScopedSearchParentKeyCacheForTests()
-    // No admin client: the configured parent key is used, as before AT-2905.
-    getTypesenseClient.mockReturnValue(null)
     getEnvFunctions.mockReturnValue({
         TYPESENSE_HOST: 'search.example.com',
         TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: 'parent-search-key',
@@ -158,45 +141,6 @@ describe('createTypesenseScopedSearchCredentials', () => {
             })
         )
         expect(generateTypesenseScopedSearchKey).not.toHaveBeenCalled()
-    })
-
-    test('derives browser keys from a provisioned parent that covers artifacts and wiki (AT-2905)', async () => {
-        const create = jest.fn().mockResolvedValue({})
-        getTypesenseClient.mockReturnValue({ keys: () => ({ create }) })
-        getEnvFunctions.mockReturnValue({
-            TYPESENSE_HOST: 'search.example.com',
-            TYPESENSE_ADMIN_API_KEY: 'admin-key',
-            TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: 'parent-search-key',
-        })
-
-        await createTypesenseScopedSearchCredentials({ db: makeDb({ projectIds: ['project-1'] }), userId: 'user-1' })
-
-        expect(create).toHaveBeenCalledWith(
-            expect.objectContaining({
-                actions: ['documents:search'],
-                collections: expect.arrayContaining(['dev_artifacts', 'dev_wiki']),
-            })
-        )
-        expect(generateTypesenseScopedSearchKey).toHaveBeenCalledWith(
-            deriveScopedSearchParentKeyValue('admin-key', ALL_COLLECTIONS),
-            expect.any(Object)
-        )
-    })
-
-    test('keeps search working on the configured parent when provisioning fails', async () => {
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        getTypesenseClient.mockReturnValue({ keys: () => ({ create: jest.fn().mockRejectedValue(new Error('down')) }) })
-        getEnvFunctions.mockReturnValue({
-            TYPESENSE_HOST: 'search.example.com',
-            TYPESENSE_ADMIN_API_KEY: 'admin-key',
-            TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: 'parent-search-key',
-        })
-
-        await createTypesenseScopedSearchCredentials({ db: makeDb(), userId: 'user-1' })
-
-        expect(generateTypesenseScopedSearchKey).toHaveBeenCalledWith('parent-search-key', expect.any(Object))
-        expect(consoleError).toHaveBeenCalled()
-        consoleError.mockRestore()
     })
 
     test('requires authentication', async () => {

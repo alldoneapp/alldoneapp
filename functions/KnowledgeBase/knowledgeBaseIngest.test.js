@@ -627,8 +627,7 @@ describe('runKnowledgeBaseIngest', () => {
         expect(db.read(KB_PATH).monthlyGold).toEqual({ month: '2026-10', spent: 2 })
     })
 
-    // AT-2893: an archived project keeps its wiki, built and kept current like any other.
-    it('builds the wiki of a project its payer has archived', async () => {
+    it('pauses without a model call while the payer has the project archived', async () => {
         const db = createDb({
             ['users/owner']: {
                 gold: 1000,
@@ -637,26 +636,6 @@ describe('runKnowledgeBaseIngest', () => {
                 archivedProjectIds: [PROJECT_ID],
             },
             [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-        })
-        const { runConversation } = scriptedModel()
-
-        const result = await run(db, { runConversation })
-
-        expect(runConversation).toHaveBeenCalledTimes(1)
-        expect(result.status).toBe('completed')
-        expect(Number.isFinite(result.nextRunAt)).toBe(true)
-        expect(db.read(KB_PATH).lastRunStopReason).not.toBe('project_archived')
-        expect(Number.isFinite(db.read(KB_PATH).nextRunAt)).toBe(true)
-    })
-
-    it('spends nothing on an archived project in which nothing changed', async () => {
-        const db = createDb({
-            ['users/owner']: {
-                gold: 1000,
-                timezone: 2,
-                lastLogin: NOW - DAY,
-                archivedProjectIds: [PROJECT_ID],
-            },
         })
         const { runConversation } = scriptedModel()
         const charge = jest.fn()
@@ -665,26 +644,8 @@ describe('runKnowledgeBaseIngest', () => {
 
         expect(runConversation).not.toHaveBeenCalled()
         expect(charge).not.toHaveBeenCalled()
-        expect(result.status).toBe('completed')
-        expect(Number.isFinite(result.nextRunAt)).toBe(true)
-    })
-
-    it('still pauses an archived project whose payer stopped using Alldone', async () => {
-        const db = createDb({
-            ['users/owner']: {
-                gold: 1000,
-                timezone: 2,
-                lastLogin: NOW - 31 * DAY,
-                archivedProjectIds: [PROJECT_ID],
-            },
-            [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-        })
-        const { runConversation } = scriptedModel()
-
-        const result = await run(db, { runConversation })
-
-        expect(runConversation).not.toHaveBeenCalled()
-        expect(result).toMatchObject({ status: 'stopped', stopReason: 'owner_inactive', nextRunAt: null })
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'project_archived', nextRunAt: null })
+        expect(db.read(KB_PATH)).toMatchObject({ nextRunAt: null, lastRunStopReason: 'project_archived' })
     })
 
     it('stops when the owner has no Gold left', async () => {
