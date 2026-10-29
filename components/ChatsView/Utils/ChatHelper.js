@@ -54,9 +54,13 @@ class ChatHelper {
             navigation.navigate('Root')
         }
 
-        if (checkIfSelectedProject(project.index)) {
+        if (project && checkIfSelectedProject(project.index)) {
+            // `getUserInProject` answers `undefined` (not null) while the project's members are
+            // still loading — the ordinary case for a project opened for the first time this
+            // session. Storing that as the current user crashed every `currentUser.uid` reader
+            // and the members snapshot reducer (AT-2906).
             const user = TasksHelper.getUserInProject(projectId, userId)
-            const currentUser = user !== null ? user : loggedUser
+            const currentUser = user || loggedUser
 
             store.dispatch([
                 switchProject(project.index),
@@ -71,8 +75,10 @@ class ChatHelper {
                 projectId,
                 loggedUser.uid
             )
+        } else {
+            // A project this account cannot open (archived, a guide, left) has no chats list here.
+            ChatHelper.processURLAllTeamsChat(navigation, tab)
         }
-        // navigation.navigate('Root')
     }
 
     static processURLChatDetailsTab = async (navigation, tab, projectId, chatId) => {
