@@ -394,11 +394,6 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     const bottomPadding = SHEET_BOTTOM_PADDING + (keyboardOpen ? 0 : safeAreaInsets.bottom)
     const sheetMaxHeight = Math.max(windowHeight - keyboardInset - safeAreaInsets.top - MODAL_EDGE_GAP, 0)
     const contentMaxHeight = Math.max(sheetMaxHeight - HANDLE_STRIP_HEIGHT - bottomPadding, 0)
-    const overdragBleedHeight = dragY.interpolate({
-        inputRange: [-BOTTOM_SHEET_UPWARD_DRAG_LIMIT, 0],
-        outputRange: [BOTTOM_SHEET_UPWARD_DRAG_LIMIT, 0],
-        extrapolate: 'clamp',
-    })
 
     return createPortal(
         <ModalShellContext.Provider value={SHELL_CONTEXT_VALUE}>
@@ -448,13 +443,10 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                 {/* An upward overdrag (bounded at BOTTOM_SHEET_UPWARD_DRAG_LIMIT)
                     lifts the whole card and would reveal the page behind its
                     bottom edge; this bleed extends the card color below the
-                    card so the gap can never show. It lives outside the
+                    viewport so the gap can never show. It lives outside the
                     card's box, which is why the sheet itself must not clip
-                    (see the `sheet` style note). It is exactly as tall as the
-                    lift, so at rest it paints nothing below the sheet: in the
-                    assistant workspace the sheet ends at the app's edge and a
-                    fixed-height bleed would cover the workspace bezel (AT-2911). */}
-                <Animated.View style={[localStyles.overdragBleed, { height: overdragBleedHeight }]} />
+                    (see the `sheet` style note). */}
+                <View style={localStyles.overdragBleed} />
                 <View ref={handleRef} testID={'bottom-sheet-handle'} style={localStyles.handleStrip}>
                     <View style={localStyles.handle} />
                 </View>
@@ -508,7 +500,8 @@ const localStyles = StyleSheet.create({
         position: 'absolute',
         left: 0,
         right: 0,
-        top: '100%',
+        bottom: -BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
+        height: BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
         backgroundColor: colors.Secondary400,
     },
     handleStrip: {

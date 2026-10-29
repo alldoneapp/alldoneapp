@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import {
@@ -39,14 +39,16 @@ export default function CommentElementsParser({
 }) {
     const [parsedComment, setParsedComment] = useState([])
 
-    const containerWidth = useRef(getPopoverWidth() - 48)
+    // Images in a chat fit the measured column (AT-2917). A ref was updated on layout but never
+    // re-rendered, so every image kept the popover-based guess (~384px) and overflowed narrow chats.
+    const [containerWidth, setContainerWidth] = useState(() => getPopoverWidth() - 48)
 
     let linkCounter = 0
     let emailCounter = 0
 
     const onLayout = ({ nativeEvent }) => {
-        if (inChat) {
-            containerWidth.current = nativeEvent.layout.width - 16
+        if (inChat && nativeEvent.layout.width > 16) {
+            setContainerWidth(nativeEvent.layout.width - 16)
         }
     }
 
@@ -163,7 +165,7 @@ export default function CommentElementsParser({
                                     projectId={projectId}
                                     uri={uri}
                                     resizedUri={resizedUri}
-                                    maxWidth={containerWidth.current}
+                                    maxWidth={containerWidth}
                                 />
                             )
                         } else if (type === VIDEO_ELEMENT) {
@@ -255,8 +257,10 @@ const localStyles = StyleSheet.create({
     element: {
         marginRight: 6,
     },
+    // A word longer than the line wraps instead of widening the row past its container (AT-2917).
     entry: {
         overflow: 'hidden',
+        minWidth: 0,
     },
     tag: {
         height: 20,

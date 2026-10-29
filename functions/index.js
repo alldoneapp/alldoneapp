@@ -2907,9 +2907,11 @@ exports.refundGoldSecondGen = onCall(
         })
 
         if (auth) {
-            const { refundGold } = require('./Gold/goldHelper')
+            // A client may only give back one of its own recent charges (refundClientSpend);
+            // crediting the requested amount outright let every account mint Gold.
+            const { refundClientSpend } = require('./Gold/goldHelper')
             const { gold, source, projectId, goalId, objectId, objectType, channel, note } = data
-            const result = await refundGold(auth.uid, gold, {
+            const result = await refundClientSpend(auth.uid, gold, {
                 source,
                 projectId,
                 goalId,
