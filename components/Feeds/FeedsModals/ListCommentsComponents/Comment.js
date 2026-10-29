@@ -399,7 +399,14 @@ export default function Comment({
     }
 
     return (
-        <View style={[localStyles.container, containerStyle]}>
+        <View
+            style={[
+                localStyles.container,
+                containerStyle,
+                // AT-2922: a queued message is not sent yet.
+                comment.pendingSend?.status === 'queued' && { opacity: 0.6 },
+            ]}
+        >
             <View style={localStyles.commentBody}>
                 <View style={localStyles.commentHeader} testID="feed-comment-header">
                     {isAssistant ? (

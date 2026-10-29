@@ -4,6 +4,7 @@ import AnnaConversation from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
+import { threadRunGate } from '../../utils/backends/Chats/threadRunGate'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
@@ -197,6 +198,7 @@ beforeEach(() => {
     commentOutbox.retry.mockResolvedValue(undefined)
     commentOutbox.read.mockReturnValue(null)
     setAnnaWorkspaceContext(null)
+    threadRunGate.reset()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -748,7 +750,7 @@ it('saves the visible context and one project conversation message before invoki
         true,
         'a1',
         null,
-        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true }
+        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true, threadGateCleared: true }
     )
     expect(mockContextUpdate.mock.invocationCallOrder[0]).toBeLessThan(createObjectMessage.mock.invocationCallOrder[0])
     expect(runHttpsCallableFunction).toHaveBeenCalledWith(
@@ -941,7 +943,7 @@ it('resumes a paused request after hand-back without replacing an unsent draft',
         true,
         'a1',
         null,
-        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true }
+        { id: 'm1', created: expect.any(Number), requestsAssistantRun: true, threadGateCleared: true }
     )
     expect(container.querySelector('textarea').value).toBe('Find a note')
     expect(onResumeHandled).toHaveBeenCalledWith('resume1')
@@ -1029,7 +1031,7 @@ it('shows text and frees the focused composer before conversation resolution com
     expect(container.querySelector('.anna-message-user').dataset.annaChatId).toBe('today')
 })
 
-it('sends two messages while the first assistant run is pending and keeps aggregate busy state', async () => {
+it('queues a second message until the first assistant run has settled and keeps aggregate busy state (AT-2922)', async () => {
     const first = deferred()
     const second = deferred()
     const onSendingChange = jest.fn()
@@ -1043,14 +1045,65 @@ it('sends two messages while the first assistant run is pending and keeps aggreg
     await submit()
     type('Still writing a third')
     expect(container.querySelectorAll('.anna-message-user')).toHaveLength(2)
-    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+    // The second message waits, unsent, at the end of the conversation.
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    const queued = container.querySelector('.anna-message-queued')
+    expect(queued.textContent).toContain('Two')
+    expect(queued.textContent).toContain('Queued. Sends when the current answer is finished.')
+    expect([...container.querySelectorAll('.anna-message-user')].at(-1)).toBe(queued)
     expect(container.querySelector('textarea').disabled).toBe(false)
     expect(onSendingChange).toHaveBeenLastCalledWith(true)
-    await act(async () => second.resolve({}))
-    expect(onSendingChange).toHaveBeenLastCalledWith(true)
+
+    const firstCreated = createObjectMessage.mock.calls[0][11].created
     await act(async () => first.resolve({}))
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+    expect(createObjectMessage).toHaveBeenCalledTimes(2)
+    expect(createObjectMessage.mock.calls[1][11].created).toBeGreaterThanOrEqual(firstCreated)
+    expect(container.querySelector('.anna-message-queued')).toBeNull()
+    expect(onSendingChange).toHaveBeenLastCalledWith(true)
+    await act(async () => second.resolve({}))
     expect(onSendingChange).toHaveBeenLastCalledWith(false)
     expect(container.querySelector('textarea').value).toBe('Still writing a third')
+})
+
+it('dispatches the next queued message after a failed run, and lets a queued message be sent now or removed (AT-2922)', async () => {
+    const first = deferred()
+    const third = deferred()
+    createObjectMessage.mockImplementation((...args) => Promise.resolve(args[11].id))
+    runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(third.promise)
+    render()
+    type('One')
+    await submit()
+    type('Two')
+    await submit()
+    type('Three')
+    await submit()
+    expect(container.querySelectorAll('.anna-message-queued')).toHaveLength(2)
+    // Removing the second one withdraws it without ever writing it.
+    const removeButton = [...container.querySelectorAll('.anna-message-queued')]
+        .find(node => node.textContent.includes('Two'))
+        .querySelector('[aria-label$="Remove queued message"]')
+    await act(async () => removeButton.click())
+    expect(container.textContent).not.toContain('Two')
+    // A failed answer releases the queue as well.
+    await act(async () => first.reject(new Error('Could not connect')))
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['m1', 'm3'])
+    expect(createObjectMessage.mock.calls.map(call => call[2])).toEqual(['One', 'Three'])
+    await act(async () => third.resolve({}))
+
+    // "Send now" skips the wait.
+    const fourth = deferred()
+    runHttpsCallableFunction.mockReturnValueOnce(fourth.promise).mockReturnValueOnce(Promise.resolve({}))
+    type('Four')
+    await submit()
+    type('Five')
+    await submit()
+    expect(container.querySelectorAll('.anna-message-queued')).toHaveLength(1)
+    const sendNowButton = container.querySelector('.anna-message-queued [aria-label$="Send now"]')
+    await act(async () => sendNowButton.click())
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['m1', 'm3', 'm4', 'm5'])
+    await act(async () => fourth.resolve({}))
 })
 
 it('uses the final body renderer and keeps the message node through pending, persisted and acknowledged states', async () => {
@@ -1377,6 +1430,16 @@ it('keeps a follow-up startup card until that exact message has a backend respon
     expect(container.querySelector('.anna-pending-activity')).toBeNull()
     type('Follow up')
     await submit()
+    // AT-2922: the follow-up waits for the first answer instead of starting a second run.
+    expect(container.querySelector('.anna-message-queued')).not.toBeNull()
+    expect(container.querySelector('.anna-pending-activity')).toBeNull()
+    mockMessages[0] = {
+        ...mockMessages[0],
+        isLoading: false,
+        assistantRun: { ...mockMessages[0].assistantRun, status: 'completed' },
+    }
+    await act(async () => first.resolve({}))
+    expect(container.querySelector('.anna-message-queued')).toBeNull()
     expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
     // A fast answer may arrive complete, without a loading snapshot ever reaching the browser.
     mockMessages.push({
@@ -1388,10 +1451,7 @@ it('keeps a follow-up startup card until that exact message has a backend respon
     })
     render()
     expect(container.querySelector('.anna-pending-activity')).toBeNull()
-    await act(async () => {
-        first.resolve({})
-        second.resolve({})
-    })
+    await act(async () => second.resolve({}))
 })
 
 it.each(['running', 'cancel_requested'])(

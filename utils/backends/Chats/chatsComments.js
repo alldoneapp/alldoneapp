@@ -49,7 +49,8 @@ import {
 } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
 import { awaitWriteAck } from '../offlineWriteAck'
-import { commentOutbox } from './commentOutbox'
+import { commentOutbox, subscribeCommentOutbox } from './commentOutbox'
+import { threadRunGate } from './threadRunGate'
 import { commitCommentOnce } from './commitCommentOnce'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
@@ -622,6 +623,8 @@ export async function createObjectMessage(
         explicitAssistantId,
         // A caller that skips the trigger here because it starts the assistant run itself.
         ...(submission?.requestsAssistantRun === true && { requestsAssistantRun: true }),
+        // A caller that already waited for the thread's previous answer (Anna, AT-2922).
+        ...(submission?.threadGateCleared === true && { threadGateCleared: true }),
     })
     if (onAssistantRunSettled) pendingAssistantCallbacks.set(id, onAssistantRunSettled)
     // The return value means locally saved. The regular message list renders
@@ -630,7 +633,7 @@ export async function createObjectMessage(
     return id
 }
 
-export const sendQueuedObjectMessage = (entry, isActive) =>
+export const sendQueuedObjectMessage = (entry, isActive, controls = null) =>
     sendObjectMessage(
         entry.projectId,
         entry.objectId,
@@ -647,7 +650,27 @@ export const sendQueuedObjectMessage = (entry, isActive) =>
             pendingAssistantCallbacks.delete(entry.id)
         },
         entry,
-        isActive
+        isActive,
+        controls
+    )
+
+const removedByUserError = () =>
+    Object.assign(new Error('The queued message was removed.'), { code: 'removed-by-user' })
+
+// AT-2922: hold a message that asks the assistant for an answer until the thread's previous answer
+// (including a VM job it started there) is complete. The hold happens before anything is written,
+// so the message enters the thread after that answer, never between it and its question.
+const holdUntilThreadIsFree = (controls, entry, thread, isActive) =>
+    controls.hold(() =>
+        threadRunGate.waitForThreadIdle(thread, {
+            isActive,
+            excludeId: entry.id,
+            originalCreated: entry.created,
+            shouldCancel: () => !commentOutbox.read(entry.userId, entry.id),
+            shouldRelease: () => commentOutbox.read(entry.userId, entry.id)?.forceSend === true,
+            subscribe: subscribeCommentOutbox,
+            onQueued: () => commentOutbox.update(entry.userId, entry.id, { status: 'queued' }),
+        })
     )
 
 async function sendObjectMessage(
@@ -663,7 +686,8 @@ async function sendObjectMessage(
     explicitAssistantId = null,
     onAssistantRunSettled = null,
     queuedEntry = null,
-    isActive = () => true
+    isActive = () => true,
+    controls = null
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
@@ -742,6 +766,46 @@ async function sendObjectMessage(
             triggersAssistantRun || queuedEntry?.requestsAssistantRun === true
                 ? { projectId, objectType, objectId, assistantId: assistantId || null }
                 : null
+
+        if (queuedEntry && assistantRunRequest && controls?.hold && !queuedEntry.threadGateCleared) {
+            const outcome = await holdUntilThreadIsFree(
+                controls,
+                queuedEntry,
+                { projectId, objectType, objectId },
+                isActive
+            )
+            if (outcome.status === 'cancelled') {
+                onAssistantRunSettled?.({ status: 'removed' })
+                throw removedByUserError()
+            }
+            commentOutbox.update(queuedEntry.userId, queuedEntry.id, { status: 'pending', created: outcome.created })
+            const released = {
+                ...(commentOutbox.read(queuedEntry.userId, queuedEntry.id) || queuedEntry),
+                created: outcome.created,
+                // In memory only: a failed delivery waits for its turn again on retry.
+                threadGateCleared: true,
+            }
+            // After a real wait everything read above (followers, members, the thread's assistant)
+            // may be stale, so the message is prepared again from scratch.
+            if (outcome.waited)
+                return sendObjectMessage(
+                    projectId,
+                    objectId,
+                    comment,
+                    objectType,
+                    commentType,
+                    editingCommentId,
+                    oldComment,
+                    skipAssistantTrigger,
+                    explicitAssistantEnabled,
+                    explicitAssistantId,
+                    onAssistantRunSettled,
+                    released,
+                    isActive,
+                    controls
+                )
+            queuedEntry = released
+        }
 
         const promises = []
         if (queuedEntry) {
@@ -970,6 +1034,9 @@ async function sendObjectMessage(
                 })
             }
             const functionCallStartTime = Date.now()
+            const runThread = { projectId, objectType, objectId }
+            // The next queued message in this thread waits until this request has settled (AT-2922).
+            threadRunGate.beginThreadRun(runThread, commentId)
             runHttpsCallableFunction(
                 'askToBotSecondGen',
                 {
@@ -989,6 +1056,7 @@ async function sendObjectMessage(
                 }
             )
                 .then(result => {
+                    threadRunGate.settleThreadRun(runThread, commentId)
                     endBotSpinnerWait(projectId, objectId)
                     onAssistantRunSettled?.({ status: result?.cancelled ? 'cancelled' : 'completed', result })
                     const clientCallCompleteTime = Date.now()
@@ -1009,6 +1077,7 @@ async function sendObjectMessage(
                     }
                 })
                 .catch(error => {
+                    threadRunGate.settleThreadRun(runThread, commentId)
                     endBotSpinnerWait(projectId, objectId)
                     onAssistantRunSettled?.({ status: 'failed', error })
                     console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {

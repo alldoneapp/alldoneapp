@@ -191,3 +191,49 @@ it('serialises submissions in the same chat and preserves unrelated/corrupt stor
     expect(send).toHaveBeenCalledTimes(2)
     expect(localStorage.getItem('unrelated')).toBe('keep')
 })
+
+describe('a message waiting for its turn (AT-2922)', () => {
+    it('pauses the sync timeout while the sender holds, and measures delivery again afterwards', async () => {
+        jest.useFakeTimers()
+        try {
+            const outbox = createCommentOutbox({ sendTimeoutMs: 1000 })
+            const turn = deferred()
+            const delivered = jest.fn()
+            configure(outbox, async (entry, isActive, { hold }) => {
+                await hold(() => turn.promise)
+                delivered(isActive())
+            })
+            const run = outbox.flushOne(outbox.enqueue(values))
+            await Promise.resolve()
+            await Promise.resolve()
+            jest.advanceTimersByTime(60 * 60 * 1000)
+            turn.resolve()
+            await run
+            expect(delivered).toHaveBeenCalledWith(true)
+            expect(outbox.list('user-1')).toEqual([])
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('only removes a queued message, and a removal is not reported as a failure', async () => {
+        const outbox = createCommentOutbox()
+        const turn = deferred()
+        configure(outbox, async (entry, isActive, { hold }) => {
+            outbox.update(entry.userId, entry.id, { status: 'queued' })
+            await hold(() => turn.promise)
+            throw Object.assign(new Error('removed'), { code: 'removed-by-user' })
+        })
+        const pending = outbox.enqueue({ ...values, id: 'other' })
+        expect(outbox.remove('user-1', pending.id)).toBe(false)
+        const entry = outbox.enqueue(values)
+        const run = outbox.flushOne(entry)
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(outbox.read('user-1', entry.id).status).toBe('queued')
+        expect(outbox.remove('user-1', entry.id)).toBe(true)
+        turn.resolve()
+        await expect(run).resolves.toBeUndefined()
+        expect(outbox.read('user-1', entry.id)).toBeNull()
+    })
+})

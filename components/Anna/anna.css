@@ -375,6 +375,10 @@
     padding: 14px 16px;
     border: 1px solid var(--anna-border);
 }
+/* AT-2922: written while the previous answer was still running; sent once it is complete. */
+.anna-message-queued {
+    opacity: 0.6;
+}
 .anna-message-author {
     display: flex;
     gap: 6px;

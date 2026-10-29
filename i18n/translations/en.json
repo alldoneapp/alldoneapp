@@ -3767,5 +3767,8 @@
     "Visible to project members": "Visible to project members",
     "Finish the call or dictation and stay online to change the project": "Finish the call or dictation and stay online to change the project",
     "Continuing in your default project.": "Continuing in your default project.",
-    "The project chat could not be opened. Continuing in your default project.": "The project chat could not be opened. Continuing in your default project."
+    "The project chat could not be opened. Continuing in your default project.": "The project chat could not be opened. Continuing in your default project.",
+    "Queued. Sends when the current answer is finished.": "Queued. Sends when the current answer is finished.",
+    "Send now": "Send now",
+    "Remove queued message": "Remove"
 }

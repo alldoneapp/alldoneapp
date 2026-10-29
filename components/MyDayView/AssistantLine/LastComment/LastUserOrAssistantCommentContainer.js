@@ -8,19 +8,12 @@ export { DEFERRED_LAST_COMMENT_REFRESH_MS } from './useLastCommentPreview'
 import { useSelector } from 'react-redux'
 
 import LastAssistantCommentWrapper from './LastAssistantCommentWrapper'
-import { getAllUnreadCommentIds, getPreviewComment, getUnreadCommentsCount } from './unreadCommentsHelper'
+import { getAllUnreadCommentIds, getUnreadCommentsCount } from './unreadCommentsHelper'
 import { LastCommentPreviewSkeleton } from '../AssistantLineSkeleton'
 import { buildLastCommentKey, useLastCommentArrival } from './lastCommentArrival'
 import { isLiveComment } from './liveComment'
 
 const MAX_COMMENTS_TO_VERIFY_UNREAD = 100
-// AT-2923 — an unread comment can sit below newer comments that are already read (read state is
-// per comment), so with anything unread the window reaches this far past the unread count. Without
-// unread markers only the newest comment is needed, exactly as before.
-export const READ_COMMENTS_ABOVE_UNREAD_LOOKAHEAD = 20
-
-export const getCommentsToWatch = unreadCount =>
-    unreadCount > 0 ? Math.min(unreadCount + READ_COMMENTS_ABOVE_UNREAD_LOOKAHEAD, MAX_COMMENTS_TO_VERIFY_UNREAD) : 1
 
 export default function LastUserOrAssistantCommentContainer({
     setAModalIsOpen,
@@ -36,11 +29,10 @@ export default function LastUserOrAssistantCommentContainer({
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id]?.[objectId])
     const allUnreadCommentIds = getAllUnreadCommentIds(chatNotifications)
-    const commentsToWatch = getCommentsToWatch(allUnreadCommentIds.length)
-    const { commentText, chat, comments, previewComment, failed, retry } = useLastCommentPreview(
+    const commentsToWatch = Math.min(allUnreadCommentIds.length + 1, MAX_COMMENTS_TO_VERIFY_UNREAD)
+    const { commentText, chat, comments, failed, retry } = useLastCommentPreview(
         { userId, projectId: project.id, objectType, objectId },
-        commentsToWatch,
-        recent => getPreviewComment(chatNotifications, recent)
+        commentsToWatch
     )
     const recentComments = comments || []
     const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification, recentComments)
@@ -55,7 +47,7 @@ export default function LastUserOrAssistantCommentContainer({
     // Only the raw watcher documents carry the run flags, and this is the last component that holds
     // them. The cached preview has no comment object at all, which is correct — it is a first paint,
     // never an arrival.
-    const displayedComment = previewComment || recentComments[0]
+    const displayedComment = recentComments[0]
     // Browser-call speech grows through transcript deltas, without the assistant-run flags.
     // Give it the same in-place rendering as chat streaming, including the final fragment.
     // This is only an animation rule: stored transcripts remain complete/readable comments,
