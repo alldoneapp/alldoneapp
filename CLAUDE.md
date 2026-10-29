@@ -612,19 +612,26 @@ when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefau
 also what reached the projects that existed before the default — there is no migration. The payer
 is the project's creator when they are an active member, otherwise the member being processed.
 Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
-template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archiving
-is per member** (`users/{uid}.archivedProjectIds`, the list `projectScope.js` reads), not the
-project-wide `project.active` flag the first version checked, which switched on 33 projects the
-dogfooding account had archived. A member who archived a project neither switches its wiki on nor
-pays for it (`isProjectArchivedForUser`), and a run whose payer has the project archived stops
-with `project_archived` and clears `nextRunAt`, like `owner_inactive`; the sweep resumes it when the
-payer reactivates the project, and hands a default wiki to a member for whom it is still active. When the
+template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archived
+projects get the wiki too (AT-2893)**: archiving (`users/{uid}.archivedProjectIds`, per member) means
+"done with this project", not "forget what we learned in it", and the wiki is what keeps a past
+project's knowledge usable in search, `read_knowledge_page`/`search_knowledge` and global search
+(which includes archived projects by default, AT-2524). An archived project is built and kept current
+by the same nightly run, with the same payer rules and the same 500-Gold monthly cap; once caught up
+it costs no Gold, because a run that finds no changed source makes no model call. The sweep orders a
+member's archived projects after the active ones, so `MAX_PROJECTS_PER_USER` cuts past projects
+first. (`project.active === false` is a different, project-wide flag — no member opened it in 30
+days — and stays excluded.) Until AT-2893 a member who archived a project neither switched its wiki on
+nor paid for it, and a run stopped with `project_archived` and cleared `nextRunAt`. No run writes that
+reason any more; `isKnowledgeBasePausedForArchivedProject` only recognises the leftover state, which
+the sweep and a save in the settings resume like `owner_inactive`. When the
 payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
 model call); the payer's return resumes it, and a wiki the default switched on moves to another
 active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
 or no field on wikis that predate the default) never changes hands that way — it waits. Note
 `releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
-`knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
+`knowledgeBaseDefaults.test.js` and the `owner_inactive` and archived-project cases in
+`knowledgeBaseIngest.test.js`.
 
 **A wiki that reaches its monthly Gold limit says so, and raising the limit resumes it.** The run
 stops with `monthly_cap` and schedules itself for the first of next month (UTC); before this, that
@@ -850,6 +857,27 @@ hidden for a rebuild is never quoted however stale `dev_wiki` is. Global search 
 page text is matched but excluded from responses). `onWriteKnowledgePageSecondGen` mirrors each
 page, and `invalidateKnowledgeSource` deletes withdrawn pages from the index itself. "Only what I
 created" skips the Wiki tab: the wiki writes every page.
+
+**A search collection the browser key's PARENT does not list answers 401, and global search shows
+that as "no results" (AT-2905).** Every browser search key is a scoped key derived from a parent
+search key, and a scoped key can only reach the parent's collections. The parent was created by
+hand in Typesense Cloud for the original five collections (`TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY`),
+so when the Artifacts and Wiki tabs were added, every request to `dev_artifacts` and `dev_wiki` came
+back 401. The client re-fetched a key from the same parent, got 401 again, and printed only a
+`console.log`. Both tabs looked as if they were not searching at all. In the logs this shows up as two
+`getTypesenseScopedSearchCredentialsSecondGen` POSTs in the same second, one forced refresh per
+failing tab. `functions/Typesense/scopedSearchParentKey.js` now provisions the parent with the
+admin key, from `ALL_COLLECTIONS`, under a value derived from the admin key and the collection list
+(an HMAC). Every instance therefore computes the same key, a 409 "already exists" counts as success,
+and adding a collection creates a new parent on the next cold start. Superseded parents are kept
+because an older instance may still issue keys from them. The parent may only `documents:search`,
+which Typesense requires for scoped keys. The configured key is now only a fallback when provisioning
+fails, and that failure is logged as an error. Add a new search collection to `ALL_COLLECTIONS`,
+never to a hand-made key. Global search shows its tabs in `GLOBAL_SEARCH_TAB_ORDER` (`Header.js`):
+Artifacts before Chats, like the main navigation. The tab numbers stay as they are because the
+@-mention picker shares 0-4. Tab-key cycling and the fallback to the first tab with results follow
+the shown order. Pinned by `functions/Typesense/scopedSearchParentKey.test.js`, the AT-2905 cases in
+`scopedSearchCredentials.test.js` and `components/GlobalSearchAlgolia/Header/Header.test.js`.
 
 **"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
 (`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
