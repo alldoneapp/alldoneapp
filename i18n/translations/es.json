@@ -3371,6 +3371,8 @@
     "End call": "Finalizar llamada",
     "You need Gold to talk with Anna.": "Necesitas Gold para hablar con Anna.",
     "Your message could not be sent. Please try again.": "No se pudo enviar tu mensaje. Inténtalo de nuevo.",
+    "The connection was interrupted. Please try again.": "Se interrumpió la conexión. Inténtalo de nuevo.",
+    "The assistant could not answer this message. Please try again.": "El asistente no pudo responder a este mensaje. Inténtalo de nuevo.",
     "Earlier messages": "Mensajes anteriores",
     "Loading your conversation…": "Cargando tu conversación…",
     "What’s on your mind?": "¿Qué tienes en mente?",

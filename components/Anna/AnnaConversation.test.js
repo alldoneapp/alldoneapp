@@ -8,6 +8,7 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
+import { installAppResumeListener } from '../../utils/appResume'
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
     ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
     useReducedMotion: () => true,
@@ -1645,5 +1646,173 @@ describe('selected project (AT-2903)', () => {
         expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
         render({ switching: false, renderProjectSwitcher })
         expect(container.querySelector('.anna-send').disabled).toBe(false)
+    })
+})
+
+describe('a request whose connection dropped while the app was in the background (AT-2921)', () => {
+    // What the callable SDK throws for a failed fetch (status 0): the server never answered us.
+    const connectionLost = () => Object.assign(new Error('internal'), { code: 'functions/internal' })
+    const question = { id: 'm1', creatorId: 'u1', created: 1, commentText: 'Find a note' }
+    const reply = (status, extra = {}) => ({
+        id: 'reply1',
+        creatorId: 'a1',
+        fromAssistant: true,
+        created: 2,
+        isLoading: status === 'running',
+        lastChangeDate: Date.now(),
+        commentText: status === 'failed' ? 'Something went wrong.' : 'Here is your note.',
+        assistantRun: { kind: 'chat', status, triggerMessageId: 'm1' },
+        ...extra,
+    })
+    const alert = () => container.querySelector('.anna-message-user [role="alert"]')
+    const retryButton = () => [...container.querySelectorAll('button')].find(node => node.textContent === 'Retry')
+    let visibility
+    let uninstallAppResume
+    beforeEach(() => {
+        visibility = 'visible'
+        jest.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+        mockCreators.a1 = { displayName: 'Carl', isAssistant: true }
+        // The real lifecycle owner, as AppNavigator installs it, with its network side effects stubbed.
+        uninstallAppResume = installAppResumeListener({
+            evaluateConnection: () => {},
+            runIntegrityCheck: () => {},
+            updateServiceWorker: () => {},
+        })
+    })
+    afterEach(() => uninstallAppResume())
+    const setVisibility = value =>
+        act(() => {
+            visibility = value
+            document.dispatchEvent(new Event('visibilitychange'))
+        })
+
+    it('shows no error or Retry when the answer is already in the chat on return (the reported case)', async () => {
+        const request = deferred()
+        runHttpsCallableFunction.mockReturnValueOnce(request.promise)
+        render()
+        await click('Find a note')
+        await submit()
+        setVisibility('hidden')
+        // The server finished while the app was in the background...
+        mockMessages = [question, reply('completed')]
+        render()
+        // ...and the OS-dropped connection only rejects afterwards.
+        await act(async () => request.reject(connectionLost()))
+        setVisibility('visible')
+        expect(alert()).toBeNull()
+        expect(retryButton()).toBeUndefined()
+        expect(container.textContent).not.toContain('internal')
+        expect(container.querySelector('.anna-pending-activity')).toBeNull()
+        expect(container.textContent).toContain('Here is your note.')
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('waits instead of failing when the connection drops before the reply has arrived', async () => {
+        jest.useFakeTimers()
+        runHttpsCallableFunction.mockRejectedValueOnce(connectionLost())
+        render()
+        await click('Find a note')
+        await submit()
+        // No error, no Retry: the message may well be in progress on the server.
+        expect(alert()).toBeNull()
+        expect(retryButton()).toBeUndefined()
+        expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
+        expect(container.querySelector('textarea').disabled).toBe(false)
+        await act(async () => jest.advanceTimersByTime(30000))
+        mockMessages = [question, reply('running')]
+        render()
+        expect(container.querySelector('.anna-pending-activity')).toBeNull()
+        mockMessages = [question, reply('completed')]
+        render()
+        // Past the deadline the settled message must never come back as a failure.
+        await act(async () => jest.advanceTimersByTime(10 * 60 * 1000))
+        expect(alert()).toBeNull()
+        expect(retryButton()).toBeUndefined()
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    })
+
+    it('settles on a reply even when its own message has not reached the snapshot yet', async () => {
+        jest.useFakeTimers()
+        runHttpsCallableFunction.mockRejectedValueOnce(connectionLost())
+        render()
+        await click('Find a note')
+        await submit()
+        mockMessages = [reply('completed')]
+        render()
+        await act(async () => jest.advanceTimersByTime(10 * 60 * 1000))
+        expect(alert()).toBeNull()
+        expect(container.querySelector('.anna-message-user').textContent).toContain('Find a note')
+    })
+
+    it('reports a readable failure, not "internal", once no reply arrives while the page is visible', async () => {
+        jest.useFakeTimers()
+        runHttpsCallableFunction.mockRejectedValueOnce(connectionLost())
+        render()
+        await click('Find a note')
+        await submit()
+        setVisibility('hidden')
+        // Nothing can be confirmed while hidden, however long that lasts.
+        await act(async () => jest.advanceTimersByTime(60 * 60 * 1000))
+        expect(alert()).toBeNull()
+        setVisibility('visible')
+        await act(async () => jest.advanceTimersByTime(14000))
+        expect(alert()).toBeNull()
+        await act(async () => jest.advanceTimersByTime(2000))
+        expect(alert().textContent).toContain('The connection was interrupted. Please try again.')
+        expect(alert().textContent).not.toContain('internal')
+        await click('Retry')
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
+        expect(runHttpsCallableFunction.mock.calls[1][1].messageId).toBe('m1')
+        expect(alert()).toBeNull()
+    })
+
+    it('hides a timed-out failure as soon as a late reply (e.g. the server catch-up) arrives', async () => {
+        jest.useFakeTimers()
+        runHttpsCallableFunction.mockRejectedValueOnce(connectionLost())
+        render()
+        await click('Find a note')
+        await submit()
+        await act(async () => jest.advanceTimersByTime(3 * 60 * 1000))
+        expect(alert()).not.toBeNull()
+        mockMessages = [question, reply('running')]
+        render()
+        expect(alert()).toBeNull()
+        expect(retryButton()).toBeUndefined()
+    })
+
+    it('still offers Retry when the run itself failed on the server', async () => {
+        jest.useFakeTimers()
+        runHttpsCallableFunction.mockRejectedValueOnce(connectionLost())
+        render()
+        await click('Find a note')
+        await submit()
+        mockMessages = [question, reply('failed')]
+        render()
+        expect(alert().textContent).toContain('The assistant could not answer this message. Please try again.')
+        await click('Retry')
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
+        expect(runHttpsCallableFunction.mock.calls[1][1].messageId).toBe('m1')
+    })
+
+    it('still reports an error the server actually returned, immediately', async () => {
+        runHttpsCallableFunction.mockRejectedValueOnce(
+            Object.assign(new Error('Not enough Gold'), { code: 'functions/resource-exhausted' })
+        )
+        render()
+        await click('Find a note')
+        await submit()
+        expect(alert().textContent).toContain('Not enough Gold')
+        expect(retryButton()).not.toBeUndefined()
+    })
+
+    it('does not treat a failure before the request was sent as a lost connection', async () => {
+        commentOutbox.read.mockReturnValue({ status: 'pending' })
+        render()
+        await click('Find a note')
+        await submit()
+        expect(alert().textContent).toContain('Your message could not be sent. Please try again.')
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
     })
 })
