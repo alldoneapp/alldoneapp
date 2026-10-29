@@ -9349,6 +9349,38 @@ describe('parallel tool execution in both assistant paths', () => {
     )
 })
 
+test('passes the conversation identity into pending wiki draft recovery from the chat context builder', async () => {
+    mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
+    mockCollectionGet.mockResolvedValue({ docs: [] })
+    mockKnowledgeBase.getKnowledgeBaseContextMessage.mockClear()
+    await getOptimizedContextMessages(
+        'reply-2',
+        'project-1',
+        'topics',
+        'chat-1',
+        'en',
+        'Anna',
+        '',
+        [],
+        0,
+        'user-1',
+        'assistant-1',
+        { allowKnowledgeCorrections: true }
+    )
+    expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+            context: expect.objectContaining({
+                projectId: 'project-1',
+                requestUserId: 'user-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                messageId: 'reply-2',
+                allowKnowledgeCorrections: true,
+            }),
+        })
+    )
+})
+
 test.each(['chat', 'collector'])(
     'stops a draft/failure/draft retry cycle after three calls in the %s loop',
     async channel => {
