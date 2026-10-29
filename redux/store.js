@@ -487,8 +487,12 @@ const updateInactiveProjectsData = (user, activeGuideId, activeTemplateId, areAr
     }
 }
 
+// `currentUser` is always an object (initial state is `{}`); a project snapshot may also carry a
+// malformed entry. Neither may turn a members snapshot into a crash (AT-2906).
 const updateCurrentUserIfNeeded = (state, users) => {
-    return users.find(user => user.uid === state.currentUser.uid) || state.currentUser
+    const uid = state.currentUser?.uid
+    if (!uid || !Array.isArray(users)) return state.currentUser
+    return users.find(user => user?.uid === uid) || state.currentUser
 }
 
 const getDefaultAssistant = state => {
@@ -637,6 +641,12 @@ export const theReducer = (state = initialState, action) => {
         case SET_OKR_TODAY_OPERATION:
             return reduceOkrTodayOperation(state, action)
         case 'Store current user': {
+            // A failed lookup (`getUserInProject` answers `undefined` for a project whose members
+            // are still loading) must not erase the current user: every `state.currentUser.uid`
+            // selector would throw on the next render (AT-2906). Fall back to the logged user.
+            if (!action.currentUser) {
+                return { ...state, currentUser: state.loggedUser?.uid ? state.loggedUser : state.currentUser || {} }
+            }
             return { ...state, currentUser: action.currentUser }
         }
         case 'Update loading step': {
