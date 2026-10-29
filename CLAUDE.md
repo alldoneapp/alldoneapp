@@ -3667,6 +3667,23 @@ nothing claims a connected mailbox. Pinned by `functions/Email/emailIdentityAtte
 `functions/Email/emailIncomingHandler.test.js` and the credential-document cases in
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+### `users/{uid}.email` is not an identity another system may trust (AT-2908)
+
+alldone.team identifies an alldone.app account by the email address we hand it: embedded tools
+key their data on it (`app:<email>`), and it names the same address again when it charges Gold
+through `/api/menubar/gold`. That address used to come from `users/{uid}.email`, which the owner
+could overwrite from the client (the users update rule only protected membership fields), so an
+account could present somebody else's address to external tools, the menubar session and the Gold
+webhook. Every address another system treats as an identity now comes from
+`functions/shared/verifiedAccountEmail.js`: the Firebase Auth login email, only when verified
+(`getVerifiedAccountEmail`), and the reverse lookup through `auth.getUserByEmail`
+(`findUserIdByVerifiedEmail`), which holds one account per address. Never fall back to
+`notificationEmail` or the document field. The rules additionally allow `users/{uid}.email` only to
+be empty or the address in the writer's own token, because the client still forwards it
+(`IframeModal`'s `GET_USER_DATA`). Pinned by `functions/shared/verifiedAccountEmail.test.js`
+(including source checks of the call sites), `functions/MenubarApp/menubarIdentity.test.js` and the
+`account email` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything

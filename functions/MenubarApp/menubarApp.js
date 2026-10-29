@@ -7,6 +7,7 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 const { resolveMenubarRichTextLinks } = require('./menubarRichText')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
+const { getVerifiedAccountEmail, findUserIdByVerifiedEmail } = require('../shared/verifiedAccountEmail')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -79,6 +80,9 @@ async function mintMenubarAppToken(userId) {
         throw new Error('User not found')
     }
     const userData = userDoc.data() || {}
+    // alldone.team treats this address as the account's identity, so it is the verified
+    // Auth email, never users/{uid}.email (see shared/verifiedAccountEmail.js).
+    const email = await getVerifiedAccountEmail(userId)
 
     const token = `${TOKEN_PREFIX}${crypto.randomBytes(32).toString('hex')}`
     const tokenHash = hashToken(token)
@@ -89,7 +93,7 @@ async function mintMenubarAppToken(userId) {
         .doc(tokenHash)
         .set({
             userId,
-            email: normalizeEmail(userData.email),
+            email,
             appId: 'anna-menubar',
             tokenSuffix: token.slice(-4),
             revoked: false,
@@ -124,7 +128,7 @@ async function mintMenubarAppToken(userId) {
 
     return {
         token,
-        email: normalizeEmail(userData.email),
+        email,
         name: getUserDisplayName(userData),
         gold: getUserGold(userData),
     }
@@ -198,7 +202,7 @@ async function resolveTokenSession(token, includeSummary = false) {
     const { userId, userData } = tokenUser
 
     const session = {
-        email: normalizeEmail(userData.email),
+        email: await getVerifiedAccountEmail(userId),
         name: getUserDisplayName(userData),
         gold: getUserGold(userData),
     }
@@ -336,17 +340,15 @@ function verifyWebhookSignature(req, candidateSecrets) {
     return { valid: false, error: 'Invalid signature' }
 }
 
+// The account behind the address alldone.team names. Resolved through Firebase Auth, which
+// holds one verified login email per account; a users query on the email field would match
+// whatever address an account wrote into its own document.
 async function findUserByEmail(email) {
-    const normalizedEmail = normalizeEmail(email)
-    if (!normalizedEmail) return null
+    const userId = await findUserIdByVerifiedEmail(email)
+    if (!userId) return null
 
-    const snapshot = await admin.firestore().collection('users').where('email', '==', normalizedEmail).limit(2).get()
-
-    if (snapshot.empty) return null
-    if (snapshot.size > 1) {
-        console.warn('menubarGoldWebhook: multiple users share email, using first match', { email: normalizedEmail })
-    }
-    return snapshot.docs[0]
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+    return userDoc.exists ? userDoc : null
 }
 
 // POST /api/menubar/gold  HMAC-signed (x-alldone-timestamp / x-alldone-signature)
