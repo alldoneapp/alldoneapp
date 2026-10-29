@@ -132,7 +132,12 @@ async function checkWorkspaceOverlays(page, width) {
         await inWorkspace(page.getByTestId('bottom-sheet-backdrop'))
         await page.screenshot({ path: path.join(BUILD, 'sheet-after-divider.png') })
         await page.locator('.anna-divider').focus()
-        await page.keyboard.press('ArrowLeft')
+        // Step back across the breakpoint. How many 20px steps that takes depends on the
+        // workspace frame's gutter and bezel (AT-2911), not on what this case checks.
+        for (let i = 0; i < 4 && (await page.getByTestId('bottom-sheet').count()); i++) {
+            await page.keyboard.press('ArrowLeft')
+            await page.waitForTimeout(150)
+        }
         await page.getByTestId('bottom-sheet').waitFor({ state: 'detached' })
         assert.equal(await readInput(popupDraft), 'Draft survives presentation switch')
     }

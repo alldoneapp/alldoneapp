@@ -414,6 +414,19 @@ describe('ModalShell', () => {
             expect(onClickOutside).not.toHaveBeenCalled()
         })
 
+        it('paints nothing below the sheet at rest, so a framed workspace keeps its bottom bezel (AT-2911)', async () => {
+            renderShell()
+            await settle()
+
+            // The overdrag bleed is the sheet's first child; it starts at the card's bottom
+            // edge and is exactly as tall as an upward lift, which at rest is none.
+            const bleed = sheetNode().firstElementChild
+            expect(bleed).not.toBe(handleNode())
+            const style = window.getComputedStyle(bleed)
+            expect(style.top).toBe('100%')
+            expect(style.height).toBe('0px')
+        })
+
         it('does not claim gestures that begin in scrollable sheet content', async () => {
             const onClickOutside = jest.fn()
             renderShell({
