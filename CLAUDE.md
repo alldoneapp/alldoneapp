@@ -3531,6 +3531,25 @@ not read further pages.
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
 
+### The email line summary is reused while the mailbox is unchanged (AT-2913)
+
+`getEmailLineSummarySecondGen` runs on every app load, and the app asks for the same mailbox twice:
+once under a project key (My Day, the task board) and once under a connection key (the email line),
+and the client's 60-second cooldown is per key. Each request rebuilt the Gmail label summary: a thread
+list and an unread count for up to 60 labels plus the `has:userlabels` scan, about 125 Gmail calls and
+1,300 quota units against a per-user limit of 250 per second. Measured on 2026-10-29: p50 7.5s, p90
+10.8s, and half of all calls came within 5 seconds of the previous one from the same device.
+`gmailLabelSummaryCache.js` keeps the summary per user and mailbox address, tagged with the mailbox
+`historyId` (`users.getProfile`, 1 quota unit), and `getGmailLabelSummary` reuses it while that id is
+unchanged. Every mailbox change (new mail, read state, labels, archiving) moves the id, so a hit is exact;
+`SUMMARY_MAX_AGE_MS` (10 min) only bounds a label renamed or created without one. Concurrent requests at
+the same id share one computation, and a `getProfile` that fails for any reason but a rejected token
+computes the summary uncached rather than failing it. `getEmailLineSummary` now also loads the label
+configuration and the needs-reply state in parallel with the provider summary. Each summary logs
+`[emailLine] label summary` with `cache` (`hit`, `miss`, `joined`, `uncached`) and `durationMs`.
+Microsoft is unchanged. Pinned by `gmailLabelSummaryCache.test.js`, the reuse block of
+`gmailEmailLine.test.js` and the mailbox-key case in `emailLineService.test.js`.
+
 ### An email handled in Gmail marks its Alldone email comment as read (AT-2376)
 
 The unread state of a chat comment is not a field — it is the existence of

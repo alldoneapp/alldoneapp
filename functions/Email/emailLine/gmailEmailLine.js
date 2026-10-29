@@ -2,8 +2,15 @@
 
 const { google } = require('googleapis')
 const { getAuthorizedOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
-const { runWithGoogleAuthRetry } = require('../../GoogleOAuth/googleAuthRetry')
+const { isExpiredAccessTokenError, runWithGoogleAuthRetry } = require('../../GoogleOAuth/googleAuthRetry')
 const { parseListUnsubscribe, chunk } = require('./emailLineShared')
+const { isAuthError } = require('./emailLineErrors')
+const {
+    buildLabelSummaryCacheKey,
+    getCachedLabelSummary,
+    isLabelSummaryInFlight,
+    runLabelSummaryOnce,
+} = require('./gmailLabelSummaryCache')
 const {
     getCachedResolvedThreadIds,
     cacheResolvedThreadIds,
@@ -1002,8 +1009,53 @@ async function sweepLabelImpl(gmail, userId, projectId, labelId, action) {
 // is deliberately NOT wrapped; it only reaches Gmail through getMessageContext, which is.
 // ---------------------------------------------------------------------------
 
-function getGmailLabelSummary(userId, projectId) {
-    return withGmailClient(userId, projectId, gmail => getGmailLabelSummaryImpl(gmail, userId, projectId))
+// The mailbox's current historyId, or null when it cannot be read (the summary is then
+// computed without the cache). A rejected token still throws so withGmailClient can refresh it.
+async function readMailboxHistoryId(gmail) {
+    try {
+        const response = await gmail.users.getProfile({ userId: 'me' })
+        const historyId = response?.data?.historyId
+        return historyId ? String(historyId) : null
+    } catch (error) {
+        if (isExpiredAccessTokenError(error) || isAuthError(error)) throw error
+        return null
+    }
+}
+
+// Reuses a summary while the mailbox is unchanged (see gmailLabelSummaryCache.js). `mailboxKey`
+// names the mailbox, normally its address, so the project key and the connection key the app
+// both ask with share one entry; without it the request key is used.
+async function getCachedGmailLabelSummaryImpl(gmail, userId, projectId, mailboxKey) {
+    const startedAt = Date.now()
+    const historyId = await readMailboxHistoryId(gmail)
+    let cache = 'uncached'
+    let summary
+    if (!historyId) {
+        summary = await getGmailLabelSummaryImpl(gmail, userId, projectId)
+    } else {
+        const key = buildLabelSummaryCacheKey(userId, mailboxKey || projectId)
+        summary = getCachedLabelSummary(key, historyId)
+        if (summary) {
+            cache = 'hit'
+        } else {
+            cache = isLabelSummaryInFlight(key, historyId) ? 'joined' : 'miss'
+            summary = await runLabelSummaryOnce(key, historyId, () =>
+                getGmailLabelSummaryImpl(gmail, userId, projectId)
+            )
+        }
+    }
+    console.log('[emailLine] label summary', {
+        cache,
+        labels: summary.labels.length,
+        durationMs: Date.now() - startedAt,
+    })
+    return summary
+}
+
+function getGmailLabelSummary(userId, projectId, { mailboxKey } = {}) {
+    return withGmailClient(userId, projectId, gmail =>
+        getCachedGmailLabelSummaryImpl(gmail, userId, projectId, mailboxKey)
+    )
 }
 
 function getMessageContext(userId, projectId, messageId) {

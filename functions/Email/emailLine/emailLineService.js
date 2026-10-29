@@ -430,6 +430,31 @@ function mergeLabelOptions(configuredLabelOptions, labels) {
 }
 
 // Returns { provider, emailAddress, labels, needsReplyCount, needsReplyByMessageId, inboxZero, scannedAt }
+// "Needs reply" = flagged by the labeling classifier AND still unread in the inbox.
+async function loadNeedsReplyState(userId, userData, projectId, connection) {
+    const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+    const [auditFlags, unreadIds, configSnaps] = await Promise.all([
+        loadNeedsReplyFlagsFromAudit(userId, auditLookupKeys),
+        gmailEmailLine.getUnreadInboxMessageIds(userId, projectId, NEEDS_REPLY_AUDIT_WINDOW).catch(() => null),
+        Promise.all(
+            auditLookupKeys.map(key =>
+                getGmailLabelingConfigRef(userId, key)
+                    .get()
+                    .catch(() => null)
+            )
+        ),
+    ])
+    const labelingEnabled = configSnaps.some(configSnap => !!configSnap?.exists && configSnap.data()?.enabled === true)
+    if (unreadIds === null) return { needsReplyByMessageId: auditFlags, labelingEnabled }
+
+    const unreadSet = new Set(unreadIds)
+    const needsReplyByMessageId = {}
+    Object.keys(auditFlags).forEach(id => {
+        if (unreadSet.has(id)) needsReplyByMessageId[id] = true
+    })
+    return { needsReplyByMessageId, labelingEnabled }
+}
+
 async function getEmailLineSummary(userId, projectId, options = {}) {
     const { userData: providedUserData, includeNeedsReply } = options
     const userData = await loadUserData(userId, providedUserData)
@@ -448,12 +473,26 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
         }
     }
 
+    // The label configuration and the needs-reply flags do not depend on the provider summary,
+    // so they load alongside it instead of after it. Both catch their own read failures.
+    const labelDefinitionsPromise = loadConfiguredLabelDefinitions(userId, userData, projectId, connection)
+    const needsReplyPromise =
+        includeNeedsReply && connection.provider !== 'microsoft'
+            ? loadNeedsReplyState(userId, userData, projectId, connection)
+            : Promise.resolve({ needsReplyByMessageId: {}, labelingEnabled: false })
+    // A provider failure below returns before these are awaited; keep that from turning an
+    // unexpected rejection into an unhandled one. Awaiting them later still sees it.
+    labelDefinitionsPromise.catch(() => {})
+    needsReplyPromise.catch(() => {})
+
     let summary
     try {
         if (connection.provider === 'microsoft') {
             summary = await microsoftEmailLine.getMicrosoftLabelSummary(userId, projectId)
         } else {
-            summary = await gmailEmailLine.getGmailLabelSummary(userId, projectId)
+            summary = await gmailEmailLine.getGmailLabelSummary(userId, projectId, {
+                mailboxKey: connection.emailAddress,
+            })
         }
     } catch (error) {
         if (isAuthError(error)) throw new EmailLineAuthError()
@@ -461,39 +500,13 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
     }
 
     const rawLabels = summary.labels || []
-    const labelDefinitions = await loadConfiguredLabelDefinitions(userId, userData, projectId, connection)
+    const labelDefinitions = await labelDefinitionsPromise
     const configuredLabelOptions = buildLabelOptionsFromDefinitions(labelDefinitions)
     const labels = attachLabelProjectIds(rawLabels, labelDefinitions, connection)
     const inboxZero = labels.every(
         label => (Number.isFinite(label.threadCount) ? label.threadCount : label.unreadCount) === 0
     )
-
-    // "Needs reply" = flagged by the labeling classifier AND still unread in the inbox.
-    let needsReplyByMessageId = {}
-    let labelingEnabled = false
-    if (includeNeedsReply && connection.provider !== 'microsoft') {
-        const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
-        const [auditFlags, unreadIds, configSnaps] = await Promise.all([
-            loadNeedsReplyFlagsFromAudit(userId, auditLookupKeys),
-            gmailEmailLine.getUnreadInboxMessageIds(userId, projectId, NEEDS_REPLY_AUDIT_WINDOW).catch(() => null),
-            Promise.all(
-                auditLookupKeys.map(key =>
-                    getGmailLabelingConfigRef(userId, key)
-                        .get()
-                        .catch(() => null)
-                )
-            ),
-        ])
-        labelingEnabled = configSnaps.some(configSnap => !!configSnap?.exists && configSnap.data()?.enabled === true)
-        if (unreadIds === null) {
-            needsReplyByMessageId = auditFlags
-        } else {
-            const unreadSet = new Set(unreadIds)
-            Object.keys(auditFlags).forEach(id => {
-                if (unreadSet.has(id)) needsReplyByMessageId[id] = true
-            })
-        }
-    }
+    const { needsReplyByMessageId, labelingEnabled } = await needsReplyPromise
 
     return {
         provider: connection.provider,
