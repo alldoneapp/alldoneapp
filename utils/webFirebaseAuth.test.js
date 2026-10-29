@@ -63,23 +63,9 @@ describe('webFirebaseAuth', () => {
         ).toBe(fallbackAuthDomain)
     })
 
-    test('selects redirect for mobile only when the auth handler is same-origin', () => {
-        expect(
-            shouldUseGoogleRedirect({
-                isMobile: true,
-                isLocalDev: false,
-                authDomain: 'my.alldone.app',
-                location: productionLocation,
-            })
-        ).toBe(true)
-        expect(
-            shouldUseGoogleRedirect({
-                isMobile: true,
-                isLocalDev: false,
-                authDomain: 'alldonealeph.firebaseapp.com',
-                location: productionLocation,
-            })
-        ).toBe(false)
+    test('selects the same-window redirect on every device when the auth handler is same-origin (AT-2919)', () => {
+        expect(shouldUseGoogleRedirect({ authDomain: 'my.alldone.app', location: productionLocation })).toBe(true)
+        // The old mobile-only arguments no longer decide anything: desktop redirects too.
         expect(
             shouldUseGoogleRedirect({
                 isMobile: false,
@@ -87,6 +73,28 @@ describe('webFirebaseAuth', () => {
                 authDomain: 'my.alldone.app',
                 location: productionLocation,
             })
+        ).toBe(true)
+        expect(
+            shouldUseGoogleRedirect({
+                authDomain: 'localhost:8080',
+                location: { host: 'localhost:8080', hostname: 'localhost', protocol: 'https:' },
+            })
+        ).toBe(true)
+    })
+
+    test('keeps the popup fallback where a redirect cannot complete', () => {
+        // Cross-origin handler: partitioned third-party storage loses the redirect result.
+        expect(
+            shouldUseGoogleRedirect({ authDomain: 'alldonealeph.firebaseapp.com', location: productionLocation })
         ).toBe(false)
+        // Plain HTTP (local dev without the HTTPS server).
+        expect(
+            shouldUseGoogleRedirect({
+                authDomain: 'localhost:8080',
+                location: { host: 'localhost:8080', hostname: 'localhost', protocol: 'http:' },
+            })
+        ).toBe(false)
+        expect(shouldUseGoogleRedirect({ authDomain: 'my.alldone.app', location: null })).toBe(false)
+        expect(shouldUseGoogleRedirect({ authDomain: undefined, location: productionLocation })).toBe(false)
     })
 })

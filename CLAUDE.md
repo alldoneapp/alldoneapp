@@ -1777,20 +1777,6 @@ members-snapshot reducer threw. Never compare that lookup with `null`; the `Stor
 reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
 `__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
 
-**A lost callable response is not a failed message (AT-2921).** The Anna composer starts each run
-with `askToBotSecondGen`, and a phone drops that connection when the app goes to the background.
-The Firebase callable SDK reports any failed `fetch` (status 0) as `FunctionsError('internal',
-'internal')`, so the question showed "internal" + Retry while the server, which logged a 200, had
-already written the full answer below it. `useAnnaMessageSends` now judges a dispatched request by
-the chat first: a persisted reply with `assistantRun.triggerMessageId === messageId` that is not
-`failed` settles it, whatever the transport said, and Retry is refused for it. A transport loss
-(`isConnectionLoss` in `annaSubmissionReconciliation.js`, which keeps upper-case `INTERNAL` and
-other server-sent errors as real failures) enters `confirming`: a waiting indicator, no error and no
-Retry, until a reply arrives. If none arrives within the AT-2848 catch-up window of 120s after the
-message was saved, and at least 15s while the page is visible, the hook shows a readable "connection
-was interrupted" error. A `failed` reply still offers Retry. Pinned by
-`annaSubmissionReconciliation.test.js` and the AT-2921 block of `AnnaConversation.test.js`.
-
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
