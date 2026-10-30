@@ -46,11 +46,9 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
             const { index } = quill.getSelection() || selection.current
             insertAttachmentInsideEditor(index, quill, text, uri)
         },
-        // Returns whether the transcript actually landed, so a hold-to-send (AT-2929) never
-        // sends a draft the transcript did not reach.
         insertDictation: (text, visible) => {
             const quill = editor.current
-            if (!quill || disabled || !text) return false
+            if (!quill || disabled || !text) return
             const shouldFocus = visible && frame.current?.closest('form')?.contains(document.activeElement)
             const { index, length } = quill.getSelection() || selection.current
             const before = index > 0 ? quill.getText(index - 1, 1) : ''
@@ -64,7 +62,6 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
             // setSelection focuses Quill: a delayed transcript must leave the
             // workspace in control when the user has moved away from the chat.
             if (shouldFocus) quill.setSelection(caret, 0, 'silent')
-            return true
         },
     }))
 
