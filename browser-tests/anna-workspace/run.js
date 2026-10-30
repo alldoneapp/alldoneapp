@@ -627,7 +627,30 @@ async function checkDictation(page, width) {
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await page.waitForFunction(() => document.querySelector('.anna-composer .ql-editor').textContent === '')
     await page.getByText('Please remember: Call Sam tomorrow.', { exact: true }).waitFor({ state: 'visible' })
-    console.info(`PASS ${width}px: dictation inserts editable text; call exclusion, cancellation and layout work`)
+    // AT-2929: holding and releasing in place sends the take as soon as it is transcribed,
+    // with no click on Send. The fake recorder reports the take on stop().
+    await page.evaluate(() => {
+        window.__annaDictationRequest = null
+    })
+    const sendsBefore = await page.locator('.anna-messages').getByText('Book the train.', { exact: true }).count()
+    assert.equal(sendsBefore, 0)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.getByTestId('ramble-hold-card').waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
+    await page.mouse.up()
+    await page.waitForFunction(() => !!window.__annaDictationRequest)
+    await page.evaluate(() => window.__annaFinishDictation('Book the train.'))
+    await page.locator('.anna-messages').getByText('Book the train.', { exact: true }).waitFor({ state: 'visible' })
+    await page.waitForFunction(() => document.querySelector('.anna-composer .ql-editor').textContent === '')
+    assert.equal(
+        await page.locator('.anna-messages').getByText('Book the train.', { exact: true }).count(),
+        1,
+        'A held take is sent exactly once'
+    )
+    console.info(
+        `PASS ${width}px: dictation inserts editable text; call exclusion, cancellation, hold-to-send and layout work`
+    )
 }
 
 async function checkLaunchLayout(page, width) {

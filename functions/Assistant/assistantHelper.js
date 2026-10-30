@@ -129,7 +129,6 @@ const {
     rememberDelegationDisplayName,
 } = require('./assistantProgressStatus')
 const { advanceAssistantActivity } = require('../shared/assistantActivityHistory')
-const { isChangingWorkspace } = require('../shared/assistantWorkspaceChangeTools')
 const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
@@ -11114,17 +11113,12 @@ async function storeChunks(
                     const toolExecutionStartedAt = Date.now()
                     let batchState = { total: currentToolCalls.length, completed: 0, active: [0] }
                     let toolStatusMessage = ''
-                    // AT-2926: whether the last published activity said a workspace-changing
-                    // tool is executing. A flip is written at once (see onState) rather than
-                    // on the next 7s tick, so the assistant-mode edge tracks the real call.
-                    let publishedChangesWorkspace = null
                     let stopToolProgressUpdates = false
                     let progressWrites = Promise.resolve()
                     const updateToolProgressStatus = () => {
                         progressWrites = progressWrites
                             .then(async () => {
                                 if (stopToolProgressUpdates) return
-                                const changesWorkspace = isChangingWorkspace(currentToolCalls, batchState.active)
                                 const activeCall = currentToolCalls[batchState.active[0] ?? 0]
                                 const toolName = activeCall?.function?.name
                                 let toolArgs = {}
@@ -11145,12 +11139,7 @@ async function storeChunks(
                                           toolArgs,
                                           elapsedMs: Date.now() - toolExecutionStartedAt,
                                       })
-                                if (
-                                    nextStatusMessage === toolStatusMessage &&
-                                    changesWorkspace === publishedChangesWorkspace
-                                )
-                                    return
-                                publishedChangesWorkspace = changesWorkspace
+                                if (nextStatusMessage === toolStatusMessage) return
                                 commentText = toolStatusMessage
                                     ? commentText.replace(toolStatusMessage, () => nextStatusMessage)
                                     : appendStatusBlock(commentText, nextStatusMessage)
@@ -11168,7 +11157,6 @@ async function storeChunks(
                                             total: batchState.total,
                                             completed: batchState.completed,
                                             active: batchState.active.length,
-                                            changesWorkspace,
                                         })
                                     )
                                 await safeCommentUpdate({
@@ -11288,18 +11276,6 @@ async function storeChunks(
                             {
                                 onState: state => {
                                     batchState = state
-                                    if (
-                                        !assistantRun ||
-                                        publishedChangesWorkspace === null ||
-                                        isChangingWorkspace(currentToolCalls, state.active) ===
-                                            publishedChangesWorkspace
-                                    )
-                                        return
-                                    // Deferred one macrotask: between two sequential calls the batch
-                                    // briefly reports no active call, and two consecutive writes must
-                                    // not flash the edge off and on again. The update re-reads the
-                                    // settled batchState and skips itself when nothing changed.
-                                    setTimeout(updateToolProgressStatus, 0)
                                 },
                                 recoverError: (error, toolCall) => {
                                     if (!toolCallFailure.isRecoverableToolError(error)) return undefined

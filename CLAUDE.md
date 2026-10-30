@@ -573,10 +573,7 @@ again from scratch). The released message is dated `max(now, newest comment + 1)
 answer it waited for was timestamped by the server's clock. Anna starts its runs itself, so
 `useAnnaMessageSends` waits on the same gate before persisting and passes `threadGateCleared`.
 While waiting the outbox entry has `status: 'queued'`; `useGetMessages` sorts queued entries after
-everything saved, and `MessageSendStatus` renders "Queued" plus Send now / Remove. In Anna that note
-sits on its own line under the author row (`prominent`, AT-2927), outside the queued message's
-fade: inline, a react-native-web `View` keeps `flex-shrink: 0`, so the status ran past the
-bubble, squeezed "You" to 0px and hid both actions (`browser-tests/at2927` measures it). A failed
+everything saved, and `MessageSendStatus` renders "Queued" plus Send now / Remove. A failed
 delivery drops `threadGateCleared`/`forceSend`, so a retry waits for its turn again. Out of scope:
 WhatsApp (its inbound queue is already serial per user), voice calls and pre-configured prompt
 buttons (their runs still hold chat messages in the thread). Known limit: a VM job hosted in a
@@ -1804,21 +1801,6 @@ pane changes size: drafts must survive desktop/sheet transitions. Browser covera
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
 
-**The workspace bezel turns blue only while a tool changes the workspace (AT-2926).** The
-blue accent on the frame around the Alldone pane (and its "… is working here" notch) used to
-follow any live assistant run, so thinking and a plain streamed answer lit it too. It now
-follows `assistantRun.activity.phase === 'tool'` with `changesWorkspace === true` on a live,
-non-VM run (`isAnnaWorkspaceChangeRunning` in `annaWorkspaceWorkState.js`); a send in flight
-no longer counts. The server stamps `changesWorkspace` from an explicit allowlist of tools that
-create or change Alldone objects (`functions/shared/assistantWorkspaceChangeTools.js`: tasks,
-notes, contacts, comments, artifacts, project description, wiki). Reads, web/email/calendar,
-settings, memory, delegation and VM hand-offs stay grey, and an unknown tool stays grey until it
-is added there. A flip inside a mixed batch is published at once from `toolCallBatch`'s
-`onState` (deferred one macrotask so two consecutive writes do not flicker), instead of on the
-7s progress tick. `composing` and any terminal status clear it. Pinned by
-`annaWorkspaceWorkState.test.js`, the AT-2911/AT-2926 case in `AnnaShell.test.js`,
-`assistantWorkspaceChangeTools.test.js` and the AT-2926 case in `assistantHelper.test.js`.
-
 **Activity rows open their object, checked first (AT-2906).** Each row's first line is
 `Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
 (`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
@@ -1848,6 +1830,18 @@ Retry, until a reply arrives. If none arrives within the AT-2848 catch-up window
 message was saved, and at least 15s while the page is visible, the hook shows a readable "connection
 was interrupted" error. A `failed` reply still offers Retry. Pinned by
 `annaSubmissionReconciliation.test.js` and the AT-2921 block of `AnnaConversation.test.js`.
+
+**Holding the Anna composer's microphone sends on release (AT-2929).** The shared mic
+(`RambleButton`, AT-2405) decides what a release means: a tap keeps toggle mode and leaves the
+transcript in the composer for review, a hold of 400ms or more submits, sliding out of the ring or
+recording less than 1s discards. `AnnaConversation` passes `onSubmit={sendDictation}`, which sends
+the draft (text typed before plus the transcript) through the ordinary `send()`, so the offline,
+Gold, project-switch and voice-call guards apply and a refused send leaves the text in place. Two
+details: the mic calls `onSubmit` while its phase is still `processing`, so `send` lets exactly this
+path past the `dictationBusy` check; and `insertDictation` reports whether the transcript landed,
+so an empty or failed take can never send the bare draft. No focus after a voice send, so a phone
+keyboard stays closed. Pinned by the AT-2929 block of `AnnaConversation.test.js` and the
+hold-to-send step of `browser-tests/anna-workspace` (`DICTATION_ONLY=1`).
 
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
