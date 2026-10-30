@@ -43,6 +43,7 @@ import { AnnaActivityGroup } from './AnnaActivityNotice'
 import { groupAnnaTimeline } from './annaActivityGroups'
 import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
 import useAnnaChatScroll from './useAnnaChatScroll'
+import useAnnaFileDrop from './useAnnaFileDrop'
 
 const MESSAGES_PER_PAGE = 50
 
@@ -337,11 +338,29 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     useLayoutEffect(() => {
         if (active && visible) activate()
     }, [active, visible, activate])
+    // AT-2928: a file dropped anywhere on the chat pane joins the draft, under the same
+    // conditions as the attach button.
+    const attachmentsBlocked = voiceActive || dictationBusy || offline || !conversation.projectId
+    const draggingFiles = useAnnaFileDrop({
+        getPane: () => scroll.current?.closest('.anna-conversation') || scroll.current?.parentElement,
+        canAccept: () => !attachmentsBlocked && !isBrowserOffline(),
+        onFiles: files => {
+            if (composer.current?.addFiles(files)?.length) onExpand?.()
+        },
+    })
     useImperativeHandle(ref, () => ({ scrollToLatest: activate, focusInput: () => composer.current?.focus() }), [
         activate,
     ])
     return (
         <>
+            {draggingFiles && (
+                <div className="anna-drop-overlay" aria-hidden="true" data-testid="anna-drop-overlay">
+                    <div className="anna-drop-overlay-card">
+                        <Icon name="paperclip" size={24} color="currentColor" />
+                        <span>{translate('Drop files to attach')}</span>
+                    </div>
+                </div>
+            )}
             <div
                 className="anna-messages"
                 ref={scroll}
@@ -486,9 +505,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                                     pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
                                                 )
                                             }}
-                                            isDisabled={
-                                                voiceActive || dictationBusy || offline || !conversation.projectId
-                                            }
+                                            isDisabled={attachmentsBlocked}
                                             addAttachmentTag={(text, uri) => {
                                                 if (voiceActive || dictationBusy || offline || isBrowserOffline())
                                                     return

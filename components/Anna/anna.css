@@ -375,15 +375,9 @@
     padding: 14px 16px;
     border: 1px solid var(--anna-border);
 }
-/* AT-2922: written while the previous answer was still running; sent once it is complete.
-   AT-2927: only the message fades. The queued note stays at full strength so it reads as the
-   state of the message rather than as more faded text. */
-.anna-message-queued > :not(.anna-message-queue-note) {
+/* AT-2922: written while the previous answer was still running; sent once it is complete. */
+.anna-message-queued {
     opacity: 0.6;
-}
-.anna-message-queue-note {
-    min-width: 0;
-    margin: -2px 0 10px;
 }
 .anna-message-author {
     display: flex;
@@ -973,6 +967,31 @@
 }
 .anna-mobile-dock {
     display: none;
+}
+/* AT-2928: shown while files are dragged over the chat pane. Never a hit target, so the
+   drag events keep landing on the pane's own elements underneath. */
+.anna-drop-overlay {
+    position: absolute;
+    inset: 8px;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--anna-focus);
+    border-radius: 16px;
+    background: rgba(240, 246, 255, 0.92);
+    pointer-events: none;
+}
+.anna-drop-overlay-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    color: var(--anna-focus);
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
 }
 @media (max-width: 760px) {
     .anna-header-note {

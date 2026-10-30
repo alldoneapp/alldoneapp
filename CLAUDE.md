@@ -573,10 +573,7 @@ again from scratch). The released message is dated `max(now, newest comment + 1)
 answer it waited for was timestamped by the server's clock. Anna starts its runs itself, so
 `useAnnaMessageSends` waits on the same gate before persisting and passes `threadGateCleared`.
 While waiting the outbox entry has `status: 'queued'`; `useGetMessages` sorts queued entries after
-everything saved, and `MessageSendStatus` renders "Queued" plus Send now / Remove. In Anna that note
-sits on its own line under the author row (`prominent`, AT-2927), outside the queued message's
-fade: inline, a react-native-web `View` keeps `flex-shrink: 0`, so the status ran past the
-bubble, squeezed "You" to 0px and hid both actions (`browser-tests/at2927` measures it). A failed
+everything saved, and `MessageSendStatus` renders "Queued" plus Send now / Remove. A failed
 delivery drops `threadGateCleared`/`forceSend`, so a retry waits for its turn again. Out of scope:
 WhatsApp (its inbound queue is already serial per user), voice calls and pre-configured prompt
 buttons (their runs still hold chat messages in the thread). Known limit: a VM job hosted in a
