@@ -644,7 +644,7 @@ it('reports persisted run completion to the workspace without waiting for the sp
         projectId: 'p1',
         chatId: 'anna_u1',
         busy: true,
-        running: true,
+        changingWorkspace: false,
         completedRequests: [],
     })
     mockMessages = [
@@ -655,7 +655,7 @@ it('reports persisted run completion to the workspace without waiting for the sp
         projectId: 'p1',
         chatId: 'anna_u1',
         busy: false,
-        running: false,
+        changingWorkspace: false,
         completedRequests: ['request'],
     })
 })
