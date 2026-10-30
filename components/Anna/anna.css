@@ -375,9 +375,15 @@
     padding: 14px 16px;
     border: 1px solid var(--anna-border);
 }
-/* AT-2922: written while the previous answer was still running; sent once it is complete. */
-.anna-message-queued {
+/* AT-2922: written while the previous answer was still running; sent once it is complete.
+   AT-2927: only the message fades. The queued note stays at full strength so it reads as the
+   state of the message rather than as more faded text. */
+.anna-message-queued > :not(.anna-message-queue-note) {
     opacity: 0.6;
+}
+.anna-message-queue-note {
+    min-width: 0;
+    margin: -2px 0 10px;
 }
 .anna-message-author {
     display: flex;
@@ -1213,8 +1219,7 @@
         padding-inline: var(--anna-workspace-gutter);
         background: #fff;
     }
-    /* While a tool call changes the workspace, the bezel takes its accent: the chat visibly
-       drives it. Thinking and answering keep the default bezel (AT-2926). */
+    /* While the assistant answers, the bezel takes its accent: the chat visibly drives it. */
     .anna-zoom-active:not(.anna-chat-only) .anna-stage.anna-stage-working {
         border-color: var(--anna-accent);
     }

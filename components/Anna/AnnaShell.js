@@ -705,15 +705,15 @@ export default function AnnaShell({ children, routeId }) {
             workState?.busy !== false,
         completedRequests: workState?.completedRequests || [],
     }
-    // Lights the workspace frame while the assistant is changing the workspace from this
-    // conversation (AT-2911), and only then: a tool call that creates or updates an Alldone
-    // object, never a send in flight, thinking or a streamed answer (AT-2926).
+    // Lights the workspace frame while the assistant is answering in this conversation,
+    // so the chat reads as the control surface for the app beside it (AT-2911).
     const assistantWorking =
         visibleWorkspace &&
         !mobile &&
-        workState?.projectId === conversation?.projectId &&
-        workState?.chatId === conversation?.id &&
-        workState?.changingWorkspace === true
+        (textBusy ||
+            (workState?.projectId === conversation?.projectId &&
+                workState?.chatId === conversation?.id &&
+                workState?.running === true))
 
     const interceptLink = event => {
         if (
