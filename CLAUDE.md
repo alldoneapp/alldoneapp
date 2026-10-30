@@ -1849,6 +1849,18 @@ message was saved, and at least 15s while the page is visible, the hook shows a 
 was interrupted" error. A `failed` reply still offers Retry. Pinned by
 `annaSubmissionReconciliation.test.js` and the AT-2921 block of `AnnaConversation.test.js`.
 
+**Holding the Anna composer's microphone sends on release (AT-2929).** The shared mic
+(`RambleButton`, AT-2405) decides what a release means: a tap keeps toggle mode and leaves the
+transcript in the composer for review, a hold of 400ms or more submits, sliding out of the ring or
+recording less than 1s discards. `AnnaConversation` passes `onSubmit={sendDictation}`, which sends
+the draft (text typed before plus the transcript) through the ordinary `send()`, so the offline,
+Gold, project-switch and voice-call guards apply and a refused send leaves the text in place. Two
+details: the mic calls `onSubmit` while its phase is still `processing`, so `send` lets exactly this
+path past the `dictationBusy` check; and `insertDictation` reports whether the transcript landed,
+so an empty or failed take can never send the bare draft. No focus after a voice send, so a phone
+keyboard stays closed. Pinned by the AT-2929 block of `AnnaConversation.test.js` and the
+hold-to-send step of `browser-tests/anna-workspace` (`DICTATION_ONLY=1`).
+
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after

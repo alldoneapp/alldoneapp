@@ -132,11 +132,15 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const resumed = useRef(null)
     const mounted = useRef(true)
+    // Set only when the latest transcript really reached the composer; consumed by the
+    // hold-to-send below so a failed or empty take can never send the draft on its own.
+    const dictationInserted = useRef(false)
     const insertDictatedText = text => {
+        dictationInserted.current = false
         const input = composer.current
         const transcript = text?.replace(/\r\n?/g, '\n').trim()
         if (!mounted.current || !input || !transcript) return
-        input.insertDictation(transcript, visible)
+        dictationInserted.current = input.insertDictation(transcript, visible) === true
     }
     const [preparingVoice, setPreparingVoice] = useState(false)
     const voiceRequest = useRef(0)
@@ -254,10 +258,12 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         }
     }
 
-    const send = (event, continuation = null) => {
+    const send = (event, continuation = null, { fromDictation = false } = {}) => {
         event?.preventDefault()
         const text = continuation?.text || draftRef.current.trim()
-        if (voiceActive || dictationBusy || !text || offline || isBrowserOffline()) return
+        // A hold-to-send arrives while the dictation phase is still 'processing' (the mic
+        // finishes its own phase after handing over the transcript), so only it may pass.
+        if (voiceActive || (dictationBusy && !fromDictation) || !text || offline || isBrowserOffline()) return
         // Wait for the selected project's chat, so a message never lands in the previous one.
         if (switching && !continuation) return
         if (!(user.gold > 0)) {
@@ -273,8 +279,22 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             // the same frame cannot send the same draft twice.
             changeDraft('')
             composer.current?.clear()
-            composer.current?.focus()
+            // Hold-to-send must not pull focus into the field: on a phone that would open
+            // the keyboard right after the user sent by voice (the AT-2422 lesson).
+            if (!fromDictation) composer.current?.focus()
         }
+    }
+    // AT-2929: holding the microphone and releasing sends the take at once. The mic decides
+    // what a release means (a tap keeps the toggle and leaves the text for review, sliding
+    // away or a too-short take discards) and calls this once per held take, right after
+    // `insertDictatedText`. The draft is read from its ref, so the transcript is already in
+    // it; together with anything typed before, it goes out exactly like a manual send, with
+    // every guard of `send` (offline, Gold, project switch, voice call) still applying. When
+    // one of them refuses, the transcript simply stays in the composer.
+    const sendDictation = () => {
+        if (!dictationInserted.current) return
+        dictationInserted.current = false
+        send(null, null, { fromDictation: true })
     }
     const retryMessage = key => {
         if (voiceActive || offline || isBrowserOffline()) return
@@ -478,6 +498,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             targetKind="generic"
                                             getCurrentText={() => draftRef.current}
                                             onTextReady={insertDictatedText}
+                                            onSubmit={sendDictation}
                                             onPhaseChange={setDictationPhase}
                                             getOverlayViewport={() => {
                                                 const pane = composer.current?.getPane()

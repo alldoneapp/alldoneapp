@@ -477,7 +477,8 @@ it('inserts dictation at the selection and leaves it in the composer for review'
     })
     expect(mockDictation.projectId).toBe('p1')
     expect(mockDictation.targetKind).toBe('generic')
-    expect(mockDictation.onSubmit).toBeUndefined()
+    // A tap-started take never calls onSubmit; only a held one does (AT-2929).
+    expect(typeof mockDictation.onSubmit).toBe('function')
     expect(input.value).toBe('Please create a task tomorrow.')
     expect(input.selectionStart).toBe(20)
     expect(document.activeElement).toBe(input)
@@ -507,6 +508,79 @@ it('preserves text typed while transcription runs and prevents competing calls o
     expect(container.querySelector('textarea').value).toBe('Updated draft: Remember the meeting.')
     expect(phone.disabled).toBe(false)
     expect(startCall).not.toHaveBeenCalled()
+})
+
+describe('hold the microphone to send (AT-2929)', () => {
+    // The real RambleButton calls onTextReady and then, only for a held take, onSubmit — both
+    // while its phase is still 'processing'. Model exactly that order here.
+    const holdAndRelease = async transcript => {
+        act(() => mockDictation.onPhaseChange('recording'))
+        act(() => mockDictation.onPhaseChange('processing'))
+        await act(async () => {
+            mockDictation.onTextReady(transcript)
+            mockDictation.onSubmit(transcript)
+        })
+        act(() => mockDictation.onPhaseChange('idle'))
+    }
+
+    it('sends the transcript immediately on release, without a second click', async () => {
+        render()
+        await holdAndRelease('Call Sam tomorrow.')
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        expect(createObjectMessage.mock.calls[0][2]).toBe('Call Sam tomorrow.')
+        const input = container.querySelector('textarea')
+        expect(input.value).toBe('')
+        // Sending by voice must not open the keyboard on a phone.
+        expect(document.activeElement).not.toBe(input)
+    })
+
+    it('sends what was typed before together with the transcript', async () => {
+        render()
+        type('Please')
+        await holdAndRelease('remember the meeting.')
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        expect(createObjectMessage.mock.calls[0][2]).toBe('Please remember the meeting.')
+    })
+
+    it('sends once even if the release is reported twice', async () => {
+        render()
+        await holdAndRelease('Only once.')
+        await act(async () => mockDictation.onSubmit('Only once.'))
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('never sends the typed draft when the take produced no transcript', async () => {
+        render()
+        type('Half-written draft')
+        await holdAndRelease('   \n')
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('Half-written draft')
+    })
+
+    it('does not let an earlier tap-started take arm a later empty hold', async () => {
+        render()
+        // Tap: the transcript is inserted for review and nothing is sent.
+        act(() => mockDictation.onTextReady('Reviewed text'))
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        await holdAndRelease('')
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('Reviewed text')
+    })
+
+    it('keeps the transcript in the composer when sending is not possible', async () => {
+        render({ user: { uid: 'u1', gold: 0 } })
+        await holdAndRelease('No Gold left.')
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('No Gold left.')
+        expect(container.querySelector('[role="alert"]').textContent).toContain('You need Gold')
+    })
+
+    it('does not send while the selected project chat is still being resolved', async () => {
+        render({ switching: true })
+        await holdAndRelease('Wait for the project.')
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('Wait for the project.')
+    })
 })
 
 it('keeps dictation available while the assistant is answering another message', async () => {
