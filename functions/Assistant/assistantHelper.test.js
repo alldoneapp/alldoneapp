@@ -9316,6 +9316,8 @@ describe('parallel tool execution in both assistant paths', () => {
                                     total: 5,
                                     completed: 2,
                                     active: 3,
+                                    // AT-2926: reads never light the assistant-mode edge.
+                                    changesWorkspace: false,
                                 }),
                                 activityHistory: [
                                     expect.objectContaining({ phase: 'thinking' }),
@@ -9346,6 +9348,114 @@ describe('parallel tool execution in both assistant paths', () => {
                 'result-4',
             ])
         }
+    )
+})
+
+test('publishes changesWorkspace only while a workspace-changing call in the batch executes (AT-2926)', async () => {
+    const { storeChunks } = require('./assistantHelper')
+    jest.useFakeTimers()
+    const gate = () => {
+        let resolve
+        const promise = new Promise(done => {
+            resolve = done
+        })
+        return { resolve, promise }
+    }
+    const readGate = gate()
+    const writeGate = gate()
+    mockResponsesCreate.mockReset().mockResolvedValue([
+        { type: 'response.output_text.delta', delta: 'Done.' },
+        { type: 'response.completed', response: { output: [] } },
+    ])
+    mockFindCalendarAvailabilityForAssistantRequest.mockReset().mockImplementation(() => readGate.promise)
+    mockCreateAndPersistTask.mockReset().mockImplementation(() => writeGate.promise)
+    ProjectService.mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserProjects: jest.fn().mockResolvedValue([{ id: 'edge-project', name: 'Edge Project' }]),
+    }))
+    mockDocGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ defaultProjectId: 'edge-project', projectIds: ['edge-project'], userIds: ['edge-user'] }),
+    })
+    mockFirestoreGetAll.mockResolvedValue([
+        {
+            exists: true,
+            id: 'edge-assistant',
+            data: () => ({ allowedTools: ['find_calendar_availability', 'create_task'] }),
+        },
+        { exists: false },
+    ])
+    mockDocUpdate.mockClear()
+    const flush = async () => {
+        for (let i = 0; i < 150; i++) await Promise.resolve()
+    }
+    const lastActivity = () => {
+        const writes = mockDocUpdate.mock.calls.map(([update]) => update?.assistantRun?.activity).filter(Boolean)
+        return writes[writes.length - 1]
+    }
+    const calls = [
+        {
+            id: 'read',
+            type: 'function',
+            function: { name: 'find_calendar_availability', arguments: JSON.stringify({ durationMinutes: 30 }) },
+        },
+        {
+            id: 'write',
+            type: 'function',
+            function: { name: 'create_task', arguments: JSON.stringify({ name: 'Edge', projectId: 'edge-project' }) },
+        },
+    ]
+    const running = storeChunks(
+        'edge-project',
+        'topics',
+        'edge-chat',
+        [],
+        [{ additional_kwargs: { tool_calls: calls } }],
+        null,
+        'edge-assistant',
+        [],
+        [],
+        'Chat',
+        'Assistant',
+        'Project',
+        '',
+        'edge-user',
+        null,
+        [['user', 'Check my calendar and add a task']],
+        'MODEL_GPT6_SOL',
+        'TEMPERATURE_NORMAL',
+        ['find_calendar_availability', 'create_task'],
+        { projectId: 'edge-project', assistantId: 'edge-assistant', requestUserId: 'edge-user' },
+        null,
+        null,
+        { kind: 'workflow', runId: 'edge-run' }
+    )
+    try {
+        await flush()
+        expect(lastActivity()).toEqual(expect.objectContaining({ phase: 'tool', changesWorkspace: false }))
+        readGate.resolve({ success: true, options: [], message: 'free at 10' })
+        await flush()
+        await jest.advanceTimersByTimeAsync(0)
+        await flush()
+        expect(mockCreateAndPersistTask).toHaveBeenCalled()
+        expect(lastActivity()).toEqual(expect.objectContaining({ phase: 'tool', changesWorkspace: true }))
+    } finally {
+        readGate.resolve({ success: true, options: [], message: 'free at 10' })
+        writeGate.resolve({
+            success: true,
+            taskId: 'edge-task',
+            projectId: 'edge-project',
+            task: { id: 'edge-task', name: 'Edge', userId: 'edge-user', commentsData: { amount: 0 } },
+        })
+        try {
+            await running
+        } finally {
+            jest.useRealTimers()
+        }
+    }
+    // The batch is over: the next write moves the run to composing, which clears the edge.
+    expect(mockDocUpdate.mock.calls.some(([update]) => update?.assistantRun?.activity?.phase === 'composing')).toBe(
+        true
     )
 })
 
