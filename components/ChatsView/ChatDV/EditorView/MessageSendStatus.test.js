@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { TouchableOpacity, View } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import MessageSendStatus from './MessageSendStatus'
 import Icon from '../../../Icon'
 import { commentOutbox } from '../../../../utils/backends/Chats/commentOutbox'
@@ -56,5 +56,35 @@ it('uses the handlers of a caller that queues messages itself (Anna)', () => {
     act(() => remove.props.onPress())
     expect(onSendNow).toHaveBeenCalledTimes(1)
     expect(onRemove).toHaveBeenCalledTimes(1)
+    tree.unmount()
+})
+
+it('renders the prominent queued note as an icon beside a wrapping label and visible actions (AT-2927)', () => {
+    const onSendNow = jest.fn()
+    const onRemove = jest.fn()
+    const tree = renderer.create(
+        <MessageSendStatus pendingSend={{ status: 'queued' }} prominent onSendNow={onSendNow} onRemove={onRemove} />
+    )
+    const root = tree.root.findAllByType(View)[0]
+    expect(root.props.accessibilityLabel).toBe('Queued. Sends when the current answer is finished.')
+    const rootStyle = StyleSheet.flatten(root.props.style)
+    // A column next to the icon, not a wrapping row: the label must never drop below the icon.
+    expect(rootStyle.flexDirection).toBe('row')
+    expect(rootStyle.flexWrap).toBeUndefined()
+    expect(rootStyle.backgroundColor).toBeDefined()
+    expect(tree.root.findByType(Icon).props.size).toBe(14)
+    const [sendNow, remove] = tree.root.findAllByType(TouchableOpacity)
+    act(() => sendNow.props.onPress())
+    act(() => remove.props.onPress())
+    expect(onSendNow).toHaveBeenCalledTimes(1)
+    expect(onRemove).toHaveBeenCalledTimes(1)
+    tree.unmount()
+})
+
+it('lets the inline status shrink so a header row wraps it instead of overflowing (AT-2927)', () => {
+    const tree = renderer.create(<MessageSendStatus pendingSend={{ status: 'queued' }} />)
+    const style = StyleSheet.flatten(tree.root.findAllByType(View)[0].props.style)
+    expect(style.flexShrink).toBe(1)
+    expect(style.minWidth).toBe(0)
     tree.unmount()
 })
