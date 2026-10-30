@@ -8,7 +8,7 @@ import { threadRunGate } from '../../utils/backends/Chats/threadRunGate'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
+import { insertAttachmentInsideEditor, insertFilesAsAttachments } from '../Feeds/CommentsTextInput/textInputHelper'
 import { installAppResumeListener } from '../../utils/appResume'
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
     ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
@@ -27,7 +27,13 @@ jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({
     TASK_THEME: 'task',
     NEW_ATTACHMENT: '1',
     insertAttachmentInsideEditor: jest.fn(),
+    insertFilesAsAttachments: jest.fn(({ files, startIndex }) => ({
+        addedFiles: Array.from(files),
+        nextCursorIndex: startIndex + 3 * files.length,
+    })),
 }))
+let mockTrafficLimited = false
+jest.mock('../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: () => mockTrafficLimited }))
 jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const React = require('react')
     const Delta = require('quill-delta').default
@@ -189,6 +195,7 @@ beforeEach(() => {
     mockDictation = null
     mockAttachments = null
     mockDictationSupported = true
+    mockTrafficLimited = false
     mockMessages = []
     Object.keys(mockThreadMessages).forEach(key => delete mockThreadMessages[key])
     Object.keys(mockCreators).forEach(key => delete mockCreators[key])
@@ -1881,5 +1888,125 @@ describe('a request whose connection dropped while the app was in the background
         await submit()
         expect(alert().textContent).toContain('Your message could not be sent. Please try again.')
         expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+})
+
+describe('dropping files onto the chat pane (AT-2928)', () => {
+    const file = (name = 'plan.pdf') => new File(['x'], name, { type: 'application/pdf' })
+    const dragEvent = (type, { files = [], types = files.length ? ['Files'] : ['text/plain'] } = {}) => {
+        const event = new Event(type, { bubbles: true, cancelable: true })
+        Object.defineProperty(event, 'dataTransfer', { value: { files, types, dropEffect: 'none' } })
+        return event
+    }
+    const fire = (node, event) => {
+        act(() => node.dispatchEvent(event))
+        return event
+    }
+    const renderPane = (overrides = {}) =>
+        act(() =>
+            root.render(
+                <section className="anna-conversation">
+                    <header data-testid="pane-header">Anna</header>
+                    <AnnaConversation
+                        conversation={{ projectId: 'p1', id: 'anna_u1', assistantId: 'a1' }}
+                        assistant={{ displayName: 'Existing assistant' }}
+                        user={{ uid: 'u1', gold: 100 }}
+                        call={{ status: 'idle' }}
+                        onExpand={() => {}}
+                        {...overrides}
+                    />
+                </section>
+            )
+        )
+    const overlay = () => container.querySelector('[data-testid="anna-drop-overlay"]')
+    const messages = () => container.querySelector('.anna-messages')
+    const editor = () => container.querySelector('textarea')
+
+    it('shows drop feedback across the whole pane while files are dragged over it', () => {
+        renderPane()
+        const header = container.querySelector('[data-testid="pane-header"]')
+        const files = [file()]
+        expect(fire(header, dragEvent('dragenter', { files })).defaultPrevented).toBe(true)
+        expect(overlay().textContent).toContain('Drop files to attach')
+        // Moving into a child fires enter on the child before leave on the parent.
+        fire(messages(), dragEvent('dragenter', { files }))
+        fire(header, dragEvent('dragleave', { files }))
+        expect(overlay()).not.toBeNull()
+        const over = fire(editor(), dragEvent('dragover', { files }))
+        expect(over.defaultPrevented).toBe(true)
+        expect(over.dataTransfer.dropEffect).toBe('copy')
+        fire(messages(), dragEvent('dragleave', { files }))
+        expect(overlay()).toBeNull()
+    })
+
+    it('attaches files dropped on the message list to the composer at the caret, once', () => {
+        const onExpand = jest.fn()
+        renderPane({ onExpand })
+        type('Look at this')
+        editor().setSelectionRange(4, 4)
+        // Stands in for Quill's own uploader drop listener on the editor root (AT-2441).
+        const editorDrop = jest.fn()
+        editor().addEventListener('drop', editorDrop)
+        const files = [file('plan.pdf'), file('notes.txt')]
+        fire(messages(), dragEvent('dragenter', { files }))
+        const drop = fire(messages(), dragEvent('drop', { files }))
+        expect(drop.defaultPrevented).toBe(true)
+        expect(overlay()).toBeNull()
+        expect(insertFilesAsAttachments).toHaveBeenCalledTimes(1)
+        expect(insertFilesAsAttachments).toHaveBeenCalledWith(
+            expect.objectContaining({ files, startIndex: 4, editor: expect.any(Object) })
+        )
+        expect(onExpand).toHaveBeenCalledTimes(1)
+
+        // A drop straight onto the editor is claimed before the editor can insert it again.
+        fire(editor(), dragEvent('drop', { files: [file()] }))
+        expect(editorDrop).not.toHaveBeenCalled()
+        expect(insertFilesAsAttachments).toHaveBeenCalledTimes(2)
+    })
+
+    it('leaves drags without files alone, so text and task drags keep working', () => {
+        renderPane()
+        const editorDrop = jest.fn()
+        editor().addEventListener('drop', editorDrop)
+        expect(fire(messages(), dragEvent('dragenter')).defaultPrevented).toBe(false)
+        expect(overlay()).toBeNull()
+        expect(fire(editor(), dragEvent('drop')).defaultPrevented).toBe(false)
+        expect(editorDrop).toHaveBeenCalledTimes(1)
+        expect(insertFilesAsAttachments).not.toHaveBeenCalled()
+    })
+
+    it.each([
+        ['offline', { offline: true }],
+        ['without a project', { conversation: { id: 'anna_u1', assistantId: 'a1' } }],
+        ['during a voice call', { call: { status: 'connected', endCall: jest.fn() } }],
+    ])('refuses files %s but still keeps the browser from opening them', (_, overrides) => {
+        renderPane(overrides)
+        const files = [file()]
+        const over = fire(messages(), dragEvent('dragover', { files }))
+        expect(over.defaultPrevented).toBe(true)
+        expect(over.dataTransfer.dropEffect).toBe('none')
+        fire(messages(), dragEvent('dragenter', { files }))
+        expect(overlay()).toBeNull()
+        expect(fire(messages(), dragEvent('drop', { files })).defaultPrevented).toBe(true)
+        expect(insertFilesAsAttachments).not.toHaveBeenCalled()
+    })
+
+    it('refuses files while dictating and when the traffic quota is used up', () => {
+        renderPane()
+        const files = [file()]
+        act(() => mockDictation.onPhaseChange('recording'))
+        fire(messages(), dragEvent('drop', { files }))
+        act(() => mockDictation.onPhaseChange('idle'))
+        mockTrafficLimited = true
+        fire(messages(), dragEvent('drop', { files }))
+        expect(insertFilesAsAttachments).not.toHaveBeenCalled()
+    })
+
+    it('clears the feedback when the drag ends somewhere else', () => {
+        renderPane()
+        fire(messages(), dragEvent('dragenter', { files: [file()] }))
+        expect(overlay()).not.toBeNull()
+        act(() => window.dispatchEvent(new Event('dragend')))
+        expect(overlay()).toBeNull()
     })
 })
