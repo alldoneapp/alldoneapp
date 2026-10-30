@@ -1,12 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import ReactQuill from 'react-quill-new'
 import CustomTextInput3 from '../Feeds/CommentsTextInput/CustomTextInput3'
-import {
-    insertAttachmentInsideEditor,
-    insertFilesAsAttachments,
-    TASK_THEME,
-} from '../Feeds/CommentsTextInput/textInputHelper'
-import { checkIsLimitedByTraffic } from '../Premium/PremiumHelper'
+import { insertAttachmentInsideEditor, TASK_THEME } from '../Feeds/CommentsTextInput/textInputHelper'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../utils/assistantHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -51,20 +46,11 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
             const { index } = quill.getSelection() || selection.current
             insertAttachmentInsideEditor(index, quill, text, uri)
         },
-        // AT-2928: files dropped on the chat pane. Same embeds, size limit and traffic limit
-        // as the attach button and a paste, so sending uploads them through the usual path.
-        addFiles: files => {
-            const quill = editor.current
-            if (!quill || disabled || checkIsLimitedByTraffic(projectId)) return []
-            const { index, length } = quill.getSelection() || selection.current
-            const startIndex = Math.min(index + length, Math.max(0, quill.getLength() - 1))
-            const { addedFiles, nextCursorIndex } = insertFilesAsAttachments({ files, editor: quill, startIndex })
-            if (addedFiles.length > 0) selection.current = { index: nextCursorIndex, length: 0 }
-            return addedFiles
-        },
+        // Returns whether the transcript actually landed, so a hold-to-send (AT-2929) never
+        // sends a draft the transcript did not reach.
         insertDictation: (text, visible) => {
             const quill = editor.current
-            if (!quill || disabled || !text) return
+            if (!quill || disabled || !text) return false
             const shouldFocus = visible && frame.current?.closest('form')?.contains(document.activeElement)
             const { index, length } = quill.getSelection() || selection.current
             const before = index > 0 ? quill.getText(index - 1, 1) : ''
@@ -78,6 +64,7 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
             // setSelection focuses Quill: a delayed transcript must leave the
             // workspace in control when the user has moved away from the chat.
             if (shouldFocus) quill.setSelection(caret, 0, 'silent')
+            return true
         },
     }))
 
