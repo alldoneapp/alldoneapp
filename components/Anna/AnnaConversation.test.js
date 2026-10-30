@@ -1052,6 +1052,13 @@ it('queues a second message until the first assistant run has settled and keeps 
     expect(queued.textContent).toContain('Two')
     expect(queued.textContent).toContain('Queued. Sends when the current answer is finished.')
     expect([...container.querySelectorAll('.anna-message-user')].at(-1)).toBe(queued)
+    // AT-2927: the note sits on its own line, outside the author row (which it used to overflow)
+    // and outside the faded part of the message.
+    const note = queued.querySelector(':scope > .anna-message-queue-note')
+    expect(note.textContent).toContain('Queued. Sends when the current answer is finished.')
+    expect(note.querySelector('[aria-label$="Send now"]')).not.toBeNull()
+    expect(queued.querySelector('.anna-message-author').textContent).not.toContain('Queued.')
+    expect(queued.querySelector('.anna-message-author-name').textContent).toBe('You')
     expect(container.querySelector('textarea').disabled).toBe(false)
     expect(onSendingChange).toHaveBeenLastCalledWith(true)
 
