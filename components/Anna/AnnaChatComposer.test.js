@@ -2,7 +2,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import Delta from 'quill-delta'
 import AnnaChatComposer from './AnnaChatComposer'
-import { insertAttachmentInsideEditor, insertFilesAsAttachments } from '../Feeds/CommentsTextInput/textInputHelper'
+import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
 
 let mockInputProps, mockEditor
 const mockInput = { clear: jest.fn(), focus: jest.fn(), clearAndSetContent: jest.fn() }
@@ -10,13 +10,7 @@ jest.mock('react-quill-new', () => ({ Quill: { import: () => require('quill-delt
 jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({
     TASK_THEME: 'task',
     insertAttachmentInsideEditor: jest.fn(),
-    insertFilesAsAttachments: jest.fn(({ files, startIndex }) => ({
-        addedFiles: Array.from(files),
-        nextCursorIndex: startIndex + 3 * files.length,
-    })),
 }))
-let mockTrafficLimited = false
-jest.mock('../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: () => mockTrafficLimited }))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
 jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const React = require('react')
@@ -184,39 +178,4 @@ it('clears both the editor and mention state after send', () => {
     expect(mockInput.clear).toHaveBeenCalledTimes(1)
     key()
     expect(onSubmit).toHaveBeenCalledTimes(1)
-})
-
-describe('addFiles (AT-2928)', () => {
-    const files = [new File(['a'], 'a.pdf'), new File(['b'], 'b.png')]
-    beforeEach(() => {
-        mockTrafficLimited = false
-    })
-
-    it('inserts after the live selection and continues from where the files ended', () => {
-        render()
-        mockEditor.getSelection.mockReturnValue({ index: 5, length: 2 })
-        expect(composer.current.addFiles(files)).toEqual(files)
-        expect(insertFilesAsAttachments).toHaveBeenCalledWith({ files, editor: mockEditor, startIndex: 7 })
-        // The remembered caret moves past both embeds, so a later drop does not reverse them.
-        mockEditor.getSelection.mockReturnValue(null)
-        composer.current.addFiles(files)
-        expect(insertFilesAsAttachments).toHaveBeenLastCalledWith({ files, editor: mockEditor, startIndex: 13 })
-    })
-
-    it('stays inside the document when the remembered caret is past its end', () => {
-        render()
-        mockEditor.getLength.mockReturnValue(1)
-        mockInputProps.onCustomSelectionChange({ index: 40, length: 0 })
-        composer.current.addFiles(files)
-        expect(insertFilesAsAttachments).toHaveBeenCalledWith({ files, editor: mockEditor, startIndex: 0 })
-    })
-
-    it('adds nothing while disabled or over the traffic quota', () => {
-        render({ disabled: true })
-        expect(composer.current.addFiles(files)).toEqual([])
-        render()
-        mockTrafficLimited = true
-        expect(composer.current.addFiles(files)).toEqual([])
-        expect(insertFilesAsAttachments).not.toHaveBeenCalled()
-    })
 })

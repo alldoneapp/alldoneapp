@@ -1801,6 +1801,21 @@ pane changes size: drafts must survive desktop/sheet transitions. Browser covera
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
 
+**The workspace bezel turns blue only while a tool changes the workspace (AT-2926).** The
+blue accent on the frame around the Alldone pane (and its "… is working here" notch) used to
+follow any live assistant run, so thinking and a plain streamed answer lit it too. It now
+follows `assistantRun.activity.phase === 'tool'` with `changesWorkspace === true` on a live,
+non-VM run (`isAnnaWorkspaceChangeRunning` in `annaWorkspaceWorkState.js`); a send in flight
+no longer counts. The server stamps `changesWorkspace` from an explicit allowlist of tools that
+create or change Alldone objects (`functions/shared/assistantWorkspaceChangeTools.js`: tasks,
+notes, contacts, comments, artifacts, project description, wiki). Reads, web/email/calendar,
+settings, memory, delegation and VM hand-offs stay grey, and an unknown tool stays grey until it
+is added there. A flip inside a mixed batch is published at once from `toolCallBatch`'s
+`onState` (deferred one macrotask so two consecutive writes do not flicker), instead of on the
+7s progress tick. `composing` and any terminal status clear it. Pinned by
+`annaWorkspaceWorkState.test.js`, the AT-2911/AT-2926 case in `AnnaShell.test.js`,
+`assistantWorkspaceChangeTools.test.js` and the AT-2926 case in `assistantHelper.test.js`.
+
 **Activity rows open their object, checked first (AT-2906).** Each row's first line is
 `Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
 (`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
