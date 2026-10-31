@@ -102,6 +102,7 @@ function normalizeServerConfig(serverConfig) {
  *  - authType 'none'   -> no auth header
  *  - authType 'bearer' -> Authorization: Bearer <secret.token>
  *  - authType 'oauth'  -> Authorization: Bearer <secret.accessToken>
+ *  - authType 'alldone_app' -> Authorization: Bearer <alldone.app token minted for the requesting user>
  *
  * For OAuth we currently inject the already-resolved access token as a bearer
  * header. Full refresh-on-401 via an OAuthClientProvider is a later layer; the
@@ -114,6 +115,12 @@ function buildAuthHeaders(serverConfig, secret) {
     if (authType === 'bearer') {
         const token = String(secret?.token || '').trim()
         if (!token) throw new Error('MCP bearer auth is configured but no token was provided')
+        return { Authorization: `Bearer ${token}` }
+    }
+
+    if (authType === 'alldone_app') {
+        const token = String(secret?.token || '').trim()
+        if (!token) throw new Error('alldone.team needs a token for the requesting user')
         return { Authorization: `Bearer ${token}` }
     }
 

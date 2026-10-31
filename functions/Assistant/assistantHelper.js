@@ -1765,20 +1765,23 @@ async function getAssistantMcpServers(projectId, assistantId) {
 // Each server is queried in parallel; a server that fails to respond is skipped
 // (its tools just don't appear) so one bad server can't break the whole request.
 async function getReachableMcpTools(toolRuntimeContext) {
-    const { projectId, assistantId } = toolRuntimeContext || {}
+    const { projectId, assistantId, requestUserId } = toolRuntimeContext || {}
     const servers = await getAssistantMcpServers(projectId, assistantId)
     if (!servers.length) return []
 
     const mcpClient = require('./mcpClient')
-    const { getValidMcpSecret } = require('../MCP/mcpAssistantConnect')
+    const { resolveMcpSecret } = require('../MCP/mcpAssistantConnect')
 
     const perServer = await Promise.all(
         servers.map(async server => {
             try {
-                const secret =
-                    server.authType && server.authType !== 'none'
-                        ? await getValidMcpSecret(projectId, assistantId, server.id)
-                        : null
+                const secret = await resolveMcpSecret({
+                    authType: server.authType,
+                    projectId,
+                    assistantId,
+                    serverId: server.id,
+                    requestUserId,
+                })
                 const tools = await mcpClient.listTools(server, secret)
                 return tools.map(tool => ({
                     toolName: buildMcpToolName({
@@ -1839,14 +1842,17 @@ async function resolveMcpToolTargetByName(toolName, toolRuntimeContext = null) {
 }
 
 // Execute a single MCP tool call against the resolved remote server.
-async function executeMcpTool({ target, toolArgs, projectId, assistantId }) {
+async function executeMcpTool({ target, toolArgs, projectId, assistantId, requestUserId }) {
     const mcpClient = require('./mcpClient')
-    const { getValidMcpSecret } = require('../MCP/mcpAssistantConnect')
+    const { resolveMcpSecret } = require('../MCP/mcpAssistantConnect')
 
-    const secret =
-        target.serverConfig.authType && target.serverConfig.authType !== 'none'
-            ? await getValidMcpSecret(projectId, assistantId, target.serverId)
-            : null
+    const secret = await resolveMcpSecret({
+        authType: target.serverConfig.authType,
+        projectId,
+        assistantId,
+        serverId: target.serverId,
+        requestUserId,
+    })
 
     let raw
     try {
@@ -5538,7 +5544,7 @@ async function executeToolNativelyImpl(
             throw new Error(`MCP tool is not accessible: ${toolName}`)
         }
 
-        const result = await executeMcpTool({ target, toolArgs, projectId, assistantId })
+        const result = await executeMcpTool({ target, toolArgs, projectId, assistantId, requestUserId })
 
         // Best-effort metered gold charge for the MCP call (mirrors other billable tools).
         try {

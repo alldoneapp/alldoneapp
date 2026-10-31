@@ -12,6 +12,13 @@ const { getVerifiedAccountEmail, findUserIdByVerifiedEmail } = require('../share
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
 const MAX_ACTIVE_TOKENS_PER_USER = 10
+const MENUBAR_APP_ID = 'anna-menubar'
+// Tokens alldone.app hands to alldone.team/mcp when an assistant acts for the user there. They
+// expire, never count against the menubar app's devices, and alldone.team accepts only these.
+const ALLDONE_TEAM_MCP_APP_ID = 'alldone-team-mcp'
+const ALLDONE_TEAM_MCP_TOKEN_TTL_MS = 60 * 60 * 1000
+const ALLDONE_TEAM_MCP_TOKEN_REUSE_MARGIN_MS = 10 * 60 * 1000
+const alldoneTeamMcpTokens = new Map()
 const LAST_USED_UPDATE_THROTTLE_MS = 5 * 60 * 1000
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60
 
@@ -124,11 +131,14 @@ async function mintMenubarAppToken(userId) {
             .where('userId', '==', userId)
             .where('revoked', '==', false)
             .get()
-        if (activeTokens.size > MAX_ACTIVE_TOKENS_PER_USER) {
+        const menubarTokenCount = activeTokens.docs.filter(
+            doc => (doc.data().appId || MENUBAR_APP_ID) === MENUBAR_APP_ID
+        ).length
+        if (menubarTokenCount > MAX_ACTIVE_TOKENS_PER_USER) {
             const sorted = activeTokens.docs
-                .filter(doc => doc.id !== tokenHash)
+                .filter(doc => doc.id !== tokenHash && (doc.data().appId || MENUBAR_APP_ID) === MENUBAR_APP_ID)
                 .sort((a, b) => (a.data().createdAt?.toMillis?.() || 0) - (b.data().createdAt?.toMillis?.() || 0))
-            const excess = sorted.slice(0, activeTokens.size - MAX_ACTIVE_TOKENS_PER_USER)
+            const excess = sorted.slice(0, menubarTokenCount - MAX_ACTIVE_TOKENS_PER_USER)
             await Promise.all(
                 excess.map(doc =>
                     doc.ref.set({ revoked: true, revokedAt: FieldValue.serverTimestamp() }, { merge: true })
@@ -155,18 +165,52 @@ async function listMenubarAppTokens(userId) {
         .where('revoked', '==', false)
         .get()
 
+    // Short-lived alldone.team tokens are not devices the person signed in.
     return snapshot.docs
+        .filter(doc => (doc.data()?.appId || MENUBAR_APP_ID) === MENUBAR_APP_ID)
         .map(doc => {
             const data = doc.data() || {}
             return {
                 id: doc.id,
-                appId: data.appId || 'anna-menubar',
+                appId: data.appId || MENUBAR_APP_ID,
                 tokenSuffix: data.tokenSuffix || '',
                 createdAt: data.createdAt?.toMillis?.() || null,
                 lastUsedAt: data.lastUsedAt?.toMillis?.() || null,
             }
         })
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+}
+
+// A short-lived token alldone.team/mcp accepts for this user (alldone.team: alldoneAppAccounts.ts).
+// Reused per instance while it has more than ten minutes left, so a run does not mint one per call.
+async function getAlldoneTeamMcpToken(userId) {
+    const cached = alldoneTeamMcpTokens.get(userId)
+    if (cached && cached.expiresAt - ALLDONE_TEAM_MCP_TOKEN_REUSE_MARGIN_MS > Date.now()) return cached.token
+
+    const email = await getVerifiedAccountEmail(userId)
+    if (!email) throw new Error('alldone.team needs a verified account email')
+    const token = `${TOKEN_PREFIX}${crypto.randomBytes(32).toString('hex')}`
+    const expiresAt = Date.now() + ALLDONE_TEAM_MCP_TOKEN_TTL_MS
+    await admin
+        .firestore()
+        .collection(TOKENS_COLLECTION)
+        .doc(hashToken(token))
+        .set({
+            userId,
+            email,
+            appId: ALLDONE_TEAM_MCP_APP_ID,
+            tokenSuffix: token.slice(-4),
+            revoked: false,
+            createdAt: FieldValue.serverTimestamp(),
+            expiresAt: Timestamp.fromMillis(expiresAt),
+            lastUsedAt: null,
+        })
+    alldoneTeamMcpTokens.set(userId, { token, expiresAt })
+    if (alldoneTeamMcpTokens.size > 1000) {
+        for (const [key, value] of alldoneTeamMcpTokens)
+            if (value.expiresAt <= Date.now()) alldoneTeamMcpTokens.delete(key)
+    }
+    return token
 }
 
 async function revokeMenubarAppToken(userId, tokenId) {
@@ -194,6 +238,7 @@ async function resolveTokenUser(token) {
 
     const tokenData = tokenDoc.data() || {}
     if (tokenData.revoked) return null
+    if (tokenData.expiresAt && tokenData.expiresAt.toMillis() <= Date.now()) return null
 
     const userDoc = await admin.firestore().doc(`users/${tokenData.userId}`).get()
     if (!userDoc.exists) return null
@@ -206,18 +251,21 @@ async function resolveTokenUser(token) {
             .catch(error => console.warn('menubarSession: lastUsedAt update failed', error))
     }
 
-    return { userId: tokenData.userId, userData }
+    return { userId: tokenData.userId, userData, appId: tokenData.appId || MENUBAR_APP_ID }
 }
 
 async function resolveTokenSession(token, includeSummary = false) {
     const tokenUser = await resolveTokenUser(token)
     if (!tokenUser) return null
-    const { userId, userData } = tokenUser
+    const { userId, userData, appId } = tokenUser
 
     const session = {
         email: await getVerifiedAccountEmail(userId),
         name: getUserDisplayName(userData),
         gold: getUserGold(userData),
+        // alldone.team links its account to this id, so the link survives an email change.
+        accountId: userId,
+        appId,
     }
 
     if (includeSummary) {
@@ -2724,6 +2772,7 @@ async function processMenubarAssistantRun(event) {
 
 module.exports = {
     mintMenubarAppToken,
+    getAlldoneTeamMcpToken,
     listMenubarAppTokens,
     revokeMenubarAppToken,
     handleMenubarSession,
