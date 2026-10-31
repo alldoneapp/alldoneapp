@@ -261,7 +261,15 @@ const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToo
 const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 // Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
 const { ARTIFACT_TOOL_KEY, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
-const MAX_MCP_TOOLS = 60
+const {
+    MAX_MCP_TOOLS,
+    OPEN_MCP_APP_TOOL_NAME,
+    readMcpToolApp,
+    getMcpAppKey,
+    describeMcpApps,
+    selectMcpToolSchemas,
+    openMcpApp,
+} = require('./mcpAppGroups')
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
 // be sequential (one project per round-trip), which made tool-schema builds take tens of seconds
@@ -1783,19 +1791,26 @@ async function getReachableMcpTools(toolRuntimeContext) {
                     requestUserId,
                 })
                 const tools = await mcpClient.listTools(server, secret)
-                return tools.map(tool => ({
-                    toolName: buildMcpToolName({
+                return tools.map(tool => {
+                    // The app the server names for this tool (alldone.team does); see ./mcpAppGroups.
+                    const app = readMcpToolApp(tool)
+                    return {
+                        toolName: buildMcpToolName({
+                            serverId: server.id,
+                            serverLabel: server.label,
+                            remoteToolName: tool.name,
+                        }),
                         serverId: server.id,
-                        serverLabel: server.label,
+                        serverLabel: server.label || server.id,
+                        serverConfig: { url: server.url, transport: server.transport, authType: server.authType },
                         remoteToolName: tool.name,
-                    }),
-                    serverId: server.id,
-                    serverLabel: server.label || server.id,
-                    serverConfig: { url: server.url, transport: server.transport, authType: server.authType },
-                    remoteToolName: tool.name,
-                    description: String(tool.description || `Run ${tool.name} on ${server.label || 'MCP server'}`),
-                    inputSchema: normalizeExternalToolInputSchema(tool.inputSchema),
-                }))
+                        description: String(tool.description || `Run ${tool.name} on ${server.label || 'MCP server'}`),
+                        inputSchema: normalizeExternalToolInputSchema(tool.inputSchema),
+                        appKey: getMcpAppKey(server.id, app),
+                        appName: app ? app.name : null,
+                        appSummary: app ? app.summary : null,
+                    }
+                })
             } catch (err) {
                 console.warn('🔌 MCP: failed to list tools for server', {
                     projectId,
@@ -1808,7 +1823,8 @@ async function getReachableMcpTools(toolRuntimeContext) {
         })
     )
 
-    // Flatten, dedupe by tool name, and cap the total exposed to the model.
+    // Flatten, dedupe by tool name, and bound the total. What reaches the model is decided per
+    // request by selectMcpToolSchemas (tool-search groups per app, or apps opened on demand).
     const seen = new Set()
     const targets = []
     for (const tool of perServer.flat()) {
@@ -1833,6 +1849,15 @@ async function getDynamicMcpToolSchemas(allowedTools, toolRuntimeContext = null)
     if (!Array.isArray(allowedTools) || !allowedTools.includes(MCP_SERVERS_TOOL_KEY)) return []
     const targets = await getReachableMcpTools(toolRuntimeContext)
     return targets.map(buildMcpToolSchema)
+}
+
+// The tool schemas plus the apps they belong to, for selectMcpToolSchemas.
+async function getDynamicMcpTools(allowedTools, toolRuntimeContext = null) {
+    if (!Array.isArray(allowedTools) || !allowedTools.includes(MCP_SERVERS_TOOL_KEY)) {
+        return { mcpToolSchemas: [], mcpApps: [] }
+    }
+    const targets = await getReachableMcpTools(toolRuntimeContext)
+    return { mcpToolSchemas: targets.map(buildMcpToolSchema), mcpApps: describeMcpApps(targets) }
 }
 
 async function resolveMcpToolTargetByName(toolName, toolRuntimeContext = null) {
@@ -2128,7 +2153,9 @@ function normalizeDynamicToolSchemasCacheData(data) {
         !data ||
         !Array.isArray(data.delegationToolSchemas) ||
         !Array.isArray(data.externalToolSchemas) ||
-        !Array.isArray(data.mcpToolSchemas)
+        !Array.isArray(data.mcpToolSchemas) ||
+        // Entries from before MCP tools were grouped by app are rebuilt the same way.
+        !Array.isArray(data.mcpApps)
     ) {
         return null
     }
@@ -2137,6 +2164,7 @@ function normalizeDynamicToolSchemasCacheData(data) {
         delegationToolSchemas: data.delegationToolSchemas,
         externalToolSchemas: data.externalToolSchemas,
         mcpToolSchemas: data.mcpToolSchemas,
+        mcpApps: data.mcpApps,
     }
 }
 
@@ -2260,13 +2288,13 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         requestUserId: toolRuntimeContext?.requestUserId || null,
     })
     const inFlightPromise = (async () => {
-        const [delegationToolSchemas, externalToolSchemas, mcpToolSchemas] = await Promise.all([
+        const [delegationToolSchemas, externalToolSchemas, { mcpToolSchemas, mcpApps }] = await Promise.all([
             getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext),
             getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext),
-            getDynamicMcpToolSchemas(allowedTools, toolRuntimeContext),
+            getDynamicMcpTools(allowedTools, toolRuntimeContext),
         ])
 
-        const data = { delegationToolSchemas, externalToolSchemas, mcpToolSchemas }
+        const data = { delegationToolSchemas, externalToolSchemas, mcpToolSchemas, mcpApps }
         try {
             await writeDynamicToolSchemasToPersistedCache(key, data)
         } catch (error) {
@@ -2367,6 +2395,8 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
         const { isKnowledgeBaseToolAllowed } = require('../KnowledgeBase/knowledgeBaseAssistant')
         return isKnowledgeBaseToolAllowed({ db: admin.firestore(), toolName, toolRuntimeContext })
     }
+    // Opening an app of a connected MCP server is part of the MCP servers toggle.
+    if (toolName === OPEN_MCP_APP_TOOL_NAME) return assistantAllowedTools.includes(MCP_SERVERS_TOOL_KEY)
     // load_skill has no per-assistant toggle — it is allowed exactly when the
     // assistant has chat-usable skills enabled (mirrors interactWithChatStream).
     if (toolName === 'load_skill') {
@@ -2895,8 +2925,15 @@ async function interactWithChatStream(
             const {
                 delegationToolSchemas,
                 externalToolSchemas,
-                mcpToolSchemas = [],
+                mcpToolSchemas: allMcpToolSchemas = [],
+                mcpApps = [],
             } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+            // No tool search on this transport: a large MCP server is opened app by app (./mcpAppGroups).
+            const { schemas: mcpToolSchemas } = selectMcpToolSchemas({
+                schemas: allMcpToolSchemas,
+                apps: mcpApps,
+                openedKeys: toolRuntimeContext?.openedMcpAppKeys || [],
+            })
             // Full schemas, always: hosted tool-search is a Responses-API feature and has no
             // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
             openRouterTools = withEmailAttachmentToolDescriptions(
@@ -3077,8 +3114,17 @@ async function interactWithChatStream(
             const {
                 delegationToolSchemas,
                 externalToolSchemas,
-                mcpToolSchemas = [],
+                mcpToolSchemas: allMcpToolSchemas = [],
+                mcpApps = [],
             } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+            // Every app of a connected MCP server is a tool-search group of its own; without tool search,
+            // a large server is opened app by app through open_mcp_app (./mcpAppGroups).
+            const { schemas: mcpToolSchemas, namespaceIndex: mcpNamespaceIndex } = selectMcpToolSchemas({
+                schemas: allMcpToolSchemas,
+                apps: mcpApps,
+                toolSearch: toolRuntimeContext?.disableToolSearch !== true && modelSupportsToolSearch(modelKey),
+                openedKeys: toolRuntimeContext?.openedMcpAppKeys || [],
+            })
             console.log('🔧 TOOL SCHEMAS: Dynamic schema retrieval complete', {
                 retrievalDurationMs: Date.now() - dynamicToolSchemasStart,
                 projectId: toolRuntimeContext?.projectId || null,
@@ -3142,6 +3188,7 @@ async function interactWithChatStream(
                 responsesToolConfig = buildResponsesTools(toolSchemas, modelKey, {
                     disableToolSearch: toolRuntimeContext?.disableToolSearch === true,
                     alwaysDirectToolNames: promptReferencedToolNames,
+                    namespaceIndex: mcpNamespaceIndex,
                 })
                 requestParams.tools = responsesToolConfig.tools
                 console.log('🔎 TOOL SEARCH: Request tool loading strategy', {
@@ -8727,6 +8774,16 @@ async function executeToolNativelyImpl(
             }
         }
 
+        case OPEN_MCP_APP_TOOL_NAME: {
+            const { mcpApps } = await getDynamicMcpTools([MCP_SERVERS_TOOL_KEY], {
+                ...(toolRuntimeContext || {}),
+                projectId,
+                assistantId,
+                requestUserId,
+            })
+            return openMcpApp(mcpApps, String(toolArgs?.app || ''), toolRuntimeContext)
+        }
+
         case 'load_skill': {
             console.log('🧩 LOAD_SKILL TOOL: Loading skill', {
                 skillName: toolArgs.name,
@@ -13968,7 +14025,13 @@ function collectPromptReferencedToolNames(messages = [], toolNames = []) {
     return referenced
 }
 
-function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alwaysDirectToolNames = null } = {}) {
+// `namespaceIndex` (tool name → { namespace, description }) places tools in groups of their own:
+// each app of a connected MCP server, with the app's description (./mcpAppGroups).
+function buildResponsesTools(
+    tools,
+    modelKey,
+    { disableToolSearch = false, alwaysDirectToolNames = null, namespaceIndex = null } = {}
+) {
     const convertedTools = convertToolsToResponsesFormat(tools).sort((firstTool, secondTool) => {
         const firstName = firstTool?.name || firstTool?.type || ''
         const secondName = secondTool?.name || secondTool?.type || ''
@@ -13994,8 +14057,11 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alway
     }
 
     const groupedTools = new Map()
+    const dynamicDescriptions = new Map()
     for (const tool of functionTools) {
-        const namespaceName = getToolSearchNamespaceName(tool.name)
+        const dynamic = namespaceIndex && namespaceIndex.get(tool.name)
+        if (dynamic) dynamicDescriptions.set(dynamic.namespace, dynamic.description)
+        const namespaceName = dynamic ? dynamic.namespace : getToolSearchNamespaceName(tool.name)
         if (!groupedTools.has(namespaceName)) groupedTools.set(namespaceName, [])
         groupedTools.get(namespaceName).push(tool)
     }
@@ -14010,7 +14076,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alway
             namespaces.push({
                 type: 'namespace',
                 name: namespaceName,
-                description: TOOL_SEARCH_NAMESPACE_DESCRIPTIONS[baseName],
+                description: dynamicDescriptions.get(baseName) || TOOL_SEARCH_NAMESPACE_DESCRIPTIONS[baseName],
                 tools: chunk.map(tool => ({ ...tool, defer_loading: true })),
             })
         }
