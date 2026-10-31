@@ -2863,6 +2863,25 @@ exports.earnGoldSecondGen = onCall(
     }
 )
 
+// MCP Apps views in the assistant chat: the view's HTML and the server tools it may call, with the
+// person's own MCP access. The frame itself never holds a token (MCP/mcpAppViews.js).
+exports.mcpAppSecondGen = onCall(
+    { timeoutSeconds: 90, memory: '512MiB', region: 'europe-west1', cors: true },
+    async request => {
+        const { handleMcpAppRequest, createMcpAppDeps, McpAppError } = require('./MCP/mcpAppViews')
+        try {
+            return await handleMcpAppRequest(
+                { uid: request.auth?.uid || null, data: request.data || {} },
+                createMcpAppDeps(admin)
+            )
+        } catch (error) {
+            if (error instanceof McpAppError) throw new HttpsError(error.code, error.message)
+            console.error('mcpAppSecondGen failed', error?.message)
+            throw new HttpsError('internal', 'The app could not reach its server.')
+        }
+    }
+)
+
 // A short-lived alldone.app token for an alldone.team page embedded in the app (IframeModal). The page
 // exchanges it for a Firebase session as the person's linked alldone.team account, so its tools are
 // billed per action on the server (Gold) instead of trusting a charge the page asked the host for.

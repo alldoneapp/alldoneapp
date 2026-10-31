@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native'
 import Comment from '../../../Feeds/FeedsModals/ListCommentsComponents/Comment'
 import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import VmInteractionCard from '../../../ChatsView/ChatDV/EditorView/VmInteractionCard'
+import McpAppViews from '../../../ChatsView/ChatDV/EditorView/McpAppViews'
 import {
     isAwaitingVmInteraction,
     resolveEffectiveMessageLoading,
@@ -96,6 +97,8 @@ export default function CommentsList({
                                 assistantRun={item.assistantRun}
                             />
                         )}
+                        {/* The app views (MCP Apps) a tool of this answer opened, e.g. Judy. */}
+                        {item.fromAssistant && <McpAppViews commentId={item.id} />}
                         {!showAssistantProgress && stopButton}
                     </React.Fragment>
                 )

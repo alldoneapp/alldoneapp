@@ -3775,5 +3775,7 @@
     "The project chat could not be opened. Continuing in your default project.": "The project chat could not be opened. Continuing in your default project.",
     "Queued. Sends when the current answer is finished.": "Queued. Sends when the current answer is finished.",
     "Send now": "Send now",
-    "Remove queued message": "Remove"
+    "Remove queued message": "Remove",
+    "mcp_app_loading": "Loading app…",
+    "mcp_app_failed": "The app could not be loaded."
 }

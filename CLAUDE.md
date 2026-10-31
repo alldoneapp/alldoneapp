@@ -475,6 +475,24 @@ context). `open_mcp_app` is allowed by the `mcp_servers` toggle. The dynamic too
 next to the schemas (`mcpApps`); an entry without them is rebuilt. Pinned by
 `Assistant/mcpAppGroups.test.js` and the `MCP tools grouped by app` block of `assistantHelper.test.js`.
 
+**MCP Apps views appear under the assistant's answer (`MCP/mcpAppViews.js`, `McpAppViews.js`).**
+A tool may declare a view (`_meta.ui.resourceUri = 'ui://…'`, MCP Apps / SEP-1865); alldone.team's
+`judy_show` does. When a run calls such a tool, the executor records `mcpAppViews/{viewId}` (server-written,
+readable only by `userId`, the person the run acted for) under `assistantCommentId`, and the chat
+renders it below that comment (`MessageItemBody`, `CommentsList`). The frame gets the server's HTML in
+`srcdoc` with `sandbox` WITHOUT `allow-same-origin`, so it runs on an opaque origin and can reach
+neither the app's storage nor its session; its own CSP from `_meta.ui.csp` is put first in `<head>`
+(`mcpAppHost.js`), and the app page's CSP applies on top. That is why no separate sandbox domain is
+needed, unlike artifacts, whose bytes are served from a URL. The frame never holds a token: its
+`tools/call` and the resource itself go through `mcpAppSecondGen` with the view id, which re-checks
+the person, current project membership, that the server is still on the assistant, and that the tool
+lets the app call it (`visibility` includes `app`); the call uses the same `resolveMcpSecret` as the
+run, so a view can do no more than that person's own assistant. A tool whose `visibility` leaves out
+`model` (e.g. `judy_view_get`) is never offered to or run for the model. Fullscreen restyles the same
+frame (it must not remount, or the view loses its state). Pinned by `MCP/mcpAppViews.test.js`,
+`mcpAppHost.test.js`, the view-only case in `assistantHelper.test.js` and the `MCP Apps views` block
+of the rules emulator suite.
+
 **`generatePreConfigTaskResult` reads run options from its 13th parameter, never from `taskMetadata`
 (the 10th).** The two bags look interchangeable at a call site and one of them is silently ignored:
 `assistantRecurringTasks` had been passing `maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS`

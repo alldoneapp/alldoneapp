@@ -231,9 +231,20 @@ async function callTool(serverConfig, secret, name, args) {
     })
 }
 
+/**
+ * Read one resource (an MCP Apps view, `ui://…`). Returns the raw `resources/read` result.
+ */
+async function readResource(serverConfig, secret, uri) {
+    if (!uri || typeof uri !== 'string') throw new Error('MCP resource URI is required')
+    return withClient(serverConfig, secret, async (client, normalized) => {
+        return client.readResource({ uri }, { timeout: normalized.timeoutMs })
+    })
+}
+
 module.exports = {
     listTools,
     callTool,
+    readResource,
     // exported for unit testing
     normalizeServerConfig,
     buildAuthHeaders,

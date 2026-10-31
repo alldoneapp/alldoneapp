@@ -948,6 +948,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // MCP Apps views under an assistant answer (functions/MCP/mcpAppViews.js). Only the person the
+    // run acted for may read one; the server writes them.
+    match /mcpAppViews/{viewId} {
+      allow read: if signedIn() && resource.data.get('userId', '') == request.auth.uid;
+      allow write: if false;
+    }
+
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       // A missing feed object must read as "missing", not as a rules error: the Updates list

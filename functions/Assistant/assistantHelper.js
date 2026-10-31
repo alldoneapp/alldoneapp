@@ -270,6 +270,7 @@ const {
     selectMcpToolSchemas,
     openMcpApp,
 } = require('./mcpAppGroups')
+const { readToolUi, recordMcpAppView } = require('../MCP/mcpAppViews')
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
 // be sequential (one project per round-trip), which made tool-schema builds take tens of seconds
@@ -1794,6 +1795,7 @@ async function getReachableMcpTools(toolRuntimeContext) {
                 return tools.map(tool => {
                     // The app the server names for this tool (alldone.team does); see ./mcpAppGroups.
                     const app = readMcpToolApp(tool)
+                    const ui = readToolUi(tool)
                     return {
                         toolName: buildMcpToolName({
                             serverId: server.id,
@@ -1809,6 +1811,9 @@ async function getReachableMcpTools(toolRuntimeContext) {
                         appKey: getMcpAppKey(server.id, app),
                         appName: app ? app.name : null,
                         appSummary: app ? app.summary : null,
+                        // MCP Apps: the view this tool opens, and whether the model, the view or both may call it.
+                        uiResourceUri: ui.resourceUri,
+                        visibility: ui.visibility,
                     }
                 })
             } catch (err) {
@@ -1848,22 +1853,26 @@ const buildMcpToolSchema = target => ({
 async function getDynamicMcpToolSchemas(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools) || !allowedTools.includes(MCP_SERVERS_TOOL_KEY)) return []
     const targets = await getReachableMcpTools(toolRuntimeContext)
-    return targets.map(buildMcpToolSchema)
+    return targets.filter(isModelVisibleMcpTarget).map(buildMcpToolSchema)
 }
+
+// A tool whose MCP Apps visibility leaves out "model" exists only for its view (e.g. judy_view_get):
+// it is never offered to or run for the model; the view reaches it through mcpAppSecondGen.
+const isModelVisibleMcpTarget = target => !Array.isArray(target?.visibility) || target.visibility.includes('model')
 
 // The tool schemas plus the apps they belong to, for selectMcpToolSchemas.
 async function getDynamicMcpTools(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools) || !allowedTools.includes(MCP_SERVERS_TOOL_KEY)) {
         return { mcpToolSchemas: [], mcpApps: [] }
     }
-    const targets = await getReachableMcpTools(toolRuntimeContext)
+    const targets = (await getReachableMcpTools(toolRuntimeContext)).filter(isModelVisibleMcpTarget)
     return { mcpToolSchemas: targets.map(buildMcpToolSchema), mcpApps: describeMcpApps(targets) }
 }
 
 async function resolveMcpToolTargetByName(toolName, toolRuntimeContext = null) {
     if (!isMcpToolName(toolName)) return null
     const targets = await getReachableMcpTools(toolRuntimeContext)
-    return targets.find(target => target.toolName === toolName) || null
+    return targets.find(target => target.toolName === toolName && isModelVisibleMcpTarget(target)) || null
 }
 
 // Execute a single MCP tool call against the resolved remote server.
@@ -5592,6 +5601,25 @@ async function executeToolNativelyImpl(
         }
 
         const result = await executeMcpTool({ target, toolArgs, projectId, assistantId, requestUserId })
+
+        // MCP Apps: a tool with a view shows it under the assistant's answer (../MCP/mcpAppViews).
+        if (target.uiResourceUri && result.success) {
+            try {
+                const viewId = await recordMcpAppView({
+                    db: admin.firestore(),
+                    target,
+                    toolArgs,
+                    result,
+                    toolRuntimeContext,
+                    projectId,
+                    assistantId,
+                    requestUserId,
+                })
+                if (viewId) result.appView = 'The user now sees this app view under your answer.'
+            } catch (viewError) {
+                console.warn('🔌 MCP: app view not recorded', { serverId: target.serverId, error: viewError?.message })
+            }
+        }
 
         // Best-effort metered gold charge for the MCP call (mirrors other billable tools).
         try {
