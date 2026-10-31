@@ -3334,5 +3334,7 @@
     "The project chat could not be opened. Continuing in your default project.": "Der Projekt-Chat konnte nicht geöffnet werden. Es geht in deinem Standardprojekt weiter.",
     "Queued. Sends when the current answer is finished.": "In der Warteschlange. Wird gesendet, sobald die aktuelle Antwort fertig ist.",
     "Send now": "Jetzt senden",
-    "Remove queued message": "Entfernen"
+    "Remove queued message": "Entfernen",
+    "mcp_app_loading": "App wird geladen…",
+    "mcp_app_failed": "Die App konnte nicht geladen werden."
 }

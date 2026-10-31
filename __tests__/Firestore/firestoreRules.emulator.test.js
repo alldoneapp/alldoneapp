@@ -2045,6 +2045,42 @@ describe('explicit client collection coverage', () => {
     )
 })
 
+describe('MCP Apps views', () => {
+    const seedView = (viewId, userId) =>
+        testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `mcpAppViews/${viewId}`), {
+                viewId,
+                userId,
+                projectId: PROJECT_ID,
+                assistantCommentId: 'comment-1',
+                resourceUri: 'ui://judy/workspace.html',
+            })
+        })
+
+    it('lets only the person the run acted for read a view, and nobody write one', async () => {
+        await seedView('view-member', MEMBER_ID)
+        await seedView('view-teammate', TEAMMATE_ID)
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(memberDb, 'mcpAppViews/view-member')))
+        await assertFails(getDoc(doc(teammateDb, 'mcpAppViews/view-member')))
+        await assertSucceeds(
+            getDocs(
+                query(
+                    collection(memberDb, 'mcpAppViews'),
+                    where('userId', '==', MEMBER_ID),
+                    where('assistantCommentId', '==', 'comment-1')
+                )
+            )
+        )
+        await assertFails(
+            getDocs(query(collection(memberDb, 'mcpAppViews'), where('assistantCommentId', '==', 'comment-1')))
+        )
+        await assertFails(setDoc(doc(memberDb, 'mcpAppViews/forged'), { userId: MEMBER_ID }))
+    })
+})
+
 describe('browser tool approvals', () => {
     const seedApproval = (approvalId, requestUserId) =>
         testEnv.withSecurityRulesDisabled(async context => {

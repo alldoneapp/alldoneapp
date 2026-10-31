@@ -30,6 +30,7 @@ import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
 import BrowserApprovalCard from './BrowserApprovalCard'
+import McpAppViews from './McpAppViews'
 import { isAwaitingVmInteraction as hasAwaitingVmInteraction, showsAssistantLiveActivity } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
 import StopAssistantRunButton from './StopAssistantRunButton'
@@ -500,6 +501,8 @@ export default function MessageItemBody({
                     {creatorData?.isAssistant && (
                         <BrowserApprovalCard projectId={projectId} objectId={chat?.id} commentId={messageId} />
                     )}
+                    {/* The app views (MCP Apps) a tool of this answer opened, e.g. Judy. */}
+                    {creatorData?.isAssistant && <McpAppViews commentId={messageId} />}
                 </>
             )}
         </View>

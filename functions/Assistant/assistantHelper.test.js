@@ -635,6 +635,38 @@ describe('MCP tools grouped by app (./mcpAppGroups)', () => {
         }
     })
 
+    test('keeps a tool meant only for an app view away from the model, and remembers a tool’s view', async () => {
+        const context = { projectId: 'mcp-app-views', assistantId: 'assistant', requestUserId: 'user' }
+        mockListMcpTools.mockReset().mockResolvedValue([
+            {
+                name: 'judy_show',
+                inputSchema: { type: 'object' },
+                _meta: { ui: { resourceUri: 'ui://judy/workspace.html' } },
+            },
+            { name: 'judy_view_get', inputSchema: { type: 'object' }, _meta: { ui: { visibility: ['app'] } } },
+            { name: 'judy_jobs_list', inputSchema: { type: 'object' } },
+        ])
+        mockDocGet.mockImplementation(function () {
+            if (this.path.startsWith('assistants/')) {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        mcpServers: [{ id: 'team', label: 'alldone.team', url: 'https://alldone.team/mcp' }],
+                    }),
+                })
+            }
+            return Promise.resolve({ exists: false })
+        })
+        try {
+            const built = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
+            const names = built.mcpToolSchemas.map(schema => schema.function.description.split('→ ')[1].split('.')[0])
+            expect(names).toEqual(['judy_show', 'judy_jobs_list'])
+        } finally {
+            mockDocGet.mockReset()
+            mockDocSet.mockReset().mockResolvedValue(undefined)
+        }
+    })
+
     test('tool search puts each app in namespaces of its own, described by the app', () => {
         const tools = Array.from({ length: 12 }, (_, i) => ({
             type: 'function',
