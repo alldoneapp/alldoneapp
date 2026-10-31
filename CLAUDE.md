@@ -461,6 +461,20 @@ delegation tool under "assistant settings" is exactly what makes tool search mis
 overflow also pushed the real settings tools into an `assistant_settings_2` chunk. The prefix test
 now runs first.
 
+**MCP tools are grouped by app, and only what a run needs reaches the model (`Assistant/mcpAppGroups.js`).**
+`getReachableMcpTools` used to keep the first 60 tools of all MCP servers together and drop the rest
+silently. alldone.team/mcp serves Story Builder (66 tools), Judy (50) and Property Screener (17) over
+one connection, ~40k tokens of schemas, so Judy and Property never reached the assistant. Each tool now
+carries its app: a server may name it in `_meta['team.alldone/app'] = { id, name, summary }`, and a tool
+without it belongs to its server. With hosted tool search every app is a namespace of its own
+(`mcp_judy_job`, described by the app's summary) instead of all MCP tools sharing `integrations`. Without
+tool search (OpenRouter models, unattended runs) a server with up to `MCP_DIRECT_TOOL_LIMIT` (30) tools is
+still sent whole; above that the model only gets `open_mcp_app`, which lists the apps, and opening one
+adds its tools from the next step of the same run on (`openedMcpAppKeys` on the run's tool runtime
+context). `open_mcp_app` is allowed by the `mcp_servers` toggle. The dynamic tool cache stores the apps
+next to the schemas (`mcpApps`); an entry without them is rebuilt. Pinned by
+`Assistant/mcpAppGroups.test.js` and the `MCP tools grouped by app` block of `assistantHelper.test.js`.
+
 **`generatePreConfigTaskResult` reads run options from its 13th parameter, never from `taskMetadata`
 (the 10th).** The two bags look interchangeable at a call site and one of them is silently ignored:
 `assistantRecurringTasks` had been passing `maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS`

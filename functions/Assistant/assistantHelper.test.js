@@ -593,6 +593,70 @@ describe('Current task context', () => {
     })
 })
 
+describe('MCP tools grouped by app (./mcpAppGroups)', () => {
+    const app = (id, name) => ({ 'team.alldone/app': { id, name, summary: `${name} things.` } })
+    const remoteTools = [
+        ...Array.from({ length: 50 }, (_, i) => ({
+            name: `judy_${i}`,
+            _meta: app('judy', 'Judy Job'),
+            inputSchema: { type: 'object' },
+        })),
+        ...Array.from({ length: 66 }, (_, i) => ({
+            name: `story_${i}`,
+            _meta: app('story', 'Story Builder'),
+            inputSchema: { type: 'object' },
+        })),
+    ]
+
+    test('takes every tool of a server that names its apps, with no 60-tool cut', async () => {
+        const context = { projectId: 'mcp-apps', assistantId: 'assistant', requestUserId: 'user' }
+        mockListMcpTools.mockReset().mockResolvedValue(remoteTools)
+        mockDocGet.mockImplementation(function () {
+            if (this.path.startsWith('assistants/')) {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        mcpServers: [{ id: 'team', label: 'alldone.team', url: 'https://alldone.team/mcp' }],
+                    }),
+                })
+            }
+            return Promise.resolve({ exists: false })
+        })
+        try {
+            const built = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
+            expect(built.mcpToolSchemas).toHaveLength(116)
+            expect(built.mcpApps.map(item => [item.key, item.namespace, item.toolNames.length, item.summary])).toEqual([
+                ['team:judy', 'mcp_judy_job', 50, 'Judy Job things.'],
+                ['team:story', 'mcp_story_builder', 66, 'Story Builder things.'],
+            ])
+        } finally {
+            mockDocGet.mockReset()
+            mockDocSet.mockReset().mockResolvedValue(undefined)
+        }
+    })
+
+    test('tool search puts each app in namespaces of its own, described by the app', () => {
+        const tools = Array.from({ length: 12 }, (_, i) => ({
+            type: 'function',
+            function: { name: `mcp_team_judy_${i}`, description: '', parameters: { type: 'object' } },
+        }))
+        const namespaceIndex = new Map(
+            tools.map(tool => [tool.function.name, { namespace: 'mcp_judy_job', description: 'Judy Job: jobs.' }])
+        )
+        const result = buildResponsesTools(tools, 'MODEL_GPT6_SOL', { namespaceIndex })
+        const namespaces = result.tools.filter(tool => tool.type === 'namespace')
+        expect(namespaces.map(namespace => [namespace.name, namespace.description, namespace.tools.length])).toEqual([
+            ['mcp_judy_job_1', 'Judy Job: jobs.', 8],
+            ['mcp_judy_job_2', 'Judy Job: jobs.', 4],
+        ])
+    })
+
+    test('opening an app is part of the MCP servers toggle', async () => {
+        await expect(isToolAllowedForExecution(['mcp_servers'], 'open_mcp_app')).resolves.toBe(true)
+        await expect(isToolAllowedForExecution(['get_tasks'], 'open_mcp_app')).resolves.toBe(false)
+    })
+})
+
 describe('persisted dynamic tool cache', () => {
     test.each([false, true])('preserves MCP tools across memory expiry (legacy entry: %s)', async legacy => {
         const context = { projectId: `mcp-cache-${legacy}`, assistantId: 'assistant', requestUserId: 'user' }
@@ -626,6 +690,7 @@ describe('persisted dynamic tool cache', () => {
             const built = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
             expect(built.mcpToolSchemas).toHaveLength(1)
             expect(persisted.data.mcpToolSchemas).toEqual(built.mcpToolSchemas)
+            expect(persisted.data.mcpApps).toEqual(built.mcpApps)
             now += 6 * 60 * 1000
             const restored = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
             expect(restored).toEqual(built)
