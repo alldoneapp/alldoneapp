@@ -15,8 +15,21 @@ const MAX_ACTIVE_TOKENS_PER_USER = 10
 const LAST_USED_UPDATE_THROTTLE_MS = 5 * 60 * 1000
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60
 
-const GOLD_SOURCE_DEDUCT = 'menubar_app_usage'
-const GOLD_SOURCE_REFUND = 'menubar_app_refund'
+// Who charges Gold through /api/menubar/gold. A request that names no app is the Anna
+// menubar app or an alldone.team tool from before the `app` field existed, and is booked
+// exactly as it always was.
+const GOLD_WEBHOOK_APPS = {
+    'anna-menubar': { deductSource: 'menubar_app_usage', refundSource: 'menubar_app_refund', channel: 'menubar_app' },
+    'alldone-team': {
+        deductSource: 'alldone_team_usage',
+        refundSource: 'alldone_team_refund',
+        channel: 'alldone_team',
+    },
+}
+const DEFAULT_GOLD_WEBHOOK_APP = 'anna-menubar'
+const GOLD_WEBHOOK_OPERATION_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,200}$/
+const GOLD_WEBHOOK_PRODUCT_PATTERN = /^[a-z0-9_-]{1,40}$/
+const GOLD_WEBHOOK_DESCRIPTION_MAX_LENGTH = 120
 
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex')
@@ -351,9 +364,50 @@ async function findUserByEmail(email) {
     return userDoc.exists ? userDoc : null
 }
 
+function goldWebhookIdempotencyKey(app, type, operationId) {
+    return `gold_webhook:${app}:${type}:${operationId}`
+}
+
+function sanitizeGoldWebhookDescription(value) {
+    if (typeof value !== 'string') return ''
+    return value
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, GOLD_WEBHOOK_DESCRIPTION_MAX_LENGTH)
+}
+
+// The optional fields of a webhook request, or the reason they are refused.
+function parseGoldWebhookOptions(body) {
+    const app = body.app === undefined ? DEFAULT_GOLD_WEBHOOK_APP : body.app
+    if (!Object.prototype.hasOwnProperty.call(GOLD_WEBHOOK_APPS, app)) return { error: 'Unknown app' }
+
+    const operationId = body.operationId === undefined ? '' : body.operationId
+    if (operationId !== '' && !GOLD_WEBHOOK_OPERATION_ID_PATTERN.test(String(operationId))) {
+        return { error: 'Invalid operationId' }
+    }
+
+    const product = body.product === undefined ? '' : body.product
+    if (product !== '' && !GOLD_WEBHOOK_PRODUCT_PATTERN.test(String(product))) return { error: 'Invalid product' }
+
+    // A charge without an operation id cannot be retried safely, and a refund without one cannot
+    // be matched to a charge, so callers that use the `app` field must always send one.
+    if (app !== DEFAULT_GOLD_WEBHOOK_APP && !operationId) return { error: 'operationId is required' }
+
+    return { app, operationId, product, description: sanitizeGoldWebhookDescription(body.description) }
+}
+
 // POST /api/menubar/gold  HMAC-signed (x-alldone-timestamp / x-alldone-signature)
-//   { type: 'DEDUCT_GOLD' | 'REFUND_GOLD', userEmail, amount } ->
-//   200 { success: true, newBalance } | { success: false, error }
+//   { type: 'DEDUCT_GOLD' | 'REFUND_GOLD', userEmail, amount,
+//     app?, operationId?, product?, description? } ->
+//   200 { success: true, newBalance, alreadyProcessed? } | { success: false, error, code? }
+//
+// `operationId` makes the request idempotent: the same type and id change Gold at most once, and
+// a repeat answers with the first result, so a caller may retry a timeout or a 5xx. With
+// `app: 'alldone-team'` a refund must name the operationId of its charge and may give back at
+// most what that charge took, once; alldone.team charges per action and refunds a failed one, and a
+// refund for a charge that never happened would hand out Gold. Requests without `app` keep the
+// old behaviour, where a refund is not tied to a charge.
 async function handleMenubarGoldWebhook(req, res) {
     res.set('Cache-Control', 'no-store')
 
@@ -396,6 +450,14 @@ async function handleMenubarGoldWebhook(req, res) {
         return
     }
 
+    const options = parseGoldWebhookOptions(req.body || {})
+    if (options.error) {
+        res.status(400).json({ success: false, error: options.error })
+        return
+    }
+    const { app, operationId, product, description } = options
+    const appConfig = GOLD_WEBHOOK_APPS[app]
+
     try {
         const userDoc = await findUserByEmail(userEmail)
         if (!userDoc) {
@@ -403,15 +465,53 @@ async function handleMenubarGoldWebhook(req, res) {
             return
         }
 
-        const { deductGold, refundGold } = require('../Gold/goldHelper')
-        const context = { channel: 'menubar_app' }
+        const { deductGold, refundGold, getGoldChangeClaim } = require('../Gold/goldHelper')
+
+        if (type === 'REFUND_GOLD' && app !== DEFAULT_GOLD_WEBHOOK_APP) {
+            const charge = await getGoldChangeClaim(
+                userDoc.id,
+                goldWebhookIdempotencyKey(app, 'DEDUCT_GOLD', operationId)
+            )
+            if (!charge || charge.direction !== 'spend') {
+                res.status(200).json({
+                    success: false,
+                    error: 'No charge was made for this operation',
+                    code: 'NO_MATCHING_CHARGE',
+                })
+                return
+            }
+            if (amount > Number(charge.amount)) {
+                res.status(200).json({
+                    success: false,
+                    error: 'The refund is larger than the charge',
+                    code: 'REFUND_EXCEEDS_CHARGE',
+                })
+                return
+            }
+        }
+
+        const context = {
+            channel: appConfig.channel,
+            ...(product ? { product } : {}),
+            ...(description ? { note: description } : {}),
+            ...(operationId
+                ? {
+                      correlationId: operationId,
+                      idempotencyKey: goldWebhookIdempotencyKey(app, type, operationId),
+                  }
+                : {}),
+        }
         const result =
             type === 'DEDUCT_GOLD'
-                ? await deductGold(userDoc.id, amount, { ...context, source: GOLD_SOURCE_DEDUCT })
-                : await refundGold(userDoc.id, amount, { ...context, source: GOLD_SOURCE_REFUND })
+                ? await deductGold(userDoc.id, amount, { ...context, source: appConfig.deductSource })
+                : await refundGold(userDoc.id, amount, { ...context, source: appConfig.refundSource })
 
         if (result?.success) {
-            res.status(200).json({ success: true, newBalance: result.newBalance })
+            res.status(200).json({
+                success: true,
+                newBalance: result.newBalance,
+                ...(result.alreadyProcessed ? { alreadyProcessed: true } : {}),
+            })
         } else {
             res.status(200).json({
                 success: false,

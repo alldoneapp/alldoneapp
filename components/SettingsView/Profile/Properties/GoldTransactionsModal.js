@@ -74,6 +74,8 @@ function getTransactionLabel(source) {
         iframe_refund: 'Embedded app refund',
         menubar_app_usage: 'Anna Alldone app usage',
         menubar_app_refund: 'Anna Alldone app refund',
+        alldone_team_usage: 'alldone.team usage',
+        alldone_team_refund: 'alldone.team refund',
         global_search: 'Full search indexing',
         admin_adjustment: 'Admin adjustment',
         manual_refund: 'Gold refund',
@@ -94,6 +96,7 @@ function getTransactionSubtitle(entry) {
     if (entry?.channel === 'contact') return translate('Triggered from a contact')
     if (entry?.channel === 'admin_panel') return translate('Changed from the admin panel')
     if (entry?.channel === 'menubar_app') return translate('Triggered from the Anna Alldone app')
+    if (entry?.channel === 'alldone_team') return translate('Triggered from alldone.team')
     if (entry?.channel === 'guides') return translate('Triggered from a guide unlock')
 
     return ''

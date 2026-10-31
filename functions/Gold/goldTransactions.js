@@ -19,6 +19,8 @@ const GOLD_CONTEXT_FIELDS = [
     'correlationId',
     // The spend a client refund gave back (see refundClientSpend in goldHelper.js).
     'refundOf',
+    // The alldone.team product a Gold webhook charge paid for ('judy', 'story_builder', …).
+    'product',
 ]
 
 // Booleans need their own list because the string sanitizer below drops everything that is
@@ -136,6 +138,27 @@ function applyGoldChangeInTransaction({
     }
 }
 
+function normalizeIdempotencyKey(idempotencyKey) {
+    return typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : ''
+}
+
+function getGoldChangeClaimRef(userRef, normalizedIdempotencyKey) {
+    return userRef
+        .collection('goldChangeClaims')
+        .doc(crypto.createHash('sha256').update(normalizedIdempotencyKey).digest('hex'))
+}
+
+// The change a key already produced, or null. A claim is written only by a successful change
+// and never edited, so a read outside the change's transaction is safe.
+async function getGoldChangeClaim(userId, idempotencyKey) {
+    const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey)
+    if (!normalizedIdempotencyKey) return null
+
+    const userRef = admin.firestore().doc(`users/${userId}`)
+    const claimDoc = await getGoldChangeClaimRef(userRef, normalizedIdempotencyKey).get()
+    return claimDoc.exists ? claimDoc.data() || {} : null
+}
+
 async function applyGoldChange({
     userId,
     delta,
@@ -148,13 +171,8 @@ async function applyGoldChange({
     idempotencyKey = '',
 }) {
     const userRef = admin.firestore().doc(`users/${userId}`)
-    const normalizedIdempotencyKey =
-        typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : ''
-    const claimRef = normalizedIdempotencyKey
-        ? userRef
-              .collection('goldChangeClaims')
-              .doc(crypto.createHash('sha256').update(normalizedIdempotencyKey).digest('hex'))
-        : null
+    const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey)
+    const claimRef = normalizedIdempotencyKey ? getGoldChangeClaimRef(userRef, normalizedIdempotencyKey) : null
     let result = { success: false, message: 'User not found' }
 
     await admin.firestore().runTransaction(async transaction => {
@@ -230,4 +248,5 @@ module.exports = {
     sanitizeContext,
     applyGoldChange,
     applyGoldChangeInTransaction,
+    getGoldChangeClaim,
 }
