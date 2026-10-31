@@ -55,7 +55,7 @@ jest.mock('firebase-admin', () => {
 jest.mock('../envFunctionsHelper', () => ({ getEnvFunctions: () => ({ MENUBAR_APP_WEBHOOK_SECRET: 'secret' }) }))
 jest.mock('../Gold/goldHelper', () => ({ deductGold: mockDeductGold, refundGold: jest.fn() }))
 
-const { handleMenubarSession, handleMenubarGoldWebhook } = require('./menubarApp')
+const { handleMenubarSession, handleMenubarGoldWebhook, getAlldoneTeamMcpToken } = require('./menubarApp')
 const { __private__: verifiedEmail } = require('../shared/verifiedAccountEmail')
 
 const TOKEN = `adapp_${'a'.repeat(64)}`
@@ -106,7 +106,14 @@ test('a menubar session reports the verified Auth email, not the document field'
     const res = response()
     await handleMenubarSession({ method: 'POST', body: { token: TOKEN }, headers: {}, ip: '203.0.113.1' }, res)
 
-    expect(res.body).toEqual({ valid: true, email: 'attacker@example.com', name: 'Mallory', gold: 5 })
+    expect(res.body).toEqual({
+        valid: true,
+        email: 'attacker@example.com',
+        name: 'Mallory',
+        gold: 5,
+        accountId: 'attacker',
+        appId: 'anna-menubar',
+    })
 })
 
 test('a session for an account without a verified email names no address', async () => {
@@ -139,4 +146,44 @@ test('Gold for an address no verified account owns is refused', async () => {
 
     expect(res.body).toEqual({ success: false, error: 'User not found' })
     expect(mockDeductGold).not.toHaveBeenCalled()
+})
+
+describe('tokens for alldone.team/mcp', () => {
+    const session = async token => {
+        const res = response()
+        await handleMenubarSession({ method: 'POST', body: { token }, headers: {}, ip: '203.0.113.9' }, res)
+        return res.body
+    }
+
+    test('are minted for the account, name their app and are reused while they last', async () => {
+        const token = await getAlldoneTeamMcpToken('victim')
+        expect(token).toMatch(/^adapp_[a-f0-9]{64}$/)
+        expect(await getAlldoneTeamMcpToken('victim')).toBe(token)
+        const stored = mockDocs.get(`menubarAppTokens/${crypto.createHash('sha256').update(token).digest('hex')}`)
+        expect(stored).toMatchObject({ userId: 'victim', appId: 'alldone-team-mcp', revoked: false })
+        expect(stored.expiresAt.toMillis()).toBeGreaterThan(Date.now() + 50 * 60 * 1000)
+        expect(await session(token)).toMatchObject({
+            valid: true,
+            email: 'victim@example.com',
+            accountId: 'victim',
+            appId: 'alldone-team-mcp',
+        })
+    })
+
+    test('stop counting once they expire', async () => {
+        const token = `adapp_${'b'.repeat(64)}`
+        const { Timestamp } = require('firebase-admin/firestore')
+        mockDocs.set(`menubarAppTokens/${crypto.createHash('sha256').update(token).digest('hex')}`, {
+            userId: 'victim',
+            appId: 'alldone-team-mcp',
+            revoked: false,
+            expiresAt: Timestamp.fromMillis(Date.now() - 1000),
+        })
+        expect(await session(token)).toEqual({ valid: false })
+    })
+
+    test('are not minted for an account without a verified email', async () => {
+        mockAuthUsers.victim.emailVerified = false
+        await expect(getAlldoneTeamMcpToken('victim-unverified')).rejects.toThrow(/verified account email/)
+    })
 })

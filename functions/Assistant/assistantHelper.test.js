@@ -21,7 +21,10 @@ const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
 const mockListMcpTools = jest.fn()
 jest.mock('./mcpClient', () => ({ listTools: (...args) => mockListMcpTools(...args) }))
-jest.mock('../MCP/mcpAssistantConnect', () => ({ getValidMcpSecret: jest.fn() }))
+jest.mock('../MCP/mcpAssistantConnect', () => ({
+    getValidMcpSecret: jest.fn(),
+    resolveMcpSecret: jest.fn(async () => null),
+}))
 const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     noteId,
     title: 'Launch notes',

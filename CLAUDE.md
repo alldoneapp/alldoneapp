@@ -3836,6 +3836,8 @@ operationId of its charge and may give back at most what that charge took, once:
 refund after a charge that never happened (an ambiguous timeout) would hand out Gold. Pinned by
 `functions/MenubarApp/menubarGoldWebhook.test.js`.
 
+**An assistant uses alldone.team as the person it answers (MCP auth type `alldone_app`).** An MCP server on `https://alldone.team` can be connected with "alldone.app account" instead of a token. Nothing is stored: each run calls `resolveMcpSecret` (`functions/MCP/mcpAssistantConnect.js`), which mints, through `getAlldoneTeamMcpToken` (`MenubarApp/menubarApp.js`), an hour-long `adapp_` token with app id `alldone-team-mcp` for the run's `requestUserId` (reused per instance while ten minutes remain). alldone.team checks it at `/api/menubar/session`, which now also answers `accountId` and `appId`, and acts as that person's own alldone.team account, linked to their alldone.app account and paying with their Gold (alldone_team `alldoneAppAccounts.ts`). These tokens expire (`expiresAt`), never count against the menubar app's ten devices and are not listed as devices. The auth type is refused for any other host, because the token speaks for the user's alldone.app account. A run without a requesting user gets no token. Pinned by `functions/MCP/mcpAlldoneAppAuth.test.js` and the `tokens for alldone.team/mcp` block of `functions/MenubarApp/menubarIdentity.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything

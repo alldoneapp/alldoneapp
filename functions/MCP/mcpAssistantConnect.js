@@ -8,7 +8,11 @@ const { logMcpConnectPhase } = require('./mcpConnectDiagnostics')
 const GLOBAL_PROJECT_ID = 'globalProject'
 
 const VALID_TRANSPORTS = new Set(['http', 'sse'])
-const VALID_AUTH_TYPES = new Set(['none', 'bearer', 'oauth'])
+const VALID_AUTH_TYPES = new Set(['none', 'bearer', 'oauth', 'alldone_app'])
+// 'alldone_app' sends a token for the requesting user's alldone.app account, so it is allowed only
+// for alldone.team, which accepts those tokens and links the account (alldoneAppAccounts.ts there).
+const ALLDONE_APP_AUTH_HOSTS = new Set(['alldone.team'])
+const isAlldoneAppAuthHost = hostname => ALLDONE_APP_AUTH_HOSTS.has(String(hostname || '').toLowerCase())
 const MAX_SERVERS_PER_ASSISTANT = 10
 const MAX_LABEL_LENGTH = 80
 
@@ -93,6 +97,13 @@ function normalizeServerInput(rawServer) {
         throw new HttpsError('invalid-argument', `Unsupported auth type: ${authType}`)
     }
 
+    if (authType === 'alldone_app' && (parsedUrl.protocol !== 'https:' || !isAlldoneAppAuthHost(parsedUrl.hostname))) {
+        throw new HttpsError(
+            'invalid-argument',
+            'Sign-in with the alldone.app account is only available for alldone.team.'
+        )
+    }
+
     const id = String(rawServer.id || '').trim() || uuidv4()
 
     return { id, label, url: parsedUrl.toString(), transport, authType }
@@ -105,7 +116,8 @@ function normalizeServerInput(rawServer) {
 function buildSecretRecords(authType, rawSecret) {
     const secret = isObject(rawSecret) ? rawSecret : {}
 
-    if (authType === 'none') {
+    // alldone_app stores nothing: each run mints a short-lived token for its requesting user.
+    if (authType === 'none' || authType === 'alldone_app') {
         return { toStore: null, toValidate: null, tokenLast4: '' }
     }
 
@@ -207,7 +219,11 @@ async function connectAssistantMcpServer({ userId, projectId, assistantId, serve
     // fall back to the already-stored secret so validation still works.
     let secretForValidation = toValidate
     let secretToPersist = toStore
-    if (normalized.authType !== 'none' && !toValidate) {
+    if (normalized.authType === 'alldone_app') {
+        // Validate as the person connecting it, the same way a run will call it for its user.
+        const { getAlldoneTeamMcpToken } = require('../MenubarApp/menubarApp')
+        secretForValidation = { token: await getAlldoneTeamMcpToken(userId) }
+    } else if (normalized.authType !== 'none' && !toValidate) {
         const existing = await buildSecretDocRef(projectId, assistantId, normalized.id).get()
         if (existing.exists) {
             secretForValidation = existing.data()
@@ -302,6 +318,20 @@ const OAUTH_EXPIRY_BUFFER_MS = 60 * 1000
  * returning. Used by the assistant tool loop so long-lived assistants keep working
  * without re-authorization. Returns the (possibly refreshed) secret, or null.
  */
+/**
+ * The secret a run uses for one MCP server. alldone_app servers get a token for the user the run
+ * acts for, never the assistant owner's: alldone.team then acts as that person's own account.
+ */
+async function resolveMcpSecret({ authType, projectId, assistantId, serverId, requestUserId }) {
+    if (!authType || authType === 'none') return null
+    if (authType === 'alldone_app') {
+        if (!requestUserId) throw new Error('alldone.team is only available in a run for a signed-in user')
+        const { getAlldoneTeamMcpToken } = require('../MenubarApp/menubarApp')
+        return { token: await getAlldoneTeamMcpToken(requestUserId) }
+    }
+    return getValidMcpSecret(projectId, assistantId, serverId)
+}
+
 async function getValidMcpSecret(projectId, assistantId, serverId) {
     const secret = await getAssistantMcpSecret(projectId, assistantId, serverId)
     if (!secret || secret.authType !== 'oauth') return secret
@@ -342,6 +372,7 @@ module.exports = {
     disconnectAssistantMcpServer,
     getAssistantMcpSecret,
     getValidMcpSecret,
+    resolveMcpSecret,
     // exported for tests
     normalizeServerInput,
     buildSecretRecords,

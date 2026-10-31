@@ -187,6 +187,8 @@
     "Authentication": "Authentifizierung",
     "No auth": "Keine Authentifizierung",
     "Bearer token": "Bearer-Token",
+    "alldone.app account": "alldone.app-Konto",
+    "Everyone who talks to this assistant uses alldone.team with their own alldone.app account and pays with their own Gold.": "Wer mit diesem Assistenten spricht, nutzt alldone.team mit dem eigenen alldone.app-Konto und zahlt mit dem eigenen Gold.",
     "OAuth": "OAuth",
     "Paste the API / bearer token": "API-/Bearer-Token einfügen",
     "Authorize with OAuth": "Mit OAuth autorisieren",

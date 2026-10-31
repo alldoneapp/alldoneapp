@@ -27,6 +27,17 @@ const AUTH_TYPES = [
     { key: 'bearer', label: 'Bearer token' },
     { key: 'oauth', label: 'OAuth' },
 ]
+// alldone.team accepts the requesting user's own alldone.app account (and bills its Gold), so no
+// token is pasted and every person who talks to the assistant acts as themselves there.
+const ALLDONE_APP_AUTH = { key: 'alldone_app', label: 'alldone.app account' }
+const isAlldoneTeamUrl = value => {
+    try {
+        const parsed = new URL(String(value || '').trim())
+        return parsed.protocol === 'https:' && parsed.hostname === 'alldone.team'
+    } catch (_) {
+        return false
+    }
+}
 
 // Segmented selector rendered as a row of chips (avoids native Picker, which is
 // unreliable on RN-web in this codebase).
@@ -208,9 +219,11 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                                     {' · '}
                                     {server.authType === 'none'
                                         ? translate('No auth')
-                                        : `${server.authType === 'oauth' ? 'OAuth' : translate('Bearer token')}${
-                                              server.tokenLast4 ? ` ••••${server.tokenLast4}` : ''
-                                          }`}
+                                        : server.authType === 'alldone_app'
+                                          ? translate('alldone.app account')
+                                          : `${server.authType === 'oauth' ? 'OAuth' : translate('Bearer token')}${
+                                                server.tokenLast4 ? ` ••••${server.tokenLast4}` : ''
+                                            }`}
                                     {typeof server.toolCount === 'number'
                                         ? ` · ${translate('N tools', { count: server.toolCount })}`
                                         : ''}
@@ -258,7 +271,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
 
                 <Text style={localStyles.label}>{translate('Authentication')}</Text>
                 <ChipSelector
-                    options={AUTH_TYPES}
+                    options={isAlldoneTeamUrl(url) ? [...AUTH_TYPES, ALLDONE_APP_AUTH] : AUTH_TYPES}
                     value={authType}
                     onChange={key => {
                         setAuthType(key)
@@ -270,6 +283,14 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                     }}
                     disabled={processing}
                 />
+
+                {authType === 'alldone_app' && (
+                    <Text style={localStyles.serverMeta}>
+                        {translate(
+                            'Everyone who talks to this assistant uses alldone.team with their own alldone.app account and pays with their own Gold.'
+                        )}
+                    </Text>
+                )}
 
                 {authType === 'bearer' && (
                     <>
