@@ -2863,6 +2863,22 @@ exports.earnGoldSecondGen = onCall(
     }
 )
 
+// A short-lived alldone.app token for an alldone.team page embedded in the app (IframeModal). The page
+// exchanges it for a Firebase session as the person's linked alldone.team account, so its tools are
+// billed per action on the server (Gold) instead of trusting a charge the page asked the host for.
+exports.getAlldoneTeamEmbedTokenSecondGen = onCall(
+    { timeoutSeconds: 30, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.')
+        const { getAlldoneTeamMcpToken } = require('./MenubarApp/menubarApp')
+        try {
+            return { token: await getAlldoneTeamMcpToken(request.auth.uid) }
+        } catch (error) {
+            throw new HttpsError('failed-precondition', error.message)
+        }
+    }
+)
+
 exports.deductGoldSecondGen = onCall(
     {
         timeoutSeconds: 540,

@@ -114,17 +114,62 @@ describe('IframeModal window message filtering', () => {
         expect(iframePostMessage).not.toHaveBeenCalled()
     })
 
-    it('answers a protocol message from the trusted origin', () => {
+    it('answers a protocol message from the trusted origin, with an alldone.team token', async () => {
+        mockRunHttpsCallableFunction.mockResolvedValue({ token: 'adapp_token' })
         const event = new MessageEvent('message', { data: { type: 'GET_USER_DATA' }, origin: TRUSTED_ORIGIN })
         Object.defineProperty(event, 'source', { value: iframeWindow })
 
-        act(() => {
+        await act(async () => {
             window.dispatchEvent(event)
         })
 
         expect(warn).not.toHaveBeenCalled()
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledWith('getAlldoneTeamEmbedTokenSecondGen', {})
         expect(iframePostMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'USER_DATA', user: expect.objectContaining({ gold: 42 }) }),
+            expect.objectContaining({
+                type: 'USER_DATA',
+                user: expect.objectContaining({ gold: 42 }),
+                alldoneToken: 'adapp_token',
+            }),
+            TRUSTED_ORIGIN
+        )
+    })
+
+    it('acknowledges the page’s Gold requests without charging once its server bills', async () => {
+        const send = async data => {
+            const event = new MessageEvent('message', { data, origin: TRUSTED_ORIGIN })
+            Object.defineProperty(event, 'source', { value: iframeWindow })
+            await act(async () => {
+                window.dispatchEvent(event)
+            })
+        }
+        mockRunHttpsCallableFunction.mockResolvedValue({ success: true, newBalance: 32 })
+        await send({ type: 'DEDUCT_GOLD', amount: 10 })
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledWith('deductGoldSecondGen', expect.anything())
+
+        mockRunHttpsCallableFunction.mockClear()
+        iframePostMessage.mockClear()
+        await send({ type: 'ALLDONE_SERVER_BILLING' })
+        await send({ type: 'DEDUCT_GOLD', amount: 10 })
+        await send({ type: 'REFUND_GOLD', amount: 10 })
+        expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
+        expect(iframePostMessage.mock.calls.map(([message]) => message.type)).toEqual([
+            'DEDUCT_GOLD_SUCCESS',
+            'REFUND_GOLD_SUCCESS',
+        ])
+    })
+
+    it('renews the alldone.team token on request', async () => {
+        mockRunHttpsCallableFunction.mockResolvedValue({ token: 'adapp_next' })
+        const event = new MessageEvent('message', { data: { type: 'GET_ALLDONE_TOKEN' }, origin: TRUSTED_ORIGIN })
+        Object.defineProperty(event, 'source', { value: iframeWindow })
+
+        await act(async () => {
+            window.dispatchEvent(event)
+        })
+
+        expect(iframePostMessage).toHaveBeenCalledWith(
+            { type: 'ALLDONE_TOKEN', alldoneToken: 'adapp_next' },
             TRUSTED_ORIGIN
         )
     })

@@ -3852,6 +3852,19 @@ refund after a charge that never happened (an ambiguous timeout) would hand out 
 
 **An assistant uses alldone.team as the person it answers (MCP auth type `alldone_app`).** An MCP server on `https://alldone.team` can be connected with "alldone.app account" instead of a token. Nothing is stored: each run calls `resolveMcpSecret` (`functions/MCP/mcpAssistantConnect.js`), which mints, through `getAlldoneTeamMcpToken` (`MenubarApp/menubarApp.js`), an hour-long `adapp_` token with app id `alldone-team-mcp` for the run's `requestUserId` (reused per instance while ten minutes remain). alldone.team checks it at `/api/menubar/session`, which now also answers `accountId` and `appId`, and acts as that person's own alldone.team account, linked to their alldone.app account and paying with their Gold (alldone_team `alldoneAppAccounts.ts`). These tokens expire (`expiresAt`), never count against the menubar app's ten devices and are not listed as devices. The auth type is refused for any other host, because the token speaks for the user's alldone.app account. A run without a requesting user gets no token. Pinned by `functions/MCP/mcpAlldoneAppAuth.test.js` and the `tokens for alldone.team/mcp` block of `functions/MenubarApp/menubarIdentity.test.js`.
 
+### alldone.team pages in the IframeModal are billed by alldone.team's server
+
+An alldone.team tool page opened in `IframeModal` used to get the person's email in `USER_DATA` and ask
+the host to take the Gold (`DEDUCT_GOLD` → `deductGoldSecondGen`) before calling its own backend
+with no token, which anyone could call directly and use for free. Now the host also hands an
+`https://alldone.team` frame a short-lived alldone.app token (`USER_DATA.alldoneToken`, renewed by
+`GET_ALLDONE_TOKEN`, minted by `getAlldoneTeamEmbedTokenSecondGen` through `getAlldoneTeamMcpToken`).
+The page trades it for a session as the person's linked alldone.team account, and alldone.team charges
+each action in Gold through the Gold webhook (`alldone_team_usage`). Once signed in, the page posts
+`ALLDONE_SERVER_BILLING`, and from then on the host only acknowledges `DEDUCT_GOLD`/`REFUND_GOLD`
+for that frame instead of charging twice. Before that message, the host still charges as before.
+Pinned by `IframeModal.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything

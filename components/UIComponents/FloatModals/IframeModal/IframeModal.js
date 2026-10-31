@@ -31,7 +31,26 @@ const ROADMAP_MESSAGE_TYPES = new Set([
     'ROADMAP_PROJECT_UNSUBSCRIBE',
     'ROADMAP_OPEN_ENTITY',
 ])
-const IFRAME_MESSAGE_TYPES = new Set(['GET_USER_DATA', 'DEDUCT_GOLD', 'REFUND_GOLD', ...ROADMAP_MESSAGE_TYPES])
+const IFRAME_MESSAGE_TYPES = new Set([
+    'GET_USER_DATA',
+    'GET_ALLDONE_TOKEN',
+    'ALLDONE_SERVER_BILLING',
+    'DEDUCT_GOLD',
+    'REFUND_GOLD',
+    ...ROADMAP_MESSAGE_TYPES,
+])
+// alldone.team pages exchange this token for a session as the person's linked account and are then
+// billed per action on the server (functions/index.js getAlldoneTeamEmbedTokenSecondGen).
+const ALLDONE_TEAM_ORIGIN = 'https://alldone.team'
+const getAlldoneTeamEmbedToken = async () => {
+    try {
+        const result = await runHttpsCallableFunction('getAlldoneTeamEmbedTokenSecondGen', {})
+        return result?.token || null
+    } catch (error) {
+        console.warn('IframeModal: no alldone.team token', error?.message)
+        return null
+    }
+}
 
 const isRoadmapUrl = url => {
     try {
@@ -76,6 +95,9 @@ export default function IframeModal() {
 
         let trustedOrigin = null
         let unsubscribeRoadmapProject = null
+        // Set once an alldone.team page has signed in as the person: its server bills every action in
+        // Gold, so the page's own DEDUCT_GOLD / REFUND_GOLD are acknowledged here, never charged twice.
+        let serverBilled = false
 
         try {
             trustedOrigin = finalUrl ? new URL(finalUrl).origin : null
@@ -190,7 +212,25 @@ export default function IframeModal() {
                         name: loggedUserRef.current?.userName || loggedUserRef.current?.name,
                         gold: loggedUserRef.current?.gold || 0,
                     },
+                    alldoneToken: event.origin === ALLDONE_TEAM_ORIGIN ? await getAlldoneTeamEmbedToken() : null,
                 })
+            }
+
+            if (type === 'GET_ALLDONE_TOKEN' && event.origin === ALLDONE_TEAM_ORIGIN) {
+                postResult({ type: 'ALLDONE_TOKEN', alldoneToken: await getAlldoneTeamEmbedToken() })
+            }
+
+            if (type === 'ALLDONE_SERVER_BILLING' && event.origin === ALLDONE_TEAM_ORIGIN) {
+                serverBilled = true
+                return
+            }
+
+            if (serverBilled && (type === 'DEDUCT_GOLD' || type === 'REFUND_GOLD')) {
+                postResult({
+                    type: type === 'DEDUCT_GOLD' ? 'DEDUCT_GOLD_SUCCESS' : 'REFUND_GOLD_SUCCESS',
+                    newBalance: loggedUserRef.current?.gold || 0,
+                })
+                return
             }
 
             if (type === 'DEDUCT_GOLD') {
