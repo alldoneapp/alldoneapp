@@ -4,7 +4,7 @@ const SendInBlueManager = require('../SendInBlueManager')
 
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const { PLAN_STATUS_FREE, PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
-const { applyGoldChange, applyGoldChangeInTransaction } = require('./goldTransactions')
+const { applyGoldChange, applyGoldChangeInTransaction, getGoldChangeClaim } = require('./goldTransactions')
 const {
     getUsersByPremiumStatus,
     getLastActiveUsers,
@@ -499,4 +499,5 @@ module.exports = {
     deductGold,
     refundGold,
     refundClientSpend,
+    getGoldChangeClaim,
 }

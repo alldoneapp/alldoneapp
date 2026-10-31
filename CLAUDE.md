@@ -3826,6 +3826,16 @@ be empty or the address in the writer's own token, because the client still forw
 (including source checks of the call sites), `functions/MenubarApp/menubarIdentity.test.js` and the
 `account email` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+**The Gold webhook has two dialects.** A request without `app` (the Anna menubar app, older
+alldone.team tools) is booked as `menubar_app_usage` / `menubar_app_refund`, as always. alldone.team's
+per-action billing sends `app: 'alldone-team'` plus `operationId`, `product` and `description`, and
+is booked as `alldone_team_usage` / `alldone_team_refund` with the description as the Gold-history
+subtitle. An `operationId` makes a request idempotent per type (`gold_webhook:<app>:<type>:<id>` in
+`goldChangeClaims`), so the caller may retry a timeout. For `alldone-team` a refund must carry the
+operationId of its charge and may give back at most what that charge took, once: without that, a
+refund after a charge that never happened (an ambiguous timeout) would hand out Gold. Pinned by
+`functions/MenubarApp/menubarGoldWebhook.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything

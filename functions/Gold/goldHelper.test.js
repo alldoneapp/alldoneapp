@@ -121,7 +121,14 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { addMonthlyGoldToUser, deductGold, refundGold, earnGold, resetDailyGoldLimit } = require('./goldHelper')
+const {
+    addMonthlyGoldToUser,
+    deductGold,
+    refundGold,
+    earnGold,
+    resetDailyGoldLimit,
+    getGoldChangeClaim,
+} = require('./goldHelper')
 const { getUsersThatEarnedSomeGoldToday } = require('../Users/usersFirestore')
 const { applyGoldChangeInTransaction } = require('./goldTransactions')
 
@@ -204,6 +211,20 @@ describe('goldHelper ledger integration', () => {
         expect(admin.__mock.getDoc('users/user-1').gold).toBe(143)
         expect(admin.__mock.getDocsByPrefix('users/user-1/goldTransactions/')).toHaveLength(1)
         expect(admin.__mock.getDocsByPrefix('users/user-1/goldChangeClaims/')).toHaveLength(1)
+    })
+
+    test('getGoldChangeClaim reports the change a key made, and nothing for a key that made none', async () => {
+        admin.__mock.setDoc('users/user-1', { gold: 50 })
+
+        await deductGold('user-1', 20, { source: 'alldone_team_usage', idempotencyKey: 'charge-1' })
+        await deductGold('user-1', 500, { source: 'alldone_team_usage', idempotencyKey: 'charge-2' })
+
+        expect(await getGoldChangeClaim('user-1', 'charge-1')).toEqual(
+            expect.objectContaining({ amount: 20, direction: 'spend', source: 'alldone_team_usage', newBalance: 30 })
+        )
+        // A refused change (insufficient Gold) writes no claim.
+        expect(await getGoldChangeClaim('user-1', 'charge-2')).toBeNull()
+        expect(await getGoldChangeClaim('user-1', '')).toBeNull()
     })
 
     test('addMonthlyGoldToUser records a monthly earn ledger entry', async () => {
