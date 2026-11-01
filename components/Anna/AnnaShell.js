@@ -40,6 +40,12 @@ import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallP
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
+import AnnaAppPaneContext from './AnnaAppPaneContext'
+import { McpAppFrame } from '../ChatsView/ChatDV/EditorView/McpAppViews'
+
+// App views kept open in the right pane; the oldest closes when another opens.
+const MAX_APP_VIEWS = 5
+const appViewLabel = view => view.appName || view.serverLabel || view.toolName || 'App'
 
 const NO_ASSISTANT = {}
 
@@ -204,6 +210,10 @@ export default function AnnaShell({ children, routeId }) {
     const surfaceRef = useRef(surface)
     surfaceRef.current = surface
     const selectedVmId = surface.startsWith('vm:') ? surface.slice(3) : null
+    // MCP Apps views (e.g. Judy) the chat opened here, newest last; each stays mounted, so it keeps its state.
+    const [appViews, setAppViews] = useState([])
+    const selectedAppViewId = surface.startsWith('app:') ? surface.slice(4) : null
+    const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
     const vmSurface = surface === 'vms' || !!selectedVmId
     const lastVmId = useRef(null)
     if (selectedVmId) lastVmId.current = selectedVmId
@@ -276,6 +286,26 @@ export default function AnnaShell({ children, routeId }) {
         requestGeneration.current++
         setSurface(`vm:${runId}`)
     }
+    // `auto`: opened because the answer arrived, not by a tap. On a phone that must not pull the user
+    // out of the chat they are reading; the card under the answer opens the pane.
+    const openAppView = useCallback(
+        (view, { auto = false } = {}) => {
+            if (!view?.viewId) return
+            setAppViews(current =>
+                current.some(item => item.viewId === view.viewId) ? current : [...current, view].slice(-MAX_APP_VIEWS)
+            )
+            requestGeneration.current++
+            setSurface(`app:${view.viewId}`)
+            if (auto && mobile) return
+            setAnnaLayout('split')
+            setMobilePane('workspace')
+        },
+        [mobile]
+    )
+    const appPane = useMemo(
+        () => ({ open: openAppView, selectedViewId: selectedAppViewId }),
+        [openAppView, selectedAppViewId]
+    )
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
@@ -383,7 +413,9 @@ export default function AnnaShell({ children, routeId }) {
           ? translate('VMs')
           : surface === 'browser'
             ? translate('Browser')
-            : 'Alldone'
+            : selectedAppView
+              ? appViewLabel(selectedAppView)
+              : 'Alldone'
     const returnFromBrowser = useCallback(runId => {
         const followed = followedBrowser.current
         if (
@@ -844,6 +876,11 @@ export default function AnnaShell({ children, routeId }) {
                             {translate('VMs')}
                             {vmJobs.length ? ` (${vmJobs.length})` : ''}
                         </option>
+                        {appViews.map(view => (
+                            <option key={view.viewId} value={`app:${view.viewId}`}>
+                                {appViewLabel(view)}
+                            </option>
+                        ))}
                     </select>
                     <span aria-hidden="true">
                         <Icon name="chevron-down" size={14} color="currentColor" />
@@ -924,45 +961,47 @@ export default function AnnaShell({ children, routeId }) {
                                 </div>
                             )}
                             {conversation && (
-                                <AnnaConversation
-                                    ref={chatConversation}
-                                    key={`${user.uid}/${user.defaultProjectId}`}
-                                    conversation={conversation}
-                                    assistant={assistant}
-                                    user={user}
-                                    call={call}
-                                    threads={threads}
-                                    resolveConversation={resolveConversation}
-                                    loadEarlier={loadEarlier}
-                                    hasEarlier={nextBefore != null}
-                                    offline={offline}
-                                    resumeRequest={browserControl ? null : resumeRequest}
-                                    onResumeHandled={id =>
-                                        setResumeRequest(current => (current?.id === id ? null : current))
-                                    }
-                                    visible={active && (chatOnly || !mobile || mobilePane === 'chat')}
-                                    active={active}
-                                    onExpand={() => setMobilePane('chat')}
-                                    onSendingChange={setTextBusy}
-                                    onWorkStateChange={setWorkState}
-                                    onBeforeSend={resumeForMessage}
-                                    pageContext={chatPageContext}
-                                    switching={switching}
-                                    projectSwitch={projectSwitch}
-                                    renderProjectSwitcher={({ disabled }) => (
-                                        <AnnaProjectSwitcher
-                                            choices={projectChoices}
-                                            activeProjectId={activeProjectId}
-                                            onSelect={selectProject}
-                                            disabled={disabled || call.status !== 'idle'}
-                                            busy={switching}
-                                            getViewport={() => {
-                                                const pane = chatPane.current?.getBoundingClientRect?.()
-                                                return pane && { ...pane.toJSON(), active: true }
-                                            }}
-                                        />
-                                    )}
-                                />
+                                <AnnaAppPaneContext.Provider value={appPane}>
+                                    <AnnaConversation
+                                        ref={chatConversation}
+                                        key={`${user.uid}/${user.defaultProjectId}`}
+                                        conversation={conversation}
+                                        assistant={assistant}
+                                        user={user}
+                                        call={call}
+                                        threads={threads}
+                                        resolveConversation={resolveConversation}
+                                        loadEarlier={loadEarlier}
+                                        hasEarlier={nextBefore != null}
+                                        offline={offline}
+                                        resumeRequest={browserControl ? null : resumeRequest}
+                                        onResumeHandled={id =>
+                                            setResumeRequest(current => (current?.id === id ? null : current))
+                                        }
+                                        visible={active && (chatOnly || !mobile || mobilePane === 'chat')}
+                                        active={active}
+                                        onExpand={() => setMobilePane('chat')}
+                                        onSendingChange={setTextBusy}
+                                        onWorkStateChange={setWorkState}
+                                        onBeforeSend={resumeForMessage}
+                                        pageContext={chatPageContext}
+                                        switching={switching}
+                                        projectSwitch={projectSwitch}
+                                        renderProjectSwitcher={({ disabled }) => (
+                                            <AnnaProjectSwitcher
+                                                choices={projectChoices}
+                                                activeProjectId={activeProjectId}
+                                                onSelect={selectProject}
+                                                disabled={disabled || call.status !== 'idle'}
+                                                busy={switching}
+                                                getViewport={() => {
+                                                    const pane = chatPane.current?.getBoundingClientRect?.()
+                                                    return pane && { ...pane.toJSON(), active: true }
+                                                }}
+                                            />
+                                        )}
+                                    />
+                                </AnnaAppPaneContext.Provider>
                             )}
                         </>
                     )}
@@ -1091,6 +1130,22 @@ export default function AnnaShell({ children, routeId }) {
                             </div>
                         )}
                     </div>
+                    {appViews.length > 0 && (
+                        <div
+                            className={`anna-apps ${!active || !selectedAppView ? 'anna-surface-hidden' : ''}`}
+                            aria-hidden={!active || !selectedAppView}
+                            inert={!active || !selectedAppView ? '' : undefined}
+                        >
+                            {appViews.map(view => (
+                                <div
+                                    key={view.viewId}
+                                    className={`anna-app-surface ${view.viewId === selectedAppViewId ? '' : 'anna-surface-hidden'}`}
+                                >
+                                    <McpAppFrame view={view} language={user.language} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     {visited && (
                         <div
                             className={`anna-browser-surface ${!active || surface !== 'browser' ? 'anna-surface-hidden' : ''}`}

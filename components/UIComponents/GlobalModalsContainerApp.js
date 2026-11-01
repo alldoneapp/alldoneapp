@@ -21,6 +21,7 @@ import CheatSheetModal from './ShortcutCheatSheet/CheatSheetModal'
 import EndCopyProjectNotification from '../ProjectDetailedView/ProjectProperties/CopyProject/EndCopyProjectNotification'
 import NotificationModalOptional from './FloatModals/NotificationModalOptional'
 import IframeModal from './FloatModals/IframeModal/IframeModal'
+import McpAppModal from '../ChatsView/ChatDV/EditorView/McpAppModal'
 import GlobalPreConfigTaskModal from './FloatModals/PreConfigTaskGeneratorModal/GlobalPreConfigTaskModal'
 import ConnectionStateToast from './FloatModals/ConnectionStateToast'
 
@@ -105,6 +106,8 @@ export default function GlobalModalsContainerApp() {
                 {showLimitedFeatureModal && <LimitedFeatureModal />}
                 {showLevelUpModal && !isAnonymous && <LevelUpModal setShowLevelUpModal={setShowLevelUpModal} />}
                 <IframeModal />
+                {/* MCP Apps views (e.g. Judy) opened from a chat outside Anna's assistant shell. */}
+                <McpAppModal />
                 <GlobalPreConfigTaskModal />
                 <ConnectionStateToast />
             </WorkspaceOverlayLayer>
