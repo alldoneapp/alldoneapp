@@ -97,6 +97,8 @@ async function recordMcpAppView({
             assistantCommentId,
             serverId: target.serverId,
             serverLabel: target.serverLabel || target.serverId,
+            // The app's own name (alldone.team's `_meta` app, e.g. "Judy Job"), for the pane's label.
+            appName: target.appName || null,
             toolName: target.remoteToolName,
             resourceUri: target.uiResourceUri,
             toolArguments: jsonSize(toolArgs) <= MAX_STORED_ARGUMENTS_BYTES ? toolArgs || {} : {},

@@ -3725,5 +3725,8 @@
     "Send now": "Enviar ahora",
     "Remove queued message": "Quitar",
     "mcp_app_loading": "Cargando la app…",
-    "mcp_app_failed": "No se pudo cargar la app."
+    "mcp_app_failed": "No se pudo cargar la app.",
+    "mcp_app_show": "Mostrar",
+    "mcp_app_open_on_right": "Abierta a la derecha",
+    "mcp_app_open": "Abierta"
 }

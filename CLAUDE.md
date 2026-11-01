@@ -478,8 +478,11 @@ next to the schemas (`mcpApps`); an entry without them is rebuilt. Pinned by
 **MCP Apps views appear under the assistant's answer (`MCP/mcpAppViews.js`, `McpAppViews.js`).**
 A tool may declare a view (`_meta.ui.resourceUri = 'ui://…'`, MCP Apps / SEP-1865); alldone.team's
 `judy_show` does. When a run calls such a tool, the executor records `mcpAppViews/{viewId}` (server-written,
-readable only by `userId`, the person the run acted for) under `assistantCommentId`, and the chat
-renders it below that comment (`MessageItemBody`, `CommentsList`). The frame gets the server's HTML in
+readable only by `userId`, the person the run acted for) under `assistantCommentId`. A view is NEVER
+shown inline in the chat: below that comment (`MessageItemBody`, `CommentsList`) there is only a
+one-line card, and the view opens in Anna's right pane or, outside the assistant shell, in an embed
+window shaped like the alldone.team tool embeds (`McpAppModal`, mounted with the global modals,
+`mcpAppModalStore`). The frame gets the server's HTML in
 `srcdoc` with `sandbox` WITHOUT `allow-same-origin`, so it runs on an opaque origin and can reach
 neither the app's storage nor its session; its own CSP from `_meta.ui.csp` is put first in `<head>`
 (`mcpAppHost.js`), and the app page's CSP applies on top. That is why no separate sandbox domain is
@@ -488,8 +491,12 @@ needed, unlike artifacts, whose bytes are served from a URL. The frame never hol
 the person, current project membership, that the server is still on the assistant, and that the tool
 lets the app call it (`visibility` includes `app`); the call uses the same `resolveMcpSecret` as the
 run, so a view can do no more than that person's own assistant. A tool whose `visibility` leaves out
-`model` (e.g. `judy_view_get`) is never offered to or run for the model. Fullscreen restyles the same
-frame (it must not remount, or the view loses its state). Pinned by `MCP/mcpAppViews.test.js`,
+`model` (e.g. `judy_view_get`) is never offered to or run for the model. The view always runs in
+fullscreen display mode and fills its container. In Anna's assistant shell the view opens in the RIGHT PANE (`AnnaAppPaneContext`, surface `app:<viewId>` in `AnnaShell`, listed in the workspace picker),
+and the chat keeps a one-line card that reopens it. A view recorded in the last two minutes opens by
+itself once (on a phone without leaving the chat); an older one, met by scrolling back, only offers
+to; the same rule opens the embed window outside the shell. Pane views stay mounted while hidden, up
+to five, so switching panes keeps their state. Pinned by `MCP/mcpAppViews.test.js`,
 `mcpAppHost.test.js`, the view-only case in `assistantHelper.test.js` and the `MCP Apps views` block
 of the rules emulator suite.
 

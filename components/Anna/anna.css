@@ -1973,3 +1973,19 @@
         display: none;
     }
 }
+/* MCP Apps views (e.g. Judy) opened from the chat: one fills the pane, the others stay mounted. */
+.anna-apps {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: var(--anna-surface);
+}
+.anna-app-surface {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}

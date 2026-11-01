@@ -91,6 +91,7 @@ export function createMcpAppHost({
     onSize,
     onDisplayMode,
     getDisplayMode,
+    availableDisplayModes = ['inline', 'fullscreen'],
     openUrl = url => window.open(url, '_blank', 'noopener,noreferrer'),
     download = downloadResource,
 }) {
@@ -108,7 +109,7 @@ export function createMcpAppHost({
         toolInfo: { tool: { name: toolName } },
         theme: 'light',
         displayMode: getDisplayMode(),
-        availableDisplayModes: ['inline', 'fullscreen'],
+        availableDisplayModes,
         locale: ['de', 'es'].includes(String(language || '').split(/[-_]/)[0])
             ? String(language).split(/[-_]/)[0]
             : 'en',
