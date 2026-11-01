@@ -3,15 +3,16 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'
-import { colors, hexColorToRGBa } from '../../../styles/global'
+import { colors } from '../../../styles/global'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import { McpAppFrame } from './McpAppViews'
 import { closeMcpAppView, getOpenMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
 
 /**
- * The embed window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell, shaped like
- * the alldone.team tool embeds (IframeModal). Mounted once with the global modals.
+ * The full-screen window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the
+ * whole viewport (inside the safe area), a slim header with the app's name and a close button.
+ * Mounted once with the global modals.
  */
 export default function McpAppModal() {
     const language = useSelector(state => state.loggedUser.language)
@@ -40,6 +41,7 @@ export default function McpAppModal() {
     )
 }
 
+// Fills the screen like a full-screen app: no backdrop margin, no card corners, a slim header.
 const styles = StyleSheet.create({
     overlay: {
         position: 'fixed',
@@ -47,28 +49,23 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        backgroundColor: '#FFFFFF',
         zIndex: 9999,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 8,
     },
     container: {
-        width: '96%',
-        height: '96%',
-        maxWidth: 1600,
-        maxHeight: 1200,
+        flex: 1,
+        width: '100%',
+        height: '100%',
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
         overflow: 'hidden',
-        boxShadow: '0px 8px 24px rgba(0,0,0,0.40)',
     },
     header: {
-        height: 44,
+        height: 40,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingLeft: 16,
+        paddingRight: 8,
         borderBottomWidth: 1,
         borderBottomColor: colors.Grey300,
     },

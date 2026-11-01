@@ -480,8 +480,8 @@ A tool may declare a view (`_meta.ui.resourceUri = 'ui://…'`, MCP Apps / SEP-1
 `judy_show` does. When a run calls such a tool, the executor records `mcpAppViews/{viewId}` (server-written,
 readable only by `userId`, the person the run acted for) under `assistantCommentId`. A view is NEVER
 shown inline in the chat: below that comment (`MessageItemBody`, `CommentsList`) there is only a
-one-line card, and the view opens in Anna's right pane or, outside the assistant shell, in an embed
-window shaped like the alldone.team tool embeds (`McpAppModal`, mounted with the global modals,
+one-line card, and the view opens in Anna's right pane or, outside the assistant shell, in a window
+that fills the screen apart from a slim header (`McpAppModal`, mounted with the global modals,
 `mcpAppModalStore`). The frame gets the server's HTML in
 `srcdoc` with `sandbox` WITHOUT `allow-same-origin`, so it runs on an opaque origin and can reach
 neither the app's storage nor its session; its own CSP from `_meta.ui.csp` is put first in `<head>`
