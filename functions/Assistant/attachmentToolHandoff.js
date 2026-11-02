@@ -1,5 +1,6 @@
 const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved for the next external tool call]'
 const { compactTaskListing } = require('./taskListingContext')
+const { isDeepStrictEqual } = require('node:util')
 const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
 const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
 const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
@@ -262,6 +263,35 @@ function enforceToolResultContextCeiling(toolName, toolResult) {
     return fallback
 }
 
+// MCP servers commonly send the same JSON in content.text (legacy clients) and
+// structuredContent. Keep the structured copy for the model, while leaving the raw
+// tool result intact for MCP App views and preserving any additional text/media.
+function deduplicateMcpContent(toolName, toolResult) {
+    if (
+        typeof toolName !== 'string' ||
+        !toolName.startsWith('mcp_') ||
+        !isObject(toolResult?.structuredContent) ||
+        !Array.isArray(toolResult.content)
+    ) {
+        return toolResult
+    }
+    let structuredJson
+    try {
+        structuredJson = JSON.parse(JSON.stringify(toolResult.structuredContent))
+    } catch (_) {
+        return toolResult
+    }
+    const content = toolResult.content.filter(block => {
+        if (block?.type !== 'text' || typeof block.text !== 'string') return true
+        try {
+            return !isDeepStrictEqual(JSON.parse(block.text), structuredJson)
+        } catch (_) {
+            return true
+        }
+    })
+    return content.length === toolResult.content.length ? toolResult : { ...toolResult, content }
+}
+
 function buildConversationSafeToolResult(toolName, toolResult) {
     let safeToolResult = toolResult
     if (toolName === 'find_calendar_availability') {
@@ -278,7 +308,7 @@ function buildConversationSafeToolResult(toolName, toolResult) {
         }
     }
 
-    return enforceToolResultContextCeiling(toolName, safeToolResult)
+    return enforceToolResultContextCeiling(toolName, deduplicateMcpContent(toolName, safeToolResult))
 }
 
 function buildPendingAttachmentPayload(toolName, toolResult) {
