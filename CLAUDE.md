@@ -526,8 +526,16 @@ is a pane view `{ kind: 'iframe', viewId: 'iframe:<url>', url, appName }` render
 `EmbeddedAppFrame`, the frame and postMessage protocol (user data, alldone.team token, Gold,
 roadmap) extracted from `IframeModal` so both hosts speak it identically. Moving an app reloads its
 frame: a live session inside it (screen share, unsaved state in the third-party page) does not move
-with it. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the AT-2951 block of
-`AnnaShell.test.js`.
+with it. The way back goes through the same bridge: leaving assistant mode (the chat's X, the top
+bar or sidebar toggle, browser Back) while an app is on screen in the pane reopens it in its window
+(`registerEmbedWindow('iframe' | 'mcp')`, `openInEmbedWindow`) and closes the pane's copy, so it
+never runs twice. Only the pane's selected app comes back, from chat-only mode too, where the pane
+is merely hidden (product decision): not with Alldone selected, not an app only listed in the
+picker, and not through the Home button (which means the task list) or choosing Alldone in the
+phone's picker (which leaves assistant mode by design). The shell hands back from a layout effect
+declared after its bridge registration, so the window already sees assistant mode as off and does
+not send the app straight back. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the
+two AT-2951 blocks of `AnnaShell.test.js`.
 
 **A view outlives the connection it opened with, and is reconnected only on a click (AT-2952).**
 "This app is no longer connected to the assistant." meant exactly that: on 2026-11-03 the user had

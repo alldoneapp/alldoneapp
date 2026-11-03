@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react'
+import React, { useEffect, useLayoutEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Icon from '../../../Icon'
@@ -8,7 +8,12 @@ import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import EmbeddedAppFrame from './EmbeddedAppFrame'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
-import { iframeAppView, openInAnnaAppPane, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
+import {
+    iframeAppView,
+    openInAnnaAppPane,
+    registerEmbedWindow,
+    useAnnaAppPaneState,
+} from '../../../Anna/annaAppPaneBridge'
 
 /**
  * The app-wide embed window for a pre-configured iframe task (e.g. an alldone.team tool page).
@@ -16,7 +21,8 @@ import { iframeAppView, openInAnnaAppPane, useAnnaAppPaneState } from '../../../
  *
  * In assistant mode there is no window: the app opens straight in the assistant shell's right pane
  * (AT-2951). Outside it, the header's "expand to the left" button switches to assistant mode with
- * the assistant sidebar on the left and this app on the right.
+ * the assistant sidebar on the left and this app on the right. Leaving assistant mode while the app
+ * is shown in the pane opens it here again.
  */
 export default function IframeModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
@@ -34,6 +40,15 @@ export default function IframeModal() {
     // live third-party surfaces (screen share, mic) where a stray outside tap
     // must not tear the session down.
     useEscapeKey(closeModal, { enabled: !!visible && !inAssistantMode })
+
+    // Leaving assistant mode with this kind of app in the pane brings it back here (AT-2951).
+    useEffect(
+        () =>
+            registerEmbedWindow('iframe', view => {
+                dispatch(setIframeModalData(true, view.url, view.appName || ''))
+            }),
+        [dispatch]
+    )
 
     // Opened while assistant mode is on (or switched on while open): show it in the pane instead.
     // Before paint, so the window never flashes over the workspace.

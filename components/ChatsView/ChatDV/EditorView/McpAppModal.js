@@ -7,15 +7,16 @@ import { colors } from '../../../styles/global'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import { McpAppFrame } from './McpAppViews'
-import { closeMcpAppView, getOpenMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
+import { closeMcpAppView, getOpenMcpAppView, openMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
-import { openInAnnaAppPane, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
+import { openInAnnaAppPane, registerEmbedWindow, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
 
 /**
  * The full-screen window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the
  * whole viewport (inside the safe area), a slim header with the app's name and a close button.
  * Mounted once with the global modals. In assistant mode the view goes to the shell's right pane
- * instead, and the header's "expand to the left" button switches there (AT-2951).
+ * instead, and the header's "expand to the left" button switches there (AT-2951); leaving assistant
+ * mode with the view in the pane opens it here again.
  */
 export default function McpAppModal() {
     const language = useSelector(state => state.loggedUser.language)
@@ -23,6 +24,8 @@ export default function McpAppModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const inAssistantMode = useAnnaAppPaneState() === 'active'
     useEffect(() => subscribeMcpAppView(setView), [])
+    // Leaving assistant mode with an MCP app in the pane brings it back here (AT-2951).
+    useEffect(() => registerEmbedWindow('mcp', openMcpAppView), [])
     useEscapeKey(closeMcpAppView, { enabled: !!view && !inAssistantMode })
 
     // Opened while assistant mode is on (or switched on while open): the pane shows it instead.
