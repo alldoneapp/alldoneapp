@@ -973,6 +973,18 @@ Artifacts before Chats, like the main navigation. The tab numbers stay as they a
 the shown order. Pinned by `functions/Typesense/scopedSearchParentKey.test.js`, the AT-2905 cases in
 `scopedSearchCredentials.test.js` and `components/GlobalSearchAlgolia/Header/Header.test.js`.
 
+**Global search ranks the user's own objects first, filter or not (AT-2945).** With "only what I
+created" off, every tab except the wiki sends `boostCreator: { attribute, userId }`
+(`getCreatedByMeBoost` in `typesenseSearchFilters.js`, same creator attribute as the filter), and
+`buildRecencySortBy` folds it into the first sort field as a weighted `_eval`: own exact identity
+match, other exact match, own match, the rest. Then the AT-2663 relevance buckets and recency apply
+inside each group. It shares the exact-match `_eval` because Typesense rejects a fourth sort field
+("Only upto 3 sort fields are allowed"). It is a sort, never a filter: access stays in `filter_by`
+alone, and the AT-2527 identity-first merge still puts title matches ahead of body-only ones. With
+the filter on, for anonymous viewers, on the wiki, in pickers and in server-side search, no boost is
+sent. Pinned by `searchRanking.test.js`, the AT-2945 case in `searchRanking.integration.test.cjs`
+(real Typesense 29), `typesenseSearchFilters.test.js` and `GlobalSearchModal.createdByMe.test.js`.
+
 **"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
 (`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
 assistant summary, possibly private text or a different target project first becomes a draft in the
