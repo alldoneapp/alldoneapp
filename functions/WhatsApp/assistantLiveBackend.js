@@ -308,7 +308,8 @@ async function runLiveAssistant({
         }
     )
     const previousActions = await sessionRef.collection('liveToolResults').orderBy('createdAt', 'desc').limit(12).get()
-    if (annaContext) messages.push(['system', annaInstructions(annaContext)])
+    if (annaContext)
+        messages.push(['system', annaInstructions(annaContext, { allowedTools, mcpServers: assistant.mcpServers })])
     if (!previousActions.empty)
         messages.push([
             'system',

@@ -196,7 +196,8 @@ async function askToOpenAIBotOptimized(
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),
         ])
-        if (annaContext) messages.push(['system', annaInstructions(annaContext)])
+        if (annaContext)
+            messages.push(['system', annaInstructions(annaContext, { allowedTools, mcpServers: assistant.mcpServers })])
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {

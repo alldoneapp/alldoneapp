@@ -591,9 +591,7 @@ async function generatePreConfigTaskResult(
             console.log('🤖 ASSISTANT TASK EXECUTION: No AI comment text generated, skipping gold reduction')
         }
 
-        if (objectType === 'tasks' && !toolRuntimeContext.workflowVmHandoffComplete) {
-            await assertWorkflowComplete(admin.firestore(), toolRuntimeContext, streamOutput)
-        }
+        if (objectType === 'tasks') await assertWorkflowComplete(admin.firestore(), toolRuntimeContext, streamOutput)
 
         const totalDuration = Date.now() - functionStartTime
         console.log('🎯 [TIMING] generatePreConfigTaskResult COMPLETE', {

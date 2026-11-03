@@ -10560,16 +10560,16 @@ async function executeToolNativelyImpl(
                         toolRuntimeContext?.originAssistantId ||
                         (toolRuntimeContext?.annaConversation ? assistantId : ''),
                 })
-                // A workflow can end the turn once it has recorded the VM as responsible for the step.
+                // Persist the workflow handoff before requesting another model response. That
+                // response can hang even though the VM has already started and will finish.
                 if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {
                     try {
-                        const accepted = await toolRuntimeContext.onVmJobStarted({
+                        await toolRuntimeContext.onVmJobStarted({
                             correlationId: vmResult.correlationId,
                             projectId: effectiveProjectId,
                             objectType: effectiveObjectType,
                             objectId: effectiveObjectId,
                         })
-                        if (accepted === true) toolRuntimeContext.workflowVmHandoffComplete = true
                     } catch (error) {
                         console.warn('VM workflow handoff failed; retaining successful launch result', {
                             correlationId: vmResult.correlationId,
@@ -11284,8 +11284,6 @@ async function storeChunks(
                         toolExecutions = await executeToolCallBatch(
                             currentToolCalls,
                             async toolCall => {
-                                // VM dispatch is a batch barrier, so later calls have not started.
-                                if (runtimeContextForTools.workflowVmHandoffComplete) return
                                 const toolName = toolCall?.function?.name
                                 try {
                                     await throwIfCancelled(true)
@@ -11412,10 +11410,6 @@ async function storeChunks(
                                 skippedResult: toolCall => toolCallFailure.buildSkippedToolExecution(toolCall),
                             }
                         )
-                        if (runtimeContextForTools.workflowVmHandoffComplete) {
-                            currentToolCalls = null
-                            break
-                        }
                         consecutiveFailedToolRounds = toolCallFailure.countConsecutiveFailedRounds(
                             consecutiveFailedToolRounds,
                             toolExecutions
@@ -11651,9 +11645,7 @@ async function storeChunks(
                 // Check whether the loop stopped because of a guardrail (max iterations or time
                 // budget) rather than because the assistant was done. currentToolCalls is null
                 // only when the loop exited naturally with no further tool calls.
-                const hitMaxIterations =
-                    !runtimeContextForTools.workflowVmHandoffComplete &&
-                    toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS
+                const hitMaxIterations = toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS
                 const hitTimeBudget =
                     !hitMaxIterations &&
                     !!currentToolCalls &&

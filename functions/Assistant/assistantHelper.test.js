@@ -10408,7 +10408,7 @@ describe('Anna VM message order', () => {
     let wait
     let now
     const messages = () => [...documents.entries()].filter(([path]) => path.startsWith(prefix)).map(([, doc]) => doc)
-    const run = (vmArgs = {}, runtimeContext = {}, additionalToolCalls = []) =>
+    const run = (vmArgs = {}) =>
         storeChunks(
             'presentation-project',
             'tasks',
@@ -10431,7 +10431,6 @@ describe('Anna VM message order', () => {
                                     }),
                                 },
                             },
-                            ...additionalToolCalls,
                         ],
                     },
                 },
@@ -10458,7 +10457,6 @@ describe('Anna VM message order', () => {
                 requestUserId: 'presentation-user',
                 messageId: 'request-1',
                 language: 'en',
-                ...runtimeContext,
             }
         )
     beforeEach(() => {
@@ -10548,25 +10546,9 @@ describe('Anna VM message order', () => {
         expect(ordered[2]).toMatchObject({ isLoading: false, fromAssistant: true })
         expect(ordered[2].created).toBeGreaterThan(ordered[1].created)
     })
-    test('ends the turn after the workflow accepts the VM handoff, even with a status check in the same batch', async () => {
-        const onVmJobStarted = jest.fn().mockResolvedValue(true)
-        mockResponsesCreate.mockResolvedValueOnce(textResponse('I should never be called.'))
-        const waitCall = {
-            id: 'wait-for-vm',
-            type: 'function',
-            function: { name: 'get_vm_job', arguments: '{"correlationId":"vm-1","waitSeconds":30}' },
-        }
-
-        expect(await run({}, { onVmJobStarted }, [waitCall])).toBe(intro)
-        expect(start).toHaveBeenCalledTimes(1)
-        expect(onVmJobStarted).toHaveBeenCalledTimes(1)
-        expect(wait).not.toHaveBeenCalled()
-        expect(mockResponsesCreate).not.toHaveBeenCalled()
-        expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running'])
-    })
     test('an asynchronous handoff stays an introduction when the model tries to include results before waiting', async () => {
         mockResponsesCreate.mockResolvedValueOnce(textResponse('The PDF is already ready.'))
-        expect(await run({}, { onVmJobStarted: async () => false })).toBe(intro)
+        expect(await run()).toBe(intro)
         expect(start).toHaveBeenCalledTimes(1)
         expect(wait).not.toHaveBeenCalled()
         expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running'])

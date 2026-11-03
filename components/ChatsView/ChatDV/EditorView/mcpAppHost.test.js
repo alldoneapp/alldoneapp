@@ -128,4 +128,26 @@ describe('the host protocol', () => {
         await flush()
         expect(sent()).toHaveLength(1)
     })
+
+    test('AT-2955: hands the view’s model context to the host, only from its own frame', async () => {
+        const onModelContext = jest.fn()
+        const { host, fromFrame, sent } = setup({ onModelContext })
+        fromFrame({
+            jsonrpc: '2.0',
+            id: 20,
+            method: 'ui/update-model-context',
+            params: { content: [{ type: 'text', text: 'Scene 3 of 25' }], structuredContent: { scene: 3 } },
+        })
+        host.onMessage({
+            source: {},
+            data: { jsonrpc: '2.0', id: 21, method: 'ui/update-model-context', params: { content: [] } },
+        })
+        await flush()
+        expect(onModelContext).toHaveBeenCalledTimes(1)
+        expect(onModelContext).toHaveBeenCalledWith({
+            content: [{ type: 'text', text: 'Scene 3 of 25' }],
+            structuredContent: { scene: 3 },
+        })
+        expect(sent()).toEqual([{ jsonrpc: '2.0', id: 20, result: {} }])
+    })
 })

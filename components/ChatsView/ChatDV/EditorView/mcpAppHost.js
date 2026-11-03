@@ -91,6 +91,7 @@ export function createMcpAppHost({
     onSize,
     onDisplayMode,
     getDisplayMode,
+    onModelContext = () => {},
     availableDisplayModes = ['inline', 'fullscreen'],
     openUrl = url => window.open(url, '_blank', 'noopener,noreferrer'),
     download = downloadResource,
@@ -140,7 +141,16 @@ export function createMcpAppHost({
             case 'ui/request-display-mode':
                 return respond(id, { mode: onDisplayMode(params?.mode === 'fullscreen' ? 'fullscreen' : 'inline') })
             case 'ui/update-model-context':
-                // Accepted; the assistant reads the app's state through its own tools next turn.
+                // AT-2955: the app's own description of what it shows. Handed to the host, which keeps
+                // it as untrusted, app-reported reference data for the assistant's next turn. Each
+                // update replaces the previous one; an empty one clears it.
+                onModelContext({
+                    content: Array.isArray(params?.content) ? params.content : undefined,
+                    structuredContent:
+                        params?.structuredContent && typeof params.structuredContent === 'object'
+                            ? params.structuredContent
+                            : undefined,
+                })
                 return respond(id, {})
             case 'ui/download-file':
                 return respond(id, download(params?.contents) ? {} : { isError: true })

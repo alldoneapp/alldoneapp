@@ -16,7 +16,7 @@ import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
 import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCompletion'
 import AnnaVmWorkspace from './AnnaVmWorkspace'
-import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
+import useAnnaVmJobs from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
@@ -30,6 +30,8 @@ import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLo
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import { getDb } from '../../utils/backends/firestore'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
+import { getAppModelContext } from '../../utils/annaAppModelContext'
+import { buildAnnaPaneContext } from './annaPaneContext'
 import { setAnnaMode, setAnnaLayout, useAnnaLayout } from '../../utils/annaMode'
 import useAnnaChatWidth, { MIN_CHAT_WIDTH } from './useAnnaChatWidth'
 import NavigationService from '../../utils/NavigationService'
@@ -43,7 +45,6 @@ import './anna.css'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
-import { openEmbeddedAppInNewTab } from '../UIComponents/FloatModals/IframeModal/embeddedAppLocation'
 import { openInEmbedWindow, registerAnnaAppPane } from './annaAppPaneBridge'
 
 // App views kept open in the right pane; the oldest closes when another opens. Two kinds: MCP Apps
@@ -218,8 +219,6 @@ export default function AnnaShell({ children, routeId }) {
     const [appViews, setAppViews] = useState([])
     const selectedAppViewId = surface.startsWith('app:') ? surface.slice(4) : null
     const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
-    // The page each embedded web app last reported (EMBED_LOCATION, AT-2954), by view id.
-    const appLocations = useRef({})
     // The app on screen in the pane, handed back to its embed window when assistant mode is left.
     const appOnExit = useRef(null)
     const vmSurface = surface === 'vms' || !!selectedVmId
@@ -242,6 +241,9 @@ export default function AnnaShell({ children, routeId }) {
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
     if (selectedVm?.runId) selectedVmRun.current = { id: selectedVmId, runId: selectedVm.runId }
+    // Latest pane inputs for the context publisher below (AT-2955).
+    const paneInputs = useRef({})
+    paneInputs.current = { selectedVm, selectedAppView, vmCount: vmJobs.length }
     const vmPointerDown = useRef(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
@@ -349,25 +351,8 @@ export default function AnnaShell({ children, routeId }) {
         const view = appOnExit.current
         appOnExit.current = null
         if (!view || !openInEmbedWindow(view)) return
-        delete appLocations.current[view.viewId]
         setAppViews(current => current.filter(item => item.viewId !== view.viewId))
     }, [active, paneAppView])
-    // The header button next to the X while an embedded web app is on screen (AT-2954): its current
-    // page opens in a new browser tab and the pane's copy is closed, so the app never runs twice.
-    // A blocked pop-up keeps the app where it is and says so.
-    const openSelectedAppInNewTab = () => {
-        const view = selectedAppView
-        if (view?.kind !== 'iframe') return
-        if (!openEmbeddedAppInNewTab(appLocations.current[view.viewId] || view.url)) {
-            setNavigationError(translate('embedded_app_popup_blocked'))
-            return
-        }
-        delete appLocations.current[view.viewId]
-        setNavigationError('')
-        requestGeneration.current++
-        setSurface('alldone')
-        setAppViews(current => current.filter(item => item.viewId !== view.viewId))
-    }
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
@@ -702,12 +687,20 @@ export default function AnnaShell({ children, routeId }) {
             setWorkspacePage(previous =>
                 previous?.path === page?.path && previous?.title === page?.title ? previous : page
             )
-            const context =
-                !active || (surface === 'alldone' && visibleWorkspace)
-                    ? page
-                    : selectedVm && visibleWorkspace
-                      ? sanitizeCallPageContext({ path: vmJobPath(selectedVm), title: selectedVm.title })
-                      : { path: '/', title: visibleWorkspace && surface === 'browser' ? 'Browser' : 'Anna' }
+            // AT-2955: what the pane really shows (an app, a VM, the VM overview, the browser, or an
+            // Alldone page), including what an embedded app reported about itself. Read through a ref
+            // so a VM's status or an app's report reaches the next tick without restarting this loop.
+            const inputs = paneInputs.current
+            const context = buildAnnaPaneContext({
+                active,
+                visibleWorkspace,
+                surface,
+                page,
+                selectedVm: inputs.selectedVm,
+                selectedAppView: inputs.selectedAppView,
+                appState: inputs.selectedAppView ? getAppModelContext(inputs.selectedAppView.viewId) : null,
+                vmCount: inputs.vmCount,
+            })
             setAnnaWorkspaceContext(context)
             const key = JSON.stringify(context)
             if (key === previous) return
@@ -736,6 +729,7 @@ export default function AnnaShell({ children, routeId }) {
         surface,
         selectedVm?.id,
         selectedVm?.title,
+        selectedAppView?.viewId,
         conversation?.projectId,
         conversation?.id,
     ])
@@ -849,8 +843,17 @@ export default function AnnaShell({ children, routeId }) {
                     path: currentBrowserPage?.url || '',
                     title: currentBrowserPage?.title || translate('Browser'),
                 }
-              : selectedVm
-                ? { surface: 'vm', path: vmJobPath(selectedVm), title: selectedVm.title }
+              : selectedVm || selectedAppView || vmSurface
+                ? // AT-2955: name the app or VM on screen, never the hidden Alldone page behind it.
+                  buildAnnaPaneContext({
+                      active,
+                      visibleWorkspace: true,
+                      surface,
+                      page: workspacePage,
+                      selectedVm,
+                      selectedAppView,
+                      vmCount: vmJobs.length,
+                  })
                 : workspacePage && { ...workspacePage, surface }
 
     const pendingNotice = pending && (
@@ -953,18 +956,6 @@ export default function AnnaShell({ children, routeId }) {
                         <Icon name="chevron-down" size={14} color="currentColor" />
                     </span>
                 </label>
-                {visibleWorkspace && selectedAppView?.kind === 'iframe' && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle anna-header-open-tab"
-                        aria-label={translate('Open app in new tab')}
-                        title={translate('Open app in new tab')}
-                        data-testid="anna-app-open-in-new-tab"
-                        onClick={openSelectedAppInNewTab}
-                    >
-                        <Icon name="new-window" size={18} color="currentColor" />
-                    </button>
-                )}
                 <button
                     type="button"
                     className="anna-pane-toggle anna-header-close"
@@ -1229,11 +1220,9 @@ export default function AnnaShell({ children, routeId }) {
                                     {view.kind === 'iframe' ? (
                                         <EmbeddedAppFrame
                                             url={view.url}
+                                            contextId={view.viewId}
                                             title={appViewLabel(view)}
                                             onNavigateAway={() => closeAppView(view.viewId)}
-                                            onLocationChange={location => {
-                                                appLocations.current[view.viewId] = location
-                                            }}
                                         />
                                     ) : (
                                         <McpAppFrame
