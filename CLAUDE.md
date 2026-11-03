@@ -1332,7 +1332,14 @@ catalog (name, description, avatar, instructions, its MCP server entry, `externa
 writes only when that changed; model, tools and heartbeat stay the administrator's. A specialist
 alldone.team stops offering is marked `available: false`, not deleted, so existing copies keep
 working while the list stops offering it. Template changes reach project copies through
-`templateSync` like every other template.
+`templateSync` like every other template. Each specialist's tool pages (the catalog's `tools`: Connor's Story Planner
+and Story Builder, Judy's Job Radar, Ricky's Property and Stock Screener) are kept as pre-configured
+`iframe` tasks of the template (`assistantTasks/globalProject/preConfigTasks/alldone-team-<app>--<tool>`,
+marked `externalSource`), so a person launches the tool from the assistant; the pages switch to embed
+mode inside alldone.app by themselves. Adding the specialist copies them, `templateSync` carries
+later changes and removals into existing copies, and tasks an administrator adds to the template by
+hand are left alone. Only alldone.team URLs are accepted, because IframeModal hands the framed origin
+the person's alldone.app token.
 
 Each specialist's tools come from ONE managed MCP server entry: alldone.team/mcp with
 `authType: 'alldone_app'`, so every call runs as the person talking to the assistant (their own
