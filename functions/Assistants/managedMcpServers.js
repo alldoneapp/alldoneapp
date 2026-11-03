@@ -16,6 +16,18 @@ const isManagedMcpServer = server => isObject(server) && typeof server.managedBy
 
 const listServers = servers => (Array.isArray(servers) ? servers.filter(isObject) : [])
 
+// Firestore hands maps back with their keys in its own order, so JSON.stringify of a stored entry and
+// of the same entry built here can differ; this compares lists of entries by content only.
+const canonical = value =>
+    Array.isArray(value)
+        ? value.map(canonical)
+        : isObject(value)
+          ? Object.keys(value)
+                .sort()
+                .reduce((result, key) => ({ ...result, [key]: canonical(value[key]) }), {})
+          : value
+const sameMcpServers = (a, b) => JSON.stringify(canonical(listServers(a))) === JSON.stringify(canonical(listServers(b)))
+
 /** The template's managed entries first, then the copy's own entries; the copy's old managed entries are dropped. */
 function mergeManagedMcpServers(localServers, templateServers) {
     return [
@@ -38,7 +50,7 @@ function resolveManagedMcpServers({ localServers, templateServers, patch, delete
     if (!hasManagedMcpServers(templateServers, localServers)) return { patch, deleteFields, conflicts }
     const nextPatch = { ...patch }
     const merged = mergeManagedMcpServers(localServers, templateServers)
-    if (JSON.stringify(merged) === JSON.stringify(listServers(localServers))) delete nextPatch.mcpServers
+    if (sameMcpServers(merged, localServers)) delete nextPatch.mcpServers
     else nextPatch.mcpServers = merged
     return {
         patch: nextPatch,
@@ -51,5 +63,6 @@ module.exports = {
     ALLDONE_TEAM_MANAGER,
     isManagedMcpServer,
     mergeManagedMcpServers,
+    sameMcpServers,
     resolveManagedMcpServers,
 }

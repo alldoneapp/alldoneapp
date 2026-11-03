@@ -133,6 +133,21 @@ describe('syncAlldoneTeamSpecialists', () => {
         expect(db.docs.get(CONNOR_PATH)).toBe(before)
     })
 
+    it('reads a stored server entry by content, whatever order Firestore returns its keys in', async () => {
+        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
+        await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now })
+        const stored = db.docs.get(CONNOR_PATH)
+        const reordered = stored.mcpServers.map(server =>
+            Object.fromEntries(Object.entries(server).sort(([a], [b]) => a.localeCompare(b)))
+        )
+        db.docs.set(CONNOR_PATH, { ...stored, mcpServers: reordered })
+
+        // Every hourly run would otherwise rewrite the template and, through templateSync, every copy.
+        const result = await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now: now + 1 })
+
+        expect(result.unchanged).toEqual(['alldone-team-story'])
+    })
+
     it('rewrites only the catalog fields and keeps what the administrator set', async () => {
         const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
         await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now })

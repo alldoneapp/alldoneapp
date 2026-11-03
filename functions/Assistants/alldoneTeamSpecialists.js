@@ -12,7 +12,7 @@
  */
 
 const crypto = require('crypto')
-const { ALLDONE_TEAM_MANAGER, mergeManagedMcpServers } = require('./managedMcpServers')
+const { ALLDONE_TEAM_MANAGER, mergeManagedMcpServers, sameMcpServers } = require('./managedMcpServers')
 
 const ALLDONE_TEAM_SPECIALISTS_URL = 'https://alldone.team/mcp/specialists'
 const ALLDONE_TEAM_PROVIDER = 'alldone.team'
@@ -196,7 +196,7 @@ function buildSpecialistTemplateUpdate(existing, specialist, { editorId, now }) 
         existing.externalSource?.contentHash === fields.externalSource.contentHash &&
         existing.externalSource?.available === true &&
         allowedTools.includes(MCP_SERVERS_TOOL_KEY) &&
-        JSON.stringify(mcpServers) === JSON.stringify(existing.mcpServers || [])
+        sameMcpServers(mcpServers, existing.mcpServers)
     if (unchanged) return null
     return {
         ...fields,
