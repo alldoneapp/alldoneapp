@@ -64,6 +64,9 @@ async function measure(page) {
             paddingRight: style.paddingRight,
             lineHeight: getComputedStyle(editor.firstElementChild).lineHeight,
             controlsDirection: getComputedStyle(controls).flexDirection,
+            inlineControlsDirection: getComputedStyle(frame.querySelector('[data-testid="inline-input-controls"]'))
+                .flexDirection,
+            send: rect(controls.querySelector('[aria-label="Senden"]')),
             controls: [...controls.querySelectorAll('[aria-label][tabindex], button')].map(rect),
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             placeholder: editor.getAttribute('data-placeholder'),
@@ -204,9 +207,31 @@ async function main() {
                 await page.screenshot({ path: path.join(output, `long-${name}.png`) })
                 {
                     assert(!long.overflow, `${name}: long text does not widen page`)
-                    assert.equal(long.controlsDirection, width < 640 ? 'row' : 'column')
+                    // AT-2938: mobile stacks too, Send above Call (column-reverse; the call
+                    // button renders first). Desktop keeps Call above Send.
+                    assert.equal(long.controlsDirection, width < 640 ? 'column-reverse' : 'column')
                     assert(long.controls[0].x > long.field.right, `${name}: actions remain beside the field`)
-                    if (width < 640) assert.equal(long.controls[0].y, long.controls[1].y)
+                    assert.equal(long.controls.length, 2, `${name}: voice/send both present when stacked`)
+                    assert(long.controls.every(button => button.width >= 40 && button.height === 40))
+                    const [call, send] = long.controls
+                    assert.equal(call.x + call.width / 2, send.x + send.width / 2, `${name}: one shared axis`)
+                    if (width < 640) {
+                        assert.equal(long.send.y, send.y)
+                        assert.equal(call.y, send.y + 48, `${name}: Send directly above Call`)
+                        assert(call.y + call.height <= long.field.bottom + 0.5, `${name}: column fits the field`)
+                        // + above the mic inside the field, and the text reclaims one control's width.
+                        assert.equal(long.inlineControlsDirection, 'column')
+                        const [plus, mic] = long.buttons
+                        assert.equal(plus.x, mic.x, `${name}: + and mic share an axis`)
+                        assert(mic.y >= plus.y + plus.height, `${name}: mic sits below +`)
+                        assert(mic.y + mic.height <= long.field.bottom, `${name}: mic stays inside the field`)
+                        assert.equal(long.paddingRight, '34px')
+                        assert(long.placeholderRight <= plus.x - 3, `${name}: text clears the stacked controls`)
+                    } else {
+                        assert.equal(send.y, call.y + 48, `${name}: desktop keeps Call above Send`)
+                        assert.equal(long.inlineControlsDirection, 'row')
+                        assert.equal(long.paddingRight, '62px')
+                    }
                     assert(long.text.height > long.field.height, `${name}: long text really wraps and scrolls`)
                     assert.equal(long.lineHeight, '24px')
                     assert(long.field.height <= 120, `${name}: text height remains capped`)
@@ -231,7 +256,7 @@ async function main() {
                     assert.equal((await measure(page)).placeholder, 'Starte einen neuen Chat')
                     await page.setViewportSize({ width, height })
                     await page.waitForTimeout(200)
-                    assert.equal((await measure(page)).controlsDirection, 'row')
+                    assert.equal((await measure(page)).controlsDirection, 'column-reverse')
                     assert.equal(await editor.innerText(), textBeforeResize)
                 }
                 await editor.fill('Hallo Anna')
@@ -247,7 +272,9 @@ async function main() {
                     assert.equal(await editor.innerText(), '\n', `${name}: send clears editor`)
                     assert.deepEqual(await page.evaluate(() => window.__sent), ['Hallo Anna'])
                     assert.deepEqual(errors, [], `${name}: no runtime errors`)
-                    assert.equal((await measure(page)).controlsDirection, 'row')
+                    const cleared = await measure(page)
+                    assert.equal(cleared.controlsDirection, 'row')
+                    assert.equal(cleared.inlineControlsDirection, 'row', `${name}: send releases the stack`)
                 }
                 if (desktopBaseline && width >= 640) {
                     for (const state of ['after', 'long', 'multiline']) {

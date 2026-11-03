@@ -148,6 +148,7 @@ jest.mock('./AnnaConversation', () => {
         __esModule: true,
         default: React.forwardRef((props, ref) => {
             mockConversationProps = props
+            mockAppPane = React.useContext(require('./AnnaAppPaneContext').default)
             const input = React.useRef(null)
             React.useImperativeHandle(ref, () => ({
                 scrollToLatest: mockScrollToLatest,
@@ -163,6 +164,17 @@ jest.mock('./AnnaConversation', () => {
         }),
     }
 })
+// The app views (MCP Apps, e.g. Judy) in the right pane: the frame is a stub that exposes the close
+// request a view's own "show in chat" button sends; which app a view belongs to is the real rule.
+const mockAppFrames = {}
+let mockAppPane
+jest.mock('../ChatsView/ChatDV/EditorView/McpAppViews', () => ({
+    McpAppFrame: props => {
+        mockAppFrames[props.view.viewId] = props
+        return <div data-testid={`app-frame-${props.view.viewId}`} />
+    },
+    mcpAppKey: jest.requireActual('../ChatsView/ChatDV/EditorView/McpAppViews').mcpAppKey,
+}))
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: () => mockAssistant }))
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
     useVoiceCall: () => ({ status: 'idle', voiceSeconds: 0 }),
@@ -1947,5 +1959,104 @@ describe('opening an activity row (AT-2906)', () => {
             '/projects/p1/tasks/a/properties',
             '/projects/p1/notes/b/editor',
         ])
+    })
+})
+
+describe('an app view (MCP Apps, e.g. Judy) in the right pane', () => {
+    const judyView = (viewId, filter) => ({
+        viewId,
+        appName: 'Judy Job',
+        serverId: 'alldone_team',
+        resourceUri: 'ui://judy/app.html',
+        toolName: 'judy_show',
+        toolArguments: { view: 'matches', specialty: filter },
+        createdAt: Date.now(),
+    })
+    const appOptions = () =>
+        [...document.querySelector('.anna-header-picker select').options]
+            .map(option => option.value)
+            .filter(value => value.startsWith('app:'))
+
+    it('closes the pane and shows Alldone again when the view asks to go back to the chat', () => {
+        render(content(1))
+        act(() => mockAppPane.open(judyView('v1', 'all'), { auto: true }))
+        expect(selectedSurface()).toBe('app:v1')
+        act(() => mockAppFrames.v1.onClose())
+        expect(selectedSurface()).toBe('alldone')
+        // The view stays mounted, so its card reopens it as it was.
+        expect(document.querySelector('[data-testid="app-frame-v1"]')).toBeTruthy()
+        expect(appOptions()).toEqual(['app:v1'])
+    })
+
+    it('ignores a close request from a view that is not the one shown', () => {
+        render(content(1))
+        act(() => mockAppPane.open(judyView('v1', 'all')))
+        act(() => mockAppPane.open({ ...judyView('s1'), serverId: 'story', resourceUri: 'ui://story/app.html' }))
+        act(() => mockAppFrames.v1.onClose())
+        expect(selectedSurface()).toBe('app:s1')
+    })
+
+    it('keeps one pane per app: a newer view of the same app replaces the older one', () => {
+        render(content(1))
+        act(() => mockAppPane.open(judyView('v1', 'dermatology'), { auto: true }))
+        act(() => mockAppPane.open(judyView('v2', 'all'), { auto: true }))
+        expect(selectedSurface()).toBe('app:v2')
+        expect(appOptions()).toEqual(['app:v2'])
+        expect(document.querySelector('[data-testid="app-frame-v1"]')).toBeNull()
+    })
+
+    it("holds the assistant's own presentation while the app is open, as for a VM", async () => {
+        const view = render(content(1))
+        act(() => mockAppPane.open(judyView('v1', 'all'), { auto: true }))
+        useAnnaConversation.mockReturnValue({
+            ...state,
+            conversation: {
+                ...conversation,
+                annaPresentation: {
+                    id: 'tracking-task',
+                    view: 'task',
+                    path: '/projects/p1/tasks/t1/chat',
+                    title: 'Track Judy work',
+                    createdAt: Date.now(),
+                },
+            },
+        })
+        view.rerender(content(1))
+        await act(async () => {})
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(selectedSurface()).toBe('app:v1')
+        expect(document.querySelector('.anna-pending')).toBeTruthy()
+    })
+
+    it('reveals a saved task only once the app is closed', async () => {
+        jest.useFakeTimers()
+        const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+        const change = {
+            id: 'saved1',
+            projectId: 'p1',
+            objectId: 'task1',
+            type: 'task',
+            change: 'updated',
+            path: '/projects/p1/tasks/task1/properties',
+            expiresAt: Date.now() + 120000,
+        }
+        try {
+            const view = render(content(1))
+            act(() => mockAppPane.open(judyView('v1', 'all'), { auto: true }))
+            useAnnaConversation.mockReturnValue({
+                ...state,
+                conversation: { ...conversation, annaWorkspaceChanges: [change] },
+            })
+            view.rerender(content(1))
+            for (let i = 0; i < 10; i++) await act(async () => jest.advanceTimersByTime(75))
+            expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+            expect(selectedSurface()).toBe('app:v1')
+            act(() => mockAppFrames.v1.onClose())
+            for (let i = 0; i < 10; i++) await act(async () => jest.advanceTimersByTime(75))
+            expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, change.path)
+        } finally {
+            visibility.mockRestore()
+            jest.useRealTimers()
+        }
     })
 })

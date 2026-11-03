@@ -148,19 +148,53 @@ describe('AssistantInputLine control alignment', () => {
         expect(line.getInputHeight()).toBe(40)
     })
 
-    it('keeps the mobile buttons side by side as the short-placeholder field expands', () => {
+    // AT-2938: on a phone the controls stack too — Send above Call outside the field, + above the
+    // mic inside it — so the wrapped text gets the freed width back.
+    it('stacks Send above Call and + above the mic on mobile once the text wraps', () => {
         mockState = { smallScreenNavigation: true }
         const line = renderLine()
+        const getVoiceStyle = () =>
+            StyleSheet.flatten(line.tree.root.findByProps({ testID: 'voice-call-button' }).props.style)
+
+        expect(line.getControlsStyle().flexDirection).toBe('row')
+        expect(line.getInput().props.stackInlineControls).toBe(false)
+        expect(line.getInputHeight()).toBe(40)
+        expect(line.getInput().props.placeholder).toBe('New message …')
 
         line.type('Mobile message that wraps', 62)
 
         const controls = line.getControlsStyle()
-        expect(controls.flexDirection).toBe('row')
+        // column-reverse: the voice button is rendered first, so Send ends up on top.
+        expect(controls.flexDirection).toBe('column-reverse')
         expect(controls.alignItems).toBe('center')
-        expect(line.getInputHeight()).toBe(78)
-        expect(line.getInput().props.placeholder).toBe('New message …')
+        expect(controls.width).toBeUndefined()
+        // The gap sits between Send (above) and Call (below).
+        expect(getVoiceStyle()).toEqual(expect.objectContaining({ marginTop: 8, marginBottom: 0, marginRight: 0 }))
+        expect(line.getInput().props.stackInlineControls).toBe(true)
+        // The field matches the stacked cluster height (40 + 8 + 40).
+        expect(line.getInputHeight()).toBe(88)
+
         line.type('Long mobile message', 160)
         expect(line.getInputHeight()).toBe(120)
+        expect(line.getControlsStyle().flexDirection).toBe('column-reverse')
+
+        // The widened field re-wraps to one line: no flapping back to a row.
+        line.type('Long mobile message', 40)
+        expect(line.getControlsStyle().flexDirection).toBe('column-reverse')
+        expect(line.getInput().props.stackInlineControls).toBe(true)
+
+        // Emptying the field releases both clusters.
+        line.type('', null)
         expect(line.getControlsStyle().flexDirection).toBe('row')
+        expect(line.getInput().props.stackInlineControls).toBe(false)
+        expect(line.getInputHeight()).toBe(40)
+    })
+
+    it('keeps Call above Send and the in-field controls in a row on desktop', () => {
+        const line = renderLine()
+        line.type('A message long enough to wrap onto a second line', 62)
+
+        expect(line.getControlsStyle().flexDirection).toBe('column')
+        expect(line.getInput().props.stackInlineControls).toBe(false)
     })
 })
