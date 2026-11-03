@@ -660,13 +660,7 @@ const runWorkflowAiStep = async (runId, run) => {
                                 delegatedToVm = true
                                 // Close the ordering window if a very fast VM settled before
                                 // the handoff was persisted. The poller is the crash backstop.
-                                await resolveAwaitingVmRuns({ projectId, taskId }).catch(error =>
-                                    console.warn('[workflowAiStep] Could not recheck VM after handoff', {
-                                        runId,
-                                        error: error.message,
-                                    })
-                                )
-                                return true
+                                await resolveAwaitingVmRuns({ projectId, taskId })
                             },
                         }
                     )
@@ -1248,8 +1242,9 @@ const resolveWorkflowRunsForAssistantRunUpdate = async (before = {}, after = {},
  * Takes exclusive ownership of a queued run, returning its data, or null when someone else already
  * has it.
  *
- * Cloud Scheduler waits for the previous invocation. The transaction still protects the claim
- * if the worker is invoked more than once or a delivery is retried.
+ * Ticks overlap by design: the schedule fires every minute and a run may last the better part of an
+ * hour, so several dispatchers are routinely alive at once and would otherwise all pick up the same
+ * oldest pending run. The transaction is what makes "pending" a one-shot claim.
  */
 const claimWorkflowAiRun = async (runRef, leaseOwner, now = Date.now()) => {
     return admin.firestore().runTransaction(async transaction => {

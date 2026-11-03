@@ -537,18 +537,6 @@ declared after its bridge registration, so the window already sees assistant mod
 not send the app straight back. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the
 two AT-2951 blocks of `AnnaShell.test.js`.
 
-**Both embed windows share one layout and close on a backdrop click (AT-2953).**
-`IframeModal/embedWindowLayout.js` makes `IframeModal` and `McpAppModal` the same card: the viewport
-minus one uniform `MODAL_EDGE_GAP` (16px) on every edge, applied as the safe-area overlay minimum
-(`max(gap, inset)`). There is no percentage and no max size, so no extra margin on big screens.
-Below `MODAL_SHEET_BREAKPOINT` the gap is 0 and the window is full screen. A click on the backdrop
-closes the window, by product decision, although a live session in the app (screen share) goes with
-it. `useBackdropDismiss` counts only a press that both starts and ends on the backdrop. This
-excludes a drag out of the card and the click that opened the window (its pointerdown predates the
-backdrop). Clicks inside the cross-origin frame never reach the document. Phones have no backdrop
-dismissal: the only uncovered strips there are the safe-area insets. Pinned by
-`IframeModal/embedWindowLayout.test.js`.
-
 **A view outlives the connection it opened with, and is reconnected only on a click (AT-2952).**
 "This app is no longer connected to the assistant." meant exactly that: on 2026-11-03 the user had
 removed alldone.team from Anna's MCP servers in the morning, and the Judy pane reopened that
@@ -2020,6 +2008,31 @@ composer's switcher becomes a local "Switched to project: …" entry
 (`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to, and
 re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
+
+**The assistant is told what the work pane shows, not the Alldone route behind it (AT-2955).**
+`annaPageContext` on the Anna chat used to be only `{ path, title }`, and every non-Alldone surface
+wrote `{ path: '/', title: 'Anna' }`. With Story Builder on screen the assistant answered about the
+hidden "Open tasks" page, or about an app it had opened earlier. AnnaShell now publishes
+`buildAnnaPaneContext` (`components/Anna/annaPaneContext.js`), validated by the dependency-free
+`functions/Assistant/annaPaneContext.js` on both sides. It adds `surface` (`alldone`, `app`, `vm`,
+`vms`, `browser`, `none`) plus `app` (kind, name, MCP server/tool or iframe origin) or `vm` (run =
+correlationId, task, status), and still keeps `path`/`title` for voice calls and older readers. An
+app or VM therefore gets its own title, never the page behind it. `formatAnnaPaneContext` keeps three
+things apart in the prompt: OBSERVED (Alldone's own metadata), APP-REPORTED and AVAILABLE ACTIONS.
+APP-REPORTED is fenced as untrusted, and Alldone never reads a frame's DOM: apps are cross-origin and
+sandboxed. It comes from MCP Apps `ui/update-model-context` (`mcpAppHost`, previously accepted and
+dropped) or from an iframe tool's `{ type: 'APP_CONTEXT', context: { text?, structuredContent? } }`
+(`EmbeddedAppFrame`, only from its own frame and origin and only in the pane). Both land in
+`utils/annaAppModelContext.js`, in memory, capped at 2,000 characters and never logged. AVAILABLE
+ACTIONS reuse existing tools only. They come from the answering assistant's real configuration
+(`annaInstructions(context, { allowedTools, mcpServers })`): that app's MCP server, matched by
+server id or same host, when the `mcp_servers` toggle is on. For a VM they are `get_vm_job` and
+`execute_task_in_vm` with `continue_in_object_id`. Otherwise the prompt says plainly that no tool
+operates the app. Answering a VM's question and stopping it stay UI-only. The shared browser's page
+title is third-party text and is deliberately not sent. Pinned by
+`functions/Assistant/annaPaneContext.test.js`, `components/Anna/annaPaneContext.test.js`, the
+AT-2955 cases in `AnnaShell.test.js` / `mcpAppHost.test.js`, and
+`IframeModal/embeddedAppContext.test.js`.
 
 **Assistant mutation feedback**: `annaWorkspaceChanges.js` publishes short-lived,
 bounded visual cues after successful native task/note/contact mutations in the

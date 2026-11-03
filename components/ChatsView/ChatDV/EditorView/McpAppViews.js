@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
+import { setAppModelContext, clearAppModelContext } from '../../../../utils/annaAppModelContext'
 import { createMcpAppHost, buildMcpAppDocument, MCP_APP_FRAME_SANDBOX } from './mcpAppHost'
 import { getOpenMcpAppView, openMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
 import AnnaAppPaneContext from '../../../Anna/AnnaAppPaneContext'
@@ -89,12 +90,14 @@ export function McpAppFrame({ view, language, onClose }) {
                 return 'fullscreen'
             },
             getDisplayMode: () => 'fullscreen',
+            onModelContext: value => setAppModelContext(view.viewId, value),
             availableDisplayModes: ['fullscreen'],
         })
         window.addEventListener('message', host.onMessage)
         return () => {
             window.removeEventListener('message', host.onMessage)
             host.dispose()
+            clearAppModelContext(view.viewId)
         }
     }, [resource, view.viewId, language])
 

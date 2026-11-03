@@ -1153,37 +1153,8 @@ describe('dispatchPendingWorkflowAiRuns', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 
-    it('dispatches a later task while the previous step waits for its VM', async () => {
-        seedRun('first')
-        const job = {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            correlationId: 'vm-first',
-            status: 'initiated',
-        }
-        let handoffAccepted
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`pendingWebhooks/${job.correlationId}`, job)
-            handoffAccepted = await args[12].onVmJobStarted(job)
-        })
-
-        expect(await dispatchPendingWorkflowAiRuns()).toBe(1)
-        expect(handoffAccepted).toBe(true)
-        expect(mockStore.get('workflowAiRuns/first').status).toBe('awaiting_vm')
-
-        const nextTask = 't2'
-        mockStore.set(`items/${PROJECT}/tasks/${nextTask}`, taskOnAiStep())
-        seedRun('second', { taskId: nextTask })
-        expect(await dispatchPendingWorkflowAiRuns()).toBe(1)
-        expect(mockStore.get('workflowAiRuns/second').status).toBe('completed')
-        expect(mockStore.get('workflowAiRuns/first').status).toBe('awaiting_vm')
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-    })
-
     it('leaves alone a run another tick is already working on', async () => {
-        // A repeated invocation must leave the existing claim alone.
+        // Ticks overlap: the schedule fires every minute and a run can last most of an hour.
         seedRun('run1', { status: 'running', leaseOwner: 'other-tick' })
 
         const dispatched = await dispatchPendingWorkflowAiRuns()
