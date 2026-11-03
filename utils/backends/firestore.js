@@ -6925,12 +6925,6 @@ export async function getPaymentOnce(userId) {
 
 export function getObjectFromUrl(objectType, url, callback) {
     const urlParts = url.split('/')
-    // A failed read is not a missing object (AT-2484: a rules-evaluation ERROR reaches the client
-    // as `permission-denied`). These branches report it as `error`, so the caller can keep the
-    // chip typed instead of turning it into a plain link, and so the callback always runs: a
-    // rejected read used to leave the embed rendering nothing at all (AT-2950). The artifact
-    // branch keeps its own rule below.
-    const reportFailedRead = error => callback({ object: null, objectName: null, error })
 
     if (objectType === 'task') {
         // It's a note object
@@ -6943,7 +6937,7 @@ export function getObjectFromUrl(objectType, url, callback) {
                 } else {
                     callback({ object: null, objectName: `Doesn't exist` })
                 }
-            }, reportFailedRead)
+            })
     } else if (objectType === 'note') {
         // It's a tasks object
         db.doc(`${`noteItems`}/${urlParts[4]}/notes/${urlParts[6]}`)
@@ -6954,7 +6948,7 @@ export function getObjectFromUrl(objectType, url, callback) {
                 } else {
                     callback({ object: null, objectName: `Doesn't exist` })
                 }
-            }, reportFailedRead)
+            })
     } else if (objectType === 'contact') {
         // It's a contacts object
 
@@ -6967,7 +6961,7 @@ export function getObjectFromUrl(objectType, url, callback) {
             } else {
                 callback({ object: null, objectName: `Contact doesn't exist` })
             }
-        }, reportFailedRead)
+        })
     } else if (objectType === 'goal') {
         // It's a goals object
         getGoalData(urlParts[4], urlParts[6]).then(goal => {
@@ -6976,7 +6970,7 @@ export function getObjectFromUrl(objectType, url, callback) {
             } else {
                 callback({ object: null, objectName: `Doesn't exist` })
             }
-        }, reportFailedRead)
+        })
     } else if (objectType === 'skill') {
         // It's a skills object
         getSkillData(urlParts[4], urlParts[6]).then(skill => {
@@ -6985,7 +6979,7 @@ export function getObjectFromUrl(objectType, url, callback) {
             } else {
                 callback({ object: null, objectName: `Doesn't exist` })
             }
-        }, reportFailedRead)
+        })
     } else if (objectType === 'topic') {
         // It's a topic object
         db.doc(`feedsObjectsLastStates/${urlParts[4]}/customs/${urlParts[6]}`)
@@ -6996,7 +6990,7 @@ export function getObjectFromUrl(objectType, url, callback) {
                 } else {
                     callback({ object: null, objectName: `Doesn't exist` })
                 }
-            }, reportFailedRead)
+            })
     } else if (objectType === 'assistant') {
         // It's an assistant object
         getAssistantData(urlParts[4], urlParts[6]).then(assistant => {
@@ -7005,7 +6999,7 @@ export function getObjectFromUrl(objectType, url, callback) {
             } else {
                 callback({ object: null, objectName: `Doesn't exist` })
             }
-        }, reportFailedRead)
+        })
     } else if (objectType === 'artifact') {
         // An artifact the viewer cannot read is, for the tag, an artifact that is not there.
         db.doc(`artifactItems/${urlParts[4]}/artifacts/${urlParts[6]}`)
