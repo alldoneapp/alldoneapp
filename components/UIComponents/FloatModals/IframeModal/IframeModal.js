@@ -2,13 +2,11 @@ import React, { useEffect, useLayoutEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Icon from '../../../Icon'
-import { colors } from '../../../styles/global'
+import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
-import useWindowSize from '../../../../utils/useWindowSize'
 import EmbeddedAppFrame from './EmbeddedAppFrame'
-import { embedWindowStyles, getEmbedWindowGap, isEmbedWindowFullscreen, useBackdropDismiss } from './embedWindowLayout'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
 import {
     iframeAppView,
@@ -25,14 +23,9 @@ import {
  * (AT-2951). Outside it, the header's "expand to the left" button switches to assistant mode with
  * the assistant sidebar on the left and this app on the right. Leaving assistant mode while the app
  * is shown in the pane opens it here again.
- *
- * The window fills the viewport but for one uniform gap, and a click on the backdrop next to it
- * closes it (AT-2953, see embedWindowLayout.js).
  */
 export default function IframeModal() {
-    const [windowWidth] = useWindowSize()
-    const fullscreen = isEmbedWindowFullscreen(windowWidth)
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding(getEmbedWindowGap(fullscreen))
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const iframeModalData = useSelector(state => state.iframeModalData)
     const { visible, url, name } = iframeModalData
@@ -43,11 +36,10 @@ export default function IframeModal() {
         dispatch(setIframeModalData(false, '', ''))
     }
 
-    // Escape, the X and (AT-2953, product decision) a click on the backdrop next to the window. The
-    // backdrop only counts a press that starts and ends on it, so a drag out of the app or the click
-    // that opened the window cannot close it.
+    // Escape only — no backdrop-press dismiss on purpose: the iframe hosts
+    // live third-party surfaces (screen share, mic) where a stray outside tap
+    // must not tear the session down.
     useEscapeKey(closeModal, { enabled: !!visible && !inAssistantMode })
-    const backdropDismiss = useBackdropDismiss(closeModal, { enabled: !fullscreen })
 
     // Leaving assistant mode with this kind of app in the pane brings it back here (AT-2951).
     useEffect(
@@ -72,18 +64,8 @@ export default function IframeModal() {
     if (!visible || inAssistantMode) return null
 
     return (
-        <View
-            testID="embed-window-backdrop"
-            {...backdropDismiss}
-            style={[embedWindowStyles.overlay, fullscreen && localStyles.overlayFullscreen, safeAreaOverlayPadding]}
-        >
-            <View
-                style={[
-                    embedWindowStyles.container,
-                    localStyles.container,
-                    fullscreen && embedWindowStyles.containerFullscreen,
-                ]}
-            >
+        <View style={[localStyles.overlay, safeAreaOverlayPadding]}>
+            <View style={localStyles.container}>
                 <View style={localStyles.header}>
                     <View style={localStyles.headerLeft}>
                         <OpenInAssistantPaneButton
@@ -109,12 +91,27 @@ export default function IframeModal() {
 }
 
 const localStyles = StyleSheet.create({
-    // On a phone the safe-area strips around the full-screen window take its colour.
-    overlayFullscreen: {
-        backgroundColor: '#1a1a2e',
+    overlay: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        zIndex: 9999,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 8,
     },
     container: {
+        width: '96%',
+        height: '96%',
+        maxWidth: 1600,
+        maxHeight: 1200,
         backgroundColor: '#1a1a2e',
+        borderRadius: 12,
+        overflow: 'hidden',
+        boxShadow: '0px 8px 24px rgba(0,0,0,0.40)',
     },
     header: {
         height: 44,
