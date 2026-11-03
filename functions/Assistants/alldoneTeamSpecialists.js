@@ -272,6 +272,8 @@ function buildSpecialistTask(templateId, tool, order, { creatorId }) {
  * added to the template themselves carry no `externalSource` and are left alone.
  */
 async function syncSpecialistTasks(db, templateId, tools, { creatorId }) {
+    // A catalog without tools (older alldone.team, a broken entry) must not empty every copy's task list.
+    if (!tools.length) return { created: 0, updated: 0, removed: 0 }
     const collection = db.collection(TEMPLATE_TASKS_PATH)
     const existing = await collection.where('assistantId', '==', templateId).get()
     const managed = new Map(

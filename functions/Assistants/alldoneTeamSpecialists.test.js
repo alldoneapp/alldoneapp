@@ -299,3 +299,19 @@ describe('the specialist’s tools as iframe tasks of its template', () => {
         expect(entry.tools.map(tool => tool.id)).toEqual(['create-storyline', 'story-builder'])
     })
 })
+
+describe('a catalog entry without tools', () => {
+    it('leaves the template’s tasks alone instead of deleting them everywhere', async () => {
+        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
+        await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now: 1 })
+
+        const result = await syncAlldoneTeamSpecialists({
+            db,
+            fetchImpl: fetchCatalog([{ ...connor, tools: [] }]),
+            now: 2,
+        })
+
+        expect(result.tasks).toEqual({ created: 0, updated: 0, removed: 0 })
+        expect(tasksOf(db, 'alldone-team-story')).toHaveLength(2)
+    })
+})
