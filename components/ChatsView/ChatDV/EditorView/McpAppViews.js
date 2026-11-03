@@ -44,21 +44,34 @@ export function latestViewPerApp(views) {
 export function McpAppFrame({ view, language, onClose }) {
     const frameRef = useRef(null)
     const [resource, setResource] = useState(null)
-    const [failed, setFailed] = useState('')
+    // { message, details } of a failed load; details.reason 'server_disconnected' offers a reconnect.
+    const [failure, setFailure] = useState(null)
+    // Bumped after a successful reconnect, to load the view once more. Never on a timer: a server that
+    // still cannot be reached stays an error the person can see, not a retry loop.
+    const [loadAttempt, setLoadAttempt] = useState(0)
     // Read through a ref so a new callback each render does not rebuild the host mid-session.
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
     useEffect(() => {
         let cancelled = false
+        setResource(null)
+        setFailure(null)
         mcpAppBackend()
             .loadMcpAppResource(view.viewId)
             .then(result => !cancelled && setResource(result))
-            .catch(error => !cancelled && setFailed(error?.message || translate('mcp_app_failed')))
+            .catch(
+                error =>
+                    !cancelled &&
+                    setFailure({
+                        message: error?.message || translate('mcp_app_failed'),
+                        details: error?.details || null,
+                    })
+            )
         return () => {
             cancelled = true
         }
-    }, [view.viewId])
+    }, [view.viewId, loadAttempt])
 
     useEffect(() => {
         if (!resource) return undefined
@@ -87,7 +100,18 @@ export function McpAppFrame({ view, language, onClose }) {
 
     const srcDocument = useMemo(() => (resource ? buildMcpAppDocument(resource.html, resource.csp) : ''), [resource])
 
-    if (failed) return <Text style={styles.failed}>{failed}</Text>
+    if (failure) {
+        if (failure.details?.reason === 'server_disconnected') {
+            return (
+                <McpAppDisconnected
+                    view={view}
+                    details={failure.details}
+                    onReconnected={() => setLoadAttempt(attempt => attempt + 1)}
+                />
+            )
+        }
+        return <Text style={styles.failed}>{failure.message}</Text>
+    }
     if (!resource) return <Text style={styles.loading}>{translate('mcp_app_loading')}</Text>
     return (
         <iframe
@@ -99,6 +123,68 @@ export function McpAppFrame({ view, language, onClose }) {
             referrerPolicy="no-referrer"
             style={{ width: '100%', height: '100%', flex: 1, border: 'none', background: 'transparent' }}
         />
+    )
+}
+
+const DISCONNECTED_HINTS = {
+    needs_credentials: 'mcp_app_reconnect_in_settings',
+    unknown_server: 'mcp_app_reconnect_in_settings',
+    not_allowed: 'mcp_app_reconnect_ask_owner',
+}
+
+/**
+ * A view whose server was removed from its assistant (AT-2952). It says so in words and, where the
+ * server needs no stored secret, connects it again with one click and then loads the view. Never on
+ * its own: removing a server is a deliberate choice, so only the person's click undoes it.
+ */
+export function McpAppDisconnected({ view, details, onReconnected }) {
+    const [state, setState] = useState({ busy: false, error: '' })
+    const busyRef = useRef(false)
+    const app = details?.appName || view.appName || details?.serverLabel || view.serverLabel || view.toolName
+    const assistant = details?.assistantName || translate('mcp_app_the_assistant')
+
+    const reconnect = () => {
+        // One request per click, and none while one is running: a double click must not connect twice.
+        if (busyRef.current) return
+        busyRef.current = true
+        setState({ busy: true, error: '' })
+        mcpAppBackend()
+            .reconnectMcpApp(view.viewId)
+            .then(() => {
+                busyRef.current = false
+                setState({ busy: false, error: '' })
+                onReconnected()
+            })
+            .catch(error => {
+                busyRef.current = false
+                setState({ busy: false, error: error?.message || translate('mcp_app_reconnect_failed') })
+            })
+    }
+
+    return (
+        <View style={styles.disconnected} data-testid="mcp-app-disconnected">
+            <Text style={styles.disconnectedTitle}>{translate('mcp_app_disconnected', { app, assistant })}</Text>
+            {details?.canReconnect ? (
+                <TouchableOpacity
+                    onPress={reconnect}
+                    disabled={state.busy}
+                    accessibilityRole="button"
+                    style={[styles.reconnectButton, state.busy && styles.reconnectButtonBusy]}
+                >
+                    <Text style={styles.reconnectButtonText}>
+                        {translate(state.busy ? 'mcp_app_reconnecting' : 'mcp_app_reconnect', { assistant })}
+                    </Text>
+                </TouchableOpacity>
+            ) : (
+                <Text style={styles.disconnectedHint}>
+                    {translate(DISCONNECTED_HINTS[details?.reconnectBlocker] || 'mcp_app_reconnect_in_settings', {
+                        app,
+                        assistant,
+                    })}
+                </Text>
+            )}
+            {!!state.error && <Text style={styles.failed}>{state.error}</Text>}
+        </View>
     )
 }
 
@@ -188,6 +274,17 @@ const styles = StyleSheet.create({
     list: { marginTop: 8 },
     loading: { margin: 16, color: colors.Text03, fontSize: 13 },
     failed: { margin: 16, color: colors.UtilityRed200, fontSize: 13 },
+    disconnected: { margin: 16, alignItems: 'flex-start' },
+    disconnectedTitle: { color: colors.Text01, fontSize: 14, marginBottom: 12 },
+    disconnectedHint: { color: colors.Text03, fontSize: 13 },
+    reconnectButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: colors.Primary100,
+    },
+    reconnectButtonBusy: { opacity: 0.6 },
+    reconnectButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
     card: {
         marginTop: 8,
         paddingHorizontal: 12,

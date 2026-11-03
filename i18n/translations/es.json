@@ -3732,5 +3732,12 @@
     "mcp_app_failed": "No se pudo cargar la app.",
     "mcp_app_show": "Mostrar",
     "mcp_app_open_on_right": "Abierta a la derecha",
-    "mcp_app_open": "Abierta"
+    "mcp_app_open": "Abierta",
+    "mcp_app_disconnected": "{{app}} ya no está conectada a {{assistant}}.",
+    "mcp_app_reconnect": "Volver a conectar",
+    "mcp_app_reconnecting": "Conectando…",
+    "mcp_app_reconnect_failed": "No se pudo volver a conectar la app.",
+    "mcp_app_reconnect_in_settings": "Vuelve a conectarla en los ajustes de servidores MCP de {{assistant}}; después esta vista se abrirá de nuevo.",
+    "mcp_app_reconnect_ask_owner": "Pide a un administrador que la vuelva a conectar a {{assistant}}.",
+    "mcp_app_the_assistant": "el asistente"
 }

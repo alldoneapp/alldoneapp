@@ -35,3 +35,11 @@ export function loadMcpAppResource(viewId) {
 export function callMcpAppTool(viewId, name, args) {
     return runHttpsCallableFunction('mcpAppSecondGen', { viewId, action: 'callTool', name, arguments: args || {} })
 }
+
+/**
+ * The view's "connect again" button (AT-2952): adds the view's own server back to its assistant,
+ * as an ordinary connect by the signed-in person. Idempotent on the server.
+ */
+export function reconnectMcpApp(viewId) {
+    return runHttpsCallableFunction('mcpAppSecondGen', { viewId, action: 'reconnect' })
+}

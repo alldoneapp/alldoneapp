@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 
 let mockViews = []
 const mockLoadResource = jest.fn(() => new Promise(() => {}))
+const mockReconnect = jest.fn()
 jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUser: { uid: 'me', language: 'de' } }),
 }))
@@ -16,6 +17,7 @@ jest.mock('../../../../utils/backends/Assistants/mcpAppViews', () => ({
     },
     loadMcpAppResource: (...args) => mockLoadResource(...args),
     callMcpAppTool: jest.fn(),
+    reconnectMcpApp: (...args) => mockReconnect(...args),
 }))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 
@@ -145,6 +147,8 @@ describe('the frame a view runs in', () => {
         container.remove()
         delete global.IS_REACT_ACT_ENVIRONMENT
         mockLoadResource.mockImplementation(() => new Promise(() => {}))
+        mockLoadResource.mockClear()
+        mockReconnect.mockReset()
     })
 
     // Judy's collapse button ("Show in chat") asks the host for the inline display mode.
@@ -169,5 +173,88 @@ describe('the frame a view runs in', () => {
         )
         expect(onClose).toHaveBeenCalledTimes(closes)
         expect(answers).toEqual([{ jsonrpc: '2.0', id: 7, result: { mode: 'fullscreen' } }])
+    })
+
+    describe('when its server was removed from the assistant (AT-2952)', () => {
+        const disconnected = details =>
+            Object.assign(new Error('This app is no longer connected to the assistant.'), {
+                code: 'functions/failed-precondition',
+                details: {
+                    reason: 'server_disconnected',
+                    appName: 'Judy Job',
+                    serverLabel: 'alldone.team',
+                    assistantName: 'Anna Alldone',
+                    canReconnect: true,
+                    reconnectBlocker: null,
+                    ...details,
+                },
+            })
+        const reconnectButton = () =>
+            [...container.querySelectorAll('[role="button"]')].find(node =>
+                node.textContent.includes('mcp_app_reconnect')
+            )
+
+        test('says so and connects it again with one click, then loads the view', async () => {
+            const { McpAppFrame } = require('./McpAppViews')
+            mockLoadResource
+                .mockImplementationOnce(async () => {
+                    throw disconnected()
+                })
+                .mockImplementationOnce(async () => ({ html: '<p>Judy</p>', csp: null, toolName: 'judy_show' }))
+            let resolveReconnect
+            mockReconnect.mockImplementation(() => new Promise(resolve => (resolveReconnect = resolve)))
+            await act(async () => root.render(<McpAppFrame view={view('v1', 0)} language="de" />))
+
+            expect(container.textContent).toContain('mcp_app_disconnected')
+            expect(container.textContent).not.toContain('This app is no longer connected')
+            expect(container.querySelector('iframe')).toBeNull()
+            // Nothing reconnects by itself.
+            expect(mockReconnect).not.toHaveBeenCalled()
+
+            await act(async () => reconnectButton().click())
+            await act(async () => reconnectButton().click())
+            expect(mockReconnect).toHaveBeenCalledTimes(1)
+            expect(mockReconnect).toHaveBeenCalledWith('v1')
+            expect(mockLoadResource).toHaveBeenCalledTimes(1)
+
+            await act(async () => resolveReconnect({ reconnected: true }))
+            expect(mockLoadResource).toHaveBeenCalledTimes(2)
+            expect(container.querySelector('iframe')).not.toBeNull()
+        })
+
+        test('a reconnect that fails says so and loads nothing again', async () => {
+            const { McpAppFrame } = require('./McpAppViews')
+            mockLoadResource.mockImplementation(async () => {
+                throw disconnected()
+            })
+            mockReconnect.mockImplementation(async () => {
+                throw new Error('Could not connect to the MCP server: timeout')
+            })
+            await act(async () => root.render(<McpAppFrame view={view('v1', 0)} language="de" />))
+            await act(async () => reconnectButton().click())
+            expect(container.textContent).toContain('Could not connect to the MCP server: timeout')
+            expect(mockLoadResource).toHaveBeenCalledTimes(1)
+            expect(reconnectButton()).toBeTruthy()
+        })
+
+        test('where one click cannot do it, explains where to reconnect and offers no button', async () => {
+            const { McpAppFrame } = require('./McpAppViews')
+            mockLoadResource.mockImplementation(async () => {
+                throw disconnected({ canReconnect: false, reconnectBlocker: 'needs_credentials' })
+            })
+            await act(async () => root.render(<McpAppFrame view={view('v1', 0)} language="de" />))
+            expect(container.textContent).toContain('mcp_app_reconnect_in_settings')
+            expect(reconnectButton()).toBeUndefined()
+        })
+
+        test('any other failure is still shown as it is', async () => {
+            const { McpAppFrame } = require('./McpAppViews')
+            mockLoadResource.mockImplementation(async () => {
+                throw new Error('The app view could not be loaded.')
+            })
+            await act(async () => root.render(<McpAppFrame view={view('v1', 0)} language="de" />))
+            expect(container.textContent).toContain('The app view could not be loaded.')
+            expect(reconnectButton()).toBeUndefined()
+        })
     })
 })
