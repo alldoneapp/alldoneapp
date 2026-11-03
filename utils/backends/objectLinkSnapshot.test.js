@@ -13,3 +13,17 @@ describe('shouldProcessObjectLinkSnapshot', () => {
         expect(shouldProcessObjectLinkSnapshot(undefined, { fromCache: false })).toBe(true)
     })
 })
+
+describe('getObjectLinkRetryDelay (AT-2950)', () => {
+    const { getObjectLinkRetryDelay, OBJECT_LINK_RETRY_DELAYS_MS } = require('./objectLinkSnapshot')
+
+    it('backs off for a bounded number of failed listeners', () => {
+        expect(OBJECT_LINK_RETRY_DELAYS_MS.length).toBeGreaterThan(0)
+        OBJECT_LINK_RETRY_DELAYS_MS.forEach((delay, attempt) => {
+            expect(getObjectLinkRetryDelay(attempt)).toBe(delay)
+        })
+        expect(getObjectLinkRetryDelay(OBJECT_LINK_RETRY_DELAYS_MS.length)).toBeNull()
+        expect(getObjectLinkRetryDelay(-1)).toBeNull()
+        expect(getObjectLinkRetryDelay(undefined)).toBeNull()
+    })
+})

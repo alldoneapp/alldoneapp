@@ -1,7 +1,8 @@
 import v4 from 'uuid/v4'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
-import { getAppUrlHost } from './backends/firestore'
+import { getAppUrlHost, getHostingUrl } from './backends/firestore'
 import { handleNestedLinks } from './nestedLinkText'
+import { isCapacitorShell } from './CapacitorShell'
 
 export const LINKED_OBJECT_TYPE_CONTACT = 'contact'
 export const LINKED_OBJECT_TYPE_PROJECT = 'project'
@@ -144,11 +145,69 @@ export const isValidHost = host => {
     return host === getAppUrlHost() || host === 'localhost:19006'
 }
 
+// The iOS app (ios-app/, Capacitor) serves the web bundle from `capacitor://localhost`, so every
+// link it ever built from `window.location.origin` reads `capacitor://localhost/projects/...`
+// (AT-2950). Those links are already stored in notes and comments, and they point at the same
+// app routes as a my.alldone.app link, so they are recognised as internal links everywhere.
+export const APP_SHELL_PROTOCOL = 'capacitor:'
+export const APP_SHELL_HOST = 'localhost'
+
+const isAppShellOrigin = (protocol, host) => {
+    return String(protocol || '').toLowerCase() === APP_SHELL_PROTOCOL && host === APP_SHELL_HOST
+}
+
+/** True for an origin the app itself is served from: the hosting URL, local dev, or the iOS shell. */
+export const isAppLinkOrigin = (protocol, host) => {
+    return (isValidProtocol(protocol) && isValidHost(host)) || isAppShellOrigin(protocol, host)
+}
+
+/**
+ * The pathname of a link that points into this app, or null for anything else.
+ *
+ * Unlike a bare `new URL(addProtocol(url))`, this understands the iOS shell's custom scheme:
+ * `addProtocol` prefixes `http://` to it, which parses `capacitor` as the host and makes the
+ * link look external (AT-2950).
+ */
+export const getAppLinkPathname = url => {
+    if (typeof url !== 'string' || !/^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim())) return null
+    try {
+        const parsed = new URL(url.trim())
+        return isAppLinkOrigin(parsed.protocol, parsed.host) ? parsed.pathname : null
+    } catch (error) {
+        return null
+    }
+}
+
+const DEFAULT_APP_LINK_ORIGIN = 'https://my.alldone.app'
+
+const getHostingOrigin = () => {
+    try {
+        const hostingUrl = typeof getHostingUrl === 'function' ? getHostingUrl() : ''
+        if (hostingUrl) return new URL(addProtocol(hostingUrl)).origin
+    } catch (error) {
+        // Fall through to the production origin below.
+    }
+    return DEFAULT_APP_LINK_ORIGIN
+}
+
+/**
+ * The origin to put in front of an app route when the link is STORED (a mention, a link chip).
+ *
+ * In a browser that is the page's own origin, as before. Inside the iOS shell it is the hosting
+ * URL: a `capacitor://localhost` link only means something inside that one app, and a note
+ * mention written there must still resolve to its note on the web and on every other device
+ * (AT-2950).
+ */
+export const getAppLinkOrigin = () => {
+    const location = typeof window !== 'undefined' ? window.location : null
+    if (location && isValidProtocol(location.protocol) && !isCapacitorShell()) return location.origin
+    return getHostingOrigin()
+}
+
 const isValidLink = (url, projectId, objectType) => {
     const urlParts = Array.isArray(url) ? url : url.split('/')
     return (
-        isValidProtocol(urlParts[0]) &&
-        isValidHost(urlParts[2]) &&
+        isAppLinkOrigin(urlParts[0], urlParts[2]) &&
         urlParts[3] === 'projects' &&
         urlParts[4] &&
         urlParts[4] === projectId &&
@@ -160,8 +219,7 @@ const isValidLink = (url, projectId, objectType) => {
 const isValidProjectLink = (url, projectId) => {
     const urlParts = Array.isArray(url) ? url : url.split('/')
     return (
-        isValidProtocol(urlParts[0]) &&
-        isValidHost(urlParts[2]) &&
+        isAppLinkOrigin(urlParts[0], urlParts[2]) &&
         urlParts[3] === 'project' &&
         urlParts[4] &&
         urlParts[4] === projectId &&
@@ -225,6 +283,25 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
             objectId: linkedParentObjectType !== 'plain' ? urlParts[6] : '',
         }
     }
+}
+
+/**
+ * The object type of a stored link chip, decided from the link itself rather than from the
+ * editor it happens to sit in.
+ *
+ * `getUrlObject` only types a link of the project it is given, so a chip stored as `plain`
+ * may still point at a note: a link pasted from another project, one an assistant wrote, or one
+ * created in the iOS shell before its origin was recognised (AT-2950). Rendering re-derives the
+ * type with the link's OWN project, so every such chip shows its object again without touching
+ * the stored document. Returns null for anything that is not a typed app link.
+ */
+export const getInternalLinkType = url => {
+    if (typeof url !== 'string' || url === '') return null
+    const urlParts = url.split('/')
+    const linkProjectId = urlParts[3] === 'projects' ? urlParts[4] : ''
+    if (!linkProjectId) return null
+    const urlObject = getUrlObject(url, formatUrl(url) || '', linkProjectId, '', '')
+    return urlObject && urlObject.type !== 'plain' ? urlObject.type : null
 }
 
 // `checkDVLink` lived here until AT-2417 and is deliberately gone. It bounced every
