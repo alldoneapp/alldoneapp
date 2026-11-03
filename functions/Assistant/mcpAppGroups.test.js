@@ -2,6 +2,7 @@ const {
     MCP_DIRECT_TOOL_LIMIT,
     OPEN_MCP_APP_TOOL_NAME,
     readMcpToolApp,
+    serverAllowsMcpTool,
     getMcpAppKey,
     describeMcpApps,
     selectMcpToolSchemas,
@@ -45,6 +46,22 @@ describe('reading the app a server names for a tool', () => {
         expect(readMcpToolApp({ _meta: { 'team.alldone/app': { name: 'no id' } } })).toBeNull()
         expect(getMcpAppKey('pubmed', null)).toBe('pubmed')
         expect(getMcpAppKey('team', JUDY)).toBe('team:judy')
+    })
+})
+
+describe('a server entry limited to some apps', () => {
+    const tool = app => ({ name: 'x', _meta: app ? { 'team.alldone/app': app } : {} })
+
+    test('an alldone.team specialist sees only its own app', () => {
+        const connor = { id: 'alldone-team-story', appIds: ['story'] }
+        expect(serverAllowsMcpTool(connor, tool(STORY))).toBe(true)
+        expect(serverAllowsMcpTool(connor, tool(JUDY))).toBe(false)
+        expect(serverAllowsMcpTool(connor, tool(null))).toBe(false)
+    })
+
+    test('an entry without appIds sees every tool of its server', () => {
+        expect(serverAllowsMcpTool({ id: 'team' }, tool(JUDY))).toBe(true)
+        expect(serverAllowsMcpTool({ id: 'pubmed', appIds: [] }, tool(null))).toBe(true)
     })
 })
 

@@ -5021,6 +5021,24 @@ exports.onDeleteAssistantSecondGen = onDocumentDeleted(
     }
 )
 
+// The alldone.team specialists (Connor, Judy, Ricky) as assistant templates, kept in line with
+// alldone.team's catalog; templateSync then carries changes into every project copy. Hourly is
+// cheap (one GET and a few reads; it writes only when the catalog changed).
+exports.syncAlldoneTeamSpecialistsSecondGen = onSchedule(
+    {
+        schedule: '17 * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { syncAlldoneTeamSpecialists } = require('./Assistants/alldoneTeamSpecialists')
+        const result = await syncAlldoneTeamSpecialists({ db: admin.firestore() })
+        console.log('alldone.team specialists synced', result)
+    }
+)
+
 // ASSISTANT TASKS
 
 exports.onCreateAssistantTaskSecondGen = onDocumentCreated(

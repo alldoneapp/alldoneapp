@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import AssistantItem from './AssistantItem'
@@ -25,6 +25,10 @@ import {
     storeCurrentUser,
 } from '../../../../redux/actions'
 import { DV_TAB_ROOT_TASKS } from '../../../../utils/TabNavigationConstants'
+import styles, { colors } from '../../../styles/global'
+import { splitGlobalTemplates } from './specialistTemplates'
+
+const ALLDONE_TEAM_SECTION_ID = 'alldoneTeamSpecialists'
 
 export default function AssistantsArea({ closeModal, project }) {
     const dispatch = useDispatch()
@@ -109,29 +113,42 @@ export default function AssistantsArea({ closeModal, project }) {
         )
 
         const projects = [{ id: GLOBAL_PROJECT_ID, name: translate('Templates') }, ...activeProjects, ...guideProjects]
+        const { specialists, templates } = splitGlobalTemplates(
+            globalAssistants,
+            project,
+            projectAssistants[project.id] || []
+        )
 
-        const assistantsByProject = {}
+        const assistantsByProject = {
+            [ALLDONE_TEAM_SECTION_ID]: {
+                assistants: specialists,
+                // Added like a template, so the copy is created from the global one.
+                sourceProjectId: GLOBAL_PROJECT_ID,
+                project: { id: ALLDONE_TEAM_SECTION_ID, name: translate('alldone.team specialists') },
+            },
+        }
         projects.forEach(assistantProject => {
             const assistants =
-                assistantProject.id === GLOBAL_PROJECT_ID
-                    ? globalAssistants.filter(assistant => !project.globalAssistantIds.includes(assistant.uid))
-                    : projectAssistants[assistantProject.id]
+                assistantProject.id === GLOBAL_PROJECT_ID ? templates : projectAssistants[assistantProject.id]
 
-            assistantsByProject[assistantProject.id] = { assistants, project: assistantProject }
+            assistantsByProject[assistantProject.id] = {
+                assistants,
+                sourceProjectId: assistantProject.id,
+                project: assistantProject,
+            }
         })
         setAssistantsByProject(assistantsByProject)
     }, [])
 
-    let assistantsByProjectArray = Object.values(assistantsByProject)
-    assistantsByProjectArray = [
-        ...assistantsByProjectArray.filter(item => item.project.id === GLOBAL_PROJECT_ID && item.assistants.length > 0),
-        ...assistantsByProjectArray.filter(item => item.project.id !== GLOBAL_PROJECT_ID && item.assistants.length > 0),
-    ]
+    let assistantsByProjectArray = Object.values(assistantsByProject).filter(item => item.assistants?.length > 0)
+    const sectionOrder = item =>
+        item.project.id === ALLDONE_TEAM_SECTION_ID ? 0 : item.project.id === GLOBAL_PROJECT_ID ? 1 : 2
+    assistantsByProjectArray = [...assistantsByProjectArray].sort((a, b) => sectionOrder(a) - sectionOrder(b))
 
     return (
         <>
             {assistantsByProjectArray.map(data => {
-                const { project, assistants } = data
+                const { project, assistants, sourceProjectId } = data
                 return (
                     <View key={project.id}>
                         <ProjectHeader
@@ -139,12 +156,15 @@ export default function AssistantsArea({ closeModal, project }) {
                             amount={assistants.length}
                             containerStyle={{ marginHorizontal: 0 }}
                         />
+                        {project.id === ALLDONE_TEAM_SECTION_ID && (
+                            <Text style={localStyles.sectionHint}>{translate('alldone.team specialists hint')}</Text>
+                        )}
                         {assistants.map(assistant => (
                             <AssistantItem
                                 key={assistant.uid}
                                 assistant={assistant}
                                 selectAssistant={selectAssistant}
-                                assistantProjectId={project.id}
+                                assistantProjectId={sourceProjectId}
                             />
                         ))}
                     </View>
@@ -153,3 +173,11 @@ export default function AssistantsArea({ closeModal, project }) {
         </>
     )
 }
+
+const localStyles = StyleSheet.create({
+    sectionHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        paddingTop: 8,
+    },
+})

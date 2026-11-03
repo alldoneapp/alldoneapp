@@ -292,16 +292,17 @@ export default function AssistantOptions({
         [composerMaxHeight]
     )
 
-    // Once the text wraps, voice/send stack into a column (and on mobile the in-field + / mic do
-    // too, AT-2938). The latch releases only on empty text so width changes cannot cause reflow
-    // loops — see getAssistantControlsStacked.
+    // Mobile keeps voice/send side by side. Desktop retains the expansion
+    // latch; release only on empty text so width changes cannot cause reflow loops.
     useEffect(() => {
-        setControlsStacked(wasStacked =>
-            getAssistantControlsStacked({
-                inputHeight: inputLayout.height,
-                hasText: message.length > 0,
-                wasStacked,
-            })
+        setControlsStacked(
+            wasStacked =>
+                !isMobile &&
+                getAssistantControlsStacked({
+                    inputHeight: inputLayout.height,
+                    hasText: message.length > 0,
+                    wasStacked,
+                })
         )
     }, [inputLayout.height, message, isMobile])
 
@@ -455,9 +456,6 @@ export default function AssistantOptions({
                     // it used to appear only after the field was already tapped (AT-2355).
                     alwaysShowDictation={true}
                     showAttachmentButton={true}
-                    // AT-2938: on a phone the + and mic stack too, handing their row's width back
-                    // to the text. Desktop keeps them side by side.
-                    stackInlineControls={isMobile && controlsStacked}
                     // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
                     // inserted and the message is sent. Enter's own guards still apply, since this
                     // is the same send path the keydown listener uses.
@@ -476,7 +474,6 @@ export default function AssistantOptions({
                         style={[
                             localStyles.sendButtonWrapper,
                             controlsStacked && localStyles.sendButtonWrapperExpanded,
-                            controlsStacked && isMobile && localStyles.sendButtonWrapperExpandedMobile,
                         ]}
                     >
                         <AssistantVoiceCallButton
@@ -488,7 +485,6 @@ export default function AssistantOptions({
                                 localStyles.voiceButton,
                                 isMobile && localStyles.voiceButtonMobile,
                                 controlsStacked && localStyles.voiceButtonExpanded,
-                                controlsStacked && isMobile && localStyles.voiceButtonExpandedMobile,
                             ]}
                         />
                         <Button
@@ -648,15 +644,6 @@ const localStyles = StyleSheet.create({
     voiceButtonExpanded: {
         marginRight: 0,
         marginBottom: 8,
-    },
-    // AT-2938: on mobile the stacked cluster puts Send on top and Call below it, so the gap
-    // moves from below the voice button to above it.
-    sendButtonWrapperExpandedMobile: {
-        flexDirection: 'column-reverse',
-    },
-    voiceButtonExpandedMobile: {
-        marginBottom: 0,
-        marginTop: 8,
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,

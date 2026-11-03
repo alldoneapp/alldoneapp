@@ -44,6 +44,18 @@ function readMcpToolApp(tool) {
     return { id, name: clean(raw.name, 60) || id, summary: clean(raw.summary, 240) }
 }
 
+/**
+ * Whether a server entry lets an assistant use this tool. An entry with `appIds` (an alldone.team
+ * specialist: Connor gets ['story']) sees only the tools whose `_meta` app is one of them; a tool that
+ * names no app is then out too. An entry without `appIds` sees everything its server serves.
+ */
+function serverAllowsMcpTool(server, tool) {
+    const appIds = server && Array.isArray(server.appIds) ? server.appIds.filter(id => typeof id === 'string') : []
+    if (!appIds.length) return true
+    const app = readMcpToolApp(tool)
+    return !!app && appIds.map(slug).includes(app.id)
+}
+
 /** The group a tool belongs to: its app on that server, or the server itself. */
 function getMcpAppKey(serverId, app) {
     return app ? `${serverId}:${app.id}` : String(serverId)
@@ -165,6 +177,7 @@ module.exports = {
     MCP_DIRECT_TOOL_LIMIT,
     MAX_MCP_TOOLS,
     readMcpToolApp,
+    serverAllowsMcpTool,
     getMcpAppKey,
     describeMcpApps,
     buildMcpNamespaceIndex,

@@ -496,19 +496,7 @@ fullscreen display mode and fills its container. In Anna's assistant shell the v
 and the chat keeps a one-line card that reopens it. A view recorded in the last two minutes opens by
 itself once (on a phone without leaving the chat); an older one, met by scrolling back, only offers
 to; the same rule opens the embed window outside the shell. Pane views stay mounted while hidden, up
-to five, so switching panes keeps their state. Three rules came from one run on 2026-11-03 that left
-Judy closed with two cards under the answer. **The cards are watched while the answer is still
-being written** (`MessageItemBody` renders `McpAppViews` outside its loading branch, one element
-in both states): the freshness clock starts at the tool call, and the run kept working for five
-minutes, so cards that mounted only once the answer was done found every view stale. **One card and
-one pane per app** (`mcpAppKey`: same server, same `ui://` resource): `judy_show` ran twice in that
-run and each call records its own view; the newest supersedes the others. **An open app view is
-protected like a VM view**: the reveal of a saved object waits, `show_workspace` becomes the
-"would like to show you" notice, and the browser is not followed. In that run the assistant created
-a task to track its own work and showed it, which would have replaced Judy two minutes after it
-opened. A view's own "Show in chat" button sends `ui/request-display-mode` with `inline`; the host
-answers `fullscreen` and closes the pane (Alldone shows again) or the embed window. Pinned by
-`MCP/mcpAppViews.test.js`,
+to five, so switching panes keeps their state. Pinned by `MCP/mcpAppViews.test.js`,
 `mcpAppHost.test.js`, the view-only case in `assistantHelper.test.js` and the `MCP Apps views` block
 of the rules emulator suite.
 
@@ -1318,6 +1306,34 @@ tools because the manifest never does), the `ai-agent-api` meta tag, and the MCP
 instructions (`functions/MCP/mcpAgentInstructions.js`). Keep them in step, and name only tools the
 MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text mentions against
 `tools/list`.
+
+### The alldone.team specialists are assistant templates
+
+Connor Consultant (Story Builder), Judy Job and Ricky Returns (Property Screener) are added to a
+project like any template: "Add assistant" lists them in their own "alldone.team specialists"
+section. They are not hand-made. `syncAlldoneTeamSpecialistsSecondGen` reads
+`alldone.team/mcp/specialists` hourly (alldone.team publishes it from `CHAT_APPS`) and keeps one
+template per specialist in `globalProject` under a fixed id (`alldone-team-<app>`), marked
+`externalSource: { provider: 'alldone.team', appId, family, available, contentHash }`
+(`functions/Assistants/alldoneTeamSpecialists.js`). The sync owns only what it derives from the
+catalog (name, description, avatar, instructions, its MCP server entry, `externalSource`) and
+writes only when that changed; model, tools and heartbeat stay the administrator's. A specialist
+alldone.team stops offering is marked `available: false`, not deleted, so existing copies keep
+working while the list stops offering it. Template changes reach project copies through
+`templateSync` like every other template.
+
+Each specialist's tools come from ONE managed MCP server entry: alldone.team/mcp with
+`authType: 'alldone_app'`, so every call runs as the person talking to the assistant (their own
+alldone.team data, their Gold per action) and no token is stored on the assistant, plus
+`appIds: [family]`, so Connor sees only Story Builder's tools. `serverAllowsMcpTool`
+(`functions/Assistant/mcpAppGroups.js`) applies that filter to assistant runs and to MCP app views
+alike. The entry carries `managedBy: 'alldone.team'` (`functions/Assistants/managedMcpServers.js`):
+it always follows the template in `templateSync` (a server a copy added next to it is kept and
+never turns a template change into a review conflict), the connect/disconnect callables refuse to
+touch it, and the MCP servers modal shows it without remove or on/off controls. Pinned by
+`alldoneTeamSpecialists.test.js`, the specialist block of `templateSync.test.js`,
+`mcpAppGroups.test.js`, `mcpAppViews.test.js`, `mcpAssistantConnect.test.js` and
+`components/UIComponents/FloatModals/AddAssistantModal/specialistTemplates.test.js`.
 
 ### Assistant Tool Checklist
 

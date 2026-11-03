@@ -16,37 +16,18 @@ const mcpAppBackend = () => require('../../../../utils/backends/Assistants/mcpAp
 // older one (scrolling back, reopening the chat) only offers to open.
 const FRESH_VIEW_MS = 2 * 60 * 1000
 
-/** Which app a view shows: the same server's same `ui://` resource is one app, whatever the tool. */
-export const mcpAppKey = view =>
-    view?.serverId && view?.resourceUri ? `${view.serverId}|${view.resourceUri}` : view?.viewId
-
-/**
- * The newest view of each app, in the order the apps first appeared. A run that calls the same
- * app's tool again (judy_show with another filter) supersedes its earlier view instead of adding a
- * second card for the same app. Expects views sorted by `createdAt`, as watchMcpAppViews delivers.
- */
-export function latestViewPerApp(views) {
-    const byApp = new Map()
-    for (const view of views) byApp.set(mcpAppKey(view), view)
-    return [...byApp.values()]
-}
-
 /**
  * One MCP Apps view (e.g. Judy) in a sandboxed frame that fills its container: Anna's right pane or
  * the embed window (McpAppModal). Never inline in the chat. The frame's document is the server's own
  * HTML written into `srcdoc` with no `allow-same-origin`, so it runs on an opaque origin: it cannot
  * reach the app's storage or session, and its own CSP (from the resource's `_meta.ui.csp`) limits
  * what it may load. It talks to this host over postMessage (mcpAppHost.js); every server call goes
- * through `mcpAppSecondGen`. The view always runs in fullscreen mode: a request for any other mode
- * is the view's own "show in chat" button, and closes the pane or window (`onClose`).
+ * through `mcpAppSecondGen`. The view always runs in fullscreen mode.
  */
-export function McpAppFrame({ view, language, onClose }) {
+export function McpAppFrame({ view, language }) {
     const frameRef = useRef(null)
     const [resource, setResource] = useState(null)
     const [failed, setFailed] = useState('')
-    // Read through a ref so a new callback each render does not rebuild the host mid-session.
-    const onCloseRef = useRef(onClose)
-    onCloseRef.current = onClose
 
     useEffect(() => {
         let cancelled = false
@@ -69,11 +50,7 @@ export function McpAppFrame({ view, language, onClose }) {
             language,
             callTool: (name, args) => mcpAppBackend().callMcpAppTool(view.viewId, name, args),
             onSize: () => {},
-            onDisplayMode: mode => {
-                if (mode !== 'fullscreen') onCloseRef.current?.()
-                // Still fullscreen: reopened, the view shows its full layout again.
-                return 'fullscreen'
-            },
+            onDisplayMode: () => 'fullscreen',
             getDisplayMode: () => 'fullscreen',
             availableDisplayModes: ['fullscreen'],
         })
@@ -139,8 +116,7 @@ export default function McpAppViews({ commentId }) {
     const pane = useContext(AnnaAppPaneContext)
     const embedWindow = useEmbedWindow()
     const target = pane || embedWindow
-    const [allViews, setViews] = useState([])
-    const views = useMemo(() => latestViewPerApp(allViews), [allViews])
+    const [views, setViews] = useState([])
     const handled = useRef(new Set())
 
     useEffect(() => {
@@ -149,8 +125,6 @@ export default function McpAppViews({ commentId }) {
     }, [commentId, userId])
 
     // A view that arrives with the answer opens once by itself; the user can close or switch away.
-    // This runs while the answer is still being written (MessageItemBody keeps it mounted then),
-    // so "fresh" is measured close to the tool call that recorded the view.
     useEffect(() => {
         for (const view of views) {
             if (handled.current.has(view.viewId)) continue

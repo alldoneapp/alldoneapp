@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid')
 
 const mcpClient = require('../Assistant/mcpClient')
 const { logMcpConnectPhase } = require('./mcpConnectDiagnostics')
+const { isManagedMcpServer } = require('../Assistants/managedMcpServers')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 
@@ -152,6 +153,17 @@ function buildSecretRecords(authType, rawSecret) {
     }
 }
 
+/**
+ * An alldone.team specialist's server entry belongs to its template sync (Assistants/managedMcpServers),
+ * so it cannot be replaced or removed here; removing the assistant is how a project lets it go.
+ */
+function assertNotManagedServer(assistantSnap, serverId) {
+    const servers = Array.isArray(assistantSnap.data()?.mcpServers) ? assistantSnap.data().mcpServers : []
+    if (servers.some(server => server && server.id === serverId && isManagedMcpServer(server))) {
+        throw new HttpsError('failed-precondition', 'This MCP server is managed by alldone.team and cannot be changed.')
+    }
+}
+
 /** Upsert a server entry into the assistant doc's `mcpServers` array. */
 async function upsertServerEntry(projectId, assistantId, entry) {
     const ref = assistantDocRef(projectId, assistantId)
@@ -194,9 +206,10 @@ async function removeServerEntry(projectId, assistantId, serverId) {
  * secret server-side, and upserts the non-secret entry onto the assistant doc.
  */
 async function connectAssistantMcpServer({ userId, projectId, assistantId, server, secret }) {
-    await assertCanEditAssistant(projectId, assistantId, userId)
+    const assistantSnap = await assertCanEditAssistant(projectId, assistantId, userId)
 
     const normalized = normalizeServerInput(server)
+    assertNotManagedServer(assistantSnap, normalized.id)
 
     // For OAuth, the client only hands us an `oauthState` handle — never the tokens
     // themselves. Claim the completed OAuth session server-side so the access/refresh
@@ -289,8 +302,9 @@ async function connectAssistantMcpServer({ userId, projectId, assistantId, serve
 
 /** Disconnect (remove) an MCP server from an assistant + delete its secret. */
 async function disconnectAssistantMcpServer({ userId, projectId, assistantId, serverId }) {
-    await assertCanEditAssistant(projectId, assistantId, userId)
+    const assistantSnap = await assertCanEditAssistant(projectId, assistantId, userId)
     if (!serverId) throw new HttpsError('invalid-argument', 'A serverId is required.')
+    assertNotManagedServer(assistantSnap, serverId)
 
     await removeServerEntry(projectId, assistantId, serverId)
     await buildSecretDocRef(projectId, assistantId, serverId)

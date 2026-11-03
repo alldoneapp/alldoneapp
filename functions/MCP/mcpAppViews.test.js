@@ -140,6 +140,23 @@ describe('the browser asking for a view', () => {
         expect(d.callTool.mock.calls.map(call => call[2])).toEqual(['judy_view_get', 'judy_jobs_list'])
     })
 
+    test('lets a specialist’s view reach only its own app’s tools', async () => {
+        const app = id => ({ 'team.alldone/app': { id, name: id, summary: '' } })
+        const d = deps({
+            getAssistantMcpServers: jest.fn(async () => [{ ...server, appIds: ['story'] }]),
+            listTools: jest.fn(async () => [
+                { name: 'story_view_get', _meta: { ui: { visibility: ['app'] }, ...app('story') } },
+                { name: 'judy_view_get', _meta: { ui: { visibility: ['app'] }, ...app('judy') } },
+            ]),
+        })
+        await handleMcpAppRequest(request({ action: 'callTool', name: 'story_view_get' }), d)
+        await rejectsWith(
+            handleMcpAppRequest(request({ action: 'callTool', name: 'judy_view_get' }), d),
+            'permission-denied'
+        )
+        expect(d.callTool.mock.calls.map(call => call[2])).toEqual(['story_view_get'])
+    })
+
     test('refuses a tool the server keeps for the model, or one it does not have', async () => {
         await rejectsWith(
             handleMcpAppRequest(request({ action: 'callTool', name: 'judy_model_only' }), deps()),
