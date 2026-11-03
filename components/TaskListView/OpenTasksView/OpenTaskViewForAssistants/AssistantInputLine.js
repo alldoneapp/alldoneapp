@@ -40,15 +40,17 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
 
-    // Same layout as the My Day composer: once the text wraps, voice/send stack (on mobile the
-    // in-field + / mic too, AT-2938), and the latch releases only on empty text.
+    // Mobile keeps voice/send side by side, matching the My Day composer.
+    // Desktop retains its expansion latch to avoid width/height reflow loops.
     useEffect(() => {
-        setControlsStacked(wasStacked =>
-            getAssistantControlsStacked({
-                inputHeight: inputLayout.height,
-                hasText: message.length > 0,
-                wasStacked,
-            })
+        setControlsStacked(
+            wasStacked =>
+                !isMobile &&
+                getAssistantControlsStacked({
+                    inputHeight: inputLayout.height,
+                    hasText: message.length > 0,
+                    wasStacked,
+                })
         )
     }, [inputLayout.height, message, isMobile])
 
@@ -204,16 +206,11 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     // (AT-2355 / AT-2405): these are the same composer and should not differ.
                     alwaysShowDictation={true}
                     showAttachmentButton={true}
-                    stackInlineControls={isMobile && controlsStacked}
                     onDictationSubmit={text => text && handleSendMessage(text)}
                 />
                 <View
                     testID={'assistant-message-controls'}
-                    style={[
-                        localStyles.sendButtonWrapper,
-                        controlsStacked && localStyles.sendButtonWrapperExpanded,
-                        controlsStacked && isMobile && localStyles.sendButtonWrapperExpandedMobile,
-                    ]}
+                    style={[localStyles.sendButtonWrapper, controlsStacked && localStyles.sendButtonWrapperExpanded]}
                 >
                     <AssistantVoiceCallButton
                         compact
@@ -223,7 +220,6 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                             localStyles.voiceButton,
                             isMobile && localStyles.voiceButtonMobile,
                             controlsStacked && localStyles.voiceButtonExpanded,
-                            controlsStacked && isMobile && localStyles.voiceButtonExpandedMobile,
                         ]}
                     />
                     <Button
@@ -308,15 +304,6 @@ const localStyles = StyleSheet.create({
     voiceButtonExpanded: {
         marginRight: 0,
         marginBottom: 8,
-    },
-    // AT-2938: on mobile the stacked cluster puts Send on top and Call below it, so the gap
-    // moves from below the voice button to above it.
-    sendButtonWrapperExpandedMobile: {
-        flexDirection: 'column-reverse',
-    },
-    voiceButtonExpandedMobile: {
-        marginBottom: 0,
-        marginTop: 8,
     },
     sendButtonStacked: {
         // Overrides Button's own alignSelf: 'flex-start' so the send button

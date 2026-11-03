@@ -149,3 +149,60 @@ describe('connectAssistantMcpServer diagnostics', () => {
         expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('top-secret-token')
     })
 })
+
+describe('an alldone.team specialist’s own MCP server', () => {
+    const { disconnectAssistantMcpServer } = require('./mcpAssistantConnect')
+    const managed = {
+        id: 'alldone-team-story',
+        url: 'https://alldone.team/mcp',
+        authType: 'alldone_app',
+        managedBy: 'alldone.team',
+    }
+    let transactionUpdate
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        transactionUpdate = jest.fn()
+        const assistantSnapshot = { exists: true, data: () => ({ mcpServers: [managed] }) }
+        const doc = jest.fn(docPath => {
+            if (docPath === 'projects/project-1') {
+                return { get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ userIds: ['me'] }) }) }
+            }
+            if (docPath === 'assistants/project-1/items/connor') {
+                return { get: jest.fn().mockResolvedValue(assistantSnapshot) }
+            }
+            return { set: jest.fn(), delete: jest.fn().mockResolvedValue(undefined) }
+        })
+        admin.firestore.mockReturnValue({
+            doc,
+            runTransaction: jest.fn(async callback =>
+                callback({ get: jest.fn().mockResolvedValue(assistantSnapshot), update: transactionUpdate })
+            ),
+        })
+    })
+
+    const ids = { userId: 'me', projectId: 'project-1', assistantId: 'connor' }
+
+    test('cannot be removed', async () => {
+        await expect(disconnectAssistantMcpServer({ ...ids, serverId: managed.id })).rejects.toMatchObject({
+            code: 'failed-precondition',
+        })
+        expect(transactionUpdate).not.toHaveBeenCalled()
+    })
+
+    test('cannot be replaced', async () => {
+        await expect(
+            connectAssistantMcpServer({
+                ...ids,
+                server: { id: managed.id, label: 'Mine', url: 'https://alldone.team/mcp', authType: 'none' },
+            })
+        ).rejects.toMatchObject({ code: 'failed-precondition' })
+        expect(mcpClient.listTools).not.toHaveBeenCalled()
+        expect(transactionUpdate).not.toHaveBeenCalled()
+    })
+
+    test('does not stop the copy from removing a server of its own', async () => {
+        await expect(disconnectAssistantMcpServer({ ...ids, serverId: 'linear' })).resolves.toEqual({ success: true })
+        expect(transactionUpdate).toHaveBeenCalledTimes(1)
+    })
+})

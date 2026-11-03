@@ -13,6 +13,7 @@ import { connectAssistantMcpServer, disconnectAssistantMcpServer } from '../../.
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { startMcpOAuthFlow } from '../../../../utils/Mcp/mcpOAuth'
 import useModalSizing from '../../../../hooks/useModalSizing'
+import { isManagedMcpServer } from '../../../../functions/Assistants/managedMcpServers'
 
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MODAL_HORIZONTAL_MARGIN = 32
@@ -209,9 +210,11 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                                         {server.url}
                                     </Text>
                                 </View>
-                                <TouchableOpacity onPress={() => onRemove(server)} disabled={processing}>
-                                    <Icon name="trash-2" size={20} color={colors.UtilityRed200} />
-                                </TouchableOpacity>
+                                {!isManagedMcpServer(server) && (
+                                    <TouchableOpacity onPress={() => onRemove(server)} disabled={processing}>
+                                        <Icon name="trash-2" size={20} color={colors.UtilityRed200} />
+                                    </TouchableOpacity>
+                                )}
                             </View>
                             <View style={localStyles.serverMetaRow}>
                                 <Text style={localStyles.serverMeta}>
@@ -227,15 +230,19 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                                     {typeof server.toolCount === 'number'
                                         ? ` · ${translate('N tools', { count: server.toolCount })}`
                                         : ''}
+                                    {isManagedMcpServer(server) ? ` · ${translate('Managed by alldone.team')}` : ''}
                                 </Text>
-                                <View style={{ marginLeft: 'auto' }}>
-                                    <Switch
-                                        active={server.enabled !== false}
-                                        activeSwitch={() => onToggleEnabled(server)}
-                                        deactiveSwitch={() => onToggleEnabled(server)}
-                                        disabled={processing}
-                                    />
-                                </View>
+                                {/* A specialist's own server follows its template (functions/Assistants/managedMcpServers). */}
+                                {!isManagedMcpServer(server) && (
+                                    <View style={{ marginLeft: 'auto' }}>
+                                        <Switch
+                                            active={server.enabled !== false}
+                                            activeSwitch={() => onToggleEnabled(server)}
+                                            deactiveSwitch={() => onToggleEnabled(server)}
+                                            disabled={processing}
+                                        />
+                                    </View>
+                                )}
                             </View>
                         </View>
                     ))

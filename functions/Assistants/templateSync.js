@@ -10,6 +10,7 @@ const {
     buildBackfillConflicts,
 } = require('./templateMerge')
 const { FieldValue } = require('firebase-admin/firestore')
+const { resolveManagedMcpServers } = require('./managedMcpServers')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 const SYNC_FEED_TYPE = 'FEED_ASSISTANT_TEMPLATE_SYNCED'
@@ -192,7 +193,12 @@ async function syncDerivedAssistant(doc, previousTemplateAssistant, currentTempl
         getAssistantTemplateState(localAssistant),
         previousState
     )
-    const result = mergeTemplateState(previousState, currentState, normalizedLocalState)
+    // An alldone.team specialist's own MCP server always follows its template (./managedMcpServers).
+    const result = resolveManagedMcpServers({
+        ...mergeTemplateState(previousState, currentState, normalizedLocalState),
+        localServers: localAssistant.mcpServers,
+        templateServers: currentState.mcpServers,
+    })
     const affectedFields = getChangedTemplateFields(previousState, currentState)
     const conflicts = mergeStoredConflicts(localAssistant.templateSyncConflicts, result.conflicts, affectedFields)
     const changedFields = [...Object.keys(result.patch), ...result.deleteFields]

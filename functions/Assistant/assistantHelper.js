@@ -265,6 +265,7 @@ const {
     MAX_MCP_TOOLS,
     OPEN_MCP_APP_TOOL_NAME,
     readMcpToolApp,
+    serverAllowsMcpTool,
     getMcpAppKey,
     describeMcpApps,
     selectMcpToolSchemas,
@@ -1792,30 +1793,35 @@ async function getReachableMcpTools(toolRuntimeContext) {
                     requestUserId,
                 })
                 const tools = await mcpClient.listTools(server, secret)
-                return tools.map(tool => {
-                    // The app the server names for this tool (alldone.team does); see ./mcpAppGroups.
-                    const app = readMcpToolApp(tool)
-                    const ui = readToolUi(tool)
-                    return {
-                        toolName: buildMcpToolName({
+                // An entry limited to some apps (an alldone.team specialist) gets only their tools.
+                return tools
+                    .filter(tool => serverAllowsMcpTool(server, tool))
+                    .map(tool => {
+                        // The app the server names for this tool (alldone.team does); see ./mcpAppGroups.
+                        const app = readMcpToolApp(tool)
+                        const ui = readToolUi(tool)
+                        return {
+                            toolName: buildMcpToolName({
+                                serverId: server.id,
+                                serverLabel: server.label,
+                                remoteToolName: tool.name,
+                            }),
                             serverId: server.id,
-                            serverLabel: server.label,
+                            serverLabel: server.label || server.id,
+                            serverConfig: { url: server.url, transport: server.transport, authType: server.authType },
                             remoteToolName: tool.name,
-                        }),
-                        serverId: server.id,
-                        serverLabel: server.label || server.id,
-                        serverConfig: { url: server.url, transport: server.transport, authType: server.authType },
-                        remoteToolName: tool.name,
-                        description: String(tool.description || `Run ${tool.name} on ${server.label || 'MCP server'}`),
-                        inputSchema: normalizeExternalToolInputSchema(tool.inputSchema),
-                        appKey: getMcpAppKey(server.id, app),
-                        appName: app ? app.name : null,
-                        appSummary: app ? app.summary : null,
-                        // MCP Apps: the view this tool opens, and whether the model, the view or both may call it.
-                        uiResourceUri: ui.resourceUri,
-                        visibility: ui.visibility,
-                    }
-                })
+                            description: String(
+                                tool.description || `Run ${tool.name} on ${server.label || 'MCP server'}`
+                            ),
+                            inputSchema: normalizeExternalToolInputSchema(tool.inputSchema),
+                            appKey: getMcpAppKey(server.id, app),
+                            appName: app ? app.name : null,
+                            appSummary: app ? app.summary : null,
+                            // MCP Apps: the view this tool opens, and whether the model, the view or both may call it.
+                            uiResourceUri: ui.resourceUri,
+                            visibility: ui.visibility,
+                        }
+                    })
             } catch (err) {
                 console.warn('🔌 MCP: failed to list tools for server', {
                     projectId,

@@ -17,6 +17,7 @@
  */
 
 const crypto = require('crypto')
+const { serverAllowsMcpTool } = require('../Assistant/mcpAppGroups')
 
 const VIEWS_COLLECTION = 'mcpAppViews'
 const UI_SCHEME = 'ui://'
@@ -161,7 +162,8 @@ async function handleMcpAppRequest({ uid, data }, deps) {
         const name = typeof data.name === 'string' ? data.name : ''
         const tools = await deps.listTools(server, secret)
         const tool = tools.find(item => item?.name === name)
-        if (!tool || !isVisibleTo(readToolUi(tool).visibility, 'app')) {
+        // A view reaches only the tools its assistant may use: Connor's Story view never calls Judy.
+        if (!tool || !serverAllowsMcpTool(server, tool) || !isVisibleTo(readToolUi(tool).visibility, 'app')) {
             throw new McpAppError('permission-denied', `The app may not call ${name || 'that tool'}.`)
         }
         const args =

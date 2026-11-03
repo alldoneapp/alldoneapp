@@ -201,6 +201,79 @@ describe('template sync activity feed (AT-2358)', () => {
     })
 })
 
+describe('an alldone.team specialist copy', () => {
+    beforeEach(() => jest.clearAllMocks())
+
+    const managed = url => ({
+        id: 'alldone-team-story',
+        url,
+        authType: 'alldone_app',
+        appIds: ['story'],
+        managedBy: 'alldone.team',
+    })
+    const own = { id: 'linear', url: 'https://mcp.linear.app/mcp', authType: 'oauth' }
+    const template = url => ({ ...TEMPLATE_BASE, displayName: 'Connor Consultant', mcpServers: [managed(url)] })
+
+    it('takes a changed managed server although the copy added a server of its own', async () => {
+        buildDb()
+        const before = template('https://alldone.team/mcp')
+        const { doc, updates } = buildDerivedDoc({
+            ...before,
+            mcpServers: [managed('https://alldone.team/mcp'), own],
+            templateSyncSnapshot: {
+                displayName: 'Connor Consultant',
+                mcpServers: [managed('https://alldone.team/mcp')],
+            },
+            copiedFromTemplateAssistantId: 'template-1',
+        })
+
+        await syncDerivedAssistant(doc, before, template('https://alldone.team/mcp/v2'))
+
+        expect(updates[0].mcpServers).toEqual([managed('https://alldone.team/mcp/v2'), own])
+        expect(updates[0].templateSyncConflicts).toEqual([])
+        expect(updates[0].templateSyncStatus).toBe('synced')
+    })
+
+    it('restores a managed server the copy changed itself', async () => {
+        buildDb()
+        const current = template('https://alldone.team/mcp')
+        const { doc, updates } = buildDerivedDoc({
+            ...current,
+            mcpServers: [{ ...managed('https://alldone.team/mcp'), appIds: ['story', 'judy'] }],
+            templateSyncSnapshot: {
+                displayName: 'Connor Consultant',
+                temperature: 0.7,
+                mcpServers: [managed('https://alldone.team/mcp')],
+            },
+            copiedFromTemplateAssistantId: 'template-1',
+        })
+
+        await syncDerivedAssistant(doc, current, { ...current, temperature: 0.2 })
+
+        expect(updates[0].mcpServers).toEqual([managed('https://alldone.team/mcp')])
+        expect(updates[0].temperature).toBe(0.2)
+    })
+
+    it('still asks for a review when an ordinary template changes servers the copy edited', async () => {
+        buildDb()
+        const before = { ...TEMPLATE_BASE, mcpServers: [own] }
+        const { doc, updates } = buildDerivedDoc({
+            ...before,
+            mcpServers: [{ ...own, label: 'Mine' }],
+            templateSyncSnapshot: { displayName: 'Anna Alldone', temperature: 0.7, mcpServers: [own] },
+            copiedFromTemplateAssistantId: 'template-1',
+        })
+
+        await syncDerivedAssistant(doc, before, {
+            ...before,
+            mcpServers: [{ ...own, url: 'https://other.example/mcp' }],
+        })
+
+        expect(updates[0].templateSyncConflicts.map(conflict => conflict.field)).toEqual(['mcpServers'])
+        expect(updates[0]).not.toHaveProperty('mcpServers')
+    })
+})
+
 describe('buildSyncActivityText', () => {
     it('describes a review-only sync without claiming a successful sync', () => {
         // Rendered as "{assistant name} has 1 template change waiting for review …"

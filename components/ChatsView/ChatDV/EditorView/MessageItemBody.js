@@ -501,13 +501,10 @@ export default function MessageItemBody({
                     {creatorData?.isAssistant && (
                         <BrowserApprovalCard projectId={projectId} objectId={chat?.id} commentId={messageId} />
                     )}
+                    {/* The app views (MCP Apps) a tool of this answer opened, e.g. Judy. */}
+                    {creatorData?.isAssistant && <McpAppViews commentId={messageId} />}
                 </>
             )}
-            {/* The app views (MCP Apps) a tool of this answer opened, e.g. Judy. Outside the
-                loading branch on purpose: a view is recorded while the run is still working and
-                must open then, not minutes later when the answer is done and the view is no longer
-                fresh. One element across both states, so finishing does not remount it. */}
-            {creatorData?.isAssistant && <McpAppViews commentId={messageId} />}
         </View>
     )
 }

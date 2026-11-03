@@ -41,7 +41,7 @@ import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
-import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
+import { McpAppFrame } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 
 // App views kept open in the right pane; the oldest closes when another opens.
 const MAX_APP_VIEWS = 5
@@ -215,9 +215,6 @@ export default function AnnaShell({ children, routeId }) {
     const selectedAppViewId = surface.startsWith('app:') ? surface.slice(4) : null
     const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
     const vmSurface = surface === 'vms' || !!selectedVmId
-    // An app view on the right is something the person is working in, like a VM: the assistant's own
-    // navigation (a saved object's reveal, show_workspace, following its browser) must not replace it.
-    const appSurface = !!selectedAppView
     const lastVmId = useRef(null)
     if (selectedVmId) lastVmId.current = selectedVmId
     // A card is a thread (AT-2916); remembering the run it showed keeps that run's result on screen
@@ -294,12 +291,9 @@ export default function AnnaShell({ children, routeId }) {
     const openAppView = useCallback(
         (view, { auto = false } = {}) => {
             if (!view?.viewId) return
-            setAppViews(current => {
-                if (current.some(item => item.viewId === view.viewId)) return current
-                // One pane per app: a newer view of the same app (another judy_show) replaces the older.
-                const key = mcpAppKey(view)
-                return [...current.filter(item => mcpAppKey(item) !== key), view].slice(-MAX_APP_VIEWS)
-            })
+            setAppViews(current =>
+                current.some(item => item.viewId === view.viewId) ? current : [...current, view].slice(-MAX_APP_VIEWS)
+            )
             requestGeneration.current++
             setSurface(`app:${view.viewId}`)
             if (auto && mobile) return
@@ -308,13 +302,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         [mobile]
     )
-    // The view's own "show in chat" button: close the pane and show Alldone again. The view stays
-    // mounted, so its card reopens it as it was.
-    const closeAppView = useCallback(viewId => {
-        if (surfaceRef.current !== `app:${viewId}`) return
-        requestGeneration.current++
-        setSurface('alldone')
-    }, [])
     const appPane = useMemo(
         () => ({ open: openAppView, selectedViewId: selectedAppViewId }),
         [openAppView, selectedAppViewId]
@@ -493,7 +480,6 @@ export default function AnnaShell({ children, routeId }) {
                             autoFollow.current &&
                             surfaceRef.current !== 'vms' &&
                             !surfaceRef.current.startsWith('vm:') &&
-                            !surfaceRef.current.startsWith('app:') &&
                             Date.now() - Number(next.updatedAt || 0) < 120000
                         ) {
                             followedBrowser.current = { key, generation: requestGeneration.current }
@@ -624,7 +610,7 @@ export default function AnnaShell({ children, routeId }) {
         presentationSeen.current.add(presentation.id)
         const fresh = Date.now() - Number(presentation.createdAt || 0) < 120000
         if (!fresh && conversation?.annaPresentationStatus?.id === presentation.id) return
-        if (!active || chatOnly || browserControl || browserTakeover || vmSurface || appSurface) {
+        if (!active || chatOnly || browserControl || browserTakeover || vmSurface) {
             setPending(presentation)
             acknowledge(presentation, 'deferred')
         } else present(presentation)
@@ -635,7 +621,6 @@ export default function AnnaShell({ children, routeId }) {
         browserControl,
         browserTakeover,
         vmSurface,
-        appSurface,
         present,
         acknowledge,
     ])
@@ -697,7 +682,6 @@ export default function AnnaShell({ children, routeId }) {
                 heldBrowser.current ||
                 takeoverRef.current ||
                 surfaceRef.current.startsWith('vm:') ||
-                surfaceRef.current.startsWith('app:') ||
                 generation !== requestGeneration.current ||
                 isCancelled()
             )
@@ -1083,13 +1067,7 @@ export default function AnnaShell({ children, routeId }) {
                                     rootRef={workspaceContent}
                                     conversation={conversation}
                                     assistantName={assistantName}
-                                    available={
-                                        visibleWorkspace &&
-                                        !browserControl &&
-                                        !browserTakeover &&
-                                        !vmSurface &&
-                                        !appSurface
-                                    }
+                                    available={visibleWorkspace && !browserControl && !browserTakeover && !vmSurface}
                                     onOpen={openWorkspaceChange}
                                     onComplete={returnWorkspaceHome}
                                     workState={currentWorkState}
@@ -1163,11 +1141,7 @@ export default function AnnaShell({ children, routeId }) {
                                     key={view.viewId}
                                     className={`anna-app-surface ${view.viewId === selectedAppViewId ? '' : 'anna-surface-hidden'}`}
                                 >
-                                    <McpAppFrame
-                                        view={view}
-                                        language={user.language}
-                                        onClose={() => closeAppView(view.viewId)}
-                                    />
+                                    <McpAppFrame view={view} language={user.language} />
                                 </div>
                             ))}
                         </div>
