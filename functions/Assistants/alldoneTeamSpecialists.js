@@ -8,7 +8,10 @@
  * (./managedMcpServers): alldone.team/mcp with `alldone_app` auth, so every call runs as the person
  * talking to the assistant and is billed to their Gold, limited by `appIds` to the specialist's own
  * app. alldone.team owns the persona; the sync rewrites only the fields it derives from the catalog
- * and leaves the rest of the template (model, tools, heartbeat) to the administrator.
+ * and leaves the rest of the template (model, tools, heartbeat) to the administrator. Each of the
+ * specialist's tool pages (Connor: Story Planner, Story Builder) becomes a pre-configured iframe task
+ * of the template, so a person can open the tool from the assistant; the pages switch to embed mode
+ * inside alldone.app by themselves.
  */
 
 const crypto = require('crypto')
@@ -19,6 +22,9 @@ const ALLDONE_TEAM_PROVIDER = 'alldone.team'
 const GLOBAL_PROJECT_ID = 'globalProject'
 const FETCH_TIMEOUT_MS = 10000
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
+const MAX_TOOLS_PER_SPECIALIST = 20
+// Template tasks live here, next to every other global template's (assistantsFirestore.getAssistantTasksCollectionPath).
+const TEMPLATE_TASKS_PATH = `assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`
 
 // What a specialist needs besides its own app: keep its work in Alldone (tasks, notes, artifacts),
 // read what the user shares in the thread, look things up, and hand back to another assistant.
@@ -58,6 +64,9 @@ const httpsUrl = (value, allowedHost) => {
 
 const specialistTemplateId = specialistId => `alldone-team-${specialistId}`
 
+// Built here from fields in a fixed order, so the same input always hashes the same.
+const contentHash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16)
+
 /**
  * The usable entries of a catalog response. The catalog is another service's answer, so every
  * field is checked and bounded; an entry that fails is left out rather than written half-filled.
@@ -91,8 +100,26 @@ function normalizeSpecialistCatalog(raw) {
                 summary: text(entry.summary, 300),
                 avatarUrl: httpsUrl(entry.avatarUrl),
                 pageUrl: httpsUrl(entry.pageUrl),
+                tools: normalizeSpecialistTools(entry.tools),
             },
         ]
+    })
+}
+
+/**
+ * The specialist's tool pages. They open in IframeModal, which trusts its frame's origin with the
+ * person's alldone.app token, so a page must be on alldone.team.
+ */
+function normalizeSpecialistTools(rawTools) {
+    const seen = new Set()
+    return (Array.isArray(rawTools) ? rawTools : []).flatMap(tool => {
+        if (!tool || typeof tool !== 'object') return []
+        const id = text(tool.id, 40)
+        const name = text(tool.name, 80)
+        const url = httpsUrl(tool.url, 'alldone.team')
+        if (!SLUG.test(id) || !name || !url || seen.has(id) || seen.size >= MAX_TOOLS_PER_SPECIALIST) return []
+        seen.add(id)
+        return [{ id, name, description: text(tool.description, 300), url }]
     })
 }
 
@@ -144,8 +171,7 @@ function buildSpecialistSyncedFields(specialist) {
             available: true,
         },
     }
-    const contentHash = crypto.createHash('sha256').update(JSON.stringify(fields)).digest('hex').slice(0, 16)
-    return { ...fields, externalSource: { ...fields.externalSource, contentHash } }
+    return { ...fields, externalSource: { ...fields.externalSource, contentHash: contentHash(fields) } }
 }
 
 function buildNewSpecialistTemplate(specialist, { creatorId, now }) {
@@ -210,6 +236,72 @@ function buildSpecialistTemplateUpdate(existing, specialist, { editorId, now }) 
     }
 }
 
+const specialistTaskId = (templateId, toolId) => `${templateId}--${toolId}`
+
+/**
+ * A tool page as a pre-configured iframe task of the template. Adding the specialist copies it like
+ * any template task, and templateSync carries later changes into the copies. No external-tool
+ * discovery: the specialist already reaches these tools through its MCP server.
+ */
+function buildSpecialistTask(templateId, tool, order, { creatorId }) {
+    const fields = {
+        assistantId: templateId,
+        name: tool.name,
+        type: 'iframe',
+        prompt: '',
+        variables: [],
+        link: tool.url,
+        taskMetadata: {},
+        recurrence: 'never',
+        executionMode: 'workflow',
+        sendWhatsApp: false,
+        order,
+        externalSource: { provider: ALLDONE_TEAM_PROVIDER, toolId: tool.id },
+    }
+    return {
+        ...fields,
+        id: specialistTaskId(templateId, tool.id),
+        creatorUserId: creatorId,
+        externalSource: { ...fields.externalSource, contentHash: contentHash(fields) },
+    }
+}
+
+/**
+ * Keeps the template's iframe tasks equal to the specialist's tool pages: creates missing ones,
+ * rewrites changed ones and deletes the ones alldone.team no longer lists. Tasks an administrator
+ * added to the template themselves carry no `externalSource` and are left alone.
+ */
+async function syncSpecialistTasks(db, templateId, tools, { creatorId }) {
+    // A catalog without tools (older alldone.team, a broken entry) must not empty every copy's task list.
+    if (!tools.length) return { created: 0, updated: 0, removed: 0 }
+    const collection = db.collection(TEMPLATE_TASKS_PATH)
+    const existing = await collection.where('assistantId', '==', templateId).get()
+    const managed = new Map(
+        existing.docs
+            .filter(doc => doc.data().externalSource?.provider === ALLDONE_TEAM_PROVIDER)
+            .map(doc => [doc.id, doc])
+    )
+    const result = { created: 0, updated: 0, removed: 0 }
+    for (const [order, tool] of tools.entries()) {
+        const task = buildSpecialistTask(templateId, tool, order, { creatorId })
+        const current = managed.get(task.id)
+        managed.delete(task.id)
+        if (!current) {
+            await collection.doc(task.id).set(task)
+            result.created++
+        } else if (current.data().externalSource?.contentHash !== task.externalSource.contentHash) {
+            const { creatorUserId, ...update } = task
+            await current.ref.update(update)
+            result.updated++
+        }
+    }
+    for (const doc of managed.values()) {
+        await doc.ref.delete()
+        result.removed++
+    }
+    return result
+}
+
 async function fetchSpecialistCatalog(fetchImpl = fetch, url = ALLDONE_TEAM_SPECIALISTS_URL) {
     const response = await fetchImpl(url, {
         headers: { Accept: 'application/json' },
@@ -235,7 +327,13 @@ async function syncAlldoneTeamSpecialists({ db, fetchImpl = fetch, now = Date.no
     if (!specialists.length) throw new Error('alldone.team specialist catalog has no usable entries')
     const editorId = await getAdministratorId(db)
     const items = db.collection(`assistants/${GLOBAL_PROJECT_ID}/items`)
-    const result = { created: [], updated: [], unchanged: [], retired: [] }
+    const result = {
+        created: [],
+        updated: [],
+        unchanged: [],
+        retired: [],
+        tasks: { created: 0, updated: 0, removed: 0 },
+    }
 
     for (const specialist of specialists) {
         const ref = items.doc(specialistTemplateId(specialist.id))
@@ -243,15 +341,14 @@ async function syncAlldoneTeamSpecialists({ db, fetchImpl = fetch, now = Date.no
         if (!snap.exists) {
             await ref.set(buildNewSpecialistTemplate(specialist, { creatorId: editorId, now }))
             result.created.push(ref.id)
-            continue
+        } else {
+            const update = buildSpecialistTemplateUpdate(snap.data(), specialist, { editorId, now })
+            if (update) await ref.update(update)
+            result[update ? 'updated' : 'unchanged'].push(ref.id)
         }
-        const update = buildSpecialistTemplateUpdate(snap.data(), specialist, { editorId, now })
-        if (!update) {
-            result.unchanged.push(ref.id)
-            continue
-        }
-        await ref.update(update)
-        result.updated.push(ref.id)
+        // After the template exists, so templateSync can carry each new task into its copies.
+        const tasks = await syncSpecialistTasks(db, ref.id, specialist.tools, { creatorId: editorId })
+        Object.keys(tasks).forEach(key => (result.tasks[key] += tasks[key]))
     }
 
     const offered = new Set(specialists.map(specialist => specialistTemplateId(specialist.id)))
@@ -274,5 +371,6 @@ module.exports = {
     buildSpecialistSyncedFields,
     buildNewSpecialistTemplate,
     buildSpecialistTemplateUpdate,
+    buildSpecialistTask,
     syncAlldoneTeamSpecialists,
 }
