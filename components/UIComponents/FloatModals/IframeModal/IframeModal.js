@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Icon from '../../../Icon'
@@ -8,6 +8,9 @@ import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import useWindowSize from '../../../../utils/useWindowSize'
 import EmbeddedAppFrame from './EmbeddedAppFrame'
+import OpenEmbeddedAppInNewTabButton from './OpenEmbeddedAppInNewTabButton'
+import { openEmbeddedAppInNewTab } from './embeddedAppLocation'
+import { translate } from '../../../../i18n/TranslationService'
 import { embedWindowStyles, getEmbedWindowGap, isEmbedWindowFullscreen, useBackdropDismiss } from './embedWindowLayout'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
 import {
@@ -26,6 +29,11 @@ import {
  * the assistant sidebar on the left and this app on the right. Leaving assistant mode while the app
  * is shown in the pane opens it here again.
  *
+ * The button left of the X opens the app's current page in a new browser tab and closes this window
+ * (AT-2954). "Current" is the page the app last reported (EMBED_LOCATION, see embeddedAppLocation),
+ * otherwise the start URL: a cross-origin frame's navigation cannot be read. A blocked pop-up keeps
+ * the window open and says so.
+ *
  * The window fills the viewport but for one uniform gap, and a click on the backdrop next to it
  * closes it (AT-2953, see embedWindowLayout.js).
  */
@@ -39,8 +47,21 @@ export default function IframeModal() {
     const paneState = useAnnaAppPaneState()
     const inAssistantMode = paneState === 'active'
 
+    // The page the app last reported; reset whenever another app (or the same one again) opens.
+    const reportedLocation = useRef(null)
+    const [popupBlocked, setPopupBlocked] = useState(false)
+    useEffect(() => {
+        reportedLocation.current = null
+        setPopupBlocked(false)
+    }, [visible, url])
+
     const closeModal = () => {
         dispatch(setIframeModalData(false, '', ''))
+    }
+
+    const openInNewTab = () => {
+        if (openEmbeddedAppInNewTab(reportedLocation.current || url)) closeModal()
+        else setPopupBlocked(true)
     }
 
     // Escape, the X and (AT-2953, product decision) a click on the backdrop next to the window. The
@@ -96,12 +117,36 @@ export default function IframeModal() {
                             {name || 'Iframe'}
                         </Text>
                     </View>
-                    <TouchableOpacity onPress={closeModal} style={localStyles.closeButton}>
-                        <Icon name="x" size={20} color={colors.Text03} />
-                    </TouchableOpacity>
+                    <View style={localStyles.headerRight}>
+                        {popupBlocked && (
+                            <Text style={localStyles.popupBlocked} accessibilityRole="alert" numberOfLines={2}>
+                                {translate('embedded_app_popup_blocked')}
+                            </Text>
+                        )}
+                        <OpenEmbeddedAppInNewTabButton
+                            onPress={openInNewTab}
+                            hoverColor="#FFFFFF"
+                            hoverBackground="rgba(255, 255, 255, 0.1)"
+                        />
+                        <TouchableOpacity
+                            onPress={closeModal}
+                            style={localStyles.closeButton}
+                            accessibilityRole="button"
+                            accessibilityLabel={translate('Close')}
+                        >
+                            <Icon name="x" size={20} color={colors.Text03} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
                 <View style={localStyles.content}>
-                    <EmbeddedAppFrame url={url} title={name} onNavigateAway={closeModal} />
+                    <EmbeddedAppFrame
+                        url={url}
+                        title={name}
+                        onNavigateAway={closeModal}
+                        onLocationChange={location => {
+                            reportedLocation.current = location
+                        }}
+                    />
                 </View>
             </View>
         </View>
@@ -137,6 +182,17 @@ const localStyles = StyleSheet.create({
         fontSize: 14,
         marginLeft: 10,
         flex: 1,
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+    },
+    popupBlocked: {
+        color: colors.Text03,
+        fontSize: 12,
+        marginRight: 12,
+        flexShrink: 1,
     },
     closeButton: {
         width: 32,
