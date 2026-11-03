@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import NavigationService from '../../../../utils/NavigationService'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import { clearAppModelContext, setAppModelContext } from '../../../../utils/annaAppModelContext'
+import { EMBED_LOCATION_MESSAGE_TYPE, resolveReportedLocation } from './embeddedAppLocation'
 
 // Required lazily: the frame is also hosted by the assistant shell (AnnaShell), and a static import
 // of the roadmap bridge and the Firebase client would pull the Firestore mapping chain into
@@ -33,6 +34,7 @@ const IFRAME_MESSAGE_TYPES = new Set([
     'DEDUCT_GOLD',
     'REFUND_GOLD',
     'APP_CONTEXT',
+    EMBED_LOCATION_MESSAGE_TYPE,
     ...ROADMAP_MESSAGE_TYPES,
 ])
 // alldone.team pages exchange this token for a session as the person's linked account and are then
@@ -71,8 +73,12 @@ const isRoadmapUrl = url => {
  * Apps' `ui/update-model-context`. Accepted only from this frame on its own origin, kept as
  * untrusted app-reported state (utils/annaAppModelContext.js) and never logged. Without a
  * `contextId` (the embed window) it is ignored: nobody would read it.
+ *
+ * `onLocationChange(url)` receives the page the app reports with EMBED_LOCATION (AT-2954), already
+ * checked to be on the frame's own origin. A cross-origin frame cannot be observed otherwise, so an
+ * app that never reports leaves its host with the start URL.
  */
-export default function EmbeddedAppFrame({ url, title, onNavigateAway, contextId = null }) {
+export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocationChange, contextId = null }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const iframeRef = useRef(null)
@@ -89,6 +95,8 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, contextId
     // Read through a ref so a new callback each render does not rebuild the bridge mid-session.
     const onNavigateAwayRef = useRef(onNavigateAway)
     onNavigateAwayRef.current = onNavigateAway
+    const onLocationChangeRef = useRef(onLocationChange)
+    onLocationChangeRef.current = onLocationChange
 
     useEffect(() => {
         if (!finalUrl) return
@@ -133,6 +141,14 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, contextId
 
             if (type === 'APP_CONTEXT') {
                 if (contextId) setAppModelContext(contextId, event.data.context)
+                return
+            }
+
+            // Sent on every navigation inside the app: handled before the protocol log, which would
+            // otherwise print a line (and the page's address) per navigation.
+            if (type === EMBED_LOCATION_MESSAGE_TYPE) {
+                const location = resolveReportedLocation(event.data.url, finalUrl)
+                if (location) onLocationChangeRef.current?.(location)
                 return
             }
 
