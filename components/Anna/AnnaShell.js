@@ -43,6 +43,7 @@ import './anna.css'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
+import { openEmbeddedAppInNewTab } from '../UIComponents/FloatModals/IframeModal/embeddedAppLocation'
 import { openInEmbedWindow, registerAnnaAppPane } from './annaAppPaneBridge'
 
 // App views kept open in the right pane; the oldest closes when another opens. Two kinds: MCP Apps
@@ -217,6 +218,8 @@ export default function AnnaShell({ children, routeId }) {
     const [appViews, setAppViews] = useState([])
     const selectedAppViewId = surface.startsWith('app:') ? surface.slice(4) : null
     const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
+    // The page each embedded web app last reported (EMBED_LOCATION, AT-2954), by view id.
+    const appLocations = useRef({})
     // The app on screen in the pane, handed back to its embed window when assistant mode is left.
     const appOnExit = useRef(null)
     const vmSurface = surface === 'vms' || !!selectedVmId
@@ -346,8 +349,25 @@ export default function AnnaShell({ children, routeId }) {
         const view = appOnExit.current
         appOnExit.current = null
         if (!view || !openInEmbedWindow(view)) return
+        delete appLocations.current[view.viewId]
         setAppViews(current => current.filter(item => item.viewId !== view.viewId))
     }, [active, paneAppView])
+    // The header button next to the X while an embedded web app is on screen (AT-2954): its current
+    // page opens in a new browser tab and the pane's copy is closed, so the app never runs twice.
+    // A blocked pop-up keeps the app where it is and says so.
+    const openSelectedAppInNewTab = () => {
+        const view = selectedAppView
+        if (view?.kind !== 'iframe') return
+        if (!openEmbeddedAppInNewTab(appLocations.current[view.viewId] || view.url)) {
+            setNavigationError(translate('embedded_app_popup_blocked'))
+            return
+        }
+        delete appLocations.current[view.viewId]
+        setNavigationError('')
+        requestGeneration.current++
+        setSurface('alldone')
+        setAppViews(current => current.filter(item => item.viewId !== view.viewId))
+    }
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
@@ -933,6 +953,18 @@ export default function AnnaShell({ children, routeId }) {
                         <Icon name="chevron-down" size={14} color="currentColor" />
                     </span>
                 </label>
+                {visibleWorkspace && selectedAppView?.kind === 'iframe' && (
+                    <button
+                        type="button"
+                        className="anna-pane-toggle anna-header-open-tab"
+                        aria-label={translate('Open app in new tab')}
+                        title={translate('Open app in new tab')}
+                        data-testid="anna-app-open-in-new-tab"
+                        onClick={openSelectedAppInNewTab}
+                    >
+                        <Icon name="new-window" size={18} color="currentColor" />
+                    </button>
+                )}
                 <button
                     type="button"
                     className="anna-pane-toggle anna-header-close"
@@ -1199,6 +1231,9 @@ export default function AnnaShell({ children, routeId }) {
                                             url={view.url}
                                             title={appViewLabel(view)}
                                             onNavigateAway={() => closeAppView(view.viewId)}
+                                            onLocationChange={location => {
+                                                appLocations.current[view.viewId] = location
+                                            }}
                                         />
                                     ) : (
                                         <McpAppFrame
