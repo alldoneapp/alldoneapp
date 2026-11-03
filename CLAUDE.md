@@ -512,6 +512,21 @@ answers `fullscreen` and closes the pane (Alldone shows again) or the embed wind
 `mcpAppHost.test.js`, the view-only case in `assistantHelper.test.js` and the `MCP Apps views` block
 of the rules emulator suite.
 
+**Both embed windows hand their app to that pane (AT-2951).** The windows (`IframeModal` for
+pre-configured iframe tasks such as the alldone.team tool pages, and `McpAppModal`) are mounted
+with the global modals in `AppContent`, outside `AnnaShell`'s tree, so no context reaches them:
+`AnnaShell` registers its `openAppView` and whether assistant mode is open in
+`components/Anna/annaAppPaneBridge.js`. Each window's header starts with the top bar's
+assistant-mode icon (`OpenInAssistantPaneButton`), which switches to split mode with the app in the
+right pane; and a window opened while assistant mode is on never paints at all, it hands the app
+over in a layout effect (so does an MCP card in a chat inside the Alldone workspace). An iframe app
+is a pane view `{ kind: 'iframe', viewId: 'iframe:<url>', url, appName }` rendered by
+`EmbeddedAppFrame`, the frame and postMessage protocol (user data, alldone.team token, Gold,
+roadmap) extracted from `IframeModal` so both hosts speak it identically. Moving an app reloads its
+frame: a live session inside it (screen share, unsaved state in the third-party page) does not move
+with it. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the AT-2951 block of
+`AnnaShell.test.js`.
+
 **`generatePreConfigTaskResult` reads run options from its 13th parameter, never from `taskMetadata`
 (the 10th).** The two bags look interchangeable at a call site and one of them is silently ignored:
 `assistantRecurringTasks` had been passing `maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS`
