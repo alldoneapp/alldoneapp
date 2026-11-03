@@ -98,8 +98,6 @@ describe('AT-2339: the fixed-overlay dialog family pads for the safe area', () =
         'components/UIComponents/FloatModals/LevelUpModal/LevelUpModal.js',
         'components/UIComponents/FloatModals/ChangeContactInfoModalContainerForNewGuideUsers.js',
         'components/UIComponents/FloatModals/IframeModal/IframeModal.js',
-        // The other embed window, a card with a backdrop since AT-2953.
-        'components/ChatsView/ChatDV/EditorView/McpAppModal.js',
         'components/UIComponents/FloatModals/PreConfigTaskGeneratorModal/GlobalPreConfigTaskModal.js',
         'components/Premium/LimitModal/LimitModal.js',
         'components/Premium/LimitModalPremium/LimitModalPremium.js',

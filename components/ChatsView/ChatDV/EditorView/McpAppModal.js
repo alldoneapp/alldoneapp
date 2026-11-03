@@ -6,23 +6,14 @@ import Icon from '../../../Icon'
 import { colors } from '../../../styles/global'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
-import useWindowSize from '../../../../utils/useWindowSize'
-import {
-    embedWindowStyles,
-    getEmbedWindowGap,
-    isEmbedWindowFullscreen,
-    useBackdropDismiss,
-} from '../../../UIComponents/FloatModals/IframeModal/embedWindowLayout'
 import { McpAppFrame } from './McpAppViews'
 import { closeMcpAppView, getOpenMcpAppView, openMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
 import { openInAnnaAppPane, registerEmbedWindow, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
 
 /**
- * The window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the viewport but
- * for one uniform gap (the whole screen, inside the safe area, on a phone), a slim header with the
- * app's name and a close button. A click on the backdrop next to it closes it like the X (AT-2953,
- * same layout as IframeModal, see embedWindowLayout.js).
+ * The full-screen window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the
+ * whole viewport (inside the safe area), a slim header with the app's name and a close button.
  * Mounted once with the global modals. In assistant mode the view goes to the shell's right pane
  * instead, and the header's "expand to the left" button switches there (AT-2951); leaving assistant
  * mode with the view in the pane opens it here again.
@@ -30,11 +21,8 @@ import { openInAnnaAppPane, registerEmbedWindow, useAnnaAppPaneState } from '../
 export default function McpAppModal() {
     const language = useSelector(state => state.loggedUser.language)
     const [view, setView] = useState(getOpenMcpAppView)
-    const [windowWidth] = useWindowSize()
-    const fullscreen = isEmbedWindowFullscreen(windowWidth)
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding(getEmbedWindowGap(fullscreen))
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const inAssistantMode = useAnnaAppPaneState() === 'active'
-    const backdropDismiss = useBackdropDismiss(closeMcpAppView, { enabled: !fullscreen })
     useEffect(() => subscribeMcpAppView(setView), [])
     // Leaving assistant mode with an MCP app in the pane brings it back here (AT-2951).
     useEffect(() => registerEmbedWindow('mcp', openMcpAppView), [])
@@ -51,18 +39,8 @@ export default function McpAppModal() {
 
     if (!view || inAssistantMode) return null
     return (
-        <View
-            testID="embed-window-backdrop"
-            {...backdropDismiss}
-            style={[embedWindowStyles.overlay, fullscreen && styles.overlayFullscreen, safeAreaOverlayPadding]}
-        >
-            <View
-                style={[
-                    embedWindowStyles.container,
-                    styles.container,
-                    fullscreen && embedWindowStyles.containerFullscreen,
-                ]}
-            >
+        <View style={[styles.overlay, safeAreaOverlayPadding]}>
+            <View style={styles.container}>
                 <View style={styles.header}>
                     <OpenInAssistantPaneButton onPress={openInAssistantMode} />
                     <Text style={styles.title} numberOfLines={1}>
@@ -80,10 +58,24 @@ export default function McpAppModal() {
     )
 }
 
+// Fills the screen like a full-screen app: no backdrop margin, no card corners, a slim header.
 const styles = StyleSheet.create({
-    // On a phone the safe-area strips around the full-screen window take its colour.
-    overlayFullscreen: { backgroundColor: '#FFFFFF' },
-    container: { backgroundColor: '#FFFFFF' },
+    overlay: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#FFFFFF',
+        zIndex: 9999,
+    },
+    container: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#FFFFFF',
+        overflow: 'hidden',
+    },
     header: {
         height: 40,
         flexDirection: 'row',
