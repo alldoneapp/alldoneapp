@@ -425,6 +425,27 @@ describe('identity matches lead the page (AT-2527)', () => {
         }
     })
 
+    it('carries a creator boost onto both pages without touching the filter (AT-2945)', async () => {
+        const boostCreator = { attribute: 'userId', userId: 'user-1' }
+        await multiSearchTypesense([
+            { collection: 'dev_notes', query: 'an', filterBy: 'projectId:=p', identityFirst: true, boostCreator },
+        ])
+
+        const searches = readSentSearches()
+        expect(searches).toHaveLength(2)
+        for (const search of searches) {
+            expect(search.filter_by).toBe('projectId:=p')
+            expect(search.sort_by).toBe(buildRecencySortBy('dev_notes', 'an', search.query_by, { boostCreator }))
+            expect(search.sort_by).toContain('userId:=`user-1`')
+        }
+    })
+
+    it('sends no creator boost unless the caller asks for one', async () => {
+        await searchTypesenseCollection('dev_notes', 'an', 'projectId:=p', { identityFirst: true })
+
+        readSentSearches().forEach(search => expect(search.sort_by).not.toContain('userId:='))
+    })
+
     it('puts a title match ahead of a body-only match', async () => {
         respondWith({ hits: [hit('annual-review')] }, { hits: [hit('standup-notes'), hit('annual-review')] })
 
