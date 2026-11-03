@@ -11,6 +11,7 @@ import AssistantProgress from './AssistantProgress'
 import StopAssistantRunButton from './StopAssistantRunButton'
 import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
 import { resetStopRequests } from './stopAssistantRunRequests'
+import McpAppViews from './McpAppViews'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: value => value,
@@ -58,6 +59,17 @@ jest.mock('./VmInteractionCard', () => 'VmInteractionCard')
 // Same reason as the line above: the card subscribes to redux and to a Firestore listener, and this
 // suite renders without a Provider.
 jest.mock('./BrowserApprovalCard', () => 'BrowserApprovalCard')
+// The app views of an answer (MCP Apps, e.g. Judy) watch Firestore too; this stub counts its mounts.
+let mockAppViewsMounts = 0
+jest.mock('./McpAppViews', () => {
+    const React = require('react')
+    return function McpAppViews() {
+        React.useEffect(() => {
+            mockAppViewsMounts++
+        }, [])
+        return null
+    }
+})
 jest.mock('./messageLoadingState', () => ({
     ...jest.requireActual('./messageLoadingState'),
     isAwaitingVmInteraction: jest.fn(() => false),
@@ -160,6 +172,56 @@ describe('MessageItemBody loading card cancellation', () => {
         expect(tree.root.findAllByType(AssistantProgress)).toHaveLength(0)
         expect(tree.root.findAllByType(StopAssistantRunButton)).toHaveLength(1)
         expect(tree.root.findByType(StopAssistantRunButton).props.variant).toBe('standalone')
+        act(() => tree.unmount())
+    })
+})
+
+// A view (e.g. Judy) is recorded while the run is still working and opens by itself only while it is
+// fresh (two minutes). The views used to be watched only once the answer was done, so a run that kept
+// working for longer (five minutes on 2026-11-03) never opened its view at all.
+describe('MessageItemBody app views', () => {
+    const answer = isLoading => (
+        <MessageItemBody
+            projectId="project-1"
+            objectType="topics"
+            chat={{ id: 'topic-1' }}
+            messageId="comment-1"
+            commentText={isLoading ? 'Working' : 'Judy ist offen.'}
+            creatorData={{ isAssistant: true }}
+            isLoading={isLoading}
+            assistantRun={isLoading ? { kind: 'chat', status: 'running', runId: 'run-1' } : null}
+        />
+    )
+
+    test('are watched while the answer is still being written and stay mounted when it finishes', () => {
+        mockAppViewsMounts = 0
+        let tree
+        act(() => {
+            tree = renderer.create(answer(true))
+        })
+        expect(tree.root.findByType(McpAppViews).props.commentId).toBe('comment-1')
+        act(() => tree.update(answer(false)))
+        expect(tree.root.findAllByType(McpAppViews)).toHaveLength(1)
+        // A remount would forget which views already opened by themselves and open them again.
+        expect(mockAppViewsMounts).toBe(1)
+        act(() => tree.unmount())
+    })
+
+    test('belong only to assistant answers', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <MessageItemBody
+                    projectId="project-1"
+                    objectType="topics"
+                    chat={{ id: 'topic-1' }}
+                    messageId="comment-2"
+                    commentText="lass mal mit Judy Job arbeiten"
+                    creatorData={{ isAssistant: false }}
+                />
+            )
+        })
+        expect(tree.root.findAllByType(McpAppViews)).toHaveLength(0)
         act(() => tree.unmount())
     })
 })

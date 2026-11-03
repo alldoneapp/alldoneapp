@@ -157,6 +157,10 @@ function CustomTextInput3(
         // which this input's mic takes over as its own push-to-talk hold.
         pushToTalkHandoff,
         showAttachmentButton = false,
+        // AT-2938: stack the in-field controls (+ above the mic) instead of laying them out in a
+        // row. Used by the mobile assistant composers once the text has wrapped, so the text gets
+        // the width of one control back. Only meaningful when both controls are shown.
+        stackInlineControls = false,
         getMentionViewport,
     },
     ref
@@ -1134,12 +1138,18 @@ function CustomTextInput3(
 
     const attachmentButtonEnabled = showAttachmentButton && supportsAttachments && !!innerProjectId && !disabledEdition
 
+    const inlineControlsStacked = stackInlineControls && attachmentButtonEnabled && dictationEnabled
+
     useEffect(() => {
         if (!attachmentButtonEnabled || !editorElement) return
-        const className = dictationEnabled ? 'ql-editorWithAttachmentAndDictation' : 'ql-editorWithAttachment'
+        // A stacked column is one control wide, so it reserves the same strip as a single control.
+        const className =
+            dictationEnabled && !inlineControlsStacked
+                ? 'ql-editorWithAttachmentAndDictation'
+                : 'ql-editorWithAttachment'
         editorElement.classList.add(className)
         return () => editorElement.classList.remove(className)
-    }, [attachmentButtonEnabled, dictationEnabled, editorElement])
+    }, [attachmentButtonEnabled, dictationEnabled, editorElement, inlineControlsStacked])
 
     const addAttachmentTag = (text, uri) => {
         if (!quillRef.current || !attachmentButtonEnabled) return
@@ -1532,7 +1542,15 @@ function CustomTextInput3(
             showIndicator={showScrollIndicator}
             fixedChildren={
                 dictationEnabled || attachmentButtonEnabled ? (
-                    <View pointerEvents={'box-none'} style={localDictationWrapperStyle}>
+                    <View
+                        pointerEvents={'box-none'}
+                        testID={'inline-input-controls'}
+                        style={
+                            inlineControlsStacked
+                                ? [localDictationWrapperStyle, localStackedControlsStyle]
+                                : localDictationWrapperStyle
+                        }
+                    >
                         {attachmentButtonEnabled && (
                             <AddFeedAttachButton
                                 compact
@@ -1625,6 +1643,14 @@ const localDictationWrapperStyle = {
     gap: 4,
     justifyContent: 'center',
     zIndex: 10,
+}
+
+// AT-2938: the stacked variant keeps the same anchor (top: 6, right: 8), so the first control
+// (+) stays level with the first text line and the mic sits directly below it. 24 + 4 + 24 = 52px
+// fits inside the 88px stacked composer frame.
+const localStackedControlsStyle = {
+    flexDirection: 'column',
+    height: 'auto',
 }
 
 export default forwardRef(CustomTextInput3)

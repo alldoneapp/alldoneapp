@@ -21,7 +21,9 @@ Both views are checked at 320, 360, 375, 390, 430 and 1440 px. Assertions cover:
 
 - Mobile `Neue Nachricht …` and the existing desktop placeholder.
 - Matching 24 px text/placeholder lines, visible placeholder and no control overlap.
-- Voice/send controls beside the input, side by side on mobile even with long text.
+- Voice/send controls beside the input. Once the text wraps, they stack: Send above Call on
+  mobile (AT-2938), Call above Send on desktop. On mobile the in-field + and mic stack too
+  (+ on top), and the text reclaims one control's width.
 - The desktop expansion latch, 120 px text cap and no horizontal page overflow.
 - Multiple paragraphs, draft preservation across mobile/desktop resize and sending/clearing.
 

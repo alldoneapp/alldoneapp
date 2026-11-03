@@ -496,7 +496,19 @@ fullscreen display mode and fills its container. In Anna's assistant shell the v
 and the chat keeps a one-line card that reopens it. A view recorded in the last two minutes opens by
 itself once (on a phone without leaving the chat); an older one, met by scrolling back, only offers
 to; the same rule opens the embed window outside the shell. Pane views stay mounted while hidden, up
-to five, so switching panes keeps their state. Pinned by `MCP/mcpAppViews.test.js`,
+to five, so switching panes keeps their state. Three rules came from one run on 2026-11-03 that left
+Judy closed with two cards under the answer. **The cards are watched while the answer is still
+being written** (`MessageItemBody` renders `McpAppViews` outside its loading branch, one element
+in both states): the freshness clock starts at the tool call, and the run kept working for five
+minutes, so cards that mounted only once the answer was done found every view stale. **One card and
+one pane per app** (`mcpAppKey`: same server, same `ui://` resource): `judy_show` ran twice in that
+run and each call records its own view; the newest supersedes the others. **An open app view is
+protected like a VM view**: the reveal of a saved object waits, `show_workspace` becomes the
+"would like to show you" notice, and the browser is not followed. In that run the assistant created
+a task to track its own work and showed it, which would have replaced Judy two minutes after it
+opened. A view's own "Show in chat" button sends `ui/request-display-mode` with `inline`; the host
+answers `fullscreen` and closes the pane (Alldone shows again) or the embed window. Pinned by
+`MCP/mcpAppViews.test.js`,
 `mcpAppHost.test.js`, the view-only case in `assistantHelper.test.js` and the `MCP Apps views` block
 of the rules emulator suite.
 

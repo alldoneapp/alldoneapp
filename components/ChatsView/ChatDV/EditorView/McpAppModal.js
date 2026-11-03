@@ -34,7 +34,7 @@ export default function McpAppModal() {
                     </TouchableOpacity>
                 </View>
                 <View style={styles.content}>
-                    <McpAppFrame key={view.viewId} view={view} language={language} />
+                    <McpAppFrame key={view.viewId} view={view} language={language} onClose={closeMcpAppView} />
                 </View>
             </View>
         </View>
