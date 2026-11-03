@@ -42,8 +42,11 @@ import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
+import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
+import { registerAnnaAppPane } from './annaAppPaneBridge'
 
-// App views kept open in the right pane; the oldest closes when another opens.
+// App views kept open in the right pane; the oldest closes when another opens. Two kinds: MCP Apps
+// views (e.g. Judy) and embedded web apps from pre-configured iframe tasks (`kind: 'iframe'`, AT-2951).
 const MAX_APP_VIEWS = 5
 const appViewLabel = view => view.appName || view.serverLabel || view.toolName || 'App'
 
@@ -303,6 +306,7 @@ export default function AnnaShell({ children, routeId }) {
             requestGeneration.current++
             setSurface(`app:${view.viewId}`)
             if (auto && mobile) return
+            if (mobile) focusAfterSwitch.current = 'workspace'
             setAnnaLayout('split')
             setMobilePane('workspace')
         },
@@ -319,6 +323,10 @@ export default function AnnaShell({ children, routeId }) {
         () => ({ open: openAppView, selectedViewId: selectedAppViewId }),
         [openAppView, selectedAppViewId]
     )
+    // The app-wide embed windows (IframeModal, McpAppModal) live outside this tree: they open their
+    // app here through the bridge, both from their header's assistant-mode button and whenever an app
+    // is opened while assistant mode is on (AT-2951).
+    useLayoutEffect(() => registerAnnaAppPane(openAppView, active), [openAppView, active])
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
@@ -1163,11 +1171,19 @@ export default function AnnaShell({ children, routeId }) {
                                     key={view.viewId}
                                     className={`anna-app-surface ${view.viewId === selectedAppViewId ? '' : 'anna-surface-hidden'}`}
                                 >
-                                    <McpAppFrame
-                                        view={view}
-                                        language={user.language}
-                                        onClose={() => closeAppView(view.viewId)}
-                                    />
+                                    {view.kind === 'iframe' ? (
+                                        <EmbeddedAppFrame
+                                            url={view.url}
+                                            title={appViewLabel(view)}
+                                            onNavigateAway={() => closeAppView(view.viewId)}
+                                        />
+                                    ) : (
+                                        <McpAppFrame
+                                            view={view}
+                                            language={user.language}
+                                            onClose={() => closeAppView(view.viewId)}
+                                        />
+                                    )}
                                 </div>
                             ))}
                         </div>
