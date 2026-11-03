@@ -16,30 +16,8 @@ const connor = {
     intro: 'You are Connor Consultant, the storytelling specialist.',
     guide: 'Propose a storyline first.',
     mcpUrl: 'https://alldone.team/mcp',
-    tools: [
-        {
-            id: 'create-storyline',
-            name: 'Story Planner',
-            description: 'Storylines.',
-            url: 'https://alldone.team/connor-consultant/create-storyline',
-        },
-        {
-            id: 'story-builder',
-            name: 'Story Builder',
-            description: 'Videos.',
-            url: 'https://alldone.team/connor-consultant/story-builder',
-        },
-    ],
 }
-const judy = {
-    ...connor,
-    id: 'judy',
-    persona: 'Judy Job',
-    product: 'Job Radar',
-    family: 'judy',
-    avatarUrl: null,
-    tools: [{ id: 'job-radar', name: 'Job Radar', description: '', url: 'https://alldone.team/judy-job/job-radar' }],
-}
+const judy = { ...connor, id: 'judy', persona: 'Judy Job', product: 'Job Radar', family: 'judy', avatarUrl: null }
 
 /** An in-memory Firestore with exactly the calls the sync makes. */
 function buildDb(initial = {}) {
@@ -49,7 +27,6 @@ function buildDb(initial = {}) {
         path,
         get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
         set: async data => docs.set(path, data),
-        delete: async () => docs.delete(path),
         update: async patch =>
             docs.set(
                 path,
@@ -69,9 +46,7 @@ function buildDb(initial = {}) {
                 get: async () => ({
                     docs: [...docs.entries()]
                         .filter(
-                            ([path, data]) =>
-                                path.startsWith(`${base}/`) &&
-                                field.split('.').reduce((object, key) => object?.[key], data) === value
+                            ([path, data]) => path.startsWith(`${base}/`) && data.externalSource?.provider === value
                         )
                         .map(([path, data]) => ({ id: path.split('/').pop(), data: () => data, ref: ref(path) })),
                 }),
@@ -84,11 +59,6 @@ const fetchCatalog = specialists =>
     jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ version: 'v1', specialists }) }))
 
 const CONNOR_PATH = 'assistants/globalProject/items/alldone-team-story'
-const TASKS = 'assistantTasks/globalProject/preConfigTasks/'
-const tasksOf = (db, templateId) =>
-    [...db.docs.entries()]
-        .filter(([path, task]) => path.startsWith(TASKS) && task.assistantId === templateId)
-        .map(([, task]) => task)
 
 describe('alldone.team specialist catalog', () => {
     it('keeps only complete entries whose MCP server is alldone.team', () => {
@@ -227,91 +197,5 @@ describe('syncAlldoneTeamSpecialists', () => {
             'no usable entries'
         )
         expect([...db.docs.keys()]).toEqual(['roles/administrator'])
-    })
-})
-
-describe('the specialist’s tools as iframe tasks of its template', () => {
-    const now = 1793700000000
-
-    it('creates one iframe task per tool page, in the catalog’s order', async () => {
-        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
-        const result = await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor, judy]), now })
-
-        expect(result.tasks).toEqual({ created: 3, updated: 0, removed: 0 })
-        expect(tasksOf(db, 'alldone-team-story')).toEqual([
-            expect.objectContaining({
-                id: 'alldone-team-story--create-storyline',
-                name: 'Story Planner',
-                type: 'iframe',
-                link: 'https://alldone.team/connor-consultant/create-storyline',
-                taskMetadata: {},
-                recurrence: 'never',
-                order: 0,
-                creatorUserId: 'admin-1',
-                externalSource: expect.objectContaining({ provider: 'alldone.team', toolId: 'create-storyline' }),
-            }),
-            expect.objectContaining({ name: 'Story Builder', order: 1 }),
-        ])
-    })
-
-    it('writes nothing when the tools have not changed', async () => {
-        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
-        await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now })
-        const before = tasksOf(db, 'alldone-team-story')
-
-        const result = await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now: now + 1 })
-
-        expect(result.tasks).toEqual({ created: 0, updated: 0, removed: 0 })
-        expect(tasksOf(db, 'alldone-team-story')).toEqual(before)
-    })
-
-    it('renames a changed tool, removes one alldone.team dropped and keeps tasks added by hand', async () => {
-        const own = { id: 'own', assistantId: 'alldone-team-story', name: 'My own prompt', type: 'prompt', order: 5 }
-        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' }, [`${TASKS}own`]: own })
-        await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now })
-
-        const renamed = { ...connor, tools: [{ ...connor.tools[1], name: 'Story Studio' }] }
-        const result = await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([renamed]), now: now + 1 })
-
-        expect(result.tasks).toEqual({ created: 0, updated: 1, removed: 1 })
-        const names = tasksOf(db, 'alldone-team-story').map(task => task.name)
-        expect(names).toEqual(['My own prompt', 'Story Studio'])
-        // The rename keeps who created the task, and the tool moves to the first position.
-        expect(db.docs.get(`${TASKS}alldone-team-story--story-builder`)).toMatchObject({
-            order: 0,
-            creatorUserId: 'admin-1',
-        })
-    })
-
-    it('opens only alldone.team pages, because the frame gets the person’s alldone.app token', () => {
-        const [entry] = normalizeSpecialistCatalog({
-            specialists: [
-                {
-                    ...connor,
-                    tools: [
-                        ...connor.tools,
-                        { id: 'evil', name: 'Evil', url: 'https://evil.example/tool' },
-                        { id: 'plain', name: 'Plain', url: 'http://alldone.team/tool' },
-                    ],
-                },
-            ],
-        })
-        expect(entry.tools.map(tool => tool.id)).toEqual(['create-storyline', 'story-builder'])
-    })
-})
-
-describe('a catalog entry without tools', () => {
-    it('leaves the template’s tasks alone instead of deleting them everywhere', async () => {
-        const db = buildDb({ 'roles/administrator': { userId: 'admin-1' } })
-        await syncAlldoneTeamSpecialists({ db, fetchImpl: fetchCatalog([connor]), now: 1 })
-
-        const result = await syncAlldoneTeamSpecialists({
-            db,
-            fetchImpl: fetchCatalog([{ ...connor, tools: [] }]),
-            now: 2,
-        })
-
-        expect(result.tasks).toEqual({ created: 0, updated: 0, removed: 0 })
-        expect(tasksOf(db, 'alldone-team-story')).toHaveLength(2)
     })
 })

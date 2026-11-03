@@ -973,6 +973,18 @@ Artifacts before Chats, like the main navigation. The tab numbers stay as they a
 the shown order. Pinned by `functions/Typesense/scopedSearchParentKey.test.js`, the AT-2905 cases in
 `scopedSearchCredentials.test.js` and `components/GlobalSearchAlgolia/Header/Header.test.js`.
 
+**Global search ranks the user's own objects first, filter or not (AT-2945).** With "only what I
+created" off, every tab except the wiki sends `boostCreator: { attribute, userId }`
+(`getCreatedByMeBoost` in `typesenseSearchFilters.js`, same creator attribute as the filter), and
+`buildRecencySortBy` folds it into the first sort field as a weighted `_eval`: own exact identity
+match, other exact match, own match, the rest. Then the AT-2663 relevance buckets and recency apply
+inside each group. It shares the exact-match `_eval` because Typesense rejects a fourth sort field
+("Only upto 3 sort fields are allowed"). It is a sort, never a filter: access stays in `filter_by`
+alone, and the AT-2527 identity-first merge still puts title matches ahead of body-only ones. With
+the filter on, for anonymous viewers, on the wiki, in pickers and in server-side search, no boost is
+sent. Pinned by `searchRanking.test.js`, the AT-2945 case in `searchRanking.integration.test.cjs`
+(real Typesense 29), `typesenseSearchFilters.test.js` and `GlobalSearchModal.createdByMe.test.js`.
+
 **"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
 (`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
 assistant summary, possibly private text or a different target project first becomes a draft in the
@@ -1332,14 +1344,7 @@ catalog (name, description, avatar, instructions, its MCP server entry, `externa
 writes only when that changed; model, tools and heartbeat stay the administrator's. A specialist
 alldone.team stops offering is marked `available: false`, not deleted, so existing copies keep
 working while the list stops offering it. Template changes reach project copies through
-`templateSync` like every other template. Each specialist's tool pages (the catalog's `tools`: Connor's Story Planner
-and Story Builder, Judy's Job Radar, Ricky's Property and Stock Screener) are kept as pre-configured
-`iframe` tasks of the template (`assistantTasks/globalProject/preConfigTasks/alldone-team-<app>--<tool>`,
-marked `externalSource`), so a person launches the tool from the assistant; the pages switch to embed
-mode inside alldone.app by themselves. Adding the specialist copies them, `templateSync` carries
-later changes and removals into existing copies, and tasks an administrator adds to the template by
-hand are left alone. Only alldone.team URLs are accepted, because IframeModal hands the framed origin
-the person's alldone.app token.
+`templateSync` like every other template.
 
 Each specialist's tools come from ONE managed MCP server entry: alldone.team/mcp with
 `authType: 'alldone_app'`, so every call runs as the person talking to the assistant (their own
