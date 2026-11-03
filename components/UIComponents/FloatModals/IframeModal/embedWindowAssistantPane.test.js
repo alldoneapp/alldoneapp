@@ -30,7 +30,7 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/McpAppViews', () => ({
 
 const IframeModal = require('./IframeModal').default
 const McpAppModal = require('../../../ChatsView/ChatDV/EditorView/McpAppModal').default
-const { registerAnnaAppPane, iframeAppView } = require('../../../Anna/annaAppPaneBridge')
+const { registerAnnaAppPane, iframeAppView, openInEmbedWindow } = require('../../../Anna/annaAppPaneBridge')
 const {
     openMcpAppView,
     getOpenMcpAppView,
@@ -158,6 +158,60 @@ describe('embed windows and the assistant pane (AT-2951)', () => {
             render(<McpAppModal />)
             expect(container.querySelector('[data-testid="mcp-frame"]')).toBeTruthy()
             expect(container.querySelector(BUTTON)).toBeNull()
+        })
+    })
+
+    // The way back: AnnaShell hands the app that was in its pane to these windows when assistant mode
+    // is left (the shell's side is pinned in AnnaShell.test.js). It does so after reporting assistant
+    // mode as off, which is what keeps the window from sending the app straight back to the pane.
+    describe('leaving assistant mode', () => {
+        const leaveAssistantMode = () =>
+            act(() => {
+                unregister()
+                unregister = registerAnnaAppPane(paneOpener, false)
+            })
+
+        it('reopens a tool page in IframeModal with its URL and name', () => {
+            mockState.iframeModalData = { visible: false, url: '', name: '' }
+            mountShell(true)
+            render(<IframeModal />)
+            leaveAssistantMode()
+
+            let opened
+            act(() => {
+                opened = openInEmbedWindow(iframeAppView(URL, 'Story Builder'))
+            })
+
+            expect(opened).toBe(true)
+            expect(mockDispatch).toHaveBeenCalledWith({
+                type: 'setIframeModalData',
+                visible: true,
+                url: URL,
+                name: 'Story Builder',
+            })
+            mockState.iframeModalData = iframeOpen()
+            render(<IframeModal />)
+            expect(container.querySelector('[data-testid="embedded-frame"]').getAttribute('data-url')).toBe(URL)
+            expect(paneOpener).not.toHaveBeenCalled()
+        })
+
+        it('reopens an MCP app in McpAppModal', () => {
+            mountShell(true)
+            render(<McpAppModal />)
+            leaveAssistantMode()
+
+            act(() => {
+                openInEmbedWindow(judy)
+            })
+
+            expect(getOpenMcpAppView()).toBe(judy)
+            expect(container.querySelector('[data-testid="mcp-frame"]').getAttribute('data-view')).toBe('v1')
+            expect(paneOpener).not.toHaveBeenCalled()
+        })
+
+        it('has nowhere to go while no window is mounted', () => {
+            expect(openInEmbedWindow(iframeAppView(URL, 'Story Builder'))).toBe(false)
+            expect(openInEmbedWindow(judy)).toBe(false)
         })
     })
 })

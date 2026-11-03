@@ -6,6 +6,9 @@ import { useSyncExternalStore } from 'react'
  * outside AnnaShell's tree, so a React context cannot reach them; AnnaShell registers its pane
  * opener here instead, and reports whether assistant mode is currently open.
  *
+ * The reverse direction goes through here too: leaving assistant mode returns the app shown in the
+ * pane to its window (`registerEmbedWindow` / `openInEmbedWindow`).
+ *
  * Views use the AnnaShell app-pane shape: `{ viewId, appName, ... }` for an MCP Apps view, or
  * `{ kind: 'iframe', viewId, url, appName }` for an embedded web app (see `iframeAppView`).
  */
@@ -37,6 +40,29 @@ export function registerAnnaAppPane(open, isActive) {
 export function openInAnnaAppPane(view, options) {
     if (!opener || !view?.viewId) return false
     opener(view, options)
+    return true
+}
+
+/**
+ * The way back (AT-2951 follow-up): leaving assistant mode while an app is shown in the pane hands
+ * that app to its embed window again. Each window registers the kind of view it hosts — 'iframe'
+ * (IframeModal) or 'mcp' (McpAppModal) — so the shell needs neither redux nor the MCP store.
+ */
+const embedWindows = new Map()
+const embedKind = view => (view?.kind === 'iframe' ? 'iframe' : 'mcp')
+
+export function registerEmbedWindow(kind, open) {
+    embedWindows.set(kind, open)
+    return () => {
+        if (embedWindows.get(kind) === open) embedWindows.delete(kind)
+    }
+}
+
+/** Opens a pane view in its embed window. Returns false when no window for its kind is mounted. */
+export function openInEmbedWindow(view) {
+    const open = embedWindows.get(embedKind(view))
+    if (!open || !view?.viewId) return false
+    open(view)
     return true
 }
 

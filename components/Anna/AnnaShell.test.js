@@ -2134,3 +2134,155 @@ describe('an embedded app handed over from its window (AT-2951)', () => {
         expect(frame()).toBeTruthy()
     })
 })
+
+describe('leaving assistant mode returns the app in the pane to its embed window (AT-2951)', () => {
+    const { iframeAppView, openInAnnaAppPane, registerEmbedWindow } = require('./annaAppPaneBridge')
+    const url = 'https://alldone.team/story-builder?embed=true'
+    const storyBuilder = iframeAppView(url, 'Story Builder')
+    const judy = { viewId: 'v1', appName: 'Judy Job', serverId: 'team', resourceUri: 'ui://judy/app.html' }
+    const iframeFrame = () => document.querySelector(`[data-testid="embedded-frame-${url}"]`)
+    let iframeWindow
+    let mcpWindow
+    let unregister
+
+    beforeEach(() => {
+        iframeWindow = jest.fn()
+        mcpWindow = jest.fn()
+        const offIframe = registerEmbedWindow('iframe', iframeWindow)
+        const offMcp = registerEmbedWindow('mcp', mcpWindow)
+        unregister = () => {
+            offIframe()
+            offMcp()
+        }
+    })
+    afterEach(() => unregister())
+
+    it('opens a tool page in its window again when the chat is closed', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        expect(iframeFrame()).toBeTruthy()
+
+        fireEvent.click(screen.getByLabelText('Close assistant chat'))
+
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(iframeWindow).toHaveBeenCalledTimes(1)
+        expect(iframeWindow).toHaveBeenCalledWith(storyBuilder)
+        expect(mcpWindow).not.toHaveBeenCalled()
+        // The pane's copy is closed: the app never runs twice.
+        expect(iframeFrame()).toBeNull()
+        expect(mockUnmounts).toBe(0)
+    })
+
+    it('opens an MCP app in its window again when assistant mode is switched off elsewhere', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(judy))
+        act(() => setAnnaMode(false))
+
+        expect(mcpWindow).toHaveBeenCalledTimes(1)
+        expect(mcpWindow).toHaveBeenCalledWith(judy)
+        expect(iframeWindow).not.toHaveBeenCalled()
+        expect(document.querySelector('[data-testid="app-frame-v1"]')).toBeNull()
+    })
+
+    it('hands back only once and not again when assistant mode is reopened and left', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        act(() => setAnnaMode(false))
+        act(() => setAnnaMode(true))
+        act(() => setAnnaMode(false))
+        expect(iframeWindow).toHaveBeenCalledTimes(1)
+    })
+
+    it('hands back the app on screen, not one hidden behind the picker', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(judy))
+        act(() => openInAnnaAppPane(storyBuilder))
+        fireEvent.click(screen.getByLabelText('Close assistant chat'))
+        expect(iframeWindow).toHaveBeenCalledWith(storyBuilder)
+        expect(mcpWindow).not.toHaveBeenCalled()
+        // The other app stays in the pane as before.
+        expect(document.querySelector('[data-testid="app-frame-v1"]')).toBeTruthy()
+    })
+
+    it('returns nothing when Alldone is selected', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        chooseSurface('alldone')
+        fireEvent.click(screen.getByLabelText('Close assistant chat'))
+        expect(iframeWindow).not.toHaveBeenCalled()
+        expect(iframeFrame()).toBeTruthy()
+    })
+
+    it('also returns the app selected in the hidden pane when leaving from chat-only mode', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        act(() => setAnnaLayout('chat'))
+        expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+        fireEvent.click(screen.getByLabelText('Close assistant chat'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(iframeWindow).toHaveBeenCalledTimes(1)
+        expect(iframeWindow).toHaveBeenCalledWith(storyBuilder)
+        expect(iframeFrame()).toBeNull()
+    })
+
+    it('returns nothing from chat-only mode when Alldone was the pane selection', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        chooseSurface('alldone')
+        act(() => setAnnaLayout('chat'))
+        fireEvent.click(screen.getByLabelText('Close assistant chat'))
+        expect(iframeWindow).not.toHaveBeenCalled()
+    })
+
+    it('returns nothing when the chat-only Home button leaves for the task list', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        act(() => setAnnaLayout('chat'))
+        fireEvent.click(document.querySelector('.anna-header-tasks'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(iframeWindow).not.toHaveBeenCalled()
+    })
+
+    describe('on a phone', () => {
+        const originalMatchMedia = window.matchMedia
+        beforeEach(() => {
+            window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+        })
+        afterEach(() => {
+            if (originalMatchMedia) window.matchMedia = originalMatchMedia
+            else delete window.matchMedia
+        })
+
+        it('opens the app in its window again when the chat is closed', () => {
+            render(content(1))
+            act(() => openInAnnaAppPane(storyBuilder))
+            fireEvent.click(screen.getByLabelText('Close assistant chat'))
+            expect(iframeWindow).toHaveBeenCalledWith(storyBuilder)
+        })
+
+        it('returns nothing when Alldone is chosen in the picker', () => {
+            render(content(1))
+            act(() => openInAnnaAppPane(storyBuilder))
+            chooseSurface('alldone')
+            expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+            expect(iframeWindow).not.toHaveBeenCalled()
+        })
+
+        it('returns nothing when the Home button leaves for the task list', () => {
+            render(content(1))
+            act(() => openInAnnaAppPane(storyBuilder))
+            fireEvent.click(document.querySelector('.anna-header-tasks'))
+            expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+            expect(iframeWindow).not.toHaveBeenCalled()
+        })
+    })
+
+    it('keeps the app in the pane when no embed window is mounted', () => {
+        unregister()
+        unregister = () => {}
+        render(content(1))
+        act(() => openInAnnaAppPane(storyBuilder))
+        act(() => setAnnaMode(false))
+        expect(iframeFrame()).toBeTruthy()
+    })
+})

@@ -43,7 +43,7 @@ import './anna.css'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
-import { registerAnnaAppPane } from './annaAppPaneBridge'
+import { openInEmbedWindow, registerAnnaAppPane } from './annaAppPaneBridge'
 
 // App views kept open in the right pane; the oldest closes when another opens. Two kinds: MCP Apps
 // views (e.g. Judy) and embedded web apps from pre-configured iframe tasks (`kind: 'iframe'`, AT-2951).
@@ -217,6 +217,8 @@ export default function AnnaShell({ children, routeId }) {
     const [appViews, setAppViews] = useState([])
     const selectedAppViewId = surface.startsWith('app:') ? surface.slice(4) : null
     const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
+    // The app on screen in the pane, handed back to its embed window when assistant mode is left.
+    const appOnExit = useRef(null)
     const vmSurface = surface === 'vms' || !!selectedVmId
     // An app view on the right is something the person is working in, like a VM: the assistant's own
     // navigation (a saved object's reveal, show_workspace, following its browser) must not replace it.
@@ -277,6 +279,8 @@ export default function AnnaShell({ children, routeId }) {
     }, [])
     const selectSurface = nextSurface => {
         if (mobile && nextSurface === 'alldone') {
+            // Choosing Alldone over the app must not bring the app back as a window.
+            appOnExit.current = null
             closeChat()
             return
         }
@@ -327,6 +331,23 @@ export default function AnnaShell({ children, routeId }) {
     // app here through the bridge, both from their header's assistant-mode button and whenever an app
     // is opened while assistant mode is on (AT-2951).
     useLayoutEffect(() => registerAnnaAppPane(openAppView, active), [openAppView, active])
+    // And back: leaving assistant mode (closing the chat, the top bar or sidebar toggle, browser Back)
+    // while an app is the pane's selection opens that app in its embed window again, also from
+    // chat-only mode where the pane is merely hidden (product decision). With Alldone selected, or an
+    // app only listed in the picker, nothing comes back. The pane's copy is closed so the app never
+    // runs twice. Runs after the registration above, so the windows already see assistant mode as
+    // off and keep the app.
+    const paneAppView = active ? selectedAppView : null
+    useLayoutEffect(() => {
+        if (active) {
+            appOnExit.current = paneAppView
+            return
+        }
+        const view = appOnExit.current
+        appOnExit.current = null
+        if (!view || !openInEmbedWindow(view)) return
+        setAppViews(current => current.filter(item => item.viewId !== view.viewId))
+    }, [active, paneAppView])
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
@@ -339,6 +360,8 @@ export default function AnnaShell({ children, routeId }) {
     // The header's Home button always lands on the open task list, never on whatever
     // page the workspace happened to show last (AT-2920). The X keeps that page.
     const goHome = useCallback(() => {
+        // Home means the task list, so an app open in the pane does not come back as a window.
+        appOnExit.current = null
         closeChat()
         navigateToHome(dispatch)
     }, [closeChat, dispatch])
