@@ -4526,6 +4526,17 @@ browser before trusting a bigger change.
   nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists
   2.8.1 to the root and breaks the 1.x consumers (Stage 0 hit the inverse of this, where
   root tslib 1.11.1 shadowed the nested 2.x and threw `__spreadArray is not a function`).
+- **The runner image jobs run on the floating upstream `google/cloud-sdk:slim`, which has
+  no `python3` on PATH since SDK 592.0.0 (2026-11-03).** Its Dockerfile asserts
+  `! command -v python3`, and gcloud uses its own bundled Python. The old inline check
+  `python3 -c … 2>/dev/null || echo "not valid JSON"` therefore turned "python3: not found"
+  into "env_functions.json is not valid JSON", and `deploy:cloud:runner:production` failed
+  on a valid secret while the Functions deploy in the same pipeline read it fine.
+  `ci/validateJsonFile.sh` uses `python3`, `$CLOUDSDK_PYTHON`, the bundled Python and then
+  `node`, in that order. A missing interpreter exits `2` with that diagnosis, and invalid
+  content exits `1` with only a position. It never prints content, because V8's
+  `JSON.parse` message quotes it. Never hide a check's stderr when the checker itself may
+  be missing. Pinned by `__tests__/CiValidateJsonFile.test.js`.
 
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
