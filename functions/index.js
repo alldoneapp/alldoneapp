@@ -2875,7 +2875,10 @@ exports.mcpAppSecondGen = onCall(
                 createMcpAppDeps(admin)
             )
         } catch (error) {
-            if (error instanceof McpAppError) throw new HttpsError(error.code, error.message)
+            if (error instanceof McpAppError) throw new HttpsError(error.code, error.message, error.details)
+            // A reconnect is an ordinary connect, whose own errors (no permission, server unreachable)
+            // are already meant for the person.
+            if (error instanceof HttpsError) throw error
             console.error('mcpAppSecondGen failed', error?.message)
             throw new HttpsError('internal', 'The app could not reach its server.')
         }

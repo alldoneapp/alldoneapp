@@ -529,6 +529,22 @@ frame: a live session inside it (screen share, unsaved state in the third-party 
 with it. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the AT-2951 block of
 `AnnaShell.test.js`.
 
+**A view outlives the connection it opened with, and is reconnected only on a click (AT-2952).**
+"This app is no longer connected to the assistant." meant exactly that: on 2026-11-03 the user had
+removed alldone.team from Anna's MCP servers in the morning, and the Judy pane reopened that
+afternoon pointed at a server id the assistant no longer had. It was not a session expiry. A view now
+keeps its server's non-secret address (`serverUrl`, `serverTransport`, `serverAuthType`) and finds
+its server by id, then by that address with the same sign-in on the SAME assistant (a server removed
+and added again gets a new id), then, for views recorded before the address was kept, by the only
+server with the same label (and stores the address it learnt). When the assistant no longer has it,
+`mcpAppSecondGen` fails with `details.reason: 'server_disconnected'` and the pane shows
+"Connect again", which calls `action: 'reconnect'`: an ordinary `connectAssistantMcpServer` under
+the view's original id, by somebody allowed to edit the assistant, validated by listing tools as that
+person, idempotent if the server is already back. It is offered only for servers that need no stored
+secret (`none`, `alldone_app`); bearer/OAuth servers and views with no known address point to the MCP
+settings. Never reconnect without the click: removing a server is a deliberate choice. Pinned by the
+AT-2952 blocks of `MCP/mcpAppViews.test.js` and `McpAppViews.test.js`.
+
 **`generatePreConfigTaskResult` reads run options from its 13th parameter, never from `taskMetadata`
 (the 10th).** The two bags look interchangeable at a call site and one of them is silently ignored:
 `assistantRecurringTasks` had been passing `maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS`

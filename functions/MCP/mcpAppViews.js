@@ -14,6 +14,17 @@
  * one the server allows the app to call (`visibility` includes "app"). The call then runs with the
  * same secret the assistant run used for that person (resolveMcpSecret), so a view can do no more
  * than the person's own assistant could.
+ *
+ * A view outlives the connection it was opened with (AT-2952): a member can remove the server from
+ * the assistant, or remove and add it again, which gives it a new id. The view therefore keeps the
+ * non-secret address of its server (`serverUrl`, `serverTransport`, `serverAuthType`). Opening it
+ * finds the server by id, then by that address on the SAME assistant, so a re-added server serves
+ * its old views again. When the assistant no longer has it at all, the request fails with
+ * `details.reason: 'server_disconnected'` and the browser offers one click to connect it again
+ * (`action: 'reconnect'`). That click is an ordinary connect by somebody allowed to edit the
+ * assistant (connectAssistantMcpServer) and is offered only for servers that need no stored secret
+ * (`none`, `alldone_app`); nothing is ever reconnected without that click, because removing a
+ * server is a deliberate choice.
  */
 
 const crypto = require('crypto')
@@ -26,6 +37,10 @@ const UI_SCHEME = 'ui://'
 const MAX_STORED_RESULT_BYTES = 200 * 1024
 const MAX_STORED_ARGUMENTS_BYTES = 20 * 1024
 const MAX_RESOURCE_BYTES = 5 * 1024 * 1024
+// Servers a click can connect again without asking for credentials: alldone_app mints a token for
+// the person per call, and `none` has nothing to store. A bearer or OAuth server needs its secret.
+const RECONNECTABLE_AUTH_TYPES = new Set(['none', 'alldone_app'])
+const GLOBAL_PROJECT_ID = 'globalProject'
 
 /** The view a tool declares, from its `_meta` (current and legacy MCP Apps keys). */
 function readToolUi(tool) {
@@ -98,6 +113,9 @@ async function recordMcpAppView({
             assistantCommentId,
             serverId: target.serverId,
             serverLabel: target.serverLabel || target.serverId,
+            // The server's non-secret address, so the view can find it again after it was removed and
+            // added back under a new id, and so it can be connected again with one click (AT-2952).
+            ...serverAddressFields(target.serverConfig),
             // The app's own name (alldone.team's `_meta` app, e.g. "Judy Job"), for the pane's label.
             appName: target.appName || null,
             toolName: target.remoteToolName,
@@ -110,10 +128,85 @@ async function recordMcpAppView({
 }
 
 class McpAppError extends Error {
-    constructor(code, message) {
+    constructor(code, message, details) {
         super(message)
         this.code = code
+        if (details !== undefined) this.details = details
     }
+}
+
+const normalizeServerUrl = value => {
+    if (typeof value !== 'string' || !value) return ''
+    try {
+        return new URL(value).toString()
+    } catch (_) {
+        return ''
+    }
+}
+const normalizeLabel = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
+const authTypeOf = server => String(server?.authType || 'none').toLowerCase()
+
+/** The non-secret fields that say where a view's server is. Never a token. */
+function serverAddressFields(serverConfig) {
+    const url = normalizeServerUrl(serverConfig?.url)
+    if (!url) return {}
+    return {
+        serverUrl: url,
+        serverTransport: serverConfig.transport || 'http',
+        serverAuthType: authTypeOf(serverConfig),
+    }
+}
+
+/** The assistant's servers a view may use: configured, enabled, with an address. */
+const enabledServers = assistant =>
+    (Array.isArray(assistant?.mcpServers) ? assistant.mcpServers : []).filter(
+        server => server && typeof server === 'object' && server.enabled !== false && server.url
+    )
+
+/**
+ * The server a view runs on, among the servers currently enabled on its own assistant: the one it
+ * was recorded with, else one at the same address with the same sign-in (the same server removed
+ * and added again), else, for a view recorded before the address was kept, the only one with the
+ * same label. Only ever a server of that assistant, so a view can do no more than the assistant.
+ */
+function findViewServer(servers, view) {
+    const byId = servers.find(server => server.id === view.serverId)
+    if (byId) return byId
+    const url = normalizeServerUrl(view.serverUrl)
+    if (url) {
+        const authType = view.serverAuthType ? String(view.serverAuthType).toLowerCase() : null
+        return (
+            servers.find(
+                server => normalizeServerUrl(server.url) === url && (!authType || authTypeOf(server) === authType)
+            ) || null
+        )
+    }
+    const label = normalizeLabel(view.serverLabel)
+    if (!label) return null
+    const sameLabel = servers.filter(server => normalizeLabel(server.label) === label)
+    return sameLabel.length === 1 ? sameLabel[0] : null
+}
+
+/** Why a view's server cannot be connected again with one click, or null when it can. */
+function reconnectBlocker(view) {
+    if (view.projectId === GLOBAL_PROJECT_ID) return 'not_allowed'
+    if (!normalizeServerUrl(view.serverUrl)) return 'unknown_server'
+    if (!RECONNECTABLE_AUTH_TYPES.has(String(view.serverAuthType || 'none').toLowerCase())) {
+        return 'needs_credentials'
+    }
+    return null
+}
+
+function disconnectedError(view, assistant) {
+    const blocker = reconnectBlocker(view)
+    return new McpAppError('failed-precondition', 'This app is no longer connected to the assistant.', {
+        reason: 'server_disconnected',
+        appName: view.appName || null,
+        serverLabel: view.serverLabel || null,
+        assistantName: (assistant && typeof assistant.displayName === 'string' && assistant.displayName) || null,
+        canReconnect: !blocker,
+        reconnectBlocker: blocker,
+    })
 }
 
 /**
@@ -128,9 +221,22 @@ async function handleMcpAppRequest({ uid, data }, deps) {
     // A view of somebody else answers exactly like a missing one.
     if (!view || view.userId !== uid) throw new McpAppError('not-found', 'Unknown view.')
     if (!(await deps.isProjectMember(view.projectId, uid))) throw new McpAppError('permission-denied', 'No access.')
-    const servers = await deps.getAssistantMcpServers(view.projectId, view.assistantId)
-    const server = servers.find(item => item.id === view.serverId)
-    if (!server) throw new McpAppError('failed-precondition', 'This app is no longer connected to the assistant.')
+    const assistant = await deps.getAssistant(view.projectId, view.assistantId)
+    const server = findViewServer(enabledServers(assistant), view)
+
+    if (data.action === 'reconnect') return reconnectViewServer({ uid, view, assistant, server }, deps)
+
+    if (!server) throw disconnectedError(view, assistant)
+    // A view recorded before it kept its server's address learns it now, so it can find the server
+    // again (or offer to reconnect it) if the server is removed later. Best effort.
+    if (!normalizeServerUrl(view.serverUrl) && deps.updateView) {
+        const address = serverAddressFields(server)
+        if (address.serverUrl) {
+            await Promise.resolve(deps.updateView(viewId, address)).catch(error =>
+                console.warn('🔌 MCP: view address not stored', { viewId, error: error?.message })
+            )
+        }
+    }
     const secret = await deps.resolveMcpSecret({
         authType: server.authType,
         projectId: view.projectId,
@@ -174,11 +280,38 @@ async function handleMcpAppRequest({ uid, data }, deps) {
     throw new McpAppError('invalid-argument', 'Unknown action.')
 }
 
+/**
+ * The view's "connect again" button. Idempotent: a server that is already back answers
+ * `alreadyConnected` and changes nothing. Otherwise it is an ordinary connect, with the view's own
+ * stored address and its original id (so every older view of that server finds it again), run by
+ * connectAssistantMcpServer, which checks that the person may edit the assistant and validates the
+ * server by listing its tools as that person.
+ */
+async function reconnectViewServer({ uid, view, assistant, server }, deps) {
+    if (server) return { reconnected: false, alreadyConnected: true }
+    if (!assistant) throw new McpAppError('not-found', 'The assistant no longer exists.')
+    const error = disconnectedError(view, assistant)
+    if (!error.details.canReconnect) throw error
+    await deps.connectServer({
+        userId: uid,
+        projectId: view.projectId,
+        assistantId: view.assistantId,
+        server: {
+            id: view.serverId,
+            label: view.serverLabel || view.appName || 'MCP server',
+            url: normalizeServerUrl(view.serverUrl),
+            transport: view.serverTransport || 'http',
+            authType: String(view.serverAuthType || 'none').toLowerCase(),
+        },
+    })
+    return { reconnected: true, alreadyConnected: false }
+}
+
 /** The production I/O for handleMcpAppRequest. */
 function createMcpAppDeps(admin) {
     const db = admin.firestore()
     const mcpClient = require('../Assistant/mcpClient')
-    const { resolveMcpSecret } = require('./mcpAssistantConnect')
+    const { resolveMcpSecret, connectAssistantMcpServer } = require('./mcpAssistantConnect')
     return {
         getView: async viewId => {
             const snap = await db.collection(VIEWS_COLLECTION).doc(viewId).get()
@@ -189,15 +322,17 @@ function createMcpAppDeps(admin) {
             const userIds = snap.exists ? snap.data()?.userIds : null
             return Array.isArray(userIds) && userIds.includes(uid)
         },
-        // The same server list an assistant run uses (getAssistantMcpServers in assistantHelper).
-        getAssistantMcpServers: async (projectId, assistantId) => {
+        // The assistant whose servers the view may use; its server list is the one an assistant run
+        // uses (getAssistantMcpServers in assistantHelper), filtered by enabledServers above.
+        getAssistant: async (projectId, assistantId) => {
+            if (!projectId || !assistantId) return null
             const snap = await db.doc(`assistants/${projectId}/items/${assistantId}`).get()
-            const servers = snap.exists ? snap.data()?.mcpServers : null
-            if (!Array.isArray(servers)) return []
-            return servers.filter(
-                server => server && typeof server === 'object' && server.enabled !== false && server.url
-            )
+            return snap.exists ? snap.data() || {} : null
         },
+        updateView: (viewId, fields) => db.collection(VIEWS_COLLECTION).doc(viewId).update(fields),
+        // No secret: only servers that need none are offered a reconnect (RECONNECTABLE_AUTH_TYPES).
+        connectServer: ({ userId, projectId, assistantId, server }) =>
+            connectAssistantMcpServer({ userId, projectId, assistantId, server, secret: null }),
         resolveMcpSecret,
         readResource: (server, secret, uri) => mcpClient.readResource(server, secret, uri),
         listTools: (server, secret) => mcpClient.listTools(server, secret),
@@ -212,6 +347,8 @@ module.exports = {
     McpAppError,
     readToolUi,
     isVisibleTo,
+    findViewServer,
+    reconnectBlocker,
     recordMcpAppView,
     handleMcpAppRequest,
 }

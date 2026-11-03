@@ -3784,5 +3784,12 @@
     "mcp_app_failed": "The app could not be loaded.",
     "mcp_app_show": "Show",
     "mcp_app_open_on_right": "Open on the right",
-    "mcp_app_open": "Open"
+    "mcp_app_open": "Open",
+    "mcp_app_disconnected": "{{app}} is no longer connected to {{assistant}}.",
+    "mcp_app_reconnect": "Connect again",
+    "mcp_app_reconnecting": "Connecting…",
+    "mcp_app_reconnect_failed": "The app could not be connected again.",
+    "mcp_app_reconnect_in_settings": "Connect it again in the MCP server settings of {{assistant}}; this view then opens again.",
+    "mcp_app_reconnect_ask_owner": "Ask an administrator to connect it to {{assistant}} again.",
+    "mcp_app_the_assistant": "the assistant"
 }
