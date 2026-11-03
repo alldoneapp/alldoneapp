@@ -14,7 +14,7 @@ import {
     NOT_USER_MENTIONED,
 } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import store from '../../../../redux/store'
-import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
+import { formatUrl, getAppLinkOrigin, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import { isGlobalAssistant, GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
@@ -247,7 +247,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
         if (item.isAssistant) {
             const { uid } = item
             activeSelection = { index: mentionPosition - 1, length: 0 }
-            const assistantUrl = `${window.location.origin}${getDvMainTabLink(projectId, uid, 'assistants')}`
+            const assistantUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, uid, 'assistants')}`
             const execRes = formatUrl(assistantUrl)
             if (execRes) {
                 const url = getUrlObject(assistantUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
@@ -288,7 +288,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
             const assistantProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
             activeSelection = { index: mentionPosition - 1, length: 0 }
 
-            const preConfigTaskUrl = `${window.location.origin}${getDvMainTabLink(
+            const preConfigTaskUrl = `${getAppLinkOrigin()}${getDvMainTabLink(
                 projectId,
                 taskId,
                 'preConfigTasks'
@@ -309,7 +309,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
         } else {
             const { id } = item
             activeSelection = { index: mentionPosition - 1, length: 0 }
-            const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
+            const taskUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'tasks')}`
             const execRes = formatUrl(taskUrl)
             if (execRes) {
                 const url = getUrlObject(taskUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
@@ -337,7 +337,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
         const { id } = item
         const mentionedNoteProjectId = item.projectId || projectId
         activeSelection = { index: mentionPosition - 1, length: 0 }
-        const noteUrl = `${window.location.origin}${getDvMainTabLink(mentionedNoteProjectId, id, 'notes')}`
+        const noteUrl = `${getAppLinkOrigin()}${getDvMainTabLink(mentionedNoteProjectId, id, 'notes')}`
         const execRes = formatUrl(noteUrl)
         if (execRes) {
             const url = getUrlObject(noteUrl, execRes, mentionedNoteProjectId, noteId, store.getState().loggedUser.uid)
@@ -351,7 +351,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
     } else if (activeTab === MENTION_MODAL_TOPICS_TAB) {
         const { id } = item
         activeSelection = { index: mentionPosition - 1, length: 0 }
-        const topicUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'chats')}`
+        const topicUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'chats')}`
         const execRes = formatUrl(topicUrl)
         if (execRes) {
             const url = getUrlObject(topicUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
@@ -365,7 +365,7 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
     } else if (activeTab === MENTION_MODAL_GOALS_TAB) {
         const { id } = item
         activeSelection = { index: mentionPosition - 1, length: 0 }
-        const goalUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'goals')}`
+        const goalUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'goals')}`
         const execRes = formatUrl(goalUrl)
         if (execRes) {
             const url = getUrlObject(goalUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)

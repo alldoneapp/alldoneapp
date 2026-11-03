@@ -7,7 +7,6 @@ import { translate } from '../../../../i18n/TranslationService'
 import { createMcpAppHost, buildMcpAppDocument, MCP_APP_FRAME_SANDBOX } from './mcpAppHost'
 import { getOpenMcpAppView, openMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
 import AnnaAppPaneContext from '../../../Anna/AnnaAppPaneContext'
-import { openInAnnaAppPane, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
 
 // Required lazily like the other cards under a message: a static import of the backend pulls the
 // redux store and the Firebase client into every suite that renders a chat message.
@@ -102,25 +101,11 @@ export function McpAppFrame({ view, language, onClose }) {
     )
 }
 
-/**
- * Outside Anna's chat the views open in the app-wide embed window instead of a pane, unless
- * assistant mode is on (a chat in the Alldone workspace): then they open in its right pane too
- * (AT-2951).
- */
+/** Outside Anna's shell the views open in the app-wide embed window instead of a pane. */
 function useEmbedWindow() {
     const [openView, setOpenView] = useState(getOpenMcpAppView)
-    const inAssistantMode = useAnnaAppPaneState() === 'active'
     useEffect(() => subscribeMcpAppView(setOpenView), [])
-    return useMemo(
-        () => ({
-            open: (view, options) => {
-                if (!(inAssistantMode && openInAnnaAppPane(view, options))) openMcpAppView(view)
-            },
-            selectedViewId: openView?.viewId || null,
-            embed: true,
-        }),
-        [openView, inAssistantMode]
-    )
+    return useMemo(() => ({ open: openMcpAppView, selectedViewId: openView?.viewId || null, embed: true }), [openView])
 }
 
 /** The line under the answer that (re)opens the view. */
