@@ -401,7 +401,9 @@ describe('AssistantOptions search button', () => {
         expect(getInput().props.fixedHeight).toBe(88)
     })
 
-    it('keeps mobile call/send side by side with a short placeholder when text wraps', async () => {
+    // AT-2938: on a phone the controls stack too — Send above Call outside the field, + above the
+    // mic inside it — so the wrapped text gets the freed width back.
+    it('stacks Send above Call and + above the mic on mobile when text wraps', async () => {
         mockState.smallScreenNavigation = true
         try {
             let tree
@@ -410,6 +412,12 @@ describe('AssistantOptions search button', () => {
             })
 
             const getInput = () => tree.root.findByType(TextInput)
+            const getControlsStyle = () =>
+                StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
+
+            expect(getControlsStyle().flexDirection).toBe('row')
+            expect(getInput().props.stackInlineControls).toBe(false)
+
             await act(async () => {
                 getInput().props.onChangeText('Mobile message that wraps')
             })
@@ -417,23 +425,52 @@ describe('AssistantOptions search button', () => {
                 getInput().props.onContentSizeChange(100, 62)
             })
 
-            const controls = StyleSheet.flatten(
-                tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style
-            )
-            expect(controls.flexDirection).toBe('row')
+            const controls = getControlsStyle()
+            // The voice button renders first, so column-reverse puts Send on top.
+            expect(controls.flexDirection).toBe('column-reverse')
             expect(controls.alignItems).toBe('center')
             expect(controls.width).toBeUndefined()
-            expect(getInput().props.fixedHeight).toBe(78)
+            expect(getInput().props.stackInlineControls).toBe(true)
+            expect(getInput().props.fixedHeight).toBe(88)
             expect(getInput().props.placeholder).toBe('New message …')
+
             await act(async () => getInput().props.onContentSizeChange(100, 160))
             expect(getInput().props.fixedHeight).toBe(120)
-            expect(
-                StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
-                    .flexDirection
-            ).toBe('row')
+            expect(getControlsStyle().flexDirection).toBe('column-reverse')
+
+            // Re-wrapping to one line in the wider field must not flap back.
+            await act(async () => getInput().props.onContentSizeChange(100, 40))
+            expect(getControlsStyle().flexDirection).toBe('column-reverse')
+
+            await act(async () => {
+                getInput().props.onChangeText('')
+            })
+            expect(getControlsStyle().flexDirection).toBe('row')
+            expect(getInput().props.stackInlineControls).toBe(false)
+            expect(getInput().props.fixedHeight).toBe(40)
         } finally {
             mockState.smallScreenNavigation = false
         }
+    })
+
+    it('keeps the in-field controls in a row on desktop when the text wraps', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+        const getInput = () => tree.root.findByType(TextInput)
+        await act(async () => {
+            getInput().props.onChangeText('A message long enough to wrap')
+        })
+        await act(async () => {
+            getInput().props.onContentSizeChange(100, 80)
+        })
+
+        expect(
+            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
+                .flexDirection
+        ).toBe('column')
+        expect(getInput().props.stackInlineControls).toBe(false)
     })
 
     it('does not un-stack when the widened input re-wraps back to a single line', async () => {
