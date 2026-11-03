@@ -2,14 +2,12 @@
 // are identical — only the syntax differs. Where searchFilters.test.js pins the access
 // model itself, this suite pins that the Typesense port cannot drift from it.
 import {
-    getCreatedByMeBoost,
     buildTypesenseCreatedByMeFilter,
     buildTypesenseProjectsAccessFilter,
     buildTypesenseSearchFilters,
     formatTypesenseValue,
 } from './typesenseSearchFilters'
 import {
-    ARTIFACTS_INDEX_NAME_PREFIX,
     CHATS_INDEX_NAME_PREFIX,
     CONTACTS_INDEX_NAME_PREFIX,
     GOALS_INDEX_NAME_PREFIX,
@@ -169,46 +167,5 @@ describe('wiki pages in global search', () => {
                 createdByMeOnly: true,
             })
         ).toBe('')
-    })
-})
-
-describe('getCreatedByMeBoost (AT-2945)', () => {
-    it('uses the same creator attribute as the "only what I created" filter', () => {
-        ;[...ALL_INDEXES, ARTIFACTS_INDEX_NAME_PREFIX].forEach(indexPrefix => {
-            const boost = getCreatedByMeBoost({ indexPrefix, loggedUser: LOGGED_USER })
-            const filter = buildTypesenseCreatedByMeFilter(indexPrefix, LOGGED_USER.uid)
-            expect(boost).not.toBeNull()
-            expect(filter).toBe(`${boost.attribute}:=\`${boost.userId}\``)
-        })
-    })
-
-    it("is off while the explicit filter is on, since every result is already the user's", () => {
-        expect(
-            getCreatedByMeBoost({
-                indexPrefix: TASKS_INDEX_NAME_PREFIX,
-                loggedUser: LOGGED_USER,
-                createdByMeOnly: true,
-            })
-        ).toBeNull()
-    })
-
-    it('has nothing to boost on the wiki or an unknown index', () => {
-        expect(getCreatedByMeBoost({ indexPrefix: WIKI_INDEX_NAME_PREFIX, loggedUser: LOGGED_USER })).toBeNull()
-        expect(getCreatedByMeBoost({ indexPrefix: 'dev_unknown', loggedUser: LOGGED_USER })).toBeNull()
-    })
-
-    it('never boosts for an anonymous or missing user', () => {
-        expect(
-            getCreatedByMeBoost({ indexPrefix: TASKS_INDEX_NAME_PREFIX, loggedUser: { uid: 'x', isAnonymous: true } })
-        ).toBeNull()
-        expect(getCreatedByMeBoost({ indexPrefix: TASKS_INDEX_NAME_PREFIX, loggedUser: { uid: '' } })).toBeNull()
-        expect(getCreatedByMeBoost({ indexPrefix: TASKS_INDEX_NAME_PREFIX, loggedUser: null })).toBeNull()
-    })
-
-    it('leaves the access filter untouched: the boost is a sort, not a filter', () => {
-        const params = { indexPrefix: TASKS_INDEX_NAME_PREFIX, projects: PROJECTS, loggedUser: LOGGED_USER }
-        expect(buildTypesenseSearchFilters(params)).toBe(
-            'projectId:=[`p1`,`p2`] && isPublicFor:=[`0`,`me`,`ws@default`]'
-        )
     })
 })

@@ -44,7 +44,7 @@ import {
     GLOBAL_SEARCH_WIKI_TAB,
     WIKI_INDEX_NAME_PREFIX,
 } from './searchIndexes'
-import { buildTypesenseSearchFilters, getCreatedByMeBoost } from './typesenseSearchFilters'
+import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
 import { multiSearchTypesense, warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, getWikiPagePath, goToObjectDetailView } from './searchFunctions'
@@ -734,12 +734,7 @@ export default function GlobalSearchModal() {
                 openTasksOnly,
             })
             if (filterBy) {
-                const boostCreator = getCreatedByMeBoost({
-                    indexPrefix: config.indexPrefix,
-                    loggedUser,
-                    createdByMeOnly,
-                })
-                searchableTabs.push({ ...config, filterBy, boostCreator })
+                searchableTabs.push({ ...config, filterBy })
             } else {
                 setProcessing(processing => {
                     return { ...processing, [config.tab]: false }
@@ -750,13 +745,10 @@ export default function GlobalSearchModal() {
 
         setSearchOfflineNotice(false)
         setSearchErrorNotice(false)
-        const toEngineSearch = ({ indexPrefix, filterBy, boostCreator }) => ({
+        const toEngineSearch = ({ indexPrefix, filterBy }) => ({
             collection: indexPrefix,
             query,
             filterBy,
-            // Objects the user created rank first even with "only what I created" off
-            // (AT-2945). A sort, not a filter: everybody else's matches stay listed.
-            ...(boostCreator ? { boostCreator } : {}),
             // Lead each tab with the objects whose NAME matches, ahead of the ones
             // that merely mention the query somewhere in their body (AT-2527).
             // Nothing is filtered out — see mergeIdentityFirstHits.

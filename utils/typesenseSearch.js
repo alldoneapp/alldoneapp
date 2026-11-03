@@ -288,15 +288,13 @@ export const adaptTypesenseHit = hit => {
     return { ...document, ...privacyData, id: bareId, objectID }
 }
 
-// searches: [{ collection, query, filterBy, queryBy, matchAllWhenEmpty, boostCreator }] → resolves
+// searches: [{ collection, query, filterBy, queryBy, matchAllWhenEmpty }] → resolves
 // [{ hits }] in the same order. One HTTP round-trip for any number of collections. A
 // per-collection error (e.g. a collection that does not exist yet) yields { hits: [], error }
 // for that entry rather than failing the others.
 //
 // `matchAllWhenEmpty` turns a blank query into the `*` wildcard so the caller gets the
 // collection's most recent records instead of nothing — see TYPESENSE_MATCH_ALL_QUERY.
-// `boostCreator` ({ attribute, userId }) ranks objects that user created ahead of the rest
-// without filtering anything out (AT-2945, see functions/Typesense/searchRanking.js).
 // A positive `page` opts a search into pagination and adds `hasMore` to its result.
 // The per-page bound stays unchanged, including when using scoped credentials.
 export const multiSearchTypesense = async searches => {
@@ -325,10 +323,7 @@ export const multiSearchTypesense = async searches => {
             // identity page (AT-2527).
             query_by: engineQueryBy,
             num_typos: config.num_typos,
-            // `boostCreator` (AT-2945) ranks the signed-in user's own objects first. It is
-            // passed to the identity page and the full page alike, so both blocks of an
-            // identity-first merge carry the same boost.
-            sort_by: buildRecencySortBy(collection, engineQuery, engineQueryBy, { boostCreator: search.boostCreator }),
+            sort_by: buildRecencySortBy(collection, engineQuery, engineQueryBy),
             filter_by: filterBy,
             per_page: PER_PAGE,
             ...(Number.isInteger(search.page) && search.page > 0 ? { page: search.page } : {}),

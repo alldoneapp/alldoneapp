@@ -71,21 +71,6 @@ export const buildTypesenseCreatedByMeFilter = (indexPrefix, userId) => {
     return `${creatorAttribute}:=${formatTypesenseValue(userId)}`
 }
 
-// AT-2945: what global search hands the engine so the signed-in user's own objects rank
-// first even while "only what I created" is off. Same creator attribute as that filter, so
-// the boost and the filter can never disagree about what "mine" means. Null means no boost:
-// - the filter is on (every result is already the user's, so a boost changes nothing),
-// - the wiki tab (nobody creates a wiki page; it has no creator attribute),
-// - an anonymous viewer (nothing in a shared project is "theirs").
-// The boost only reorders; access is still decided by buildTypesenseSearchFilters alone.
-export const getCreatedByMeBoost = ({ indexPrefix, loggedUser, createdByMeOnly = false }) => {
-    if (createdByMeOnly) return null
-    if (!loggedUser || loggedUser.isAnonymous || !loggedUser.uid) return null
-    const attribute = CREATOR_ATTRIBUTE_BY_INDEX[indexPrefix]
-    if (!attribute) return null
-    return { attribute, userId: loggedUser.uid }
-}
-
 export const buildTypesenseSearchFilters = ({
     indexPrefix,
     projects,

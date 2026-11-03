@@ -44,8 +44,8 @@ const searchCalls = []
 jest.mock('../../utils/typesenseSearch', () => ({
     warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => {
-        searches.forEach(({ collection, query, filterBy, boostCreator }) => {
-            searchCalls.push({ indexName: collection, text: query, filters: filterBy, boostCreator })
+        searches.forEach(({ collection, query, filterBy }) => {
+            searchCalls.push({ indexName: collection, text: query, filters: filterBy })
         })
         return searches.map(() => ({ hits: [] }))
     },
@@ -268,50 +268,6 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         searchCalls.forEach(call => {
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
-    })
-
-    // AT-2945 — "results 'only created by me' should be ranked higher even if that filter is
-    // not active". The boost travels next to the filter, never inside it: everybody else's
-    // results must still be searched.
-    it("boosts the logged user's own objects on every creator-aware index while the filter is off", async () => {
-        await mount()
-        await search('invoice')
-
-        expect(searchCalls).toHaveLength(7)
-        searchCalls.forEach(call => {
-            expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
-            if (call.indexName === 'dev_wiki') {
-                // Nobody creates a wiki page, so there is nothing to boost.
-                expect(call.boostCreator).toBeUndefined()
-            } else {
-                expect(call.boostCreator).toEqual({
-                    attribute: CREATOR_ATTRIBUTE_BY_INDEX[call.indexName],
-                    userId: 'user-1',
-                })
-            }
-        })
-    })
-
-    it('drops the boost while the explicit filter is on, and restores it when it is turned off', async () => {
-        await mount()
-        await search('invoice')
-        searchCalls.length = 0
-
-        await setCreatedByMe(true)
-        expect(searchCalls).toHaveLength(6)
-        searchCalls.forEach(call => expect(call.boostCreator).toBeUndefined())
-
-        searchCalls.length = 0
-        await setCreatedByMe(false)
-        expect(searchCalls.filter(call => call.boostCreator)).toHaveLength(6)
-    })
-
-    it('never boosts for an anonymous viewer', async () => {
-        await mount({ loggedUser: { ...loggedUser, isAnonymous: true } })
-        await search('invoice')
-
-        expect(searchCalls.length).toBeGreaterThan(0)
-        searchCalls.forEach(call => expect(call.boostCreator).toBeUndefined())
     })
 
     it('shows the open-tasks chip only on Tasks and keeps its state across tab switches', async () => {
