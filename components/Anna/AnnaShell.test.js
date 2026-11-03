@@ -2135,6 +2135,76 @@ describe('an embedded app handed over from its window (AT-2951)', () => {
     })
 })
 
+describe('opening the pane’s embedded app in a new tab (AT-2954)', () => {
+    const { iframeAppView, openInAnnaAppPane } = require('./annaAppPaneBridge')
+    const url = 'https://alldone.team/story-builder'
+    const judy = { viewId: 'v1', appName: 'Judy Job', serverId: 'team', resourceUri: 'ui://judy/app.html' }
+    const frame = () => document.querySelector(`[data-testid="embedded-frame-${url}"]`)
+    const button = () => document.querySelector('[data-testid="anna-app-open-in-new-tab"]')
+    let open
+
+    beforeEach(() => {
+        open = jest.spyOn(window, 'open').mockReturnValue({})
+    })
+    afterEach(() => open.mockRestore())
+
+    it('sits immediately left of the X while an embedded app is on screen', () => {
+        render(content(1))
+        expect(button()).toBeNull()
+        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
+
+        expect(button()).toBeTruthy()
+        expect(button().getAttribute('aria-label')).toBe('Open app in new tab')
+        expect(button().getAttribute('title')).toBe('Open app in new tab')
+        expect(button().nextElementSibling.getAttribute('aria-label')).toBe('Close assistant chat')
+
+        chooseSurface('alldone')
+        expect(button()).toBeNull()
+    })
+
+    it('is not offered for an MCP app view, which has no address', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(judy))
+        expect(button()).toBeNull()
+    })
+
+    it('opens the page the app reported, closes the pane’s copy and shows Alldone', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
+        act(() => mockEmbeddedFrames[url].onLocationChange(`${url}/story-7?step=2`))
+
+        fireEvent.click(button())
+
+        expect(open).toHaveBeenCalledWith(`${url}/story-7?step=2`, '_blank')
+        expect(selectedSurface()).toBe('alldone')
+        expect(frame()).toBeNull()
+        const options = [...document.querySelector('.anna-header-picker select').options].map(item => item.value)
+        expect(options).not.toContain(`app:iframe:${url}`)
+    })
+
+    it('opens the start URL when the app reported nothing, including after reopening it', () => {
+        render(content(1))
+        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
+        act(() => mockEmbeddedFrames[url].onLocationChange(`${url}/old`))
+        fireEvent.click(button())
+        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
+        fireEvent.click(button())
+        expect(open).toHaveBeenLastCalledWith(url, '_blank')
+    })
+
+    it('keeps the app in the pane and explains a blocked pop-up', () => {
+        open.mockReturnValue(null)
+        render(content(1))
+        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
+
+        fireEvent.click(button())
+
+        expect(selectedSurface()).toBe(`app:iframe:${url}`)
+        expect(frame()).toBeTruthy()
+        expect(document.querySelector('[role="alert"]').textContent).toContain('embedded_app_popup_blocked')
+    })
+})
+
 describe('leaving assistant mode returns the app in the pane to its embed window (AT-2951)', () => {
     const { iframeAppView, openInAnnaAppPane, registerEmbedWindow } = require('./annaAppPaneBridge')
     const url = 'https://alldone.team/story-builder?embed=true'

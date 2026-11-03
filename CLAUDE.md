@@ -537,18 +537,6 @@ declared after its bridge registration, so the window already sees assistant mod
 not send the app straight back. Pinned by `IframeModal/embedWindowAssistantPane.test.js` and the
 two AT-2951 blocks of `AnnaShell.test.js`.
 
-**Both embed windows share one layout and close on a backdrop click (AT-2953).**
-`IframeModal/embedWindowLayout.js` makes `IframeModal` and `McpAppModal` the same card: the viewport
-minus one uniform `MODAL_EDGE_GAP` (16px) on every edge, applied as the safe-area overlay minimum
-(`max(gap, inset)`). There is no percentage and no max size, so no extra margin on big screens.
-Below `MODAL_SHEET_BREAKPOINT` the gap is 0 and the window is full screen. A click on the backdrop
-closes the window, by product decision, although a live session in the app (screen share) goes with
-it. `useBackdropDismiss` counts only a press that both starts and ends on the backdrop. This
-excludes a drag out of the card and the click that opened the window (its pointerdown predates the
-backdrop). Clicks inside the cross-origin frame never reach the document. Phones have no backdrop
-dismissal: the only uncovered strips there are the safe-area insets. Pinned by
-`IframeModal/embedWindowLayout.test.js`.
-
 **A view outlives the connection it opened with, and is reconnected only on a click (AT-2952).**
 "This app is no longer connected to the assistant." meant exactly that: on 2026-11-03 the user had
 removed alldone.team from Anna's MCP servers in the morning, and the Judy pane reopened that
