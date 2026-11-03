@@ -3,7 +3,7 @@ import { Provider } from 'react-redux'
 import Backend from '../../../../../utils/BackendBridge'
 import UrlWrapper from '../tags/UrlWrapper'
 import store from '../../../../../redux/store'
-import { handleNestedLinks } from '../../../../../utils/LinkingHelper'
+import { getInternalLinkType, handleNestedLinks } from '../../../../../utils/LinkingHelper'
 import { isPrivateNote } from '../../../../NotesView/NotesHelper'
 import { renderEmbedContent } from './embedReactRoot'
 import ReactEmbedBlot from './reactEmbedBlot'
@@ -31,8 +31,13 @@ class Url extends ReactEmbedBlot {
         node.setAttribute('contenteditable', false)
         Url.data = value
 
+        // What is rendered follows the link, not only the stored `type`: a chip stored as `plain`
+        // can still point at a note (AT-2950, see getInternalLinkType). The stored value and the
+        // node's attributes are left exactly as they were, so nothing is written back.
+        const renderValue = resolveUrlRenderValue(value)
+
         // Special handling for preConfigTask - extract name from URL query params
-        if (value.type === 'preConfigTask' && value?.url) {
+        if (renderValue.type === 'preConfigTask' && value?.url) {
             let taskName = ''
             try {
                 const urlObj = new URL(value.url)
@@ -48,25 +53,28 @@ class Url extends ReactEmbedBlot {
                 node,
                 <Provider store={store}>
                     <UrlWrapper
-                        value={value}
+                        value={renderValue}
                         objectName={taskName || 'Pre-configured Task'}
                         isShared={false}
                         embedNode={node}
                     />
                 </Provider>
             )
-        } else if (value.type !== 'plain' && value?.url) {
-            Backend.getObjectFromUrl(value.type, value.url, ({ object, objectName }, externalContact) => {
+        } else if (renderValue.type !== 'plain' && value?.url) {
+            Backend.getObjectFromUrl(renderValue.type, value.url, ({ object, objectName, error }, externalContact) => {
                 const text = handleNestedLinks(objectName)
                 const isShared =
                     (object?.hasOwnProperty('userIds') || object?.hasOwnProperty('stickyData')) &&
                     !isPrivateNote(object)
 
+                // A read that FAILED says nothing about the object (a transient
+                // `permission-denied`, AT-2484): keep the chip typed and let LinkTag's own
+                // listener fill in the title. Only an answered "does not exist" demotes it.
                 renderEmbedContent(
                     node,
                     <Provider store={store}>
                         <UrlWrapper
-                            value={object ? value : { ...value, type: 'plain' }}
+                            value={object || error ? renderValue : { ...renderValue, type: 'plain' }}
                             objectName={object ? text : null}
                             isShared={object ? isShared : null}
                             externalContact={object ? externalContact : null}
@@ -110,6 +118,12 @@ class Url extends ReactEmbedBlot {
         return {}
     }
 }
+export const resolveUrlRenderValue = value => {
+    if (!value || (value.type && value.type !== 'plain')) return value
+    const internalType = getInternalLinkType(value.url)
+    return internalType ? { ...value, type: internalType } : value
+}
+
 Url.blotName = 'url'
 Url.className = 'ql-url'
 Url.tagName = 'span'

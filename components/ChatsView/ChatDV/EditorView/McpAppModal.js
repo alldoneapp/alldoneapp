@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -8,38 +8,24 @@ import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import { McpAppFrame } from './McpAppViews'
 import { closeMcpAppView, getOpenMcpAppView, subscribeMcpAppView } from './mcpAppModalStore'
-import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
-import { openInAnnaAppPane, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
 
 /**
  * The full-screen window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the
  * whole viewport (inside the safe area), a slim header with the app's name and a close button.
- * Mounted once with the global modals. In assistant mode the view goes to the shell's right pane
- * instead, and the header's "expand to the left" button switches there (AT-2951).
+ * Mounted once with the global modals.
  */
 export default function McpAppModal() {
     const language = useSelector(state => state.loggedUser.language)
     const [view, setView] = useState(getOpenMcpAppView)
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
-    const inAssistantMode = useAnnaAppPaneState() === 'active'
     useEffect(() => subscribeMcpAppView(setView), [])
-    useEscapeKey(closeMcpAppView, { enabled: !!view && !inAssistantMode })
+    useEscapeKey(closeMcpAppView, { enabled: !!view })
 
-    // Opened while assistant mode is on (or switched on while open): the pane shows it instead.
-    useLayoutEffect(() => {
-        if (view && inAssistantMode && openInAnnaAppPane(view)) closeMcpAppView()
-    }, [view, inAssistantMode])
-
-    const openInAssistantMode = () => {
-        if (openInAnnaAppPane(view)) closeMcpAppView()
-    }
-
-    if (!view || inAssistantMode) return null
+    if (!view) return null
     return (
         <View style={[styles.overlay, safeAreaOverlayPadding]}>
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <OpenInAssistantPaneButton onPress={openInAssistantMode} />
                     <Text style={styles.title} numberOfLines={1}>
                         {view.appName || view.serverLabel || view.toolName}
                     </Text>

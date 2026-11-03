@@ -51,9 +51,11 @@ import NavigationService from '../../utils/NavigationService'
 import {
     addProtocol,
     checkIfUrlBelongsToProjectInTheList,
+    getAppLinkPathname,
     handleNestedLinks,
     isValidHost,
 } from '../../utils/LinkingHelper'
+import { getObjectLinkRetryDelay } from '../../utils/backends/objectLinkSnapshot'
 import useWindowSize from '../../utils/useWindowSize'
 import ReactDOM from 'react-dom'
 import { usePrevious } from '../../utils/UsePrevious'
@@ -235,33 +237,63 @@ export default function LinkTag({
             return () => {} // No cleanup needed
         }
 
-        if (objectType !== '' && path !== '') {
-            Backend.watchObjectLTag(objectType, path, watchId, data => {
-                if (data != null) {
-                    const peopleDocumentIsMember = objectType === 'people' && path.startsWith('users/')
-                    setTitleFromObject(objectType, data)
-                    setSharedFromObject(objectType, data)
-                    setObjectId(objectId)
-                    setType(objectType)
-                    setLinkUrl(getPathname(link))
-                    setInternalLink(true)
-                    setEnableLink(true)
-                    setObjectType?.(objectType)
-                    setObjectProjectId?.(projectId)
-                    objectType === 'people' || objectType === 'assistant'
-                        ? setObjectData?.({ ...data, uid: objectId })
-                        : setObjectData?.({ ...data, id: objectId })
-                    setIsPrivate?.(
-                        objectType === 'people' && !peopleDocumentIsMember
-                            ? ContactsHelper.isPrivateContact(data)
-                            : getIsPrivate(objectType, data, projectId)
-                    )
-                } else {
-                    Backend.unwatchObjectLTag(objectType, path, watchId)
-                    setTitle(initialTitle || getDomain(link))
-                    setLinkUrl(addProtocol(link))
+        // A listener that fails is torn down by the SDK for good, and `permission-denied` is
+        // not necessarily a denial (AT-2484: rules-evaluation ERROR bursts during transport
+        // restarts). Without a retry one such burst left the chip showing the bare link until
+        // the note was reopened (AT-2950). Retries are bounded; a real denial ends as before.
+        let failedWatches = 0
+        let retryTimeout = null
+        let disposed = false
+
+        const onObjectData = (data, _path, _watchId, error) => {
+            if (disposed) return
+            if (error) {
+                Backend.unwatchObjectLTag(objectType, path, watchId)
+                const retryDelay = getObjectLinkRetryDelay(failedWatches)
+                failedWatches++
+                if (retryDelay != null) {
+                    clearTimeout(retryTimeout)
+                    retryTimeout = setTimeout(() => {
+                        if (!disposed) Backend.watchObjectLTag(objectType, path, watchId, onObjectData)
+                    }, retryDelay)
                 }
-            })
+                // The title is left as it is: either the one this chip already resolved (the
+                // object did not change, only the listener did) or the initial fallback.
+                return
+            }
+            failedWatches = 0
+            handleObjectData(data)
+        }
+
+        const handleObjectData = data => {
+            if (data != null) {
+                const peopleDocumentIsMember = objectType === 'people' && path.startsWith('users/')
+                setTitleFromObject(objectType, data)
+                setSharedFromObject(objectType, data)
+                setObjectId(objectId)
+                setType(objectType)
+                setLinkUrl(getPathname(link))
+                setInternalLink(true)
+                setEnableLink(true)
+                setObjectType?.(objectType)
+                setObjectProjectId?.(projectId)
+                objectType === 'people' || objectType === 'assistant'
+                    ? setObjectData?.({ ...data, uid: objectId })
+                    : setObjectData?.({ ...data, id: objectId })
+                setIsPrivate?.(
+                    objectType === 'people' && !peopleDocumentIsMember
+                        ? ContactsHelper.isPrivateContact(data)
+                        : getIsPrivate(objectType, data, projectId)
+                )
+            } else {
+                Backend.unwatchObjectLTag(objectType, path, watchId)
+                setTitle(initialTitle || getDomain(link))
+                setLinkUrl(addProtocol(link))
+            }
+        }
+
+        if (objectType !== '' && path !== '') {
+            Backend.watchObjectLTag(objectType, path, watchId, onObjectData)
         } else {
             // Try to process a generic internal url
             const genericProcess = processGenericUrl(getPathname(link))
@@ -281,6 +313,8 @@ export default function LinkTag({
         }
 
         return () => {
+            disposed = true
+            clearTimeout(retryTimeout)
             if (objectType !== '' && path !== '') {
                 Backend.unwatchObjectLTag(objectType, path, watchId)
             }
@@ -917,6 +951,12 @@ export const getDomain = link => {
 }
 
 export const getPathname = url => {
+    // Links stored by the iOS shell carry its `capacitor://localhost` origin, which the
+    // `addProtocol` + `new URL` path below misreads as an external host named `capacitor`
+    // (AT-2950).
+    const appPathname = getAppLinkPathname(url)
+    if (appPathname) return appPathname
+
     let tmpURL = addProtocol(url)
     try {
         const obj = new URL(tmpURL)

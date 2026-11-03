@@ -175,12 +175,6 @@ jest.mock('../ChatsView/ChatDV/EditorView/McpAppViews', () => ({
     },
     mcpAppKey: jest.requireActual('../ChatsView/ChatDV/EditorView/McpAppViews').mcpAppKey,
 }))
-// Embedded web apps (pre-configured iframe tasks) handed over from their window (AT-2951).
-const mockEmbeddedFrames = {}
-jest.mock('../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame', () => props => {
-    mockEmbeddedFrames[props.url] = props
-    return <div data-testid={`embedded-frame-${props.url}`} />
-})
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: () => mockAssistant }))
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
     useVoiceCall: () => ({ status: 'idle', voiceSeconds: 0 }),
@@ -2064,73 +2058,5 @@ describe('an app view (MCP Apps, e.g. Judy) in the right pane', () => {
             visibility.mockRestore()
             jest.useRealTimers()
         }
-    })
-})
-
-describe('an embedded app handed over from its window (AT-2951)', () => {
-    const { getAnnaAppPaneState, iframeAppView, openInAnnaAppPane } = require('./annaAppPaneBridge')
-    const url = 'https://alldone.team/story-builder?embed=true'
-    const frame = () => document.querySelector(`[data-testid="embedded-frame-${url}"]`)
-
-    it('tells the embed windows whether assistant mode is open', () => {
-        expect(getAnnaAppPaneState()).toBe('none')
-        setAnnaMode(false)
-        render(content(1))
-        expect(getAnnaAppPaneState()).toBe('available')
-        act(() => setAnnaMode(true))
-        expect(getAnnaAppPaneState()).toBe('active')
-        act(() => testRoot.unmount())
-        testRoot = null
-        expect(getAnnaAppPaneState()).toBe('none')
-    })
-
-    it('switches to assistant mode with the sidebar on the left and the app in the right pane', () => {
-        setAnnaMode(false)
-        render(content(1))
-        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
-
-        let opened
-        act(() => {
-            opened = openInAnnaAppPane(iframeAppView(url, 'Story Builder'))
-        })
-
-        expect(opened).toBe(true)
-        expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
-        expect(document.querySelector('.anna-chat-only')).toBeNull()
-        expect(selectedSurface()).toBe(`app:iframe:${url}`)
-        expect(frame()).toBeTruthy()
-        expect(frame().closest('.anna-surface-hidden')).toBeNull()
-        expect(mockEmbeddedFrames[url]).toEqual(expect.objectContaining({ url, title: 'Story Builder' }))
-        const option = [...document.querySelector('.anna-header-picker select').options].find(
-            item => item.value === `app:iframe:${url}`
-        )
-        expect(option.textContent).toBe('Story Builder')
-        // The workspace keeps its state: switching never remounts the Alldone route.
-        expect(mockUnmounts).toBe(0)
-    })
-
-    it('shows an app opened from chat-only mode next to the chat', () => {
-        render(content(1))
-        act(() => setAnnaLayout('chat'))
-        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
-        expect(document.querySelector('.anna-chat-only')).toBeNull()
-        expect(selectedSurface()).toBe(`app:iframe:${url}`)
-    })
-
-    it('reselects the pane when the same app is opened again', () => {
-        render(content(1))
-        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
-        chooseSurface('alldone')
-        act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
-        expect(selectedSurface()).toBe(`app:iframe:${url}`)
-        expect(document.querySelectorAll(`[data-testid="embedded-frame-${url}"]`)).toHaveLength(1)
-    })
-
-    it('shows the Alldone workspace when the app opens an Alldone object', () => {
-        render(content(1))
-        act(() => openInAnnaAppPane(iframeAppView(url, 'Roadmap')))
-        act(() => mockEmbeddedFrames[url].onNavigateAway())
-        expect(selectedSurface()).toBe('alldone')
-        expect(frame()).toBeTruthy()
     })
 })
