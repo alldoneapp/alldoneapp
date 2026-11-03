@@ -78,7 +78,6 @@ import {
     isValidAssistantLink,
     isValidArtifactLink,
     getDvMainTabLink,
-    getAppLinkOrigin,
 } from '../../../utils/LinkingHelper'
 import Backend from '../../../utils/BackendBridge'
 import ProjectHelper, { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -500,7 +499,11 @@ function CustomTextInput3(
             } else if (item.isAssistant) {
                 const { uid: assistantId } = item
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-                const assistantUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, assistantId, 'assistants')}`
+                const assistantUrl = `${window.location.origin}${getDvMainTabLink(
+                    projectId,
+                    assistantId,
+                    'assistants'
+                )}`
                 const execRes = formatUrl(assistantUrl)
                 if (execRes) {
                     const url = getUrlObject(assistantUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
@@ -585,7 +588,7 @@ function CustomTextInput3(
                 const assistantProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
 
-                const preConfigTaskUrl = `${getAppLinkOrigin()}${getDvMainTabLink(
+                const preConfigTaskUrl = `${window.location.origin}${getDvMainTabLink(
                     projectId,
                     taskId,
                     'preConfigTasks'
@@ -607,7 +610,7 @@ function CustomTextInput3(
                 // Regular task
                 const { id } = item
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-                const taskUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'tasks')}`
+                const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
                 const execRes = formatUrl(taskUrl)
                 if (execRes) {
                     const url = getUrlObject(taskUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
@@ -623,7 +626,7 @@ function CustomTextInput3(
             const { id } = item
             const noteProjectId = item.projectId || projectId
             selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-            const noteUrl = `${getAppLinkOrigin()}${getDvMainTabLink(noteProjectId, id, 'notes')}`
+            const noteUrl = `${window.location.origin}${getDvMainTabLink(noteProjectId, id, 'notes')}`
             const execRes = formatUrl(noteUrl)
             if (execRes) {
                 const url = getUrlObject(noteUrl, execRes, noteProjectId, editorId, userIdAllowedToEditTags)
@@ -637,7 +640,7 @@ function CustomTextInput3(
         } else if (activeTab === MENTION_MODAL_TOPICS_TAB) {
             const { id } = item
             selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-            const topicUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'chats')}`
+            const topicUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'chats')}`
             const execRes = formatUrl(topicUrl)
             if (execRes) {
                 const url = getUrlObject(topicUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
@@ -651,7 +654,7 @@ function CustomTextInput3(
         } else if (activeTab === MENTION_MODAL_GOALS_TAB) {
             const { id } = item
             selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-            const goalUrl = `${getAppLinkOrigin()}${getDvMainTabLink(projectId, id, 'goals')}`
+            const goalUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'goals')}`
             const execRes = formatUrl(goalUrl)
             if (execRes) {
                 const url = getUrlObject(goalUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
