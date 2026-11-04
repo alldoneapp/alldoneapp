@@ -57,15 +57,13 @@ export const openEmbeddedAppInNewTab = url => {
 
     // An app served from Alldone's own origin is inside the installed PWA's scope, and a plain
     // window.open would open a second app window; reuse the escape hatch for that (AT-2345).
-    if (isAlldoneAppUrl(url)) {
-        return !!require('../../../../utils/openInNewWindow').openViewInNewWindow(url)
-    }
-
-    // A third-party origin is out of the PWA's scope anyway, so it opens in the browser directly.
+    // A third-party origin is out of the PWA's scope, so it opens in the browser directly.
     // Not `noopener` in the features: with it window.open always returns null, and a blocked pop-up
     // could no longer be told apart from an opened one. The opener is cut by hand instead, so the
     // app's page cannot navigate Alldone's tab (reverse tabnabbing).
-    const opened = window.open(url, '_blank')
+    const opened = isAlldoneAppUrl(url)
+        ? require('../../../../utils/openInNewWindow').openViewInNewWindow(url)
+        : window.open(url, '_blank')
     if (!opened) return false
     try {
         opened.opener = null

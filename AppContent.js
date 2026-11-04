@@ -32,6 +32,8 @@ import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
 import BrowserAgentApiBridge from './components/BrowserAgent/BrowserAgentApiBridge'
+import EmbeddedToolWindow from './components/UIComponents/FloatModals/IframeModal/EmbeddedToolWindow'
+import { readToolHandoffId } from './components/UIComponents/FloatModals/IframeModal/embeddedToolHandoff'
 import { processNewUser } from './utils/InitialLoad/newUserHelper'
 import { loadGlobalDataAndGetUserResult, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
 import { LOGIN_FAILURE_ACTIONS, describeLoginError, resolveLoginFailureAction } from './utils/Auth/authErrorHelper'
@@ -88,6 +90,7 @@ export default function AppContent() {
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [publicPageUrl] = useState(resolvePublicPageUrl)
+    const [toolHandoffId, setToolHandoffId] = useState(readToolHandoffId)
     const [connectingMessage] = useState(() => getConnectingMessage())
     const initialTaskDataPublished = useInitialTaskDataPublished()
     const deferredStartupWorkReady = useDeferredStartupWork({ enabled: loggedIn && processedInitialURL })
@@ -438,6 +441,17 @@ export default function AppContent() {
             })
         })
     }, [deferredStartupWorkReady, initialTaskDataPublished, loggedIn, processedInitialURL])
+
+    if (toolHandoffId && loggedIn && loggedUserId) {
+        return (
+            <EmbeddedToolWindow
+                key={`${toolHandoffId}:${loggedUserId}`}
+                id={toolHandoffId}
+                userId={loggedUserId}
+                onNavigateAway={() => setToolHandoffId(null)}
+            />
+        )
+    }
 
     return (
         <>
