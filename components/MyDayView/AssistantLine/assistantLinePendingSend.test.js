@@ -44,6 +44,10 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
         resetAssistantLinePendingSends()
     })
 
+    afterEach(() => {
+        jest.useRealTimers()
+    })
+
     it('files one send under every key the caller passes', () => {
         begin()
 
@@ -116,9 +120,9 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
         })
 
         it('keeps the thread covered while the assistant pointer reaches the preview before its comment', () => {
+            jest.useFakeTimers()
             const id = begin()
             markAssistantLineSendCreated(id, 'chat-1')
-            const now = Date.now()
 
             expect(getPendingAssistantLineSendForChat('project-1', 'chat-1')).toMatchObject({
                 status: PENDING_SEND_AWAITING_REPLY,
@@ -128,9 +132,8 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
 
             resolveAssistantLineSendForChat('chat-1')
             expect(getPendingAssistantLineSend('project-1')).toBeNull()
-            expect(
-                getPendingAssistantLineSendForChat('project-1', 'chat-1', now + ASSISTANT_REPLY_HANDOFF_MS + 1)
-            ).toBeNull()
+            jest.advanceTimersByTime(ASSISTANT_REPLY_HANDOFF_MS)
+            expect(getPendingAssistantLineSendForChat('project-1', 'chat-1')).toBeNull()
         })
 
         it('does not show a thread wait after its send failed', () => {
@@ -180,38 +183,31 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
     })
 
     describe('bounded lifetime', () => {
-        afterEach(() => {
-            jest.useRealTimers()
+        beforeEach(() => {
+            jest.useFakeTimers()
         })
 
         it('gives up on a send nobody ever answers', () => {
             begin()
-            // Sampled AFTER the entry is stamped, never before: `beginAssistantLineSend` reads its
-            // own `Date.now()`, so a clock that ticks in between makes every probe below one
-            // millisecond too early and the expiry looks like it did not happen.
-            const now = Date.now()
 
-            expect(
-                getPendingAssistantLineSend('project-1', null, now + ASSISTANT_PENDING_SEND_TIMEOUT_MS - 1)
-            ).toBeTruthy()
-            // A progress card nobody can clear is worse than no card at all.
-            expect(getPendingAssistantLineSend('project-1', null, now + ASSISTANT_PENDING_SEND_TIMEOUT_MS)).toBeNull()
+            jest.advanceTimersByTime(ASSISTANT_PENDING_SEND_TIMEOUT_MS - 1)
+            expect(getPendingAssistantLineSend('project-1')).toBeTruthy()
+
+            jest.advanceTimersByTime(1)
+            expect(getPendingAssistantLineSend('project-1')).toBeNull()
         })
 
         it('keeps a failure notice for seconds, not minutes', () => {
             const id = begin()
             failAssistantLineSend(id)
-            // After the stamp — see above. This one was observed failing for real.
-            const now = Date.now()
 
             expect(getPendingAssistantLineSend('project-1')).toMatchObject({ status: PENDING_SEND_FAILED })
-            expect(getPendingAssistantLineSend('project-1', null, now + ASSISTANT_FAILED_SEND_DISPLAY_MS)).toBeNull()
-            // ...and well before the wait timeout it inherited from.
+            jest.advanceTimersByTime(ASSISTANT_FAILED_SEND_DISPLAY_MS)
+            expect(getPendingAssistantLineSend('project-1')).toBeNull()
             expect(ASSISTANT_FAILED_SEND_DISPLAY_MS).toBeLessThan(ASSISTANT_PENDING_SEND_TIMEOUT_MS)
         })
 
         it('drops a failed send from the store rather than leaving it to be re-shown', () => {
-            jest.useFakeTimers()
             const id = begin()
             failAssistantLineSend(id)
 
@@ -294,7 +290,6 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
         act(() => jest.advanceTimersByTime(ASSISTANT_REPLY_HANDOFF_MS + 10))
         expect(tree.root.findByProps({ testID: 'chat-status' }).props.children).toBe('none')
         act(() => tree.unmount())
-        jest.useRealTimers()
     })
     /**
      * AT-2523 — the card became a door into the thread, and the popover it opens names the object
