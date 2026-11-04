@@ -82,12 +82,29 @@ jest.mock('../UIComponents/ModalShell/AppPopover', () => props => {
 jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => props => {
     const React = require('react')
     const RambleButton = require('../UIControls/RambleButton').default
+    // Stands in for the popup's own project switcher: a project picked in it lives in the popup's
+    // state only, so it is what a later opening must not carry over.
+    const [pickedProjectId, setPickedProjectId] = React.useState(null)
     React.useEffect(() => {
         mockPopupMounts += 1
     }, [])
     return React.createElement(
         'div',
-        { 'data-testid': 'create-task-popup' },
+        { 'data-testid': 'create-task-popup', 'data-project-id': pickedProjectId || props.initialProjectId },
+        React.createElement('button', {
+            'data-testid': 'pick-project',
+            onClick: event => {
+                event.stopPropagation()
+                setPickedProjectId('picked-project')
+            },
+        }),
+        React.createElement('button', {
+            'data-testid': 'close-popup',
+            onClick: event => {
+                event.stopPropagation()
+                props.closeModal()
+            },
+        }),
         React.createElement(RambleButton, {
             projectId: 'p1',
             onTextReady: jest.fn(),
@@ -155,6 +172,81 @@ afterEach(() => {
     window.removeEventListener('click', windowClick)
     advance(1000)
     jest.useRealTimers()
+})
+
+const popupProjectId = () => popup()?.getAttribute('data-project-id')
+const click = target => {
+    act(() => {
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+}
+const hold = () => {
+    dispatch(plus(), 'touchstart', { changedTouches: [{ identifier: 1, ...PRESS }] })
+    advance(PUSH_TO_TALK_HOLD_MS)
+}
+const releaseHold = () => {
+    advance(1500)
+    dispatch(window, 'touchend', { changedTouches: [{ identifier: 1, ...PRESS }] })
+}
+const tap = () => {
+    dispatch(plus(), 'touchstart', { changedTouches: [{ identifier: 1, ...PRESS }] })
+    advance(100)
+    dispatch(window, 'touchend', { changedTouches: [{ identifier: 1, ...PRESS }] })
+}
+
+describe('the project a hold opens the popup on', () => {
+    const getInitialProjectId = jest.fn(() => 'visible-project')
+    const renderWithHoldProject = () =>
+        render({ holdToDictate: true, holdToDictateProjectId: 'automatic', getInitialProjectId })
+
+    test('a hold opens on the hold project, not on the one a tap resolves', () => {
+        renderWithHoldProject()
+
+        hold()
+
+        expect(popupProjectId()).toBe('automatic')
+        expect(getInitialProjectId).not.toHaveBeenCalled()
+    })
+
+    test('a tap still resolves the project as before', () => {
+        renderWithHoldProject()
+
+        tap()
+
+        expect(popupProjectId()).toBe('visible-project')
+        expect(getInitialProjectId).toHaveBeenCalledTimes(1)
+    })
+
+    test('reopening by a hold after a project was picked manually starts on the hold project again', () => {
+        renderWithHoldProject()
+
+        hold()
+        releaseHold()
+        click(container.querySelector('[data-testid="pick-project"]'))
+        expect(popupProjectId()).toBe('picked-project')
+        click(container.querySelector('[data-testid="close-popup"]'))
+        expect(popup()).toBeFalsy()
+        advance(1000)
+
+        // A tap in between neither keeps the manual choice nor changes what the next hold opens on.
+        tap()
+        expect(popupProjectId()).toBe('visible-project')
+        click(container.querySelector('[data-testid="pick-project"]'))
+        click(container.querySelector('[data-testid="close-popup"]'))
+        advance(1000)
+
+        hold()
+        expect(popupProjectId()).toBe('automatic')
+        expect(mockPopupMounts).toBe(3)
+    })
+
+    test('without a hold project a hold resolves the project like a tap', () => {
+        render({ holdToDictate: true, getInitialProjectId })
+
+        hold()
+
+        expect(popupProjectId()).toBe('visible-project')
+    })
 })
 
 describe('holding the floating "+" (AT-2823)', () => {

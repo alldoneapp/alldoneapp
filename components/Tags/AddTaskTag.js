@@ -62,6 +62,10 @@ function AddTaskTag({
     // hold (release → transcribe → create the task), exactly as holding that mic would. A short
     // tap still just opens the popup. Only the board's floating "+" opts in.
     holdToDictate,
+    // The project a hold opens the popup on, instead of the one a tap would resolve. The floating
+    // "+" passes "Automatic" here: a hold creates the task straight from speech, before anybody
+    // looks at the switcher, so it must not inherit the selected or most visible project.
+    holdToDictateProjectId,
     openPopover,
     closePopover,
     isOpen,
@@ -98,19 +102,25 @@ function AddTaskTag({
 
     const handleOpen = useCallback(
         pushToTalkHandoff => {
+            // Only a real handoff object; `onPress` passes the press event here.
+            const handoff = pushToTalkHandoff?.claim ? pushToTalkHandoff : null
             // Resolve before opening: focusing the editor or locking the mobile scroller can change layout.
-            const initialProjectId = getInitialProjectId ? getInitialProjectId() : projectId
+            const initialProjectId =
+                handoff && holdToDictateProjectId
+                    ? holdToDictateProjectId
+                    : getInitialProjectId
+                      ? getInitialProjectId()
+                      : projectId
             setOpening(previous => ({
                 projectId: initialProjectId,
                 sequence: previous.sequence + 1,
-                // Only a real handoff object; `onPress` passes the press event here.
-                pushToTalkHandoff: pushToTalkHandoff?.claim ? pushToTalkHandoff : null,
+                pushToTalkHandoff: handoff,
             }))
             openPopover()
             popupLock.acquire()
             taskEditorLock.acquire()
         },
-        [getInitialProjectId, projectId, openPopover, popupLock, taskEditorLock]
+        [getInitialProjectId, holdToDictateProjectId, projectId, openPopover, popupLock, taskEditorLock]
     )
     const handleOpenRef = useRef(handleOpen)
     handleOpenRef.current = handleOpen
