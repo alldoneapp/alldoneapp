@@ -2,8 +2,14 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 jest.mock('react-redux', () => ({
-    useSelector: selector => selector({ activeModalInFeed: false, isMiddleScreen: false }),
+    useSelector: selector =>
+        selector({
+            activeModalInFeed: false,
+            isMiddleScreen: false,
+            currentUser: { uid: 'u1' },
+        }),
 }))
+jest.mock('../../../utils/backends/Feeds/wikiDayFeeds', () => ({ watchWikiDayFeeds: jest.fn() }))
 jest.mock('../../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     getKnowledgeRevisionTitle: jest.fn(),
 }))
@@ -28,6 +34,7 @@ jest.mock('../../../i18n/TranslationService', () => {
 })
 
 import WikiObject from './WikiObject'
+import { watchWikiDayFeeds } from '../../../utils/backends/Feeds/wikiDayFeeds'
 import { getKnowledgeRevisionTitle } from '../../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import { openProjectWiki, openProjectWikiChange } from '../../WikiView/wikiLinks'
 import { clearWikiFeedPageTitles, loadWikiFeedPageTitle } from '../FeedsTypes/useWikiFeedPageTitle'
@@ -69,6 +76,7 @@ async function mount(feeds = FEEDS) {
             <WikiObject
                 feedObjectData={{ object: { id: 'wiki', type: 'wiki' }, feeds }}
                 projectId="p1"
+                day="20261024"
                 feedActiveTab={1}
             />
         )
@@ -77,16 +85,88 @@ async function mount(feeds = FEEDS) {
     return component
 }
 
+const expand = component =>
+    act(async () => {
+        component.root.findByProps({ testID: 'wiki-digest-toggle' }).props.onPress()
+    })
+
 beforeEach(() => {
     jest.clearAllMocks()
     clearWikiFeedPageTitles()
+    watchWikiDayFeeds.mockImplementation((_project, _day, _user, _followed, onChange) => {
+        onChange([], true)
+        return () => {}
+    })
     getKnowledgeRevisionTitle.mockImplementation(async (projectId, slug) => (slug === 'kunden' ? 'Kunden' : null))
 })
 afterEach(() => act(() => mounted.splice(0).forEach(component => component.unmount())))
 
 describe('the wiki in the Updates feed', () => {
+    it('summarizes unique pages across the full day, including revisions outside the feed window', async () => {
+        const extra = [
+            feed('wiki_kunden_000003', { wikiSlug: 'kunden', wikiRevision: 3, wikiChange: 'updated' }),
+            feed('wiki_new_000001', { wikiSlug: 'new', wikiRevision: 1, wikiChange: 'created' }),
+            feed('wiki_new_000002', { wikiSlug: 'new', wikiRevision: 2, wikiChange: 'updated' }),
+            feed('wiki_old_000003', { wikiSlug: 'old', wikiRevision: 3, wikiChange: 'archived' }),
+        ]
+        watchWikiDayFeeds.mockImplementation((_project, _day, _user, _followed, onChange) => {
+            onChange([...extra, ...FEEDS], true)
+            return () => {}
+        })
+
+        const component = await mount([FEEDS[0]])
+
+        expect(watchWikiDayFeeds).toHaveBeenCalledWith(
+            'p1',
+            '20261024',
+            'u1',
+            false,
+            expect.any(Function),
+            expect.any(Function)
+        )
+        expect(textOf(component.root.findByProps({ testID: 'wiki-digest-summary' }).children)).toBe(
+            '1 new · 2 updated · 1 archived'
+        )
+        expect(textOf(component.root.findByProps({ testID: 'wiki-digest-page-kunden' }).children)).toContain(
+            'Member edit'
+        )
+        expect(component.root.findAllByProps({ testID: 'wiki-feed-wiki_kunden_000002' })).toHaveLength(0)
+        expect(getKnowledgeRevisionTitle).not.toHaveBeenCalledWith('p1', 'entscheidungen', 7)
+
+        act(() => component.root.findByProps({ testID: 'wiki-digest-page-kunden' }).props.onPress())
+        expect(openProjectWikiChange).toHaveBeenCalledWith('p1', 'kunden', 3)
+
+        await expand(component)
+        const rows = id =>
+            component.root.findAll(node => typeof node.type === 'string' && node.props['data-testid'] === id)
+        expect(rows('wiki-feed-wiki_kunden_000002')).toHaveLength(1)
+        expect(rows('wiki-feed-wiki_old_000003')).toHaveLength(1)
+    })
+
+    it('refreshes the digest in place and labels cached or failed day reads as partial', async () => {
+        const stop = jest.fn()
+        watchWikiDayFeeds.mockReturnValue(stop)
+        const component = await mount([FEEDS[0]])
+        const [, , , , deliver, fail] = watchWikiDayFeeds.mock.calls[0]
+        const summary = () => textOf(component.root.findByProps({ testID: 'wiki-digest-summary' }).children)
+
+        expect(summary()).toBe('1 updated')
+        await act(async () => deliver(FEEDS, false))
+        expect(summary()).toBe('2 updated')
+        expect(textOf(component.toJSON())).toContain('Showing available changes')
+        await act(async () => deliver(FEEDS, true))
+        expect(textOf(component.toJSON())).not.toContain('Showing available changes')
+        await act(async () => fail())
+        expect(summary()).toBe('1 updated')
+        expect(textOf(component.toJSON())).toContain('Showing available changes')
+
+        await act(async () => mounted.pop().unmount())
+        expect(stop).toHaveBeenCalledTimes(1)
+    })
+
     it('says who changed which page, with the title of that revision or its slug when none is left', async () => {
         const component = await mount()
+        await expand(component)
 
         expect(textOf(component.root.findByProps({ testID: 'wiki-feed-wiki_kunden_000002' }).children)).toContain(
             'Maria corrected the page “Kunden” · Show changes'
@@ -99,6 +179,7 @@ describe('the wiki in the Updates feed', () => {
 
     it('shows the member who made a change, and a book for the wiki’s own updates', async () => {
         const component = await mount()
+        await expand(component)
 
         expect(component.root.findAllByProps({ testID: 'left-header' }).map(node => textOf(node.children))).toEqual([
             'avatar',
@@ -108,6 +189,7 @@ describe('the wiki in the Updates feed', () => {
 
     it('opens what that revision changed from its line, and the wiki from the header', async () => {
         const component = await mount()
+        await expand(component)
 
         act(() => component.root.findByProps({ testID: 'wiki-feed-wiki_kunden_000002' }).props.onPress())
         expect(openProjectWikiChange).toHaveBeenCalledWith('p1', 'kunden', 2)

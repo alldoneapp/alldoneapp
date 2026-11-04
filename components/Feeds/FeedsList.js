@@ -131,6 +131,7 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                             key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
+                            day={date.format('YYYYMMDD')}
                             feedActiveTab={feedActiveTab}
                             style={style}
                         />
