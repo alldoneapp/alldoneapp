@@ -1,19 +1,126 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
-import { openProjectWiki } from '../../WikiView/wikiLinks'
+import {
+    getWikiFeedTarget,
+    WIKI_CHANGE_ARCHIVED,
+    WIKI_CHANGE_CORRECTED,
+    WIKI_CHANGE_CREATED,
+    WIKI_CHANGE_RESTORED,
+    WIKI_CHANGE_UPDATED,
+} from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
+import { watchWikiDayFeeds } from '../../../utils/backends/Feeds/wikiDayFeeds'
+import { openProjectWiki, openProjectWikiChange } from '../../WikiView/wikiLinks'
 import WikiPageChangedFeed from '../FeedsTypes/WikiPageChangedFeed'
+import useWikiFeedPageTitle from '../FeedsTypes/useWikiFeedPageTitle'
+import { FOLLOWED_TAB } from '../Utils/FeedsConstants'
+import NewFeedDot from '../FollowSwitchableTag/NewFeedDot'
 
-// The project wiki in the Updates feed: one card per day, one line per page revision (see
-// functions/KnowledgeBase/knowledgeWikiFeedModel.js). The header opens the wiki, a line opens the
-// change it stands for.
-export default function WikiObject({ feedObjectData, projectId, feedActiveTab, style }) {
+const PREVIEW_LIMIT = 3
+const COUNT_LABELS = {
+    [WIKI_CHANGE_CREATED]: 'Wiki digest count new',
+    [WIKI_CHANGE_UPDATED]: 'Wiki digest count updated',
+    [WIKI_CHANGE_ARCHIVED]: 'Wiki digest count archived',
+}
+const PAGE_LABELS = {
+    [WIKI_CHANGE_CREATED]: 'Wiki digest page new',
+    [WIKI_CHANGE_UPDATED]: 'Wiki digest page updated',
+    [WIKI_CHANGE_ARCHIVED]: 'Archived',
+}
+
+function groupChanges(feeds) {
+    const byPage = new Map()
+    for (const feed of feeds) {
+        const target = getWikiFeedTarget(feed)
+        if (!target) continue
+        if (!byPage.has(target.slug)) byPage.set(target.slug, [])
+        byPage.get(target.slug).push({ feed, ...target })
+    }
+
+    const pages = []
+    for (const [slug, changes] of byPage) {
+        changes.sort((a, b) => b.revision - a.revision)
+        const [latest] = changes
+        // Count each page once. A page created and edited today is still new, unless archived.
+        let status = WIKI_CHANGE_UPDATED
+        if (latest.change === WIKI_CHANGE_ARCHIVED) status = WIKI_CHANGE_ARCHIVED
+        else if (changes.some(change => change.change === WIKI_CHANGE_CREATED)) status = WIKI_CHANGE_CREATED
+        const memberEdit = changes.some(
+            change => change.change === WIKI_CHANGE_CORRECTED || change.change === WIKI_CHANGE_RESTORED
+        )
+        pages.push({ slug, latest, changes, status, memberEdit })
+    }
+    return pages.sort(
+        (a, b) =>
+            Number(b.memberEdit) - Number(a.memberEdit) || b.latest.feed.lastChangeDate - a.latest.feed.lastChangeDate
+    )
+}
+
+function WikiDigestPage({ page, projectId, disabled }) {
+    const { slug, latest, status, memberEdit } = page
+    const title = useWikiFeedPageTitle(projectId, slug, latest.revision)
+    return (
+        <TouchableOpacity
+            testID={`wiki-digest-page-${slug}`}
+            style={localStyles.page}
+            accessibilityRole="button"
+            accessibilityHint={translate('Show changes')}
+            disabled={disabled}
+            onPress={() => openProjectWikiChange(projectId, slug, latest.revision)}
+        >
+            <Text style={localStyles.pageTitle} numberOfLines={1}>
+                {title}
+            </Text>
+            <Text style={localStyles.meta}>{translate(PAGE_LABELS[status])}</Text>
+            {memberEdit && <Text style={localStyles.memberEdit}>{translate('Wiki digest member edit')}</Text>}
+        </TouchableOpacity>
+    )
+}
+
+// The Updates feed has one wiki card per project and display day. Summarize its changes first,
+// then show the original revision lines, grouped by page, when the card is expanded.
+export default function WikiObject({ feedObjectData, projectId, day, feedActiveTab, style }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const userId = useSelector(state => state.currentUser?.uid)
+    const [expanded, setExpanded] = useState(false)
+    const [daySnapshot, setDaySnapshot] = useState(null)
     const { feeds } = feedObjectData
+    const scope = `${projectId}/${day}/${userId}/${feedActiveTab}`
+
+    useEffect(
+        () =>
+            watchWikiDayFeeds(
+                projectId,
+                day,
+                userId,
+                feedActiveTab === FOLLOWED_TAB,
+                (entries, complete) => setDaySnapshot({ scope, entries, complete }),
+                () => setDaySnapshot({ scope, entries: [], complete: false })
+            ),
+        [projectId, day, userId, feedActiveTab, scope]
+    )
+
+    const snapshot = daySnapshot?.scope === scope ? daySnapshot : null
+    // Keep unread decorations (and any newly delivered entries awaiting the reader projection)
+    // from the feed list. Count each revision only once across the two sources.
+    const byId = new Map((snapshot?.entries || []).map(feed => [feed.id, feed]))
+    for (const feed of feeds) byId.set(feed.id, feed)
+    const pages = groupChanges(byId.values())
+    const hasUnreadChanges = feeds.some(feed => feed.showLikeNew)
+    if (!pages.length) return null
+
+    const counts = {}
+    for (const { status } of pages) counts[status] = (counts[status] || 0) + 1
+    const summary = Object.entries(COUNT_LABELS)
+        .filter(([status]) => counts[status])
+        .map(([status, label]) => translate(label, { count: counts[status] }))
+        .join(' · ')
+    const toggleLabel = expanded ? translate('Wiki digest hide revisions') : translate('Wiki digest show revisions')
 
     return (
         <View testID="wiki-feed-object" style={style}>
@@ -22,23 +129,56 @@ export default function WikiObject({ feedObjectData, projectId, feedActiveTab, s
                 style={localStyles.header}
                 onPress={() => openProjectWiki(projectId)}
                 disabled={activeModalInFeed}
-                accessible={false}
+                accessibilityRole="button"
+                accessibilityHint={translate('Open wiki')}
             >
+                {!expanded && hasUnreadChanges && (
+                    <NewFeedDot feedActiveTab={feedActiveTab} isMiddleScreen={isMiddleScreen} />
+                )}
                 <Icon name="book-open" color={colors.Text03} size={24} />
                 <Text style={localStyles.title} numberOfLines={1}>
                     {translate('Project wiki')}
                 </Text>
             </TouchableOpacity>
-            {feeds.map((feed, index) => (
-                <View key={feed.id} style={[localStyles.margin, index !== 0 ? localStyles.feed : null]}>
-                    <WikiPageChangedFeed
-                        feed={feed}
-                        projectId={projectId}
-                        showNewFeedDot={feed.showLikeNew}
-                        feedActiveTab={feedActiveTab}
-                    />
-                </View>
-            ))}
+            <View style={localStyles.digest}>
+                <Text testID="wiki-digest-summary" style={localStyles.summary}>
+                    {summary}
+                </Text>
+                {!snapshot?.complete && (
+                    <Text style={localStyles.meta}>{translate('Wiki digest showing available changes')}</Text>
+                )}
+                {(expanded ? pages : pages.slice(0, PREVIEW_LIMIT)).map(page => (
+                    <View key={page.slug} style={localStyles.group}>
+                        <WikiDigestPage
+                            key={page.latest.revision}
+                            page={page}
+                            projectId={projectId}
+                            disabled={activeModalInFeed}
+                        />
+                        {expanded &&
+                            page.changes.map(({ feed }) => (
+                                <WikiPageChangedFeed
+                                    key={feed.id}
+                                    feed={feed}
+                                    projectId={projectId}
+                                    showNewFeedDot={feed.showLikeNew}
+                                    feedActiveTab={feedActiveTab}
+                                />
+                            ))}
+                    </View>
+                ))}
+                <TouchableOpacity
+                    testID="wiki-digest-toggle"
+                    style={localStyles.toggle}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded }}
+                    disabled={activeModalInFeed}
+                    onPress={() => setExpanded(value => !value)}
+                >
+                    <Text style={localStyles.toggleText}>{toggleLabel}</Text>
+                    <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.Primary100} />
+                </TouchableOpacity>
+            </View>
         </View>
     )
 }
@@ -55,10 +195,45 @@ const localStyles = StyleSheet.create({
         paddingLeft: 12,
         flex: 1,
     },
-    feed: {
-        marginTop: 8,
+    digest: {
+        marginLeft: 36,
     },
-    margin: {
-        marginLeft: -16,
+    summary: {
+        ...styles.body2,
+        color: colors.Text02,
+    },
+    group: {
+        marginTop: 4,
+    },
+    page: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 8,
+        paddingVertical: 4,
+    },
+    pageTitle: {
+        ...styles.body2,
+        color: colors.Primary100,
+        flexShrink: 1,
+    },
+    meta: {
+        ...styles.body3,
+        color: colors.Text03,
+    },
+    memberEdit: {
+        ...styles.body3,
+        color: colors.Text02,
+    },
+    toggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 4,
+        paddingVertical: 8,
+    },
+    toggleText: {
+        ...styles.body2,
+        color: colors.Primary100,
     },
 })
