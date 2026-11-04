@@ -7,9 +7,12 @@ import { readEmbeddedToolWindow } from '../../../../utils/embeddedToolWindowUrl'
 jest.mock('./EmbeddedAppFrame', () => ({
     __esModule: true,
     default: ({ url, handoffRestore }) => (
-        <button data-url={url} onClick={() => handoffRestore?.onRestored(true)}>
-            Restore tool
-        </button>
+        <>
+            <button data-url={url} onClick={() => handoffRestore?.onRestored(true)}>
+                Restore tool
+            </button>
+            {handoffRestore && <button onClick={() => handoffRestore.onRestored(false)}>Fail restore</button>}
+        </>
     ),
 }))
 
@@ -90,6 +93,48 @@ describe('moving an embedded tool between signed-in tabs', () => {
         )
         expect(container.querySelector('button').dataset.url).toBe(location.split('?')[0])
         expect(instances).toHaveLength(channelCount)
+    })
+
+    it.each(['capture', 'restore'])(
+        'opens the saved tool page when %s fails and keeps the source open',
+        async failure => {
+            const storyUrl = 'https://alldone.team/connor-consultant/story-builder'
+            const storyPage = storyUrl + '/saved-story'
+            const onComplete = jest.fn()
+            const capture = jest.fn(async () => ({ url: storyPage, captured: failure === 'restore' }))
+            expect(openToolHandoff({ url: storyUrl, userId: 'owner', capture, onComplete })).toBe('pending')
+
+            window.history.replaceState(null, '', open.mock.calls[0][0])
+            const initial = readEmbeddedToolWindow()
+            await act(async () =>
+                root.render(<EmbeddedToolWindow id={initial.handoffId} url={initial.url} userId="owner" />)
+            )
+
+            if (failure === 'restore') act(() => container.querySelectorAll('button')[1].click())
+
+            const expectedUrl = failure === 'restore' ? storyPage : storyUrl
+            expect(container.querySelector('[data-url]').dataset.url).toBe(expectedUrl)
+            expect(container.querySelector('[role="status"]').textContent).toBe('embedded_tool_handoff_fallback')
+            expect(onComplete).toHaveBeenCalledTimes(1)
+            expect(onComplete).toHaveBeenCalledWith(false)
+            expect(readEmbeddedToolWindow()).toEqual({ url: expectedUrl, handoffId: null })
+        }
+    )
+
+    it('opens the tool after the handoff expires without a source tab', async () => {
+        const id = 'ab123456-1234-1234-1234-123456789abc'
+        window.history.replaceState(null, '', toolPath + '?toolHandoff=' + id)
+        const initial = readEmbeddedToolWindow()
+        await act(async () =>
+            root.render(<EmbeddedToolWindow id={initial.handoffId} url={initial.url} userId="owner" />)
+        )
+        expect(container.querySelector('[role="status"]').textContent).toBe('embedded_tool_handoff_loading')
+
+        await act(async () => jest.advanceTimersByTime(HANDOFF_TIMEOUT_MS))
+
+        expect(container.querySelector('[data-url]').dataset.url).toBe(initial.url)
+        expect(container.querySelector('[role="status"]').textContent).toBe('embedded_tool_handoff_fallback')
+        expect(window.location.search).toBe('')
     })
 
     it('keeps the source open if the browser blocks opening or a different account receives the URL', async () => {

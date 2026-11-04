@@ -67,8 +67,9 @@ export default function IframeModal() {
     const openInNewTab = () => {
         if (opening) return
         const captureCurrentView = capture.current
+        const currentUrl = reportedLocation.current || url
         const result = openToolHandoff({
-            url,
+            url: currentUrl,
             title: name,
             userId,
             capture: captureCurrentView,
@@ -82,7 +83,7 @@ export default function IframeModal() {
         if (result === 'pending') {
             setOpening(true)
             setOpenError(null)
-        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(reportedLocation.current || url)) {
+        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(currentUrl)) {
             closeModal()
         } else {
             setOpenError('embedded_app_popup_blocked')

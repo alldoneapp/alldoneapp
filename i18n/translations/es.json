@@ -93,6 +93,7 @@
     "Open app in new tab": "Abrir en una pestaña nueva",
     "embedded_tool_handoff_loading": "Abriendo la herramienta en esta pestaña…",
     "embedded_tool_handoff_failed": "No se pudo transferir la vista actual de la herramienta. Inténtalo de nuevo desde la pestaña original.",
+    "embedded_tool_handoff_fallback": "La herramienta se abrió con su estado guardado. Tu vista actual sigue en la pestaña original.",
     "embedded_app_popup_blocked": "Tu navegador bloqueó la pestaña nueva. Permite las ventanas emergentes para Alldone y vuelve a intentarlo.",
     "Back to chat": "Volver al chat",
     "VMs": "VMs",
