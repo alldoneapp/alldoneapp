@@ -104,6 +104,9 @@ export default function FloatingAddTaskButton() {
                 // AT-2823: press and hold → the popup opens straight into the title mic's
                 // push-to-talk hold; release creates the task from what was said.
                 holdToDictate={true}
+                // A hold always starts on "Automatic", in every board view and whatever project the
+                // previous popup ended on; a tap keeps resolving the project as before.
+                holdToDictateProjectId={AUTOMATIC_PROJECT_OPTION}
             />
         </View>
     )
