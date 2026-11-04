@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, Dimensions, TouchableOpacity } from 'react-native'
+import { readEmbeddedToolWindow } from '../../utils/embeddedToolWindowUrl'
 
 import Icon from '../Icon'
 import styles from '../styles/global'
@@ -66,6 +67,7 @@ export default function LoginScreenContent() {
 
     const writeBrowserURL = () => {
         const { pathname } = window.location
+        if (readEmbeddedToolWindow()) return
         if (!pathname.startsWith('/starttrial') && !pathname.startsWith('/paymentsuccess')) {
             URLSystem.push(URL_LOGIN)
         }

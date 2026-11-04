@@ -48,6 +48,8 @@ import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import AnnaShell from './components/Anna/AnnaShell'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 import { isAnnaMode } from './utils/annaMode'
+import { EmbeddedToolWindowScreen } from './components/UIComponents/FloatModals/IframeModal/EmbeddedToolWindow'
+import { EMBEDDED_TOOL_WINDOW_ROUTE } from './utils/embeddedToolWindowUrl'
 
 const getCurrentResponsiveLayout = width => {
     const { loggedUser, route } = store.getState()
@@ -221,6 +223,7 @@ const ROUTES = {
     Onboarding: { screen: OnboardingView, wrapped: true },
     WhatsAppOnboarding: { screen: WhatsAppOnboarding, wrapped: true },
     MeetingBooking: { screen: MeetingBookingPage, wrapped: false },
+    [EMBEDDED_TOOL_WINDOW_ROUTE]: { screen: EmbeddedToolWindowScreen, wrapped: false },
 }
 
 // Renders the single active screen from NavigationService's route store
@@ -336,6 +339,7 @@ export class AppContainer extends React.Component {
                 'AppAuth',
                 'PaymentSuccess',
                 'MeetingBooking',
+                EMBEDDED_TOOL_WINDOW_ROUTE,
             ].includes(routeName)
         ) {
             return (

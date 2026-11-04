@@ -15,6 +15,10 @@ import SettingsHelper from '../components/SettingsView/SettingsHelper'
 import TasksHelper from '../components/TaskListView/Utils/TasksHelper'
 import { inProductionEnvironment } from '../utils/backends/firestore'
 
+import store from '../redux/store'
+import { setNavigationRoute } from '../redux/actions'
+import { EMBEDDED_TOOL_WINDOW_ROUTE, readEmbeddedToolWindow } from '../utils/embeddedToolWindowUrl'
+
 export const URL_NOT_MATCH = 'NOT_MATCH'
 
 class URLSystemTrigger {
@@ -39,6 +43,9 @@ class URLSystemTrigger {
     }
 
     static match = pathname => {
+        const toolWindow = readEmbeddedToolWindow(pathname)
+        if (toolWindow) return { key: EMBEDDED_TOOL_WINDOW_ROUTE, matches: { groups: toolWindow } }
+
         const regexList = URLSystemTrigger.getRegexList()
 
         for (let key in regexList) {
@@ -58,6 +65,9 @@ class URLSystemTrigger {
 
         // This Switch will have CASEs as elements have the "regexList" const
         switch (matchedObj.key) {
+            case EMBEDDED_TOOL_WINDOW_ROUTE:
+                store.dispatch(setNavigationRoute(EMBEDDED_TOOL_WINDOW_ROUTE))
+                return navigation.navigate(EMBEDDED_TOOL_WINDOW_ROUTE, params)
             case URL_FEEDS_FOLLOWED:
                 return SettingsHelper.processURLFeeds(navigation, URL_FEEDS_FOLLOWED)
             case URL_FEEDS_NOT_FOLLOWED:
