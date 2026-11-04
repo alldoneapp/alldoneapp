@@ -1,17 +1,10 @@
 import { openEmbeddedAppInNewTab, resolveReportedLocation } from './embeddedAppLocation'
+import { buildEmbeddedToolWindowUrl, TEAM_ORIGIN } from '../../../../utils/embeddedToolWindowUrl'
 
-export const TEAM_ORIGIN = 'https://alldone.team'
+export { TEAM_ORIGIN }
 export const HANDOFF_TIMEOUT_MS = 30_000
-const HOST_PARAM = 'toolHandoff'
 const FRAME_PARAM = 'alldoneHandoff'
 const CHANNEL_PREFIX = 'alldone-tool-handoff:'
-const isHandoffId = value => /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value || '')
-
-export const readToolHandoffId = () => {
-    const id = new URLSearchParams(window.location.search).get(HOST_PARAM)
-    return isHandoffId(id) ? id : null
-}
-
 export const createHandoffChannel = id => new BroadcastChannel(CHANNEL_PREFIX + id)
 
 export const buildHandoffFrameUrl = (url, id) => {
@@ -20,26 +13,16 @@ export const buildHandoffFrameUrl = (url, id) => {
     return target.href
 }
 
-const hostUrl = id => {
-    const url = new URL('/', window.location.origin)
-    url.searchParams.set(HOST_PARAM, id)
-    return url.href
-}
-
 // Open synchronously on the click. The destination only receives the checkpoint after it has
 // signed in as the source user, and the original frame stays open until the destination restores it.
 export const openToolHandoff = ({ url, title, userId, capture, onComplete }) => {
-    if (
-        !resolveReportedLocation(url, TEAM_ORIGIN) ||
-        !capture ||
-        !userId ||
-        typeof BroadcastChannel !== 'function' ||
-        !window.crypto?.randomUUID
-    ) {
+    if (!capture || !userId || typeof BroadcastChannel !== 'function' || !window.crypto?.randomUUID) {
         return 'unsupported'
     }
 
     const id = window.crypto.randomUUID()
+    const destination = buildEmbeddedToolWindowUrl(url, id)
+    if (!destination) return 'unsupported'
     let channel
     try {
         channel = createHandoffChannel(id)
@@ -47,7 +30,7 @@ export const openToolHandoff = ({ url, title, userId, capture, onComplete }) => 
         return 'unsupported'
     }
 
-    if (!openEmbeddedAppInNewTab(hostUrl(id))) {
+    if (!openEmbeddedAppInNewTab(destination)) {
         channel.close()
         return 'blocked'
     }

@@ -1,5 +1,6 @@
 import momentTz from 'moment-timezone'
 import moment from 'moment-timezone'
+import { readEmbeddedToolWindow } from '../embeddedToolWindowUrl'
 
 import store from '../../redux/store'
 import { fetchUserDataResult, updateUserDataDirectly } from '../backends/Users/usersFirestore'
@@ -261,7 +262,9 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
  */
 function getInitialRoutingUrl() {
     const { initialUrl } = store.getState()
-    return initialUrl && initialUrl !== '/' ? initialUrl : window.location.pathname
+    if (initialUrl && initialUrl !== '/') return initialUrl
+    const { pathname, search } = window.location
+    return readEmbeddedToolWindow(pathname + search) ? pathname + search : pathname
 }
 
 async function loadInitialData() {

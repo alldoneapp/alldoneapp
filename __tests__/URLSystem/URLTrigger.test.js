@@ -20,6 +20,18 @@ describe('URLTrigger class', () => {
         ).toBe('/projects/p1/notes/n1/editor?autoStartTranscription=true')
     })
 
+    it.each([
+        [
+            '/tools/alldone-team/paul-product-manager/create-roadmap',
+            'https://alldone.team/paul-product-manager/create-roadmap',
+        ],
+        ['/tools/alldone-team/lenny-linkedin/content-planner', 'https://alldone.team/lenny-linkedin/content-planner'],
+    ])('navigates to the standalone tool identified by %s', (path, url) => {
+        const navigation = { navigate: jest.fn() }
+        URLTrigger.directProcessUrl(navigation, path)
+        expect(navigation.navigate).toHaveBeenCalledWith('EmbeddedToolWindow', { url, handoffId: null })
+    })
+
     describe('Function processUrl', () => {
         it('should not match undefined route', () => {
             NavigationService.setTopLevelNavigator({ dispatch: () => {} })

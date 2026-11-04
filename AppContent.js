@@ -32,8 +32,7 @@ import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
 import BrowserAgentApiBridge from './components/BrowserAgent/BrowserAgentApiBridge'
-import EmbeddedToolWindow from './components/UIComponents/FloatModals/IframeModal/EmbeddedToolWindow'
-import { readToolHandoffId } from './components/UIComponents/FloatModals/IframeModal/embeddedToolHandoff'
+import { EMBEDDED_TOOL_WINDOW_ROUTE } from './utils/embeddedToolWindowUrl'
 import { processNewUser } from './utils/InitialLoad/newUserHelper'
 import { loadGlobalDataAndGetUserResult, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
 import { LOGIN_FAILURE_ACTIONS, describeLoginError, resolveLoginFailureAction } from './utils/Auth/authErrorHelper'
@@ -90,7 +89,6 @@ export default function AppContent() {
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [publicPageUrl] = useState(resolvePublicPageUrl)
-    const [toolHandoffId, setToolHandoffId] = useState(readToolHandoffId)
     const [connectingMessage] = useState(() => getConnectingMessage())
     const initialTaskDataPublished = useInitialTaskDataPublished()
     const deferredStartupWorkReady = useDeferredStartupWork({ enabled: loggedIn && processedInitialURL })
@@ -442,24 +440,19 @@ export default function AppContent() {
         })
     }, [deferredStartupWorkReady, initialTaskDataPublished, loggedIn, processedInitialURL])
 
-    if (toolHandoffId && loggedIn && loggedUserId) {
-        return (
-            <EmbeddedToolWindow
-                key={`${toolHandoffId}:${loggedUserId}`}
-                id={toolHandoffId}
-                userId={loggedUserId}
-                onNavigateAway={() => setToolHandoffId(null)}
-            />
-        )
-    }
+    const standaloneTool = navigationRoute === EMBEDDED_TOOL_WINDOW_ROUTE && loggedIn
 
     return (
         <>
-            <WorkspaceOverlayLayer>
-                <AnalyticsConsentManager />
-            </WorkspaceOverlayLayer>
-            {/* Every state: a stub while loading/signed out, the tools once signed in (AT-2890). */}
-            <BrowserAgentApiBridge sessionReady={!!(loggedIn && processedInitialURL)} />
+            {!standaloneTool && (
+                <>
+                    <WorkspaceOverlayLayer>
+                        <AnalyticsConsentManager />
+                    </WorkspaceOverlayLayer>
+                    {/* A stub while loading/signed out, the tools once signed in (AT-2890). */}
+                    <BrowserAgentApiBridge sessionReady={!!(loggedIn && processedInitialURL)} />
+                </>
+            )}
             {loggedIn === null && !publicPageUrl ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
@@ -468,7 +461,7 @@ export default function AppContent() {
                 )
             ) : (
                 <>
-                    {loggedIn && processedInitialURL && (
+                    {loggedIn && processedInitialURL && !standaloneTool && (
                         <>
                             <GlobalModalsContainerApp />
                             <WorkspaceOverlayLayer>

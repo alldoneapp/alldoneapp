@@ -2,11 +2,12 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import EmbeddedToolWindow from './EmbeddedToolWindow'
 import { createHandoffChannel, HANDOFF_TIMEOUT_MS, openToolHandoff } from './embeddedToolHandoff'
+import { readEmbeddedToolWindow } from '../../../../utils/embeddedToolWindowUrl'
 
 jest.mock('./EmbeddedAppFrame', () => ({
     __esModule: true,
     default: ({ url, handoffRestore }) => (
-        <button data-url={url} onClick={() => handoffRestore.onRestored(true)}>
+        <button data-url={url} onClick={() => handoffRestore?.onRestored(true)}>
             Restore tool
         </button>
     ),
@@ -15,6 +16,7 @@ jest.mock('./EmbeddedAppFrame', () => ({
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 
 const location = 'https://alldone.team/paul-product-manager/create-roadmap?month=10#view'
+const toolPath = '/tools/alldone-team/paul-product-manager/create-roadmap'
 
 describe('moving an embedded tool between signed-in tabs', () => {
     const instances = []
@@ -52,9 +54,10 @@ describe('moving an embedded tool between signed-in tabs', () => {
         instances.length = 0
         jest.restoreAllMocks()
         jest.useRealTimers()
+        window.history.replaceState(null, '', '/')
     })
 
-    it('opens on the click, keeps data out of the URL and waits until the destination restores it', async () => {
+    it('hands off the current view and leaves a durable tool address that can load on its own', async () => {
         const onComplete = jest.fn()
         const capture = jest.fn(async () => ({ url: location, captured: true }))
         expect(openToolHandoff({ url: location, title: 'Roadmap', userId: 'owner', capture, onComplete })).toBe(
@@ -63,15 +66,30 @@ describe('moving an embedded tool between signed-in tabs', () => {
         const target = new URL(open.mock.calls[0][0])
         const id = target.searchParams.get('toolHandoff')
         expect(id).toBeTruthy()
-        expect(target.href).not.toContain('roadmap')
-        expect(target.href).not.toContain('October')
+        expect(target.pathname).toBe(toolPath)
+        expect([...target.searchParams.keys()]).toEqual(['toolHandoff'])
+        expect(target.hash).toBe('')
 
-        await act(async () => root.render(<EmbeddedToolWindow id={id} userId="owner" />))
+        window.history.replaceState(null, '', target)
+        const initial = readEmbeddedToolWindow()
+        await act(async () =>
+            root.render(<EmbeddedToolWindow id={initial.handoffId} url={initial.url} userId="owner" />)
+        )
         expect(container.textContent).toContain('Restore tool')
         expect(container.querySelector('button').dataset.url).toContain(`month=10&alldoneHandoff=${id}#view`)
         expect(onComplete).not.toHaveBeenCalled()
         act(() => container.querySelector('button').click())
         expect(onComplete).toHaveBeenCalledWith(true)
+        expect(window.location.pathname).toBe(toolPath)
+        expect(window.location.search).toBe('')
+
+        const reopened = readEmbeddedToolWindow()
+        const channelCount = instances.length
+        await act(async () =>
+            root.render(<EmbeddedToolWindow key="reloaded" id={reopened.handoffId} url={reopened.url} userId="owner" />)
+        )
+        expect(container.querySelector('button').dataset.url).toBe(location.split('?')[0])
+        expect(instances).toHaveLength(channelCount)
     })
 
     it('keeps the source open if the browser blocks opening or a different account receives the URL', async () => {
