@@ -46,6 +46,7 @@ import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
 import { openEmbeddedAppInNewTab } from '../UIComponents/FloatModals/IframeModal/embeddedAppLocation'
+import { openToolHandoff } from '../UIComponents/FloatModals/IframeModal/embeddedToolHandoff'
 import { openInEmbedWindow, registerAnnaAppPane } from './annaAppPaneBridge'
 
 // App views kept open in the right pane; the oldest closes when another opens. Two kinds: MCP Apps
@@ -222,6 +223,8 @@ export default function AnnaShell({ children, routeId }) {
     const selectedAppView = appViews.find(view => view.viewId === selectedAppViewId) || null
     // The page each embedded web app last reported (EMBED_LOCATION, AT-2954), by view id.
     const appLocations = useRef({})
+    const appCaptures = useRef({})
+    const [pendingAppHandoffs, setPendingAppHandoffs] = useState(() => new Set())
     // The app on screen in the pane, handed back to its embed window when assistant mode is left.
     const appOnExit = useRef(null)
     const vmSurface = surface === 'vms' || !!selectedVmId
@@ -331,6 +334,11 @@ export default function AnnaShell({ children, routeId }) {
         requestGeneration.current++
         setSurface('alldone')
     }, [])
+    const removeTransferredAppView = viewId => {
+        delete appLocations.current[viewId]
+        closeAppView(viewId)
+        setAppViews(current => current.filter(item => item.viewId !== viewId))
+    }
     const appPane = useMemo(
         () => ({ open: openAppView, selectedViewId: selectedAppViewId }),
         [openAppView, selectedAppViewId]
@@ -363,15 +371,34 @@ export default function AnnaShell({ children, routeId }) {
     const openSelectedAppInNewTab = () => {
         const view = selectedAppView
         if (view?.kind !== 'iframe') return
-        if (!openEmbeddedAppInNewTab(appLocations.current[view.viewId] || view.url)) {
+        const { viewId } = view
+        if (pendingAppHandoffs.has(viewId)) return
+        const capture = appCaptures.current[viewId]
+        const result = openToolHandoff({
+            url: view.url,
+            title: appViewLabel(view),
+            userId: user.uid,
+            capture,
+            onComplete: success => {
+                setPendingAppHandoffs(current => {
+                    const next = new Set(current)
+                    next.delete(viewId)
+                    return next
+                })
+                if (appCaptures.current[viewId] !== capture) return
+                if (success) removeTransferredAppView(viewId)
+                else setNavigationError(translate('embedded_tool_handoff_failed'))
+            },
+        })
+        if (result === 'pending') {
+            setPendingAppHandoffs(current => new Set(current).add(viewId))
+            setNavigationError('')
+        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(appLocations.current[viewId] || view.url)) {
+            setNavigationError('')
+            removeTransferredAppView(viewId)
+        } else {
             setNavigationError(translate('embedded_app_popup_blocked'))
-            return
         }
-        delete appLocations.current[view.viewId]
-        setNavigationError('')
-        requestGeneration.current++
-        setSurface('alldone')
-        setAppViews(current => current.filter(item => item.viewId !== view.viewId))
     }
     const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
@@ -1254,7 +1281,12 @@ export default function AnnaShell({ children, routeId }) {
                                             url={view.url}
                                             contextId={view.viewId}
                                             title={appViewLabel(view)}
+                                            suspended={pendingAppHandoffs.has(view.viewId)}
                                             onNavigateAway={() => closeAppView(view.viewId)}
+                                            onHandoffReady={handler => {
+                                                if (handler) appCaptures.current[view.viewId] = handler
+                                                else delete appCaptures.current[view.viewId]
+                                            }}
                                             onLocationChange={location => {
                                                 appLocations.current[view.viewId] = location
                                             }}

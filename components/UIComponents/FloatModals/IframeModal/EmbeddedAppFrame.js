@@ -4,6 +4,7 @@ import NavigationService from '../../../../utils/NavigationService'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import { clearAppModelContext, setAppModelContext } from '../../../../utils/annaAppModelContext'
 import { EMBED_LOCATION_MESSAGE_TYPE, resolveReportedLocation } from './embeddedAppLocation'
+import { TEAM_ORIGIN } from './embeddedToolHandoff'
 
 // Required lazily: the frame is also hosted by the assistant shell (AnnaShell), and a static import
 // of the roadmap bridge and the Firebase client would pull the Firestore mapping chain into
@@ -35,11 +36,14 @@ const IFRAME_MESSAGE_TYPES = new Set([
     'REFUND_GOLD',
     'APP_CONTEXT',
     EMBED_LOCATION_MESSAGE_TYPE,
+    'EMBED_HANDOFF_READY',
+    'EMBED_HANDOFF_CAPTURED',
+    'EMBED_HANDOFF_RESTORE_REQUEST',
+    'EMBED_HANDOFF_RESTORED',
     ...ROADMAP_MESSAGE_TYPES,
 ])
 // alldone.team pages exchange this token for a session as the person's linked account and are then
 // billed per action on the server (functions/index.js getAlldoneTeamEmbedTokenSecondGen).
-const ALLDONE_TEAM_ORIGIN = 'https://alldone.team'
 const getAlldoneTeamEmbedToken = async () => {
     try {
         const result = await runHttpsCallableFunction('getAlldoneTeamEmbedTokenSecondGen', {})
@@ -78,7 +82,16 @@ const isRoadmapUrl = url => {
  * checked to be on the frame's own origin. A cross-origin frame cannot be observed otherwise, so an
  * app that never reports leaves its host with the start URL.
  */
-export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocationChange, contextId = null }) {
+export default function EmbeddedAppFrame({
+    url,
+    title,
+    onNavigateAway,
+    onLocationChange,
+    onHandoffReady,
+    handoffRestore,
+    suspended = false,
+    contextId = null,
+}) {
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const iframeRef = useRef(null)
@@ -97,12 +110,18 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocatio
     onNavigateAwayRef.current = onNavigateAway
     const onLocationChangeRef = useRef(onLocationChange)
     onLocationChangeRef.current = onLocationChange
+    const onHandoffReadyRef = useRef(onHandoffReady)
+    onHandoffReadyRef.current = onHandoffReady
+    const handoffRestoreRef = useRef(handoffRestore)
+    handoffRestoreRef.current = handoffRestore
 
     useEffect(() => {
         if (!finalUrl) return
 
         let trustedOrigin = null
         let unsubscribeRoadmapProject = null
+        let pendingCapture = null
+        let restored = false
         // Set once an alldone.team page has signed in as the person: its server bills every action in
         // Gold, so the page's own DEDUCT_GOLD / REFUND_GOLD are acknowledged here, never charged twice.
         let serverBilled = false
@@ -138,6 +157,34 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocatio
             }
 
             const { type, amount } = event.data
+
+            if (type.startsWith('EMBED_HANDOFF_')) {
+                if (event.origin !== TEAM_ORIGIN) return
+                const { id } = event.data
+                const restore = handoffRestoreRef.current
+                if (type === 'EMBED_HANDOFF_READY' && !restore) {
+                    onHandoffReadyRef.current?.(
+                        captureId =>
+                            new Promise(resolve => {
+                                pendingCapture?.resolve(null)
+                                pendingCapture = { id: captureId, resolve }
+                                event.source.postMessage({ type: 'EMBED_HANDOFF_CAPTURE', id: captureId }, event.origin)
+                            })
+                    )
+                } else if (type === 'EMBED_HANDOFF_CAPTURED' && id === pendingCapture?.id) {
+                    const { resolve } = pendingCapture
+                    pendingCapture = null
+                    resolve(event.data)
+                } else if (restore && id === restore.id && !restored) {
+                    if (type === 'EMBED_HANDOFF_RESTORE_REQUEST') {
+                        event.source.postMessage({ type: 'EMBED_HANDOFF_RESTORE', id }, event.origin)
+                    } else if (type === 'EMBED_HANDOFF_RESTORED') {
+                        restored = true
+                        restore.onRestored(event.data.success === true)
+                    }
+                }
+                return
+            }
 
             if (type === 'APP_CONTEXT') {
                 if (contextId) setAppModelContext(contextId, event.data.context)
@@ -237,15 +284,15 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocatio
                         name: loggedUserRef.current?.userName || loggedUserRef.current?.name,
                         gold: loggedUserRef.current?.gold || 0,
                     },
-                    alldoneToken: event.origin === ALLDONE_TEAM_ORIGIN ? await getAlldoneTeamEmbedToken() : null,
+                    alldoneToken: event.origin === TEAM_ORIGIN ? await getAlldoneTeamEmbedToken() : null,
                 })
             }
 
-            if (type === 'GET_ALLDONE_TOKEN' && event.origin === ALLDONE_TEAM_ORIGIN) {
+            if (type === 'GET_ALLDONE_TOKEN' && event.origin === TEAM_ORIGIN) {
                 postResult({ type: 'ALLDONE_TOKEN', alldoneToken: await getAlldoneTeamEmbedToken() })
             }
 
-            if (type === 'ALLDONE_SERVER_BILLING' && event.origin === ALLDONE_TEAM_ORIGIN) {
+            if (type === 'ALLDONE_SERVER_BILLING' && event.origin === TEAM_ORIGIN) {
                 serverBilled = true
                 return
             }
@@ -343,6 +390,8 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocatio
         window.addEventListener('message', handleMessage)
         return () => {
             window.removeEventListener('message', handleMessage)
+            pendingCapture?.resolve(null)
+            onHandoffReadyRef.current?.(null)
             unsubscribeRoadmapProject?.()
             if (contextId) clearAppModelContext(contextId)
         }
@@ -372,6 +421,7 @@ export default function EmbeddedAppFrame({ url, title, onNavigateAway, onLocatio
         <iframe
             ref={iframeRef}
             src={finalUrl}
+            inert={suspended ? '' : undefined}
             style={{
                 width: '100%',
                 height: '100%',

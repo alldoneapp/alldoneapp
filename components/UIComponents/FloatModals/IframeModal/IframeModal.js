@@ -10,6 +10,7 @@ import useWindowSize from '../../../../utils/useWindowSize'
 import EmbeddedAppFrame from './EmbeddedAppFrame'
 import OpenEmbeddedAppInNewTabButton from './OpenEmbeddedAppInNewTabButton'
 import { openEmbeddedAppInNewTab } from './embeddedAppLocation'
+import { openToolHandoff } from './embeddedToolHandoff'
 import { translate } from '../../../../i18n/TranslationService'
 import { embedWindowStyles, getEmbedWindowGap, isEmbedWindowFullscreen, useBackdropDismiss } from './embedWindowLayout'
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
@@ -43,16 +44,20 @@ export default function IframeModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding(getEmbedWindowGap(fullscreen))
     const dispatch = useDispatch()
     const iframeModalData = useSelector(state => state.iframeModalData)
+    const userId = useSelector(state => state.loggedUser?.uid)
     const { visible, url, name } = iframeModalData
     const paneState = useAnnaAppPaneState()
     const inAssistantMode = paneState === 'active'
 
     // The page the app last reported; reset whenever another app (or the same one again) opens.
     const reportedLocation = useRef(null)
-    const [popupBlocked, setPopupBlocked] = useState(false)
+    const capture = useRef(null)
+    const [opening, setOpening] = useState(false)
+    const [openError, setOpenError] = useState(null)
     useEffect(() => {
         reportedLocation.current = null
-        setPopupBlocked(false)
+        setOpening(false)
+        setOpenError(null)
     }, [visible, url])
 
     const closeModal = () => {
@@ -60,8 +65,28 @@ export default function IframeModal() {
     }
 
     const openInNewTab = () => {
-        if (openEmbeddedAppInNewTab(reportedLocation.current || url)) closeModal()
-        else setPopupBlocked(true)
+        if (opening) return
+        const captureCurrentView = capture.current
+        const result = openToolHandoff({
+            url,
+            title: name,
+            userId,
+            capture: captureCurrentView,
+            onComplete: success => {
+                if (capture.current !== captureCurrentView) return
+                setOpening(false)
+                if (success) closeModal()
+                else setOpenError('embedded_tool_handoff_failed')
+            },
+        })
+        if (result === 'pending') {
+            setOpening(true)
+            setOpenError(null)
+        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(reportedLocation.current || url)) {
+            closeModal()
+        } else {
+            setOpenError('embedded_app_popup_blocked')
+        }
     }
 
     // Escape, the X and (AT-2953, product decision) a click on the backdrop next to the window. The
@@ -118,9 +143,9 @@ export default function IframeModal() {
                         </Text>
                     </View>
                     <View style={localStyles.headerRight}>
-                        {popupBlocked && (
+                        {openError && (
                             <Text style={localStyles.popupBlocked} accessibilityRole="alert" numberOfLines={2}>
-                                {translate('embedded_app_popup_blocked')}
+                                {translate(openError)}
                             </Text>
                         )}
                         <OpenEmbeddedAppInNewTabButton
@@ -142,7 +167,11 @@ export default function IframeModal() {
                     <EmbeddedAppFrame
                         url={url}
                         title={name}
+                        suspended={opening}
                         onNavigateAway={closeModal}
+                        onHandoffReady={handler => {
+                            capture.current = handler
+                        }}
                         onLocationChange={location => {
                             reportedLocation.current = location
                         }}

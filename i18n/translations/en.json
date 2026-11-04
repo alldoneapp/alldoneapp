@@ -91,6 +91,8 @@
     "Show workspace": "Show workspace",
     "Open app in assistant mode": "Open in assistant mode",
     "Open app in new tab": "Open in new tab",
+    "embedded_tool_handoff_loading": "Opening your tool in this tab…",
+    "embedded_tool_handoff_failed": "The tool’s current view could not be transferred. Try again from the original tab.",
     "embedded_app_popup_blocked": "Your browser blocked the new tab. Allow pop-ups for Alldone and try again.",
     "Back to chat": "Back to chat",
     "VMs": "VMs",
