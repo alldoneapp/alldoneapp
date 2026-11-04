@@ -374,8 +374,9 @@ export default function AnnaShell({ children, routeId }) {
         const { viewId } = view
         if (pendingAppHandoffs.has(viewId)) return
         const capture = appCaptures.current[viewId]
+        const currentUrl = appLocations.current[viewId] || view.url
         const result = openToolHandoff({
-            url: view.url,
+            url: currentUrl,
             title: appViewLabel(view),
             userId: user.uid,
             capture,
@@ -393,7 +394,7 @@ export default function AnnaShell({ children, routeId }) {
         if (result === 'pending') {
             setPendingAppHandoffs(current => new Set(current).add(viewId))
             setNavigationError('')
-        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(appLocations.current[viewId] || view.url)) {
+        } else if (result === 'unsupported' && openEmbeddedAppInNewTab(currentUrl)) {
             setNavigationError('')
             removeTransferredAppView(viewId)
         } else {

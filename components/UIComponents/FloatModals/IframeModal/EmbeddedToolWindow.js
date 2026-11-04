@@ -69,15 +69,24 @@ export default function EmbeddedToolWindow({ id, url, userId }) {
         if (!id || checkpoint || failed) showToolAddress(toolUrl)
     }, [id, checkpoint, failed, toolUrl])
 
-    if (failed) return <p role="alert">{translate('embedded_tool_handoff_failed')}</p>
-    if (!toolUrl || (id && !checkpoint)) return <p role="status">{translate('embedded_tool_handoff_loading')}</p>
+    if (failed && !toolUrl) return <p role="alert">{translate('embedded_tool_handoff_failed')}</p>
+    if (!toolUrl || (id && !checkpoint && !failed)) {
+        return <p role="status">{translate('embedded_tool_handoff_loading')}</p>
+    }
+
+    const restoring = checkpoint && !failed
     return (
-        <div style={{ display: 'flex', position: 'fixed', inset: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', position: 'fixed', inset: 0 }}>
+            {failed && (
+                <p role="status" style={{ margin: 0, padding: '8px 16px', background: '#f4f6f8' }}>
+                    {translate('embedded_tool_handoff_fallback')}
+                </p>
+            )}
             <EmbeddedAppFrame
-                url={checkpoint ? buildHandoffFrameUrl(toolUrl, id) : toolUrl}
+                url={restoring ? buildHandoffFrameUrl(toolUrl, id) : toolUrl}
                 title={checkpoint?.title}
                 onLocationChange={showToolAddress}
-                handoffRestore={checkpoint ? { id, onRestored: checkpoint.finish } : undefined}
+                handoffRestore={restoring ? { id, onRestored: checkpoint.finish } : undefined}
             />
         </div>
     )
