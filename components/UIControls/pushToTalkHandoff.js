@@ -36,6 +36,7 @@ export function createPushToTalkHandoff({ origin = null } = {}) {
     let lastMove = null
     let pendingEnd = null
     let ended = false
+    let backgroundSubmit = null
 
     return {
         origin: origin ? { clientX: origin.clientX, clientY: origin.clientY } : null,
@@ -45,6 +46,20 @@ export function createPushToTalkHandoff({ origin = null } = {}) {
 
         /** The most recent travel reported so far, or `null`. */
         getLastMove: () => lastMove,
+
+        /**
+         * PT-5424: the host that opened the receiving input (the add-task popup) registers here how
+         * a dictated text is turned into its result WITHOUT the input — the opener closes the popup
+         * the moment the hold is released, so the transcript can no longer be typed into it and
+         * submitted through Enter. The receiving mic hands its take to this function instead.
+         * Re-registered on every render, so the latest host state wins.
+         */
+        setBackgroundSubmit(submit) {
+            backgroundSubmit = typeof submit === 'function' ? submit : null
+        },
+
+        /** The background submit registered by the host, or `null`. */
+        getBackgroundSubmit: () => backgroundSubmit,
 
         /**
          * Take the hold over. Returns a function that stops listening (for unmount), or `null` when

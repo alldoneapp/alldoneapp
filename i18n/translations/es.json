@@ -2546,6 +2546,7 @@
     "Release to cancel": "Suelta para cancelar",
     "No speech detected": "No se detectó voz",
     "Could not process dictation": "No se pudo procesar el dictado",
+    "Task could not be created": "No se pudo crear la tarea",
     "Microphone access was denied. Please allow microphone access in your browser settings.": "Se denegó el acceso al micrófono. Por favor, permite el acceso al micrófono en la configuración de tu navegador.",
     "Dictation microphone": "Micrófono de dictado",
     "Standard (noise suppression on)": "Estándar (supresión de ruido activada)",

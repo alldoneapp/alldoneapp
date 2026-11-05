@@ -78,6 +78,8 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const deviceLabelRef = useRef('')
     const triedDevicesRef = useRef([])
     const releaseWakeLockRef = useRef(null)
+    // PT-5424: a take stopped with `{ detach: true }` is still delivered after its host unmounts.
+    const detachedRef = useRef(false)
 
     const onCompleteRef = useRef(onComplete)
     onCompleteRef.current = onComplete
@@ -138,7 +140,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
      * @returns {boolean} whether a recording will actually be delivered to `onComplete`.
      */
     const stop = useCallback((options = {}) => {
-        const { minDurationMs = 0 } = options
+        const { minDurationMs = 0, detach = false } = options
         // Released before the microphone ever opened: there is no audio, so this is a discard, not
         // a stop. Silent on purpose — the user held the button briefly and nothing happened.
         if (abortPendingStart()) return false
@@ -153,6 +155,11 @@ export default function useRambleRecorder({ onComplete, onError }) {
         }
         releaseWakeLockRef.current?.()
         releaseWakeLockRef.current = null
+        // `detach`: the caller is about to unmount this recorder (the add-task popup closes as soon
+        // as a hold on the floating "+" is released, PT-5424) but still wants the take. The final
+        // chunk and `onstop` arrive asynchronously, after that unmount, so the unmount cleanup
+        // below must leave this take alone and let `onstop` deliver and clean up as usual.
+        detachedRef.current = !!detach
         recorder.stop()
         return true
     }, [])
@@ -255,6 +262,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
             console.log('[rambler] switched input device', { deviceLabel, deviceId, tried: triedDevices })
         }
         cancelledRef.current = false
+        detachedRef.current = false
         chunksRef.current = []
         mimeTypeRef.current = recorder.mimeType || mimeType || 'audio/webm'
         streamRef.current = stream
@@ -385,6 +393,16 @@ export default function useRambleRecorder({ onComplete, onError }) {
 
     useEffect(() => {
         return () => {
+            const pending = recorderRef.current
+            if (detachedRef.current && pending && pending.state === 'inactive' && !cancelledRef.current) {
+                // A detached take is between `stop()` and `onstop`: only the UI timers go now,
+                // `onstop` releases the stream and monitor after it has read them.
+                if (timerRef.current) clearInterval(timerRef.current)
+                if (levelTimerRef.current) clearInterval(levelTimerRef.current)
+                timerRef.current = null
+                levelTimerRef.current = null
+                return
+            }
             cancelledRef.current = true
             abortedTokenRef.current = startTokenRef.current
             releaseWakeLockRef.current?.()

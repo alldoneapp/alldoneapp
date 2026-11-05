@@ -105,13 +105,19 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
     it.each([
         ['All Projects', {}],
         ['mixed-project My Day', { loggedUser: { ...baseState.loggedUser, showAllProjectsByTime: true } }],
-        ['a selected project', { selectedProjectIndex: 0 }],
     ])('opens on Automatic when held in %s', (_view, overrides) => {
         getMostVisibleTaskProjectId.mockReturnValue('project-1')
         const addTask = renderButton(overrides).root.findByType('AddTaskTag')
 
         expect(addTask.props.holdToDictate).toBe(true)
         expect(addTask.props.holdToDictateProjectId).toBe(AUTOMATIC_PROJECT_OPTION)
+    })
+
+    it('opens on the open project when held inside a selected project (PT-5424)', () => {
+        const addTask = renderButton({ selectedProjectIndex: 0 }).root.findByType('AddTaskTag')
+
+        expect(addTask.props.holdToDictate).toBe(true)
+        expect(addTask.props.holdToDictateProjectId).toBe('project-1')
     })
 
     it.each(['connecting', 'connected', 'ending'])('is hidden while a voice call is %s', status => {
