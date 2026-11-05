@@ -24,6 +24,8 @@ export default function TaskEditForm({
     showMoreOptions,
     uploadingDraft,
     pushToTalkHandoff,
+    // PT-5425: closes the popup on a push-to-talk release and creates the task in the background.
+    claimDictatedTaskInBackground,
 }) {
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [linkedParentNotesUrl, setLinkedParentNotesUrl] = useState([])
@@ -84,6 +86,33 @@ export default function TaskEditForm({
         }
     }
 
+    // PT-5425: the same guards as Enter (an open mention picker, tag editor or assignee popup means
+    // the user is not done with this popup), then hand over. Returning null keeps the interactive
+    // path. Mentioned objects in the final title are linked exactly as Enter links them.
+    const claimDictationBackgroundSubmit = () => {
+        if (!claimDictatedTaskInBackground) return null
+        const { isQuillTagEditorOpen, openModals } = store.getState()
+        if (isQuillTagEditorOpen || openModals[MENTION_MODAL_ID] || mentionsModalActive || isAssigneeVisible) {
+            return null
+        }
+        return claimDictatedTaskInBackground((createdTask, composed) =>
+            Backend.setLinkedParentObjects(
+                projectId,
+                {
+                    linkedParentNotesUrl: composed?.linkedNotesUrls || [],
+                    linkedParentTasksUrl: composed?.linkedTasksUrls || [],
+                    linkedParentContactsUrl: composed?.linkedContactsUrls || [],
+                    linkedParentProjectsUrl: composed?.linkedProjectsUrls || [],
+                    linkedParentGoalsUrl: composed?.linkedGoalsUrls || [],
+                    linkedParentSkillsUrl: composed?.linkedSkillsUrls || [],
+                    linkedParentAssistantsUrl: composed?.linkedAssistantUrls || [],
+                    linkedParentArtifactsUrl: composed?.linkedArtifactsUrls || [],
+                },
+                { type: 'task', id: createdTask.id }
+            )
+        )
+    }
+
     const done = () => {
         if (onSuccess) onSuccess(trySetLinkedObjects)
     }
@@ -125,6 +154,9 @@ export default function TaskEditForm({
                 enterKeyAction={enterKeyAction}
                 setMentionsModalActive={setMentionsModalActive}
                 pushToTalkHandoff={pushToTalkHandoff}
+                claimDictationBackgroundSubmit={
+                    claimDictatedTaskInBackground ? claimDictationBackgroundSubmit : undefined
+                }
             />
             {(uploadingDraft || task.description?.includes('blob:')) && (
                 <Text style={localStyles.attachmentHint} accessibilityLiveRegion="polite">
