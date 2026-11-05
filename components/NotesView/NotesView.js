@@ -15,6 +15,7 @@ import URLsNotes, {
 import { calcNotesAmount } from './NotesHelper'
 import { setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
+import moment from 'moment'
 import { DV_TAB_ROOT_NOTES } from '../../utils/TabNavigationConstants'
 import EmptyNotesAllProjects from './EmptyNotesAllProjects'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
@@ -25,14 +26,6 @@ import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssi
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 import useNearViewportMount from '../../hooks/useNearViewportMount'
 import NotesListSkeleton from './NotesListSkeleton'
-import Backend from '../../utils/BackendBridge'
-import {
-    NO_NOTE_EDITION_DATE,
-    applyProbedEditionDates,
-    excludeGuideProjects,
-    probeProjectsLastNoteEdit,
-    sortProjectsByLastNoteEdit,
-} from './notesProjectOrder'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
@@ -64,10 +57,6 @@ function NotesView() {
     const [tNotesAmount, setTNotesAmount] = useState(null)
     const sortedProjects = useRef({})
     const [sortedLoggedUserProjects, setSortedLoggedUserProjects] = useState([])
-    // AT-2964: false while the per-project "last note edit" probes run. The board waits for
-    // them (bounded by PROJECT_ORDER_PROBE_TIMEOUT_MS) so it opens already in the right order.
-    const [projectOrderReady, setProjectOrderReady] = useState(false)
-    const projectOrderRequestRef = useRef(0)
     const notesActiveTab = useSelector(state => state.notesActiveTab)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
@@ -87,7 +76,7 @@ function NotesView() {
         [sortedLoggedUserProjects]
     )
     const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
-    const projectRevealKey = `${notesActiveTab}:${selectedProjectIndex}:${projectOrderReady}:${projectMembershipKey}`
+    const projectRevealKey = `${notesActiveTab}:${selectedProjectIndex}:${projectMembershipKey}`
     const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
     const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
     const markProjectReady = useCallback(
@@ -102,7 +91,7 @@ function NotesView() {
     )
     const { revealedProjectIds, primaryProjectId, nextProjectId, loadingProjectId, markProjectNearViewport } =
         useRateLimitedProjectReveal({
-            projectIds: inAllProjects && projectOrderReady ? sortedProjectIds : [],
+            projectIds: inAllProjects ? sortedProjectIds : [],
             readyProjectIds,
             resetKey: projectRevealKey,
             requireNearViewport: inAllProjects,
@@ -125,10 +114,7 @@ function NotesView() {
     )
 
     useEffect(() => {
-        return () => {
-            projectOrderRequestRef.current += 1
-            dispatch(resetNotesAmounts())
-        }
+        return () => dispatch(resetNotesAmounts())
     }, [])
 
     useEffect(() => {
@@ -142,26 +128,10 @@ function NotesView() {
         const { rSortedProjects, rSortedLoggedUserProjects } = initSortedProjects(projects, loggedUser)
         setTNotesAmount(null)
         sortedProjects.current = rSortedProjects
-        setSortedLoggedUserProjects(rSortedLoggedUserProjects)
 
-        const requestId = ++projectOrderRequestRef.current
-        if (!inAllProjects) {
-            setProjectOrderReady(true)
-            return
-        }
-
-        setProjectOrderReady(false)
-        const followedOnly = notesActiveTab !== ALL_TAB
-        probeProjectsLastNoteEdit(
-            rSortedLoggedUserProjects.map(project => project.id),
-            projectId => Backend.getLastNoteEditionDateInAllProjects(projectId, followedOnly)
-        ).then(probedDates => {
-            if (projectOrderRequestRef.current !== requestId) return
-            const probedProjects = applyProbedEditionDates(Object.values(sortedProjects.current), probedDates)
-            sortedProjects.current = Object.fromEntries(probedProjects.map(project => [project.id, project]))
-            setSortedLoggedUserProjects(sortProjectsByLastNoteEdit(probedProjects))
-            setProjectOrderReady(true)
-        })
+        const normalProjects = rSortedLoggedUserProjects.filter(project => !project.parentTemplateId)
+        const guides = rSortedLoggedUserProjects.filter(project => !!project.parentTemplateId)
+        setSortedLoggedUserProjects([...normalProjects, ...guides])
     }, [notesActiveTab, selectedProjectIndex])
 
     useEffect(() => {
@@ -187,19 +157,23 @@ function NotesView() {
     }
 
     const setLastEditNoteDate = useCallback((project, date) => {
-        // A block with no notes reports local-midnight 1970, which can be negative; treat any
-        // non-positive date as "no note" so it ties with probed empty projects.
-        const lastEditNoteDate = date > 0 ? date : NO_NOTE_EDITION_DATE
         const currentProject = sortedProjects.current[project.id]
-        if (!currentProject || currentProject.lastEditNoteDate === lastEditNoteDate) return
+        if (!currentProject || currentProject.lastEditNoteDate === date) return
 
         const rSortedProjects = {
             ...sortedProjects.current,
-            [project.id]: { ...project, lastEditNoteDate },
+            [project.id]: { ...project, lastEditNoteDate: date },
         }
 
+        const rSortedLoggedUserProjects = Object.values(rSortedProjects).sort(
+            (a, b) => (a.lastEditNoteDate - b.lastEditNoteDate) * -1
+        )
+
         sortedProjects.current = rSortedProjects
-        setSortedLoggedUserProjects(sortProjectsByLastNoteEdit(Object.values(rSortedProjects)))
+
+        const normalProjects = rSortedLoggedUserProjects.filter(project => !project.parentTemplateId)
+        const guides = rSortedLoggedUserProjects.filter(project => !!project.parentTemplateId)
+        setSortedLoggedUserProjects([...normalProjects, ...guides])
     }, [])
 
     return (
@@ -225,8 +199,6 @@ function NotesView() {
                         trackInitialLoad
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
-                ) : !projectOrderReady ? (
-                    <NotesListSkeleton rowCount={3} showProjectHeader />
                 ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
                     sortedLoggedUserProjects.map(project => {
                         const revealed = revealedProjectIdsSet.has(project.id)
@@ -264,16 +236,19 @@ function NotesView() {
     )
 }
 
-// Guides are not listed in All Projects > Notes (AT-2964). The default project order is the
-// tie-breaker for projects without a readable note.
 const initSortedProjects = (loggedUserProjects, user) => {
-    const activeProjects = excludeGuideProjects(ProjectHelper.getActiveProjects2(loggedUserProjects, user), user)
-    const projectsSorted = ProjectHelper.sortProjects(activeProjects, user.uid)
+    const activeProjects = ProjectHelper.getActiveProjects2(loggedUserProjects, user)
+    const guides = ProjectHelper.getGuideProjects(loggedUserProjects, user)
 
+    const projectsSorted = [
+        ...ProjectHelper.sortProjects(activeProjects, user.uid),
+        ...ProjectHelper.sortProjects(guides, user.uid),
+    ]
     const rSortedProjects = {}
     const rSortedLoggedUserProjects = []
+    const initialLastEditNoteDate = moment('01-01-1970', 'DD-MM-YYYY').valueOf()
     projectsSorted.forEach(project => {
-        rSortedProjects[project.id] = { ...project, lastEditNoteDate: NO_NOTE_EDITION_DATE }
+        rSortedProjects[project.id] = { ...project, lastEditNoteDate: initialLastEditNoteDate }
         rSortedLoggedUserProjects.push(rSortedProjects[project.id])
     })
 

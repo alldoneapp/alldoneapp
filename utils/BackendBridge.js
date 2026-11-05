@@ -424,10 +424,6 @@ export default class Backend {
         return bridge.watchAllTabNotesExpanded(projectId, callback, options)
     }
 
-    static getLastNoteEditionDateInAllProjects(projectId, followedOnly) {
-        return bridge.getLastNoteEditionDateInAllProjects(projectId, followedOnly)
-    }
-
     static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
         return bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
