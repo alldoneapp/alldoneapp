@@ -49,6 +49,7 @@ const {
 } = require('./vmJobConfig')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
+const { recordVmSandboxDeletion, drainVmSandboxDeletions } = require('./vmSandboxCleanup')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -2736,7 +2737,10 @@ async function pauseE2bSandbox(sandboxId, e2bApiKey) {
     })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
-        throw new Error(`E2B pause ${resp.status}: ${body.substring(0, 200)}`)
+        if (resp.status === 409 && /already paused/i.test(body)) return false
+        const error = new Error(`E2B pause ${resp.status}: ${body.substring(0, 200)}`)
+        error.status = resp.status
+        throw error
     }
 }
 
@@ -3031,7 +3035,14 @@ async function superviseVmCommand({
 // the thread.
 async function clearDeadVmSessionSandbox(
     sessionRef,
-    { sandboxId = null, leaseOwner = null, sessionData = {}, now = Date.now() } = {}
+    {
+        sandboxId = null,
+        leaseOwner = null,
+        sessionData = {},
+        sandboxMissing = false,
+        releaseLease = true,
+        now = Date.now(),
+    } = {}
 ) {
     return admin.firestore().runTransaction(async transaction => {
         const snapshot = await transaction.get(sessionRef)
@@ -3042,15 +3053,19 @@ async function clearDeadVmSessionSandbox(
         const activeLeaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now
         if (leaseOwner ? session.activeLeaseOwner !== leaseOwner : activeLeaseLive) return false
 
+        if (!sandboxMissing) {
+            recordVmSandboxDeletion(transaction, admin.firestore(), sandboxId || session.sandboxId, sessionRef.id, now)
+        }
+
         transaction.set(
             sessionRef,
             {
                 ...sessionData,
                 sandboxId: null,
                 status: 'failed',
-                activeLeaseOwner: null,
-                activeLeaseExpiresAt: null,
-                activeCorrelationId: null,
+                ...(releaseLease
+                    ? { activeLeaseOwner: null, activeLeaseExpiresAt: null, activeCorrelationId: null }
+                    : {}),
                 deadSandboxAt: now,
             },
             { merge: true }
@@ -3193,18 +3208,36 @@ async function pauseIdleVmSessions() {
         const s = doc.data()
         try {
             await pauseE2bSandbox(s.sandboxId, e2bApiKey)
-            await doc.ref.set({ status: 'paused', pausedAt: Date.now() }, { merge: true })
+            await markVmSessionPausedIfIdle(doc.ref, s.sandboxId, cutoff)
             console.log('💤 VM SESSIONS PAUSER: paused', { sandboxId: s.sandboxId })
         } catch (error) {
-            // Likely already killed (kill timeout) — clear only the sandbox fields. The session may
-            // own queued jobs even without a live lease, so deleting it would orphan those jobs.
-            console.warn('💤 VM SESSIONS PAUSER: pause failed, clearing session', {
+            // Only a confirmed 404 proves the sandbox is gone. Keep the pointer on transient
+            // errors so the next scheduled run retries rather than orphaning a live snapshot.
+            console.warn('💤 VM SESSIONS PAUSER: pause failed', {
                 sandboxId: s.sandboxId,
                 error: error.message,
             })
-            await clearDeadVmSessionSandbox(doc.ref, { sandboxId: s.sandboxId }).catch(() => {})
+            if (error.status === 404) {
+                await clearDeadVmSessionSandbox(doc.ref, { sandboxId: s.sandboxId, sandboxMissing: true })
+            }
         }
     }
+}
+
+async function markVmSessionPausedIfIdle(sessionRef, sandboxId, cutoff, now = Date.now()) {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        if (!snapshot.exists) return false
+        const session = snapshot.data() || {}
+        if (
+            session.sandboxId !== sandboxId ||
+            Number(session.lastUsedAt || 0) >= cutoff ||
+            (session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now)
+        )
+            return false
+        transaction.set(sessionRef, { status: 'paused', pausedAt: now }, { merge: true })
+        return true
+    })
 }
 
 async function deleteIdleVmSessionIfUnoccupied(sessionRef, cutoff, now = Date.now()) {
@@ -3217,12 +3250,14 @@ async function deleteIdleVmSessionIfUnoccupied(sessionRef, cutoff, now = Date.no
         if (
             Number(session.lastUsedAt || 0) >= cutoff ||
             queue.length > 0 ||
+            Number(session.queueLength || 0) > 0 ||
             session.blockedByCorrelationId ||
             activeLeaseLive
         ) {
             return null
         }
 
+        recordVmSandboxDeletion(transaction, admin.firestore(), session.sandboxId, sessionRef.id, now)
         transaction.delete(sessionRef)
         return session
     })
@@ -3230,25 +3265,21 @@ async function deleteIdleVmSessionIfUnoccupied(sessionRef, cutoff, now = Date.no
 
 // Scheduled cleanup: delete paused sandboxes (and their session docs) idle longer than the TTL.
 async function cleanupIdleVmSessions() {
-    const { Sandbox } = require('e2b')
     const e2bApiKey = getEnvFunctions().E2B_API_KEY
+    if (!e2bApiKey) throw new Error('E2B_API_KEY is required for VM cleanup')
+    const { Sandbox } = require('e2b')
+    const db = admin.firestore()
     const cutoff = Date.now() - SESSION_TTL_MS
-    const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
+    const snap = await db.collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
     console.log('🧹 VM SESSIONS CLEANUP: idle sessions found', { count: snap.size })
     for (const doc of snap.docs) {
-        // Delete the Firestore document transactionally before killing its sandbox. A new dispatch
-        // either lands before this transaction (and makes it skip) or recreates a clean session
-        // afterwards; in neither ordering can its queue be erased or its sandbox be killed.
-        const s = await deleteIdleVmSessionIfUnoccupied(doc.ref, cutoff).catch(() => null)
-        if (!s) continue
-        if (s.sandboxId && e2bApiKey) {
-            try {
-                await Sandbox.kill(s.sandboxId, { apiKey: e2bApiKey })
-            } catch (error) {
-                console.warn('🧹 VM SESSIONS CLEANUP: kill failed', { sandboxId: s.sandboxId, error: error.message })
-            }
-        }
+        // Atomic detach + deletion outbox preserves the queue race guarantees and also
+        // survives a failed kill or a process crash between the database and provider calls.
+        await deleteIdleVmSessionIfUnoccupied(doc.ref, cutoff)
     }
+    const result = await drainVmSandboxDeletions({ db, apiKey: e2bApiKey, killSandbox: Sandbox.kill.bind(Sandbox) })
+    console.log('🧹 VM SESSIONS CLEANUP: deletion outbox processed', result)
+    return result
 }
 
 async function prepareSubscriptionCredential(sandbox, subscriptionAuth) {
@@ -3366,7 +3397,11 @@ async function runAgentInSandbox(
                 selectedTemplate: template,
             })
             await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
-            await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
+            await clearDeadVmSessionSandbox(sessionRef, {
+                sandboxId: sess.sandboxId,
+                leaseOwner: sessionLeaseOwner,
+                releaseLease: false,
+            })
         } else if (
             sess &&
             sess.sandboxId &&
@@ -3409,7 +3444,11 @@ async function runAgentInSandbox(
                     error: error.message,
                 })
                 await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
-                await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
+                await clearDeadVmSessionSandbox(sessionRef, {
+                    sandboxId: sess.sandboxId,
+                    leaseOwner: sessionLeaseOwner,
+                    releaseLease: false,
+                })
             }
         } else if (sess && sess.sandboxId) {
             // `running` is the legacy state used before sessions had an exclusive lease.
@@ -3421,10 +3460,16 @@ async function runAgentInSandbox(
                 status: sess.status || null,
             })
             await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
-            await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
+            await clearDeadVmSessionSandbox(sessionRef, {
+                sandboxId: sess.sandboxId,
+                leaseOwner: sessionLeaseOwner,
+                releaseLease: false,
+            })
         }
     } catch (error) {
         console.warn('🖥️ VM JOB: session lookup failed', { correlationId: vmJob.correlationId, error: error.message })
+        if (sessionHeartbeat) sessionHeartbeat.stop()
+        throw error
     }
 
     if (threadHeldByOther) {
@@ -4064,6 +4109,12 @@ async function runAgentInSandbox(
                         const snapshot = await transaction.get(sessionRef)
                         const session = snapshot.exists ? snapshot.data() || {} : {}
                         if (session.activeLeaseOwner !== sessionLeaseOwner) return
+                        recordVmSandboxDeletion(
+                            transaction,
+                            admin.firestore(),
+                            sandbox?.sandboxId || sandbox?.id || session.sandboxId,
+                            sessionRef.id
+                        )
                         transaction.set(
                             sessionRef,
                             {
@@ -5100,6 +5151,8 @@ module.exports = {
         startVmSessionHeartbeat,
         clearDeadVmSessionSandbox,
         deleteIdleVmSessionIfUnoccupied,
+        markVmSessionPausedIfIdle,
+        pauseE2bSandbox,
         keepVmSessionAlive,
         isReusableVmSession,
         shouldResumeVmSession,
