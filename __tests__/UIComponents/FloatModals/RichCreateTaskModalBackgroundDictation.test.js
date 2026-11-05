@@ -128,6 +128,10 @@ jest.mock('../../../redux/store', () => ({
 import RichCreateTaskModal from '../../../components/UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { AUTOMATIC_PROJECT_OPTION } from '../../../components/UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { createPushToTalkHandoff } from '../../../components/UIControls/pushToTalkHandoff'
+import {
+    closeDictationTaskRecovery,
+    getDictationTaskRecovery,
+} from '../../../components/UIComponents/FloatModals/RichCreateTaskModal/dictationTaskRecovery'
 
 const EMPTY_DRAFT = {
     name: '',
@@ -223,6 +227,12 @@ describe('RichCreateTaskModal background dictation (PT-5424)', () => {
         })
 
         expect(alertSpy).toHaveBeenCalledWith('Task could not be created')
+        // PT-5425: and the draft comes back, with the dictated title, in the recovery popup.
+        expect(getDictationTaskRecovery()).toEqual(
+            expect.objectContaining({ automaticProject: true, projectId: 'project-default' })
+        )
+        expect(getDictationTaskRecovery().task.extendedName).toBe('Buy milk')
+        closeDictationTaskRecovery()
         alertSpy.mockRestore()
         errorSpy.mockRestore()
     })
@@ -230,5 +240,134 @@ describe('RichCreateTaskModal background dictation (PT-5424)', () => {
     it('registers nothing for a popup that was not opened by a hold', () => {
         const handoff = createPushToTalkHandoff()
         expect(handoff.getBackgroundSubmit()).toBeNull()
+    })
+})
+
+/**
+ * PT-5425 — the same "close at once, create in the background" for a hold on the popup's OWN title
+ * mic (no "+" involved). The mic asks the popup through `claimDictatedTaskInBackground`; the popup
+ * dismisses itself only after the take is safely stopped, creates exactly one task from the draft
+ * as it was at release with the final title composed at the caret, and puts the draft back in the
+ * app-wide recovery popup when anything fails.
+ */
+describe('RichCreateTaskModal: a hold on its own title mic (PT-5425)', () => {
+    let tree
+
+    const openPopup = ({
+        initialProjectId = 'project-work',
+        task = { ...EMPTY_DRAFT, name: 'Call', extendedName: 'Call' },
+    } = {}) => {
+        act(() => {
+            tree = renderer.create(
+                <RichCreateTaskModal
+                    initialProjectId={initialProjectId}
+                    initialTask={task}
+                    fromTaskList={true}
+                    closeModal={closeModal}
+                />
+            )
+        })
+        return capturedMainModalProps.claimDictatedTaskInBackground
+    }
+
+    beforeEach(() => {
+        mockCreateTaskWithService.mockReset()
+        mockCreateTaskWithService.mockResolvedValue({ id: 'task-1' })
+        closeModal.mockClear()
+        closeDictationTaskRecovery()
+    })
+
+    afterEach(() => {
+        act(() => tree?.unmount())
+        tree = null
+        closeDictationTaskRecovery()
+    })
+
+    it('dismisses on release and creates one task from the composed title afterwards', async () => {
+        const onCreated = jest.fn()
+        const claimed = openPopup()(onCreated)
+        expect(claimed).toEqual(
+            expect.objectContaining({ dismiss: expect.any(Function), submit: expect.any(Function) })
+        )
+        expect(closeModal).not.toHaveBeenCalled()
+
+        act(() => claimed.dismiss())
+        expect(closeModal).toHaveBeenCalledTimes(1)
+        expect(closeModal.mock.calls[0][0].extendedName).toBe('Call')
+        act(() => tree.unmount())
+        tree = null
+
+        const composed = { extendedText: 'Call Anna\n about the offer', linkedNotesUrls: ['n1'] }
+        await act(async () => {
+            await claimed.submit(composed)
+        })
+
+        expect(mockCreateTaskWithService).toHaveBeenCalledTimes(1)
+        const [payload] = mockCreateTaskWithService.mock.calls[0]
+        expect(payload.extendedName).toBe('Call Anna about the offer')
+        expect(payload.name).toBe('Call Anna about the offer')
+        expect(payload.projectId).toBe('project-work')
+        expect(payload.projectRouting).toBeUndefined()
+        expect(onCreated).toHaveBeenCalledWith({ id: 'task-1' }, composed)
+
+        // A second submit of the same release can never create a second task.
+        await act(async () => {
+            await claimed.submit(composed)
+        })
+        expect(mockCreateTaskWithService).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps "Automatic" routing from the popup', async () => {
+        const claimed = openPopup({ initialProjectId: AUTOMATIC_PROJECT_OPTION })()
+        act(() => claimed.dismiss())
+        await act(async () => {
+            await claimed.submit({ extendedText: 'Buy milk' })
+        })
+
+        const [payload] = mockCreateTaskWithService.mock.calls[0]
+        expect(payload.projectId).toBe('project-default')
+        expect(payload.projectRouting).toEqual(expect.objectContaining({ hostProjectId: 'project-default' }))
+    })
+
+    it('blocks Enter from creating a second task once dismissed', async () => {
+        const claimed = openPopup()()
+        act(() => claimed.dismiss())
+        act(() => {
+            capturedMainModalProps.createTask(() => {})
+        })
+        expect(mockCreateTaskWithService).not.toHaveBeenCalled()
+    })
+
+    it('restores the draft when the transcription failed', () => {
+        const claimed = openPopup()()
+        act(() => claimed.dismiss())
+        act(() => claimed.onFailed())
+
+        const recovery = getDictationTaskRecovery()
+        expect(recovery).toEqual(expect.objectContaining({ projectId: 'project-work', automaticProject: false }))
+        expect(recovery.task.extendedName).toBe('Call')
+        expect(mockCreateTaskWithService).not.toHaveBeenCalled()
+    })
+
+    it('restores the draft WITH the dictated title when the write failed', async () => {
+        mockCreateTaskWithService.mockRejectedValue(new Error('write failed'))
+        const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {})
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const claimed = openPopup()()
+        act(() => claimed.dismiss())
+
+        await act(async () => {
+            await claimed.submit({ extendedText: 'Call Anna' })
+        })
+
+        expect(alertSpy).toHaveBeenCalledWith('Task could not be created')
+        expect(getDictationTaskRecovery().task.extendedName).toBe('Call Anna')
+        alertSpy.mockRestore()
+        errorSpy.mockRestore()
+    })
+
+    it('declines while the draft holds dropped files that are not uploaded yet', () => {
+        const claim = openPopup({ task: { ...EMPTY_DRAFT, description: 'see blob:http://x/1' } })
+        expect(claim()).toBeNull()
     })
 })

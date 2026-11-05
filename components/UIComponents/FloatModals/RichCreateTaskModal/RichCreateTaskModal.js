@@ -70,6 +70,7 @@ import {
 import { TO_ATTEND_TASKS_MY_DAY_TYPE, WORKSTREAM_TASKS_MY_DAY_TYPE } from '../../../../utils/backends/Tasks/myDayTasks'
 import useSingleFlightSubmit from '../../../../hooks/useSingleFlightSubmit'
 import { translate } from '../../../../i18n/TranslationService'
+import { openDictationTaskRecovery } from './dictationTaskRecovery'
 
 const buildLinkBack = (projectId, sourceType, sourceId, objectNoteType) => {
     const { selectedNavItem } = store.getState()
@@ -607,25 +608,106 @@ export default function RichCreateTaskModal({
         )
     }
 
+    // PT-5425: a dictated task that could not be created in the background comes back in the
+    // app-wide recovery popup (this popup is gone by then, and so may be its opener) with the draft
+    // as it was at release — and with the dictated title once the transcript is known.
+    const restoreDictatedDraft = draft =>
+        openDictationTaskRecovery({ projectId, automaticProject, task: draft, modalTitle })
+
+    // Creates `preparedTask` from a closed popup and reports a failure instead of swallowing it: the
+    // popup is already gone, so an alert plus the restored draft is the only place left to say that
+    // the task was not created. Never rejects.
+    const persistDictatedTask = (preparedTask, onCreated) =>
+        Promise.resolve()
+            .then(() => {
+                if (onDraftSubmitted) onDraftSubmitted(preparedTask)
+                return persistNewTask(preparedTask)
+            })
+            .then(taskResult => {
+                if (onCreated && taskResult) onCreated(taskResult)
+                return taskResult
+            })
+            .catch(error => {
+                console.error('[RichCreateTaskModal] Background dictated task creation failed', error)
+                alert(translate('Task could not be created'))
+                restoreDictatedDraft(preparedTask)
+                return null
+            })
+
     // PT-5424: a hold on the board's floating "+" closes this popup the moment it is released, and
     // the take is transcribed after that. The mic therefore cannot type the transcript in here and
     // press Enter; it hands the text to this function instead, which creates the task from this
-    // popup's draft exactly as Enter would. A failure is reported, never swallowed: the popup is
-    // already gone, so an alert is the only place left to say that the task was not created.
+    // popup's draft exactly as Enter would.
     const createDictatedTaskInBackground = text => {
         const dictated = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : ''
         const extendedName = [(task.extendedName || '').trim(), dictated].filter(Boolean).join(' ')
         const name = TasksHelper.getTaskNameWithoutMeta(extendedName)
         if (!name || !name.trim()) return Promise.resolve(null)
-        return Promise.resolve()
-            .then(() => persistNewTask({ ...task, extendedName, name }))
-            .catch(error => {
-                console.error('[RichCreateTaskModal] Background dictated task creation failed', error)
-                alert(translate('Task could not be created'))
-                return null
-            })
+        return persistDictatedTask({ ...task, extendedName, name })
     }
     if (pushToTalkHandoff?.setBackgroundSubmit) pushToTalkHandoff.setBackgroundSubmit(createDictatedTaskInBackground)
+
+    // Read by `claimDictatedTaskInBackground`, which is entered from a DOM event (the mic release)
+    // and therefore must not trust the closure of whichever render bound it.
+    const latestDictationHostRef = useRef(null)
+    latestDictationHostRef.current = { task, persistDictatedTask, restoreDictatedDraft }
+
+    /**
+     * PT-5425: a push-to-talk release on the title mic of THIS popup (not a hold handed over from
+     * the floating "+", which PT-5424 covers above). Returns `null` to decline — the mic then keeps
+     * the interactive insert-then-Enter path and the popup stays open — or the three hooks the mic
+     * drives: `dismiss` right after the take is safely stopped, then exactly one of `submit` (with
+     * the final title, composed at the caret by CustomTextInput3) or `onFailed`.
+     *
+     * @param {(taskResult: object, composed: object) => void} [onCreated] links mentioned objects
+     */
+    const claimDictatedTaskInBackground = onCreated => {
+        if (submitOnce.isInFlight()) return null
+        const {
+            task: draft,
+            persistDictatedTask: persist,
+            restoreDictatedDraft: restore,
+        } = latestDictationHostRef.current
+        // Files dropped on the popup are still local `blob:` URLs, which this popup revokes when it
+        // unmounts. Closing it now would destroy them before they are uploaded, so a draft with
+        // files keeps the popup open and goes through the ordinary path with its upload step.
+        if (draft.description?.includes('blob:')) return null
+
+        let settle = () => {}
+        const settled = new Promise(resolve => {
+            settle = resolve
+        })
+        let finished = false
+        const finish = () => {
+            if (finished) return false
+            finished = true
+            settle()
+            return true
+        }
+        return {
+            dismiss: () => {
+                // One task per release: Enter can no longer create a second one from this draft.
+                submitOnce(() => settled)
+                closeModal(draft)
+            },
+            submit: composed => {
+                if (finished) return Promise.resolve(null)
+                const extendedName = (composed?.extendedText || '').replace(/\r?\n|\r/g, '').trim()
+                const name = TasksHelper.getTaskNameWithoutMeta(extendedName)
+                if (!name || !name.trim()) {
+                    finish()
+                    restore(draft)
+                    return Promise.resolve(null)
+                }
+                return persist({ ...draft, extendedName, name }, taskResult =>
+                    onCreated?.(taskResult, composed)
+                ).finally(finish)
+            },
+            onFailed: () => {
+                if (finish()) restore(draft)
+            },
+        }
+    }
 
     const expandTasks = () => {
         const { selectedProjectIndex, currentUser, smallScreenNavigation } = store.getState()
@@ -920,6 +1002,7 @@ export default function RichCreateTaskModal({
                     activeGoal={activeGoal}
                     widthStyle={widthStyle}
                     pushToTalkHandoff={pushToTalkHandoff}
+                    claimDictatedTaskInBackground={claimDictatedTaskInBackground}
                 />
             )}
         </CustomScrollView>

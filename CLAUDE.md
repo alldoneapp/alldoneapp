@@ -3303,6 +3303,25 @@ on the open project inside a single project. Pinned by the PT-5424 cases in
 `RichCreateTaskModal/InputArea.test.js` and
 `__tests__/UIComponents/FloatModals/RichCreateTaskModalBackgroundDictation.test.js`.
 
+**The same holds for a hold on the popup's own title mic (PT-5425).** There is no opener to close
+the popup, so the mic asks the host: `RambleButton`'s `claimBackgroundSubmit` →
+`CustomTextInput3`'s `claimDictationBackgroundSubmit` → `TaskEditForm` (Enter's guards: mention
+picker, tag editor, assignee popup) → `RichCreateTaskModal.claimDictatedTaskInBackground`, which
+answers `null` (the interactive insert-then-Enter path stays) or `{ dismiss, submit, onFailed }`.
+Order matters: the mic stops the take with `{ detach: true }` FIRST and calls `dismiss` only when
+the recorder promised to deliver, so a take too short to keep never closes the popup. A draft with
+dropped `blob:` files declines, because the popup revokes them on unmount. `dismiss` also locks the
+popup's single-flight guard, so one release creates one task. `CustomTextInput3` splits the draft at
+the caret at release time through the same `getFinalText` as typing (`backgroundDictation.js`), and
+`submit` receives that composed title plus its linked-object URLs. Every failure (a recorder error
+such as a silent microphone, a failed or empty transcription, a failed write, and an `onstop` that
+never arrives, after `DETACHED_DELIVERY_TIMEOUT_MS`) reopens the draft in the global
+`DictationTaskRecoveryModal` (`dictationTaskRecovery.js`), with the dictated title once it is known.
+A failed write after a "+" hold is restored the same way. Pinned by
+`components/UIControls/RambleClaimBackgroundSubmit.test.js`, the PT-5425 blocks of
+`RichCreateTaskModalBackgroundDictation.test.js` and `useRambleRecorder.test.js`,
+`TaskEditFormBackgroundDictation.test.js` and `CommentsTextInput/backgroundDictation.test.js`.
+
 ### Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
 
 Transcription biases towards a curated product glossary in **two** places, and both are required.
