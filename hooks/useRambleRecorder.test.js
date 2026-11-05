@@ -13,7 +13,6 @@ import useRambleRecorder, {
     isDictationSupported,
     RAMBLE_MAX_DURATION_SECONDS,
     RAMBLE_MAX_AUDIO_BYTES,
-    DETACHED_DELIVERY_TIMEOUT_MS,
 } from './useRambleRecorder'
 
 let recorderInstances
@@ -800,41 +799,6 @@ describe('useRambleRecorder', () => {
             expect(onComplete).toHaveBeenCalledTimes(1)
             expect(onComplete.mock.calls[0][0].audioBase64).toMatch(/^data:/)
             expect(recorder.stream.tracks[0].stop).toHaveBeenCalled()
-        })
-
-        test('PT-5425: an onstop that never arrives releases the microphone and reports the take lost', async () => {
-            const onComplete = jest.fn()
-            const onError = jest.fn()
-            const root = renderHook({ onComplete, onError })
-            await act(async () => {
-                await hookValue.start()
-            })
-            const recorder = deferStop()
-            act(() => {
-                recorder.ondataavailable({ data: new Blob(['audio-bytes'], { type: 'audio/webm' }) })
-                hookValue.stop({ detach: true })
-            })
-            act(() => {
-                root.unmount()
-            })
-            act(() => {
-                jest.advanceTimersByTime(DETACHED_DELIVERY_TIMEOUT_MS - 1)
-            })
-            expect(recorder.stream.tracks[0].stop).not.toHaveBeenCalled()
-            expect(onError).not.toHaveBeenCalled()
-
-            act(() => {
-                jest.advanceTimersByTime(1)
-            })
-            expect(recorder.stream.tracks[0].stop).toHaveBeenCalled()
-            expect(onError).toHaveBeenCalledWith('recorder-error')
-
-            // A straggling `onstop` after that must not deliver a second outcome.
-            act(() => {
-                recorder.pendingStop()
-            })
-            expect(onComplete).not.toHaveBeenCalled()
-            expect(onError).toHaveBeenCalledTimes(1)
         })
 
         test('an ordinary stop is still cancelled by the unmount', async () => {

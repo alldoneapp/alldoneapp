@@ -24,7 +24,6 @@ import IframeModal from './FloatModals/IframeModal/IframeModal'
 import McpAppModal from '../ChatsView/ChatDV/EditorView/McpAppModal'
 import GlobalPreConfigTaskModal from './FloatModals/PreConfigTaskGeneratorModal/GlobalPreConfigTaskModal'
 import ConnectionStateToast from './FloatModals/ConnectionStateToast'
-import DictationTaskRecoveryModal from './FloatModals/RichCreateTaskModal/DictationTaskRecoveryModal'
 
 export default function GlobalModalsContainerApp() {
     const dispatch = useDispatch()
@@ -110,8 +109,6 @@ export default function GlobalModalsContainerApp() {
                 {/* MCP Apps views (e.g. Judy) opened from a chat outside Anna's assistant shell. */}
                 <McpAppModal />
                 <GlobalPreConfigTaskModal />
-                {/* PT-5425: a dictated task whose background creation failed comes back here. */}
-                <DictationTaskRecoveryModal />
                 <ConnectionStateToast />
             </WorkspaceOverlayLayer>
         </>

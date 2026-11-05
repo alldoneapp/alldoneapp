@@ -21,7 +21,6 @@ import {
 import { processRamble } from '../../utils/backends/Rambler/ramblerBackend'
 import { runWithLoading } from '../../utils/redux/loadingOperation'
 import { translate } from '../../i18n/TranslationService'
-import { swallowNextClick } from '../../utils/swallowNextClick'
 import store from '../../redux/store'
 import { setShowLimitedFeatureModal } from '../../redux/actions'
 
@@ -98,17 +97,7 @@ export function runDetachedRambleSubmit({
     durationSeconds,
     deviceLabel,
     submit,
-    // PT-5425: told when no text could be handed to `submit` (the transcription failed or came back
-    // empty) or `submit` threw, after the user has been told why — the host puts its draft back.
-    onFailed,
 }) {
-    const fail = () => {
-        try {
-            onFailed?.()
-        } catch (error) {
-            console.error('Background dictation failure handler failed:', error)
-        }
-    }
     return runWithLoading('dictated-background-submit', async () => {
         let result
         try {
@@ -123,13 +112,9 @@ export function runDetachedRambleSubmit({
             })
         } catch (error) {
             reportRambleProcessingError(error, deviceLabel)
-            fail()
             return
         }
-        if (!result?.text) {
-            fail()
-            return
-        }
+        if (!result?.text) return
         // The submit reports its own failures: it is the only layer that knows what "send" means.
         // This catch is only the backstop for one that throws instead.
         try {
@@ -137,7 +122,6 @@ export function runDetachedRambleSubmit({
         } catch (error) {
             console.error('Background dictation submit failed:', error)
             alert(translate('Could not process dictation'))
-            fail()
         }
     })
 }
@@ -147,14 +131,7 @@ export function runDetachedRambleSubmit({
  * caller. Shared between the CustomTextInput3 overlay button and the notes editor toolbar, which
  * render their own chrome around the same phases.
  */
-export function useRambleController({
-    projectId,
-    targetKind = 'generic',
-    getCurrentText,
-    onTextReady,
-    onSubmit,
-    claimBackgroundSubmit,
-}) {
+export function useRambleController({ projectId, targetKind = 'generic', getCurrentText, onTextReady, onSubmit }) {
     const [processing, setProcessing] = useState(false)
 
     // Armed by a push-to-talk release and consumed by the completion below, so that only the take
@@ -166,17 +143,8 @@ export function useRambleController({
     onSubmitRef.current = onSubmit
     // PT-5424: set when a push-to-talk release hands its take to a background submit (see
     // `handlePressEnd`). The input this mic belongs to is closed by then, so the completion must not
-    // insert into it or press its Enter — it transcribes and calls `submit` instead.
-    // `{ submit, onFailed?, currentText }`; `currentText` is captured at release, while the input
-    // still exists.
+    // insert into it or press its Enter — it transcribes and calls this function instead.
     const detachedSubmitRef = useRef(null)
-    // PT-5425: a host whose input can be closed on a push-to-talk release ON THIS MIC (the add-task
-    // popup) — as opposed to a hold handed over from the floating "+", whose opener does the
-    // closing. Read through a ref: the release is a raw DOM event.
-    const claimBackgroundSubmitRef = useRef(claimBackgroundSubmit)
-    claimBackgroundSubmitRef.current = claimBackgroundSubmit
-    const getCurrentTextRef = useRef(getCurrentText)
-    getCurrentTextRef.current = getCurrentText
 
     // 'silent-input*' means the microphone handed the browser silence (AT-2357) — the recording was
     // never uploaded, so these messages replace a Gold charge and a misleading "No speech detected".
@@ -184,7 +152,6 @@ export function useRambleController({
         // A take that failed is never submitted; drop the arming so a later tap-started recording
         // cannot inherit it.
         submitOnCompleteRef.current = false
-        const detached = detachedSubmitRef.current
         detachedSubmitRef.current = null
         if (code === 'permission-denied') {
             alert(translate('Microphone access was denied. Please allow microphone access in your browser settings.'))
@@ -212,15 +179,6 @@ export function useRambleController({
         } else if (code !== 'not-supported') {
             alert(translate('Could not process dictation'))
         }
-        // PT-5425: the input of a background take is already closed. The message above told the
-        // user why; the host now gets its draft back.
-        if (detached?.onFailed) {
-            try {
-                detached.onFailed()
-            } catch (error) {
-                console.error('Background dictation failure handler failed:', error)
-            }
-        }
     }, [])
 
     const handleRecordingComplete = useCallback(
@@ -230,7 +188,7 @@ export function useRambleController({
             const detachedSubmit = detachedSubmitRef.current
             detachedSubmitRef.current = null
             if (shouldSubmit && detachedSubmit) {
-                const currentText = (detachedSubmit.currentText || '').slice(0, 2000)
+                const currentText = getCurrentText ? (getCurrentText() || '').slice(0, 2000) : ''
                 return runDetachedRambleSubmit({
                     projectId,
                     targetKind,
@@ -239,8 +197,7 @@ export function useRambleController({
                     mimeType,
                     durationSeconds,
                     deviceLabel,
-                    submit: detachedSubmit.submit,
-                    onFailed: detachedSubmit.onFailed,
+                    submit: detachedSubmit,
                 })
             }
             setProcessing(true)
@@ -336,29 +293,8 @@ export function useRambleController({
         return true
     }, [start])
 
-    /**
-     * The background submit that takes over a submitting release, or `null` for the interactive
-     * path. A hold handed over from the floating "+" (PT-5424) brings the one its popup registered;
-     * a hold on this mic itself asks the host (PT-5425), which may decline.
-     */
-    const resolveBackgroundSubmit = (handedOver, backgroundSubmitOnRelease) => {
-        if (handedOver) {
-            return typeof backgroundSubmitOnRelease === 'function' ? { submit: backgroundSubmitOnRelease } : null
-        }
-        const claim = claimBackgroundSubmitRef.current
-        if (typeof claim !== 'function') return null
-        let claimed = null
-        try {
-            claimed = claim()
-        } catch (error) {
-            console.error('[rambler] background submit could not be claimed', error)
-            return null
-        }
-        return claimed && typeof claimed.submit === 'function' ? claimed : null
-    }
-
     const handlePressEnd = useCallback(
-        ({ heldMs, releasedInside, cancelled, distance, kind, handedOver, backgroundSubmitOnRelease }) => {
+        ({ heldMs, releasedInside, cancelled, distance, backgroundSubmitOnRelease }) => {
             const pressStartedRecording = pressStartedRecordingRef.current
             pressStartedRecordingRef.current = false
             if (processingRef.current && !pressStartedRecording) return
@@ -372,39 +308,24 @@ export function useRambleController({
             })
 
             if (outcome === PUSH_TO_TALK_SUBMIT) {
-                // Captured now: the input that holds this text may be gone by the time the audio is
-                // ready (the popup closes on release).
-                const currentText = getCurrentTextRef.current ? getCurrentTextRef.current() || '' : ''
-                const background = resolveBackgroundSubmit(!!handedOver, backgroundSubmitOnRelease)
+                const backgroundSubmit =
+                    typeof backgroundSubmitOnRelease === 'function' ? backgroundSubmitOnRelease : null
                 // Arm BEFORE stopping: `stop()` can run the recorder's `onstop` synchronously.
                 submitOnCompleteRef.current = true
-                detachedSubmitRef.current = background ? { ...background, currentText } : null
+                detachedSubmitRef.current = backgroundSubmit
                 // The recorder vetoes a take with too little audio in it (an accidental hold, or
                 // one that released before the microphone finished opening) and says so by
                 // returning false — in which case nothing was captured to submit. A background
                 // take is `detach`ed so it survives this mic unmounting with its popup (PT-5424).
                 if (
                     !stop(
-                        background
+                        backgroundSubmit
                             ? { minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS, detach: true }
                             : { minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS }
                     )
                 ) {
-                    // Nothing to submit: a claimed host is never dismissed, so its input stays open.
                     submitOnCompleteRef.current = false
                     detachedSubmitRef.current = null
-                    return
-                }
-                if (background?.dismiss) {
-                    // PT-5425: the take is safely stopped and promised to the completion, so the host
-                    // may close its input now. A mouse/pen press still owes the page its trailing
-                    // `click`, which must not land on whatever was under the popup.
-                    if (kind && kind !== 'touch') swallowNextClick(POINTER_CLICK_SUPPRESSION_MS)
-                    try {
-                        background.dismiss()
-                    } catch (error) {
-                        console.error('[rambler] background submit could not close its input', error)
-                    }
                 }
             } else if (outcome === PUSH_TO_TALK_STOP) {
                 stop()
@@ -415,8 +336,6 @@ export function useRambleController({
             // PUSH_TO_TALK_KEEP_RECORDING: a tap. The recording runs on until the next tap, which
             // is exactly the behaviour the mic has always had.
         },
-        // `resolveBackgroundSubmit` reads everything mutable through refs.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         [stop, cancel]
     )
 
@@ -445,9 +364,6 @@ export default function RambleButton({
     // AT-2823: a press-and-hold that started on another control (the task board's floating "+")
     // and is handed to this mic while the finger is still down. See pushToTalkHandoff.js.
     pushToTalkHandoff,
-    // PT-5425: lets the host close its input on a push-to-talk release on this mic and finish in the
-    // background. `() => null | { dismiss, submit(text), onFailed }`; see useRambleController.
-    claimBackgroundSubmit,
 }) {
     const { phase, elapsedSeconds, toggle, getInputLevel, handlePressStart, handlePressEnd } = useRambleController({
         projectId,
@@ -455,7 +371,6 @@ export default function RambleButton({
         getCurrentText,
         onTextReady,
         onSubmit,
-        claimBackgroundSubmit,
     })
     // Hosts can disable other microphone actions before the recording UI paints.
     useLayoutEffect(() => {
@@ -573,7 +488,6 @@ export default function RambleButton({
                 // to the host's background submit instead of being typed in here.
                 onGesturePressEnd({
                     ...release,
-                    handedOver: true,
                     backgroundSubmitOnRelease: pushToTalkHandoff.getBackgroundSubmit?.() || null,
                 })
             },
