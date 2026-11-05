@@ -5363,6 +5363,34 @@ export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender,
     )
 }
 
+/**
+ * One-shot probe for "when was a note in this project last edited", used to order the
+ * All Projects > Notes board before any project block has loaded (AT-2964). It is the same
+ * query shape as the board's own watcher (watchAllTabNotesInAllProjects /
+ * watchFollowedTabNotesInAllProjects) with limit(1), so it is served by the same composite
+ * index and the same access rule: the answer can only come from a note the viewer may read.
+ * Resolves to the newest lastEditionDate, 0 when the viewer has no such note, and null when
+ * the read failed (unknown, not "no notes").
+ */
+export async function getLastNoteEditionDateInAllProjects(projectId, followedOnly) {
+    try {
+        const readerFilter = followedOnly
+            ? ['followedReaderIds', 'array-contains', store.getState().loggedUser.uid]
+            : ['readerIds', 'array-contains', getLoggedUserAccessReaderId()]
+        const snapshot = await db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where(...readerFilter)
+            .limit(1)
+            .get()
+        const lastEditionDate = snapshot.docs[0]?.data()?.lastEditionDate
+        return typeof lastEditionDate === 'number' && Number.isFinite(lastEditionDate) ? lastEditionDate : 0
+    } catch (error) {
+        console.warn('[notes] could not read the last note edition date', projectId, error?.code || error)
+        return null
+    }
+}
+
 export async function watchAllTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)

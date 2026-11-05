@@ -55,7 +55,6 @@ import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
 import useDictationSubmit from './dictationSubmit'
-import { composeDictationAroundCaret, mergeLinkedUrls } from './backgroundDictation'
 import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
 import {
     ATTACHMENT_TRIGGER,
@@ -158,11 +157,6 @@ function CustomTextInput3(
         // AT-2823: a press-and-hold handed over from another control (the board's floating "+"),
         // which this input's mic takes over as its own push-to-talk hold.
         pushToTalkHandoff,
-        // PT-5425: `() => null | { dismiss, submit(composed), onFailed }`. Lets the host close on a
-        // push-to-talk release and finish in the background; `submit` receives the FINAL text (draft +
-        // transcript at the caret, plus linked-object URLs). Returning null keeps the interactive
-        // insert-then-submit behaviour. See RambleButton's `claimBackgroundSubmit`.
-        claimDictationBackgroundSubmit,
         showAttachmentButton = false,
         // AT-2938: stack the in-field controls (+ above the mic) instead of laying them out in a
         // row. Used by the mobile assistant composers once the text has wrapped, so the text gets
@@ -398,80 +392,6 @@ function CustomTextInput3(
         cancelDictationCaretRef.current?.()
         cancelDictationCaretRef.current = null
         armDictationSubmit(() => textRef.current)
-    }
-
-    // PT-5425: split the draft at the caret NOW, while the editor still exists, and return a
-    // function that places a transcript between the halves later. Mirrors `insertDictatedText`:
-    // same caret resolution, a selection is replaced, a space separates it from adjacent text.
-    const captureBackgroundDictationComposer = () => {
-        const editor = quillRef.current
-        if (!editor) return null
-        const liveSelection = editor.hasFocus() ? editor.getSelection() : null
-        const fallback = selectionTouchedRef.current
-            ? selectionRef.current
-            : { index: Math.max(0, editor.getLength() - 1), length: 0 }
-        const selection = liveSelection || fallback || { index: 0, length: 0 }
-        const lastIndex = Math.max(0, editor.getLength() - 1)
-        const index = Math.min(Math.max(0, selection.index || 0), lastIndex)
-        const length = Math.min(Math.max(0, selection.length || 0), lastIndex - index)
-
-        let beforeText
-        let afterText
-        let linkedUrls
-        if (disabledTags || inMentionsEditionTag) {
-            const plain = editor.getText()
-            beforeText = plain.slice(0, index)
-            afterText = plain.slice(index + length).replace(/\n$/, '')
-            linkedUrls = mergeLinkedUrls()
-        } else {
-            // getFinalText drops the document's trailing newline, so the left half gets one too.
-            const before = getFinalText(new Delta(editor.getContents(0, index).ops).insert('\n'))
-            const after = getFinalText(editor.getContents(index + length))
-            beforeText = before.extendedText
-            afterText = after.extendedText
-            linkedUrls = mergeLinkedUrls(before, after)
-        }
-
-        return transcript => {
-            const extendedText = composeDictationAroundCaret({
-                beforeText,
-                afterText,
-                dictatedText: normalizeDictatedText(transcript, dictationIsTitleTarget),
-            })
-            return extendedText === null ? null : { extendedText, ...linkedUrls }
-        }
-    }
-
-    const claimDictationBackgroundSubmitRef = useRef(claimDictationBackgroundSubmit)
-    claimDictationBackgroundSubmitRef.current = claimDictationBackgroundSubmit
-
-    // Handed to the mic as its `claimBackgroundSubmit`: asks the host whether it takes this release
-    // over, and if so wraps its `submit` so it receives the composed final text, not the raw transcript.
-    const claimBackgroundDictation = () => {
-        const claimHost = claimDictationBackgroundSubmitRef.current
-        if (typeof claimHost !== 'function') return null
-        let compose
-        try {
-            compose = captureBackgroundDictationComposer()
-        } catch (error) {
-            console.error('[rambler] could not capture the draft for a background submit', error)
-            return null
-        }
-        if (!compose) return null
-        const claimed = claimHost()
-        if (!claimed || typeof claimed.submit !== 'function') return null
-        return {
-            dismiss: claimed.dismiss,
-            onFailed: claimed.onFailed,
-            submit: transcript => {
-                const composed = compose(transcript)
-                if (!composed) {
-                    claimed.onFailed?.()
-                    return null
-                }
-                return claimed.submit(composed)
-            },
-        }
     }
 
     //MENTIONS
@@ -1002,11 +922,11 @@ function CustomTextInput3(
         }
     }
 
-    const getFinalText = (deltaContent = null) => {
+    const getFinalText = () => {
         if (disabledTags || inMentionsEditionTag) {
             return textRef.current
         }
-        if (!deltaContent) deltaContent = quillRef.current.getContents()
+        const deltaContent = quillRef.current.getContents()
         let finalText = ''
         let finalTextExtended = ''
         const linkedNotesUrls = []
@@ -1645,9 +1565,6 @@ function CustomTextInput3(
                                 onSubmit={submitDictatedText}
                                 visible={dictationButtonVisible}
                                 pushToTalkHandoff={pushToTalkHandoff}
-                                claimBackgroundSubmit={
-                                    claimDictationBackgroundSubmit ? claimBackgroundDictation : undefined
-                                }
                             />
                         )}
                     </View>

@@ -35,7 +35,6 @@ export default function MainModal({
     onFilesDropped,
     uploadingDraft,
     pushToTalkHandoff,
-    claimDictatedTaskInBackground,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [, windowHeight] = useWindowSize()
@@ -91,7 +90,6 @@ export default function MainModal({
                     showMoreOptions={showMoreOptions}
                     uploadingDraft={uploadingDraft}
                     pushToTalkHandoff={pushToTalkHandoff}
-                    claimDictatedTaskInBackground={claimDictatedTaskInBackground}
                 />
             </View>
         </CreateTaskFileDropZone>

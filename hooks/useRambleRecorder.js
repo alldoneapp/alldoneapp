@@ -28,11 +28,6 @@ export const RAMBLE_MAX_DURATION_SECONDS = 300
 // ~33% base64 inflation guard is applied server-side to the encoded string.
 export const RAMBLE_MAX_AUDIO_BYTES = 8 * 1024 * 1024
 
-// PT-5425: how long a detached take (stopped and promised to `onComplete`, its host already gone)
-// may wait for MediaRecorder's `onstop` before the microphone is force-released and the take is
-// reported lost. `onstop` normally arrives within one timeslice (1s).
-export const DETACHED_DELIVERY_TIMEOUT_MS = 10000
-
 // Never hardcode audio/webm: Safari/iOS records audio/mp4 and throws on a webm MediaRecorder.
 const MIME_TYPE_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
 
@@ -406,18 +401,6 @@ export default function useRambleRecorder({ onComplete, onError }) {
                 if (levelTimerRef.current) clearInterval(levelTimerRef.current)
                 timerRef.current = null
                 levelTimerRef.current = null
-                // Safety net (PT-5425): if `onstop` never arrives the microphone must not stay hot,
-                // and the host has to learn the take is gone so it can restore its draft.
-                setTimeout(() => {
-                    if (recorderRef.current !== pending || cancelledRef.current) return
-                    cancelledRef.current = true
-                    if (monitorRef.current) monitorRef.current.close()
-                    monitorRef.current = null
-                    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop())
-                    streamRef.current = null
-                    recorderRef.current = null
-                    onErrorRef.current?.('recorder-error')
-                }, DETACHED_DELIVERY_TIMEOUT_MS)
                 return
             }
             cancelledRef.current = true
