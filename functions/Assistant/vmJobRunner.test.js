@@ -3609,3 +3609,133 @@ describe('Codex OpenRouter routing', () => {
         expect(openRouterEnv.OPENAI_API_KEY).toBe('vmpx_token')
     })
 })
+
+describe('VM lifecycle cleanup regressions (AT-2962)', () => {
+    const originalFetch = global.fetch
+    const { pauseIdleVmSessions, cleanupIdleVmSessions } = require('./vmJobRunner')
+    const { getEnvFunctions } = require('../envFunctionsHelper')
+
+    afterEach(() => {
+        global.fetch = originalFetch
+        getEnvFunctions.mockReturnValue({})
+        mockFirestore.mockReset()
+        mockFirestore.mockReturnValue({ doc: jest.fn() })
+    })
+
+    function sessionDb(session) {
+        const ref = { id: 'thread' }
+        const transaction = {
+            get: jest.fn(async () => ({ exists: true, data: () => session })),
+            set: jest.fn(),
+            delete: jest.fn(),
+        }
+        const db = {
+            doc: jest.fn(path => ({ path })),
+            collection: jest.fn(() => ({
+                where: () => ({ get: async () => ({ docs: [{ ref, data: () => session }] }) }),
+            })),
+            runTransaction: jest.fn(async cb => cb(transaction)),
+        }
+        mockFirestore.mockReturnValue(db)
+        getEnvFunctions.mockReturnValue({ E2B_API_KEY: 'test-key' })
+        return { ref, db, transaction }
+    }
+
+    test('keeps the sandbox reference when E2B says it is already paused', async () => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', status: 'idle_running', lastUsedAt: 1 })
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 409,
+            text: async () => 'Error pausing sandbox: already paused',
+        }))
+        await pauseIdleVmSessions()
+        expect(f.transaction.set).toHaveBeenCalledWith(f.ref, expect.objectContaining({ status: 'paused' }), {
+            merge: true,
+        })
+        expect(f.transaction.set.mock.calls.some(([, data]) => data.sandboxId === null)).toBe(false)
+    })
+
+    test.each([401, 409, 429, 500, 503])('retains a retryable session on HTTP %i', async status => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', status: 'idle_running', lastUsedAt: 1 })
+        global.fetch = jest.fn(async () => ({ ok: false, status, text: async () => 'provider error' }))
+        await pauseIdleVmSessions()
+        expect(f.transaction.set).not.toHaveBeenCalled()
+    })
+
+    test('only clears the sandbox after a confirmed 404, preserving the thread queue', async () => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', status: 'idle_running', lastUsedAt: 1, queue: ['follow-up'] })
+        global.fetch = jest.fn(async () => ({ ok: false, status: 404, text: async () => 'missing' }))
+        await pauseIdleVmSessions()
+        expect(f.transaction.set).toHaveBeenCalledWith(f.ref, expect.objectContaining({ sandboxId: null }), {
+            merge: true,
+        })
+        expect(f.transaction.delete).not.toHaveBeenCalled()
+    })
+
+    test('does not overwrite a run that acquired the session during the pause request', async () => {
+        const session = {
+            sandboxId: 'sandbox-1',
+            lastUsedAt: 1,
+            activeLeaseOwner: 'new-run',
+            activeLeaseExpiresAt: 4000,
+        }
+        const f = sessionDb(session)
+        expect(await __private__.markVmSessionPausedIfIdle(f.ref, 'sandbox-1', 2000, 3000)).toBe(false)
+        expect(f.transaction.set).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        { queue: ['queued'] },
+        { queueLength: 1 },
+        { blockedByCorrelationId: 'interaction' },
+        { activeLeaseOwner: 'run', activeLeaseExpiresAt: 4000 },
+        { lastUsedAt: 2500 },
+    ])('preserves occupied or recently reused sessions: %j', async overrides => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', lastUsedAt: 1, ...overrides })
+        expect(await __private__.deleteIdleVmSessionIfUnoccupied(f.ref, 2000, 3000)).toBeNull()
+        expect(f.transaction.delete).not.toHaveBeenCalled()
+        expect(f.transaction.set).not.toHaveBeenCalled()
+    })
+
+    test('atomically detaches an expired idle session and retains its sandbox deletion target', async () => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', lastUsedAt: 1 })
+        await __private__.deleteIdleVmSessionIfUnoccupied(f.ref, 2000, 3000)
+        expect(f.transaction.delete).toHaveBeenCalledWith(f.ref)
+        expect(f.transaction.set).toHaveBeenCalledWith(
+            { path: 'vmSandboxDeletions/sandbox-1' },
+            expect.objectContaining({ sandboxId: 'sandbox-1' }),
+            { merge: true }
+        )
+    })
+
+    test('preserves the current runner lease while replacing an incompatible sandbox', async () => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', activeLeaseOwner: 'run', activeLeaseExpiresAt: 4000 })
+        await __private__.clearDeadVmSessionSandbox(f.ref, {
+            sandboxId: 'sandbox-1',
+            leaseOwner: 'run',
+            releaseLease: false,
+            now: 3000,
+        })
+        const payload = f.transaction.set.mock.calls.find(([ref]) => ref === f.ref)[1]
+        expect(payload.sandboxId).toBeNull()
+        expect(payload).not.toHaveProperty('activeLeaseOwner')
+        expect(payload).not.toHaveProperty('activeCorrelationId')
+    })
+
+    test('never detaches a session if recording its deletion target fails', async () => {
+        const f = sessionDb({ sandboxId: 'sandbox-1', lastUsedAt: 1 })
+        f.transaction.set.mockImplementation(() => {
+            throw new Error('outbox write failed')
+        })
+        await expect(__private__.deleteIdleVmSessionIfUnoccupied(f.ref, 2000, 3000)).rejects.toThrow(
+            'outbox write failed'
+        )
+        expect(f.transaction.delete).not.toHaveBeenCalled()
+    })
+
+    test('fails closed before deleting session records when the E2B key is missing', async () => {
+        getEnvFunctions.mockReturnValue({})
+        await expect(cleanupIdleVmSessions()).rejects.toThrow('E2B_API_KEY is required')
+        expect(mockFirestore).not.toHaveBeenCalled()
+    })
+})
