@@ -170,6 +170,12 @@ function AddTaskTag({
                 // The timer fired at the hold threshold, so this press IS a hold even if the clock
                 // the gesture reads lands a hair short of it.
                 handoff.end({ ...release, heldMs: Math.max(release.heldMs, PUSH_TO_TALK_HOLD_MS) })
+                // PT-5424: letting go ends the voice capture, so the popup closes at once — whether
+                // the take is submitted (the mic has already stopped it and handed it to the popup's
+                // background submit, which transcribes and creates the task behind the scenes),
+                // slid out to cancel, or too short to keep. "+" is usable again immediately, so the
+                // next task can be dictated while this one is still being created.
+                closePopupNow()
                 return
             }
             // A tap. Same rule a plain button follows: dragging off before letting go is a no.
@@ -216,13 +222,15 @@ function AddTaskTag({
         return () => document.removeEventListener('keydown', openFromShortcut, true)
     }, [handleOpen, plusShortcutEnabled])
 
+    const closePopupNow = () => {
+        closePopover()
+        popupLock.release()
+        taskEditorLock.release()
+        autoOpenInitialTaskNameRef.current = ''
+    }
+
     const handleClose = () => {
-        if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
-            closePopover()
-            popupLock.release()
-            taskEditorLock.release()
-            autoOpenInitialTaskNameRef.current = ''
-        }
+        if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) closePopupNow()
     }
 
     // The large variant keeps its label at every width: it is the only call to

@@ -557,41 +557,7 @@ export default function RichCreateTaskModal({
 
         return submitDraft(preparedTask => {
             closeModal(preparedTask)
-            if (triggerWhenCreateTask) triggerWhenCreateTask()
-
-            setShowInteractionBar && setShowInteractionBar(false)
-            if (expandTaskListIfNeeded) tryExpandTasksList(preparedTask)
-            if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(preparedTask)
-
-            // Use unified TaskService instead of old uploadNewTask
-            return createTaskWithService(
-                {
-                    projectId,
-                    name: preparedTask.name,
-                    description: preparedTask.description || '',
-                    userId: preparedTask.userId,
-                    dueDate: preparedTask.dueDate,
-                    isPrivate: preparedTask.isPrivate,
-                    observersIds: preparedTask.observersIds || [],
-                    estimations: preparedTask.estimations,
-                    recurrence: preparedTask.recurrence,
-                    parentId: preparedTask.parentId,
-                    linkBack: preparedTask.linkBack || '',
-                    genericData: preparedTask.genericData,
-                    parentGoalId: preparedTask.parentGoalId,
-                    // Pass through all other task properties
-                    ...preparedTask,
-                    // Last on purpose: the draft task never carries a routing
-                    // stamp, and only the picker's current state decides it.
-                    ...automaticProjectRoutingFields(),
-                },
-                {
-                    awaitForTaskCreation: true,
-
-                    notGenerateMentionTasks: false,
-                    notGenerateUpdates: false,
-                }
-            ).then(taskResult => {
+            return persistNewTask(preparedTask).then(taskResult => {
                 trySetLinkedObjects(taskResult)
                 return {
                     ...taskResult,
@@ -600,6 +566,66 @@ export default function RichCreateTaskModal({
             })
         })
     }
+
+    // The creation itself, shared by Enter/Done above and the background dictation below. It reads
+    // only this render's state, props and the store, so it still works after the popup unmounted.
+    const persistNewTask = preparedTask => {
+        if (triggerWhenCreateTask) triggerWhenCreateTask()
+
+        setShowInteractionBar && setShowInteractionBar(false)
+        if (expandTaskListIfNeeded) tryExpandTasksList(preparedTask)
+        if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(preparedTask)
+
+        // Use unified TaskService instead of old uploadNewTask
+        return createTaskWithService(
+            {
+                projectId,
+                name: preparedTask.name,
+                description: preparedTask.description || '',
+                userId: preparedTask.userId,
+                dueDate: preparedTask.dueDate,
+                isPrivate: preparedTask.isPrivate,
+                observersIds: preparedTask.observersIds || [],
+                estimations: preparedTask.estimations,
+                recurrence: preparedTask.recurrence,
+                parentId: preparedTask.parentId,
+                linkBack: preparedTask.linkBack || '',
+                genericData: preparedTask.genericData,
+                parentGoalId: preparedTask.parentGoalId,
+                // Pass through all other task properties
+                ...preparedTask,
+                // Last on purpose: the draft task never carries a routing
+                // stamp, and only the picker's current state decides it.
+                ...automaticProjectRoutingFields(),
+            },
+            {
+                awaitForTaskCreation: true,
+
+                notGenerateMentionTasks: false,
+                notGenerateUpdates: false,
+            }
+        )
+    }
+
+    // PT-5424: a hold on the board's floating "+" closes this popup the moment it is released, and
+    // the take is transcribed after that. The mic therefore cannot type the transcript in here and
+    // press Enter; it hands the text to this function instead, which creates the task from this
+    // popup's draft exactly as Enter would. A failure is reported, never swallowed: the popup is
+    // already gone, so an alert is the only place left to say that the task was not created.
+    const createDictatedTaskInBackground = text => {
+        const dictated = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : ''
+        const extendedName = [(task.extendedName || '').trim(), dictated].filter(Boolean).join(' ')
+        const name = TasksHelper.getTaskNameWithoutMeta(extendedName)
+        if (!name || !name.trim()) return Promise.resolve(null)
+        return Promise.resolve()
+            .then(() => persistNewTask({ ...task, extendedName, name }))
+            .catch(error => {
+                console.error('[RichCreateTaskModal] Background dictated task creation failed', error)
+                alert(translate('Task could not be created'))
+                return null
+            })
+    }
+    if (pushToTalkHandoff?.setBackgroundSubmit) pushToTalkHandoff.setBackgroundSubmit(createDictatedTaskInBackground)
 
     const expandTasks = () => {
         const { selectedProjectIndex, currentUser, smallScreenNavigation } = store.getState()

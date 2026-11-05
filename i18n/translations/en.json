@@ -2574,6 +2574,7 @@
     "Release to cancel": "Release to cancel",
     "No speech detected": "No speech detected",
     "Could not process dictation": "Could not process dictation",
+    "Task could not be created": "Task could not be created",
     "Microphone access was denied. Please allow microphone access in your browser settings.": "Microphone access was denied. Please allow microphone access in your browser settings.",
     "Dictation microphone": "Dictation microphone",
     "Standard (noise suppression on)": "Standard (noise suppression on)",

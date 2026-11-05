@@ -3279,6 +3279,26 @@ outside-click dismissal, since the "+" stops taking pointer events once a task e
 keyboard activation still opens it. Pinned by `components/Tags/AddTaskTagHoldToDictate.test.js`
 (real `AddTaskTag` + real `RambleButton`, real DOM events) and `pushToTalkHandoff.test.js`.
 
+**Letting go closes the popup at once, and the task is created in the background (PT-5424).** Every
+release of a hold closes the popup in `AddTaskTag` (`closePopupNow`), whether the take is submitted,
+slid out to cancel or too short, so "+" can be held again for the next task while the previous one is
+still being created. That only works because the take outlives the popup, which takes two pieces. The
+mic stops a submitting take with `stop({ detach: true })`, and `useRambleRecorder`'s unmount cleanup
+then leaves it alone: a real MediaRecorder fires `onstop` after `stop()` returns, i.e. after the
+popup unmounted, and the old cleanup cancelled it there, losing the task silently. And
+`RichCreateTaskModal` registers `createDictatedTaskInBackground` on the handoff
+(`setBackgroundSubmit`) on every render. On release `RambleButton` hands the take to it
+(`runDetachedRambleSubmit`): it transcribes under the bottom-left `LoadingData` spinner
+(`runWithLoading`) and creates the task through the same `persistNewTask` as Enter, i.e. with the
+popup's project and Automatic routing. Nothing is inserted into the closed editor. Failures alert
+(`reportRambleProcessingError`, "Task could not be created"); offline stays silent as before because
+the connection toast explains it. A hold-opened popup never focuses its title (`InputArea`), which on a
+phone would open the keyboard under the finger. The hold starts on "Automatic" in All projects and
+on the open project inside a single project. Pinned by the PT-5424 cases in
+`AddTaskTagHoldToDictate.test.js`, `useRambleRecorder.test.js`, `FloatingAddTaskButton.test.js`,
+`RichCreateTaskModal/InputArea.test.js` and
+`__tests__/UIComponents/FloatModals/RichCreateTaskModalBackgroundDictation.test.js`.
+
 ### Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
 
 Transcription biases towards a curated product glossary in **two** places, and both are required.

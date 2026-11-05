@@ -25,18 +25,24 @@ const mockStop = jest.fn(() => true)
 const mockCancel = jest.fn()
 let mockDictationSupported = true
 let mockPopupMounts = 0
+let mockRecorderOptions
+const mockBackgroundSubmit = jest.fn(() => Promise.resolve({ id: 'task-1' }))
+const mockLoadingDispatch = jest.fn()
 
 jest.mock('../../hooks/useRambleRecorder', () => ({
     __esModule: true,
     isDictationSupported: () => mockDictationSupported,
-    default: jest.fn(() => ({
-        isRecording: mockRecording,
-        elapsedSeconds: 0,
-        start: mockStart,
-        stop: mockStop,
-        cancel: mockCancel,
-        getInputLevel: () => 0.2,
-    })),
+    default: jest.fn(options => {
+        mockRecorderOptions = options
+        return {
+            isRecording: mockRecording,
+            elapsedSeconds: 0,
+            start: mockStart,
+            stop: mockStop,
+            cancel: mockCancel,
+            getInputLevel: () => 0.2,
+        }
+    }),
 }))
 jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
@@ -55,7 +61,10 @@ jest.mock('../../hooks/useTaskEditorLock', () => () => ({ acquire: jest.fn(), re
 jest.mock('../Icon', () => () => null)
 jest.mock('../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../utils/backends/Rambler/ramblerBackend', () => ({ processRamble: jest.fn() }))
-jest.mock('../../redux/store', () => ({ getState: () => ({ loggedUser: {} }), dispatch: jest.fn() }))
+jest.mock('../../redux/store', () => ({
+    getState: () => ({ loggedUser: {} }),
+    dispatch: (...args) => mockLoadingDispatch(...args),
+}))
 jest.mock('../../redux/actions', () => ({ setShowLimitedFeatureModal: jest.fn() }))
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({ useReducedMotion: () => false }))
 jest.mock('../styles/global', () => {
@@ -88,6 +97,9 @@ jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal',
     React.useEffect(() => {
         mockPopupMounts += 1
     }, [])
+    // What RichCreateTaskModal does: tell the handed-over hold how to create the task from the
+    // transcript once this popup is gone (PT-5424).
+    if (props.pushToTalkHandoff) props.pushToTalkHandoff.setBackgroundSubmit(mockBackgroundSubmit)
     return React.createElement(
         'div',
         { 'data-testid': 'create-task-popup', 'data-project-id': pickedProjectId || props.initialProjectId },
@@ -222,9 +234,7 @@ describe('the project a hold opens the popup on', () => {
 
         hold()
         releaseHold()
-        click(container.querySelector('[data-testid="pick-project"]'))
-        expect(popupProjectId()).toBe('picked-project')
-        click(container.querySelector('[data-testid="close-popup"]'))
+        // PT-5424: letting go closes the popup.
         expect(popup()).toBeFalsy()
         advance(1000)
 
@@ -232,7 +242,9 @@ describe('the project a hold opens the popup on', () => {
         tap()
         expect(popupProjectId()).toBe('visible-project')
         click(container.querySelector('[data-testid="pick-project"]'))
+        expect(popupProjectId()).toBe('picked-project')
         click(container.querySelector('[data-testid="close-popup"]'))
+        expect(popup()).toBeFalsy()
         advance(1000)
 
         hold()
@@ -299,7 +311,7 @@ describe('holding the floating "+" (AT-2823)', () => {
         expect(mockStart).not.toHaveBeenCalled()
     })
 
-    test('hold → the popup opens straight into the mic hold; release submits the take', () => {
+    test('hold → the popup opens straight into the mic hold; release closes it and submits in the background', () => {
         render({ holdToDictate: true })
 
         dispatch(plus(), 'mousedown', { button: 0, ...PRESS })
@@ -316,14 +328,69 @@ describe('holding the floating "+" (AT-2823)', () => {
         dispatch(window, 'mouseup', PRESS)
         trailingClick()
 
-        // The push-to-talk SUBMIT path: transcribe, insert and create the task.
-        expect(mockStop).toHaveBeenCalledWith({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS })
+        // The push-to-talk SUBMIT path, detached so the take survives the popup closing (PT-5424).
+        expect(mockStop).toHaveBeenCalledWith({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS, detach: true })
         expect(mockCancel).not.toHaveBeenCalled()
         expect(overlay()).toBeFalsy()
-        // The click after a long mouse hold must not dismiss the popup mid-transcription.
+        // The click after a long mouse hold reaches neither the app nor the "+" (no reopen).
         expect(windowClick).not.toHaveBeenCalled()
-        expect(popup()).toBeTruthy()
+        expect(popup()).toBeFalsy()
         expect(mockPopupMounts).toBe(1)
+    })
+
+    test('the released take is transcribed and the task created after the popup closed (PT-5424)', async () => {
+        const { processRamble } = require('../../utils/backends/Rambler/ramblerBackend')
+        let resolveTranscript
+        processRamble.mockImplementation(() => new Promise(resolve => (resolveTranscript = resolve)))
+        render({ holdToDictate: true })
+
+        hold()
+        releaseHold()
+        expect(popup()).toBeFalsy()
+
+        // The recorder's `onstop` lands after the popup unmounted.
+        await act(async () => {
+            mockRecorderOptions.onComplete({ audioBase64: 'data:audio/webm;base64,AAAA', mimeType: 'audio/webm' })
+        })
+        expect(processRamble).toHaveBeenCalledTimes(1)
+        // The bottom-left loading spinner runs while the task is on its way.
+        expect(mockLoadingDispatch).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'Start loading operation', source: 'dictated-background-submit' })
+        )
+        expect(mockBackgroundSubmit).not.toHaveBeenCalled()
+
+        // Meanwhile "+" can already be held again for the next task (a fresh mic, not recording).
+        mockRecording = false
+        hold()
+        expect(popup()).toBeTruthy()
+        expect(mockStart).toHaveBeenCalledTimes(2)
+        releaseHold()
+        expect(popup()).toBeFalsy()
+
+        await act(async () => {
+            resolveTranscript({ text: 'buy milk' })
+        })
+        expect(mockBackgroundSubmit).toHaveBeenCalledWith('buy milk')
+        expect(mockLoadingDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Finish loading operation' }))
+    })
+
+    test('a failed transcription after the popup closed is reported, not lost (PT-5424)', async () => {
+        const { processRamble } = require('../../utils/backends/Rambler/ramblerBackend')
+        processRamble.mockRejectedValue(new Error('boom'))
+        const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {})
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+        render({ holdToDictate: true })
+
+        hold()
+        releaseHold()
+        await act(async () => {
+            mockRecorderOptions.onComplete({ audioBase64: 'data:audio/webm;base64,AAAA', mimeType: 'audio/webm' })
+        })
+
+        expect(alertSpy).toHaveBeenCalledWith('Could not process dictation')
+        expect(mockBackgroundSubmit).not.toHaveBeenCalled()
+        alertSpy.mockRestore()
+        errorSpy.mockRestore()
     })
 
     test('sliding out of the ring before letting go discards the take', () => {
@@ -343,6 +410,8 @@ describe('holding the floating "+" (AT-2823)', () => {
 
         expect(mockCancel).toHaveBeenCalledTimes(1)
         expect(mockStop).not.toHaveBeenCalled()
+        // PT-5424: a cancelled hold closes the popup too.
+        expect(popup()).toBeFalsy()
     })
 
     test('a touch hold behaves the same way', () => {
@@ -353,7 +422,8 @@ describe('holding the floating "+" (AT-2823)', () => {
         expect(mockStart).toHaveBeenCalledTimes(1)
         dispatch(window, 'touchend', { changedTouches: [{ identifier: 1, ...PRESS }] })
 
-        expect(mockStop).toHaveBeenCalledWith({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS })
+        expect(mockStop).toHaveBeenCalledWith({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS, detach: true })
+        expect(popup()).toBeFalsy()
     })
 
     test('the browser taking the gesture away mid-hold discards the take', () => {

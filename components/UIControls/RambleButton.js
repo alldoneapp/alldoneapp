@@ -19,6 +19,7 @@ import {
     resolvePushToTalkRelease,
 } from './pushToTalk'
 import { processRamble } from '../../utils/backends/Rambler/ramblerBackend'
+import { runWithLoading } from '../../utils/redux/loadingOperation'
 import { translate } from '../../i18n/TranslationService'
 import store from '../../redux/store'
 import { setShowLimitedFeatureModal } from '../../redux/actions'
@@ -47,6 +48,85 @@ export function formatRambleElapsed(elapsedSeconds) {
 }
 
 /**
+ * Tells the user why a recorded take produced no text. Shared by the in-place path and the
+ * background path (PT-5424), which runs after the input that recorded it is gone.
+ */
+export function reportRambleProcessingError(error, deviceLabel) {
+    console.error('Ramble processing error:', error)
+    if (error?.code === 'offline') {
+        // The recording cannot be queued; the connection toast already explains offline.
+    } else if (
+        error?.code === 'functions/resource-exhausted' ||
+        error?.code === 'resource-exhausted' ||
+        error?.message?.includes('Insufficient Gold')
+    ) {
+        store.dispatch(
+            setShowLimitedFeatureModal({
+                title: translate('Not enough Gold'),
+                description: translate(
+                    'You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.'
+                ),
+            })
+        )
+    } else if (error?.message?.includes('EMPTY_TRANSCRIPT')) {
+        // A microphone can be alive and still be the WRONG one: it records the room while the user
+        // talks into another device, which passes every local check and only fails here. Naming the
+        // device we listened to is the difference between a dead end and an obvious fix.
+        alert(
+            deviceLabel
+                ? translate('No speech detected on the microphone', { device: deviceLabel })
+                : translate('No speech detected')
+        )
+    } else {
+        alert(translate('Could not process dictation'))
+    }
+}
+
+/**
+ * PT-5424: transcribe a take whose input is already gone and hand the text to `submit` (for the
+ * floating "+" that is "create the task"). Runs under the app's bottom-left loading spinner, so the
+ * board shows that something is still on its way while the user can already hold "+" again for the
+ * next task. Every failure is reported — a closed popup must never mean a silently lost task.
+ */
+export function runDetachedRambleSubmit({
+    projectId,
+    targetKind,
+    currentText = '',
+    audioBase64,
+    mimeType,
+    durationSeconds,
+    deviceLabel,
+    submit,
+}) {
+    return runWithLoading('dictated-background-submit', async () => {
+        let result
+        try {
+            result = await processRamble({
+                projectId,
+                audio: audioBase64,
+                mimeType,
+                targetKind,
+                currentText,
+                durationSeconds,
+                language: store.getState().loggedUser?.language,
+            })
+        } catch (error) {
+            reportRambleProcessingError(error, deviceLabel)
+            return
+        }
+        if (!result?.text) return
+        // The submit reports its own failures: it is the only layer that knows what "send" means.
+        // This catch is only the backstop for one that throws instead.
+        try {
+            await submit(result.text)
+        } catch (error) {
+            console.error('Background dictation submit failed:', error)
+            alert(translate('Could not process dictation'))
+        }
+    })
+}
+
+/**
  * Records a ramble, sends it through `processRambleSecondGen`, and hands the cleaned text to the
  * caller. Shared between the CustomTextInput3 overlay button and the notes editor toolbar, which
  * render their own chrome around the same phases.
@@ -61,6 +141,10 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
     const submitOnCompleteRef = useRef(false)
     const onSubmitRef = useRef(onSubmit)
     onSubmitRef.current = onSubmit
+    // PT-5424: set when a push-to-talk release hands its take to a background submit (see
+    // `handlePressEnd`). The input this mic belongs to is closed by then, so the completion must not
+    // insert into it or press its Enter — it transcribes and calls this function instead.
+    const detachedSubmitRef = useRef(null)
 
     // 'silent-input*' means the microphone handed the browser silence (AT-2357) — the recording was
     // never uploaded, so these messages replace a Gold charge and a misleading "No speech detected".
@@ -68,6 +152,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         // A take that failed is never submitted; drop the arming so a later tap-started recording
         // cannot inherit it.
         submitOnCompleteRef.current = false
+        detachedSubmitRef.current = null
         if (code === 'permission-denied') {
             alert(translate('Microphone access was denied. Please allow microphone access in your browser settings.'))
         } else if (code === 'silent-input-retry') {
@@ -100,6 +185,21 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         async ({ audioBase64, mimeType, durationSeconds, deviceLabel }) => {
             const shouldSubmit = submitOnCompleteRef.current
             submitOnCompleteRef.current = false
+            const detachedSubmit = detachedSubmitRef.current
+            detachedSubmitRef.current = null
+            if (shouldSubmit && detachedSubmit) {
+                const currentText = getCurrentText ? (getCurrentText() || '').slice(0, 2000) : ''
+                return runDetachedRambleSubmit({
+                    projectId,
+                    targetKind,
+                    currentText,
+                    audioBase64,
+                    mimeType,
+                    durationSeconds,
+                    deviceLabel,
+                    submit: detachedSubmit,
+                })
+            }
             setProcessing(true)
             try {
                 const requestStartedAt = Date.now()
@@ -129,35 +229,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
                     if (shouldSubmit) onSubmitRef.current?.(result.text)
                 }
             } catch (error) {
-                console.error('Ramble processing error:', error)
-                if (error?.code === 'offline') {
-                    // The recording cannot be queued; the connection toast already explains offline.
-                } else if (
-                    error?.code === 'functions/resource-exhausted' ||
-                    error?.code === 'resource-exhausted' ||
-                    error?.message?.includes('Insufficient Gold')
-                ) {
-                    store.dispatch(
-                        setShowLimitedFeatureModal({
-                            title: translate('Not enough Gold'),
-                            description: translate(
-                                'You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.'
-                            ),
-                        })
-                    )
-                } else if (error?.message?.includes('EMPTY_TRANSCRIPT')) {
-                    // A microphone can be alive and still be the WRONG one: it records the room
-                    // while the user talks into another device, which passes every local check and
-                    // only fails here. Naming the device we listened to is the difference between a
-                    // dead end and an obvious fix.
-                    alert(
-                        deviceLabel
-                            ? translate('No speech detected on the microphone', { device: deviceLabel })
-                            : translate('No speech detected')
-                    )
-                } else {
-                    alert(translate('Could not process dictation'))
-                }
+                reportRambleProcessingError(error, deviceLabel)
             } finally {
                 setProcessing(false)
             }
@@ -222,7 +294,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
     }, [start])
 
     const handlePressEnd = useCallback(
-        ({ heldMs, releasedInside, cancelled, distance }) => {
+        ({ heldMs, releasedInside, cancelled, distance, backgroundSubmitOnRelease }) => {
             const pressStartedRecording = pressStartedRecordingRef.current
             pressStartedRecordingRef.current = false
             if (processingRef.current && !pressStartedRecording) return
@@ -236,13 +308,24 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
             })
 
             if (outcome === PUSH_TO_TALK_SUBMIT) {
+                const backgroundSubmit =
+                    typeof backgroundSubmitOnRelease === 'function' ? backgroundSubmitOnRelease : null
                 // Arm BEFORE stopping: `stop()` can run the recorder's `onstop` synchronously.
                 submitOnCompleteRef.current = true
+                detachedSubmitRef.current = backgroundSubmit
                 // The recorder vetoes a take with too little audio in it (an accidental hold, or
                 // one that released before the microphone finished opening) and says so by
-                // returning false — in which case nothing was captured to submit.
-                if (!stop({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS })) {
+                // returning false — in which case nothing was captured to submit. A background
+                // take is `detach`ed so it survives this mic unmounting with its popup (PT-5424).
+                if (
+                    !stop(
+                        backgroundSubmit
+                            ? { minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS, detach: true }
+                            : { minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS }
+                    )
+                ) {
                     submitOnCompleteRef.current = false
+                    detachedSubmitRef.current = null
                 }
             } else if (outcome === PUSH_TO_TALK_STOP) {
                 stop()
@@ -401,7 +484,12 @@ export default function RambleButton({
             onEnd: release => {
                 if (!started) return
                 started = false
-                onGesturePressEnd(release)
+                // PT-5424: the opener closes this popup on release, so a submitting take is handed
+                // to the host's background submit instead of being typed in here.
+                onGesturePressEnd({
+                    ...release,
+                    backgroundSubmitOnRelease: pushToTalkHandoff.getBackgroundSubmit?.() || null,
+                })
             },
         })
         if (!stopListening) return undefined

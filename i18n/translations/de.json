@@ -2123,6 +2123,7 @@
     "Release to cancel": "Loslassen zum Abbrechen",
     "No speech detected": "Keine Sprache erkannt",
     "Could not process dictation": "Diktat konnte nicht verarbeitet werden",
+    "Task could not be created": "Aufgabe konnte nicht erstellt werden",
     "Microphone access was denied. Please allow microphone access in your browser settings.": "Der Mikrofonzugriff wurde verweigert. Bitte erlaube den Mikrofonzugriff in deinen Browser-Einstellungen.",
     "Dictation microphone": "Diktat-Mikrofon",
     "Standard (noise suppression on)": "Standard (Rauschunterdrückung an)",

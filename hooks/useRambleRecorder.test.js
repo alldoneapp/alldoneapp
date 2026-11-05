@@ -738,6 +738,92 @@ describe('useRambleRecorder', () => {
         })
     })
 
+    /**
+     * PT-5424: releasing a hold on the board's floating "+" stops the take and closes the add-task
+     * popup in the same tick. A real MediaRecorder delivers its final chunk and `onstop` only
+     * afterwards, i.e. after the mic has unmounted — and the unmount used to cancel the take, so
+     * the task the user just dictated was silently thrown away.
+     */
+    describe('a take stopped with { detach: true } (PT-5424)', () => {
+        // `stop()` goes inactive at once but dispatches `onstop` later, as browsers do.
+        const deferStop = () => {
+            const recorder = recorderInstances[0]
+            recorder.stop = function stop() {
+                this.state = 'inactive'
+                this.pendingStop = () => this.onstop?.()
+            }
+            return recorder
+        }
+
+        const waitFor = condition =>
+            new Promise((resolve, reject) => {
+                const startedAt = Date.now()
+                const poll = () => {
+                    if (condition()) return resolve()
+                    if (Date.now() - startedAt > 3000) return reject(new Error('timed out'))
+                    setTimeout(poll, 10)
+                }
+                poll()
+            })
+
+        test('is still delivered after the host unmounts, and its microphone is released', async () => {
+            jest.useRealTimers()
+            const onComplete = jest.fn()
+            const onError = jest.fn()
+            const root = renderHook({ onComplete, onError })
+            await act(async () => {
+                await hookValue.start()
+            })
+            const recorder = deferStop()
+            act(() => {
+                recorder.ondataavailable({ data: new Blob(['audio-bytes'], { type: 'audio/webm' }) })
+            })
+
+            let delivered
+            act(() => {
+                delivered = hookValue.stop({ detach: true })
+            })
+            act(() => {
+                root.unmount()
+            })
+            expect(delivered).toBe(true)
+            // The track stays open until the recorder has flushed; `onstop` releases it.
+            expect(recorder.stream.tracks[0].stop).not.toHaveBeenCalled()
+
+            await act(async () => {
+                recorder.pendingStop()
+                await waitFor(() => onComplete.mock.calls.length || onError.mock.calls.length)
+            })
+
+            expect(onError).not.toHaveBeenCalled()
+            expect(onComplete).toHaveBeenCalledTimes(1)
+            expect(onComplete.mock.calls[0][0].audioBase64).toMatch(/^data:/)
+            expect(recorder.stream.tracks[0].stop).toHaveBeenCalled()
+        })
+
+        test('an ordinary stop is still cancelled by the unmount', async () => {
+            const onComplete = jest.fn()
+            const root = renderHook({ onComplete, onError: jest.fn() })
+            await act(async () => {
+                await hookValue.start()
+            })
+            const recorder = deferStop()
+            act(() => {
+                recorder.ondataavailable({ data: new Blob(['audio-bytes'], { type: 'audio/webm' }) })
+                hookValue.stop()
+            })
+            act(() => {
+                root.unmount()
+            })
+            act(() => {
+                recorder.pendingStop()
+            })
+
+            expect(onComplete).not.toHaveBeenCalled()
+            expect(recorder.stream.tracks[0].stop).toHaveBeenCalled()
+        })
+    })
+
     test('unmount while recording stops the stream tracks', async () => {
         const root = renderHook({ onComplete: jest.fn(), onError: jest.fn() })
 

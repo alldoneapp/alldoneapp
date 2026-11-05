@@ -28,10 +28,17 @@ export default function InputArea({
         return ''
     }
 
+    // PT-5424: a popup opened by holding the board's floating "+" is a voice capture that closes
+    // again on release. Focusing the title there only pops up the phone's keyboard under the finger
+    // (and resizes the sheet mid-dictation), so that popup never focuses its input.
+    const focusOnOpen = !pushToTalkHandoff
+
     useEffect(() => {
-        setTimeout(() => {
+        if (!focusOnOpen) return undefined
+        const timer = setTimeout(() => {
             inputTask?.current?.focus()
         }, 1000)
+        return () => clearTimeout(timer)
     }, [])
 
     return (
@@ -45,7 +52,7 @@ export default function InputArea({
                     multiline={true}
                     externalTextStyle={localStyles.textInputText}
                     caretColor="white"
-                    autoFocus={true}
+                    autoFocus={focusOnOpen}
                     externalAlignment={{ paddingLeft: 0, paddingRight: 0 }}
                     containerStyle={{ marginRight: 20 }}
                     updateMentions={setMentions}
