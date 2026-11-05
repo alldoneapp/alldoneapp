@@ -11,11 +11,18 @@ function recordVmSandboxDeletion(transaction, db, sandboxId, sessionId, now = Da
     )
 }
 
-async function drainVmSandboxDeletions({ db, apiKey, killSandbox, limit = 20 }) {
+async function drainVmSandboxDeletions({ db, apiKey, killSandbox, limit = 20, now = Date.now() }) {
     const result = { deleted: 0, failed: 0, referenced: 0 }
     if (!apiKey) return result
-    const snapshot = await db.collection(VM_SANDBOX_DELETIONS).limit(limit).get()
+    const snapshot = await db.collection(VM_SANDBOX_DELETIONS).get()
+    let attempted = 0
     for (const doc of snapshot.docs) {
+        // Legacy orphans younger than the retention window can be tracked now without
+        // deleting them early. Old outbox records without a deadline remain immediately due.
+        const notBefore = Number(doc.data()?.notBefore || 0)
+        if (!Number.isFinite(notBefore) || notBefore > now) continue
+        if (attempted >= limit) break
+        attempted += 1
         // The document ID is the deletion target, never a caller-controlled payload field.
         const sandboxId = doc.id
         try {

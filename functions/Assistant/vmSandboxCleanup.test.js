@@ -1,12 +1,14 @@
 const { recordVmSandboxDeletion, drainVmSandboxDeletions } = require('./vmSandboxCleanup')
 
-function fixture({ referenced = false, killError, deleteError } = {}) {
+function fixture({ referenced = false, killError, deleteError, notBefore } = {}) {
     const ref = {
         delete: jest.fn(async () => {
             if (deleteError) throw deleteError
         }),
     }
-    const deletions = { limit: jest.fn(() => ({ get: async () => ({ docs: [{ id: 'sandbox-old', ref }] }) })) }
+    const deletions = {
+        get: jest.fn(async () => ({ docs: [{ id: 'sandbox-old', ref, data: () => ({ notBefore }) }] })),
+    }
     const references = { where: jest.fn(() => ({ limit: () => ({ get: async () => ({ empty: !referenced }) }) })) }
     const db = { collection: jest.fn(name => (name === 'vmSandboxDeletions' ? deletions : references)) }
     const killSandbox = jest.fn(async () => {
@@ -61,4 +63,28 @@ test('does nothing without credentials', async () => {
     const f = fixture()
     await drainVmSandboxDeletions({ ...f, apiKey: '' })
     expect(f.db.collection).not.toHaveBeenCalled()
+})
+
+test('retains a recent orphan until its seven-day deadline, then deletes it', async () => {
+    const f = fixture({ notBefore: 3000 })
+    await drainVmSandboxDeletions({ ...f, apiKey: 'key', now: 2000 })
+    expect(f.killSandbox).not.toHaveBeenCalled()
+    expect(f.ref.delete).not.toHaveBeenCalled()
+    await drainVmSandboxDeletions({ ...f, apiKey: 'key', now: 3000 })
+    expect(f.killSandbox).toHaveBeenCalledTimes(1)
+    expect(f.ref.delete).toHaveBeenCalledTimes(1)
+})
+
+test('future cleanup records do not consume the bounded deletion budget', async () => {
+    const f = fixture()
+    const future = { id: 'future', data: () => ({ notBefore: 5000 }), ref: { delete: jest.fn() } }
+    const due = { id: 'due', data: () => ({}), ref: { delete: jest.fn() } }
+    const extra = { id: 'extra', data: () => ({}), ref: { delete: jest.fn() } }
+    const collection = f.db.collection('vmSandboxDeletions')
+    collection.get.mockResolvedValue({ docs: [future, due, extra] })
+    await drainVmSandboxDeletions({ ...f, apiKey: 'key', now: 3000, limit: 1 })
+    expect(f.killSandbox).toHaveBeenCalledTimes(1)
+    expect(f.killSandbox).toHaveBeenCalledWith('due', expect.any(Object))
+    expect(future.ref.delete).not.toHaveBeenCalled()
+    expect(extra.ref.delete).not.toHaveBeenCalled()
 })
