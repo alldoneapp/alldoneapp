@@ -14,6 +14,8 @@ import SharedHelper from '../../../../utils/SharedHelper'
 import { resolveEffectiveMessageLoading } from './messageLoadingState'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 
+export const QUEUED_CONTENT_STYLE = { opacity: 0.6 }
+
 export default function MessageItem({
     chat,
     projectId,
@@ -122,6 +124,8 @@ export default function MessageItem({
         getTimestampInMilliseconds(message.lastChangeDate)
     )
 
+    const isQueued = message.pendingSend?.status === 'queued'
+
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
         outputRange: [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125],
@@ -151,42 +155,46 @@ export default function MessageItem({
                         marginHorizontal: -8,
                         paddingHorizontal: 8,
                         borderRadius: 4,
-                        // AT-2922: a queued message is not sent yet.
-                        opacity: message.pendingSend?.status === 'queued' ? 0.6 : 1,
                     }}
                 >
-                    <MessageItemHeader
-                        projectId={projectId}
-                        message={message}
-                        serverTime={serverTime}
-                        creatorData={creatorData}
-                        highlight={highlight}
-                        onEditPress={enableEditMode}
-                        editDisabled={!accessGranted || !!message.pendingSend}
-                        accessGranted={accessGranted}
-                        linkedEmailNew={accessGranted && !!linkedEmail && linkedEmailNew}
-                    />
-                    <MessageItemContent
-                        chat={chat}
-                        projectId={projectId}
-                        commentText={message.commentText}
-                        chatTitle={chatTitle}
-                        members={members}
-                        messageId={message.id}
-                        creatorId={message.creatorId}
-                        dismissibleRef={dismissibleRef}
-                        creatorData={creatorData}
-                        objectType={objectType}
-                        setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
-                        isLoading={effectiveIsLoading}
-                        assistantRun={message.assistantRun}
-                        linkedEmail={linkedEmail}
-                        linkedEmailGmailData={message.gmailData}
-                        linkedEmailArchiving={linkedEmailArchiving}
-                        linkedEmailArchived={linkedEmailArchived}
-                        onArchiveLinkedEmail={onArchiveLinkedEmail}
-                        canArchiveLinkedEmail={accessGranted}
-                    />
+                    {/* AT-2922: a queued message is not sent yet, so it is dimmed.
+                        AT-2963: dim the CONTENT, never this row. The row's opaque background is
+                        what hides the swipe-to-quote layer underneath it; a translucent row let the
+                        green "Quote" area show through and lie over the avatar and the name. */}
+                    <View testID="message-item-foreground" style={isQueued ? QUEUED_CONTENT_STYLE : undefined}>
+                        <MessageItemHeader
+                            projectId={projectId}
+                            message={message}
+                            serverTime={serverTime}
+                            creatorData={creatorData}
+                            highlight={highlight}
+                            onEditPress={enableEditMode}
+                            editDisabled={!accessGranted || !!message.pendingSend}
+                            accessGranted={accessGranted}
+                            linkedEmailNew={accessGranted && !!linkedEmail && linkedEmailNew}
+                        />
+                        <MessageItemContent
+                            chat={chat}
+                            projectId={projectId}
+                            commentText={message.commentText}
+                            chatTitle={chatTitle}
+                            members={members}
+                            messageId={message.id}
+                            creatorId={message.creatorId}
+                            dismissibleRef={dismissibleRef}
+                            creatorData={creatorData}
+                            objectType={objectType}
+                            setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
+                            isLoading={effectiveIsLoading}
+                            assistantRun={message.assistantRun}
+                            linkedEmail={linkedEmail}
+                            linkedEmailGmailData={message.gmailData}
+                            linkedEmailArchiving={linkedEmailArchiving}
+                            linkedEmailArchived={linkedEmailArchived}
+                            onArchiveLinkedEmail={onArchiveLinkedEmail}
+                            canArchiveLinkedEmail={accessGranted}
+                        />
+                    </View>
                 </Animated.View>
             </Swipeable>
         </View>
