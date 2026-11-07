@@ -943,7 +943,13 @@ copied verbatim into each member's single `activityUnreadSummary` document acros
 and archived projects keep their wiki running with counters nobody clears, so that document would
 grow every night without bound. The trigger reads the slot first, and a slot already holding this
 day's change makes later revisions write no counter at all. A failed read writes the slot anyway,
-which is safe because the key is fixed. Ids are derived from slug + revision, so a redelivered
+which is safe because the key is fixed. The card also says what the wiki cost on its day, with a
+link to the wiki settings (`components/Feeds/FeedsObjects/wikiDayCost.js`): the `goldSpent` of the
+runs that worked during that local day, read from `knowledgeBases/{id}/runs` (members may read the
+tree) with one query per card and day. Per day and not per line, because one run rewrites many
+pages and a cost on every line would add up to many times what was spent; a running run counts
+as "still going" until it writes its total. Member corrections are not runs, since their model
+calls are billed to the chat they came from. Ids are derived from slug + revision, so a redelivered
 trigger rewrites the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
 (`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,
 folded context), which also works for archived and hidden pages because it reads revisions, not

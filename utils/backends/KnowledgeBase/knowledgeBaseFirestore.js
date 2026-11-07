@@ -85,6 +85,21 @@ export function watchKnowledgeRuns(projectId, onChange, onError) {
         )
 }
 
+// The latest runs that started before `end`, newest first: what the Updates card adds up to say
+// what the wiki cost on its day (components/Feeds/FeedsObjects/wikiDayCost.js). One equality-free
+// range on a single field, so no composite index.
+export async function getKnowledgeRunsStartedBefore(projectId, end) {
+    const db = getDb()
+    if (!db || !projectId || !Number.isFinite(end)) return []
+    const snapshot = await db
+        .collection(getKnowledgeRunsPath(projectId))
+        .where('startedAt', '<', end)
+        .orderBy('startedAt', 'desc')
+        .limit(RECENT_RUNS_LIMIT)
+        .get()
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
+}
+
 export async function getKnowledgePageRevisions(projectId, slug) {
     const db = getDb()
     if (!db || !projectId || !slug) return []

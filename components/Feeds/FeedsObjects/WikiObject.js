@@ -14,9 +14,10 @@ import {
     WIKI_CHANGE_UPDATED,
 } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import { watchWikiDayFeeds } from '../../../utils/backends/Feeds/wikiDayFeeds'
-import { openProjectWiki, openProjectWikiChange } from '../../WikiView/wikiLinks'
+import { openProjectWiki, openProjectWikiChange, openProjectWikiSettings } from '../../WikiView/wikiLinks'
 import WikiPageChangedFeed from '../FeedsTypes/WikiPageChangedFeed'
 import useWikiFeedPageTitle from '../FeedsTypes/useWikiFeedPageTitle'
+import useWikiDayCost from './wikiDayCost'
 import { FOLLOWED_TAB } from '../Utils/FeedsConstants'
 import NewFeedDot from '../FollowSwitchableTag/NewFeedDot'
 
@@ -89,6 +90,7 @@ export default function WikiObject({ feedObjectData, projectId, day, feedActiveT
     const userId = useSelector(state => state.currentUser?.uid)
     const [expanded, setExpanded] = useState(false)
     const [daySnapshot, setDaySnapshot] = useState(null)
+    const dayCost = useWikiDayCost(projectId, day)
     const { feeds } = feedObjectData
     const scope = `${projectId}/${day}/${userId}/${feedActiveTab}`
 
@@ -146,6 +148,21 @@ export default function WikiObject({ feedObjectData, projectId, day, feedActiveT
                 </Text>
                 {!snapshot?.complete && (
                     <Text style={localStyles.meta}>{translate('Wiki digest showing available changes')}</Text>
+                )}
+                {dayCost && (
+                    <Text testID="wiki-digest-cost" style={localStyles.meta}>
+                        {translate('Wiki digest cost', { gold: dayCost.gold })}
+                        {dayCost.running ? ` · ${translate('Wiki digest run in progress')}` : ''}
+                        {' · '}
+                        <Text
+                            testID="wiki-digest-settings"
+                            style={localStyles.link}
+                            accessibilityRole="link"
+                            onPress={activeModalInFeed ? undefined : () => openProjectWikiSettings(projectId)}
+                        >
+                            {translate('Wiki settings')}
+                        </Text>
+                    </Text>
                 )}
                 {(expanded ? pages : pages.slice(0, PREVIEW_LIMIT)).map(page => (
                     <View key={page.slug} style={localStyles.group}>
@@ -220,6 +237,9 @@ const localStyles = StyleSheet.create({
     meta: {
         ...styles.body3,
         color: colors.Text03,
+    },
+    link: {
+        color: colors.Primary100,
     },
     memberEdit: {
         ...styles.body3,

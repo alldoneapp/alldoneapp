@@ -12,12 +12,17 @@ jest.mock('react-redux', () => ({
 jest.mock('../../../utils/backends/Feeds/wikiDayFeeds', () => ({ watchWikiDayFeeds: jest.fn() }))
 jest.mock('../../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     getKnowledgeRevisionTitle: jest.fn(),
+    getKnowledgeRunsStartedBefore: jest.fn(),
 }))
 jest.mock('../../ContactsView/Utils/ContactsHelper', () => ({
     getUserPresentationDataInProject: (projectId, userId) =>
         userId === 'u2' ? { shortName: 'Maria', photoURL: 'maria.png' } : { shortName: '', photoURL: '' },
 }))
-jest.mock('../../WikiView/wikiLinks', () => ({ openProjectWiki: jest.fn(), openProjectWikiChange: jest.fn() }))
+jest.mock('../../WikiView/wikiLinks', () => ({
+    openProjectWiki: jest.fn(),
+    openProjectWikiChange: jest.fn(),
+    openProjectWikiSettings: jest.fn(),
+}))
 jest.mock('../Commons/FeedsTypesLeftHeader', () => {
     const { Text: MockText } = require('react-native')
     return ({ icon }) => <MockText testID="left-header">{icon || 'avatar'}</MockText>
@@ -35,9 +40,13 @@ jest.mock('../../../i18n/TranslationService', () => {
 
 import WikiObject from './WikiObject'
 import { watchWikiDayFeeds } from '../../../utils/backends/Feeds/wikiDayFeeds'
-import { getKnowledgeRevisionTitle } from '../../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
-import { openProjectWiki, openProjectWikiChange } from '../../WikiView/wikiLinks'
+import {
+    getKnowledgeRevisionTitle,
+    getKnowledgeRunsStartedBefore,
+} from '../../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
+import { openProjectWiki, openProjectWikiChange, openProjectWikiSettings } from '../../WikiView/wikiLinks'
 import { clearWikiFeedPageTitles, loadWikiFeedPageTitle } from '../FeedsTypes/useWikiFeedPageTitle'
+import { clearWikiDayCosts } from './wikiDayCost'
 
 const textOf = node => {
     if (typeof node === 'string') return node
@@ -93,6 +102,8 @@ const expand = component =>
 beforeEach(() => {
     jest.clearAllMocks()
     clearWikiFeedPageTitles()
+    clearWikiDayCosts()
+    getKnowledgeRunsStartedBefore.mockResolvedValue([])
     watchWikiDayFeeds.mockImplementation((_project, _day, _user, _followed, onChange) => {
         onChange([], true)
         return () => {}
@@ -202,6 +213,42 @@ describe('the wiki in the Updates feed', () => {
         const component = await mount([feed('broken', { wikiSlug: '../x', wikiRevision: 2 })])
 
         expect(component.root.findAllByProps({ testID: 'wiki-feed-broken' })).toHaveLength(0)
+    })
+
+    it('says what the wiki cost that day, and links to its settings (AT-2967)', async () => {
+        getKnowledgeRunsStartedBefore.mockResolvedValue([
+            { id: 'later', startedAt: Date.UTC(2026, 9, 24, 14), status: 'running', goldSpent: 99 },
+            {
+                id: 'night',
+                startedAt: Date.UTC(2026, 9, 24, 2),
+                finishedAt: Date.UTC(2026, 9, 24, 2, 9),
+                goldSpent: 12,
+            },
+            {
+                id: 'before',
+                startedAt: Date.UTC(2026, 9, 23, 2),
+                finishedAt: Date.UTC(2026, 9, 23, 2, 5),
+                goldSpent: 40,
+            },
+        ])
+
+        const component = await mount()
+
+        expect(getKnowledgeRunsStartedBefore).toHaveBeenCalledWith('p1', Date.UTC(2026, 9, 25))
+        expect(textOf(component.root.findByProps({ testID: 'wiki-digest-cost' }).children)).toBe(
+            'Cost this day: 12 Gold · a run is still going · Wiki settings'
+        )
+        act(() => component.root.findByProps({ testID: 'wiki-digest-settings' }).props.onPress())
+        expect(openProjectWikiSettings).toHaveBeenCalledWith('p1')
+    })
+
+    it('leaves the cost out when the runs cannot be read', async () => {
+        getKnowledgeRunsStartedBefore.mockRejectedValue(new Error('offline'))
+
+        const component = await mount()
+
+        expect(component.root.findAllByProps({ testID: 'wiki-digest-cost' })).toHaveLength(0)
+        expect(component.root.findByProps({ testID: 'wiki-digest-summary' })).toBeDefined()
     })
 
     it('reads a revision title once for every line and tab that shows it', async () => {
