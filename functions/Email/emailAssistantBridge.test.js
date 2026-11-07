@@ -45,6 +45,7 @@ jest.mock('../WhatsApp/whatsAppToolErrorUtils', () => ({
 
 jest.mock('./emailDailyTopic', () => ({
     getConversationHistory: jest.fn(),
+    getEmailCalendarEventsCreatedByAssistant: jest.fn().mockResolvedValue([]),
     getLatestSafeEmailActionContext: jest.fn(),
     storeEmailAssistantMessageInTopic: jest.fn().mockResolvedValue('assistant-comment'),
 }))
@@ -73,6 +74,7 @@ jest.mock(
 const { getUserData } = require('../Users/usersFirestore')
 const {
     getConversationHistory,
+    getEmailCalendarEventsCreatedByAssistant,
     getLatestSafeEmailActionContext,
     storeEmailAssistantMessageInTopic,
 } = require('./emailDailyTopic')
@@ -925,5 +927,253 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             ],
             createdAt: 123,
         })
+    })
+})
+
+describe('emailAssistantBridge changing calendar events Anna created over email', () => {
+    const allDayLichterfest = {
+        eventId: 'bfjt50r62r3uoskokq4nsp4vlc',
+        calendarId: 'primary',
+        calendarEmail: 'karsten@example.com',
+        provider: 'google',
+        summary: 'Lichterfest – Kita Wasserflöhe',
+        start: { date: '2026-11-13' },
+        end: { date: '2026-11-14' },
+    }
+    const directEmail = {
+        fromEmail: 'karsten@example.com',
+        toEmail: 'karsten@example.com',
+        toEmails: ['anna@alldoneapp.com'],
+        ccEmails: [],
+        hasAdditionalRecipients: false,
+        isParticipantScopedTopic: true,
+        skipCurrentMessageAppend: true,
+    }
+
+    function toolCallChunk(name, args) {
+        return {
+            additional_kwargs: {
+                tool_calls: [{ id: `tool-${name}`, function: { name, arguments: JSON.stringify(args) } }],
+            },
+        }
+    }
+
+    function systemText(callIndex = 0) {
+        return mockInteractWithChatStream.mock.calls[callIndex][0]
+            .filter(message => Array.isArray(message) && message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+    }
+
+    function offeredTools(callIndex = 0) {
+        return mockInteractWithChatStream.mock.calls[callIndex][3]
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        getUserData.mockResolvedValue({ displayName: 'Karsten Wysk', gold: 100, language: 'German' })
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['create_calendar_event', 'update_calendar_event', 'search_calendar_events'],
+            instructions: '',
+            model: 'MODEL_GPT6_LUNA',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        mockGetExternalIntegrationToolName.mockResolvedValue(null)
+        getConversationHistory.mockResolvedValue([['user', 'Es geht um 16 Uhr los']])
+        getEmailCalendarEventsCreatedByAssistant.mockResolvedValue([allDayLichterfest])
+    })
+
+    test('turns the all-day event it created into a 16:00 event when the sender corrects it', async () => {
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            calendarEmail: 'karsten@example.com',
+            calendarId: 'primary',
+            event: {
+                eventId: allDayLichterfest.eventId,
+                summary: allDayLichterfest.summary,
+                start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin' },
+            },
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                toolCallChunk('update_calendar_event', {
+                    eventId: allDayLichterfest.eventId,
+                    calendarId: 'primary',
+                    start: { dateTime: '2026-11-13T16:00:00', timeZone: 'Europe/Berlin' },
+                    end: { dateTime: '2026-11-13T18:00:00', timeZone: 'Europe/Berlin' },
+                }),
+            ])
+            .mockReturnValueOnce([{ content: 'Ich habe das Lichterfest auf 16:00 Uhr geändert.' }])
+
+        const responseText = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Es geht um 16 Uhr los',
+            'assistant-1',
+            directEmail
+        )
+
+        expect(responseText).toBe('Ich habe das Lichterfest auf 16:00 Uhr geändert.')
+        expect(getEmailCalendarEventsCreatedByAssistant).toHaveBeenCalledWith('project-1', 'chat-1', {
+            assistantId: 'assistant-1',
+            senderEmail: 'karsten@example.com',
+            latestReplyOnly: false,
+        })
+        expect(offeredTools()).toEqual(['find_calendar_availability', 'create_calendar_event', 'update_calendar_event'])
+        expect(systemText()).toContain('Calendar events you created over email in this conversation')
+        expect(systemText()).toContain(allDayLichterfest.eventId)
+        expect(systemText()).toContain('Never mention event IDs in the reply')
+
+        const [toolName, toolArgs] = mockExecuteToolNatively.mock.calls[0]
+        expect(toolName).toBe('update_calendar_event')
+        // "primary" is dropped so the update finds the event in whichever account holds it.
+        expect(toolArgs).toEqual({
+            eventId: allDayLichterfest.eventId,
+            start: { dateTime: '2026-11-13T16:00:00', timeZone: 'Europe/Berlin' },
+            end: { dateTime: '2026-11-13T18:00:00', timeZone: 'Europe/Berlin' },
+        })
+
+        const storedOptions = storeEmailAssistantMessageInTopic.mock.calls[0][5]
+        expect(storedOptions.calendarEvents).toEqual([
+            {
+                ...allDayLichterfest,
+                start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin' },
+                updatedAt: expect.any(Number),
+            },
+        ])
+    })
+
+    test('refuses to change an event it did not create over email in this conversation', async () => {
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                toolCallChunk('update_calendar_event', {
+                    eventId: 'someone-elses-event',
+                    start: '2026-11-13T16:00:00+01:00',
+                    end: '2026-11-13T18:00:00+01:00',
+                }),
+            ])
+            .mockReturnValueOnce([{ content: 'Diesen Termin kann ich per E-Mail nicht ändern.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Verschieb den Zahnarzttermin auf 16 Uhr',
+            'assistant-1',
+            directEmail
+        )
+
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+        const followUpConversation = mockInteractWithChatStream.mock.calls[1][0]
+        const toolMessage = followUpConversation.find(message => message.role === 'tool')
+        expect(JSON.parse(toolMessage.content)).toEqual(
+            expect.objectContaining({ success: false, code: 'calendar_event_not_editable_by_email' })
+        )
+        expect(followUpConversation[followUpConversation.length - 1].content).toContain('it cannot be changed by email')
+        expect(storeEmailAssistantMessageInTopic.mock.calls[0][5].calendarEvents).toEqual([])
+    })
+
+    test('remembers an event it creates so the next email can correct it', async () => {
+        getEmailCalendarEventsCreatedByAssistant.mockResolvedValue([])
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            provider: 'google',
+            calendarId: 'primary',
+            calendarEmail: 'karsten@example.com',
+            event: { ...allDayLichterfest, description: 'Einladung der Kita', attendees: [] },
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                toolCallChunk('create_calendar_event', {
+                    summary: allDayLichterfest.summary,
+                    start: { date: '2026-11-13' },
+                    end: { date: '2026-11-14' },
+                }),
+            ])
+            .mockReturnValueOnce([{ content: 'Eingetragen.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Bitte im Kalender eintragen',
+            'assistant-1',
+            directEmail
+        )
+
+        expect(systemText()).toContain('No such event exists yet')
+        expect(storeEmailAssistantMessageInTopic.mock.calls[0][5].calendarEvents).toEqual([
+            { ...allDayLichterfest, updatedAt: expect.any(Number) },
+        ])
+    })
+
+    test('reads only the immediately preceding reply when earlier history is withheld', async () => {
+        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Bitte ändern', 'assistant-1', {
+            ...directEmail,
+            ccEmails: ['guest@example.com'],
+            hasAdditionalRecipients: true,
+            isParticipantScopedTopic: false,
+        })
+
+        expect(getEmailCalendarEventsCreatedByAssistant).toHaveBeenCalledWith(
+            'project-1',
+            'chat-1',
+            expect.objectContaining({ latestReplyOnly: true })
+        )
+    })
+
+    test('does not offer update_calendar_event when there is nothing it could change', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['update_calendar_event'],
+            model: 'MODEL_GPT6_LUNA',
+        })
+        getEmailCalendarEventsCreatedByAssistant.mockResolvedValue([])
+        mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Das geht per E-Mail nicht.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Bitte ändern',
+            'assistant-1',
+            directEmail
+        )
+
+        expect(offeredTools()).toEqual([])
+        expect(systemText()).not.toContain('update_calendar_event')
+    })
+
+    test('does not look up remembered events for an assistant without the update permission', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['create_calendar_event'],
+            model: 'MODEL_GPT6_LUNA',
+        })
+        mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Ok.' }])
+
+        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Hallo', 'assistant-1', directEmail)
+
+        expect(getEmailCalendarEventsCreatedByAssistant).not.toHaveBeenCalled()
+        expect(offeredTools()).toEqual(['create_calendar_event'])
+    })
+
+    test('still answers when the remembered events cannot be read', async () => {
+        getEmailCalendarEventsCreatedByAssistant.mockRejectedValue(new Error('unavailable'))
+        mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Ok.' }])
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+        await expect(
+            processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Hallo', 'assistant-1', directEmail)
+        ).resolves.toBe('Ok.')
+        expect(systemText()).toContain('No such event exists yet')
+        warn.mockRestore()
     })
 })

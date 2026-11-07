@@ -10,12 +10,14 @@ const EMAIL_CREATE_TASK_KEY = 'create_task'
 const EMAIL_FIND_CALENDAR_AVAILABILITY_KEY = 'find_calendar_availability'
 const EMAIL_SEARCH_CALENDAR_EVENTS_KEY = 'search_calendar_events'
 const EMAIL_CREATE_CALENDAR_EVENT_KEY = 'create_calendar_event'
+const EMAIL_UPDATE_CALENDAR_EVENT_KEY = 'update_calendar_event'
 const EMAIL_CREATE_NOTE_KEY = 'create_note'
 const EMAIL_UPDATE_NOTE_KEY = 'update_note'
 const EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY = 'update_heartbeat_settings'
 const EMAIL_CREATE_GMAIL_DRAFT_KEY = 'create_gmail_draft'
 const EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY = 'create_gmail_reply_draft'
 const EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY = 'calendar_availability'
+const MAX_EMAIL_CALENDAR_EVENT_RECORDS = 10
 const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
 const MAX_QUOTED_REPLY_TEXT_LENGTH = 4000
 const QUOTED_REPLY_CONTEXT_HEADER = '--- Quoted earlier message (context only) ---'
@@ -198,6 +200,80 @@ function normalizeSafeEmailActionContext(value = {}) {
     return normalized
 }
 
+function trimRecordText(value, maxLength) {
+    return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function normalizeEmailCalendarEventTime(value) {
+    if (typeof value === 'string') {
+        const dateTime = trimRecordText(value, 64)
+        return dateTime ? { dateTime } : null
+    }
+    if (!value || typeof value !== 'object') return null
+
+    const normalized = {}
+    ;['date', 'dateTime', 'timeZone'].forEach(key => {
+        const text = trimRecordText(value[key], 64)
+        if (text) normalized[key] = text
+    })
+    return Object.keys(normalized).length > 0 ? normalized : null
+}
+
+// A calendar event Anna created over email, remembered on her reply so that a later email in the
+// same conversation can correct it. It names the event and nothing else of the user's calendar.
+function normalizeEmailCalendarEventRecord(value = {}) {
+    const eventId = trimRecordText(value?.eventId, 1024)
+    if (!eventId) return null
+
+    const record = { eventId }
+    const calendarId = trimRecordText(value.calendarId, 320)
+    const calendarEmail = trimRecordText(value.calendarEmail, 320)
+    const provider = trimRecordText(value.provider, 32)
+    const summary = trimRecordText(value.summary, 300)
+    const start = normalizeEmailCalendarEventTime(value.start)
+    const end = normalizeEmailCalendarEventTime(value.end)
+    if (calendarId) record.calendarId = calendarId
+    if (calendarEmail) record.calendarEmail = calendarEmail
+    if (provider) record.provider = provider
+    if (summary) record.summary = summary
+    if (start) record.start = start
+    if (end) record.end = end
+    if (Number.isFinite(value.updatedAt)) record.updatedAt = value.updatedAt
+    return record
+}
+
+// One record per event, the latest version of it last; the oldest are dropped past the cap.
+function normalizeEmailCalendarEventRecords(values = []) {
+    if (!Array.isArray(values)) return []
+
+    const byEventId = new Map()
+    values.forEach(value => {
+        const record = normalizeEmailCalendarEventRecord(value)
+        if (!record) return
+        byEventId.delete(record.eventId)
+        byEventId.set(record.eventId, record)
+    })
+    return [...byEventId.values()].slice(-MAX_EMAIL_CALENDAR_EVENT_RECORDS)
+}
+
+function buildEmailCalendarEventRecord(toolResult = {}, { eventId = '', previous = null, now = Date.now() } = {}) {
+    if (toolResult?.success !== true) return null
+
+    const event = toolResult.event || {}
+    const record = normalizeEmailCalendarEventRecord({
+        eventId: eventId || event.eventId,
+        calendarId: toolResult.calendarId || event.calendarId,
+        calendarEmail: toolResult.calendarEmail || event.calendarEmail,
+        provider: toolResult.provider,
+        summary: event.summary,
+        start: event.start,
+        end: event.end,
+        updatedAt: now,
+    })
+    if (!record) return null
+    return previous ? normalizeEmailCalendarEventRecord({ ...previous, ...record }) : record
+}
+
 function getEmailSafeAllowedTools(rawTools = []) {
     if (!Array.isArray(rawTools)) return []
 
@@ -210,6 +286,8 @@ function getEmailSafeAllowedTools(rawTools = []) {
         allowed.push(EMAIL_FIND_CALENDAR_AVAILABILITY_KEY)
     }
     if (rawTools.includes(EMAIL_CREATE_CALENDAR_EVENT_KEY)) allowed.push(EMAIL_CREATE_CALENDAR_EVENT_KEY)
+    // Only for events Anna created over email herself: the email bridge refuses every other eventId.
+    if (rawTools.includes(EMAIL_UPDATE_CALENDAR_EVENT_KEY)) allowed.push(EMAIL_UPDATE_CALENDAR_EVENT_KEY)
     if (rawTools.includes(EMAIL_CREATE_NOTE_KEY)) allowed.push(EMAIL_CREATE_NOTE_KEY)
     if (rawTools.includes(EMAIL_UPDATE_NOTE_KEY)) allowed.push(EMAIL_UPDATE_NOTE_KEY)
     if (rawTools.includes(EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY)) {
@@ -640,8 +718,10 @@ module.exports = {
     EMAIL_EXTERNAL_TOOLS_KEY,
     EMAIL_FIND_CALENDAR_AVAILABILITY_KEY,
     EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
+    EMAIL_UPDATE_CALENDAR_EVENT_KEY,
     EMAIL_UPDATE_NOTE_KEY,
     buildAttachmentSummaryForComment,
+    buildEmailCalendarEventRecord,
     buildCurrentEmailParticipants,
     buildDailyEmailParticipantEmails,
     buildDailyEmailParticipantKey,
@@ -655,6 +735,7 @@ module.exports = {
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
     normalizeEmailAddressList,
+    normalizeEmailCalendarEventRecords,
     normalizeEmailDisplayName,
     normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,

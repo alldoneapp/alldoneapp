@@ -4084,6 +4084,24 @@ each action in Gold through the Gold webhook (`alldone_team_usage`). Once signed
 for that frame instead of charging twice. Before that message, the host still charges as before.
 Pinned by `IframeModal.test.js`.
 
+### Over email, Anna may change only the calendar events she created over email
+
+The inbound email channel runs on a filtered tool set (`getEmailSafeAllowedTools`), because forwarded
+mail is untrusted text and a reply can reach external recipients. `update_calendar_event` is in it, but
+the bridge (`emailAssistantBridge.js`) executes it only for an eventId Anna created or changed over
+email in the same conversation; any other id gets `calendar_event_not_editable_by_email` and nothing
+is called. The record of those events is stored on her reply (`emailReplyMetadata.calendarEvents`,
+id, calendar, title, start and end only) and read back by `getEmailCalendarEventsCreatedByAssistant`
+from replies whose `creatorId` is the assistant, which the comment rules refuse to every client, so a
+project member cannot plant an id. Search and delete stay unavailable by email. Before this, Anna
+created an all-day event from a forwarded invitation, was told the start time, and answered that she
+could not edit it: the tool was filtered out and the event id was gone with the previous run.
+Changing an all-day event into a timed one also needs the replaced field cleared: Google's
+`events.patch` merges `start`/`end` and answers 400 "Invalid start time" if `date` survives next to
+`dateTime` (`clearReplacedEventTimeFields`), and Graph needs `isAllDay: false`. Pinned by the
+calendar-event blocks of `emailAssistantBridge.test.js`, `emailDailyTopic.test.js`,
+`emailChannelHelpers.test.js`, `assistantCalendarTools.test.js` and `microsoftCalendarProvider.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything

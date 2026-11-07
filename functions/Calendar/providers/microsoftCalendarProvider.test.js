@@ -377,6 +377,32 @@ describe('microsoftCalendarProvider automatic Teams conferencing', () => {
         expect(request.mock.calls[6][0]).toBe('/me/events/master')
     })
 
+    test('switches isAllDay off when an all-day event gets a time', async () => {
+        const request = jest.fn((path, options) => {
+            if (options?.method === 'PATCH') return Promise.resolve({ id: 'evt-1', isAllDay: false })
+            return Promise.resolve({
+                id: 'evt-1',
+                type: 'singleInstance',
+                isAllDay: true,
+                start: { dateTime: '2026-11-13T00:00:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-11-14T00:00:00', timeZone: 'Europe/Berlin' },
+            })
+        })
+        getMicrosoftGraphClient.mockResolvedValue({ request })
+
+        const result = await updateMicrosoftCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'evt-1',
+            timeZone: 'Europe/Berlin',
+            start: '2026-11-13T16:00:00+01:00',
+            end: '2026-11-13T18:00:00+01:00',
+        })
+
+        expect(result.success).toBe(true)
+        const patchCall = request.mock.calls.find(call => call[1]?.method === 'PATCH')
+        expect(JSON.parse(patchCall[1].body)).toMatchObject({ isAllDay: false })
+    })
+
     test('updates a series recurrence from an occurrence ID', async () => {
         const request = jest.fn((path, options) => {
             if (options?.method === 'PATCH') return Promise.resolve({ id: 'master', type: 'seriesMaster' })

@@ -16,6 +16,7 @@ const {
     buildParticipantScopedDailyEmailTitle,
     getEmailParticipantDisplayName,
     normalizeEmailAddress,
+    normalizeEmailCalendarEventRecords,
     normalizeSafeEmailActionContext,
 } = require('./emailChannelHelpers')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
@@ -185,6 +186,8 @@ async function storeEmailAssistantMessageInTopic(projectId, chatId, assistantId,
         messageId: options.messageId || '',
     }
     if (safeActionContext) emailReplyMetadata.safeActionContext = safeActionContext
+    const calendarEvents = normalizeEmailCalendarEventRecords(options.calendarEvents)
+    if (calendarEvents.length > 0) emailReplyMetadata.calendarEvents = calendarEvents
 
     const comment = {
         commentText: String(responseText || '').trim(),
@@ -295,6 +298,41 @@ async function getLatestSafeEmailActionContext(projectId, chatId, senderEmail = 
     return normalizeSafeEmailActionContext(latestAssistantComment.emailReplyMetadata?.safeActionContext)
 }
 
+// The calendar events Anna created (or last changed) over email in this conversation: the only
+// events a later email may ask her to change. Records are read only from replies whose creatorId
+// is the assistant itself, which the comment rules refuse to any client, so a project member
+// cannot plant an eventId of the owner's calendar here. A reply sent to somebody other than the
+// current sender does not count either, mirroring getLatestSafeEmailActionContext.
+async function getEmailCalendarEventsCreatedByAssistant(
+    projectId,
+    chatId,
+    { assistantId = '', senderEmail = '', latestReplyOnly = false, limit = THREAD_CONTEXT_MESSAGE_LIMIT } = {}
+) {
+    if (!assistantId) return []
+
+    const snapshot = await admin
+        .firestore()
+        .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+        .orderBy('created', 'desc')
+        .limit(latestReplyOnly ? 5 : limit)
+        .get()
+
+    let assistantReplies = snapshot.docs.map(doc => doc.data() || {}).filter(data => data.fromAssistant === true)
+    if (latestReplyOnly) assistantReplies = assistantReplies.slice(0, 1)
+
+    const normalizedSenderEmail = normalizeEmailAddress(senderEmail)
+    const records = []
+    assistantReplies.reverse().forEach(data => {
+        if (data.creatorId !== assistantId) return
+        const replyToEmail = normalizeEmailAddress(data.emailReplyMetadata?.toEmail || '')
+        if (normalizedSenderEmail && replyToEmail !== normalizedSenderEmail) return
+        const calendarEvents = data.emailReplyMetadata?.calendarEvents
+        if (Array.isArray(calendarEvents)) records.push(...calendarEvents)
+    })
+
+    return normalizeEmailCalendarEventRecords(records)
+}
+
 function buildFileContextForAssistant(emailAttachments = []) {
     if (!Array.isArray(emailAttachments) || emailAttachments.length === 0) return ''
 
@@ -313,6 +351,7 @@ function buildFileContextForAssistant(emailAttachments = []) {
 
 module.exports = {
     getConversationHistory,
+    getEmailCalendarEventsCreatedByAssistant,
     getLatestSafeEmailActionContext,
     getOrCreateDailyEmailTopic,
     storeEmailAssistantMessageInTopic,
