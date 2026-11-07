@@ -1201,6 +1201,23 @@ function buildEventPayload(args, { requireRange = true } = {}) {
     return payload
 }
 
+// events.patch merges nested objects instead of replacing them, so changing an all-day event into
+// a timed one (or back) would leave the old `date` next to the new `dateTime`, and Google answers
+// 400 "Invalid start time". The field the new value replaces has to be cleared explicitly.
+function clearReplacedEventTimeFields(payload, currentEvent = {}) {
+    ;['start', 'end'].forEach(key => {
+        const next = payload[key]
+        const current = currentEvent?.[key]
+        if (!next || !current) return
+        if (next.dateTime && current.date) {
+            payload[key] = { ...next, date: null }
+        } else if (next.date && current.dateTime) {
+            payload[key] = { ...next, dateTime: null, timeZone: null }
+        }
+    })
+    return payload
+}
+
 /**
  * Insert a Google event, asking Calendar to provision a Google Meet.
  *
@@ -1387,6 +1404,7 @@ async function updateCalendarEventForAssistantRequest({
         {}
     const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
     if (target.error) return target.error
+    clearReplacedEventTimeFields(payload, currentEvent)
     if (recurrence !== undefined) {
         const masterEvent =
             target.eventId === trimmedEventId

@@ -31,7 +31,12 @@ jest.mock('../Assistant/contextLimits', () => ({
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { getUserData } = require('../Users/usersFirestore')
-const { getLatestSafeEmailActionContext, getOrCreateDailyEmailTopic } = require('./emailDailyTopic')
+const {
+    getEmailCalendarEventsCreatedByAssistant,
+    getLatestSafeEmailActionContext,
+    getOrCreateDailyEmailTopic,
+    storeEmailAssistantMessageInTopic,
+} = require('./emailDailyTopic')
 
 function setCommentDocs(comments) {
     admin.firestore.mockReturnValue({
@@ -215,5 +220,97 @@ describe('emailDailyTopic safe follow-up context', () => {
         ])
 
         await expect(getLatestSafeEmailActionContext('project-1', 'chat-1', 'owner@example.com')).resolves.toBeNull()
+    })
+})
+
+describe('emailDailyTopic calendar events Anna created over email', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    function assistantReply(calendarEvents, overrides = {}) {
+        return {
+            fromAssistant: true,
+            creatorId: 'assistant-1',
+            emailReplyMetadata: { toEmail: 'owner@example.com', calendarEvents },
+            ...overrides,
+        }
+    }
+
+    // Comment docs are listed newest first, as the query orders them.
+    test('collects the events from the assistant replies to the same sender, latest version last', async () => {
+        setCommentDocs([
+            { fromAssistant: false, commentText: 'Es geht um 16 Uhr los' },
+            assistantReply([{ eventId: 'evt-1', summary: 'Lichterfest', start: { dateTime: '2026-11-13T16:00' } }]),
+            { fromAssistant: false, commentText: 'Bitte im Kalender eintragen' },
+            assistantReply([
+                { eventId: 'evt-1', summary: 'Lichterfest', start: { date: '2026-11-13' } },
+                { eventId: 'evt-2', summary: 'Elternabend' },
+            ]),
+        ])
+
+        await expect(
+            getEmailCalendarEventsCreatedByAssistant('project-1', 'chat-1', {
+                assistantId: 'assistant-1',
+                senderEmail: 'Owner@Example.com',
+            })
+        ).resolves.toEqual([
+            { eventId: 'evt-2', summary: 'Elternabend' },
+            { eventId: 'evt-1', summary: 'Lichterfest', start: { dateTime: '2026-11-13T16:00' } },
+        ])
+    })
+
+    test('ignores replies the assistant did not write and replies to another sender', async () => {
+        setCommentDocs([
+            // A member can create a comment with no creatorId, but never one carrying the assistant's.
+            assistantReply([{ eventId: 'planted-1' }], { creatorId: undefined }),
+            assistantReply([{ eventId: 'planted-2' }], { creatorId: 'member-1' }),
+            assistantReply([{ eventId: 'other-sender' }], {
+                emailReplyMetadata: { toEmail: 'guest@example.com', calendarEvents: [{ eventId: 'other-sender' }] },
+            }),
+        ])
+
+        await expect(
+            getEmailCalendarEventsCreatedByAssistant('project-1', 'chat-1', {
+                assistantId: 'assistant-1',
+                senderEmail: 'owner@example.com',
+            })
+        ).resolves.toEqual([])
+    })
+
+    test('reads only the latest assistant reply when the earlier history is withheld', async () => {
+        setCommentDocs([assistantReply([{ eventId: 'evt-latest' }]), assistantReply([{ eventId: 'evt-earlier' }])])
+
+        await expect(
+            getEmailCalendarEventsCreatedByAssistant('project-1', 'chat-1', {
+                assistantId: 'assistant-1',
+                senderEmail: 'owner@example.com',
+                latestReplyOnly: true,
+            })
+        ).resolves.toEqual([{ eventId: 'evt-latest' }])
+    })
+
+    test('reads nothing without an assistant to attribute the replies to', async () => {
+        await expect(getEmailCalendarEventsCreatedByAssistant('project-1', 'chat-1', {})).resolves.toEqual([])
+    })
+
+    test('stores the calendar events of a reply on its email metadata', async () => {
+        const { chatRef } = setChatDoc()
+
+        await storeEmailAssistantMessageInTopic('project-1', 'chat-1', 'assistant-1', 'Erledigt.', 'user-1', {
+            toEmail: 'owner@example.com',
+            calendarEvents: [{ eventId: 'evt-1', summary: 'Lichterfest', description: 'not kept' }],
+        })
+
+        expect(chatRef.set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+                emailReplyMetadata: expect.objectContaining({
+                    toEmail: 'owner@example.com',
+                    calendarEvents: [{ eventId: 'evt-1', summary: 'Lichterfest' }],
+                }),
+            })
+        )
     })
 })

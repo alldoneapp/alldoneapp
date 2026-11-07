@@ -152,7 +152,8 @@ function buildEventPayload(args, { requireRange = true } = {}) {
         if (startIsAllDay !== endIsAllDay) throw new Error('All-day events must provide start.date and end.date.')
         payload.start = normalizeEventDateTimeInput(args.start, args.timeZone)
         payload.end = normalizeEventDateTimeInput(args.end, args.timeZone)
-        if (startIsAllDay) payload.isAllDay = true
+        // Explicit either way: a PATCH that gives an all-day event a time has to switch isAllDay off.
+        payload.isAllDay = startIsAllDay
         if (!moment(payload.end.dateTime).isAfter(moment(payload.start.dateTime))) {
             throw new Error('Event end must be after event start.')
         }

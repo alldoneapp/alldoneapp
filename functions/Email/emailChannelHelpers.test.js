@@ -11,7 +11,9 @@ const {
     buildReplyAllRecipients,
     computeWebhookSignature,
     getEmailParticipantDisplayName,
+    buildEmailCalendarEventRecord,
     getEmailSafeAllowedTools,
+    normalizeEmailCalendarEventRecords,
     isInvoiceLikeAttachment,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
@@ -74,16 +76,88 @@ describe('emailChannelHelpers', () => {
                 'talk_to_assistant',
                 'update_task',
                 'search_calendar_events',
+                'update_calendar_event',
+                'delete_calendar_event',
             ])
         ).toEqual([
             'create_task',
             'find_calendar_availability',
             'create_calendar_event',
+            'update_calendar_event',
             'create_note',
             'update_note',
             'create_gmail_draft',
             'create_gmail_reply_draft',
             'external_tools',
+        ])
+    })
+
+    test('remembers only what identifies a calendar event Anna created over email', () => {
+        const record = buildEmailCalendarEventRecord(
+            {
+                success: true,
+                provider: 'google',
+                calendarId: 'primary',
+                calendarEmail: 'owner@example.com',
+                projectId: 'project-1',
+                event: {
+                    eventId: 'evt-1',
+                    summary: 'Lichterfest',
+                    description: 'Private notes',
+                    attendees: [{ email: 'guest@example.com' }],
+                    start: { date: '2026-11-13' },
+                    end: { date: '2026-11-14' },
+                },
+            },
+            { now: 123 }
+        )
+
+        expect(record).toEqual({
+            eventId: 'evt-1',
+            calendarId: 'primary',
+            calendarEmail: 'owner@example.com',
+            provider: 'google',
+            summary: 'Lichterfest',
+            start: { date: '2026-11-13' },
+            end: { date: '2026-11-14' },
+            updatedAt: 123,
+        })
+        expect(buildEmailCalendarEventRecord({ success: false, event: { eventId: 'evt-1' } })).toBeNull()
+    })
+
+    test('keeps the latest version of each remembered calendar event', () => {
+        const updated = buildEmailCalendarEventRecord(
+            {
+                success: true,
+                calendarId: 'primary',
+                event: {
+                    eventId: 'evt-1',
+                    summary: 'Lichterfest',
+                    start: { dateTime: '2026-11-13T16:00:00+01:00' },
+                    end: { dateTime: '2026-11-13T18:00:00+01:00' },
+                },
+            },
+            { eventId: 'evt-1', previous: { eventId: 'evt-1', provider: 'google', summary: 'Old' }, now: 456 }
+        )
+
+        expect(
+            normalizeEmailCalendarEventRecords([
+                { eventId: 'evt-1', summary: 'Old', start: { date: '2026-11-13' } },
+                { eventId: 'evt-2', summary: 'Other' },
+                updated,
+                { summary: 'No id' },
+            ])
+        ).toEqual([
+            { eventId: 'evt-2', summary: 'Other' },
+            {
+                eventId: 'evt-1',
+                calendarId: 'primary',
+                provider: 'google',
+                summary: 'Lichterfest',
+                start: { dateTime: '2026-11-13T16:00:00+01:00' },
+                end: { dateTime: '2026-11-13T18:00:00+01:00' },
+                updatedAt: 456,
+            },
         ])
     })
 

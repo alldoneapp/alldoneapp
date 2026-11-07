@@ -846,6 +846,81 @@ describe('assistantCalendarTools', () => {
         })
     })
 
+    test('turns an all-day event into a timed one by clearing the date patch would otherwise keep', async () => {
+        setUser('user-1', {
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.get.mockResolvedValue({
+            data: {
+                id: 'evt-1',
+                summary: 'Lichterfest',
+                start: { date: '2026-11-13' },
+                end: { date: '2026-11-14' },
+            },
+        })
+        client.events.patch.mockResolvedValue({
+            data: {
+                id: 'evt-1',
+                summary: 'Lichterfest',
+                start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin' },
+            },
+        })
+
+        const result = await assistantCalendarTools.updateCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'evt-1',
+            start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin' },
+            end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin' },
+        })
+
+        expect(result.success).toBe(true)
+        expect(client.events.patch).toHaveBeenCalledWith({
+            calendarId: 'primary',
+            eventId: 'evt-1',
+            requestBody: {
+                start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin', date: null },
+                end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin', date: null },
+            },
+        })
+    })
+
+    test('turns a timed event into an all-day one by clearing its dateTime and timeZone', async () => {
+        setUser('user-1', {
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.get.mockResolvedValue({
+            data: {
+                id: 'evt-1',
+                start: { dateTime: '2026-11-13T16:00:00+01:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-11-13T18:00:00+01:00', timeZone: 'Europe/Berlin' },
+            },
+        })
+        client.events.patch.mockResolvedValue({ data: { id: 'evt-1' } })
+
+        await assistantCalendarTools.updateCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'evt-1',
+            start: '2026-11-13',
+            end: '2026-11-14',
+        })
+
+        expect(client.events.patch.mock.calls[0][0].requestBody).toEqual({
+            start: { date: '2026-11-13', dateTime: null, timeZone: null },
+            end: { date: '2026-11-14', dateTime: null, timeZone: null },
+        })
+    })
+
     test('deletes calendar events by exact eventId', async () => {
         setUser('user-1', {
             projectIds: ['p1'],

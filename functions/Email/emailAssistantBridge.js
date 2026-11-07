@@ -22,17 +22,24 @@ const { getUserData } = require('../Users/usersFirestore')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('../WhatsApp/whatsAppToolErrorUtils')
 const {
     getConversationHistory,
+    getEmailCalendarEventsCreatedByAssistant,
     getLatestSafeEmailActionContext,
     storeEmailAssistantMessageInTopic,
 } = require('./emailDailyTopic')
 const {
+    EMAIL_CREATE_CALENDAR_EVENT_KEY,
     EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
+    EMAIL_UPDATE_CALENDAR_EVENT_KEY,
     buildCurrentEmailParticipants,
+    buildEmailCalendarEventRecord,
     getEmailSafeAllowedTools,
+    normalizeEmailCalendarEventRecords,
     normalizeSafeEmailActionContext,
 } = require('./emailChannelHelpers')
 
 const MAX_TOOL_ITERATIONS = 50
+const CALENDAR_EVENT_NOT_EDITABLE_BY_EMAIL = 'calendar_event_not_editable_by_email'
+const DEFAULT_CALENDAR_ID = 'primary'
 
 async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messageText, assistantId, options = {}) {
     const user = await getUserData(userId)
@@ -52,7 +59,6 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         })
     }
 
-    const allowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
     const messages = []
     const userTimezoneOffset = resolveUserTimezoneOffset(user)
     const userTimezoneName = resolveUserTimezoneName(user)
@@ -62,6 +68,18 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         toEmails: options.toEmails || [],
         ccEmails: options.ccEmails || [],
     })
+    const shouldRestrictPriorHistory = options.hasAdditionalRecipients && options.isParticipantScopedTopic !== true
+    const safeAllowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
+    const editableCalendarEvents = safeAllowedTools.includes(EMAIL_UPDATE_CALENDAR_EVENT_KEY)
+        ? await loadEditableEmailCalendarEvents({
+              projectId,
+              chatId,
+              assistantId: assistant.uid || assistantId,
+              senderEmail: currentEmailParticipants.senderEmail,
+              latestReplyOnly: shouldRestrictPriorHistory,
+          })
+        : []
+    const allowedTools = resolveEmailRunAllowedTools(safeAllowedTools, editableCalendarEvents)
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
@@ -82,6 +100,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         // the account owner's public meeting link. The calendar tool uses this server-only
         // flag to load and enforce those saved settings before returning any options.
         respectPublicMeetingLinkSettings: true,
+        // Calendar events this run may change with update_calendar_event, and the ones it created
+        // or changed itself, which are stored on the reply for the next email in the conversation.
+        emailEditableCalendarEvents: editableCalendarEvents,
+        emailCalendarEventRecords: [],
     }
     // Invoice delivery has its own lifetime: a draft or another integration may also
     // use the file, but that does not settle the bookkeeping action.
@@ -135,7 +157,9 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     }
     messages.push(['system', buildCalendarOwnershipSystemMessage(calendarOwnerName)])
     messages.push(['system', buildCurrentEmailParticipantsSystemMessage(currentEmailParticipants)])
-    const shouldRestrictPriorHistory = options.hasAdditionalRecipients && options.isParticipantScopedTopic !== true
+    if (allowedTools.includes(EMAIL_UPDATE_CALENDAR_EVENT_KEY)) {
+        messages.push(['system', buildEditableCalendarEventsSystemMessage(editableCalendarEvents)])
+    }
     if (shouldRestrictPriorHistory) {
         const priorSafeActionContext = await getLatestSafeEmailActionContext(
             projectId,
@@ -201,6 +225,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         subject: options.subject || '',
         messageId: options.messageId || '',
         safeActionContext: toolRuntimeContext.latestSafeActionContext,
+        calendarEvents: toolRuntimeContext.emailCalendarEventRecords,
     })
 
     try {
@@ -315,24 +340,38 @@ async function collectStreamWithToolCalls(
                     throw new Error(`Tool not permitted: ${toolName}`)
                 }
 
+                // Over email Anna may only change an event she created over email herself; the
+                // eventId and calendar come from her own record, never from the model alone.
+                let editableCalendarEvent = null
+                if (toolName === EMAIL_UPDATE_CALENDAR_EVENT_KEY) {
+                    editableCalendarEvent = findEditableEmailCalendarEvent(toolRuntimeContext, toolArgs?.eventId)
+                    if (editableCalendarEvent) {
+                        toolArgs = applyEditableCalendarEventTarget(toolArgs, editableCalendarEvent)
+                    }
+                }
+
                 if (toolName === 'create_calendar_event') toolEvidence.calendarEvent.called = true
                 if (toolName === toolRuntimeContext.invoiceToolName) toolRuntimeContext.invoiceToolAttempted = true
 
                 let toolResult
                 try {
-                    toolResult = await executeToolNatively(
-                        toolName,
-                        toolArgs,
-                        projectId,
-                        assistantId,
-                        requestUserId,
-                        {
-                            message: getMessageTextForTokenCounting(
-                                conversationHistory.find(entry => entry[0] === 'user')?.[1] || ''
-                            ),
-                        },
-                        toolRuntimeContext
-                    )
+                    toolResult =
+                        toolName === EMAIL_UPDATE_CALENDAR_EVENT_KEY && !editableCalendarEvent
+                            ? buildCalendarEventNotEditableResult()
+                            : await executeToolNatively(
+                                  toolName,
+                                  toolArgs,
+                                  projectId,
+                                  assistantId,
+                                  requestUserId,
+                                  {
+                                      message: getMessageTextForTokenCounting(
+                                          conversationHistory.find(entry => entry[0] === 'user')?.[1] || ''
+                                      ),
+                                  },
+                                  toolRuntimeContext
+                              )
+                    rememberEmailCalendarEvent(toolRuntimeContext, toolName, toolResult, editableCalendarEvent)
                     pendingAttachmentPayload =
                         buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
                     toolRuntimeContext.initialPendingAttachmentPayload = pendingAttachmentPayload
@@ -590,6 +629,12 @@ function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}, t
             'Do not create a Gmail draft or a follow-up task merely to acknowledge this result. Only perform further actions explicitly requested by the sender.'
         )
     }
+    if (toolName === EMAIL_UPDATE_CALENDAR_EVENT_KEY && toolResult?.code === CALENDAR_EVENT_NOT_EDITABLE_BY_EMAIL) {
+        return (
+            `${basePrompt} That event was not created by you over email in this conversation, so it cannot be changed by email. ` +
+            'Do not retry with another eventId. Tell the sender briefly that this event can be changed in the calendar itself or by asking you in the Alldone app.'
+        )
+    }
     if (
         ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'].includes(toolName) &&
         toolResult?.success === false
@@ -671,6 +716,105 @@ function enforceCalendarOwnershipResponse(responseText, ownerName = 'the account
         })
 }
 
+async function loadEditableEmailCalendarEvents({ projectId, chatId, assistantId, senderEmail, latestReplyOnly }) {
+    try {
+        return await getEmailCalendarEventsCreatedByAssistant(projectId, chatId, {
+            assistantId,
+            senderEmail,
+            latestReplyOnly,
+        })
+    } catch (error) {
+        console.warn('Email Channel: Could not load calendar events created over email', {
+            projectId,
+            chatId,
+            error: error.message,
+        })
+        return []
+    }
+}
+
+// update_calendar_event is offered only when there is an event it may change: one Anna created
+// over email earlier in this conversation, or one she can create in this very run.
+function resolveEmailRunAllowedTools(safeAllowedTools = [], editableCalendarEvents = []) {
+    if (!safeAllowedTools.includes(EMAIL_UPDATE_CALENDAR_EVENT_KEY)) return safeAllowedTools
+    if (editableCalendarEvents.length > 0 || safeAllowedTools.includes(EMAIL_CREATE_CALENDAR_EVENT_KEY)) {
+        return safeAllowedTools
+    }
+    return safeAllowedTools.filter(toolName => toolName !== EMAIL_UPDATE_CALENDAR_EVENT_KEY)
+}
+
+function findEditableEmailCalendarEvent(toolRuntimeContext = {}, eventId = '') {
+    const requestedEventId = typeof eventId === 'string' ? eventId.trim() : ''
+    if (!requestedEventId) return null
+    return (
+        (toolRuntimeContext?.emailEditableCalendarEvents || []).find(record => record.eventId === requestedEventId) ||
+        null
+    )
+}
+
+// The calendar is taken from the record. Its "primary" alias is left out on purpose: without a
+// calendarId the update finds the event in whichever connected account holds it, while "primary"
+// would mean the saved default account, which may have changed since the event was created.
+function applyEditableCalendarEventTarget(toolArgs = {}, record = {}) {
+    const targetedArgs = { ...toolArgs, eventId: record.eventId }
+    if (record.calendarId && record.calendarId !== DEFAULT_CALENDAR_ID) {
+        targetedArgs.calendarId = record.calendarId
+    } else {
+        delete targetedArgs.calendarId
+    }
+    return targetedArgs
+}
+
+function buildCalendarEventNotEditableResult() {
+    return {
+        success: false,
+        code: CALENDAR_EVENT_NOT_EDITABLE_BY_EMAIL,
+        message:
+            'Over email, Anna can only change calendar events she created over email in this conversation. This event was not changed.',
+    }
+}
+
+function rememberEmailCalendarEvent(toolRuntimeContext, toolName, toolResult, editableCalendarEvent = null) {
+    if (!toolRuntimeContext || toolResult?.success !== true) return
+    let record = null
+    if (toolName === EMAIL_CREATE_CALENDAR_EVENT_KEY) {
+        record = buildEmailCalendarEventRecord(toolResult)
+    } else if (toolName === EMAIL_UPDATE_CALENDAR_EVENT_KEY && editableCalendarEvent) {
+        record = buildEmailCalendarEventRecord(toolResult, {
+            eventId: editableCalendarEvent.eventId,
+            previous: editableCalendarEvent,
+        })
+    }
+    if (!record) return
+
+    toolRuntimeContext.emailCalendarEventRecords = normalizeEmailCalendarEventRecords([
+        ...(toolRuntimeContext.emailCalendarEventRecords || []),
+        record,
+    ])
+    toolRuntimeContext.emailEditableCalendarEvents = normalizeEmailCalendarEventRecords([
+        ...(toolRuntimeContext.emailEditableCalendarEvents || []),
+        record,
+    ])
+}
+
+function buildEditableCalendarEventsSystemMessage(events = []) {
+    if (events.length === 0) {
+        return (
+            'Changing calendar events over email: update_calendar_event works only for a calendar event you create over email in this conversation. ' +
+            'No such event exists yet, and no other calendar event can be changed by email.'
+        )
+    }
+
+    const listedEvents = events.map(({ eventId, summary, start, end }) => ({ eventId, summary, start, end }))
+    return (
+        'Calendar events you created over email in this conversation:\n' +
+        `${JSON.stringify(listedEvents)}\n` +
+        'When the sender corrects or completes one of these events (for example a start time that was missing, a different end, or a location), change it with update_calendar_event and its exact eventId instead of creating a second event. ' +
+        'To turn an all-day event into a timed event, pass both start and end with dateTime. ' +
+        'Only these events can be changed by email; no other calendar event can. Never mention event IDs in the reply.'
+    )
+}
+
 function buildCurrentEmailParticipantsSystemMessage(participants = {}) {
     return (
         'Current email participant metadata from this message only:\n' +
@@ -727,13 +871,16 @@ function mentionsTaskCreation(text) {
 module.exports = {
     processAnnaEmailAssistantMessage,
     __private__: {
+        applyEditableCalendarEventTarget,
         buildCalendarOwnershipSystemMessage,
         buildCurrentEmailParticipantsSystemMessage,
+        buildEditableCalendarEventsSystemMessage,
         buildEmailToolResultFollowUpPrompt,
         buildPriorSafeActionContextSystemMessage,
         buildSafeActionContextFromToolResult,
         enforceCalendarOwnershipResponse,
         getEmailAccountOwnerName,
+        resolveEmailRunAllowedTools,
         resolveInboundEmailModel,
     },
 }
