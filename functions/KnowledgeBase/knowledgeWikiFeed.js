@@ -9,10 +9,18 @@
 // What a change does in the feed:
 //   - it is listed in the project's "All" tab, and in "Followed" for the wiki's owner (who switched
 //     it on and pays for it), for the member who made it and for anyone following the wiki;
-//   - only a change a MEMBER made (a correction, an undo) raises the other members' unread badge.
-//     Ingest runs and rebuilds rewrite pages every night on their own; badging every member for
-//     each of them is the noise that kept the wiki out of the feed in the first place
-//     (knowledgeBaseModel.js). They are still listed, so every change stays traceable.
+//   - a change a MEMBER made (a correction, an undo) raises the other members' unread badge with
+//     its own line, as any member's change does;
+//   - the wiki's own changes (ingest runs, rebuilds, archives, the weekly check) raise every
+//     member's badge ONCE per project and day, through one shared counter slot
+//     (WIKI_AUTOMATIC_CHANGES_COUNTER_ID). Not badging them at all made them invisible: Updates opens
+//     on the unread lines alone whenever anything is unread, and a 03:00 line sits below the whole
+//     day once nothing is. One line per revision would be the opposite mistake: a run rewrites
+//     dozens of pages, the counters are copied verbatim into each member's single
+//     activityUnreadSummary document across all projects, and archived projects (whose counters
+//     nobody clears) keep their wiki running — the summary would grow every night without bound.
+//     The first change of the day fills the slot; later ones read it and write nothing, so a run
+//     costs one counter write per member instead of one per page. Every change is still listed.
 //
 // Written with the Admin SDK in one batch. The documents are the same shapes the client and the
 // other server feeds write; the access-projection triggers on feedsStore and projectsFeeds add the
@@ -26,6 +34,7 @@ const { getKnowledgeBasePath } = require('./knowledgeBaseModel')
 const {
     FEED_WIKI_PAGE_CHANGED,
     WIKI_CHANGE_ENTRY_TEXTS,
+    WIKI_AUTOMATIC_CHANGES_COUNTER_ID,
     WIKI_FEED_AUTHOR_ID,
     WIKI_FEED_OBJECT_ID,
     WIKI_FEED_OBJECTS_TYPE,
@@ -75,6 +84,38 @@ async function readData(db, path) {
     return snapshot.exists ? snapshot.data() || {} : null
 }
 
+const getCounterPath = (projectId, userId, tab) => `feedsCount/${projectId}/${userId}/${tab}`
+
+// Members whose shared wiki slot already holds a change from this day: writing it again would only
+// replace one unread line with another and fire the summary mirror for nothing. A failed read is
+// answered with nobody, so the slot is written — it is one fixed key, so that can never pile up.
+async function readMembersBadgedOnDay({ db, projectId, userIds, getTab, dateFormated }) {
+    if (userIds.length === 0) return new Set()
+    try {
+        const snapshots = await db.getAll(
+            ...userIds.map(userId => db.doc(getCounterPath(projectId, userId, getTab(userId))))
+        )
+        return new Set(
+            snapshots
+                .map((snapshot, index) => {
+                    const slot = snapshot.exists
+                        ? snapshot.data()?.[WIKI_FEED_OBJECTS_TYPE]?.[WIKI_FEED_OBJECT_ID]?.[
+                              WIKI_AUTOMATIC_CHANGES_COUNTER_ID
+                          ]
+                        : null
+                    return slot?.dateFormated === dateFormated ? userIds[index] : null
+                })
+                .filter(Boolean)
+        )
+    } catch (error) {
+        console.warn('[knowledge base] Could not read the wiki unread slots; writing them', {
+            projectId,
+            error: error.message,
+        })
+        return new Set()
+    }
+}
+
 async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
     const built = buildWikiRevisionFeed({ slug, revision })
     if (!projectId || !built) return { published: false, reason: 'invalid' }
@@ -94,13 +135,31 @@ async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
         knowledgeBase?.ownerUserId,
         authorId,
     ]).filter(isMember)
-    // A member's change badges the others; one their MCP client made badges them as well.
-    const notifiedIds = authorId ? memberIds.filter(userId => userId !== authorId || isMcpActor(feed)) : []
+    const getCounterTab = userId => (followerIds.includes(userId) ? 'followed' : 'all')
 
     // Cloud Functions run in UTC, and that is the day the client falls back to when it looks the
     // object up (utils/backends/Feeds/feedObjectDate.js). The counters record it explicitly.
     const dateFormated = moment.utc(feed.lastChangeDate).format('DDMMYYYY')
     const feedObject = generateWikiFeedObjectModel(feed.lastChangeDate)
+
+    // A member's change badges the others with its own line; one their MCP client made badges them
+    // as well. The wiki's own changes share one slot per member and day (see the header).
+    let notifiedIds
+    let counterId
+    if (authorId) {
+        notifiedIds = memberIds.filter(userId => userId !== authorId || isMcpActor(feed))
+        counterId = feedId
+    } else {
+        const badgedToday = await readMembersBadgedOnDay({
+            db,
+            projectId,
+            userIds: memberIds,
+            getTab: getCounterTab,
+            dateFormated,
+        })
+        notifiedIds = memberIds.filter(userId => !badgedToday.has(userId))
+        counterId = WIKI_AUTOMATIC_CHANGES_COUNTER_ID
+    }
 
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${WIKI_FEED_OBJECT_ID}`), feedObject, {
@@ -116,11 +175,10 @@ async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
         batch.set(db.doc(`feedsStore/${projectId}/${userId}/feeds/followed/${feedId}`), feed, { merge: true })
     })
     const counterEntry = {
-        [WIKI_FEED_OBJECTS_TYPE]: { [WIKI_FEED_OBJECT_ID]: { [feedId]: { dateFormated, feed } } },
+        [WIKI_FEED_OBJECTS_TYPE]: { [WIKI_FEED_OBJECT_ID]: { [counterId]: { dateFormated, feed } } },
     }
     notifiedIds.forEach(userId => {
-        const tab = followerIds.includes(userId) ? 'followed' : 'all'
-        batch.set(db.doc(`feedsCount/${projectId}/${userId}/${tab}`), counterEntry, { merge: true })
+        batch.set(db.doc(getCounterPath(projectId, userId, getCounterTab(userId))), counterEntry, { merge: true })
     })
     await batch.commit()
 

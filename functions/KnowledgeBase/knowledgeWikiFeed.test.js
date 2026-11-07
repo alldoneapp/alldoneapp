@@ -74,7 +74,7 @@ async function correctPage(db, expectedRevision = 1) {
 const feedPaths = db => [...db.documents.keys()].filter(path => !path.startsWith('knowledgeBases/'))
 
 describe('a wiki revision in the Updates feed', () => {
-    it('lists an ingest change for the project, follows it for the owner and badges nobody', async () => {
+    it('lists an ingest change for the project and follows it for the owner', async () => {
         const db = createDb()
         const revision = await createPage(db)
 
@@ -86,7 +86,7 @@ describe('a wiki revision in the Updates feed', () => {
         })
 
         const feedId = buildWikiFeedId('kunden-und-partner', 1)
-        expect(result).toMatchObject({ published: true, feedId, followerIds: [OWNER], notifiedIds: [] })
+        expect(result).toMatchObject({ published: true, feedId, followerIds: [OWNER] })
         expect(db.read(`feedsStore/${PROJECT_ID}/all/${feedId}`)).toEqual({
             type: FEED_WIKI_PAGE_CHANGED,
             lastChangeDate: NOW,
@@ -99,7 +99,6 @@ describe('a wiki revision in the Updates feed', () => {
             wikiChange: 'created',
         })
         expect(db.read(`feedsStore/${PROJECT_ID}/${OWNER}/feeds/followed/${feedId}`)).toBeDefined()
-        expect(feedPaths(db).filter(path => path.startsWith('feedsCount/'))).toEqual([])
         // Filed under the day the function runs in, which is the day the client falls back to.
         expect(db.read(`projectsFeeds/${PROJECT_ID}/24102026/wiki`)).toMatchObject({
             type: 'wiki',
@@ -300,6 +299,103 @@ describe('a wiki revision in the Updates feed', () => {
         ).resolves.toMatchObject({ published: false, reason: 'error' })
         expect(error).toHaveBeenCalled()
         error.mockRestore()
+    })
+})
+
+describe("the wiki's own changes in the unread badges (AT-2967)", () => {
+    const DAY_LATER = NOW + 60 * 60 * 1000 // 2026-10-25 00:30 UTC: the next day where the function runs
+
+    async function updatePage(db, expectedRevision, now) {
+        await writeKnowledgePage({
+            db,
+            projectId: PROJECT_ID,
+            slug: 'kunden-und-partner',
+            title: 'Kunden und Partner',
+            summary: 'Wer mit dem Projekt arbeitet.',
+            body: `## Acme\nStand ${expectedRevision + 1} [[task:t1]].`,
+            sourceKeys: ['task:t1'],
+            allowedSourceKeys: new Set(['task:t1']),
+            expectedRevision,
+            reason: 'Neuer Stand',
+            runId: `run-${expectedRevision + 1}`,
+            now,
+            fieldValue,
+        })
+        return db.read(revisionPath('kunden-und-partner', expectedRevision + 1))
+    }
+
+    const publish = (db, revision) =>
+        publishWikiRevisionFeed({ db, projectId: PROJECT_ID, slug: 'kunden-und-partner', revision })
+    const wikiCounter = (db, userId, tab) => db.read(`feedsCount/${PROJECT_ID}/${userId}/${tab}`)?.wiki?.wiki
+
+    it('badges every member once, in one shared slot per project', async () => {
+        const db = createDb()
+
+        const result = await publish(db, await createPage(db))
+
+        expect(result.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        // The owner follows the wiki, so their badge is in Followed; the others' are in All.
+        expect(wikiCounter(db, OWNER, 'followed')).toEqual({
+            wiki_automatic: {
+                dateFormated: '24102026',
+                feed: expect.objectContaining({ wikiSlug: 'kunden-und-partner', wikiRevision: 1 }),
+            },
+        })
+        expect(Object.keys(wikiCounter(db, MEMBER, 'all'))).toEqual(['wiki_automatic'])
+        expect(Object.keys(wikiCounter(db, OTHER, 'all'))).toEqual(['wiki_automatic'])
+        expect(feedPaths(db).some(path => path.includes('ws@'))).toBe(false)
+    })
+
+    it('adds no second unread line for later changes that day, but still lists them', async () => {
+        const db = createDb()
+        await publish(db, await createPage(db))
+
+        const result = await publish(db, await updatePage(db, 1, NOW + 5000))
+
+        expect(result.notifiedIds).toEqual([])
+        expect(Object.keys(wikiCounter(db, OWNER, 'followed'))).toEqual(['wiki_automatic'])
+        expect(wikiCounter(db, OWNER, 'followed').wiki_automatic.feed.wikiRevision).toBe(1)
+        expect(db.read(`feedsStore/${PROJECT_ID}/all/${buildWikiFeedId('kunden-und-partner', 2)}`)).toBeDefined()
+    })
+
+    it('replaces an unread slot from an earlier day instead of adding to it', async () => {
+        const db = createDb()
+        await publish(db, await createPage(db))
+
+        const result = await publish(db, await updatePage(db, 1, DAY_LATER))
+
+        expect(result.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        expect(wikiCounter(db, MEMBER, 'all')).toEqual({
+            wiki_automatic: { dateFormated: '25102026', feed: expect.objectContaining({ wikiRevision: 2 }) },
+        })
+    })
+
+    it('badges a member again the same day once they have read the first line', async () => {
+        const db = createDb()
+        await publish(db, await createPage(db))
+        // Opening Updates deletes that tab's counter (resetAllNewFeeds).
+        db.documents.delete(`feedsCount/${PROJECT_ID}/${OWNER}/followed`)
+
+        const result = await publish(db, await updatePage(db, 1, NOW + 5000))
+
+        expect(result.notifiedIds).toEqual([OWNER])
+        expect(wikiCounter(db, OWNER, 'followed').wiki_automatic.feed.wikiRevision).toBe(2)
+    })
+
+    it('still badges when the slots cannot be read', async () => {
+        const db = createDb()
+        const revision = await createPage(db)
+        db.getAll = async () => {
+            throw new Error('Firestore is slow')
+        }
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const result = await publish(db, revision)
+
+        expect(result.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        expect(Object.keys(wikiCounter(db, OTHER, 'all'))).toEqual(['wiki_automatic'])
+        expect(warn).toHaveBeenCalled()
+        warn.mockRestore()
     })
 })
 

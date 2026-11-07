@@ -29,6 +29,11 @@ const FEED_WIKI_TYPES = [FEED_WIKI_PAGE_CHANGED]
 // it can never match a member and suppress that member's unread counter as "their own" change.
 const WIKI_FEED_AUTHOR_ID = 'wiki'
 
+// The one unread-counter slot a project's own wiki changes share (knowledgeWikiFeed.js): however
+// many pages a run rewrites, a member has at most one unread wiki line per project. Never the id of
+// a stored feed entry, which always ends in a revision number.
+const WIKI_AUTOMATIC_CHANGES_COUNTER_ID = 'wiki_automatic'
+
 const WIKI_CHANGE_CREATED = 'created'
 const WIKI_CHANGE_UPDATED = 'updated'
 const WIKI_CHANGE_REBUILT = 'rebuilt'
@@ -121,6 +126,7 @@ module.exports = {
     WIKI_FEED_OBJECTS_TYPE,
     WIKI_FEED_OBJECT_ID,
     WIKI_FEED_AUTHOR_ID,
+    WIKI_AUTOMATIC_CHANGES_COUNTER_ID,
     FEED_WIKI_PAGE_CHANGED,
     FEED_WIKI_TYPES,
     WIKI_CHANGE_CREATED,
