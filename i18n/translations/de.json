@@ -238,6 +238,8 @@
     "Wiki digest show revisions": "Alle Versionen anzeigen",
     "Wiki digest hide revisions": "Versionen ausblenden",
     "Wiki digest showing available changes": "Verfügbare Änderungen werden angezeigt",
+    "Wiki digest cost": "Kosten an diesem Tag: %{gold} Gold",
+    "Wiki digest run in progress": "ein Lauf läuft noch",
     "Wiki settings": "Wiki-Einstellungen",
     "Open wiki": "Wiki öffnen",
     "Set up wiki": "Wiki einrichten",

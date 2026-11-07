@@ -238,6 +238,8 @@
     "Wiki digest show revisions": "Show all revisions",
     "Wiki digest hide revisions": "Hide revisions",
     "Wiki digest showing available changes": "Showing available changes",
+    "Wiki digest cost": "Cost this day: %{gold} Gold",
+    "Wiki digest run in progress": "a run is still going",
     "Wiki settings": "Wiki settings",
     "Open wiki": "Open wiki",
     "Set up wiki": "Set up wiki",
