@@ -374,34 +374,64 @@ async function resolveMcpSecret({ authType, projectId, assistantId, serverId, re
     const secret = await getValidMcpSecret(projectId, assistantId, serverId, serverUrl)
     if (!secret) {
         throw new Error(
-            'This MCP server has no credential for its current address. Reconnect it in the assistant settings.'
+            'This MCP server has no usable credential for its current address. Reconnect it in the assistant settings.'
         )
     }
     return secret
 }
 
 /**
- * Returns the stored secret only when `serverUrl` is the address it is bound to. A secret stored
- * before the binding existed is bound to the address it is first used with.
+ * The address a credential stored before `boundUrl` existed may be bound to, for the one-off
+ * migration (`migration/bindMcpCredentialsToServerUrl.js`). Pure.
+ *
+ * The only record written at connect time that names the server is an OAuth secret's
+ * `oauthContext.resource` (the protected-resource identifier the authorization server issued the
+ * token for). When it exists the configured URL must be on that origin, or the credential is left
+ * unbound and has to be reconnected. A bearer token carries no such record, so the configured URL
+ * is the only candidate; the script prints every binding for the owner to review.
+ */
+function resolveLegacyMcpCredentialBinding({ secret, server }) {
+    if (normalizeBoundMcpUrl(secret?.boundUrl)) return { action: 'already_bound', boundUrl: secret.boundUrl }
+    const configuredUrl = normalizeBoundMcpUrl(server?.url)
+    if (!configuredUrl) return { action: 'reconnect', reason: 'no_configured_server' }
+    if (server.authType === 'alldone_app' || server.authType === 'none') {
+        return { action: 'reconnect', reason: 'auth_type_uses_no_stored_secret' }
+    }
+    const resource = normalizeBoundMcpUrl(secret?.oauthContext?.resource)
+    if (resource) {
+        if (new URL(resource).origin !== new URL(configuredUrl).origin) {
+            return {
+                action: 'reconnect',
+                reason: 'configured_url_differs_from_oauth_resource',
+                resource,
+                configuredUrl,
+            }
+        }
+        return { action: 'bind', boundUrl: configuredUrl, source: 'oauth_resource' }
+    }
+    return { action: 'bind', boundUrl: configuredUrl, source: 'assistant_config' }
+}
+
+/**
+ * Returns the stored secret only when `serverUrl` is the address it is bound to. A secret with no
+ * `boundUrl` (stored before the binding existed and not yet migrated) is refused rather than bound
+ * on first use: the address on the assistant document may already have been rewritten by then.
+ * `migration/bindMcpCredentialsToServerUrl.js` binds the existing ones; anything it leaves unbound
+ * has to be reconnected.
  */
 async function getValidMcpSecret(projectId, assistantId, serverId, serverUrl) {
     const storedSecret = await getAssistantMcpSecret(projectId, assistantId, serverId)
     if (!storedSecret) return null
     const requestedUrl = normalizeBoundMcpUrl(serverUrl)
-    if (!requestedUrl) return null
     const boundUrl = normalizeBoundMcpUrl(storedSecret.boundUrl)
-    if (boundUrl && boundUrl !== requestedUrl) {
-        console.warn('🔌 MCP: refusing a stored credential for an address it was not issued for', {
+    if (!requestedUrl || !boundUrl || boundUrl !== requestedUrl) {
+        console.warn('🔌 MCP: refusing a stored credential that is not bound to this address', {
             projectId,
             assistantId,
             serverId,
+            bound: !!boundUrl,
         })
         return null
-    }
-    if (!boundUrl) {
-        await buildSecretDocRef(projectId, assistantId, serverId)
-            .set({ boundUrl: requestedUrl }, { merge: true })
-            .catch(error => console.warn('🔌 MCP: could not bind legacy credential', { error: error?.message }))
     }
     const secret = { ...storedSecret, boundUrl: requestedUrl }
     if (secret.authType !== 'oauth') return secret
@@ -447,5 +477,6 @@ module.exports = {
     normalizeServerInput,
     buildSecretRecords,
     normalizeBoundMcpUrl,
+    resolveLegacyMcpCredentialBinding,
     MAX_SERVERS_PER_ASSISTANT,
 }

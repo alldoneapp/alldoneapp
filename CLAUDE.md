@@ -605,8 +605,9 @@ client is never trusted by an Admin SDK path that acts for somebody else.
 - A stored MCP credential is bound to the URL it was validated against (`boundUrl` on the
   `mcpSecrets` document, `mcpAssistantConnect.js`). The URL itself stays member-writable on the
   assistant document, so `resolveMcpSecret` needs the `serverUrl` it will call and returns nothing
-  for any other address; an `alldone_app` token only ever goes to alldone.team. A secret from before
-  the binding is bound on its first use.
+  for any other address; an `alldone_app` token only ever goes to alldone.team. A secret without
+  `boundUrl` is refused (reconnect), never bound on first use; the existing ones are bound once by
+  `migration/bindMcpCredentialsToServerUrl.js` (dry run by default, review its list, then `--execute`).
 - `update_assistant_settings` and `update_heartbeat_settings` write `assistants/globalProject/*`
   only for the administrator (`globalAssistantWriteAccess.js`), including when the caller is merely
   chatting with a global assistant.
