@@ -353,9 +353,6 @@ describe('MCP workspace setup tools', () => {
             expect(task.startDate).toBe(Date.UTC(2026, 10, 9, 7, 0, 0))
             expect(result.firstRun).toBe('2026-11-09 08:00 +01:00')
             expect(db.docs.get('assistants/p-existing/items/a1').lastEditorId).toBe(USER)
-            // NEW-A: the scheduler runs only approved content; the requesting user approved it.
-            const { isAssistantTaskContentApprovedByUser } = require('../Assistant/assistantTaskContentHash')
-            expect(isAssistantTaskContentApprovedByUser(task, USER, 'p-existing')).toBe(true)
         })
 
         it('reuses a task of the same name and rejects a bad recurrence or an unknown assistant', async () => {

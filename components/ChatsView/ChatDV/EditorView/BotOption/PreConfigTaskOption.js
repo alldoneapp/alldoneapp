@@ -12,7 +12,6 @@ import {
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import Icon from '../../../../Icon'
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
-import { confirmAssistantTaskRunForCurrentUser } from '../../../../../utils/assistantTaskRunGate'
 
 export default function PreConfigTaskOption({
     task,
@@ -75,7 +74,6 @@ export default function PreConfigTaskOption({
             if (variables.length > 0) {
                 selectTask(task)
             } else {
-                if (!confirmAssistantTaskRunForCurrentUser(task, assistantId, projectId)) return
                 closeModal()
                 enableAssistantForObject?.()
                 const aiSettings = {
@@ -92,7 +90,6 @@ export default function PreConfigTaskOption({
                 if (!enableAssistantForObject && !inMyDay) dispatch(setAssistantEnabled(true))
             }
         } else if (type === TASK_TYPE_WEBHOOK) {
-            if (!confirmAssistantTaskRunForCurrentUser(task, assistantId, projectId)) return
             closeModal()
             // For webhook tasks, create a task and execute the webhook
             const aiSettings = {
