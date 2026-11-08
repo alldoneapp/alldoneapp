@@ -608,7 +608,10 @@ branch, and `invitation-add`, may now only touch `invitedProjectIds`). `ProjectS
 create_task fallback, the delegation and settings resolvers in `assistantHelper.js`, the voice
 vocabulary scan and `UndoActionService` all drop a project whose `userIds` omits the user. Use
 `isProjectMemberData` / `filterMemberProjectIds` from `shared/privacyAccess.js`; never treat
-`userData.projectIds.includes(id)` as access. Three more rules from the same audit:
+`userData.projectIds.includes(id)` as access. Entries written before the rule fix are removed by
+`node migration/removeUnbackedUserProjectIds.js --firebase-project-id=<project>` (dry run; add
+`--execute` to apply, `--user-id=<uid>` to scope; decision in `shared/userProjectMembershipCleanup.js`),
+run after the rules deploy. Three more rules from the same audit:
 
 - Undo records (`users/{uid}/undoActions`) are client-written and replayed with the Admin SDK, so
   `reverseAction` treats one as a request: per operation it requires membership, an object visible
