@@ -68,7 +68,6 @@ const MCP_TOOL_KEYS = [
     'create_project',
     'add_contact_statuses',
     'create_assistant',
-    'update_assistant',
     'create_assistant_task',
 ]
 
@@ -97,7 +96,6 @@ const MCP_TOOL_LABELS = {
     create_project: 'Create project',
     add_contact_statuses: 'Add contact statuses',
     create_assistant: 'Create assistant',
-    update_assistant: 'Update assistant',
     create_assistant_task: 'Create scheduled assistant task',
 }
 

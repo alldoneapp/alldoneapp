@@ -1556,11 +1556,10 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Five MCP-only tools in
+**MCP can set up a workspace, and nothing else configures one over MCP.** Four MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
-`create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
-`update_assistant` (name, description, instructions, model, Tools Access) and
-`create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
+`create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`
+and `create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1577,13 +1576,6 @@ The documents are built field for field like the app's own forms (`getNewDefault
 form does: the UTC instant of the local start, the local `HH:mm` and the offset. A project gets no
 project-created feed; `onCreateProject` still runs. Assistant tasks are `direct` mode only. Each tool
 is its own switch under Settings → MCP. Pinned by `functions/MCP/mcpWorkspaceSetupTools.test.js`.
-
-A scheduled assistant task runs on its own copy of the instructions (`aiSystemMessage`, copied at
-creation and preferred over the assistant's `instructions` at run time), so changing an assistant's
-instructions alone would never reach its schedules. `update_assistant` therefore also rewrites the
-copy of every task of that assistant whose copy still equals the OLD instructions; a task whose copy
-somebody edited keeps it. Tool changes keep list entries that are not Tools Access keys (written by
-older app versions), and a call that changes nothing writes nothing and spends no quota.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 
@@ -4039,6 +4031,42 @@ Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequ
     A VM run charges Gold from **five** places (`vmJob.startVmJob`'s base reserve, `vmJobRunner`'s per-minute monitor and settlement top-up, `vmLlmProxy`'s incremental token charges, and the refund paths in `vmJob`/`vmJobRunner`/`vmInteraction`/`vmJobReconciliation`). All of them must stamp the **same** dimensions or one run splits across buckets and stops reconciling, so they read them through the single `buildVmGoldBillingDimensions` in `functions/Assistant/vmGoldDimensions.js` rather than hand-writing a context literal each. Refunds carry them too, so a source's NET Gold cost stays decomposable. `correlationId` is now minted **before** the base reserve is charged so the very first ledger entry of a run is already joinable.
 
     **Historical data is not backfilled, and cannot be honestly.** Entries written before this shipped carry no `model`/`billingExempt`/`correlationId` at all, and the only way to reconstruct them would be an approximate `vmJobs` match on projectId + objectId + a time window — several runs share a thread, so it would write silent misattribution into buckets that currently just do not exist. Every pre-existing number is therefore **unchanged and still correct**: `spend`, `count` and `spendBySource` are untouched, and a transaction declaring no dimensions writes no dimension fields, so `migration/backfillGoldStats.js` keeps working as-is. Read a dimension map as covering only the period since deploy, and cross-check its per-source total against `spendBySource[source]` for the same window to see how much of it is attributed.
+
+### The growth scoreboard is the growth loop's reward signal, and only code defines it
+
+`growthScoreboardSecondGen` (daily 03:30 UTC, `functions/Growth/`) writes yesterday's funnel to
+`growthMetrics/daily/days/{YYYY-MM-DD}`: the Growth project's contacts per status (outreach), GA4
+traffic, signups by source, three activation candidates, paying users (started/stopped), revenue
+from actual payments, Gold spent with an ESTIMATED upstream cost, and on Mondays the margin per
+paying user over 90 days. In production it then rewrites a private artifact "Growth Scoreboard" in
+the Alldone Growth project as a new version, so the artifact's history is the scoreboard's history.
+`growthMetrics` and `revenueEvents` have no client rule (catch-all deny): no browser and no agent can
+read or change the numbers, and an edit to the artifact is replaced by the next run. Every
+assumption lives in `growthConfig.js`; the artifact lists them under "What is estimated".
+
+Four things are load-bearing. **Revenue is what was paid, not a price list**: Stripe balance
+transactions (real fees, settlement currency; VAT is an estimated share until invoice tax is read)
+and the RevenueCat webhook, which now records every priced event in `revenueEvents` because Apple
+money never reaches Stripe; Apple subscription revenue therefore only counts from that deploy. A
+subscription payment is spread over the month or year it pays for, or a yearly customer would look
+unprofitable for nine months. **Signup origin is written once by the browser**:
+`utils/growth/signupAttribution.js` keeps the first page load's campaign labels in sessionStorage
+(nothing for a visit without a signal; never a click id, a full referrer or a query string) and
+writes `users/{uid}/private/signupAttribution` right after the signup batch, outside it so it can
+never block provisioning. The owner can write that document, so the server re-sanitises it before it
+becomes a map key. **No person leaves the run**: the day document holds counts, sums and
+percentiles only; the premium user ids the next run needs to count who started and stopped live in
+the server-only `growthMetrics/state`. The administrator and `EXCLUDED_USER_IDS` are left out of
+margins. **GA4 needs no configuration in code**: the run lists the properties its own service
+account (the Firebase Admin SDK account) may read, so granting that account Viewer on a property is
+the setup; until then the section says what is missing. GA only sees consenting visitors, so the
+run compares the `sign_up` events GA saw with the real signups from Firebase Auth (`visibleShare`).
+
+Costs are bounded: Firebase Auth's user list (API pages, no Firestore reads), three days of
+signups, count() queries, one goldStats rollup, the day's Stripe transactions; only the Monday
+margin reads every paying user's Gold ledger. `run` on each document reports what was read. Pinned
+by `functions/Growth/growthModels.test.js`, `growthScoreboard.test.js` and
+`utils/growth/signupAttribution.test.js`.
 
 ### Contact "Enrich profile" is an assistant run, not a scraper (replaces Apify)
 
