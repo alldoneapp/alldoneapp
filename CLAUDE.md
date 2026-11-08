@@ -1271,19 +1271,6 @@ the filter on, for anonymous viewers, on the wiki, in pickers and in server-side
 sent. Pinned by `searchRanking.test.js`, the AT-2945 case in `searchRanking.integration.test.cjs`
 (real Typesense 29), `typesenseSearchFilters.test.js` and `GlobalSearchModal.createdByMe.test.js`.
 
-**The browser search key admits what Firestore's `readerIds` admits, no more (security audit
-NV-40).** `buildEmbeddedAccessFilter` (`functions/Typesense/scopedSearchCredentials.js`) used to add
-`ws@default` and every workstream whose `userIds` named the caller to the key's `isPublicFor`
-filter. Workstream membership is member-writable, and the Firestore projection
-(`buildObjectAccessProjection`) keeps only `0` and explicit member uids from `isPublicFor`, so search
-returned private objects Firestore denied. The filter is now `projectId` in the caller's projects
-and `isPublicFor` in `[0, uid]`. Index records carry only `isPublicFor` (no `readerIds`), and no
-reindex is needed. Product effect: a private object shared with a workstream is searchable by the
-members listed by uid when it was shared, exactly as it is readable, not by later members. The
-privacy picker's `getAllOwnerIds` had the bug that made this matter: `secondaryOwnersIds - [...]`
-discarded the workstream's members, so a workstream-owned private object listed no member uids at
-all. Pinned by `scopedSearchCredentials.test.js` and `PrivacyModal/getAllOwnerIds.test.js`.
-
 **"Save to wiki" never shares an ambiguous text unseen.** `save_knowledge_contribution`
 (`knowledgeContributions.js`, `[[contribution:ID]]`) saves the member's own words directly; an
 assistant summary, possibly private text or a different target project first becomes a draft in the
@@ -1383,14 +1370,6 @@ instance, so any change lands within a minute.
   address instead); everything else about it lives under Details. Pinned by the `public link`
   blocks of `artifactStore.test.js`, `serveArtifact.test.js`, `artifactModel.test.js` and
   `ArtifactDetail.test.js`.
-
-**Making a project private rotates every artifact's serve secret (security audit NV-16).** While a
-project is shared by link (`isShared` 0 or 1) non-members may read its project-visible artifact
-documents, `serveSecret` included, and the internal address is authorized by that secret alone.
-`onUpdateProjectSecondGen` therefore calls `rotateServeSecretsForProject` (`artifactStore.js`) when
-`isShared` moves INTO 2, with a `link_rotated` history entry per artifact. `publicLink` is not
-touched: it is public by intent, and whether a project's privacy should end it is an open product
-decision. Pinned by the NV-16 cases in `artifactStore.test.js`.
 
 **An HTML artifact is framed at its natural height, which only the page can report (AT-2881).**
 The frame is cross-origin and sandboxed, so the app cannot measure it. `serveArtifact` appends a
@@ -2154,18 +2133,6 @@ degrades to today's behaviour rather than breaking.
   `registration.update()` instead. `__tests__/ServiceWorkerPrecache.test.js` pins all of
   this; `__tests__/utils/DailyAppReload.test.js` pins that the daily reload defers while
   offline and catches up on the `online` event.
-
-**Logout takes the account's local copies and push token with it (security audit NV-41/NV-42).**
-`logoutWeb` releases this browser's FCM token before `signOut()` (`arrayRemove` from
-`users/{uid}.fcmToken`, then `messaging.deleteToken()`; never prompts for permission), and after it
-terminates Firestore and calls `clearPersistence()`, deletes the `alldone-note-*` y-indexeddb
-databases and `alldone-artifacts-cache`, and calls `UserDataCache.clearCache()`
-(`utils/backends/logoutCleanup.js`). Every step is best effort with a 3s cap, because logout must
-work offline (the token write is then lost with the cache, and `deleteToken()` plus the server's
-failed-send cleanup take over) and with another tab open (`clearPersistence()` fails there; that
-tab keeps its cache). The private-resource sign-out keeps the page running and passes
-`{ clearLocalData: false }`, since a terminated Firestore would break the screen it opens. Pinned
-by `utils/backends/logoutCleanup.test.js` and `__tests__/LogoutCleanupCallSite.test.js`.
 
 **Never `await` a Firestore write when a server ack cannot arrive (AT-2340).** A write
 promise resolves on the **server** ack, not on the local cache write, so offline
@@ -4694,81 +4661,6 @@ full result and its 600-char origin note. Deliberately **out of scope**: `pushNo
 `sendWhatsAppForNotifications`, which mirrors FCM pushes as templated `project / object / update`
 summaries with a link. Those are notification summaries of arbitrary threads, not an assistant
 delivering its result, and folding them in would fill the daily topic with truncated noise.
-
-### A server-side fetch of a URL somebody else chose goes through `shared/outboundUrlGuard.js`
-
-Functions run inside the Google network with the Admin service account, so a fetched URL that a
-member, a model or a fetched document picked can name the metadata server, loopback or a VPC host.
-`assertPublicUrl` (http(s) only, no credentials, no private NAMES and no private DNS ANSWERS) and
-`fetchPublicUrl` (the same check, then `redirect: 'manual'` with every hop re-checked) are the one
-gate, and they use the browser allowlist's classifier (`isPrivateHostname` / `isPrivateIpAddress` in
-`Assistant/browser/browserAllowlist.js`) so the two cannot disagree. Two things that classifier must
-keep doing: strip the trailing root dot before matching (`localhost.`, `metadata.google.internal.`
-and `intranet.` are the same names to a resolver, NV-19), and parse IPv6 properly, because WHATWG
-URL rewrites `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, which a dotted-only regex never matched.
-Users today: `fetch_url` (`webPageFetcher.js`, NV-21), contact photos (`contactPhotoUpload.js`,
-NV-29: the stored type comes from the image's magic bytes, never the URL extension, and SVG is
-refused because the copy is made public), the MCP client OAuth flow (`mcpClientOAuth.js`, NV-25:
-https only, guarded `fetchFn` for discovery, registration, exchange and refresh, token and
-registration endpoints bound to the authorization server's origin, SDK error text — which contains
-the remote response body — never returned) and webhook tasks (`webhookDestination.js`). Known limit:
-the address is checked at lookup time and fetch resolves again (DNS rebinding). `browserAllowlist.js`
-is copied into the browser-worker image on its own, so it may only depend on
-`browserToolContract.js`; a change to it needs a worker rebuild (`browser-worker/deploy.sh`).
-Pinned by `shared/outboundUrlGuard.test.js`, `shared/contactPhotoUpload.test.js`,
-`MCP/mcpClientOAuth.test.js`, the NV-19 block of `browserAllowlist.test.js` and the address-policy
-block of `webPageFetcher.test.js`.
-
-### Video conversion only ever reads an object the app uploaded (NV-30)
-
-`convertVideosSecondGen` (`functions/videosHelper.js`) used to pass the caller's `videoUri` string
-straight to ffmpeg, which opens whatever protocol it names (http to any host, `file:`, `concat:`,
-HLS) inside the Admin-SA function, and wrote under a caller-chosen prefix. It now takes
-`{ videoUri, projectId }`: the caller must be in `projects/{projectId}.userIds`; `videoUri` must be a
-Firebase download URL of the default bucket for `notesAttachments/{DDMMYYYY}/{hash}/{name}` whose
-`token` is one of the object's own `firebaseStorageDownloadTokens` (a wrong token answers like a
-missing file); the object is downloaded with the Admin SDK; ffmpeg reads that one local file with
-`-protocol_whitelist file` and a demuxer chosen from its magic bytes (WebM/Matroska or MP4/MOV only,
-so an uploaded HLS or concat playlist cannot pull in other files); the output goes next to the input
-and the callable returns a download-token URL (the old `getSignedUrl` had an expiry date in the past
-and hung every call until the 540s timeout). 30 conversions per user per hour via
-`shared/callableRateLimit.js` (`callableRateLimits/{name}__{uid}`, server-only by default deny).
-Pinned by `functions/videosHelper.test.js`.
-
-### `ipRegistryLookup` looks up the caller and nobody else (NV-24)
-
-It used to put a caller-supplied `data.ip` into the ipregistry URL path (any address, or 1024 of them
-comma-separated, on our paid key), and the app's own call without `ip` geolocated the Functions
-egress address rather than the user. It now ignores `request.data` and looks up one address: the
-rightmost public `X-Forwarded-For` entry (Google's front end appends what it saw; `req.ip` under the
-framework's `trust proxy` is the leftmost, client-controlled one), encoded, 10 lookups per user per
-day (`shared/callableRateLimit.js`). Any failure returns the United States fallback the client
-already handles. Pinned by `functions/IpRegistry/ipRegistryLookup.test.js`.
-
-### A deleted project's id is tombstoned and its every root removed (NV-26)
-
-`onDeleteProject` (`functions/Projects/onDeleteProjectFunctions.js`) first writes the server-only
-`deletedProjects/{projectId}`, and the `projects` create rule refuses an id that has one. Before,
-the create rule accepted any client-chosen id, so whoever knew a deleted project's id (a removed
-member, a viewer of a link-shared project) could register it and become the only member of
-everything the cleanup had missed: the wiki tree with its document texts, OKRs, VM sessions, the
-upload index. The cleanup list now also covers `knowledgeBases`, `okrs`, `vmGoldens`,
-`artifactUploadIndex`, `assistantSkills`, `assistantSkillImports`, `projectHappiness`,
-`chatFollowers`, `oldFeeds`, `workstreams`, `notesCollab`, `firestoreAccessProjectionJobs`, the
-project's `vmSessions` (queried by `projectId`) and, best effort, the note bodies under
-`notesData/{projectId}/` in the notes bucket. **A new root keyed by project id belongs in that
-list.** Not covered: the E2B sandboxes and golden snapshot of a deleted project (their documents
-go, the E2B objects stay until E2B expires them) and skill bundle bytes in Storage. Pinned by
-`Projects/onDeleteProjectFunctions.test.js` and the NV-26 block of the rules emulator suite.
-
-### Project skill catalogs authorize on the project document (NV-18)
-
-`requireSkillWriteAccess` (`functions/Assistant/assistantSkills.js`), the gate of
-`uploadAssistantSkillFile` and `importAssistantSkillsFromRepo` for a project catalog, used to read the
-caller's `users/{uid}` membership arrays, which the owner can write. It now reads
-`projects/{projectId}.userIds` through `isProjectMemberData`, the authority the rules and
-`assertProjectAccess` use. Any new Admin SDK gate must do the same: the user arrays may only nominate
-candidate projects (`filterMemberProjectIds`). Pinned by `assistantSkillsProjectScope.test.js`.
 
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 

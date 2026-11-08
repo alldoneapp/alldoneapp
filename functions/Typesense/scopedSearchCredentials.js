@@ -8,6 +8,7 @@ const {
 const { resolveScopedSearchParentKey } = require('./scopedSearchParentKey')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
+const DEFAULT_WORKSTREAM_ID = 'ws@default'
 const PUBLIC_FOR_ALL = '0'
 const SCOPED_KEY_TTL_SECONDS = 5 * 60
 const EXCLUDED_RESPONSE_FIELDS = 'content,cleanComments'
@@ -32,20 +33,27 @@ const getAuthorizedProjectIds = async (db, userId) => {
     return snapshot.docs.map(doc => doc.id)
 }
 
-/**
- * The key admits exactly what Firestore's reader model admits (security audit 2026-11, NV-40).
- * `readerIds` (buildObjectAccessProjection) keeps only the public sentinel and explicit member uids
- * from `isPublicFor`; workstream ids there never granted a Firestore read. The index records carry
- * only `isPublicFor`, so the key matches on the same two kinds of entry and nothing else: a private
- * object shared with a workstream is found by the members listed by uid at the time it was shared,
- * as in Firestore, and not by everyone who is (or adds themselves to) the workstream today.
- * Non-members are excluded by the projectId filter, which is the other half of `readerIds`.
- */
-const buildEmbeddedAccessFilter = ({ projectIds, userId, isAnonymous }) => {
+const getAuthorizedWorkstreamIds = async (db, projectIds, userId) => {
+    const snapshots = await Promise.all(
+        projectIds.map(projectId =>
+            db
+                .collection(`projectsWorkstreams/${projectId}/workstreams`)
+                .where('userIds', 'array-contains', userId)
+                .select()
+                .get()
+        )
+    )
+
+    return snapshots.flatMap(snapshot => snapshot.docs.map(doc => doc.id))
+}
+
+const buildEmbeddedAccessFilter = ({ projectIds, userId, isAnonymous, workstreamIds = [] }) => {
     const authorizedProjectIds = [...new Set([...projectIds, GLOBAL_PROJECT_ID])]
     const projectValues = authorizedProjectIds.map(formatTypesenseFilterValue).join(',')
 
-    const accessIds = isAnonymous ? [PUBLIC_FOR_ALL] : [...new Set([PUBLIC_FOR_ALL, userId])]
+    const accessIds = isAnonymous
+        ? [PUBLIC_FOR_ALL]
+        : [...new Set([PUBLIC_FOR_ALL, userId, DEFAULT_WORKSTREAM_ID, ...workstreamIds])]
     const accessValues = accessIds.map(formatTypesenseFilterValue).join(',')
 
     return `projectId:=[${projectValues}] && isPublicFor:=[${accessValues}]`
@@ -84,7 +92,8 @@ const createTypesenseScopedSearchCredentials = async ({ db, userId, isAnonymous 
     }
 
     const projectIds = await getAuthorizedProjectIds(db, userId)
-    const filterBy = buildEmbeddedAccessFilter({ projectIds, userId, isAnonymous })
+    const workstreamIds = isAnonymous ? [] : await getAuthorizedWorkstreamIds(db, projectIds, userId)
+    const filterBy = buildEmbeddedAccessFilter({ projectIds, userId, isAnonymous, workstreamIds })
     const expiresAt = Math.floor(now / 1000) + SCOPED_KEY_TTL_SECONDS
     const apiKey = generateTypesenseScopedSearchKey(parentKey, {
         filter_by: filterBy,
@@ -104,6 +113,7 @@ const createTypesenseScopedSearchCredentials = async ({ db, userId, isAnonymous 
 
 module.exports = {
     GLOBAL_PROJECT_ID,
+    DEFAULT_WORKSTREAM_ID,
     PUBLIC_FOR_ALL,
     SCOPED_KEY_TTL_SECONDS,
     EXCLUDED_RESPONSE_FIELDS,
@@ -111,6 +121,7 @@ module.exports = {
     MAX_RESULTS_PER_COLLECTION,
     TypesenseSearchCredentialsError,
     getAuthorizedProjectIds,
+    getAuthorizedWorkstreamIds,
     buildEmbeddedAccessFilter,
     normalizeTypesenseOrigin,
     createTypesenseScopedSearchCredentials,

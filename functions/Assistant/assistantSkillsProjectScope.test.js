@@ -14,17 +14,13 @@ const admin = require('firebase-admin')
 
 jest.mock('firebase-admin', () => {
     const userGet = jest.fn()
-    const projectGet = jest.fn()
     const roleGet = jest.fn()
     const collectionGet = jest.fn()
     const getAll = jest.fn()
-    const doc = jest.fn(path => ({
-        path,
-        get: path === 'roles/administrator' ? roleGet : path.startsWith('projects/') ? projectGet : userGet,
-    }))
+    const doc = jest.fn(path => ({ path, get: path === 'roles/administrator' ? roleGet : userGet }))
     const collection = jest.fn(path => ({ path, get: () => collectionGet(path) }))
     return {
-        __mocks: { userGet, projectGet, roleGet, collectionGet, getAll, doc, collection },
+        __mocks: { userGet, roleGet, collectionGet, getAll, doc, collection },
         firestore: jest.fn(() => ({ doc, collection, getAll })),
         storage: jest.fn(() => ({ bucket: jest.fn(() => ({})) })),
     }
@@ -42,7 +38,7 @@ const {
     loadEnabledSkillsForAssistant,
 } = require('./assistantSkills')
 
-const { userGet, projectGet, roleGet, collectionGet, getAll } = admin.__mocks
+const { userGet, roleGet, collectionGet, getAll } = admin.__mocks
 
 const ADMIN_ID = 'admin-user'
 const MEMBER_ID = 'member-user'
@@ -63,21 +59,11 @@ const asUser = (userId, userData) => {
     return userId
 }
 
-// The project document is the membership authority (NV-18).
-const projectMembers = userIds => {
-    projectGet.mockImplementation(() =>
-        userIds === null
-            ? Promise.resolve({ exists: false })
-            : Promise.resolve({ exists: true, data: () => ({ userIds }) })
-    )
-}
-
 describe('assistant skills project scoping (AT-2450)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         roleGet.mockResolvedValue({ exists: true, data: () => ({ userId: ADMIN_ID }) })
         userGet.mockResolvedValue({ exists: true, data: () => ({ projectIds: [PROJECT_ID] }) })
-        projectMembers([MEMBER_ID])
         collectionGet.mockResolvedValue(snapshotOf([]))
     })
 
@@ -122,34 +108,26 @@ describe('assistant skills project scoping (AT-2450)', () => {
 
     describe('requireSkillWriteAccess — a project catalog', () => {
         it('admits a member of that project', async () => {
-            projectMembers([MEMBER_ID])
+            asUser(MEMBER_ID, { projectIds: [PROJECT_ID] })
             await expect(requireSkillWriteAccess(MEMBER_ID, PROJECT_ID)).resolves.toBeUndefined()
         })
 
         it('refuses a member of a DIFFERENT project', async () => {
-            projectMembers([MEMBER_ID])
+            asUser(OUTSIDER_ID, { projectIds: [OTHER_PROJECT_ID] })
             await expect(requireSkillWriteAccess(OUTSIDER_ID, PROJECT_ID)).rejects.toMatchObject({
                 code: 'permission-denied',
             })
         })
 
-        it('refuses a project that does not exist', async () => {
-            projectMembers(null)
-            await expect(requireSkillWriteAccess(MEMBER_ID, PROJECT_ID)).rejects.toMatchObject({
-                code: 'permission-denied',
-            })
-        })
-
-        it('refuses a non-member who listed the project on their own user document (NV-18)', async () => {
-            asUser(OUTSIDER_ID, { projectIds: [PROJECT_ID] })
-            projectMembers([MEMBER_ID])
+        it('refuses a user document that does not exist', async () => {
+            asUser(OUTSIDER_ID, null)
             await expect(requireSkillWriteAccess(OUTSIDER_ID, PROJECT_ID)).rejects.toMatchObject({
                 code: 'permission-denied',
             })
         })
 
         it('does not consult the administrator role at all', async () => {
-            projectMembers([MEMBER_ID])
+            asUser(MEMBER_ID, { projectIds: [PROJECT_ID] })
             await requireSkillWriteAccess(MEMBER_ID, PROJECT_ID)
             expect(roleGet).not.toHaveBeenCalled()
         })
@@ -157,33 +135,31 @@ describe('assistant skills project scoping (AT-2450)', () => {
         it('admits the administrator only when they are also a member', async () => {
             // Being the administrator is not membership: the global catalog is the
             // administrator's, a project is its members'.
-            projectMembers([MEMBER_ID])
+            asUser(ADMIN_ID, { projectIds: [OTHER_PROJECT_ID] })
             await expect(requireSkillWriteAccess(ADMIN_ID, PROJECT_ID)).rejects.toMatchObject({
                 code: 'permission-denied',
             })
         })
     })
 
-    describe('isProjectMember reads the project document only', () => {
+    describe('isProjectMember mirrors the four lists firestore.rules checks', () => {
         it.each(['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds'])(
-            'ignores membership claimed in users/{uid}.%s',
+            'accepts membership held in %s',
             async field => {
-                asUser(OUTSIDER_ID, { [field]: [PROJECT_ID] })
-                projectMembers([MEMBER_ID])
-                await expect(isProjectMember(OUTSIDER_ID, PROJECT_ID)).resolves.toBe(false)
-                expect(userGet).not.toHaveBeenCalled()
+                asUser(MEMBER_ID, { [field]: [PROJECT_ID] })
+                await expect(isProjectMember(MEMBER_ID, PROJECT_ID)).resolves.toBe(true)
             }
         )
 
-        it('accepts a uid listed in projects/{projectId}.userIds', async () => {
-            projectMembers([MEMBER_ID])
-            await expect(isProjectMember(MEMBER_ID, PROJECT_ID)).resolves.toBe(true)
+        it('rejects when the field is present but not a list', async () => {
+            asUser(MEMBER_ID, { projectIds: PROJECT_ID })
+            await expect(isProjectMember(MEMBER_ID, PROJECT_ID)).resolves.toBe(false)
         })
 
         it('rejects a missing user id or project id rather than reading anything', async () => {
             await expect(isProjectMember(null, PROJECT_ID)).resolves.toBe(false)
             await expect(isProjectMember(MEMBER_ID, null)).resolves.toBe(false)
-            expect(projectGet).not.toHaveBeenCalled()
+            expect(userGet).not.toHaveBeenCalled()
         })
     })
 

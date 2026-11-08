@@ -15,7 +15,6 @@ const {
     buildArtifactIsPublicFor,
     getArtifactDocPath,
     getArtifactFileStoragePath,
-    getArtifactsCollectionPath,
     getArtifactKindForMimeType,
     getArtifactPublicLinkDocPath,
     getArtifactStoragePrefix,
@@ -629,51 +628,6 @@ async function rotateServeSecretOnLostReaders({
     return true
 }
 
-const PROJECT_PRIVATE = 2
-
-/**
- * security audit 2026-11 (NV-16): while a project is shared by link (`isShared` 0 or 1), the rules
- * let non-members read its project-visible artifact documents, `serveSecret` included, and the
- * internal address is authorized by that secret alone. Making the project private ends their
- * document access but changed no artifact, so a copied secret kept serving every version. The
- * project update trigger calls this on the transition INTO private and rotates every artifact's
- * secret. The public link (`publicLink.token`) is deliberately left alone: it is public by intent,
- * and whether a project's privacy should end it is an open product decision.
- */
-function projectBecamePrivate(beforeProject, afterProject) {
-    const before = beforeProject?.isShared ?? 0
-    const after = afterProject?.isShared ?? 0
-    return before !== PROJECT_PRIVATE && after === PROJECT_PRIVATE
-}
-
-async function rotateServeSecretsForProject({
-    db = admin.firestore(),
-    projectId,
-    now = Date.now(),
-    newSecret = generateServeSecret,
-}) {
-    const snapshot = await db.collection(getArtifactsCollectionPath(projectId)).select().get()
-    let rotated = 0
-    const docs = snapshot.docs || []
-    // Two writes per artifact; stay well under the 500-write batch limit.
-    for (let start = 0; start < docs.length; start += 200) {
-        const batch = db.batch()
-        docs.slice(start, start + 200).forEach(doc => {
-            batch.update(db.doc(getArtifactDocPath(projectId, doc.id)), {
-                serveSecret: newSecret(),
-                serveSecretRotatedAt: now,
-            })
-            batch.set(
-                db.doc(newHistoryPath(projectId, doc.id, now)),
-                buildHistoryEvent(ARTIFACT_HISTORY_TYPES.LINK_ROTATED, { date: now })
-            )
-            rotated += 1
-        })
-        await batch.commit()
-    }
-    return rotated
-}
-
 async function deleteArtifactData({
     db = admin.firestore(),
     bucket = admin.storage().bucket(),
@@ -709,8 +663,6 @@ module.exports = {
     resetArtifactLink,
     restoreArtifactVersion,
     rotateServeSecretOnLostReaders,
-    rotateServeSecretsForProject,
-    projectBecamePrivate,
     setArtifactDataAccess,
     setArtifactPublicLink,
     withdrawPublicLinkWhenMadePrivate,

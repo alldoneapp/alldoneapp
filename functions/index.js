@@ -1396,11 +1396,10 @@ exports.ipRegistryLookup = onCall(
         cors: true,
     },
     async request => {
-        const { auth } = request
+        const { data, auth } = request
         if (auth) {
-            // `request.data` is ignored on purpose: only the caller's own address is looked up (NV-24).
             const { ipRegistryLookup } = require('./IpRegistry/ipRegistryLookup')
-            return await ipRegistryLookup({ userId: auth.uid, rawRequest: request.rawRequest })
+            return await ipRegistryLookup(data)
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
@@ -4351,13 +4350,8 @@ exports.convertVideosSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const admin = require('firebase-admin')
-            const { convertVideos, VideoConversionError } = require('./videosHelper')
-            try {
-                return await convertVideos(admin, data, auth.uid)
-            } catch (error) {
-                if (error instanceof VideoConversionError) throw new HttpsError(error.code, error.message)
-                throw error
-            }
+            const { convertVideos } = require('./videosHelper')
+            return await convertVideos(admin, data)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -4410,18 +4404,6 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
         const oldProject = mapProjectData(projectId, event.data.before.data())
         const newProject = mapProjectData(projectId, event.data.after.data())
         const work = [onUpdateProject(projectId, oldProject, newProject)]
-        const { projectBecamePrivate, rotateServeSecretsForProject } = require('./Artifacts/artifactStore')
-        if (projectBecamePrivate(event.data.before.data(), event.data.after.data())) {
-            // Link viewers lose document access here; their copied artifact addresses must die too (NV-16).
-            work.push(
-                rotateServeSecretsForProject({ db: admin.firestore(), projectId }).catch(error =>
-                    console.error('onUpdateProject: artifact serve secrets not rotated', {
-                        projectId,
-                        error: error.message,
-                    })
-                )
-            )
-        }
         if (JSON.stringify(oldProject.userIds || []) !== JSON.stringify(newProject.userIds || [])) {
             work.push(
                 queueProjectAccessProjectionSync(admin.firestore(), projectId, newProject.userIds || [], event.id)
