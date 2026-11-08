@@ -22,7 +22,6 @@ import {
     inProductionEnvironment,
     logEvent,
     mapUserData,
-    removeInvitedUserFromProject,
     removeWorkflowStepFeedChain,
     restartFirestoreNetwork,
     runHttpsCallableFunction,
@@ -46,7 +45,7 @@ import {
     createUserPrivacyChangedFeed,
     createUserRoleChangedFeed,
 } from './userUpdates'
-import { addWorkstreamMember, getUserWorkstreams, removeWorkstreamMember } from '../Workstreams/workstreamsFirestore'
+import { getUserWorkstreams, removeWorkstreamMember } from '../Workstreams/workstreamsFirestore'
 import {
     setProjectInitialData,
     setUserInfoModalWhenUserJoinsToGuide,
@@ -59,7 +58,6 @@ import { FOLLOWER_PROJECTS_TYPE, FOLLOWER_USERS_TYPE } from '../../../components
 import { UNLOCK_GOAL_COST } from '../../../components/Guides/guidesHelper'
 import { updateChatAssistantWithoutFeeds, updateChatPrivacy } from '../Chats/chatsFirestore'
 import { updateNotePrivacy } from '../Notes/notesFirestore'
-import { DEFAULT_WORKSTREAM_ID } from '../../../components/Workstreams/WorkstreamHelper'
 import {
     getInitialProjectData,
     watchProjectData,
@@ -766,17 +764,24 @@ export async function removeUserWorkflowStep(project, uid, stepId, steps, review
     removeWorkflowStepFeedChain(project.id, steps, uid, stepId)
 }
 
-export async function addUserToProject(
-    uidOrEmail,
-    project,
-    projectId,
-    removeInvitation,
-    projectUsersIdsForSpecialFeeds,
-    specialUserIds
-) {
-    const user = await getUserDataByUidOrEmail(uidOrEmail)
-    await tryAddUserToProject(user.uid, projectId, project, removeInvitation)
+/**
+ * Joining a project is decided and written by `joinProjectSecondGen` (functions/Projects/joinProject.js):
+ * firestore.rules let only an existing member write a project's userIds, so the browser cannot add
+ * itself, whether it was invited, holds a link or starts a template's guide. The server adds the
+ * membership (project userIds, the users' projectIds/guideProjectIds/templateProjectIds, the default
+ * workstream) and consumes the caller's invitation; the feeds and followers below stay here and are
+ * written as a member once it returns.
+ */
+export async function joinProjectOnServer(projectId, options = {}) {
+    return await runHttpsCallableFunction('joinProjectSecondGen', { projectId, ...options })
+}
 
+/** The project and the caller's right to join it, for an invitee who cannot read it yet. */
+export async function previewProjectJoin(projectId) {
+    return await joinProjectOnServer(projectId, { preview: true })
+}
+
+export async function loadJoinedProjectIntoStore(projectId) {
     const { loggedUserProjectsMap } = store.getState()
     if (loggedUserProjectsMap[projectId]) {
         watchProjectDataThatIsOnlyForProjectMembers(projectId, true)
@@ -785,13 +790,28 @@ export async function addUserToProject(
         store.dispatch(setProjectInitialData(project, users, workstreams, contacts, assistants))
         watchProjectData(projectId, true, true)
     }
+}
+
+/**
+ * The activity of a user who has just joined: the "joined" feed, follows between the new user and
+ * every member. `project.userIds` must be the members BEFORE the join.
+ */
+export async function createProjectJoinFeeds(
+    uidOrEmail,
+    project,
+    projectId,
+    projectUsersIdsForSpecialFeeds,
+    specialUserIds
+) {
+    const user = await getUserDataByUidOrEmail(uidOrEmail)
+    if (!user) return
 
     const batch = new BatchWrapper(getDb())
 
     if (projectUsersIdsForSpecialFeeds)
         batch.projectUsersIdsForSpecialFeeds = { [user.uid]: projectUsersIdsForSpecialFeeds }
 
-    const userIds = specialUserIds ? specialUserIds : project.userIds
+    const userIds = specialUserIds ? specialUserIds : project.userIds || []
     batch.feedChainFollowersIds = { [user.uid]: [...userIds, user.uid] }
 
     await createUserJoinedFeed(
@@ -816,55 +836,32 @@ export async function addUserToProject(
         addFollowerWithoutFeeds(projectId, userId, 'users', user.uid, null, batch)
     })
 
-    batch.commit()
+    await batch.commit()
 }
 
-async function tryAddUserToProject(uid, projectId, project, removeInvitation) {
-    const batch = new BatchWrapper(getDb())
+/**
+ * The logged user joins `projectId` (an invitation, a project shared with link, or a guide its template's
+ * creator or the administrator opens). Resolves with the server's answer.
+ */
+export async function joinProjectAsLoggedUser(projectId) {
+    const result = await joinProjectOnServer(projectId)
+    const joinedProjectId = result?.projectId || projectId
+    await loadJoinedProjectIntoStore(joinedProjectId)
+
     const { loggedUser } = store.getState()
-
-    batch.update(getDb().doc(`projects/${projectId}`), {
-        userIds: firebase.firestore.FieldValue.arrayUnion(uid),
-    })
-
-    if (!project.parentTemplateId) addWorkstreamMember(projectId, DEFAULT_WORKSTREAM_ID, uid, batch)
-
-    const isTemplate = project.isTemplate
-    const isGuide = !!project.parentTemplateId
-
-    const membershipUpdate = isTemplate
-        ? {
-              projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              templateProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-          }
-        : isGuide
-          ? {
-                projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-            }
-          : {
-                projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-            }
-    membershipUpdate.projectMembershipMutation = {
-        projectId,
-        action: 'add',
-        actorId: loggedUser.uid,
-        updatedAt: Date.now(),
+    if (Array.isArray(result?.addedUserIds) && result.addedUserIds.includes(loggedUser.uid)) {
+        const project = await getProjectData(joinedProjectId)
+        if (project) {
+            await createProjectJoinFeeds(
+                loggedUser.uid,
+                { ...project, userIds: result.previousUserIds || [] },
+                joinedProjectId,
+                null,
+                null
+            ).catch(error => console.warn('[Join project] Could not write the join activity:', error))
+        }
     }
-    updateUserData(uid, membershipUpdate, batch)
-
-    await batch.commit()
-
-    if (removeInvitation) {
-        firebase
-            .firestore()
-            .doc(`users/${uid}`)
-            .get()
-            .then(snap => {
-                const user = mapUserData(uid, snap.data())
-                removeInvitedUserFromProject(user, projectId)
-            })
-    }
+    return result
 }
 
 export async function setUserDescription(userId, extDescription) {

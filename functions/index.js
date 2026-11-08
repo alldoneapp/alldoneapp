@@ -2706,6 +2706,22 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
 
 //TEMPLATE AND COMMUNITY PROJECTS
 
+// Accepting an invitation, joining a project shared with link, joining a guide and starting a
+// template's guide. A non-member cannot write a project's userIds under firestore.rules, so the
+// right to join is checked and the membership written here (Projects/joinProject.js).
+exports.joinProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { handleJoinProjectRequest } = require('./Projects/joinProject')
+        return await handleJoinProjectRequest(admin.firestore(), request)
+    }
+)
+
 exports.sendUserJoinsToGuideEmailSecondGen = onCall(
     {
         timeoutSeconds: 540,

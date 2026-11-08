@@ -1,77 +1,31 @@
 import { uniq } from 'lodash'
-import firebase from 'firebase/compat/app'
 import moment from 'moment'
+import momentTz from 'moment-timezone'
 
 import store from '../../../redux/store'
 import {
-    addGuideToTemplateFeedsChain,
+    createGuideCreatedFeedChain,
     getDb,
     getProjectData,
     runHttpsCallableFunction,
-    uploadNewGuideProject,
     getId,
     addFollowerWithoutFeeds,
-    generateSortIndex,
 } from '../firestore'
-import ProjectHelper, { MAX_USERS_IN_GUIDES } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setLanguage, translate } from '../../../i18n/TranslationService'
-import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import HelperFunctions from '../../HelperFunctions'
 import { MENTION_SPACE_CODE, STAYWARD_COMMENT } from '../../../components/Feeds/Utils/HelperFunctions'
-import { addUserToProject, getUserData } from '../Users/usersFirestore'
+import {
+    createProjectJoinFeeds,
+    getUserData,
+    joinProjectOnServer,
+    loadJoinedProjectIntoStore,
+} from '../Users/usersFirestore'
 import { createChat, addFollowerToChat } from '../Chats/chatsComments'
 import { getChatMeta } from '../Chats/chatsFirestore'
 import { trackEvent } from '../../analytics/analytics'
 
 export const GUIDE_MAIN_CHAT_ID = 'guideMainChatId'
-
-async function getLastGuideProject(guideIds) {
-    const lastGuideId = guideIds[guideIds.length - 1]
-    return lastGuideId ? await getProjectData(lastGuideId) : null
-}
-
-function checkIfThereIsSpaceForNewUsersInLastGuide(template, lastGuide) {
-    if (!lastGuide) return false
-
-    const { administratorUser } = store.getState()
-    const { templateCreatorId } = template
-    const creatorIsInGuide = lastGuide.userIds.includes(templateCreatorId)
-    const adminIsNotCreator = administratorUser.uid !== templateCreatorId
-    const adminIsInGuideAndIsNotCreator = adminIsNotCreator && template.userIds.includes(administratorUser.uid)
-
-    let maxUsers = MAX_USERS_IN_GUIDES
-    if (creatorIsInGuide) maxUsers++
-    if (adminIsInGuideAndIsNotCreator) maxUsers++
-
-    const thereIsSpaceForNewUsersInLastGuide = lastGuide.userIds.length < maxUsers
-    return thereIsSpaceForNewUsersInLastGuide
-}
-
-function generateGuide(template) {
-    const { loggedUser } = store.getState()
-    const sortIndex = generateSortIndex()
-    const guide = ProjectHelper.getNewDefaultProject()
-    guide.name = `${template.name} ${template.guideProjectIds.length + 1}`
-    guide.color = template.color
-    guide.parentTemplateId = template.id
-    guide.creatorId = template.templateCreatorId
-    guide.globalAssistantIds = [...template.globalAssistantIds]
-    guide.workstreamIds = []
-    guide.sortIndexByUser = { [template.templateCreatorId]: sortIndex, [loggedUser.uid]: sortIndex }
-    return guide
-}
-
-async function addGuideToTemplate(template, guideId) {
-    const db = getDb()
-    const batch = new BatchWrapper(db)
-    batch.update(db.doc(`projects/${guideId}`), { parentTemplateId: template.id })
-    batch.update(db.doc(`projects/${template.id}`), {
-        guideProjectIds: firebase.firestore.FieldValue.arrayUnion(guideId),
-    })
-    await batch.commit()
-    addGuideToTemplateFeedsChain(template, guideId)
-}
 
 async function sendUserJoinsToGuideEmail(templateCreatorId, guideId, newUserId) {
     const { administratorUser } = store.getState()
@@ -220,110 +174,75 @@ function logGuideConversionEvent() {
     trackEvent('generate_lead', { source: 'guide' })
 }
 
-async function tryToAddCreatorUser(guide, templateCreatorId, projectUsersIdsForSpecialFeeds, specialUserIds) {
-    const needsToAddTheCreator = !guide.userIds.includes(templateCreatorId)
-    if (needsToAddTheCreator) {
-        await addUserToProject(
-            templateCreatorId,
-            guide,
-            guide.id,
-            false,
-            projectUsersIdsForSpecialFeeds,
-            specialUserIds
-        )
+/**
+ * Adds the logged user to a template: the administrator joins the template itself, everybody else a
+ * guide of it with room, or a new guide. Which guide, and the membership of the user, the template's
+ * creator and the administrator, are decided and written by joinProjectSecondGen; a user who is not
+ * yet a member could not write any of it (firestore.rules). What follows here is written as a member
+ * of the guide: feeds, followers, the welcome chats and the copy of the template's objects.
+ */
+export async function addUserToTemplate(userId, template, unlockedTemplate) {
+    const { loggedUser } = store.getState()
+    setLanguage(loggedUser.language)
+
+    const result = await joinProjectOnServer(template.id, {
+        startGuide: true,
+        timezone: loggedUser.preferredTimezone || momentTz.tz.guess(),
+    })
+    const joinedProjectId = result?.projectId || template.id
+    await loadJoinedProjectIntoStore(joinedProjectId)
+
+    const addedUserIds = Array.isArray(result?.addedUserIds) ? result.addedUserIds : []
+    if (!addedUserIds.includes(userId)) return
+
+    if (joinedProjectId === template.id) {
+        await createProjectJoinFeeds(userId, { ...template, userIds: result.previousUserIds || [] }, template.id)
+        return
     }
+
+    await setUpJoinedGuide(userId, template, joinedProjectId, result, unlockedTemplate)
 }
 
-async function tryToAddAdminUser(guide, templateCreatorId, projectUsersIdsForSpecialFeeds, specialUserIds) {
-    const { administratorUser } = store.getState()
-    const needsToAddTheAdmin =
-        administratorUser.uid !== templateCreatorId && !guide.userIds.includes(administratorUser.uid)
-    if (needsToAddTheAdmin) {
-        await addUserToProject(
-            administratorUser.uid,
-            guide,
-            guide.id,
-            false,
-            projectUsersIdsForSpecialFeeds,
-            specialUserIds
-        )
-    }
-}
-
-async function addUsersToGuide(userId, guide, template, isNewGuide) {
+async function setUpJoinedGuide(userId, template, guideId, result, unlockedTemplate) {
     const { administratorUser } = store.getState()
     const { templateCreatorId } = template
-    const projectUsersIdsForSpecialFeeds = uniq([...guide.userIds, userId, administratorUser.uid, templateCreatorId])
+    const isNewGuide = !!result.isNewGuide
+    const previousUserIds = result.previousUserIds || []
+
+    const guideData = await getProjectData(guideId)
+    const guide = { ...guideData, id: guideId }
+    const guideBeforeJoin = { ...guide, userIds: previousUserIds }
+
+    const projectUsersIdsForSpecialFeeds = uniq([...previousUserIds, userId, administratorUser.uid, templateCreatorId])
     const specialUserIds = isNewGuide ? [...projectUsersIdsForSpecialFeeds] : null
 
-    addFollowerWithoutFeeds(guide.id, userId, 'topics', GUIDE_MAIN_CHAT_ID, null, null)
-    addFollowerToChat(guide.id, GUIDE_MAIN_CHAT_ID, userId)
+    const mainChat = isNewGuide ? null : await getChatMeta(guideId, GUIDE_MAIN_CHAT_ID)
 
-    const promises = []
-    promises.push(addUserToProject(userId, guide, guide.id, false, projectUsersIdsForSpecialFeeds, specialUserIds))
-    promises.push(tryToAddCreatorUser(guide, templateCreatorId, projectUsersIdsForSpecialFeeds, specialUserIds))
-    promises.push(tryToAddAdminUser(guide, templateCreatorId, projectUsersIdsForSpecialFeeds, specialUserIds))
+    if (isNewGuide) await createGuideCreatedFeedChain(guide, projectUsersIdsForSpecialFeeds)
 
-    await Promise.all(promises)
-}
-
-async function setUsersAndObjectsWhenUserJoinsToAGuide(userId, template, guide, isNewGuide, unlockedTemplate) {
-    await addUsersToGuide(userId, guide, template, isNewGuide)
-    const promises = []
-    promises.push(copyTemplateObjects(template, guide.id, unlockedTemplate, isNewGuide))
-    promises.push(sendUserJoinsToGuideEmail(template.templateCreatorId, guide.id, userId))
-    await addWelcomeChatToGuideUser(
-        guide.id,
-        template.name,
-        template.templateCreatorId,
-        guide.userIds,
-        guide.assistantId
+    addFollowerWithoutFeeds(guideId, userId, 'topics', GUIDE_MAIN_CHAT_ID, null, null)
+    addFollowerToChat(guideId, GUIDE_MAIN_CHAT_ID, userId)
+    await Promise.all(
+        result.addedUserIds.map(addedUserId =>
+            createProjectJoinFeeds(
+                addedUserId,
+                guideBeforeJoin,
+                guideId,
+                projectUsersIdsForSpecialFeeds,
+                specialUserIds
+            ).catch(error => console.warn('[Guides] Could not write the join activity:', error))
+        )
     )
+
+    const promises = []
+    promises.push(copyTemplateObjects(template, guideId, unlockedTemplate, isNewGuide))
+    promises.push(sendUserJoinsToGuideEmail(templateCreatorId, guideId, userId))
+    await addWelcomeChatToGuideUser(guideId, template.name, templateCreatorId, previousUserIds, guide.assistantId)
     await Promise.all(promises)
 
     logGuideConversionEvent()
-}
 
-async function addUserToLastGuide(userId, template, lastGuide, unlockedTemplate) {
-    const mainChat = await getChatMeta(lastGuide.id, GUIDE_MAIN_CHAT_ID)
-    const promises = []
-    promises.push(setUsersAndObjectsWhenUserJoinsToAGuide(userId, template, lastGuide, false, unlockedTemplate))
-    await Promise.all(promises)
-    if (!mainChat) await addWelcomeChatToGuide(lastGuide, template.name, template.templateCreatorId)
-}
-
-async function uploadNewGuide(template, projectUsersIdsForSpecialFeeds) {
-    const guide = generateGuide(template)
-    guide.id = await uploadNewGuideProject(guide, template.assistantId, projectUsersIdsForSpecialFeeds)
-    return guide
-}
-
-async function addUserToNewGuide(userId, template, unlockedTemplate) {
-    const { administratorUser } = store.getState()
-    const guide = await uploadNewGuide(template, uniq([userId, administratorUser.uid, template.templateCreatorId]))
-    await addGuideToTemplate(template, guide.id)
-    const promises = []
-    promises.push(setUsersAndObjectsWhenUserJoinsToAGuide(userId, template, guide, true, unlockedTemplate))
-    await Promise.all(promises)
-    await addWelcomeChatToGuide(guide, template.name, template.templateCreatorId)
-}
-
-async function addUserToGuide(userId, template, unlockedTemplate) {
-    const lastGuide = await getLastGuideProject(template.guideProjectIds)
-    const thereIsSpaceForNewUsersInLastGuide = checkIfThereIsSpaceForNewUsersInLastGuide(template, lastGuide)
-
-    thereIsSpaceForNewUsersInLastGuide
-        ? await addUserToLastGuide(userId, template, lastGuide, unlockedTemplate)
-        : await addUserToNewGuide(userId, template, unlockedTemplate)
-}
-
-export async function addUserToTemplate(userId, template, unlockedTemplate) {
-    const { administratorUser, loggedUser } = store.getState()
-    const userIsAdministrator = administratorUser.uid === userId
-    setLanguage(loggedUser.language)
-    userIsAdministrator
-        ? await addUserToProject(userId, template, template.id, true, null, null)
-        : await addUserToGuide(userId, template, unlockedTemplate)
+    if (!mainChat) await addWelcomeChatToGuide(guideBeforeJoin, template.name, templateCreatorId)
 }
 
 export async function checkIfUserIsAlreadyInTemplateGuide(userId, templateId) {
