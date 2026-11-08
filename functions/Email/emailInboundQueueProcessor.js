@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid')
 const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
+const { buildInboundEmailRecordId } = require('./inboundEmailRecordId')
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
 const { maybeCreateGuestMeetingGrant } = require('./emailGuestMeetingGrant')
 const {
@@ -130,7 +131,7 @@ async function processQueueItem(userId, item) {
             replyResult,
             assistantResult: normalizedAssistantResult,
         })
-        await finalizeQueueItem(item.ref, messageId, {
+        await finalizeQueueItem(item.ref, buildInboundEmailRecordId(userId, messageId), {
             status: 'processed',
             replyStatus: 'sent',
             chatId,
@@ -173,7 +174,7 @@ async function processQueueItem(userId, item) {
         })
         await admin
             .firestore()
-            .doc(`annaEmailInboundAudit/${messageId}`)
+            .doc(`annaEmailInboundAudit/${buildInboundEmailRecordId(userId, messageId)}`)
             .set(
                 {
                     status: 'failed',
@@ -332,12 +333,12 @@ function buildReplySubject(subject = '') {
     return /^re:/i.test(normalized) ? normalized : `Re: ${normalized}`
 }
 
-async function finalizeQueueItem(queueRef, messageId, auditPatch = {}) {
+async function finalizeQueueItem(queueRef, auditRecordId, auditPatch = {}) {
     await Promise.all([
         queueRef.delete(),
         admin
             .firestore()
-            .doc(`annaEmailInboundAudit/${messageId}`)
+            .doc(`annaEmailInboundAudit/${auditRecordId}`)
             .set(
                 {
                     ...auditPatch,

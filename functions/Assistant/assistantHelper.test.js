@@ -7090,6 +7090,117 @@ describe('assistant settings prompt history', () => {
         mockDocGet.mockReset()
     })
 
+    describe('global assistant catalog (security audit 2026-11)', () => {
+        const callerAssistant = {
+            uid: 'caller-assistant',
+            allowedTools: ['update_assistant_settings', 'update_heartbeat_settings'],
+            instructions: 'Caller instructions',
+        }
+        const globalAssistant = {
+            uid: 'global-assistant',
+            allowedTools: ['update_assistant_settings', 'update_heartbeat_settings'],
+            instructions: 'Global instructions',
+            heartbeatPrompt: 'Global heartbeat',
+        }
+
+        function mockStore({ adminUserId = 'admin-user', globalSelf = false } = {}) {
+            mockDocGet.mockImplementation(function () {
+                const path = this.path
+                if (path === 'roles/administrator') {
+                    return Promise.resolve({ exists: true, data: () => ({ userId: adminUserId }) })
+                }
+                if (path === 'users/attacker' || path === 'users/admin-user') {
+                    return Promise.resolve({ exists: true, data: () => ({ projectIds: ['own-project'] }) })
+                }
+                if (path === 'assistants/own-project/items/caller-assistant' && !globalSelf) {
+                    return Promise.resolve({ exists: true, data: () => callerAssistant })
+                }
+                if (path === 'assistants/globalProject/items/global-assistant') {
+                    return Promise.resolve({ exists: true, data: () => globalAssistant })
+                }
+                return Promise.resolve({ exists: false, data: () => ({}) })
+            })
+        }
+
+        afterEach(() => {
+            mockDocGet.mockReset()
+        })
+
+        test('a non-admin cannot target a global assistant by explicit projectId', async () => {
+            mockStore()
+            await expect(
+                executeToolNatively(
+                    'update_assistant_settings',
+                    { assistantId: 'global-assistant', projectId: 'globalProject', instructions: 'Hijacked' },
+                    'own-project',
+                    'caller-assistant',
+                    'attacker',
+                    null
+                )
+            ).rejects.toThrow('Global assistants are shared by every Alldone account')
+            expect(mockTransactionUpdate).not.toHaveBeenCalled()
+            expect(mockDocUpdate).not.toHaveBeenCalled()
+        })
+
+        test('a non-admin cannot reach a global assistant by assistantId alone', async () => {
+            mockStore()
+            await expect(
+                executeToolNatively(
+                    'update_assistant_settings',
+                    { assistantId: 'global-assistant', instructions: 'Hijacked' },
+                    'own-project',
+                    'caller-assistant',
+                    'attacker',
+                    null
+                )
+            ).rejects.toThrow('Target assistant not found')
+            expect(mockTransactionUpdate).not.toHaveBeenCalled()
+        })
+
+        test('a non-admin using a global assistant cannot rewrite it through the self-path', async () => {
+            mockStore({ globalSelf: true })
+            await expect(
+                executeToolNatively(
+                    'update_assistant_settings',
+                    { instructions: 'Hijacked' },
+                    'own-project',
+                    'global-assistant',
+                    'attacker',
+                    null
+                )
+            ).rejects.toThrow('Global assistants are shared by every Alldone account')
+            await expect(
+                executeToolNatively(
+                    'update_heartbeat_settings',
+                    { prompt: 'Hijacked heartbeat' },
+                    'own-project',
+                    'global-assistant',
+                    'attacker',
+                    null
+                )
+            ).rejects.toThrow('Global assistants are shared by every Alldone account')
+            expect(mockTransactionUpdate).not.toHaveBeenCalled()
+            expect(mockDocUpdate).not.toHaveBeenCalled()
+        })
+
+        test('the administrator can still update a global assistant', async () => {
+            mockStore()
+            const result = await executeToolNatively(
+                'update_assistant_settings',
+                { assistantId: 'global-assistant', projectId: 'globalProject', description: 'Curated' },
+                'own-project',
+                'caller-assistant',
+                'admin-user',
+                null
+            )
+            expect(mockTransactionUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({ path: 'assistants/globalProject/items/global-assistant' }),
+                expect.objectContaining({ description: 'Curated' })
+            )
+            expect(result).toMatchObject({ success: true, targetProjectId: 'globalProject' })
+        })
+    })
+
     test('versions instructions changes and caps history at 10 entries', async () => {
         const existingHistory = Array.from({ length: 10 }, (_, index) => ({
             prompt: `Older instructions ${index}`,

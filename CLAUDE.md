@@ -712,6 +712,37 @@ the project stops with `owner_not_member` before any model call and waits for a 
 over in its settings. Pinned by the `task identity fields` and `recurring assistant task activation`
 blocks of the rules emulator suite and the `security audit 2026-11` cases next to each trigger.
 
+The assistant-side fixes of the same audit follow one rule: a value a member can write from the
+client is never trusted by an Admin SDK path that acts for somebody else.
+
+- A stored MCP credential is bound to the URL it was validated against (`boundUrl` on the
+  `mcpSecrets` document, `mcpAssistantConnect.js`). The URL itself stays member-writable on the
+  assistant document, so `resolveMcpSecret` needs the `serverUrl` it will call and returns nothing
+  for any other address; an `alldone_app` token only ever goes to alldone.team. A secret without
+  `boundUrl` is refused (reconnect), never bound on first use; the existing ones are bound once by
+  `migration/bindMcpCredentialsToServerUrl.js` (dry run by default, review its list, then `--execute`).
+- `update_assistant_settings` and `update_heartbeat_settings` write `assistants/globalProject/*`
+  only for the administrator (`globalAssistantWriteAccess.js`), including when the caller is merely
+  chatting with a global assistant.
+- A skill file is mounted into a VM only from its own prefix, `assistantSkills/{owner}/{skillId}/`
+  (`isOwnSkillStoragePath`), because `files[].storagePath` is client-written.
+- The Gmail post-label run reads third-party email unattended, so it gets only
+  `GMAIL_POST_LABEL_SAFE_TOOLS` (`functions/Gmail/gmailPostLabelTools.js`), intersected with the
+  assistant's own list.
+- A browser run belongs to the member who started it: another member's call in the same thread is
+  refused (`run_owned_by_other_user`), and only the run's own member can answer or spend its approvals.
+- `writeKnowledgePage` reads every source it cites for the first time again inside its transaction
+  (`findWithdrawnKnowledgeSourceKeys`) and refuses the write if one is gone or no longer visible.
+- Anna inbound email stores attachments under `anna-email-inbound/{userId}/{uuid}/` (create-only) and
+  keys dedup and audit records by account plus a hash of the sender-chosen Message-ID
+  (`inboundEmailRecordId.js`).
+
+Pinned by `mcpSecretUrlBinding.test.js`, the `global assistant catalog` block of
+`assistantHelper.test.js`, `assistantSkillsMountScope.test.js`, the safe-tools case in
+`serverSideGmailLabelingSync.test.js`, the co-member case in `browserSession.test.js`, the
+withdrawn-source block of `knowledgePageStore.test.js` and the same-Message-ID block of
+`emailIncomingHandler.test.js`.
+
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
 A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —
@@ -1580,7 +1611,7 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 - Implement native execution in `functions/Assistant/assistantHelper.js`, including permission/runtime-context checks, conversation-safe results, and focused tests in `functions/Assistant/assistantHelper.test.js`.
 - Add the tool to the assistant settings UI in `components/AssistantDetailedView/Customizations/ToolsAccess/toolOptions.js` so it can be enabled per assistant. Decide deliberately whether it belongs in `DEFAULT_ALLOWED_TOOLS` or `OPT_IN_ONLY_TOOLS`, then cover that in `toolOptions.test.js`.
 - Add local strings for the tool label in `i18n/translations/en.json`, `de.json`, and `es.json`.
-- Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up uses the normal assistant `allowedTools`, while email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
+- Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up only gets `GMAIL_POST_LABEL_SAFE_TOOLS` (`functions/Gmail/gmailPostLabelTools.js`); email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
 - If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
 
 ### Browsing (`browser_*`) — the classification runs on the PAGE, not on the tool call

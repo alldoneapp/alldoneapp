@@ -163,6 +163,29 @@ async function writeKnowledgePage({
             key => typeof key === 'string' && allowedSourceKeys.has(key)
         )
         const sourceKeys = [...new Set([...existingSourceKeys, ...citedSourceKeys, ...declared])]
+
+        // Security audit 2026-11: a source the run was allowed to cite when it collected its cards
+        // may have been made private or deleted since. Every source this write cites for the first
+        // time is read again here, inside the transaction, so withdrawn text never reaches a page.
+        const newlyCitedKeys = sourceKeys.filter(key => !existingSourceKeys.includes(key))
+        if (newlyCitedKeys.length) {
+            const { findWithdrawnKnowledgeSourceKeys } = require('./collectKnowledgeSources')
+            const withdrawn = await findWithdrawnKnowledgeSourceKeys({
+                projectId,
+                keys: newlyCitedKeys,
+                read: async path => {
+                    const sourceSnapshot = await transaction.get(db.doc(path))
+                    return sourceSnapshot.exists ? sourceSnapshot.data() || {} : null
+                },
+            })
+            if (withdrawn.length) {
+                return failure(
+                    `These sources are no longer visible to the whole project: ${withdrawn
+                        .map(key => `[[${key}]]`)
+                        .join(', ')}. Write the page again without them and without anything they said.`
+                )
+            }
+        }
         const previousLabels = mode === 'rebuild' ? {} : current?.sourceLabels || {}
         const sourceLabels = {}
         sourceKeys.forEach(key => {

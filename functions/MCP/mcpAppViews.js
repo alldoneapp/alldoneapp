@@ -243,6 +243,7 @@ async function handleMcpAppRequest({ uid, data }, deps) {
         assistantId: view.assistantId,
         serverId: server.id,
         requestUserId: uid,
+        serverUrl: server.url,
     })
 
     if (data.action === 'resource') {

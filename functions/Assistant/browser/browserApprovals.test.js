@@ -114,7 +114,7 @@ describe('browser approvals', () => {
 
             const run = db.documents.get('browserRuns/run1')
             const { grants } = consumeApprovalGrant(run, SIGNATURE, NOW)
-            expect(findApprovalGrant({ approvalGrants: grants }, SIGNATURE, NOW)).toBeTruthy()
+            expect(findApprovalGrant({ ...run, approvalGrants: grants }, SIGNATURE, NOW)).toBeTruthy()
         })
 
         it('refuses a run-scoped answer for a category the policy never allows it for', async () => {
