@@ -8291,13 +8291,12 @@ describe('assistant user memory tool', () => {
         jest.clearAllMocks()
     })
 
-    test('records memory feed updates as the assistant actor', async () => {
+    test('saves the fact to the private memory store for the requesting user', async () => {
         updateUserMemory.mockResolvedValue({
             success: true,
             skipped: false,
-            noteId: 'note-1',
             projectId: 'project-1',
-            message: 'User memory saved in project "project-1"',
+            message: 'Saved to the user\'s private memory for project "project-1"',
         })
 
         const result = await executeToolNatively(
@@ -8321,13 +8320,13 @@ describe('assistant user memory tool', () => {
                 fact: 'Prefers short summaries',
                 category: 'preference',
                 reason: 'Helps tune assistant replies',
-                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
             })
         )
+        // NV-20: no feed actor - a private memory write produces no feed entry for teammates.
+        expect(updateUserMemory.mock.calls[0][0].feedUser).toBeUndefined()
         expect(result).toMatchObject({
             success: true,
             skipped: false,
-            noteId: 'note-1',
         })
     })
 })

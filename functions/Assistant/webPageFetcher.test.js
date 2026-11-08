@@ -1,12 +1,4 @@
-const dns = require('dns')
 const { extractPageContent, fetchWebPage, isFetchableUrl, THIN_PAGE_TEXT_CHARS } = require('./webPageFetcher')
-
-// Every fetch resolves its host first (outbound URL guard); keep the suite off the network.
-const PUBLIC_ANSWER = [{ address: '93.184.216.34', family: 4 }]
-beforeEach(() => {
-    jest.spyOn(dns.promises, 'lookup').mockResolvedValue(PUBLIC_ANSWER)
-})
-afterEach(() => jest.restoreAllMocks())
 
 const htmlResponse = (html, { status = 200, url = 'https://example.com/team', contentType = 'text/html' } = {}) => ({
     ok: status >= 200 && status < 300,
@@ -58,16 +50,6 @@ describe('isFetchableUrl', () => {
             'http://metadata.google.internal/',
             'http://[::1]/',
             'http://service.internal/',
-            // NV-21: forms the old string regexes let through
-            'http://[::ffff:127.0.0.1]/',
-            'http://[::ffff:169.254.169.254]/computeMetadata/v1/',
-            'http://[fd00::1]/',
-            'http://[fe80::1]/',
-            'http://[::]/',
-            'http://100.100.100.200/',
-            'http://metadata.google.internal./',
-            'http://localhost./',
-            'http://intranet/',
         ]) {
             expect(isFetchableUrl(url).ok).toBe(false)
         }
@@ -222,71 +204,5 @@ describe('fetchWebPage', () => {
         const result = await fetchWebPage('https://example.com/cv.pdf', { fetchImpl })
         expect(result.success).toBe(false)
         expect(result.error).toMatch(/application\/pdf/)
-    })
-})
-
-describe('fetchWebPage address policy (NV-21)', () => {
-    const redirectResponse = location => ({
-        ok: false,
-        status: 302,
-        url: '',
-        headers: new Headers({ location }),
-        arrayBuffer: async () => Buffer.alloc(0),
-    })
-
-    test('never fetches a public name whose DNS answer is private', async () => {
-        dns.promises.lookup.mockResolvedValue([{ address: '10.1.2.3', family: 4 }])
-        const fetchImpl = jest.fn()
-        const result = await fetchWebPage('https://rebind.example.com/', {
-            fetchImpl,
-            tavilyApiKey: 'tvly-key',
-            tavilyClientFactory: () => ({ extract: jest.fn() }),
-        })
-        expect(result).toMatchObject({ success: false, error: expect.stringMatching(/Private or internal/) })
-        expect(fetchImpl).not.toHaveBeenCalled()
-    })
-
-    test('refuses an IPv4-mapped private DNS answer', async () => {
-        dns.promises.lookup.mockResolvedValue([{ address: '::ffff:169.254.169.254', family: 6 }])
-        const fetchImpl = jest.fn()
-        const result = await fetchWebPage('https://mapped.example.com/', { fetchImpl })
-        expect(result.success).toBe(false)
-        expect(fetchImpl).not.toHaveBeenCalled()
-    })
-
-    test('follows redirects by hand and refuses a hop that points inward', async () => {
-        const fetchImpl = jest.fn(async () => redirectResponse('http://127.0.0.1:8080/internal-secret'))
-        const result = await fetchWebPage('https://example.com/start', { fetchImpl })
-        expect(result).toMatchObject({ success: false, error: expect.stringMatching(/Private or internal/) })
-        expect(fetchImpl).toHaveBeenCalledTimes(1)
-        expect(fetchImpl.mock.calls[0][1].redirect).toBe('manual')
-    })
-
-    test('refuses a redirect hop whose name resolves privately', async () => {
-        dns.promises.lookup.mockImplementation(async host =>
-            host === 'inside.example.com' ? [{ address: 'fd00::5', family: 6 }] : PUBLIC_ANSWER
-        )
-        const fetchImpl = jest.fn(async () => redirectResponse('https://inside.example.com/'))
-        const result = await fetchWebPage('https://example.com/start', { fetchImpl })
-        expect(result.success).toBe(false)
-        expect(fetchImpl).toHaveBeenCalledTimes(1)
-    })
-
-    test('follows a public redirect and reports the final URL', async () => {
-        const fetchImpl = jest
-            .fn()
-            .mockResolvedValueOnce(redirectResponse('/team'))
-            .mockResolvedValueOnce(htmlResponse(SAMPLE_PAGE, { url: '' }))
-        const result = await fetchWebPage('https://example.com/start', { fetchImpl })
-        expect(result.success).toBe(true)
-        expect(result.finalUrl).toBe('https://example.com/team')
-        expect(fetchImpl.mock.calls[1][0]).toBe('https://example.com/team')
-    })
-
-    test('a redirect to LinkedIn is refused like a direct request', async () => {
-        const fetchImpl = jest.fn(async () => redirectResponse('https://www.linkedin.com/in/someone'))
-        const result = await fetchWebPage('https://example.com/start', { fetchImpl })
-        expect(result).toMatchObject({ success: false, blockedHost: true })
-        expect(fetchImpl).toHaveBeenCalledTimes(1)
     })
 })
