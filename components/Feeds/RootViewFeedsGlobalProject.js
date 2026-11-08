@@ -10,7 +10,8 @@ import ProjectHelper, {
 } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import URLSystem from '../../URLSystem/URLSystem'
 import { getURLConstantByFollowedState } from './Utils/HelperFunctions'
-import { setReloadGlobalFeeds, updateFeedActiveTab } from '../../redux/actions'
+import { setNavigationRoute, setReloadGlobalFeeds, updateFeedActiveTab } from '../../redux/actions'
+import { DV_TAB_ROOT_UPDATES } from '../../utils/TabNavigationConstants'
 import { FOLLOWED_TAB, ALL_TAB } from './Utils/FeedsConstants'
 
 import { HISTORICAL_MODE, LOADING_MODE, NEW_FEEDS_MODE } from './Utils/FeedsHelper'
@@ -68,6 +69,13 @@ export default function RootViewFeedsGlobalProject() {
         }
         feedActiveTab === FOLLOWED_TAB ? setAmountFollowedFeeds(newTotalAmount) : setAmountAllFeeds(newTotalAmount)
     }
+
+    // Like every other root view: a return from a detail view remounts Root
+    // without going through navigateToUpdates, and the top bar's selected bell
+    // (AT-2979) reads this route.
+    useEffect(() => {
+        dispatch(setNavigationRoute(DV_TAB_ROOT_UPDATES))
+    }, [])
 
     useEffect(() => {
         calculateTotalNewFeedAmount()

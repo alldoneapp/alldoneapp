@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { TouchableOpacity } from 'react-native'
+import { StyleSheet, TouchableOpacity } from 'react-native'
 
 import { getChatsButtonBadge } from './chatsButtonHelper'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
@@ -8,6 +8,7 @@ import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 const mockDispatch = jest.fn()
 const mockUseSelector = jest.fn()
 const mockGetNotificationAmounts = jest.fn()
+let mockRoute
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
@@ -47,11 +48,13 @@ describe('ChatsButton', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
         mockGetNotificationAmounts.mockReturnValue({ totalFollowed: 4, totalUnfollowed: 9 })
+        mockRoute = 'ROOT_TASKS'
         mockUseSelector.mockImplementation(selector =>
             selector({
                 loggedUser: { archivedProjectIds: [], templateProjectIds: [] },
                 activeChatData: {},
                 projectChatNotifications: {},
+                route: mockRoute,
             })
         )
     })
@@ -97,5 +100,20 @@ describe('ChatsButton', () => {
             { type: 'hide popup' },
             { type: 'all chats', options: { chatsActiveTab: FOLLOWED_TAB, unreadOnly: false } },
         ])
+    })
+    it('is marked as selected only while the Chats view is open (AT-2979)', () => {
+        const background = component =>
+            StyleSheet.flatten(component.root.findByProps({ testID: 'top-bar-chats-button' }).props.style)
+                .backgroundColor
+
+        mockRoute = 'ROOT_CHATS'
+        const component = renderer.create(<ChatsButton color={'black'} />)
+        expect(component.root.findByType('Icon').props.color).toBe('#007FFF')
+        expect(background(component)).toBe('#E2EFFF')
+
+        mockRoute = 'ROOT_UPDATES'
+        act(() => component.update(<ChatsButton color={'black'} />))
+        expect(component.root.findByType('Icon').props.color).toBe('black')
+        expect(background(component)).toBeUndefined()
     })
 })

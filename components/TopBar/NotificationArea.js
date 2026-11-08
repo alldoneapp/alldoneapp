@@ -15,6 +15,7 @@ import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { ALL_PROJECTS_INDEX } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
 import NavigationService from '../../utils/NavigationService'
+import { isUpdatesViewActive, SELECTED_TOP_BAR_ICON_COLOR, selectedTopBarButtonStyle } from './topBarNavSelection'
 import ChatsButton from './ChatsButton'
 
 export default function NotificationArea() {
@@ -23,6 +24,7 @@ export default function NotificationArea() {
     const themeName = useSelector(state => state.loggedUser.themeName)
     const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
+    const updatesSelected = useSelector(isUpdatesViewActive)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
     const theme = getTheme(Themes, themeName, 'TopBar.NotificationArea')
@@ -66,8 +68,13 @@ export default function NotificationArea() {
 
             {!userIsAnonymous && <ChatsButton color={theme.iconColor} style={localStyles.cog} />}
 
-            <TouchableOpacity style={localStyles.updates} onPress={onPressUpdates} accessible={false}>
-                <Icon size={24} name={'bell'} color={theme.iconColor} />
+            <TouchableOpacity
+                style={[localStyles.updates, updatesSelected && selectedTopBarButtonStyle]}
+                onPress={onPressUpdates}
+                accessible={false}
+                testID="top-bar-updates-button"
+            >
+                <Icon size={24} name={'bell'} color={updatesSelected ? SELECTED_TOP_BAR_ICON_COLOR : theme.iconColor} />
 
                 {feedAmount > 0 && (
                     <View style={localStyles.updatesBadge}>

@@ -30,6 +30,7 @@ jest.mock('../SettingsView/ProjectsSettings/ProjectsSettings', () => ({
 jest.mock('../../URLSystem/URLSystem', () => ({ push: jest.fn() }))
 jest.mock('./Utils/HelperFunctions', () => ({ getURLConstantByFollowedState: () => 'updates' }))
 jest.mock('../../redux/actions', () => ({
+    setNavigationRoute: route => ({ type: 'route', route }),
     setReloadGlobalFeeds: value => ({ type: 'reload', value }),
     updateFeedActiveTab: value => ({ type: 'tab', value }),
 }))
@@ -78,6 +79,15 @@ describe('RootViewFeedsGlobalProject project admission', () => {
         expect(projects.map(node => node.props.projectId)).toEqual(['project-1', 'project-2'])
         expect(projects.map(node => node.props.trackInitialLoad)).toEqual([true, false])
         expect(projects.every(node => typeof node.props.onInitialSnapshot === 'function')).toBe(true)
+        act(() => tree.unmount())
+    })
+
+    it('claims the Updates route on mount, which the top bar bell reads (AT-2979)', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<RootViewFeedsGlobalProject />)
+        })
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'route', route: 'ROOT_UPDATES' })
         act(() => tree.unmount())
     })
 })

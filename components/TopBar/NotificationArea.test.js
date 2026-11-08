@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { TouchableOpacity } from 'react-native'
+import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import NotificationArea from './NotificationArea'
@@ -25,7 +25,7 @@ jest.mock('../Icon', () => 'Icon')
 jest.mock('../Feeds/FollowSwitchableTag/AmountTag', () => 'AmountTag')
 jest.mock('../UIControls/Shortcut', () => 'Shortcut')
 jest.mock('./ChatsButton', () => 'ChatsButton')
-jest.mock('../../Themes/Themes', () => ({ getTheme: () => ({}) }))
+jest.mock('../../Themes/Themes', () => ({ getTheme: () => ({ iconColor: 'grey', bellIcon: 'white' }) }))
 
 describe.each([
     ['desktop', NotificationArea],
@@ -79,6 +79,27 @@ describe.each([
         act(() => bell.props.onPress())
         expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
         if (_name === 'mobile') expect(expandSecondaryBar).toHaveBeenCalledTimes(1)
+        act(() => tree.unmount())
+    })
+    it('marks the bell as selected only while the Updates view is open (AT-2979)', () => {
+        const findBell = tree => tree.root.findByProps({ testID: 'top-bar-updates-button' })
+        const bellColor = tree => findBell(tree).findByType('Icon').props.color
+        const bellBackground = tree => StyleSheet.flatten(findBell(tree).props.style).backgroundColor
+
+        mockState = { ...mockState, route: 'ROOT_UPDATES' }
+        let tree
+        act(() => {
+            tree = renderer.create(<Component />)
+        })
+        expect(bellColor(tree)).toBe('#007FFF')
+        expect(bellBackground(tree)).toBe('#E2EFFF')
+
+        for (const route of ['ROOT_TASKS', 'ROOT_CHATS', 'TaskDetailedView']) {
+            mockState = { ...mockState, route }
+            act(() => tree.update(<Component />))
+            expect(bellColor(tree)).toBe(_name === 'desktop' ? 'grey' : 'white')
+            expect(bellBackground(tree)).toBeUndefined()
+        }
         act(() => tree.unmount())
     })
 })

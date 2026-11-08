@@ -20,6 +20,7 @@ import { Themes } from '../Themes'
 import { ALL_TAB, FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
 import { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
+import { isUpdatesViewActive, SELECTED_TOP_BAR_ICON_COLOR, selectedTopBarButtonStyle } from '../topBarNavSelection'
 import ChatsButton from '../ChatsButton'
 
 export default function MobileNotificationArea({ expandSecondaryBar, compact }) {
@@ -27,6 +28,7 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
     const themeName = useSelector(state => state.loggedUser.themeName)
     const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
+    const updatesSelected = useSelector(isUpdatesViewActive)
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile.MobileNotificationArea')
 
@@ -73,8 +75,13 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
 
             <ChatsButton color={theme.searchIcon} style={buttonStyle} onNavigate={collapseSecondaryBar} />
 
-            <TouchableOpacity style={buttonStyle} onPress={onPressUpdates} accessible={false}>
-                <Icon size={24} name={'bell'} color={theme.bellIcon} />
+            <TouchableOpacity
+                style={[buttonStyle, updatesSelected && selectedTopBarButtonStyle]}
+                onPress={onPressUpdates}
+                accessible={false}
+                testID="top-bar-updates-button"
+            >
+                <Icon size={24} name={'bell'} color={updatesSelected ? SELECTED_TOP_BAR_ICON_COLOR : theme.bellIcon} />
 
                 {feedAmount > 0 && (
                     <View style={localStyles.updatesBadge}>

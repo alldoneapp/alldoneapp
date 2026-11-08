@@ -14,12 +14,14 @@ import {
 import NavigationService from '../../utils/NavigationService'
 import store from '../../redux/store'
 import { getChatsButtonBadge } from './chatsButtonHelper'
+import { isChatsViewActive, SELECTED_TOP_BAR_ICON_COLOR, selectedTopBarButtonStyle } from './topBarNavSelection'
 
 export default function ChatsButton({ color, style, onNavigate }) {
     const dispatch = useDispatch()
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const activeChatData = useSelector(state => state.activeChatData)
+    const selected = useSelector(isChatsViewActive)
     let projectChatNotifications = useSelector(state => state.projectChatNotifications)
 
     projectChatNotifications = resetNotificationsWhenUserHasAnActiveChat(projectChatNotifications, activeChatData)
@@ -48,8 +50,13 @@ export default function ChatsButton({ color, style, onNavigate }) {
     }
 
     return (
-        <TouchableOpacity style={[localStyles.button, style]} onPress={onPress} accessible={false}>
-            <Icon size={24} name={'message-circle'} color={color} />
+        <TouchableOpacity
+            style={[localStyles.button, style, selected && selectedTopBarButtonStyle]}
+            onPress={onPress}
+            accessible={false}
+            testID="top-bar-chats-button"
+        >
+            <Icon size={24} name={'message-circle'} color={selected ? SELECTED_TOP_BAR_ICON_COLOR : color} />
 
             {badge.amount > 0 && (
                 <View style={localStyles.badge}>
