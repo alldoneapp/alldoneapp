@@ -597,24 +597,35 @@ not in the repo) found many callables that skip this. The first fixes:
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
 
-- Second pass: each callable resolves its request through a guard module that takes the user from
-  `request.auth`, checks membership/object access and derives the rest. `generateBotDailyTopicCommentSecondGen`
-  only runs the caller's own `BotChat<date><uid>` recap and formats the prompt dates itself
-  (`dailyTopicAccess.js`). `onRemoveWorkstreamSecondGen` needs a member and an existing `ws@` stream
-  (`workstreamRemovalAccess.js`). `createApiEmailTasksSecondGen` writes only the caller's own inbox task,
-  for an address stored on their connection (`apis/emailTasksAccess.js`). `sendUserJoinsToGuideEmailSecondGen`
-  reports the caller to the template creator and the administrator, read from Firestore, in escaped
-  HTML (`Templates/guideJoinEmail.js`). `addContactToBrevoMarketingList` subscribes only the token's
-  verified email. `sendPushNotificationSecondGen` now takes `{ projectId, objectType, objectId }`
-  (projects, users or tasks). Its recipients must follow that object, and the names, link and type come
-  from stored data. Only the caller's update line survives (`pushNotificationAccess.js`). A global
-  catalog assistant may only be changed by the administrator: use `assertAssistantProjectAccess(..., { forWrite: true })`
-  for any callable that writes one (`assistantProjectAccess.js`). `addCalendarEventsToTasksSecondGen`
-  was removed (no caller).
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
-the test next to each guard module above and `functions/Utils/callableIdentityBindings.test.js`, which
-checks the wiring in `index.js`.
+The client-side findings of the same audit:
+
+- An iframe task's address is member-writable data (a pre-configured task's `link`), so it never
+  decides trust. `EmbeddedAppFrame` gives user data, the alldone.team token, Gold and the roadmap
+  source only to an origin in `TRUSTED_EMBED_ORIGINS` (today `https://alldone.team`); any other page
+  still renders and may only report `EMBED_LOCATION` / `APP_CONTEXT`. Add an origin to that list,
+  never derive one. The global assistant's pre-configured tasks (`assistantTasks/globalProject/…`)
+  are administrator-only in `firestore.rules`, except the per-user activation fields that
+  `toggleRecurringTaskActivation` writes.
+- A url embed's `open` attribute is shared note content. On mount it only opens the edit field of an
+  empty link the viewer owns (`shouldOpenLinkEditorOnMount`); a pre-configured task, an iframe or a
+  link in content runs only on a press, and a prompt the viewer did not write is shown to them first
+  (`utils/preConfigTaskRunConfirmation.js`, used by `UrlWrapper` and `LinkTag`).
+- Every notes collaboration connection carries `?auth=<Firebase ID token>&projectId=<projectId>`
+  (`noteCollaborationProvider.js`; the room stays the bare note id, and every socket, reconnects
+  included, is opened with the current token). The collaboration server
+  (alldone-notes-collab-server) ignores the parameters until its side ships, and enforces them once
+  deployed. Throwaway virtual editors (`notesHelper`) no longer connect at all.
+- The MCP OAuth login page names the app that started the authorization and the host it redirects
+  to, from the stored `oauthAuthSessions` / `oauthClients` documents (`MCP/auth/oauthClientConsent.js`;
+  known hosts such as claude.ai are named by us, not by the registration). `completeAuthorizationCallback`
+  completes a pending authorization only with `consentApproved: true`, which only the page's
+  "Allow and sign in" button sends, and records `consentGrantedAt` / `consentClientId`.
+
+Pinned by `IframeModalUntrustedOrigin.test.js`, `UrlWrapperOpenAttribute.test.js`,
+`noteCollaborationProvider.test.js`, `oauthClientConsent.test.js`, `mcpOAuthConsentPage.test.js`,
+`MCP/auth/cloudOAuth.test.js` and the global catalog block of the rules emulator suite.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 

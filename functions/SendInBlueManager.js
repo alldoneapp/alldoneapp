@@ -246,14 +246,18 @@ const sendEmailToNewSignUpUser = async (admin, user) => {
 const sendEmailToNewUserInGuide = async (guide, newUser, userToReceiveEmailId) => {
     const userToReceiveEmail = await getUserData(userToReceiveEmailId)
 
-    // Security audit 2026-11: every interpolated value is HTML-escaped (see Templates/guideJoinEmail.js).
-    const { buildNewUserJoinedGuideHtml } = require('./Templates/guideJoinEmail')
-    const htmlToSend = buildNewUserJoinedGuideHtml({
-        guide,
-        newUser,
-        appUrl: firebaseConfig.app_url,
-        appName: firebaseConfig.app_name,
-    })
+    const projectUrl = `projects/${guide.id}/user/${newUser.uid}/tasks/open`
+    const htmlToSend = `
+    <p>
+        <b>${newUser.displayName}</b> [${newUser.email}] has joined a community: 
+        <br />
+        <b>Community name: </b>${guide.name}
+        <br /> 
+        <b>Community link: </b>${`${firebaseConfig.app_url}${projectUrl}`}
+        <br /> 
+        <b>App deploy: </b>${firebaseConfig.app_name}
+    </p>
+    `
     let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail()
     sendSmtpEmail = {
         sender: { email: 'noreply@alldone.app', name: 'Alldone.app' },

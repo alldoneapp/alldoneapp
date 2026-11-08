@@ -4688,9 +4688,6 @@ async function sendPushNotifications(projectId, userId, objectsType, objectId, f
                             break
                     }
                     sendPushNotification({
-                        projectId,
-                        objectType: objectsType,
-                        objectId,
                         type: 'Updates Notification',
                         body: `${feedObject.name}\n  ${extraTxt}`,
                         userIds: [user.uid],
@@ -4729,9 +4726,6 @@ async function sendPushNotifications(projectId, userId, objectsType, objectId, f
                             break
                     }
                     sendPushNotification({
-                        projectId,
-                        objectType: objectsType,
-                        objectId,
                         type: 'Updates Notification',
                         body: `${project.name}\n  👤 ${shortName}\n ${extraTxt}`,
                         userIds: [user.uid],
@@ -4765,9 +4759,6 @@ async function sendPushNotifications(projectId, userId, objectsType, objectId, f
                             break
                     }
                     sendPushNotification({
-                        projectId,
-                        objectType: objectsType,
-                        objectId,
                         type: 'Updates Notification',
                         body: `${project.name}\n  ✔ ${feedObject.name}\n ${extraTxt}`,
                         userIds: [user.uid],
@@ -7058,9 +7049,6 @@ export function getObjectFromUrl(objectType, url, callback) {
     }
 }
 
-// `data` names the object the feed update is about ({ projectId, objectType, objectId }); the server
-// checks the caller can read it, keeps only recipients who follow it, and rebuilds the project/object
-// names, link and type from stored data (security audit 2026-11).
 export async function sendPushNotification(data) {
     // Deliberately fire-and-forget: it is a side effect of feed writes, which DO
     // work offline through the Firestore write queue. The rejection is swallowed
@@ -7792,7 +7780,7 @@ export const restoreDailyNoteCopy = async (projectId, noteId, paths) => {
 const restoreDailyNoteContentCopy = async (projectId, noteId, noteContent, originalNoteContent, paths) => {
     const storageRef = notesStorage.ref()
     promises = []
-    promises.push(processRestoredNote(noteId, originalNoteContent, noteContent))
+    promises.push(processRestoredNote(projectId, noteId, originalNoteContent, noteContent))
     promises.push(storageRef.child(`${paths.notesData}/${projectId}/${noteId}`).put(new Uint8Array(noteContent)))
     await Promise.all(promises)
 }
@@ -7838,7 +7826,7 @@ const restoreNoteContentCopy = async (projectId, noteId, versionId, paths) => {
 
     const storageRef = notesStorage.ref()
     promises = []
-    promises.push(processRestoredNote(noteId, originalNoteContent, noteContent))
+    promises.push(processRestoredNote(projectId, noteId, originalNoteContent, noteContent))
     promises.push(storageRef.child(`${paths.notesData}/${projectId}/${noteId}`).put(new Uint8Array(noteContent)))
     await Promise.all(promises)
 }
@@ -8237,8 +8225,8 @@ export const addToMarketingList = async (email, initialUrl) => {
                 note: 'userId (EXT_ID) will be added automatically from auth context',
             })
 
-            // The server subscribes the signed-in account's own verified address; no email is sent.
             const result = await runHttpsCallableFunction('addContactToBrevoMarketingList', {
+                email,
                 initialUrl,
                 languageIndex,
             })

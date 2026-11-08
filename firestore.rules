@@ -861,12 +861,47 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // security audit 2026-11: the pre-configured tasks of the global assistant catalog are shown to
+    // every user (quick actions, task search, links in content), and an iframe or prompt task there
+    // runs as whoever presses it. Only the administrator curates them, like the catalog itself. A
+    // signed-in user may still switch a global recurring task on or off for themselves
+    // (toggleRecurringTaskActivation), which touches only these per-user fields.
+    function isGlobalAssistantTaskActivationUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn() &&
+        changed.hasOnly([
+          'activatedUserIds',
+          'activatorUserId',
+          'creatorUserId',
+          'activatedInProjectIdByUser',
+          'lastExecutedByUser',
+          'recurrenceByUser',
+          'completedOneOffUserIds'
+        ]) &&
+        (!changed.hasAny(['activatorUserId']) || request.resource.data.activatorUserId == request.auth.uid) &&
+        (!changed.hasAny(['creatorUserId']) || resource.data.get('creatorUserId', null) == null);
+    }
+
+    function canWriteAssistantTask(projectId) {
+      return (isGlobalAssistantCatalog(projectId) && isAdministrator()) ||
+        (!isGlobalAssistantCatalog(projectId) && isProjectMember(projectId));
+    }
+
+    function canUpdateAssistantTask(projectId) {
+      return canWriteAssistantTask(projectId) ||
+        (isGlobalAssistantCatalog(projectId) && isGlobalAssistantTaskActivationUpdate());
+    }
+
     match /assistantTasks/{projectId}/{assistantId}/{taskId} {
-      allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
+      allow read: if isGlobalAssistantCatalog(projectId) || isProjectMember(projectId);
+      allow create, delete: if canWriteAssistantTask(projectId);
+      allow update: if canUpdateAssistantTask(projectId);
     }
 
     match /assistantTasks/{projectId}/preConfigTasks/{taskId} {
-      allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
+      allow read: if isGlobalAssistantCatalog(projectId) || isProjectMember(projectId);
+      allow create, delete: if canWriteAssistantTask(projectId);
+      allow update: if canUpdateAssistantTask(projectId);
     }
 
     match /projectHappiness/{projectId}/users/{userId}/days/{dayId} {

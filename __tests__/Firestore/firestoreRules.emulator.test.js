@@ -741,6 +741,63 @@ describe('global assistant catalog writes', () => {
         await assertSucceeds(deleteDoc(ref))
     })
 
+    it('denies non-administrators creating or editing global pre-configured tasks (security audit 2026-11)', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const anonymousDb = testEnv.unauthenticatedContext().firestore()
+        const planted = { name: 'Planted', type: 'iframe', link: 'https://attacker.example/embed/create-roadmap' }
+
+        for (const db of [memberDb, anonymousDb]) {
+            await assertFails(setDoc(doc(db, 'assistantTasks/globalProject/preConfigTasks/planted'), planted))
+            await assertFails(
+                setDoc(doc(db, 'assistantTasks/globalProject/global-assistant/planted'), {
+                    ...planted,
+                    assistantId: 'x',
+                })
+            )
+            await assertFails(
+                updateDoc(doc(db, 'assistantTasks/globalProject/preConfigTasks/global-task'), {
+                    link: planted.link,
+                })
+            )
+            await assertFails(deleteDoc(doc(db, 'assistantTasks/globalProject/preConfigTasks/global-task')))
+        }
+        await assertFails(
+            updateDoc(doc(memberDb, 'assistantTasks/globalProject/preConfigTasks/global-task'), {
+                prompt: 'Planted prompt',
+                activatedUserIds: [MEMBER_ID],
+            })
+        )
+    })
+
+    it('lets a signed-in user switch a global recurring task on for themselves', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const ref = doc(memberDb, 'assistantTasks/globalProject/preConfigTasks/global-task')
+
+        await assertSucceeds(
+            updateDoc(ref, {
+                activatedUserIds: [MEMBER_ID],
+                activatorUserId: MEMBER_ID,
+                creatorUserId: MEMBER_ID,
+                [`activatedInProjectIdByUser.${MEMBER_ID}`]: PROJECT_ID,
+                [`lastExecutedByUser.${MEMBER_ID}`]: null,
+                recurrenceByUser: { [MEMBER_ID]: 'daily' },
+            })
+        )
+        await assertFails(updateDoc(ref, { activatorUserId: OUTSIDER_ID }))
+        await assertFails(updateDoc(ref, { creatorUserId: OUTSIDER_ID }))
+    })
+
+    it('keeps project pre-configured tasks member-writable', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const ref = `assistantTasks/${PROJECT_ID}/assistant-1/member-task`
+
+        await assertSucceeds(setDoc(doc(memberDb, ref), { name: 'Mine', type: 'prompt' }))
+        await assertSucceeds(updateDoc(doc(memberDb, ref), { prompt: 'Edited' }))
+        await assertFails(updateDoc(doc(outsiderDb, ref), { prompt: 'Outsider' }))
+        await assertSucceeds(deleteDoc(doc(memberDb, ref)))
+    })
+
     it('denies a project member writing the global assistant catalog', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

@@ -143,37 +143,4 @@ const addContactToMarketingList = async data => {
     }
 }
 
-const BREVO_LANGUAGE_INDEXES = new Set(['1', '2', '3', '4'])
-const MAX_INITIAL_URL_LENGTH = 2048
-
-/**
- * Binds the marketing subscription to the caller's own verified address (security audit 2026-11).
- *
- * `addContactToBrevoMarketingList` used to subscribe whatever `email` the request named, for any
- * signed-in session including anonymous ones, and returned Brevo's response. The only caller
- * (`addToMarketingList` at signup, `utils/InitialLoad/newUserHelper.js`) subscribes the new user's
- * own sign-in address, which Google and Apple sign-in report as verified. So the address now comes
- * from the ID token, an anonymous or unverified session subscribes nothing, and `data.email` is
- * ignored.
- */
-function resolveMarketingSubscriptionRequest(request) {
-    const { HttpsError } = require('firebase-functions/v2/https')
-    const auth = request?.auth
-    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Authentication required')
-
-    const token = auth.token || {}
-    const email = typeof token.email === 'string' ? token.email.trim() : ''
-    if (token.firebase?.sign_in_provider === 'anonymous' || !email || token.email_verified !== true) {
-        throw new HttpsError('permission-denied', 'A verified account email is required')
-    }
-
-    const data = request.data || {}
-    const languageIndex = BREVO_LANGUAGE_INDEXES.has(String(data.languageIndex))
-        ? String(data.languageIndex)
-        : undefined
-    const initialUrl = typeof data.initialUrl === 'string' ? data.initialUrl.slice(0, MAX_INITIAL_URL_LENGTH) : ''
-
-    return { email, initialUrl, languageIndex, userId: auth.uid }
-}
-
-module.exports = { addContactToMarketingList, resolveMarketingSubscriptionRequest }
+module.exports = { addContactToMarketingList }
