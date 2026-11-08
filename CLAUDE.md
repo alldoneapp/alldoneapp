@@ -1556,10 +1556,11 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Four MCP-only tools in
+**MCP can set up a workspace, and nothing else configures one over MCP.** Five MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
-`create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`
-and `create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
+`create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
+`update_assistant` (name, description, instructions, model, Tools Access) and
+`create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1576,6 +1577,13 @@ The documents are built field for field like the app's own forms (`getNewDefault
 form does: the UTC instant of the local start, the local `HH:mm` and the offset. A project gets no
 project-created feed; `onCreateProject` still runs. Assistant tasks are `direct` mode only. Each tool
 is its own switch under Settings → MCP. Pinned by `functions/MCP/mcpWorkspaceSetupTools.test.js`.
+
+A scheduled assistant task runs on its own copy of the instructions (`aiSystemMessage`, copied at
+creation and preferred over the assistant's `instructions` at run time), so changing an assistant's
+instructions alone would never reach its schedules. `update_assistant` therefore also rewrites the
+copy of every task of that assistant whose copy still equals the OLD instructions; a task whose copy
+somebody edited keeps it. Tool changes keep list entries that are not Tools Access keys (written by
+older app versions), and a call that changes nothing writes nothing and spends no quota.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 

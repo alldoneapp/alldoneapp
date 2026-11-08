@@ -5,7 +5,7 @@ const { FieldValue } = require('firebase-admin/firestore')
 const { generateSortIndex } = require('../Utils/HelperFunctionsCloud')
 const { normalizeGoalMilestonesConfig } = require('../shared/goalMilestonesHelper')
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-const { buildMcpActorMarker } = require('../shared/mcpActor')
+const { buildLastEditorVia, buildMcpActorMarker } = require('../shared/mcpActor')
 const {
     SELECTABLE_ASSISTANT_MODELS,
     normalizeSelectableAssistantModelKey,
@@ -34,6 +34,7 @@ const MCP_WORKSPACE_SETUP_TOOLS = [
     'create_project',
     'add_contact_statuses',
     'create_assistant',
+    'update_assistant',
     'create_assistant_task',
 ]
 
@@ -145,6 +146,7 @@ const MAX_FOLLOW_UP_DAYS = 365
 const DAILY_LIMITS = {
     create_project: 5,
     create_assistant: 10,
+    update_assistant: 50,
     create_assistant_task: 30,
 }
 const QUOTA_DOC = 'mcpWorkspaceSetupQuota'
@@ -234,6 +236,51 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                 },
             },
             required: ['projectId', 'name', 'instructions'],
+        },
+    },
+    {
+        name: 'update_assistant',
+        description:
+            "Change an existing AI assistant in a project the user is a member of: its name, description, instructions, model or Tools Access. Only the fields you pass change. For tools, either pass allowedTools (the complete new list) or addTools/removeTools (changes to the current list), not both. Changed instructions also reach the assistant's scheduled tasks that still use an unchanged copy of the old instructions; tasks with instructions of their own keep them. Returns what changed and the resulting tool list.",
+        inputSchema: {
+            type: 'object',
+            properties: {
+                projectId: { type: 'string', description: 'The project the assistant belongs to.' },
+                assistantId: { type: 'string', description: 'The assistant (from create_assistant or the app).' },
+                name: { type: 'string', description: 'Optional new name.' },
+                description: {
+                    type: 'string',
+                    description: 'Optional new one-line description. Empty string clears it.',
+                },
+                instructions: {
+                    type: 'string',
+                    description: "Optional new instructions (the assistant's system prompt).",
+                },
+                model: {
+                    type: 'string',
+                    description: `Optional new model key, one of ${SELECTABLE_ASSISTANT_MODELS.map(m => m.model).join(
+                        ', '
+                    )}.`,
+                },
+                allowedTools: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: `Optional complete new list of Tools Access keys. Valid keys: ${ASSISTANT_TOOL_KEYS.join(
+                        ', '
+                    )}.`,
+                },
+                addTools: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional Tools Access keys to switch on, e.g. ["artifacts"].',
+                },
+                removeTools: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional Tools Access keys to switch off.',
+                },
+            },
+            required: ['projectId', 'assistantId'],
         },
     },
     {
@@ -605,6 +652,17 @@ function normalizeAllowedTools(value) {
     return keys
 }
 
+function validateToolKeys(value, fieldName) {
+    if (value === undefined || value === null) return null
+    if (!Array.isArray(value)) fail(`${fieldName} must be an array of Tools Access keys.`)
+    const keys = [...new Set(value.map(key => String(key).trim()).filter(Boolean))]
+    const unknown = keys.filter(key => !ASSISTANT_TOOL_KEYS.includes(key))
+    if (unknown.length > 0) {
+        fail(`Unknown Tools Access keys: ${unknown.join(', ')}. Valid keys: ${ASSISTANT_TOOL_KEYS.join(', ')}.`)
+    }
+    return keys
+}
+
 function buildAssistantDocument({ userId, name, description, instructions, model, allowedTools, now, actor }) {
     return {
         displayName: name,
@@ -691,6 +749,131 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
     )
 
     return { assistantId, projectId, name, model, allowedTools, alreadyExisted: false }
+}
+
+const sameToolSet = (a, b) => a.length === b.length && a.every(key => b.includes(key))
+
+// The new tool list. Entries that are not Tools Access keys (written by older versions of the app)
+// are kept as they are: a caller cannot see or manage them, so it must not drop them by accident.
+function resolveUpdatedTools(current, { allowedTools, addTools, removeTools }) {
+    const currentTools = Array.isArray(current.allowedTools) ? current.allowedTools : [...DEFAULT_ASSISTANT_TOOL_KEYS]
+    if (allowedTools) {
+        return currentTools.filter(key => !ASSISTANT_TOOL_KEYS.includes(key)).concat(allowedTools)
+    }
+    if (addTools || removeTools) {
+        const removed = new Set(removeTools || [])
+        return [...new Set([...currentTools, ...(addTools || [])])].filter(key => !removed.has(key))
+    }
+    return currentTools
+}
+
+async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
+    const db = getDb(deps)
+    const now = getNow(deps)
+    const { id: projectId } = await getProjectForMember(db, userId, args.projectId)
+    const assistantId = cleanString(args.assistantId, 'assistantId', { required: true })
+    if (assistantId.includes('/')) fail('assistantId is not valid.')
+
+    const allowedTools = validateToolKeys(args.allowedTools, 'allowedTools')
+    const addTools = validateToolKeys(args.addTools, 'addTools')
+    const removeTools = validateToolKeys(args.removeTools, 'removeTools')
+    if (allowedTools && (addTools || removeTools)) {
+        fail('Pass either allowedTools (the complete list) or addTools/removeTools, not both.')
+    }
+    const conflicting = (addTools || []).filter(key => (removeTools || []).includes(key))
+    if (conflicting.length > 0) fail(`A key cannot be added and removed at once: ${conflicting.join(', ')}.`)
+
+    const fields = ['name', 'description', 'instructions', 'model']
+    if (!fields.some(field => args[field] !== undefined) && !allowedTools && !addTools && !removeTools) {
+        fail('Pass at least one of name, description, instructions, model, allowedTools, addTools or removeTools.')
+    }
+
+    const ref = db.doc(`assistants/${projectId}/items/${assistantId}`)
+    const snapshot = await ref.get()
+    if (!snapshot.exists) fail(`Assistant not found in this project: "${assistantId}".`)
+    const current = snapshot.data() || {}
+
+    const update = {}
+    const changed = []
+    if (args.name !== undefined) {
+        const name = cleanString(args.name, 'name', { required: true, maxLength: MAX_PROJECT_NAME_LENGTH })
+        if (name !== current.displayName) {
+            update.displayName = name
+            changed.push('name')
+        }
+    }
+    if (args.description !== undefined) {
+        const description = cleanString(args.description, 'description', { maxLength: MAX_DESCRIPTION_LENGTH })
+        if (description !== (current.description || '')) {
+            update.description = description
+            changed.push('description')
+        }
+    }
+    if (args.instructions !== undefined) {
+        const instructions = cleanString(args.instructions, 'instructions', {
+            required: true,
+            maxLength: MAX_INSTRUCTIONS_LENGTH,
+        })
+        if (instructions !== current.instructions) {
+            update.instructions = instructions
+            changed.push('instructions')
+        }
+    }
+    if (args.model !== undefined) {
+        if (args.model === null || args.model === '') fail('model must not be empty.')
+        const model = normalizeModel(args.model)
+        if (model !== current.model) {
+            update.model = model
+            changed.push('model')
+        }
+    }
+    const currentTools = Array.isArray(current.allowedTools) ? current.allowedTools : [...DEFAULT_ASSISTANT_TOOL_KEYS]
+    if (allowedTools || addTools || removeTools) {
+        const nextTools = resolveUpdatedTools(current, { allowedTools, addTools, removeTools })
+        if (!sameToolSet(nextTools, currentTools)) {
+            update.allowedTools = nextTools
+            changed.push('allowedTools')
+        }
+    }
+
+    const result = {
+        assistantId,
+        projectId,
+        name: update.displayName || current.displayName || '',
+        model: update.model || current.model || DEFAULT_MODEL,
+        allowedTools: update.allowedTools || currentTools,
+        changed,
+        toolsAdded: (update.allowedTools || currentTools).filter(key => !currentTools.includes(key)),
+        toolsRemoved: currentTools.filter(key => !(update.allowedTools || currentTools).includes(key)),
+        tasksWithUpdatedInstructions: 0,
+    }
+    if (changed.length === 0) {
+        return { ...result, message: 'Nothing changed: the assistant already has these settings.' }
+    }
+
+    await consumeDailyQuota(db, userId, 'update_assistant', now)
+
+    const actor = buildMcpActorMarker(context.mcpClient)
+    update.lastEditorId = userId
+    update.lastEditionDate = now
+    update.lastEditorVia = buildLastEditorVia(actor, now)
+
+    const batch = db.batch()
+    batch.update(ref, update)
+    if (update.instructions !== undefined && typeof current.instructions === 'string' && current.instructions) {
+        // A scheduled task stores a copy of the instructions it was created with and runs on that
+        // copy. A copy nobody changed follows the assistant; one somebody edited is left alone.
+        const tasks = await db.collection(`assistantTasks/${projectId}/${assistantId}`).get()
+        tasks.docs.forEach(taskDoc => {
+            if ((taskDoc.data() || {}).aiSystemMessage === current.instructions) {
+                batch.update(taskDoc.ref, { aiSystemMessage: update.instructions })
+                result.tasksWithUpdatedInstructions += 1
+            }
+        })
+    }
+    await batch.commit()
+
+    return result
 }
 
 function normalizeRecurrence(value) {
@@ -816,6 +999,7 @@ const HANDLERS = {
     create_project: createProject,
     add_contact_statuses: addContactStatuses,
     create_assistant: createAssistant,
+    update_assistant: updateAssistant,
     create_assistant_task: createAssistantTask,
 }
 
