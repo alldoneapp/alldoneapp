@@ -1,5 +1,7 @@
 'use strict'
 
+const { isProjectMemberData } = require('./privacyAccess')
+
 class ProjectService {
     constructor(options = {}) {
         this.options = options
@@ -66,6 +68,11 @@ class ProjectService {
         for (const doc of projectDocs) {
             if (!doc.exists) continue
             const data = doc.data()
+
+            // security audit 2026-11: the users/{uid} arrays only nominate candidates. Every MCP tool
+            // gate and assistant tool resolver reads this list, so a project whose own userIds does
+            // not list the user is not theirs, whatever their user document says.
+            if (!isProjectMemberData(data, userId)) continue
 
             // Determine project type from user lists
             let projectType = 'regular'

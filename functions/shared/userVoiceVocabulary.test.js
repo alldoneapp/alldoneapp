@@ -192,10 +192,33 @@ describe('readCachedVocabulary', () => {
     })
 })
 
+describe('buildUserVocabulary membership (security audit 2026-11)', () => {
+    // users/{uid}.projectIds is owner-writable: a project there whose userIds does not list the user
+    // must not leak its contacts into this user's keyterms.
+    test('skips a project the user document lists but the project does not', async () => {
+        const database = createDb({
+            docs: {
+                'projects/p1': { name: 'Project Juno', userIds: ['u1'] },
+                'projects/p2': { name: 'Foreign Workspace', userIds: ['victim'] },
+            },
+            collections: {
+                'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }],
+                'projectsContacts/p2/contacts': [{ displayName: 'Michael Haizmann' }],
+            },
+        })
+        const built = await buildUserVocabulary({ db: database, userId: 'u1', userData: USER_DATA, now: NOW })
+        expect(built.terms).toEqual(expect.arrayContaining(['Anna Somova']))
+        expect(built.terms.join(' ')).not.toMatch(/Haizmann|Foreign/)
+    })
+})
+
 describe('buildUserVocabulary', () => {
     const db = () =>
         createDb({
-            docs: { 'projects/p1': { name: 'JTL Project Juno' }, 'projects/p2': { name: 'Alldone Product' } },
+            docs: {
+                'projects/p1': { name: 'JTL Project Juno', userIds: ['u1'] },
+                'projects/p2': { name: 'Alldone Product', userIds: ['u1'] },
+            },
             collections: {
                 'projectsContacts/p1/contacts': [
                     { displayName: 'Anna Somova', company: 'Heyflow GmbH', lastEditionDate: NOW },
@@ -288,7 +311,10 @@ describe('buildUserVocabulary', () => {
             displayName: `Distinctname${i}`,
         }))
         const built = await buildUserVocabulary({
-            db: createDb({ collections: { 'projectsContacts/p1/contacts': contacts } }),
+            db: createDb({
+                docs: { 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
+                collections: { 'projectsContacts/p1/contacts': contacts },
+            }),
             userId: 'u1',
             userData: { projectIds: ['p1'] },
             now: NOW,
@@ -298,7 +324,7 @@ describe('buildUserVocabulary', () => {
 
     test('a failing project contributes nothing instead of failing the whole build', async () => {
         const database = createDb({
-            docs: { 'projects/p2': { name: 'Alldone Product' } },
+            docs: { 'projects/p2': { name: 'Alldone Product', userIds: ['u1'] } },
             collections: { 'projectsContacts/p2/contacts': [{ displayName: 'Michael Haizmann' }] },
             failCollections: ['projectsContacts/p1/contacts'],
         })
@@ -316,7 +342,7 @@ describe('buildUserVocabulary', () => {
 describe('rebuildAndStoreVocabulary', () => {
     test('persists the terms with a stamp', async () => {
         const db = createDb({
-            docs: { 'projects/p1': { name: 'Project Juno' } },
+            docs: { 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
             collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
         })
         await rebuildAndStoreVocabulary({ db, userId: 'u1', userData: { projectIds: ['p1'] }, now: NOW })
@@ -328,9 +354,13 @@ describe('rebuildAndStoreVocabulary', () => {
 
     test('still returns usable terms when the write fails', async () => {
         // A vocabulary we could not store is perfectly usable for the dictation in flight.
-        const db = createDb({ collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] } })
-        db.doc = () => ({
-            get: async () => ({ exists: false, data: () => undefined }),
+        const db = createDb({
+            docs: { 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
+            collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
+        })
+        const readDoc = db.doc
+        db.doc = path => ({
+            get: () => readDoc(path).get(),
             set: async () => {
                 throw new Error('write failed')
             },
@@ -356,7 +386,7 @@ describe('getUserVocabularyTerms', () => {
         const db = createDb({
             docs: {
                 [VOICE_VOCABULARY_DOC_PATH('u1')]: { terms: ['Stale Term'], updatedAt: NOW - VOCABULARY_TTL_MS - 1 },
-                'projects/p1': { name: 'Project Juno' },
+                'projects/p1': { name: 'Project Juno', userIds: ['u1'] },
             },
             collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
         })
@@ -373,7 +403,7 @@ describe('getUserVocabularyTerms', () => {
 
     test('a cold miss builds inline so the first dictation already benefits', async () => {
         const db = createDb({
-            docs: { 'projects/p1': { name: 'Project Juno' } },
+            docs: { 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
             collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
         })
         const result = await getUserVocabularyTerms({ db, userId: 'u1', userData: { projectIds: ['p1'] }, now: NOW })
@@ -478,7 +508,7 @@ describe('an incomplete scan never overwrites a good vocabulary', () => {
     test('still writes a partial result when there is no cache to protect', async () => {
         // Cold: some terms beat none, and the alternative is paying the cold-build wait forever.
         const db = createDb({
-            docs: { 'projects/p2': { name: 'Alldone Product' } },
+            docs: { 'projects/p2': { name: 'Alldone Product', userIds: ['u1'] } },
             collections: { 'projectsContacts/p2/contacts': [{ displayName: 'Michael Haizmann' }] },
             failCollections: ['projectsContacts/p1/contacts'],
         })
@@ -489,7 +519,7 @@ describe('an incomplete scan never overwrites a good vocabulary', () => {
 
     test('writes normally when the scan is complete', async () => {
         const db = createDb({
-            docs: { ...staleDoc, 'projects/p1': { name: 'Project Juno' } },
+            docs: { ...staleDoc, 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
             collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
         })
         const result = await getUserVocabularyTerms({ db, userId: 'u1', userData: USER_DATA, now: NOW })
@@ -524,6 +554,7 @@ describe('contact scan ordering', () => {
         // A missing index would otherwise make the project contribute nothing at all — a silent,
         // total degradation traded for an ordering nicety.
         const db = createDb({
+            docs: { 'projects/p1': { name: 'Project Juno', userIds: ['u1'] } },
             collections: { 'projectsContacts/p1/contacts': [{ displayName: 'Anna Somova' }] },
         })
         const originalCollection = db.collection.bind(db)

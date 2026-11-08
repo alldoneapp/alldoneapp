@@ -650,6 +650,38 @@ checks the wiring in `index.js`.
 Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
 `functions/Payment/subscriptionAccess.test.js` and `functions/Premium/linkStripeAccount.test.js`.
 
+**Membership is `projects/{pid}.userIds`, on every Admin SDK path.** The arrays on `users/{uid}`
+(`projectIds`, `guideProjectIds`, `templateProjectIds`, `archivedProjectIds`) only nominate
+candidate projects: the owner writes them, and until this fix the `invitation-remove` branch of the
+membership-mutation rule let any account add an arbitrary project id to its own `projectIds` (that
+branch, and `invitation-add`, may now only touch `invitedProjectIds`). `ProjectService.getUserProjects`
+(the MCP tool gate and most assistant tool resolvers), `SearchService`, `TaskSearchService`, the
+create_task fallback, the delegation and settings resolvers in `assistantHelper.js`, the voice
+vocabulary scan and `UndoActionService` all drop a project whose `userIds` omits the user. Use
+`isProjectMemberData` / `filterMemberProjectIds` from `shared/privacyAccess.js`; never treat
+`userData.projectIds.includes(id)` as access. Entries written before the rule fix are removed by
+`node migration/removeUnbackedUserProjectIds.js --firebase-project-id=<project>` (dry run; add
+`--execute` to apply, `--user-id=<uid>` to scope; decision in `shared/userProjectMembershipCleanup.js`),
+run after the rules deploy. Three more rules from the same audit:
+
+- Undo records (`users/{uid}/undoActions`) are client-written and replayed with the Admin SDK, so
+  `reverseAction` treats one as a request: per operation it requires membership, an object visible
+  to the caller before AND after the write, a non-empty expected state, the `projectId` binding, and
+  no access-projection fields, mirroring the object write rules.
+- A manual project move only takes what the actor can read. `collectTaskTreeForMove` follows a
+  `subtaskIds` entry only to a real child (`parentId`) and refuses a tree holding an unreadable task;
+  a goal move unlinks (does not move) goal tasks the actor cannot read; a goal's or task's linked
+  note the actor cannot read is left behind and unlinked.
+- Caller-supplied recipients (`followerIds`, `userIdsToNotify` on `askToBotSecondGen` and
+  `generatePreConfigTaskResultSecondGen`) are narrowed by `Assistant/assistantNotificationAudience.js`
+  to project members who can read the thread's parent, the same audience the comment rules allow.
+  The menubar note push acts on a note id only when `menubarUserCanAccessNote` says the token user
+  may read it.
+
+Pinned by `ProjectService.test.js`, `SearchService.test.js`, `UndoActionService.test.js`,
+`projectMoveAccess.test.js`, `menubarPushNoteAccess.test.js`, `assistantNotificationAudience.test.js`
+and the invitation cases in the rules emulator suite.
+
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
 A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —

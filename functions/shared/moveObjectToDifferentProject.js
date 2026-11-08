@@ -12,6 +12,7 @@ const { moveTaskToDifferentProject } = require('./moveTaskToDifferentProject')
 const { withoutAccessProjection } = require('./objectAccessProjection')
 const { normalizeProjectMoveType } = require('./projectMoveContract')
 const { filterPrivacyForTarget } = require('./projectMovePrivacy')
+const { canAccessObject } = require('./privacyAccess')
 const {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     MILESTONE_TYPE_FIXED,
@@ -176,6 +177,14 @@ async function moveStoredObject(params) {
         status: 'moving',
     })
     const sourceData = sourceSnapshot.data() || {}
+    // security audit 2026-11: a goal's linked note is moved (and re-privatized to the actor) with
+    // the goal, so it moves only if the actor can read it. Otherwise it stays where it is, and the
+    // moved goal no longer points at it.
+    let linkedNoteIsReadable = true
+    if (sourceData.noteId) {
+        const linkedNoteSnapshot = await database.doc(`noteItems/${sourceProjectId}/notes/${sourceData.noteId}`).get()
+        linkedNoteIsReadable = !linkedNoteSnapshot.exists || canAccessObject(linkedNoteSnapshot.data(), actorId)
+    }
     const focusAreaId =
         objectType === 'goal'
             ? await resolveFocusAreaForProjectMove(database, sourceProject, targetProjectId, sourceData, randomUUID())
@@ -196,6 +205,7 @@ async function moveStoredObject(params) {
             : objectType === 'contact'
               ? prepareContactForTarget(sourceData, targetProject, actorId, movingState)
               : prepareSkillForTarget(sourceData, targetProject, actorId, movingState)
+    if (!linkedNoteIsReadable) movedData.noteId = null
     await targetRef.set(movedData)
 
     if (objectType === 'goal') {
@@ -205,7 +215,17 @@ async function moveStoredObject(params) {
             .where('parentGoalId', '==', objectId)
             .get()
         const rootTasks = taskSnapshots.docs.filter(doc => !doc.data()?.parentId)
-        for (const taskSnapshot of rootTasks) {
+        // security audit 2026-11: the query finds every task linked to the goal, of any privacy, and
+        // a manual move re-privatizes what it moves to the actor. A task the actor cannot read is
+        // not theirs to take: it stays in the source project and is only unlinked from the goal,
+        // exactly as deleting the goal would leave it.
+        const unreadableTasks = rootTasks.filter(doc => !canAccessObject(doc.data(), actorId))
+        for (const taskSnapshot of unreadableTasks) {
+            await database
+                .doc(`items/${sourceProjectId}/tasks/${taskSnapshot.id}`)
+                .update({ parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' })
+        }
+        for (const taskSnapshot of rootTasks.filter(doc => canAccessObject(doc.data(), actorId))) {
             await moveTaskToDifferentProject({
                 database,
                 sourceProjectId,
@@ -221,7 +241,7 @@ async function moveStoredObject(params) {
         }
     }
 
-    if (sourceData.noteId) {
+    if (sourceData.noteId && linkedNoteIsReadable) {
         try {
             await moveNoteToDifferentProject({
                 database,
@@ -253,6 +273,9 @@ async function moveStoredObject(params) {
     })
     const copyInnerFeeds = params.copyInnerFeeds || require('../Feeds/globalFeedsHelper').copyInnerFeedsToOtherProject
     await copyInnerFeeds(admin, sourceProjectId, targetProjectId, `${objectType}s`, objectId)
+    // The goal delete trigger copies a still-linked note to the target project, so detach a note
+    // that was deliberately left behind before the source goal is deleted.
+    if (sourceData.noteId && !linkedNoteIsReadable) await sourceRef.set({ noteId: null }, { merge: true })
     await sourceRef.delete()
     await targetRef.set(
         { projectMove: { ...movingState, status: 'completed', completedAt: Date.now() } },

@@ -38,27 +38,86 @@ const assertSupportedOperation = operation => {
     }
 }
 
-const assertProjectAccess = (user, projectId) => {
-    const projectIds = [
-        ...(user.projectIds || []),
-        ...(user.guideProjectIds || []),
-        ...(user.templateProjectIds || []),
-        ...(user.archivedProjectIds || []),
-    ]
-    if (!projectIds.includes(projectId)) {
-        const error = new Error('You no longer have access to this project')
-        error.code = 'permission-denied'
-        throw error
+// security audit 2026-11: undo records live in users/{uid}/undoActions, which the owner can write,
+// and reverseAction replays them with the Admin SDK. So a record is only a REQUEST: every write it
+// leads to is re-authorized here against the stored documents, mirroring the object write rules in
+// firestore.rules (projects/{pid}.userIds membership, isPublicFor containing 0 or the caller before
+// AND after the write, the projectId binding, and the server-owned access projection).
+const ACCESS_PROJECTION_FIELDS = new Set([
+    'readerIds',
+    'roleIdsVisibleTo',
+    'followedByVisibleTo',
+    'followedReaderIds',
+    'backlinkIdsVisibleTo',
+])
+
+const createPermissionError = message => {
+    const error = new Error(message)
+    error.code = 'permission-denied'
+    return error
+}
+
+const assertProjectMember = (projectSnapshot, userId) => {
+    const userIds = projectSnapshot?.exists ? projectSnapshot.data()?.userIds : null
+    if (!Array.isArray(userIds) || !userIds.includes(userId)) {
+        throw createPermissionError('You no longer have access to this project')
     }
 }
 
+const isVisibleTo = (userId, isPublicFor) =>
+    Array.isArray(isPublicFor) && (isPublicFor.includes(0) || isPublicFor.includes(userId))
+
 const assertObjectVisible = (userId, objectData) => {
-    const isPublicFor = Array.isArray(objectData?.isPublicFor) ? objectData.isPublicFor : []
-    if (!isPublicFor.includes(0) && !isPublicFor.includes(userId)) {
-        const error = new Error('You no longer have access to this object')
-        error.code = 'permission-denied'
-        throw error
+    if (!isVisibleTo(userId, objectData?.isPublicFor)) {
+        throw createPermissionError('You no longer have access to this object')
     }
+}
+
+const topLevelField = fieldPath => String(fieldPath).split('.')[0]
+
+const isPlainObject = value => !!value && typeof value === 'object' && !Array.isArray(value)
+
+const assertStatesRestorable = operation => {
+    const states = [operation.before, operation.after, operation.expectedAfter, operation.requiredCurrentFields]
+    const fieldLists = [operation.beforeMissingFields, operation.afterMissingFields]
+    states.forEach(state => {
+        if (state !== undefined && state !== null && !isPlainObject(state)) {
+            throw createPermissionError('Undo action contains an invalid object state')
+        }
+        Object.keys(state || {}).forEach(field => {
+            if (ACCESS_PROJECTION_FIELDS.has(topLevelField(field))) {
+                throw createPermissionError('Undo action cannot restore server-owned fields')
+            }
+        })
+    })
+    fieldLists.forEach(fields => {
+        ;(Array.isArray(fields) ? fields : []).forEach(field => {
+            if (ACCESS_PROJECTION_FIELDS.has(topLevelField(field)) || topLevelField(field) === 'projectId') {
+                throw createPermissionError('Undo action cannot remove server-owned fields')
+            }
+        })
+    })
+}
+
+const assertProjectBinding = (operation, data) => {
+    if (data && Object.prototype.hasOwnProperty.call(data, 'projectId') && data.projectId !== operation.projectId) {
+        throw createPermissionError('Undo action cannot move an object to another project')
+    }
+}
+
+const assertNonEmptyExpectedState = expected => {
+    if (!isPlainObject(expected) || Object.keys(expected).length === 0) {
+        throw createPermissionError('Undo action has no expected object state')
+    }
+}
+
+// isPublicFor of the document as it will be after the replacement is applied.
+const getResultingIsPublicFor = (currentData, replacement, replacementMissingFields) => {
+    if (replacementMissingFields.includes('isPublicFor')) return null
+    if (replacement && Object.prototype.hasOwnProperty.call(replacement, 'isPublicFor')) {
+        return replacement.isPublicFor
+    }
+    return currentData?.isPublicFor
 }
 
 const getNestedValue = (objectData, fieldPath) =>
@@ -158,7 +217,13 @@ async function reverseAction({ db, userId, actionId, direction }) {
             throw new Error('Undo action contains too many operations')
         }
         operations.forEach(assertSupportedOperation)
-        operations.forEach(operation => assertProjectAccess(userSnapshot.data(), operation.projectId))
+        operations.forEach(assertStatesRestorable)
+
+        // Membership comes from projects/{pid}.userIds, never from the users/{uid} arrays.
+        const projectIds = [...new Set(operations.map(operation => operation.projectId))]
+        for (const projectId of projectIds) {
+            assertProjectMember(await transaction.get(db.doc(`projects/${projectId}`)), userId)
+        }
 
         const objectSnapshots = []
         for (const operation of operations) {
@@ -179,16 +244,25 @@ async function reverseAction({ db, userId, actionId, direction }) {
 
             if (operation.kind === 'create') {
                 if (direction === 'undo') {
-                    if (
-                        !snapshot.exists ||
-                        !matchesFields(snapshot.data(), operation.expectedAfter || operation.after)
-                    ) {
+                    const expected = operation.expectedAfter || operation.after
+                    assertNonEmptyExpectedState(expected)
+                    if (!snapshot.exists || !matchesFields(snapshot.data(), expected)) {
                         throw createConflictError()
                     }
                     assertObjectVisible(userId, snapshot.data())
+                    assertProjectBinding(operation, snapshot.data())
                     mutations.push(() => transaction.delete(objectRef))
                 } else {
                     if (snapshot.exists) throw createConflictError()
+                    // The recreated document must be one the caller could create through the rules.
+                    if (!isPlainObject(operation.after)) {
+                        throw createPermissionError('Undo action has no object to recreate')
+                    }
+                    assertObjectVisible(userId, operation.after)
+                    if (operation.after.projectId !== operation.projectId && operation.objectType === 'task') {
+                        throw createPermissionError('Undo action cannot move an object to another project')
+                    }
+                    assertProjectBinding(operation, operation.after)
                     mutations.push(() => transaction.set(objectRef, operation.after))
                 }
                 return
@@ -204,10 +278,20 @@ async function reverseAction({ db, userId, actionId, direction }) {
                 return
             }
             assertObjectVisible(userId, snapshot.data())
+            assertProjectBinding(operation, snapshot.data())
             const expected = direction === 'undo' ? operation.after : operation.before
             const replacement = direction === 'undo' ? operation.before : operation.after
             const expectedMissingFields = getMissingFields(operation, direction === 'undo' ? 'after' : 'before')
             const replacementMissingFields = getMissingFields(operation, direction === 'undo' ? 'before' : 'after')
+            // An empty expected state matches any document, so it would turn the record into a
+            // blind write. The caller must also still be able to see the object afterwards.
+            if (Object.keys(expected || {}).length === 0 && expectedMissingFields.length === 0) {
+                throw createPermissionError('Undo action has no expected object state')
+            }
+            assertProjectBinding(operation, replacement)
+            if (!isVisibleTo(userId, getResultingIsPublicFor(snapshot.data(), replacement, replacementMissingFields))) {
+                throw createPermissionError('Undo action would leave an object the caller cannot access')
+            }
             if (!matchesFields(snapshot.data(), expected, expectedMissingFields)) throw createConflictError()
             mutations.push(() => transaction.update(objectRef, buildReplacement(replacement, replacementMissingFields)))
         })

@@ -25,6 +25,15 @@ const { Tiktoken } = require('@dqbd/tiktoken/lite')
 const { encodeOrdinaryText, sanitizeAssistantResponseText } = require('./assistantTextSafety')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 const { getAccessibleProjectIdsFromUserData, getDelegationScopeProjectIdsFromUserData } = require('./projectScope')
+const { isProjectMemberData, filterMemberProjectIds } = require('../shared/privacyAccess')
+
+async function isUserProjectMember(db, userId, projectId) {
+    const projectDoc = await db
+        .doc(`projects/${projectId}`)
+        .get()
+        .catch(() => null)
+    return !!projectDoc?.exists && isProjectMemberData(projectDoc.data(), userId)
+}
 
 const {
     MENTION_SPACE_CODE,
@@ -1636,6 +1645,8 @@ async function getReachableExternalIntegrationTools({
     const userData = userDoc.data() || {}
     const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
     if (!accessibleProjectIds.includes(projectId)) return []
+    // security audit 2026-11: the user-doc arrays only nominate; projects/{pid}.userIds decides.
+    if (!(await isUserProjectMember(db, requestUserId, projectId))) return []
 
     const tasks = await getAssistantPreConfigTaskDocs(projectId, assistantId)
     const targets = []
@@ -1956,6 +1967,10 @@ async function getReachableDelegationTargets({
     if (!accessibleProjectIds.includes(projectId)) {
         return []
     }
+    // security audit 2026-11: the user-doc arrays only nominate; projects/{pid}.userIds decides.
+    if (!(await isUserProjectMember(db, requestUserId, projectId))) {
+        return []
+    }
 
     const defaultProjectId = userData.defaultProjectId || null
     const [callerAssistantDoc, callerGlobalAssistantDoc, defaultProjectDoc, defaultProjectAssistantDoc] =
@@ -2013,7 +2028,11 @@ async function getReachableDelegationTargets({
                 db.collection(`assistants/${targetProjectId}/items`).orderBy('lastEditionDate', 'desc').limit(50).get(),
             ])
 
-            const projectName = projectDoc.exists ? projectDoc.data()?.name || targetProjectId : targetProjectId
+            // security audit 2026-11: the cross-project scope comes from the owner-writable user
+            // document; only projects that list the user in userIds are delegation targets.
+            if (!projectDoc.exists || !isProjectMemberData(projectDoc.data(), requestUserId)) return []
+
+            const projectName = projectDoc.data()?.name || targetProjectId
 
             return assistantsSnapshot.docs
                 .filter(doc => doc.id !== assistantId)
@@ -4656,8 +4675,15 @@ async function resolveTargetAssistantForSettingsUpdate({
             .get()
             .catch(() => null)
         const userData = userDoc?.exists ? userDoc.data() || {} : {}
-        accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
-        defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : null
+        // security audit 2026-11: the user-doc arrays only nominate; projects/{pid}.userIds decides.
+        accessibleProjectIds = await filterMemberProjectIds(
+            db,
+            requestUserId,
+            getAccessibleProjectIdsFromUserData(userData)
+        )
+        const storedDefaultProjectId =
+            typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : null
+        defaultProjectId = accessibleProjectIds.includes(storedDefaultProjectId) ? storedDefaultProjectId : null
     }
 
     const candidateProjectIds = []
@@ -14374,7 +14400,8 @@ async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
                     .get(),
             ])
 
-            if (!projectDoc.exists) {
+            // security audit 2026-11: users/{uid}.projectIds only nominates; userIds decides.
+            if (!projectDoc.exists || !isProjectMemberData(projectDoc.data(), userId)) {
                 return null
             }
 

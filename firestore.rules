@@ -163,6 +163,14 @@ service cloud.firestore {
         );
     }
 
+    // security audit 2026-11: an invitation decline/cancel may only drop the invitation. It must
+    // never put the project id into a membership list, or any account could add an arbitrary project
+    // id to its own projectIds (which the users read rule and older server paths trust).
+    function doesNotAddProjectId(fieldName, projectId) {
+      return !(projectId in request.resource.data.get(fieldName, [])) ||
+        projectId in resource.data.get(fieldName, []);
+    }
+
     function isValidProjectMembershipMutation(userId) {
       let mutation = request.resource.data.get('projectMembershipMutation', {});
       let projectId = mutation.get('projectId', '');
@@ -242,12 +250,22 @@ service cloud.firestore {
             action == 'invitation-add' &&
             request.auth.uid in projectBefore &&
             request.auth.uid in projectAfter &&
-            projectId in request.resource.data.get('invitedProjectIds', [])
+            projectId in request.resource.data.get('invitedProjectIds', []) &&
+            doesNotAddProjectId('projectIds', projectId) &&
+            doesNotAddProjectId('guideProjectIds', projectId) &&
+            doesNotAddProjectId('templateProjectIds', projectId) &&
+            doesNotAddProjectId('archivedProjectIds', projectId) &&
+            doesNotAddProjectId('copyProjectIds', projectId)
           ) ||
           (
             action == 'invitation-remove' &&
             (request.auth.uid in projectBefore || request.auth.uid == userId) &&
-            !(projectId in request.resource.data.get('invitedProjectIds', []))
+            !(projectId in request.resource.data.get('invitedProjectIds', [])) &&
+            doesNotAddProjectId('projectIds', projectId) &&
+            doesNotAddProjectId('guideProjectIds', projectId) &&
+            doesNotAddProjectId('templateProjectIds', projectId) &&
+            doesNotAddProjectId('archivedProjectIds', projectId) &&
+            doesNotAddProjectId('copyProjectIds', projectId)
           )
         );
     }

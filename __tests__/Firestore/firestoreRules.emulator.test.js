@@ -492,6 +492,42 @@ describe('project membership authority', () => {
         )
     })
 
+    // security audit 2026-11: 'invitation-remove' only needs request.auth.uid == userId, so it used
+    // to let any account add an arbitrary project id to its own membership lists.
+    it('does not let an account add a project to its own lists through invitation-remove', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const proof = {
+            projectId: PROJECT_ID,
+            action: 'invitation-remove',
+            actorId: OUTSIDER_ID,
+            updatedAt: 3,
+        }
+        for (const field of ['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds']) {
+            await assertFails(
+                updateDoc(doc(outsiderDb, `users/${OUTSIDER_ID}`), {
+                    [field]: [PROJECT_ID],
+                    projectMembershipMutation: proof,
+                })
+            )
+        }
+    })
+
+    it('does not let a member add a project to another account through invitation-add', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${OUTSIDER_ID}`), {
+                invitedProjectIds: [PROJECT_ID],
+                projectIds: [PROJECT_ID],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'invitation-add',
+                    actorId: MEMBER_ID,
+                    updatedAt: 4,
+                },
+            })
+        )
+    })
+
     it('allows atomic project deletion cleanup and scoped reload notification', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const batch = writeBatch(memberDb)

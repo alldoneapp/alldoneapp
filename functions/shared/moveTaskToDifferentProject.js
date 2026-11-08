@@ -5,16 +5,21 @@ const admin = require('firebase-admin')
 
 const { DONE_STEP, DEFAULT_WORKSTREAM_ID, OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { withoutAccessProjection } = require('./objectAccessProjection')
+const { canAccessObject } = require('./privacyAccess')
 
 const TASK_PROJECT_CHANGED_TO = 17
 const TASK_PROJECT_CHANGED_FROM = 18
 
-async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
+// security audit 2026-11: subtaskIds is client-writable, and a manual move widens every moved
+// task's privacy to the actor. So for a manual move (actorId given) a node is part of the tree only
+// if it really is a child of the node that lists it (its parentId says so), and every node must be
+// readable by the actor; a tree holding a task the actor cannot read is not moved at all.
+async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId, actorId = null) {
     const taskTree = new Map()
-    const queue = [rootTaskId]
+    const queue = [{ taskId: rootTaskId, parentTaskId: null }]
 
     while (queue.length > 0) {
-        const taskId = queue.shift()
+        const { taskId, parentTaskId } = queue.shift()
         if (!taskId || taskTree.has(taskId)) continue
 
         const taskDoc = await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).get()
@@ -26,12 +31,20 @@ async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
         }
 
         const taskData = taskDoc.data() || {}
+        if (actorId) {
+            if (parentTaskId && taskData.parentId !== parentTaskId) continue
+            if (!canAccessObject(taskData, actorId)) {
+                const error = new Error('The task tree contains a task you cannot access')
+                error.code = 'permission-denied'
+                throw error
+            }
+        }
         taskTree.set(taskId, taskData)
 
         const subtaskIds = Array.isArray(taskData.subtaskIds) ? taskData.subtaskIds : []
         subtaskIds.forEach(subtaskId => {
             if (typeof subtaskId === 'string' && subtaskId.trim() && !taskTree.has(subtaskId)) {
-                queue.push(subtaskId)
+                queue.push({ taskId: subtaskId, parentTaskId: taskId })
             }
         })
     }
@@ -73,7 +86,10 @@ function prepareManualTaskMove({
         rootTask.suggestedBy || (!targetMembers.has(originalOwnerId) && originalOwnerId !== DEFAULT_WORKSTREAM_ID)
             ? actorId
             : originalOwnerId
-    const isPublicFor = Array.isArray(rootTask.isPublicFor) ? [...rootTask.isPublicFor] : [0, originalOwnerId]
+    // Each node keeps its own privacy (collectTaskTreeForMove already proved the actor can read it);
+    // taking the root's would publish a private subtask to everyone the root is visible to.
+    const ownPrivacy = Array.isArray(task.isPublicFor) ? task.isPublicFor : rootTask.isPublicFor
+    const isPublicFor = Array.isArray(ownPrivacy) ? [...ownPrivacy] : [0, originalOwnerId]
     if (!isPublicFor.includes(0) && !isPublicFor.includes(ownerId) && !ownerId.startsWith('ws@')) {
         isPublicFor.push(ownerId)
     }
@@ -257,7 +273,7 @@ async function moveTaskToDifferentProject(params) {
         throw new Error(`Task ${taskId} not found in source project ${sourceProjectId}`)
     }
 
-    const taskTree = await collectTaskTreeForMove(database, sourceProjectId, taskId)
+    const taskTree = await collectTaskTreeForMove(database, sourceProjectId, taskId, manual ? editorId : null)
     const taskIdsToMove = Array.from(taskTree.keys())
     const timestamp = Date.now()
     const sourceProject = params.sourceProject || { id: sourceProjectId }
@@ -273,6 +289,17 @@ async function moveTaskToDifferentProject(params) {
             throw new Error(
                 `Cannot move task ${taskId}: task ID ${id} already exists in target project ${targetProjectId}.`
             )
+        }
+    }
+
+    // onDeleteTask copies a moved task's linked note (noteId, client-writable) into the target
+    // project. In a manual move a note the actor cannot read is left behind and unlinked instead.
+    const unreadableNoteTaskIds = new Set()
+    if (manual && editorId) {
+        for (const [id, sourceTask] of taskTree.entries()) {
+            if (!sourceTask.noteId) continue
+            const noteSnapshot = await database.doc(`noteItems/${sourceProjectId}/notes/${sourceTask.noteId}`).get()
+            if (noteSnapshot.exists && !canAccessObject(noteSnapshot.data(), editorId)) unreadableNoteTaskIds.add(id)
         }
     }
 
@@ -316,6 +343,8 @@ async function moveTaskToDifferentProject(params) {
             }
         }
 
+        if (unreadableNoteTaskIds.has(id)) movedTask.noteId = null
+
         if (!targetSnapshots.get(id).exists) {
             await database.doc(`items/${targetProjectId}/tasks/${id}`).set(movedTask)
         }
@@ -330,8 +359,17 @@ async function moveTaskToDifferentProject(params) {
     if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
 
     for (const id of taskIdsToMove) {
+        const nodeMarkerUpdate = { ...sourceMoveMarkerUpdate }
+        const listedSubtaskIds = taskTree.get(id)?.subtaskIds
+        if (manual && Array.isArray(listedSubtaskIds)) {
+            // onDeleteTask deletes every listed subtask, so a listed id that is not really a child
+            // (and was therefore not moved) must not stay listed when the source is deleted.
+            const movedSubtaskIds = listedSubtaskIds.filter(subtaskId => taskTree.has(subtaskId))
+            if (movedSubtaskIds.length !== listedSubtaskIds.length) nodeMarkerUpdate.subtaskIds = movedSubtaskIds
+        }
+        if (unreadableNoteTaskIds.has(id)) nodeMarkerUpdate.noteId = null
         try {
-            await database.doc(`items/${sourceProjectId}/tasks/${id}`).update(sourceMoveMarkerUpdate)
+            await database.doc(`items/${sourceProjectId}/tasks/${id}`).update(nodeMarkerUpdate)
         } catch (error) {
             if (manual) throw error
             console.warn('Task move: failed to set move marker on source task', {
