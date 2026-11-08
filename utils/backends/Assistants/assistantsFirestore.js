@@ -1144,8 +1144,50 @@ export const buildOwnActivationUpdate = ({ currentTask, editedTask, userId, payl
     return update
 }
 
+/**
+ * Security audit 2026-11 (NV-22): a task in the global catalog (assistantTasks/globalProject) is
+ * copied into every tenant's derived assistant whenever it changes, so firestore.rules let anybody
+ * but the administrator change only their own activation entry of it. Saving the activation dialog
+ * as a non-administrator therefore sends just that entry, never the edited task.
+ */
+export const buildGlobalTaskActivationUpdate = ({ currentTask, editedTask, userId }) => {
+    const update = buildOwnActivationUpdate({ currentTask, editedTask, userId, payload: {} })
+    if (!userId) return update
+    if (update.activatedUserIds.includes(userId)) {
+        const edited = editedTask || {}
+        const activatedInProjectId = edited.activatedInProjectIdByUser?.[userId] || edited.activatedInProjectId
+        if (activatedInProjectId) update[`activatedInProjectIdByUser.${userId}`] = activatedInProjectId
+        if (currentTask?.lastExecutedByUser?.[userId] === undefined) update[`lastExecutedByUser.${userId}`] = null
+    }
+    return update
+}
+
+const isAdministratorLoggedIn = () => {
+    const { loggedUser, administratorUser } = store.getState()
+    return !!loggedUser?.uid && administratorUser?.uid === loggedUser.uid
+}
+
+function updateOwnGlobalTaskActivation(projectId, assistantId, task) {
+    const userId = store.getState().loggedUser?.uid
+    if (!userId || !task?.id) return Promise.resolve()
+    const taskRef = getAssistantTaskDocRef(projectId, assistantId, task.id)
+    return getDb().runTransaction(async transaction => {
+        const doc = await transaction.get(taskRef)
+        if (!doc.exists) return
+        transaction.update(
+            taskRef,
+            buildGlobalTaskActivationUpdate({ currentTask: doc.data(), editedTask: task, userId })
+        )
+    })
+}
+
 export function updatePreConfigTask(projectId, assistantId, task) {
     clearAssistantTasksCache(projectId, assistantId)
+    if (projectId === GLOBAL_PROJECT_ID && !isAdministratorLoggedIn()) {
+        return updateOwnGlobalTaskActivation(projectId, assistantId, task).catch(error =>
+            console.warn('[assistants] could not save the activation of a global task:', error)
+        )
+    }
     const taskToStore = { ...task }
     delete taskToStore.id
     const aiModelOverride = getPreConfigTaskModelOverride(taskToStore)

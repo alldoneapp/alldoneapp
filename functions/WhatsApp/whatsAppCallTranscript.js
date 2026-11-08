@@ -55,7 +55,6 @@ async function storeCallTranscriptTurn({
     updateExisting = false,
     createdAt = null,
     isCallTranscript = true,
-    callerUnverified = false,
 }) {
     const normalizedText = String(text || '').trim()
     if (!normalizedText) return { stored: false, reason: 'empty' }
@@ -95,9 +94,6 @@ async function storeCallTranscriptTurn({
             callSessionId: sessionId,
             realtimeTurnId: String(turnId || ''),
             isCallTranscript,
-            // Spoken by a phone caller whose identity was not verified (NV-35): kept for display,
-            // never read back as the account holder's own words by later assistant runs.
-            ...(callerUnverified ? { callerUnverified: true } : {}),
         })
         transaction.update(chatRef, {
             lastEditionDate: now,

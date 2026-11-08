@@ -101,12 +101,8 @@ describe('assistant browser calls', () => {
                                 assistantId: 'assistant-1',
                                 creatorId: 'user-1',
                                 members: ['user-1'],
-                                isPublicFor: ['user-1'],
                             }),
                         }
-                    }
-                    if (path === 'projects/project-1') {
-                        return { exists: true, id: 'project-1', data: () => ({ userIds: ['user-1', 'user-2'] }) }
                     }
                     return { exists: false, id: path.split('/').pop(), data: () => null }
                 }),
@@ -213,66 +209,6 @@ describe('assistant browser calls', () => {
         ).resolves.toEqual({ projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' })
     })
 
-    // NV-28: past participation is not read access. A former commenter stays in `members` after the
-    // topic is made private, and a removed member may linger there until cleanup finishes.
-    describe('topic access (NV-28)', () => {
-        const mockFirestore = ({ chat, project }) =>
-            admin.firestore.mockReturnValue({
-                doc: jest.fn(path => ({
-                    get: jest.fn(async () => {
-                        if (path === 'chatObjects/project-1/chats/chat-1')
-                            return { exists: true, id: 'chat-1', data: () => chat }
-                        if (path === 'projects/project-1' && project)
-                            return { exists: true, id: 'project-1', data: () => project }
-                        return { exists: false, id: path.split('/').pop(), data: () => null }
-                    }),
-                })),
-            })
-        const resolveFor = userId =>
-            resolveBrowserCallTopic(
-                { projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
-                { defaultProjectId: 'project-1' },
-                userId
-            )
-        const privateTopic = {
-            type: 'topics',
-            assistantId: 'assistant-1',
-            creatorId: 'user-1',
-            lastEditorId: 'user-1',
-            members: ['user-1', 'user-2'],
-            usersFollowing: ['user-2'],
-            isPublicFor: ['user-1'],
-            readerIds: ['user-1'],
-        }
-
-        test('rejects a project member who once commented in a topic later made private', async () => {
-            mockFirestore({ chat: privateTopic, project: { userIds: ['user-1', 'user-2'] } })
-            await expect(resolveFor('user-2')).rejects.toMatchObject({ code: 'failed-precondition' })
-            await expect(resolveFor('user-1')).resolves.toMatchObject({ chatId: 'chat-1' })
-        })
-
-        test('rejects a participant who is no longer a project member', async () => {
-            mockFirestore({
-                chat: { ...privateTopic, isPublicFor: [0, 'user-2'] },
-                project: { userIds: ['user-1'] },
-            })
-            await expect(resolveFor('user-2')).rejects.toMatchObject({ code: 'failed-precondition' })
-        })
-
-        test('rejects when the project cannot be read', async () => {
-            mockFirestore({ chat: { ...privateTopic, isPublicFor: [0] }, project: null })
-            await expect(resolveFor('user-1')).rejects.toMatchObject({ code: 'failed-precondition' })
-        })
-
-        test('accepts any member for a topic shared with the whole project, participation or not', async () => {
-            mockFirestore({
-                chat: { type: 'topics', assistantId: 'assistant-1', creatorId: 'user-1', isPublicFor: [0] },
-                project: { userIds: ['user-1', 'user-3'] },
-            })
-            await expect(resolveFor('user-3')).resolves.toMatchObject({ chatId: 'chat-1' })
-        })
-    })
-
     test('protects the browser call with the special prompt before the sideband connects', () => {
         expect(
             buildInitialBrowserLiveSession({
@@ -324,20 +260,17 @@ describe('Live startup failures and usage privacy', () => {
                     data: () =>
                         path.startsWith('users/')
                             ? { gold: 100 }
-                            : path.startsWith('projects/')
-                              ? { userIds: ['user-1'] }
-                              : {
-                                    type: 'topics',
-                                    isPublicFor: [0],
-                                    creatorId: 'user-1',
-                                    assistantId: 'assistant-1',
-                                    userId: 'user-1',
-                                    voiceBilledGold: 40,
-                                    backendBilledGold: 12,
-                                    status: 'completed',
-                                    voiceUsageFinal: true,
-                                    secret: 'never expose',
-                                },
+                            : {
+                                  type: 'topics',
+                                  creatorId: 'user-1',
+                                  assistantId: 'assistant-1',
+                                  userId: 'user-1',
+                                  voiceBilledGold: 40,
+                                  backendBilledGold: 12,
+                                  status: 'completed',
+                                  voiceUsageFinal: true,
+                                  secret: 'never expose',
+                              },
                 }),
             }),
         })

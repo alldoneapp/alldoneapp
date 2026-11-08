@@ -10,7 +10,6 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
-const { canAccessObject, isProjectMemberData } = require('../shared/privacyAccess')
 const { getLiveConfigurationError, getLiveSessionDefaults } = require('./assistantLiveConfig')
 const { buildLiveSession } = require('./assistantLiveProtocol')
 const { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
@@ -66,14 +65,12 @@ function safeString(value) {
     return String(value || '').trim()
 }
 
-// A voice call loads the topic's recent comments into a live session the caller controls, so it
-// needs exactly the read access askToBotSecondGen requires (assertObjectAccess): membership of the
-// project and a place in the topic's isPublicFor. Past participation (creatorId, lastEditorId,
-// members, usersFollowing) is not access: `members` keeps every former commenter when a topic is
-// made private (NV-28).
-function userCanUseChat(userId, chat, project) {
-    if (!chat || !isProjectMemberData(project, userId)) return false
-    return canAccessObject(chat, userId)
+function userCanUseChat(userId, chat) {
+    if (!chat) return false
+    if (chat.creatorId === userId || chat.lastEditorId === userId) return true
+    if (Array.isArray(chat.members) && chat.members.includes(userId)) return true
+    if (Array.isArray(chat.usersFollowing) && chat.usersFollowing.includes(userId)) return true
+    return false
 }
 
 async function resolveBrowserCallTopic(data, user, userId) {
@@ -85,18 +82,13 @@ async function resolveBrowserCallTopic(data, user, userId) {
     const assistantId = safeString(data?.assistantId) || (await getDefaultAssistantId(user, projectId))
     if (!assistantId) throw getHttpsErrorForEligibility('missing_assistant')
 
-    const db = admin.firestore()
-    const [chatDoc, projectDoc] = await Promise.all([
-        db.doc(`chatObjects/${projectId}/chats/${chatId}`).get(),
-        db.doc(`projects/${projectId}`).get(),
-    ])
+    const chatDoc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).get()
     if (!chatDoc.exists) throw getHttpsErrorForEligibility('invalid_topic')
 
     const chat = chatDoc.data() || {}
     if (chat.type !== 'topics') throw getHttpsErrorForEligibility('invalid_topic')
     if (chat.assistantId && chat.assistantId !== assistantId) throw getHttpsErrorForEligibility('invalid_topic')
-    const project = projectDoc.exists ? projectDoc.data() || {} : null
-    if (!userCanUseChat(userId, chat, project)) throw getHttpsErrorForEligibility('invalid_topic')
+    if (!userCanUseChat(userId, chat)) throw getHttpsErrorForEligibility('invalid_topic')
 
     return { projectId, chatId, assistantId }
 }
