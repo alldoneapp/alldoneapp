@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid')
 const { getEnvironmentConfig } = require('../config/environments.js')
 const { Timestamp } = require('firebase-admin/firestore')
 const { submitOAuthCallback } = require('./submitOAuthCallback')
+const { escapeHtml } = require('./oauthClientConsent')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -313,7 +314,12 @@ class CloudOAuthHandler {
         }
     }
 
-    async completeAuthorizationCallback(sessionId, firebaseToken, decodedToken, { authCode, redirectUri, state }) {
+    async completeAuthorizationCallback(
+        sessionId,
+        firebaseToken,
+        decodedToken,
+        { authCode, redirectUri, state, consentApproved }
+    ) {
         const authRef = this.db.collection('oauthAuthSessions').doc(authCode)
         const sessionRef = this.db.collection('mcpSessions').doc(uuidv4())
         const now = Timestamp.now()
@@ -354,6 +360,11 @@ class CloudOAuthHandler {
                 }
                 mcpSessionId = auth.mcpSessionId
             } else if (auth.status === 'pending') {
+                // security audit 2026-11: signing in is not consent. The person must have pressed the
+                // button that names this client and its redirect host (oauthClientConsent.js).
+                if (consentApproved !== true) {
+                    throw new Error('Approve access for this app to continue. Please start a new connection.')
+                }
                 mcpSessionId = sessionRef.id
                 transaction.set(sessionRef, {
                     sessionId: mcpSessionId,
@@ -388,6 +399,8 @@ class CloudOAuthHandler {
                     userId,
                     mcpSessionId,
                     completedAt: now,
+                    consentGrantedAt: now,
+                    consentClientId: auth.clientId || null,
                 })
             } else {
                 throw new Error('Authorization is no longer available. Please start a new connection.')
@@ -436,9 +449,25 @@ class CloudOAuthHandler {
     }
 
     // Generate Firebase Auth HTML page
-    generateAuthPage(sessionId, authCode = null, redirectUri = null, state = null) {
+    // `consent` ({ clientLabel, redirectHost, kind }, see oauthClientConsent.js) names the app asking
+    // for access and where the authorization goes. Pressing the button approves exactly that; the page
+    // then sends `consentApproved: true`, without which the authorization is not completed.
+    generateAuthPage(sessionId, authCode = null, redirectUri = null, state = null, consent = null) {
         const config = getEnvironmentConfig()
         const firebaseConfig = config.firebaseWeb
+        const isAuthorization = !!authCode
+        const clientLabel = escapeHtml(consent?.clientLabel || 'An unknown app')
+        const redirectHost = escapeHtml(consent?.redirectHost || 'an unknown address')
+        const unverifiedNote =
+            consent?.kind === 'known'
+                ? ''
+                : '<p class="warning">Alldone has not verified this app. Only continue if you started this connection yourself and trust it.</p>'
+        const promptHtml = isAuthorization
+            ? `<p><strong id="clientName">${clientLabel}</strong> wants to use your Alldone account through the Alldone MCP server: it can read and change your tasks, notes, contacts and other data with your permissions.</p>
+        <p>After you sign in, access is sent to <strong id="redirectHost">${redirectHost}</strong>.</p>
+        ${unverifiedNote}`
+            : '<p>Sign in with your Alldone account to use the Alldone MCP server</p>'
+        const loginLabel = isAuthorization ? 'Allow and sign in with Google' : 'Sign in with Google'
 
         return `
 <!DOCTYPE html>
@@ -508,6 +537,13 @@ class CloudOAuthHandler {
             background: #f8d7da;
             color: #721c24;
         }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
     </style>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
@@ -516,8 +552,8 @@ class CloudOAuthHandler {
     <div class="container">
         <div class="logo">🚀 Alldone MCP</div>
         <h2>Authenticate</h2>
-        <p>Sign in with your Alldone account to use the Alldone MCP server</p>
-        <button id="loginBtn" class="button">Sign in with Google</button>
+        ${promptHtml}
+        <button id="loginBtn" class="button">${loginLabel}</button>
         <button id="closeBtn" class="button close hidden">Close this window</button>
         <div id="status"></div>
     </div>
@@ -535,6 +571,7 @@ class CloudOAuthHandler {
         const status = document.getElementById('status');
         const sessionId = ${JSON.stringify(sessionId).replace(/</g, '\\u003c')};
         const authorization = ${JSON.stringify({ authCode, redirectUri, state }).replace(/</g, '\\u003c')};
+        const loginLabel = ${JSON.stringify(loginLabel)};
         const submitOAuthCallback = ${submitOAuthCallback.toString()};
         let callbackPayload = null;
 
@@ -578,6 +615,8 @@ class CloudOAuthHandler {
                         sessionId,
                         firebaseToken: await result.user.getIdToken(),
                         ...authorization,
+                        // Only this button, which names the app and its redirect host, approves it.
+                        consentApproved: true,
                     };
                 }
 
@@ -608,14 +647,14 @@ class CloudOAuthHandler {
                     showStatus('❌ Authentication failed: ' + data.error, true);
                     // Reset button state on error
                     loginBtn.disabled = false;
-                    loginBtn.textContent = 'Sign in with Google';
+                    loginBtn.textContent = loginLabel;
                 }
             } catch (error) {
                 console.error('MCP sign-in failed:', error.name);
                 showStatus('❌ Authentication failed: ' + error.message, true);
                 // Reset button state on error
                 loginBtn.disabled = false;
-                loginBtn.textContent = callbackPayload ? 'Retry connection' : 'Sign in with Google';
+                loginBtn.textContent = callbackPayload ? 'Retry connection' : loginLabel;
             }
         });
     </script>

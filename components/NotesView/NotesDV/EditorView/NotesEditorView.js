@@ -14,7 +14,6 @@ import { convertNoteImages } from './noteImageConversion'
 import { noteDeltaWork } from './noteDeltaWork'
 import { QuillBinding } from 'y-quill'
 import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
 
 import { createMeetingInsertionTarget, insertMeetingTranscript } from './meetingNotePersistence'
 import EditorToolbar, {
@@ -101,6 +100,7 @@ import { getDb, getNotesCollaborationServerData } from '../../../../utils/backen
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
 import { createLocalFirstNoteSession } from './noteLocalFirst'
+import { createNoteCollaborationProvider } from './noteCollaborationProvider'
 import { storageIsMissingLocalState } from './noteCollaborationRecovery'
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
@@ -914,12 +914,15 @@ const NotesEditorView = ({
                 setStorageRefreshing(!isBrowserOffline())
                 const session = createLocalFirstNoteSession({
                     createLocalPersistence: document => createNoteLocalPersistence(note.id, document),
+                    // Authenticated (security audit 2026-11): every (re)connection carries the
+                    // user's Firebase ID token and the note's project, see noteCollaborationProvider.
                     createProvider: document =>
-                        new WebsocketProvider(
-                            getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                            note.id,
-                            document
-                        ),
+                        createNoteCollaborationProvider({
+                            serverUrl: getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                            noteId: note.id,
+                            projectId,
+                            doc: document,
+                        }),
                     loadStorage: () =>
                         isBrowserOffline()
                             ? null

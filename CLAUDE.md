@@ -761,6 +761,34 @@ and for the VM path by `vmProxyModelBinding.test.js`, the `security audit 2026-1
 `vmJobRunner.test.js` / `vmGolden.test.js` and the rules emulator suite. These VM changes reach the
 `vm-job-runner` Cloud Run image only when it is rebuilt.
 
+The client-side findings of the same audit:
+
+- An iframe task's address is member-writable data (a pre-configured task's `link`), so it never
+  decides trust. `EmbeddedAppFrame` gives user data, the alldone.team token, Gold and the roadmap
+  source only to an origin in `TRUSTED_EMBED_ORIGINS` (today `https://alldone.team`); any other page
+  still renders and may only report `EMBED_LOCATION` / `APP_CONTEXT`. Add an origin to that list,
+  never derive one. The global assistant's pre-configured tasks (`assistantTasks/globalProject/…`)
+  are administrator-only in `firestore.rules`, except the per-user activation fields that
+  `toggleRecurringTaskActivation` writes.
+- A url embed's `open` attribute is shared note content. On mount it only opens the edit field of an
+  empty link the viewer owns (`shouldOpenLinkEditorOnMount`); a pre-configured task, an iframe or a
+  link in content runs only on a press, and a prompt the viewer did not write is shown to them first
+  (`utils/preConfigTaskRunConfirmation.js`, used by `UrlWrapper` and `LinkTag`).
+- Every notes collaboration connection carries `?auth=<Firebase ID token>&projectId=<projectId>`
+  (`noteCollaborationProvider.js`; the room stays the bare note id, and every socket, reconnects
+  included, is opened with the current token). The collaboration server
+  (alldone-notes-collab-server) ignores the parameters until its side ships, and enforces them once
+  deployed. Throwaway virtual editors (`notesHelper`) no longer connect at all.
+- The MCP OAuth login page names the app that started the authorization and the host it redirects
+  to, from the stored `oauthAuthSessions` / `oauthClients` documents (`MCP/auth/oauthClientConsent.js`;
+  known hosts such as claude.ai are named by us, not by the registration). `completeAuthorizationCallback`
+  completes a pending authorization only with `consentApproved: true`, which only the page's
+  "Allow and sign in" button sends, and records `consentGrantedAt` / `consentClientId`.
+
+Pinned by `IframeModalUntrustedOrigin.test.js`, `UrlWrapperOpenAttribute.test.js`,
+`noteCollaborationProvider.test.js`, `oauthClientConsent.test.js`, `mcpOAuthConsentPage.test.js`,
+`MCP/auth/cloudOAuth.test.js` and the global catalog block of the rules emulator suite.
+
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
 A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —

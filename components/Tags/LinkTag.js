@@ -80,6 +80,7 @@ import { getAssistantData } from '../../utils/backends/Assistants/assistantsFire
 import { resolvePreConfigTaskLink } from '../../utils/preConfigTaskLink'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
+import { confirmPreConfigTaskRunFromLink } from '../../utils/preConfigTaskRunConfirmation'
 import { getShortExternalUrlText } from './linkTextUtils'
 import { getPeopleDocumentDescriptor } from '../../utils/People/peopleDocumentPath'
 
@@ -763,6 +764,7 @@ export default function LinkTag({
                                     sendWhatsApp: !!task.sendWhatsApp,
                                     executionMode: task.executionMode,
                                 }
+                                if (!confirmPreConfigTaskRunFromLink(task, loggedUser?.uid)) return
                                 generateTaskFromPreConfig(
                                     targetProjectId,
                                     task.name,

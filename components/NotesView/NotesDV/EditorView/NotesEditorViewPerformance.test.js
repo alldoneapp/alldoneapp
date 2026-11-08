@@ -108,6 +108,7 @@ jest.mock('y-websocket', () => ({
         }
         on() {}
         off() {}
+        connect() {}
         destroy() {
             this.awareness.destroy()
         }

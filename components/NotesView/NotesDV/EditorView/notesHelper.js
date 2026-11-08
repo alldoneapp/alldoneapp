@@ -13,8 +13,12 @@ import { uploadTaskByQuill } from '../../../../utils/backends/Tasks/tasksFiresto
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
+import { createNoteCollaborationProvider } from './noteCollaborationProvider'
 
-const getQuillCollaborationData = (roomId, noteData) => {
+// `note` ({ projectId, noteId }) joins that note's live room, authenticated like the editor
+// (noteCollaborationProvider.js). Without it the editor is a throwaway one that only needs the
+// provider's awareness for QuillBinding, so it never opens a connection to a random room.
+const getQuillCollaborationData = (note, noteData) => {
     const ydoc = new Y.Doc()
     const update = new Uint8Array(noteData)
 
@@ -22,7 +26,10 @@ const getQuillCollaborationData = (roomId, noteData) => {
         Y.applyUpdate(ydoc, update)
     }
 
-    const provider = new WebsocketProvider(getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER, roomId, ydoc)
+    const serverUrl = getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER
+    const provider = note
+        ? createNoteCollaborationProvider({ serverUrl, noteId: note.noteId, projectId: note.projectId, doc: ydoc })
+        : new WebsocketProvider(serverUrl, v4(), ydoc, { connect: false })
 
     const tempContainer = document.createElement('div')
     const quill = new Quill(tempContainer)
@@ -41,8 +48,8 @@ const disconnectQuillCollaboration = (provider, ydoc, binding, quill) => {
     unmountEmbedReactRoots(quill?.root)
 }
 
-export const processRestoredNote = async (noteId, originalData, restoredData) => {
-    const { ydoc, provider, quill, type } = getQuillCollaborationData(noteId, originalData)
+export const processRestoredNote = async (projectId, noteId, originalData, restoredData) => {
+    const { ydoc, provider, quill, type } = getQuillCollaborationData({ projectId, noteId }, originalData)
 
     store.dispatch(setVirtualQuillLoaded(true))
     const binding = new QuillBinding(type, quill, provider.awareness)
@@ -59,7 +66,7 @@ export const processRestoredNote = async (noteId, originalData, restoredData) =>
 }
 
 const getNoteDataOps = noteData => {
-    const { ydoc, provider, quill, type } = getQuillCollaborationData(v4(), noteData)
+    const { ydoc, provider, quill, type } = getQuillCollaborationData(null, noteData)
     const binding = new QuillBinding(type, quill, provider.awareness)
 
     const ops = quill.getContents().ops
@@ -78,7 +85,7 @@ export const processMovedNoteTasks = async (
     externalBatch
 ) => {
     if (noteData) {
-        const { ydoc, provider, quill, type } = getQuillCollaborationData(v4(), noteData)
+        const { ydoc, provider, quill, type } = getQuillCollaborationData(null, noteData)
 
         store.dispatch(setVirtualQuillLoaded(true))
         const binding = new QuillBinding(type, quill, provider.awareness)

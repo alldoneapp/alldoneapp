@@ -7792,7 +7792,7 @@ export const restoreDailyNoteCopy = async (projectId, noteId, paths) => {
 const restoreDailyNoteContentCopy = async (projectId, noteId, noteContent, originalNoteContent, paths) => {
     const storageRef = notesStorage.ref()
     promises = []
-    promises.push(processRestoredNote(noteId, originalNoteContent, noteContent))
+    promises.push(processRestoredNote(projectId, noteId, originalNoteContent, noteContent))
     promises.push(storageRef.child(`${paths.notesData}/${projectId}/${noteId}`).put(new Uint8Array(noteContent)))
     await Promise.all(promises)
 }
@@ -7838,7 +7838,7 @@ const restoreNoteContentCopy = async (projectId, noteId, versionId, paths) => {
 
     const storageRef = notesStorage.ref()
     promises = []
-    promises.push(processRestoredNote(noteId, originalNoteContent, noteContent))
+    promises.push(processRestoredNote(projectId, noteId, originalNoteContent, noteContent))
     promises.push(storageRef.child(`${paths.notesData}/${projectId}/${noteId}`).put(new Uint8Array(noteContent)))
     await Promise.all(promises)
 }
