@@ -20,6 +20,43 @@ const mockCreateAndPersistNote = jest.fn()
 const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
 const mockListMcpTools = jest.fn()
+const mockGoalTools = { createGoal: jest.fn(), updateGoal: jest.fn(), updateMilestone: jest.fn() }
+const mockOkrTools = { createOkr: jest.fn(), updateOkr: jest.fn() }
+const mockExecuteMilestoneDoneTransition = jest.fn()
+jest.mock('../Goals/goalToolService', () => {
+    class GoalToolError extends Error {
+        constructor(message, details = {}) {
+            super(message)
+            this.details = details
+        }
+    }
+    return {
+        GoalToolError,
+        createGoal: (...args) => mockGoalTools.createGoal(...args),
+        updateGoal: (...args) => mockGoalTools.updateGoal(...args),
+        updateMilestone: (...args) => mockGoalTools.updateMilestone(...args),
+    }
+})
+jest.mock('../Goals/goalToolFeeds', () => ({ buildGoalToolFeeds: jest.fn(() => ({ marker: 'feeds' })) }))
+const mockAddGoalComment = jest.fn()
+jest.mock('../Goals/goalCommentService', () => ({
+    GoalCommentService: jest.fn().mockImplementation(() => ({ addComment: (...args) => mockAddGoalComment(...args) })),
+}))
+jest.mock('../Goals/milestoneDoneService', () => {
+    class MilestoneDoneError extends Error {}
+    return {
+        MilestoneDoneError,
+        executeMilestoneDoneTransition: (...args) => mockExecuteMilestoneDoneTransition(...args),
+    }
+})
+jest.mock('../OKRs/okrToolService', () => {
+    class OkrToolError extends Error {}
+    return {
+        OkrToolError,
+        createOkr: (...args) => mockOkrTools.createOkr(...args),
+        updateOkr: (...args) => mockOkrTools.updateOkr(...args),
+    }
+})
 jest.mock('./mcpClient', () => ({ listTools: (...args) => mockListMcpTools(...args) }))
 jest.mock('../MCP/mcpAssistantConnect', () => ({
     getValidMcpSecret: jest.fn(),
@@ -2076,6 +2113,23 @@ describe('Responses API compatibility helpers', () => {
             expect(getToolSearchNamespaceName('update_note')).toBe('alldone_notes')
             expect(getToolSearchNamespaceName('update_assistant_settings')).toBe('assistant_settings')
             expect(getToolSearchNamespaceName('web_search')).toBe('research')
+        })
+
+        test('puts goals, milestones and OKRs next to the tasks they are about', () => {
+            // Without `milestone|okr` in the rule, update_milestone fell to chats_and_media (/update/)
+            // and create_okr/update_okr to `other`: a model searching the goals namespace would find
+            // create_goal and never the tool that finishes the milestone.
+            for (const toolName of [
+                'get_goals',
+                'create_goal',
+                'update_goal',
+                'update_milestone',
+                'get_project_okrs',
+                'create_okr',
+                'update_okr',
+            ]) {
+                expect(getToolSearchNamespaceName(toolName)).toBe('tasks_and_goals')
+            }
         })
 
         test('keeps the four artifact tools in one namespace', () => {
@@ -10802,5 +10856,147 @@ describe('Anna VM message order', () => {
             intro,
             'The VM is unavailable. Please try again later.',
         ])
+    })
+})
+
+describe('goal, milestone and OKR tools', () => {
+    const growth = { id: 'project-growth', name: 'Alldone Growth', description: '' }
+    const context = { id: 'project-1', name: 'Context project', description: '' }
+
+    beforeEach(() => {
+        Object.values(mockGoalTools).forEach(fn => fn.mockReset())
+        Object.values(mockOkrTools).forEach(fn => fn.mockReset())
+        mockExecuteMilestoneDoneTransition.mockReset()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([context, growth]),
+        }))
+    })
+
+    test('create_goal runs in the named project for the requesting user, with feeds', async () => {
+        mockGoalTools.createGoal.mockResolvedValue({ success: true, goal: { id: 'g1' } })
+        const result = await executeToolNatively(
+            'create_goal',
+            { name: 'Pick the winning segment', projectName: 'Alldone Growth', milestoneDate: '2026-11-22' },
+            'project-1',
+            null,
+            'user-1',
+            null,
+            null
+        )
+
+        expect(mockGoalTools.createGoal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-growth',
+                userId: 'user-1',
+                args: expect.objectContaining({ milestoneDate: '2026-11-22' }),
+                feeds: { marker: 'feeds' },
+            })
+        )
+        expect(result).toMatchObject({
+            success: true,
+            goal: { id: 'g1' },
+            project: { id: 'project-growth', name: 'Alldone Growth' },
+        })
+    })
+
+    test('a refused goal change comes back as a result the model can act on', async () => {
+        const { GoalToolError } = require('../Goals/goalToolService')
+        mockGoalTools.updateGoal.mockRejectedValue(
+            new GoalToolError('Several goals match "growth"; pass goalId instead.', { matches: [{ id: 'g1' }] })
+        )
+        const result = await executeToolNatively(
+            'update_goal',
+            { goalName: 'growth', progress: 40 },
+            'project-1',
+            null,
+            'user-1',
+            null,
+            null
+        )
+        expect(result).toEqual({
+            success: false,
+            message: 'Several goals match "growth"; pass goalId instead.',
+            matches: [{ id: 'g1' }],
+            project: { id: 'project-1', name: 'Context project' },
+        })
+    })
+
+    test('a goal comment is silent from an assistant chat and notifies when an MCP client writes it', async () => {
+        mockAddGoalComment.mockResolvedValue({ commentId: 'c1' })
+        mockGoalTools.updateGoal.mockImplementation(async ({ postComment }) => {
+            await postComment({ goal: { id: 'g1' }, comment: 'Two pilots signed.' })
+            return { success: true }
+        })
+
+        await executeToolNatively(
+            'update_goal',
+            { goalId: 'g1', comment: 'Two pilots signed.' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { sourceChannel: 'chat' }
+        )
+        expect(mockAddGoalComment).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                goalId: 'g1',
+                comment: 'Two pilots signed.',
+                fromAssistant: true,
+                requestUserId: 'user-1',
+                silent: true,
+            })
+        )
+
+        await executeToolNatively(
+            'update_goal',
+            { goalId: 'g1', comment: 'Two pilots signed.' },
+            'project-1',
+            null,
+            'user-1',
+            null,
+            { sourceChannel: 'mcp' }
+        )
+        expect(mockAddGoalComment).toHaveBeenLastCalledWith(
+            expect.objectContaining({ fromAssistant: false, silent: false })
+        )
+    })
+
+    test('update_milestone marks a milestone done through the shared transition, as the requester', async () => {
+        mockGoalTools.updateMilestone.mockImplementation(async ({ setMilestoneDone }) => {
+            await setMilestoneDone({ projectId: 'project-1', milestoneId: 'm1', targetDone: true })
+            return { success: true }
+        })
+        await executeToolNatively(
+            'update_milestone',
+            { date: '2026-11-22', done: true },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            null
+        )
+        expect(mockExecuteMilestoneDoneTransition).toHaveBeenCalledWith({
+            actorUserId: 'user-1',
+            data: { projectId: 'project-1', milestoneId: 'm1', targetDone: true },
+        })
+    })
+
+    test('create_okr and update_okr default to the conversation project', async () => {
+        mockOkrTools.updateOkr.mockResolvedValue({ success: true, okr: { id: 'o1' } })
+        const result = await executeToolNatively(
+            'update_okr',
+            { okrLabel: 'Paying customers', addToCurrentValue: 1 },
+            'project-1',
+            null,
+            'user-1',
+            null,
+            null
+        )
+        expect(mockOkrTools.updateOkr).toHaveBeenCalledWith(
+            expect.objectContaining({ projectId: 'project-1', userId: 'user-1' })
+        )
+        expect(result.project).toEqual({ id: 'project-1', name: 'Context project' })
     })
 })

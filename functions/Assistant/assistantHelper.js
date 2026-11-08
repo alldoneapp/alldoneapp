@@ -8085,6 +8085,107 @@ async function executeToolNativelyImpl(
             }
         }
 
+        case 'create_goal':
+        case 'update_goal':
+        case 'update_milestone': {
+            // Goal and milestone writes (functions/Goals/goalToolService.js). The project is the one
+            // named in the call, else the conversation's; membership and goal privacy are checked
+            // in the service, and a refused or ambiguous request comes back as a result the model
+            // can act on rather than as a failed tool call.
+            const db = admin.firestore()
+            const { createGoal, updateGoal, updateMilestone, GoalToolError } = require('../Goals/goalToolService')
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                creatorId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+            const project = { id: targetProject.id, name: targetProject.name || targetProject.id }
+
+            try {
+                let result
+                if (toolName === 'update_milestone') {
+                    const { executeMilestoneDoneTransition } = require('../Goals/milestoneDoneService')
+                    result = await updateMilestone({
+                        db,
+                        projectId: project.id,
+                        userId: creatorId,
+                        args: toolArgs,
+                        setMilestoneDone: ({ projectId: milestoneProjectId, milestoneId, targetDone }) =>
+                            executeMilestoneDoneTransition({
+                                actorUserId: creatorId,
+                                data: { projectId: milestoneProjectId, milestoneId, targetDone },
+                            }),
+                    })
+                } else {
+                    const { buildGoalToolFeeds } = require('../Goals/goalToolFeeds')
+                    const feedUser = await getAssistantFeedUserForTool(
+                        db,
+                        project.id,
+                        assistantId,
+                        creatorId,
+                        toolRuntimeContext
+                    )
+                    const feeds = buildGoalToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
+                    // Same notification rule as update_task: an assistant's comment is in the thread
+                    // but marks nothing unread; an MCP client's notifies like any comment.
+                    const postComment = ({ goal, comment }) => {
+                        const { GoalCommentService } = require('../Goals/goalCommentService')
+                        return new GoalCommentService({ database: db }).addComment({
+                            projectId: project.id,
+                            goalId: goal.id,
+                            comment,
+                            actor: feedUser,
+                            fromAssistant: !!assistantId,
+                            requestUserId: creatorId,
+                            silent: toolRuntimeContext?.sourceChannel !== 'mcp',
+                        })
+                    }
+                    const run = toolName === 'create_goal' ? createGoal : updateGoal
+                    result = await run({
+                        db,
+                        projectId: project.id,
+                        userId: creatorId,
+                        args: toolArgs,
+                        feeds,
+                        postComment,
+                    })
+                }
+                return { ...result, project }
+            } catch (error) {
+                const { MilestoneDoneError } = require('../Goals/milestoneDoneService')
+                if (error instanceof GoalToolError || error instanceof MilestoneDoneError) {
+                    return { success: false, message: error.message, ...(error.details || {}), project }
+                }
+                throw error
+            }
+        }
+
+        case 'create_okr':
+        case 'update_okr': {
+            const db = admin.firestore()
+            const { createOkr, updateOkr, OkrToolError } = require('../OKRs/okrToolService')
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                creatorId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+            const project = { id: targetProject.id, name: targetProject.name || targetProject.id }
+            try {
+                const run = toolName === 'create_okr' ? createOkr : updateOkr
+                const result = await run({ db, projectId: project.id, userId: creatorId, args: toolArgs })
+                return { ...result, project }
+            } catch (error) {
+                if (error instanceof OkrToolError) {
+                    return { success: false, message: error.message, ...(error.details || {}), project }
+                }
+                throw error
+            }
+        }
+
         case 'update_user_memory': {
             const db = admin.firestore()
             const feedUser = await getAssistantFeedUserForTool(
@@ -14031,7 +14132,7 @@ function convertToolsToResponsesFormat(tools) {
 }
 
 const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
-    tasks_and_goals: 'Create, find, and update tasks, goals, focus work, and execution jobs.',
+    tasks_and_goals: 'Create, find, and update tasks, goals, milestones, OKRs, focus work, and execution jobs.',
     gmail: 'Search Gmail, inspect attachments, manage messages and drafts, and correct email classification.',
     calendar: 'Find availability and search, create, update, or delete calendar events.',
     chats_and_media: 'Read chats, comments, attachments, recent media, and conversation updates.',
@@ -14069,7 +14170,7 @@ function getToolSearchNamespaceName(toolName = '') {
     if (/artifact/.test(name)) return 'artifacts'
     if (/gmail|email/.test(name)) return 'gmail'
     if (/calendar|availability/.test(name)) return 'calendar'
-    if (/task|goal|focus|execute_.*vm|vm_job/.test(name)) return 'tasks_and_goals'
+    if (/task|goal|milestone|okr|focus|execute_.*vm|vm_job/.test(name)) return 'tasks_and_goals'
     if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
     // The API reserves `notes`; a namespace with that name rejects `notes.update_note`.
     if (/note/.test(name)) return 'alldone_notes'

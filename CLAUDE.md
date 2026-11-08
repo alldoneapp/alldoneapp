@@ -1681,6 +1681,57 @@ touch it, and the MCP servers modal shows it without remove or on/off controls. 
 `mcpAppGroups.test.js`, `mcpAppViews.test.js`, `mcpAssistantConnect.test.js` and
 `components/UIComponents/FloatModals/AddAssistantModal/specialistTemplates.test.js`.
 
+### Goals, milestones and OKRs can be written by assistants and MCP clients (AT-53)
+
+Five tools follow the create_task/update_task pattern: `create_goal`, `update_goal`,
+`update_milestone`, `create_okr` and `update_okr`. Each is its own Tools Access key (default on, like
+create_task) and its own switch under Settings → MCP. The logic lives in
+`functions/Goals/goalToolService.js` and `functions/OKRs/okrToolService.js`. `executeToolNatively`
+only resolves the project (named in the call, else the conversation's, else over MCP the user's
+default) and returns a refused or ambiguous request as `success: false` with the candidates.
+Existing assistants keep their stored `allowedTools`, so they get the keys only through their Tools
+Access or `update_assistant` with `addTools`.
+
+**A fixed milestone is not an object of its own; it is the date goals point to.** The app creates an
+open milestone when a goal gets a completion date nobody uses yet and deletes it once no goal points
+there. The tools do the same, which is why there is no `create_milestone`: a goal's `milestoneDate`
+creates the milestone, and `update_milestone` renames it, moves it with its goals (merging when the
+new day already has one), or marks it done or open through the same
+`executeMilestoneDoneTransition` the app calls. A done milestone and an automatic (linear) one are
+not moved.
+
+**Days are matched by a window, never by timestamp equality.** The app stores a milestone at the
+local noon of the browser that created it, while `users/{uid}.timezone` is often a stale integer
+offset, so the noon the server computes can be an hour or two off. An equality match would give the
+same day two milestones. The tools look for an open fixed milestone within half a day of the
+computed noon, and the goal then takes that milestone's exact timestamp, because every reader
+compares `completionMilestoneDate == milestone.date`.
+
+Rules taken over from the app: moving a goal's milestone date moves the whole goal when it sat in
+one milestone, came from someday or would otherwise start after it ends. Sort indexes are added for
+every open milestone the goal now shows in. A private goal cannot gain an assignee here, because the
+privacy cascade to its tasks, chat and note stays in the app. A goal or OKR create that finds the
+same name (OKR: same label in the same period) returns the existing one with `alreadyExists`, so an
+agent's retry does not duplicate it.
+
+OKRs are personal, so the tools create them for the requester and refuse to change anybody else's.
+A `timeLoggedRevenue` OKR computes its value from logged time, so setting one is refused. The goal
+title and progress feeds existed only in the browser (`goalUpdates.js`); their server copies in
+`Feeds/goalsFeeds.js` use the same feed types (81, 86) and texts.
+
+`update_goal` takes a `comment`, alone or next to other changes, written by
+`Goals/goalCommentService.js`. That is the goal counterpart of `TaskCommentService` without the
+email parts: the comment, the goal's `commentsData`, the chat object (`type: 'goals'`) and
+`followers/{p}/goals/{id}` are written in one transaction, then the unread markers, the email digest
+and the push follow. Followers are the goal's creator and assignees (never the `ws@` workstream
+placeholder) plus the author, and a private goal notifies only the people in its `isPublicFor`. The
+notification rule is update_task's: an assistant's comment is `silent` (in the thread, nothing
+marked unread), and an MCP client's comment carries the marker and notifies the user too. A comment
+that fails after other changes were saved becomes a warning, and a comment sent alone fails the
+call. Pinned by `goalToolService.test.js`, `goalCommentService.test.js`, `okrToolService.test.js`
+(all on `functions/Tests/fakeFirestore.js`) and the `goal, milestone and OKR tools` block in
+`assistantHelper.test.js`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
