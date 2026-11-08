@@ -44,7 +44,9 @@ async function main() {
 
     admin.initializeApp({ projectId: firebaseProjectId })
     const db = admin.firestore()
-    const { FieldValue } = require('../functions/node_modules/firebase-admin/firestore')
+    const { FieldValue } = require(
+        require.resolve('firebase-admin/firestore', { paths: [require('path').join(__dirname, '..', 'functions')] })
+    )
 
     const snapshot = await db.collection('projects').select('vmGolden').get()
     console.log(`${dryRun ? 'DRY RUN' : 'EXECUTE'}: scanning ${snapshot.size} project(s) on ${firebaseProjectId}`)

@@ -94,7 +94,9 @@ async function main() {
         }
         await processUser(db, userDoc, loadProjectUserIds, dryRun, stats)
     } else {
-        const { FieldPath } = require('../functions/node_modules/firebase-admin/firestore')
+        const { FieldPath } = require(
+            require.resolve('firebase-admin/firestore', { paths: [require('path').join(__dirname, '..', 'functions')] })
+        )
         let lastDoc = null
         for (;;) {
             let query = db.collection('users').orderBy(FieldPath.documentId()).limit(USER_PAGE_SIZE)
