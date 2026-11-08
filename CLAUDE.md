@@ -1085,7 +1085,11 @@ tools and the execution gate:
   messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
-  or delegated assistant is not a member saying "this is wrong".
+  or delegated assistant is not a member saying "this is wrong". Neither is an **automatic comment reply**
+  (`runAssistantCommentReply`, answering another assistant's comment such as a Gmail follow-up):
+  `askToOpenAIBot` derives `allowKnowledgeCorrections` from `!runOptions.automaticCommentReply`, and
+  `resolveKnowledgeBaseAccess` returns read-only for `automaticCommentReply` whatever the flag says
+  (security audit NV-45).
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
@@ -3480,6 +3484,28 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A PSTN phone call is the account holder only when the carrier says so (NV-35).** Twilio passes
+the STIR/SHAKEN verdict as `StirVerstat`; `handleIncomingPhoneCall` records it on the session as
+`callerVerified` / `callerAttestation`, and only `TN-Validation-Passed-A` counts. Any other value,
+or none (international calls, carriers without STIR/SHAKEN, sessions from before this change), makes
+`runLiveAssistant` run as an unverified caller (`functions/shared/callerVerification.js`): no
+`getOptimizedContextMessages` (no chat history, memory, instructions or project data) and no Anna
+context, a fixed context saying the account cannot be used, `runtime.callerIdentityUnverified`, which
+`filterAllowedToolsForRuntimeContext`, `isToolAllowedForExecution`, `interactWithChatStream` (no
+implicit `load_skill` or wiki tools) and `resolveKnowledgeBaseAccess` all honour, so only `web_search`
+remains, and no `post_voice_answer_in_chat`. WhatsApp and in-app calls are not affected. The
+transcript still lands in the account's daily topic for display, but each turn carries
+`callerUnverified: true`, and `getOptimizedContextMessages` and the WhatsApp `getConversationHistory`
+skip such comments, so a later run never reads a stranger's words as the account holder's. Residual:
+an unverified call still spends the account's voice Gold.
+
+**A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
+loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
+therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,
+the same rule `assertObjectAccess` applies to `askToBotSecondGen`. It used to accept anyone listed in
+`creatorId`, `lastEditorId`, `members` or `usersFollowing`, and `members` keeps every former commenter
+after a topic is made private.
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
@@ -4589,6 +4615,20 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### A phone number routes WhatsApp and calls only when exactly one account claims it (NV-44)
+
+`users/{uid}.phone` is written by its owner (`setUserPhone`) with no proof of possession; no
+verification flow exists. `resolveUserByPhone` (`functions/WhatsApp/whatsAppIncomingHandler.js`)
+therefore looks the number up in both stored formats (with and without `+`) and refuses to route
+when more than one account claims it. It logs the claimant ids at ERROR, replies to a WhatsApp
+message with a neutral "linked to more than one account" note, and rejects a call as unlinked.
+`findUserByPhone` keeps its old contract (an id or null). Before this, `limit(1)` silently picked
+whichever document sorted first, so anyone could take over the owner's WhatsApp channel by saving
+the same number. The real fix is a verified claim: a server-owned `phone` set by a Cloud Function
+after a WhatsApp one-time-code challenge, a unique `phoneClaims/{e164}` document written in a
+transaction, and a rules change refusing client writes to `phone`. Until that exists, ambiguity
+refusal is the only protection.
+
 ### WhatsApp replies must finish or report failure before their worker expires
 
 `WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
@@ -5061,8 +5101,8 @@ across all workspaces. `storage.rules` (default bucket `<project>.appspot.com`) 
 per-project folders require `projects/{projectId}.userIds` membership via cross-service
 `firestore.get()`, a note body or note copy additionally requires that the note itself grants the
 caller access, a non-member of a public project (`isShared != 2`) may read only a note whose
-`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` and `attachments/` are
-server-only, and nothing may be listed outside the member-scoped avatar folders.
+`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` is server-only, and nothing may be
+listed except one comment's `attachments/{commentId}` folder (`AttachmentsTag` lists it).
 
 Four things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
 only decide what a browser may do through the Storage SDK (`put`, `getDownloadURL`, `listAll`,
@@ -5072,11 +5112,7 @@ exactly as `canAccessObjectWhileProjectionIsPending` does**: the projected field
 its siblings) when they exist, `isPublicFor` while none exist yet — the browser writes the empty body
 right after creating the note document, before the server trigger has projected `readerIds` — and
 membership alone while the note document does not exist at all, because `setNoteProject` writes the
-body into the new project BEFORE the note document lands there. That fallback is for the live body
-in the notes bucket ONLY: the version copies (`noteVersionsData`, `noteDailyVersionsData`) outlive a
-deleted or moved note by up to a week, so they require the note document to exist and grant access
-(NV-39); every client flow on them runs on an existing note, and `onDeleteNote` deletes the daily
-copy at once. **Cross-service rules may read at most
+body into the new project BEFORE the note document lands there. **Cross-service rules may read at most
 two Firestore documents per evaluation**; every note path reads exactly two (the project and the
 note), so a third lookup (a user doc, a role doc) on those paths would push every note access over
 the limit and deny it. **Cross-service `firestore.get()` needs the Storage service agent
@@ -5087,28 +5123,13 @@ the Rules API does not.
 
 Neither file is in `firebase.json`, so neither CI nor `firebase deploy` publishes them: publish with
 the Rules API (create a ruleset, PATCH `releases/firebase.storage/<bucket>`) and note the previous
-ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs ~120
+ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 73
 cases through the Rules API test endpoint (real compiler, mocked `firestore.get`/`exists`) and
 treats any compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths`
 is a path, not a string) evaluates to an error and therefore to "deny" for everyone, while every
-DENY case still passes.
-
-**There is no catch-all: an unmatched folder is denied (security audit 2026-11, NV-37).** The old
-last rule let any signed-in account `get` any server-written object whose path it knew, which held
-only for random names: `Invoice/{uid}/{year} - {counter}.pdf` (Mollie invoices) is enumerable, and
-`anna-email-inbound/`, `browserEvidence/` and `whatsapp-images/` sat behind the same rule. No client
-code reads a server folder through the SDK; those objects reach people as token or signed URLs. A
-new folder the browser must touch needs its own `match`. **`feedAttachments/` and `notesAttachments/`
-are bound to their uploader (NV-38)**: their paths carry no project and appear in every shared URL,
-so a put must carry `customMetadata.uploaderId == auth.uid` (`allow create` only ever fires for an
-object that does not exist yet), and only that uploader may `get`, `update` or `delete` it. Every
-client put goes through `putAttachmentAsUploader` (`utils/backends/attachmentUploads.js`, ratcheted
-by its test). Objects uploaded before carry no `uploaderId` and are therefore frozen for clients,
-which is harmless: no client flow ever re-resolves, replaces or deletes one, and their token URLs
-keep working. Publish these rules only once the client that sets the metadata is live and old tabs
-have reloaded, or an upload from a stale tab is refused. `attachments/` (VM fallback files, written
-by the Admin SDK) has no client access at all; the client code that listed and wrote it was dead and
-is removed.
+DENY case still passes. One known gap, deliberately left: `feedAttachments/` and `notesAttachments/`
+carry no project in their path, so any signed-in user who knows an object's random path may read
+it (listing is denied, so the path cannot be enumerated).
 
 ### Firestore indexes (`firestore.indexes.json`)
 

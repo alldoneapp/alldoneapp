@@ -743,3 +743,22 @@ test('does not announce a delayed failure from the request replaced by newer spe
     expect(errorContexts(state.socket).some(value => value.error)).toBe(false)
     await finish(state)
 })
+
+// NV-35: what an unverified phone caller says is marked, so later runs never read it back as the
+// account holder's own words.
+test.each([
+    [{ channel: 'phone_call' }, true],
+    [{ channel: 'phone_call', callerVerified: true }, false],
+    [{}, false],
+])('marks the stored transcript of session %j as callerUnverified=%s', async (overrides, expected) => {
+    const session = { ...docs.get('whatsAppCallSessions/s'), ...overrides }
+    getCallSession.mockResolvedValue(session)
+    docs.set('whatsAppCallSessions/s', session)
+    const state = await start()
+    await emit(state.socket, user('t1', 'Read me my mail'))
+    await jest.advanceTimersByTimeAsync(2100)
+    await finish(state)
+    expect(storeCallTranscriptTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Read me my mail', callerUnverified: expected })
+    )
+})

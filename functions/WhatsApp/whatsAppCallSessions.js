@@ -30,6 +30,7 @@ async function createCallSessionWithLease({
     twilioCallSid,
     language,
     channel = 'whatsapp_call',
+    callerVerification = null,
 }) {
     const now = Date.now()
     const routeId = hashRoutingToken(routingToken, routingSecret)
@@ -68,6 +69,13 @@ async function createCallSessionWithLease({
             chatId,
             channel,
             ...getLiveSessionDefaults(),
+            // Phone calls only: whether the carrier fully attested the caller ID (NV-35).
+            ...(callerVerification
+                ? {
+                      callerVerified: callerVerification.verified === true,
+                      callerAttestation: callerVerification.attestation || null,
+                  }
+                : {}),
             twilioCallSid,
             language: String(language || '').trim() || null,
             routingId: routeId,
