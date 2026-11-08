@@ -18,7 +18,12 @@ async function generateBotWelcomeMessageForGuide(
 ) {
     const assistant = await getAssistantForChat(projectId, assistantId)
 
-    const { model, temperature, instructions, displayName, allowedTools } = assistant
+    const { model, temperature, instructions, displayName } = assistant
+    // A welcome message needs no tools, and it is posted into a shared chat, so it runs without
+    // tools and without any user's private context (memory, description). Taking the project
+    // assistant's allowedTools and a request-chosen requestUserId is what let a caller run another
+    // user's tools here (security audit 2026-11, critical).
+    const allowedTools = []
 
     const template = parseTextForUseLiKePrompt(
         `Imagine your job as an AI is to welcome new joiners in the community about "${guideName}". Start with a funny joke about the topic and encourage them to also talk to each other because everybody in this group has the same goal. Don't make it longer than a paragraph.`
@@ -28,7 +33,7 @@ async function generateBotWelcomeMessageForGuide(
     await addBaseInstructions(messages, displayName, language, instructions, allowedTools, null, {
         projectId,
         assistantId: assistant.uid || assistantId,
-        requestUserId: userIdsToNotify?.[0] || null,
+        requestUserId: null,
         objectType: 'topics',
         objectId,
     })
@@ -36,7 +41,7 @@ async function generateBotWelcomeMessageForGuide(
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
-        requestUserId: userIdsToNotify?.[0] || null,
+        requestUserId: null,
         openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId,

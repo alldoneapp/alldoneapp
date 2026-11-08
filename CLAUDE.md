@@ -577,6 +577,28 @@ names the mistake at runtime instead of swallowing it. Pinned by the tool-search
 `functions/Assistant/assistantHelper.test.js` and
 `functions/Assistant/assistantPreConfigTaskTopic.test.js`.
 
+### A callable acts as `request.auth.uid`, never as an id from `request.data` (security audit 2026-11)
+
+Functions run with the Admin SDK, so the Firestore rules do not protect anything a callable or
+`onRequest` handler touches. Every callable must take its acting user from `request.auth.uid`,
+check `assertProjectAccess` / `assertObjectAccess` before reading or writing project data, and
+load trusted settings (webhook URLs and credentials, assistants, audiences) from stored documents
+instead of the request. The 2026-11 audit (reports under `~/security-audit-skill/alldone_app/run-1/`,
+not in the repo) found many callables that skip this. The first fixes:
+
+- The guide welcome-message callables are bound to the signed-in member through
+  `functions/Assistant/welcomeMessageAccess.js`, and run with no tools and no user context.
+- `executeWebhookForMessage` needs a signed-in caller who can read the task. The webhook URL must be
+  public (`webhookDestination.js`, redirects refused). Each webhook gets a per-request callback
+  secret inside its `callbackUrl`, and `webhookCallbackForAssistantTasks` settles only
+  `kind: 'webhook_task'` records with a matching secret (see `functions/Assistant/WEBHOOK_TASKS_README.md`).
+- OAuth callback pages render only through `functions/Utils/oauthCallbackPage.js` (script-safe JSON,
+  HTML escaping, nonce CSP), because hosting serves them on the app origin.
+- `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
+  `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
+
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
+
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
 A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —

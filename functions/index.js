@@ -2398,14 +2398,17 @@ exports.mcpClientOAuthCallback = onRequest(
         const code = (req.query && req.query.code) || ''
         const oauthError = (req.query && req.query.error) || ''
         const renderPage = (ok, message) => {
-            const payload = JSON.stringify({ type: 'mcp_oauth_complete', state, ok })
-            res.set('Content-Type', 'text/html')
-            res.status(200).send(
-                `<!doctype html><html><body style="font-family:sans-serif;padding:24px">` +
-                    `<p>${ok ? 'Authorization complete. You can close this window.' : 'Authorization failed.'}</p>` +
-                    `<p style="color:#888">${String(message || '')}</p>` +
-                    `<script>try{window.opener&&window.opener.postMessage(${payload},'*')}catch(e){}` +
-                    `setTimeout(function(){window.close()},800)</script></body></html>`
+            // Request data is escaped for HTML and for the script; see Utils/oauthCallbackPage.js.
+            const { sendOpenerMessagePage, escapeHtml, boundedMessage } = require('./Utils/oauthCallbackPage')
+            sendOpenerMessagePage(
+                res,
+                { type: 'mcp_oauth_complete', state: boundedMessage(state), ok },
+                {
+                    bodyHtml:
+                        `<p>${ok ? 'Authorization complete. You can close this window.' : 'Authorization failed.'}</p>` +
+                        `<p style="color:#888">${escapeHtml(boundedMessage(message))}</p>`,
+                    closeDelayMs: 800,
+                }
             )
         }
         if (oauthError) return renderPage(false, oauthError)
@@ -3880,21 +3883,18 @@ exports.generateBotWelcomeMessageSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { generateBotWelcomeMessageForGuide } = require('./Assistant/assistantWelcomeMessageForGuide')
-            const { projectId, objectId, userIdsToNotify, guideName, language, assistantId } = data
-            return await generateBotWelcomeMessageForGuide(
-                projectId,
-                objectId,
-                userIdsToNotify,
-                guideName,
-                language,
-                assistantId
-            )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        // The run acts for the signed-in member only; see welcomeMessageAccess.js.
+        const { resolveWelcomeMessageRequest } = require('./Assistant/welcomeMessageAccess')
+        const resolved = await resolveWelcomeMessageRequest(admin.firestore(), request)
+        const { generateBotWelcomeMessageForGuide } = require('./Assistant/assistantWelcomeMessageForGuide')
+        return await generateBotWelcomeMessageForGuide(
+            resolved.projectId,
+            resolved.objectId,
+            resolved.userIdsToNotify,
+            resolved.guideName,
+            resolved.language,
+            resolved.assistantId
+        )
     }
 )
 
@@ -3906,34 +3906,21 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { generateBotWelcomeMessageForGuideUser } = require('./Assistant/assistantWelcomeMessageForGuideUser')
-            const {
-                projectId,
-                objectId,
-                userIdsToNotify,
-                guideName,
-                language,
-                userId,
-                userName,
-                taskListUrlOrigin,
-                assistantId,
-            } = data
-            return await generateBotWelcomeMessageForGuideUser(
-                projectId,
-                objectId,
-                userIdsToNotify,
-                guideName,
-                language,
-                userId,
-                userName,
-                taskListUrlOrigin,
-                assistantId
-            )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        // Greets the signed-in member, never a user named in the request; see welcomeMessageAccess.js.
+        const { resolveWelcomeMessageRequest } = require('./Assistant/welcomeMessageAccess')
+        const resolved = await resolveWelcomeMessageRequest(admin.firestore(), request, { greetCaller: true })
+        const { generateBotWelcomeMessageForGuideUser } = require('./Assistant/assistantWelcomeMessageForGuideUser')
+        return await generateBotWelcomeMessageForGuideUser(
+            resolved.projectId,
+            resolved.objectId,
+            resolved.userIdsToNotify,
+            resolved.guideName,
+            resolved.language,
+            resolved.callerUid,
+            resolved.userName,
+            resolved.taskListUrlOrigin,
+            resolved.assistantId
+        )
     }
 )
 
@@ -5956,7 +5943,26 @@ exports.increaseVersionSecondGen = onRequest(
         region: 'europe-west1',
     },
     async (req, res) => {
+        // Bumping info/version makes every open client show the new-version banner and reload, so
+        // only the administrator may call it (it was public until the 2026-11 security audit).
+        // Call with `Authorization: Bearer <Firebase ID token of the administrator>`.
         const admin = require('firebase-admin')
+        if (req.method !== 'POST') {
+            res.status(405).send('Method not allowed')
+            return
+        }
+        const match = /^Bearer\s+(.+)$/i.exec(req.get('Authorization') || '')
+        if (!match) {
+            res.status(401).send('Unauthorized')
+            return
+        }
+        try {
+            const decoded = await admin.auth().verifyIdToken(match[1])
+            await assertAdministrator(decoded.uid)
+        } catch (error) {
+            res.status(403).send('Forbidden')
+            return
+        }
         const ref = admin.firestore().doc('info/version')
         const version = (await ref.get()).data() ?? {
             major: 0,
@@ -5964,7 +5970,7 @@ exports.increaseVersionSecondGen = onRequest(
             patch: 0,
         }
         version.minor++
-        ref.set(version)
+        await ref.set(version)
         res.status(200).send(`Version increased to ${version.major}.${version.minor}.${version.patch}`)
     }
 )
@@ -6075,33 +6081,9 @@ exports.onCreateProjectInvitationSecondGen = onDocumentCreated(
     }
 )
 
-//FOR CHECK IF STILL ARE USED
-
-exports.sanityCheckSecondGen = onRequest(
-    {
-        region: 'europe-west1',
-    },
-    async (req, res) => {
-        const { sanityCheck } = require('./Utils/sanityCheckHelper.js')
-        await sanityCheck(res)
-    }
-)
-
-exports.getLinkPreviewDataSecondGen = onRequest(
-    {
-        timeoutSeconds: 540,
-        memory: '512MiB',
-        // minInstances: 0, //inProduction ? 5 : 1,
-        region: 'europe-west1',
-    },
-    async (req, res) => {
-        const admin = require('firebase-admin')
-        const { processUrl } = require('./URLPreview/URLPreview')
-        const { pathname } = req.body.data
-        const previewData = await processUrl(admin, pathname)
-        res.status(200).send(previewData)
-    }
-)
+// sanityCheckSecondGen (dumped every orphaned Firebase Auth user record, password hashes
+// included, to anyone) and getLinkPreviewDataSecondGen (returned private task/note/contact text
+// without authentication, and had no caller) were removed in the 2026-11 security audit.
 
 // RECURRING ASSISTANT TASKS
 // Executes recurring assistant prompts inline (executeBatch awaits each run), so it is an assistant
@@ -6563,43 +6545,9 @@ exports.mcpOAuthCallback = onRequest(
     }
 )
 
-// MIGRATION: Backfill lastLogin field for all users
-exports.backfillLastLogin = onRequest(
-    {
-        timeoutSeconds: 540, // 9 minutes - for large user bases
-        memory: '512MiB',
-        region: 'europe-west1',
-    },
-    async (req, res) => {
-        try {
-            console.log('🚀 Backfill lastLogin migration triggered via HTTP')
-
-            const { backfillLastLogin } = require('./Migrations/backfillLastLogin')
-            const result = await backfillLastLogin()
-
-            if (result.success) {
-                res.status(200).json({
-                    success: true,
-                    message: 'Migration completed successfully',
-                    ...result,
-                })
-            } else {
-                res.status(500).json({
-                    success: false,
-                    message: 'Migration failed',
-                    ...result,
-                })
-            }
-        } catch (error) {
-            console.error('❌ Migration endpoint error:', error)
-            res.status(500).json({
-                success: false,
-                error: error.message,
-                stack: error.stack,
-            })
-        }
-    }
-)
+// The one-off lastLogin backfill was a public HTTP endpoint that rewrote every users/ document;
+// it was removed in the 2026-11 security audit. Run functions/Migrations/backfillLastLogin.js
+// locally with Admin credentials if it is ever needed again.
 
 // WEBHOOK CALLBACK FOR ASSISTANT TASKS
 exports.webhookCallbackForAssistantTasks = onRequest(
@@ -6628,8 +6576,28 @@ exports.executeWebhookForMessage = onCall(
         region: 'europe-west1',
     },
     async request => {
+        // This callable had no auth check and took the webhook URL, credentials, assistant and
+        // audience from the request body (security audit 2026-11). Now: a signed-in caller who can
+        // read the task, and everything else is loaded from the stored task.
+        const uid = request.auth?.uid
+        if (!uid) throw new HttpsError('unauthenticated', 'Sign in required')
+        const { projectId, objectId, prompt, userIdsToNotify } = request.data || {}
+        if (typeof projectId !== 'string' || !projectId || typeof objectId !== 'string' || !objectId) {
+            throw new HttpsError('invalid-argument', 'projectId and objectId are required')
+        }
+        try {
+            await assertObjectAccess(admin.firestore(), uid, projectId, 'tasks', objectId)
+        } catch (error) {
+            throw new HttpsError('permission-denied', 'No access to this task')
+        }
         const { executeWebhookForUserMessage } = require('./Assistant/webhookForMessage')
-        return await executeWebhookForUserMessage(request.data)
+        return await executeWebhookForUserMessage({
+            userId: uid,
+            projectId,
+            objectId,
+            prompt: typeof prompt === 'string' ? prompt : '',
+            userIdsToNotify,
+        })
     }
 )
 
@@ -6890,14 +6858,12 @@ exports.googleOAuthCallback = onRequest(
         const { handleOAuthCallback } = require('./GoogleOAuth/googleOAuthHandler')
         const { code, state, error } = req.query
 
+        // Request data never reaches the page unencoded; see Utils/oauthCallbackPage.js.
+        const { sendOpenerMessagePage, normalizeOAuthErrorCode, boundedMessage } = require('./Utils/oauthCallbackPage')
+
         if (error) {
             console.error('OAuth error from Google:', error)
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_error', error: '${error}' }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_error', error: normalizeOAuthErrorCode(error) })
             return
         }
 
@@ -6910,20 +6876,10 @@ exports.googleOAuthCallback = onRequest(
                 return
             }
 
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_success', result: ${JSON.stringify(result)} }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_success', result })
         } catch (err) {
             console.error('Error in OAuth callback:', err)
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_error', error: '${err.message}' }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })
         }
     }
 )
@@ -7100,15 +7056,13 @@ exports.microsoftOAuthCallback = onRequest(
         const { handleOAuthCallback } = require('./MicrosoftOAuth/microsoftOAuthHandler')
         const { code, state, error, error_description } = req.query
 
+        // Request data never reaches the page unencoded; see Utils/oauthCallbackPage.js.
+        const { sendOpenerMessagePage, boundedMessage } = require('./Utils/oauthCallbackPage')
+
         if (error) {
-            const message = String(error_description || error)
+            const message = boundedMessage(error_description || error)
             console.error('OAuth error from Microsoft:', message)
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_error', error: ${JSON.stringify(message)} }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_error', error: message })
             return
         }
 
@@ -7119,20 +7073,10 @@ exports.microsoftOAuthCallback = onRequest(
                 return
             }
 
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_success', result: ${JSON.stringify(result)} }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_success', result })
         } catch (err) {
             console.error('Error in Microsoft OAuth callback:', err)
-            res.send(`
-                <script>
-                    window.opener.postMessage({ type: 'oauth_error', error: ${JSON.stringify(err.message)} }, '*');
-                    window.close();
-                </script>
-            `)
+            sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })
         }
     }
 )

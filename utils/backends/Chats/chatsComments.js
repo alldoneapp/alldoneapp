@@ -937,19 +937,17 @@ async function sendObjectMessage(
                 messageLength: comment.length,
             })
             // Trigger webhook execution asynchronously
+            // The server reads the webhook URL, credentials, assistant and audience from the
+            // stored task and acts as the signed-in user; only the message goes in the request.
             runHttpsCallableFunction('executeWebhookForMessage', {
-                userId: creatorId,
                 projectId,
                 objectId,
                 prompt: comment,
-                taskMetadata: object.taskMetadata,
                 userIdsToNotify: filterActiveProjectUserIds(
                     projectId,
                     generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
                     'webhookTaskNotifications'
                 ),
-                isPublicFor,
-                assistantId,
             })
                 .then(result => {
                     console.log('🌐 WEBHOOK MESSAGE: Webhook triggered successfully:', result)

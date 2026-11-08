@@ -75,7 +75,8 @@ The webhook will receive a POST request with this payload:
 ```json
 {
     "correlationId": "uuid-v4-string",
-    "callbackUrl": "https://region-project.cloudfunctions.net/webhookCallbackForAssistantTasks",
+    "callbackUrl": "https://region-project.cloudfunctions.net/webhookCallbackForAssistantTasks?token=<per-request secret>",
+    "callbackSecret": "<the same per-request secret>",
     "prompt": "User's task prompt/description",
     "taskId": "firestore-task-id",
     "userId": "firestore-user-id",
@@ -98,7 +99,14 @@ Immediately return a 200 OK response acknowledging the request:
 
 ### 3. Call Back When Complete
 
-When processing is done, POST to the `callbackUrl` with:
+When processing is done, POST to the `callbackUrl` exactly as received. It carries a per-request
+secret in its `token` query parameter, and a callback without that secret is rejected with 404.
+If your platform cannot keep the query string, send the secret as the `X-Alldone-Callback-Secret`
+header or as `callbackSecret` in the body instead. The endpoint only accepts callbacks for webhook
+tasks, and the webhook URL itself must be a public http(s) address (private, loopback, link-local
+and metadata destinations are refused, and redirects are not followed).
+
+POST this body:
 
 **Success Response:**
 

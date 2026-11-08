@@ -1,6 +1,25 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { Timestamp } = require('firebase-admin/firestore')
+const { hashCallbackSecret, WEBHOOK_TASK_KIND } = require('./webhookForMessage')
+
+function readCallbackSecret(req) {
+    const fromQuery = req.query?.token
+    const fromHeader = typeof req.get === 'function' ? req.get('X-Alldone-Callback-Secret') : undefined
+    const fromBody = req.body?.callbackSecret
+    const value = [fromQuery, fromHeader, fromBody].find(v => typeof v === 'string' && v)
+    return value || ''
+}
+
+function isAuthenticCallback(req, pendingWebhook) {
+    if (!pendingWebhook || pendingWebhook.kind !== WEBHOOK_TASK_KIND) return false
+    const expected = typeof pendingWebhook.callbackSecretHash === 'string' ? pendingWebhook.callbackSecretHash : ''
+    const provided = readCallbackSecret(req)
+    if (!expected || !provided) return false
+    const actual = hashCallbackSecret(provided)
+    if (actual.length !== expected.length) return false
+    return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
+}
 
 /**
  * Process incoming webhook callbacks from external services
@@ -54,6 +73,18 @@ async function processWebhookCallback(req, res) {
         }
 
         const pendingWebhook = pendingWebhookDoc.data()
+
+        // This endpoint is public. A correlationId alone used to settle any pendingWebhooks record,
+        // VM jobs included, whose ids are readable by task and comment readers (security audit
+        // 2026-11). Only webhook-task records are settled here, and only with the per-request
+        // secret that was sent to the webhook inside its callbackUrl.
+        if (!isAuthenticCallback(req, pendingWebhook)) {
+            console.warn('🌐 WEBHOOK CALLBACK: Rejected callback without a valid secret:', { correlationId })
+            return res.status(404).json({
+                error: 'Not found',
+                message: `No pending webhook found for correlationId: ${correlationId}`,
+            })
+        }
         console.log('🌐 WEBHOOK CALLBACK: Found pending webhook:', {
             correlationId,
             status: pendingWebhook.status,
@@ -365,6 +396,7 @@ async function cleanupExpiredWebhooks() {
 
 module.exports = {
     processWebhookCallback,
+    isAuthenticCallback,
     formatWebhookResult,
     validateWebhookSignature,
     cleanupExpiredWebhooks,

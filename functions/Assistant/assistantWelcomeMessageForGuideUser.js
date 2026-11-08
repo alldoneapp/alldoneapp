@@ -28,7 +28,12 @@ async function generateBotWelcomeMessageForGuideUser(
     promises.push(getUserData(userId))
     const [assistant, user] = await Promise.all(promises)
 
-    const { model, temperature, instructions, displayName, allowedTools } = assistant
+    const { model, temperature, instructions, displayName } = assistant
+    // A welcome message needs no tools, and it is posted into a shared chat, so it runs without
+    // tools and without any user's private context (memory, description). Taking the project
+    // assistant's allowedTools and a request-chosen requestUserId is what let a caller run another
+    // user's tools here (security audit 2026-11, critical).
+    const allowedTools = []
 
     // Extract user's timezone offset (in minutes) from user data
     const userTimezoneOffset = resolveUserTimezoneOffset(user)
@@ -42,7 +47,7 @@ async function generateBotWelcomeMessageForGuideUser(
     await addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset, {
         projectId,
         assistantId: assistant.uid || assistantId,
-        requestUserId: userId,
+        requestUserId: null,
         objectType: 'topics',
         objectId,
     })
@@ -50,7 +55,7 @@ async function generateBotWelcomeMessageForGuideUser(
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
-        requestUserId: userId,
+        requestUserId: null,
         openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId,
