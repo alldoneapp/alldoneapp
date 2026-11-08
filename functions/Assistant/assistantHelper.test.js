@@ -38,9 +38,11 @@ jest.mock('../Goals/goalToolService', () => {
     }
 })
 jest.mock('../Goals/goalToolFeeds', () => ({ buildGoalToolFeeds: jest.fn(() => ({ marker: 'feeds' })) }))
-const mockAddGoalComment = jest.fn()
-jest.mock('../Goals/goalCommentService', () => ({
-    GoalCommentService: jest.fn().mockImplementation(() => ({ addComment: (...args) => mockAddGoalComment(...args) })),
+const mockAddObjectComment = jest.fn()
+jest.mock('../shared/objectCommentService', () => ({
+    ObjectCommentService: jest
+        .fn()
+        .mockImplementation(() => ({ addComment: (...args) => mockAddObjectComment(...args) })),
 }))
 jest.mock('../Goals/milestoneDoneService', () => {
     class MilestoneDoneError extends Error {}
@@ -6063,6 +6065,7 @@ describe('assistant get contacts tool', () => {
                 projectName: 'Marketing',
                 date: 'last week',
                 limit: 25,
+                contactStatus: 'Reached out',
             },
             'project-1',
             'assistant-1',
@@ -6077,6 +6080,7 @@ describe('assistant get contacts tool', () => {
             date: 'last week',
             limit: 25,
             timezoneOffset: 120,
+            contactStatus: 'Reached out',
         })
         expect(result).toEqual({
             contacts: [
@@ -10450,6 +10454,96 @@ describe('assistant and MCP update_contact Kontaktstatus', () => {
         }
     })
 
+    test('a comment alone goes into the contact thread: silent from an assistant, notifying over MCP', async () => {
+        resolveTarget.mockResolvedValue({
+            success: true,
+            contactCreated: false,
+            contact: { uid: 'contact-1', displayName: 'Jane Prospect' },
+        })
+        updateFields.mockImplementation(async ({ contact }) => ({ contact, updated: false, changes: [] }))
+        mockAddObjectComment.mockReset()
+        mockAddObjectComment.mockResolvedValue({ commentId: 'c1', notifiedFollowers: 1 })
+
+        const fromChat = await executeToolNatively(
+            'update_contact',
+            { contactId: 'contact-1', comment: 'Replied, wants a demo.' },
+            'sales',
+            'assistant-1',
+            'user-1',
+            null,
+            { sourceChannel: 'chat' }
+        )
+        expect(fromChat).toMatchObject({ success: true, comment: { commentId: 'c1' } })
+        expect(fromChat.message).toMatch(/^Comment added to contact "Jane Prospect"/)
+        expect(mockAddObjectComment).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                objectType: 'contacts',
+                projectId: 'sales',
+                objectId: 'contact-1',
+                comment: 'Replied, wants a demo.',
+                fromAssistant: true,
+                silent: true,
+            })
+        )
+
+        await executeToolNatively(
+            'update_contact',
+            { contactId: 'contact-1', comment: 'Replied, wants a demo.' },
+            'sales',
+            null,
+            'user-1',
+            null,
+            { sourceChannel: 'mcp' }
+        )
+        expect(mockAddObjectComment).toHaveBeenLastCalledWith(
+            expect.objectContaining({ fromAssistant: false, silent: false })
+        )
+
+        await expect(
+            executeToolNatively(
+                'update_contact',
+                { contactId: 'contact-1', comment: '  ' },
+                'sales',
+                null,
+                'user-1',
+                null
+            )
+        ).resolves.toEqual({ success: false, message: 'comment must not be empty.' })
+    })
+
+    test('delete_contact deletes by id in the resolved project and reports a refusal as a result', async () => {
+        const service = require('../Contacts/contactDeleteService')
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn(),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'sales', name: 'Sales' }]),
+        }))
+        const remove = jest
+            .spyOn(service, 'deleteContact')
+            .mockResolvedValueOnce({ success: true, deleted: true, contact: { contactId: 'contact-1' } })
+            .mockRejectedValueOnce(new service.ContactDeleteError('No contact with id "x" in this project.'))
+
+        const deleted = await executeToolNatively(
+            'delete_contact',
+            { contactId: 'contact-1' },
+            'sales',
+            null,
+            'user-1',
+            null
+        )
+        expect(remove).toHaveBeenCalledWith(
+            expect.objectContaining({ projectId: 'sales', userId: 'user-1', writeDeletedFeed: expect.any(Function) })
+        )
+        expect(deleted).toMatchObject({ success: true, deleted: true, project: { id: 'sales', name: 'Sales' } })
+
+        await expect(
+            executeToolNatively('delete_contact', { contactId: 'x' }, 'sales', null, 'user-1', null)
+        ).resolves.toEqual({
+            success: false,
+            message: 'No contact with id "x" in this project.',
+            project: { id: 'sales', name: 'Sales' },
+        })
+    })
+
     test('invalid target-project status does not create or update a contact', async () => {
         const result = await executeToolNatively(
             'update_contact',
@@ -10576,6 +10670,63 @@ describe('VM wait and artifact draft dispatch', () => {
     test('authorises the wait tool exactly with VM access', async () => {
         expect(await isToolAllowedForExecution(['execute_task_in_vm'], 'get_vm_job')).toBe(true)
         expect(await isToolAllowedForExecution([], 'get_vm_job')).toBe(false)
+    })
+
+    test('delete_artifact needs its own permission; the artifacts toggle does not grant it', async () => {
+        expect(await isToolAllowedForExecution(['artifacts'], 'delete_artifact')).toBe(false)
+        expect(await isToolAllowedForExecution(['artifacts'], 'update_artifact')).toBe(true)
+        expect(await isToolAllowedForExecution(['delete_artifact'], 'delete_artifact')).toBe(true)
+        expect(await isToolAllowedForExecution(['update_contact'], 'delete_contact')).toBe(false)
+    })
+
+    test('artifact comments go through the shared service with the update_task notification rule', async () => {
+        const artifactTools = require('../Artifacts/artifactAssistant')
+        mockAddObjectComment.mockReset()
+        mockAddObjectComment.mockResolvedValue({ commentId: 'c1' })
+        const execute = jest
+            .spyOn(artifactTools, 'executeArtifactTool')
+            .mockImplementation(async ({ toolName, postComment }) => {
+                if (toolName === 'update_artifact') await postComment({ artifact: { id: 'a1' }, comment: 'Checked.' })
+                return { success: true, toolName }
+            })
+        try {
+            await executeToolNatively(
+                'update_artifact',
+                { artifactId: 'a1', comment: 'Checked.' },
+                'p',
+                'assistant-1',
+                'user-1',
+                {},
+                {}
+            )
+            expect(mockAddObjectComment).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    objectType: 'artifacts',
+                    projectId: 'p',
+                    objectId: 'a1',
+                    silent: true,
+                    fromAssistant: true,
+                })
+            )
+            await executeToolNatively(
+                'update_artifact',
+                { artifactId: 'a1', comment: 'Checked.' },
+                'p',
+                null,
+                'user-1',
+                {},
+                { sourceChannel: 'mcp' }
+            )
+            expect(mockAddObjectComment).toHaveBeenLastCalledWith(
+                expect.objectContaining({ silent: false, fromAssistant: false })
+            )
+
+            await expect(
+                executeToolNatively('delete_artifact', { artifactId: 'a1' }, 'p', null, 'user-1', {}, {})
+            ).resolves.toEqual({ success: true, toolName: 'delete_artifact' })
+        } finally {
+            execute.mockRestore()
+        }
     })
 
     test.each([
@@ -10923,7 +11074,7 @@ describe('goal, milestone and OKR tools', () => {
     })
 
     test('a goal comment is silent from an assistant chat and notifies when an MCP client writes it', async () => {
-        mockAddGoalComment.mockResolvedValue({ commentId: 'c1' })
+        mockAddObjectComment.mockResolvedValue({ commentId: 'c1' })
         mockGoalTools.updateGoal.mockImplementation(async ({ postComment }) => {
             await postComment({ goal: { id: 'g1' }, comment: 'Two pilots signed.' })
             return { success: true }
@@ -10938,10 +11089,11 @@ describe('goal, milestone and OKR tools', () => {
             null,
             { sourceChannel: 'chat' }
         )
-        expect(mockAddGoalComment).toHaveBeenLastCalledWith(
+        expect(mockAddObjectComment).toHaveBeenLastCalledWith(
             expect.objectContaining({
+                objectType: 'goals',
                 projectId: 'project-1',
-                goalId: 'g1',
+                objectId: 'g1',
                 comment: 'Two pilots signed.',
                 fromAssistant: true,
                 requestUserId: 'user-1',
@@ -10958,7 +11110,7 @@ describe('goal, milestone and OKR tools', () => {
             null,
             { sourceChannel: 'mcp' }
         )
-        expect(mockAddGoalComment).toHaveBeenLastCalledWith(
+        expect(mockAddObjectComment).toHaveBeenLastCalledWith(
             expect.objectContaining({ fromAssistant: false, silent: false })
         )
     })

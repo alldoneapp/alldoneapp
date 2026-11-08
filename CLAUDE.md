@@ -1720,16 +1720,44 @@ title and progress feeds existed only in the browser (`goalUpdates.js`); their s
 `Feeds/goalsFeeds.js` use the same feed types (81, 86) and texts.
 
 `update_goal` takes a `comment`, alone or next to other changes, written by
-`Goals/goalCommentService.js`. That is the goal counterpart of `TaskCommentService` without the
-email parts: the comment, the goal's `commentsData`, the chat object (`type: 'goals'`) and
-`followers/{p}/goals/{id}` are written in one transaction, then the unread markers, the email digest
-and the push follow. Followers are the goal's creator and assignees (never the `ws@` workstream
-placeholder) plus the author, and a private goal notifies only the people in its `isPublicFor`. The
-notification rule is update_task's: an assistant's comment is `silent` (in the thread, nothing
-marked unread), and an MCP client's comment carries the marker and notifies the user too. A comment
-that fails after other changes were saved becomes a warning, and a comment sent alone fails the
-call. Pinned by `goalToolService.test.js`, `goalCommentService.test.js`, `okrToolService.test.js`
-(all on `functions/Tests/fakeFirestore.js`) and the `goal, milestone and OKR tools` block in
+`shared/objectCommentService.js` (see the next section). Pinned by `goalToolService.test.js`,
+`okrToolService.test.js` (both on `functions/Tests/fakeFirestore.js`) and the `goal, milestone and
+OKR tools` block in `assistantHelper.test.js`.
+
+### Comments, deletes and sharing for contacts and artifacts over MCP
+
+`update_goal`, `update_contact` and `update_artifact` take a `comment`, alone or next to other
+changes. All three go through `shared/objectCommentService.js`, the counterpart of
+`TaskCommentService` for other object types (one entry per type in `OBJECT_COMMENT_TYPES`). The
+comment, the object's `commentsData`, the chat object and `followers/{p}/{type}/{id}` are written in
+one transaction, then the unread markers, the email digest and the push follow. The object's own
+people follow its thread: a goal's creator and assignees (never the `ws@` placeholder), a contact's
+`recorderUserId`, an artifact's owner and creator. A private object notifies only the people in its
+`isPublicFor`; when the field is missing the default is the one `mapContactData` and
+`buildArtifactIsPublicFor` use (project plus recorder or owner). Use a null check rather than
+`filter(Boolean)` for these defaults, because `FEED_PUBLIC_FOR_ALL` is 0. The notification rule is
+update_task's: an assistant's comment is `silent`, and an MCP client's comment carries the marker and
+notifies the user too. A comment that fails after other changes were saved becomes a warning; a
+comment sent alone fails the call.
+
+`delete_contact` and `delete_artifact` are separate Tools Access keys in `OPT_IN_ONLY_TOOLS`, so an
+assistant deletes only after its owner switched that on; the `artifacts` toggle does not grant
+`delete_artifact`. Over MCP each is its own switch under Settings → MCP. Both delete only the
+document, as the app does: `onDeleteContactSecondGen` and `onDeleteArtifactSecondGen` remove the
+thread, note, photos, versions, public link and backlinks. `delete_contact` takes an exact
+`contactId` only, because update_contact's fuzzy name matching must never pick the person to delete,
+and writes the app's "deleted relevant person" entry (ported to `Feeds/contactsFeeds.js`) before the
+document goes, since the feed object is loaded from it. `get_contacts` takes `contactStatus` (id or
+name, `none` for no status), applied before the limit.
+
+`update_artifact` can also restore an earlier version (`restoreVersion`, not combined with new
+content), change who sees it (`isPrivate`) and switch its public link (`publicLink: on|off|new`,
+through `setArtifactPublicLink`). These follow the app: only the owner changes privacy (the chat
+follows, and the update trigger withdraws the public link of an artifact made private), while any
+member who can see the artifact may switch the link or delete it. A private artifact never gets a
+link. Pinned by `shared/objectCommentService.test.js`, `Contacts/contactDeleteService.test.js`, the
+contact status case in `ContactRetrievalService.test.js`, the `update_artifact beyond content` and
+`delete_artifact` blocks in `artifactAssistant.test.js`, and the contact and artifact cases in
 `assistantHelper.test.js`.
 
 ### Assistant Tool Checklist

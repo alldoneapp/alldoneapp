@@ -44,6 +44,7 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'read_artifact',
     'create_artifact',
     'update_artifact',
+    'delete_artifact',
     // Project wiki. In the app these come with the assistant rather than Tools Access; over MCP each
     // one is a separate switch under Settings → MCP, so correcting can be turned off on its own.
     'read_knowledge_page',
@@ -54,6 +55,7 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'remove_knowledge_contribution',
     // Contacts
     'update_contact',
+    'delete_contact',
     'get_contacts',
     // Cross-entity reads
     'search',

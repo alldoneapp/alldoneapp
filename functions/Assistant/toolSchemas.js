@@ -913,7 +913,12 @@ const toolSchemas = {
                     date: {
                         type: 'string',
                         description:
-                            'Optional: filter contacts by last edit time. Supports "today", "yesterday", "last week", "last 7 days", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                            'Optional: filter contacts by last edit time. Supports "today", "yesterday", "last week", "last 7 days", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD". Contacts not edited since a day: "2000-01-01 to <that day>".',
+                    },
+                    contactStatus: {
+                        type: 'string',
+                        description:
+                            'Optional: only contacts in this Kontaktstatus, by status ID or name (case-insensitive). "none" returns contacts without a status. Applied before the limit.',
                     },
                     limit: {
                         type: 'number',
@@ -1274,7 +1279,7 @@ const toolSchemas = {
         function: {
             name: 'update_contact',
             description:
-                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Can set the email, name, company, role, phone, LinkedIn profile URL, description, profile photo and Kontaktstatus, and can optionally create a missing contact. New contacts are automatically followed by the requesting user. Only pass the fields you actually established; omitted fields are left untouched.',
+                "Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Can set the email, name, company, role, phone, LinkedIn profile URL, description, profile photo and Kontaktstatus, can optionally create a missing contact, and can add a visible comment to the contact's thread (by itself or together with other changes). New contacts are automatically followed by the requesting user. Only pass the fields you actually established; omitted fields are left untouched.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -1350,8 +1355,35 @@ const toolSchemas = {
                         description:
                             'Optional: assign an existing Kontaktstatus by its exact name in the target project (case-insensitive). For example "JTL Connect". Unknown or duplicate names are rejected; use contactStatusId to disambiguate. Works for existing contacts and createIfMissing. An empty string clears the status.',
                     },
+                    comment: {
+                        type: 'string',
+                        maxLength: 5000,
+                        description:
+                            "Optional complete comment to add to the contact's thread, e.g. a reply received, a draft sent or the next step. Can be sent without any other field.",
+                    },
                 },
                 required: [],
+            },
+        },
+    },
+
+    delete_contact: {
+        type: 'function',
+        function: {
+            name: 'delete_contact',
+            description:
+                'Permanently deletes a contact from a project, together with its thread, its note and its photos, as deleting it in the app does. There is no undo. Identify the contact by its exact contactId from get_contacts; names are not accepted, so the wrong person can never be deleted by a fuzzy match. Only delete when the user asked for it or confirmed it.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    contactId: { type: 'string', description: 'The exact contact ID from get_contacts.' },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional project ID of the contact. Defaults to the current project.',
+                    },
+                    projectName: { type: 'string', description: 'Optional project name of the contact.' },
+                },
+                required: ['contactId'],
             },
         },
     },

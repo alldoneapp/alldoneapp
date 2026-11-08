@@ -14,6 +14,10 @@ const ARTIFACT_TOOL_NAMES = ['get_artifacts', 'read_artifact', 'create_artifact'
 
 const ARTIFACT_TOOL_NAME_SET = new Set(ARTIFACT_TOOL_NAMES)
 
+// Deleting is not part of the `artifacts` family: it is its own Tools Access key and is off unless
+// an owner switches it on, because it cannot be undone.
+const DELETE_ARTIFACT_TOOL_NAME = 'delete_artifact'
+
 function isArtifactToolName(toolName) {
     return ARTIFACT_TOOL_NAME_SET.has(toolName)
 }
@@ -146,7 +150,9 @@ const ARTIFACT_TOOL_SCHEMAS = {
                 'Writes a new version of an existing artifact. Send only what changes: `edits` replace exact text ' +
                 'in existing files (each `find` must occur exactly once), `files` add or fully replace files, and ' +
                 '`removePaths` delete files; every other file is kept. Earlier versions stay restorable. Read the ' +
-                'artifact first. Title and description can be changed without a new version.',
+                'artifact first. Without a new version it can also change the title and description, restore an ' +
+                'earlier version (`restoreVersion`), change who sees it (`isPrivate`, owner only), switch its ' +
+                'public link (`publicLink`) and add a visible comment to its thread (`comment`).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -181,6 +187,52 @@ const ARTIFACT_TOOL_SCHEMAS = {
                         description: 'One short sentence on what changed, shown in the version history.',
                     },
                     liveData: liveDataSchema,
+                    restoreVersion: {
+                        type: 'number',
+                        description:
+                            'Optional earlier version number (from read_artifact) to make current again. Cannot be ' +
+                            'combined with edits, files or removePaths. The versions in between stay restorable.',
+                    },
+                    isPrivate: {
+                        type: 'boolean',
+                        description:
+                            'Optional. True makes the artifact visible to its owner only (this also ends its public ' +
+                            'link); false shares it with the project. Only the owner can change this.',
+                    },
+                    publicLink: {
+                        type: 'string',
+                        enum: ['on', 'off', 'new'],
+                        description:
+                            'Optional. "off" ends the public link (anyone with it can no longer open the artifact), ' +
+                            '"on" creates one, "new" replaces it with a new address. Only for an artifact visible to ' +
+                            'the project. Switching it on publishes the artifact to anyone with the link: do it only ' +
+                            'when the user asked for it.',
+                    },
+                    comment: {
+                        type: 'string',
+                        maxLength: 5000,
+                        description:
+                            "Optional complete comment to add to the artifact's thread. Can be sent without any other field.",
+                    },
+                },
+                required: ['artifactId'],
+            },
+        },
+    },
+
+    delete_artifact: {
+        type: 'function',
+        function: {
+            name: DELETE_ARTIFACT_TOOL_NAME,
+            description:
+                'Permanently deletes an artifact with all its versions, its thread and its public link, as deleting ' +
+                'it in the app does. There is no undo. Only delete when the user asked for it or confirmed it; to ' +
+                'go back to an earlier state use update_artifact with restoreVersion instead.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    artifactId: { type: 'string', description: 'The artifact ID from get_artifacts.' },
+                    projectId: projectIdSchema,
                 },
                 required: ['artifactId'],
             },
@@ -191,6 +243,7 @@ const ARTIFACT_TOOL_SCHEMAS = {
 module.exports = {
     ARTIFACT_TOOL_KEY,
     ARTIFACT_TOOL_NAMES,
+    DELETE_ARTIFACT_TOOL_NAME,
     ARTIFACT_TOOL_SCHEMAS,
     isArtifactToolName,
 }
