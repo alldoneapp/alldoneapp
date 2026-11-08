@@ -3440,7 +3440,12 @@ export async function loginWithGoogleWebAnonymously() {
     await firebase.auth().signInAnonymously()
 }
 
-export function logoutWeb(onComplete) {
+/**
+ * `clearLocalData: false` is for a forced sign-out that keeps the app running in this page (the
+ * private-resource redirect): terminating Firestore there would break the screen it navigates to.
+ * Every user-initiated logout reloads the page afterwards and clears everything (NV-41/NV-42).
+ */
+export function logoutWeb(onComplete, { clearLocalData = true } = {}) {
     // window.google.accounts.id.disableAutoSelect()
     setAnalyticsUser(null)
     invalidateIosShareCredentialProvisioning()
@@ -3461,8 +3466,29 @@ export function logoutWeb(onComplete) {
         }
     }
 
-    clearShareCredential()
+    const { releasePushToken, clearAccountLocalData } = require('./logoutCleanup')
+    const currentUser = firebase.auth().currentUser
+    const releaseToken = () =>
+        currentUser && !currentUser.isAnonymous && !shouldUseFirebaseEmulators()
+            ? releasePushToken({
+                  messaging,
+                  isMessagingSupported: !!getIsMessagingSupported(),
+                  userRef: db.doc(`users/${currentUser.uid}`),
+                  arrayRemove: value => firebase.firestore.FieldValue.arrayRemove(value),
+              })
+            : Promise.resolve()
+    const clearLocal = () =>
+        clearLocalData
+            ? clearAccountLocalData({
+                  db,
+                  indexedDB: typeof indexedDB !== 'undefined' ? indexedDB : null,
+                  clearUserDataCache: () => require('../UserDataCache').default.clearCache(),
+              })
+            : Promise.resolve()
+
+    Promise.all([releaseToken().catch(() => null), clearShareCredential()])
         .finally(() => firebase.auth().signOut())
+        .then(() => clearLocal().catch(() => null))
         .then(() => onComplete())
 }
 
@@ -4594,7 +4620,8 @@ export async function storeConvertedVideos(projectId, attachment) {
     const loggedUserId = store.getState().loggedUser.uid
     updateQuotaTraffic(projectId, loggedUserId, attachment.size / 1024 / 1024)
     return new Promise(function (resolve, reject) {
-        connectToConverter({ videoUri: attachmentUri, uri: currentDateFormated, hash: randomHash })
+        // The server derives the output path from the uploaded object and checks project membership.
+        connectToConverter({ videoUri: attachmentUri, projectId })
             .then(({ data }) => resolve(data.url))
             .catch(error => {
                 console.log(error)
@@ -7196,16 +7223,6 @@ export async function setDefaultVmAgentReasoningEffort(effort) {
 
 export async function setDefaultVmApprovalPolicy(policy) {
     return runHttpsCallableFunction('setDefaultVmApprovalPolicy', { policy })
-}
-
-// NV-20: the assistant's memory about a user is private and server-only; these are the only reads
-// and writes a browser can make. Another member gets it only when the owner shared it, read-only.
-export async function getAssistantMemory(projectId, userId) {
-    return runHttpsCallableFunction('getAssistantMemorySecondGen', { projectId, userId })
-}
-
-export async function updateAssistantMemory(projectId, changes) {
-    return runHttpsCallableFunction('updateAssistantMemorySecondGen', { projectId, ...changes })
 }
 
 export async function setDefaultVmAgentModel(agent, family) {

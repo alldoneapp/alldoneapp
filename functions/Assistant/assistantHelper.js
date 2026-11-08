@@ -8307,15 +8307,23 @@ async function executeToolNativelyImpl(
         }
 
         case 'update_user_memory': {
-            // NV-20: memory is private to the user (server-only store), so saving it writes no
-            // note and no feed entry a teammate could read.
+            const db = admin.firestore()
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                projectId,
+                assistantId,
+                creatorId,
+                toolRuntimeContext
+            )
+
             return await updateUserMemory({
-                db: admin.firestore(),
+                db,
                 projectId,
                 requestUserId,
                 fact: toolArgs.fact,
                 category: toolArgs.category,
                 reason: toolArgs.reason,
+                feedUser,
             })
         }
 
@@ -12932,7 +12940,7 @@ const VM_THREAD_CONTEXT_OPTIONS = {
     currentObject: true, // task identity, title, description, project, and relevant metadata
     userDescription: true, // global + project-specific user description
     projectDescription: true, // shared project description
-    userMemory: true, // per-project private user memory (assistantMemories, NV-20)
+    userMemory: true, // per-project user memory note
     assistantPersona: true, // this assistant's name/description/instructions
     conversationHistory: true, // the chat thread transcript
     chatAttachments: true, // files/images shared in the thread
@@ -13013,7 +13021,7 @@ async function buildVmThreadContext({
         }
     }
 
-    // #4 — per-project private user memory (server-only store, never the profile note).
+    // #4 — per-project user memory note.
     if (opts.userMemory && requestUserId) {
         try {
             const msg = await getUserMemoryContextMessage({ projectId, requestUserId })
