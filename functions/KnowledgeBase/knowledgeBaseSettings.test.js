@@ -137,28 +137,6 @@ describe('setKnowledgeBaseSettings', () => {
         expect(db.read(KB_PATH).nextRunAt).toBe(NOW)
     })
 
-    it('lets a current member take over a wiki paused because its payer left, and resumes it', async () => {
-        const db = createDb({
-            enabled: true,
-            enabledBy: 'member',
-            ownerUserId: 'departed',
-            nextRunAt: null,
-            lastRunStopReason: 'owner_not_member',
-        })
-
-        const view = await setKnowledgeBaseSettings({
-            enqueue,
-            db,
-            now: NOW,
-            userId: 'teammate',
-            projectId: PROJECT_ID,
-            settings: { monthlyGoldCap: 500 },
-        })
-
-        expect(view).toMatchObject({ ownerUserId: 'teammate', nextRunAt: NOW })
-        expect(db.read(KB_PATH)).toMatchObject({ ownerUserId: 'teammate', nextRunAt: NOW })
-    })
-
     it('runs a wiki paused for an archived project before AT-2893 again when its payer saves it', async () => {
         const db = createDb({
             enabled: true,

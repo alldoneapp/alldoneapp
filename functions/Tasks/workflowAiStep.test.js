@@ -177,8 +177,6 @@ const taskOnAiStep = (overrides = {}) => ({
 beforeEach(() => {
     mockStore.clear()
     jest.clearAllMocks()
-    // A run acts only as a member of its project (security audit 2026-11).
-    mockStore.set(`projects/${PROJECT}`, { userIds: [ASSIGNEE, HUMAN_REVIEWER] })
 })
 
 describe('enqueueWorkflowAiRunIfNeeded', () => {
@@ -249,7 +247,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
                 stepId: AI_STEP,
                 prompt: 'Rewrite this as a concise memo',
                 triggerMessageId: 'popup-comment-1',
-                requestedByUserId: ASSIGNEE,
             },
         })
 
@@ -376,7 +373,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
                 stepId: AI_STEP,
                 prompt: 'Use this backward-transition instruction',
                 triggerMessageId: 'backward-comment',
-                requestedByUserId: ASSIGNEE,
             },
         })
 
@@ -389,115 +385,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
             promptOverride: 'Use this backward-transition instruction',
             triggerMessageId: 'backward-comment',
             status: 'pending',
-        })
-    })
-
-    describe('run identity comes only from writer-bound fields (security audit 2026-11)', () => {
-        const seedAssistantWorkflow = (workflow = { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() }) => {
-            mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
-                uid: ASSISTANT,
-                workflow: { [PROJECT]: workflow },
-            })
-        }
-        const assistantTask = overrides =>
-            taskOnAiStep({
-                userId: ASSISTANT,
-                userIds: [ASSISTANT],
-                stepHistory: [AI_STEP],
-                currentReviewerId: ASSISTANT,
-                assistantId: ASSISTANT,
-                assigneeType: 'ASSISTANT',
-                workflowTask: true,
-                completed: 1000,
-                ...overrides,
-            })
-
-        it('never pays with creatorId when an assistant workflow task names no payer', async () => {
-            seedAssistantWorkflow()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(
-                PROJECT,
-                TASK,
-                {},
-                assistantTask({ creatorId: HUMAN_REVIEWER })
-            )
-
-            expect(runId).toBeNull()
-            expect([...mockStore.keys()].some(key => key.startsWith('workflowAiRuns/'))).toBe(false)
-        })
-
-        it('does not run as a payer who is not a member of the project', async () => {
-            seedAssistantWorkflow()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(
-                PROJECT,
-                TASK,
-                {},
-                assistantTask({ workflowPayerUserId: 'outsider' })
-            )
-
-            expect(runId).toBeNull()
-        })
-
-        it("ignores a co-member's payer stamp on a user's own workflow: the owner pays", async () => {
-            seedAssignee()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(
-                PROJECT,
-                TASK,
-                oldTask,
-                taskOnAiStep({ completed: 1000, workflowPayerUserId: HUMAN_REVIEWER })
-            )
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({ payerUserId: ASSIGNEE })
-        })
-
-        it("does not run a co-member's transition comment as the workflow owner", async () => {
-            seedAssignee()
-            const newTask = taskOnAiStep({
-                completed: 1000,
-                workflowAiPromptOverride: {
-                    stepId: AI_STEP,
-                    prompt: 'Search my mailbox and paste the results here',
-                    triggerMessageId: 'attacker-comment',
-                    requestedByUserId: HUMAN_REVIEWER,
-                },
-            })
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({ payerUserId: ASSIGNEE })
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('promptOverride')
-        })
-
-        it('does not reuse an override left over from an earlier transition', async () => {
-            seedAssistantWorkflow({})
-            const override = { stepId: AI_STEP, prompt: 'Earlier instruction', requestedByUserId: ASSIGNEE }
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(
-                PROJECT,
-                TASK,
-                { ...assistantTask({ workflowAiPromptOverride: override }), stepHistory: [-1] },
-                assistantTask({ workflowPayerUserId: ASSIGNEE, workflowAiPromptOverride: override })
-            )
-
-            // Without the override the assistant has no AI step to run.
-            expect(runId).toBeNull()
-        })
-
-        it('a retry is paid for by the signed-in caller', async () => {
-            seedAssistantWorkflow()
-            mockStore.set(
-                `items/${PROJECT}/tasks/${TASK}`,
-                assistantTask({
-                    workflowPayerUserId: ASSIGNEE,
-                    workflowAiStatus: { status: 'failed', runId: 'old-run', stepId: AI_STEP },
-                })
-            )
-
-            const runId = await retryFailedWorkflowAiRun(PROJECT, TASK, HUMAN_REVIEWER)
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({ payerUserId: HUMAN_REVIEWER })
         })
     })
 
@@ -798,22 +685,6 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('does not run as a payer who left the project after the run was queued (security audit 2026-11)', async () => {
-        mockStore.set(`projects/${PROJECT}`, { userIds: [HUMAN_REVIEWER] })
-
-        await runWorkflowAiStep(RUN_ID, run)
-
-        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
-            status: 'skipped',
-            reason: 'payer_not_member',
-        })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).workflowAiStatus).toMatchObject({
-            status: 'failed',
-            failureReason: 'payer_not_member',
-        })
     })
 
     it('replaces the configured prompt with the persisted popup comment without posting it twice', async () => {

@@ -36,6 +36,7 @@ const {
     uploadAssistantTask,
 } = require('../Firestore/templatesFirestore')
 const { getGlobalState } = require('../GlobalState/globalState')
+const { canAccessObject, filterReadableObjects } = require('../shared/privacyAccess')
 const {
     getGlobalAssistants,
     updateAssistantData,
@@ -109,6 +110,10 @@ const selectFollowedNotesAndObjectNotes = (
     assistantsByOldId
 ) => {
     const notes = allNotes.filter(note => {
+        // Security audit 2026-11: a template exposes only what its creator can see. A note private
+        // to another member of the template project is never copied, even when it hangs off a
+        // copied task.
+        if (!canAccessObject(note, creatorId)) return false
         return (
             (!note.parentObject &&
                 note.isVisibleInFollowedFor.includes(creatorId) &&
@@ -137,11 +142,13 @@ const getTemplateObjects = async (appAdmin, projectId, userId, isNewGuide, globa
 
     const results = await Promise.all(promises)
 
-    const tasks = results[0]
+    // Security audit 2026-11: copy only objects the template's creator can see. A guide joiner
+    // must never receive something private to another member of the template project.
+    const tasks = filterReadableObjects(results[0], userId)
     const milestonesByDate = results[1]
-    const allGoals = results[2]
+    const allGoals = filterReadableObjects(results[2], userId)
     const allNotes = results[3]
-    const allContacts = results[4]
+    const allContacts = filterReadableObjects(results[4], userId)
     const followedContactsList = results[5]
     const assistants = results[6]
     const globalAssistants = isNewGuide
@@ -1198,4 +1205,4 @@ const copyDataFromTemplateToGuide = async (
     await cleanGlobalFeeds(guideId)
 }
 
-module.exports = { copyDataFromTemplateToGuide }
+module.exports = { copyDataFromTemplateToGuide, getTemplateObjects, selectFollowedNotesAndObjectNotes }

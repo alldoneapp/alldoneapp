@@ -102,20 +102,6 @@ function getActivatedUserIdsForTask(task) {
     return [...new Set(fallbackIds)]
 }
 
-/**
- * The project a user's activation of a recurring task runs in.
- *
- * Security audit 2026-11: a run acts as the activated user in this project, so it must be a project
- * that user chose. firestore.rules bind each `activatedInProjectIdByUser` entry to the user it names
- * (and to a project that user belongs to). The shared `activatedInProjectId` is only consulted for
- * the global catalog, where a legacy activation has nothing else; a project's own task otherwise
- * runs in that project, never in one a co-member wrote into the shared field.
- */
-const resolveActivationProjectId = (task, taskProjectId, userId) =>
-    task?.activatedInProjectIdByUser?.[userId] ||
-    (taskProjectId === GLOBAL_PROJECT_ID ? task?.activatedInProjectId : null) ||
-    taskProjectId
-
 function buildAssistantTaskFailureUpdate({
     error,
     activatorUserId,
@@ -832,7 +818,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
     // Use the activatedInProjectId if available, otherwise use the provided projectId
     // This ensures we target the project where the task was activated by the user
-    const executionProjectId = resolveActivationProjectId(task, projectId, activatorUserId)
+    const executionProjectId =
+        task?.activatedInProjectIdByUser?.[activatorUserId] || task.activatedInProjectId || projectId
 
     let executionMode = requestedExecutionMode
     if (requestedExecutionMode === TASK_EXECUTION_MODE_WORKFLOW) {
@@ -1517,7 +1504,10 @@ async function checkAndExecuteRecurringTasks() {
                             continue
                         }
 
-                        const membershipProjectId = resolveActivationProjectId(task, projectId, activatedUserId)
+                        const membershipProjectId =
+                            task?.activatedInProjectIdByUser?.[activatedUserId] ||
+                            task.activatedInProjectId ||
+                            projectId
                         const projectMembers = projectMembersMap.get(membershipProjectId) || new Set()
                         if (!projectMembers.has(activatedUserId)) {
                             console.log('Skipping recurring task because activated user is not in project:', {
@@ -1691,7 +1681,6 @@ module.exports = {
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
         getActivatedUserIdsForTask,
-        resolveActivationProjectId,
         buildRecurringTaskAiSettings,
         buildAssistantTaskFailureUpdate,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>

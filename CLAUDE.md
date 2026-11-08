@@ -597,37 +597,22 @@ not in the repo) found many callables that skip this. The first fixes:
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
+- `copyTemplateObjectsSecondGen` derives everything through `Templates/templateCopyAccess.js`: the
+  template must be a template the caller can read (`isTemplate`, member or not private), the
+  copied creator is its stored `templateCreatorId`, and the guide must name it as `parentTemplateId`
+  and have the caller as a member (the join flow adds the user and links the guide before it calls).
+  A copy carries only what the template creator can see. `onCopyProjectSecondGen` needs a member of
+  the source project, the copy belongs to the caller (`CopyProject/copyProjectAccess.js`, the
+  request's `user` is ignored), and an object's note is copied only when shared with the project.
+- Feed state (`GlobalState/globalState.js`) is process-wide unless the code runs inside
+  `runWithFeedsState`, which gives the invocation its own store across awaits. A gen2 function serves
+  up to 80 requests per process, so concurrent guide copies read each other's feed creator and
+  members and followed each other's guides. The template copy runs inside it. Any other callable that
+  loads feed state and reads it again after an await has the same race and should be wrapped too.
 
-**A Firestore trigger has no `request.auth`, so a field it acts on as a user must be bound to its
-writer in `firestore.rules`.** The audit found triggers spending Gold, reading private goals and
-routing rules, and running assistants with tools as whoever a member wrote into a document. The
-rules now bind each such field when it is written (present on create, changed on update), and the
-server reads only the bound value:
-
-- Project routing acts as `creatorId`; a client may stamp a pending `projectRouting` only as itself.
-- Goal routing acts only for a created task whose `creatorId === lastEditorId`; a client may create
-  such a routable top-level task only as itself. A copy by somebody else is not goal-routed.
-- An assistant workflow task (`workflowTask`) is paid for by `workflowPayerUserId`, which the mover
-  must stamp with their own uid whenever they move it into a step (`buildWorkflowPayerStamp`); there
-  is no `creatorId` fallback. A user's own workflow is paid for by its owner, and a transition
-  comment (`workflowAiPromptOverride`) runs there only when the owner wrote it (`requestedByUserId`)
-  in that same transition. The payer must be in `projects/{id}.userIds` at enqueue and at dispatch.
-- Calendar routing feedback markers must carry the writer as `requestedByUserId`.
-- Recurring assistant tasks: each user may add or change only their own activation entry, point it
-  only at a project they belong to, and name only themselves as activator or creator. The global
-  catalog (`assistantTasks/globalProject`) is created, deleted and re-prompted by the administrator.
-  A co-member may still edit a project task's prompt after others activated it; pausing their
-  activations until they re-confirm is an open product decision.
-- Copies keep the original creator but are re-attributed by `bindCopiedTaskIdentityFieldsToWriter`
-  (`utils/backends/Tasks/taskIdentityFields.js`) before they are written, or the rules refuse them.
-
-Connection project keys (`apisConnected`, `calendarConnections`, `emailConnections`) are owner-written
-too, so the calendar sync and email-line task creation check `projects/{id}.userIds` before writing,
-and `googleOAuthInitiate` checks project access like its Microsoft sibling. A wiki whose payer left
-the project stops with `owner_not_member` before any model call and waits for a member to take it
-over in its settings. Pinned by the `task identity fields` and `recurring assistant task activation`
-blocks of the rules emulator suite and the `security audit 2026-11` cases next to each trigger.
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
+`templateCopyAccess.test.js`, `templateObjectVisibility.test.js`, `copyProjectAccess.test.js`,
+`copyObjectNotesVisibility.test.js` and `GlobalState/globalState.test.js`.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 

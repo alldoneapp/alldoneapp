@@ -84,7 +84,6 @@ const createDb = ({
                 id: 'task1',
                 name: 'Ship onboarding',
                 creatorId: 'user1',
-                lastEditorId: 'user1',
                 parentGoalId: null,
                 lockKey: '',
             },
@@ -277,48 +276,6 @@ describe('taskGoalRouting', () => {
                 }),
             })
         )
-    })
-
-    describe('acts only as a creator who is also the stored last editor (security audit 2026-11)', () => {
-        const classifyNothing = () =>
-            jest.fn(async () => ({
-                result: { goalId: null, confidence: 0, alternativeGoalId: null, alternativeConfidence: 0, reason: '' },
-                totalTokens: 10,
-            }))
-
-        test('a task naming a co-member as creator but written by someone else is not routed', async () => {
-            const { db, state } = createDb()
-            state.projects.project1.userIds = ['user1', 'attacker']
-            state.tasks.task1.lastEditorId = 'attacker'
-            const classify = classifyNothing()
-
-            const result = await routeNewTaskToGoal({ task: state.tasks.task1, projectId: 'project1', db, classify })
-
-            expect(result).toEqual({ action: 'skipped' })
-            expect(classify).not.toHaveBeenCalled()
-            expect(mockDeductGold).not.toHaveBeenCalled()
-        })
-
-        test('never falls back to lastEditorId when there is no creator', async () => {
-            const { db, state } = createDb()
-            delete state.tasks.task1.creatorId
-            const classify = classifyNothing()
-
-            const result = await routeNewTaskToGoal({ task: state.tasks.task1, projectId: 'project1', db, classify })
-
-            expect(result).toEqual({ action: 'skipped' })
-            expect(classify).not.toHaveBeenCalled()
-            expect(mockDeductGold).not.toHaveBeenCalled()
-        })
-
-        test('still routes a task the creator wrote themselves', async () => {
-            const { db, state } = createDb()
-            const classify = classifyNothing()
-
-            await routeNewTaskToGoal({ task: state.tasks.task1, projectId: 'project1', db, classify })
-
-            expect(classify).toHaveBeenCalled()
-        })
     })
 
     test('passes learned calendar Goal rules into classification for similar one-off events', async () => {

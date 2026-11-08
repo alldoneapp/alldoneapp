@@ -12,7 +12,6 @@ const {
     isKnowledgeBasePausedAtMonthlyCap,
     isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
-    isKnowledgeBasePausedForDepartedOwner,
     normalizeKnowledgeBaseSettingsInput,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
@@ -134,7 +133,6 @@ async function setKnowledgeBaseSettings({
                 next.nextRunAt = now
             } else if (
                 isKnowledgeBasePausedForInactiveOwner(current) ||
-                isKnowledgeBasePausedForDepartedOwner(current) ||
                 isKnowledgeBasePausedForArchivedProject(current)
             ) {
                 // Whoever saves is using Alldone right now, and is (or just became) the payer. A run

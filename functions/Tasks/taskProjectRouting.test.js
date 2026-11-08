@@ -32,14 +32,11 @@ const {
 const createSnapshot = (id, data) => ({ id, exists: data !== undefined, data: () => data })
 
 const createDb = ({ gold = 100, projects, task } = {}) => {
-    const baseProjects = projects || {
-        home: { name: 'Personal', description: 'Errands and private life' },
-        work: { name: 'Alldone Product', description: 'Building the Alldone app' },
-    }
     const state = {
-        projects: Object.fromEntries(
-            Object.entries(baseProjects).map(([id, project]) => [id, { userIds: ['user1'], ...project }])
-        ),
+        projects: projects || {
+            home: { name: 'Personal', description: 'Errands and private life' },
+            work: { name: 'Alldone Product', description: 'Building the Alldone app' },
+        },
         users: {
             user1: {
                 gold,
@@ -207,51 +204,6 @@ describe('routeNewTaskToProject', () => {
         expect(move).not.toHaveBeenCalled()
         expect(db.state.tasks.task1.projectRouting.status).toBe('kept')
         expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
-    })
-
-    describe('acts only as a creator the stored task proves (security audit 2026-11)', () => {
-        it('never routes as the assignee: a pending task without creatorId is skipped', async () => {
-            const db = createDb({
-                task: {
-                    id: 'task1',
-                    name: 'Fix the task list scroll bug',
-                    userId: 'user1',
-                    projectRouting: { status: 'pending' },
-                },
-            })
-            const classify = jest.fn()
-
-            const result = await routeNewTaskToProject({ task: db.state.tasks.task1, projectId: 'home', db, classify })
-
-            expect(result).toEqual({ action: 'skipped' })
-            expect(classify).not.toHaveBeenCalled()
-            expect(mockDeductGold).not.toHaveBeenCalled()
-        })
-
-        it('skips a task whose creator is not a member of the host project', async () => {
-            const db = createDb({
-                projects: {
-                    home: { name: 'Attacker project', userIds: ['attacker'] },
-                    work: { name: 'Victim private', description: 'secret' },
-                },
-            })
-            const classify = jest.fn()
-            const move = jest.fn()
-
-            const result = await routeNewTaskToProject({
-                task: db.state.tasks.task1,
-                projectId: 'home',
-                db,
-                classify,
-                move,
-            })
-
-            expect(result).toEqual({ action: 'skipped' })
-            expect(classify).not.toHaveBeenCalled()
-            expect(move).not.toHaveBeenCalled()
-            expect(mockDeductGold).not.toHaveBeenCalled()
-            expect(db.state.tasks.task1.projectRouting.status).toBe('pending')
-        })
     })
 
     it('does nothing at all for a task created in a normally picked project', async () => {

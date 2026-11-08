@@ -2752,42 +2752,34 @@ exports.copyTemplateObjectsSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const admin = require('firebase-admin')
-            const { copyDataFromTemplateToGuide } = require('./Templates/TemplatesHelper')
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        const admin = require('firebase-admin')
+        const { resolveTemplateCopyRequest } = require('./Templates/templateCopyAccess')
+        const { copyDataFromTemplateToGuide } = require('./Templates/TemplatesHelper')
+        const { runWithFeedsState } = require('./GlobalState/globalState')
 
-            const {
-                templateId,
-                creatorId,
-                guideId,
-                userId,
-                userName,
-                userPhotoUrl,
-                dateMiddleOfDay,
-                dateNow,
-                unlockedTemplate,
-                isNewGuide,
-                globalAssistantIds,
-            } = data
-            await copyDataFromTemplateToGuide(
+        // Security audit 2026-11: template, creator, guide and user are derived from stored
+        // documents and request.auth.uid, never taken from the request (templateCopyAccess.js).
+        const copy = await resolveTemplateCopyRequest(admin.firestore(), request)
+        // The copy loads feed state and reads it again after long awaits; concurrent copies in this
+        // process must not read each other's feed creator, project or members (globalState.js).
+        await runWithFeedsState(() =>
+            copyDataFromTemplateToGuide(
                 admin,
                 admin,
-                templateId,
-                creatorId,
-                guideId,
-                userId,
-                userName,
-                userPhotoUrl,
-                dateMiddleOfDay,
-                dateNow,
-                unlockedTemplate,
-                isNewGuide,
-                globalAssistantIds
+                copy.templateId,
+                copy.creatorId,
+                copy.guideId,
+                copy.userId,
+                copy.userName,
+                copy.userPhotoUrl,
+                copy.dateMiddleOfDay,
+                copy.dateNow,
+                copy.unlockedTemplate,
+                copy.isNewGuide,
+                copy.globalAssistantIds
             )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        )
     }
 )
 
@@ -4916,8 +4908,7 @@ exports.retryWorkflowAiRunSecondGen = onCall(
 
         await assertObjectAccess(admin.firestore(), auth.uid, projectId, 'tasks', taskId)
         const { retryFailedWorkflowAiRun } = require('./Tasks/workflowAiStep')
-        // The signed-in caller pays for (and acts in) a retried assistant workflow run.
-        const runId = await retryFailedWorkflowAiRun(projectId, taskId, auth.uid)
+        const runId = await retryFailedWorkflowAiRun(projectId, taskId)
         return { success: true, runId }
     }
 )
@@ -5751,15 +5742,13 @@ exports.onCopyProjectSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const admin = require('firebase-admin')
-            const { onCopyProject } = require('./CopyProject/CopyProjectHelper')
-            const { projectId, user, options } = data
-            return await onCopyProject(admin, projectId, user, options)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        const admin = require('firebase-admin')
+        const { resolveCopyProjectRequest } = require('./CopyProject/copyProjectAccess')
+        const { onCopyProject } = require('./CopyProject/CopyProjectHelper')
+        // Security audit 2026-11: only a member may copy a project, and the copy is the caller's.
+        const { projectId, user, options } = await resolveCopyProjectRequest(admin.firestore(), request)
+        return await onCopyProject(admin, projectId, user, options)
     }
 )
 
@@ -6829,23 +6818,14 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service, returnUrl, connectionId } = data || {}
+        const { projectId, service, returnUrl, connectionId } = data
         const userId = auth.uid
-        if (!projectId && !connectionId) {
-            throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
-        }
 
         try {
-            // Security audit 2026-11: the project a connection is bound to becomes the destination
-            // of Admin SDK writes (calendar and email-line tasks), so only a member may bind one,
-            // exactly as microsoftOAuthInitiate already required.
-            if (projectId) await assertProjectAccess(userId, projectId)
-            else await assertConnectionAccess(userId, connectionId)
             const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
-            if (error instanceof HttpsError) throw error
             throw new HttpsError('internal', `Failed to initiate OAuth: ${error.message}`)
         }
     }

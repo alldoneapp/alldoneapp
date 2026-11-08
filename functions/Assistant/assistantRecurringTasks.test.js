@@ -314,25 +314,3 @@ describe('recurring assistant generated task completion', () => {
         ).toBeNull()
     })
 })
-
-describe('resolveActivationProjectId (security audit 2026-11)', () => {
-    const { resolveActivationProjectId } = __private__
-
-    it("runs a user's activation in the project that user recorded for it", () => {
-        expect(
-            resolveActivationProjectId(
-                { activatedInProjectIdByUser: { victim: 'victim-project' }, activatedInProjectId: 'other' },
-                'p1',
-                'victim'
-            )
-        ).toBe('victim-project')
-    })
-
-    it("never runs a project's task in a project a co-member wrote into the shared field", () => {
-        expect(resolveActivationProjectId({ activatedInProjectId: 'q1' }, 'p1', 'victim')).toBe('p1')
-    })
-
-    it('keeps the shared field for legacy activations of the global catalog', () => {
-        expect(resolveActivationProjectId({ activatedInProjectId: 'p2' }, 'global-project', 'user1')).toBe('p2')
-    })
-})

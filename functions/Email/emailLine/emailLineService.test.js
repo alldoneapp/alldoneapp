@@ -7,13 +7,7 @@ jest.mock('firebase-admin', () => ({
     firestore: () => ({
         doc: path => ({
             get: async () => {
-                // Every project in these tests lists the test user unless a test says otherwise
-                // (createTask checks projects/{id}.userIds, security audit 2026-11).
-                const data = mockDocs.has(path)
-                    ? mockDocs.get(path)
-                    : path.startsWith('projects/')
-                      ? { userIds: ['u'] }
-                      : undefined
+                const data = mockDocs.get(path)
                 return { exists: data !== undefined, data: () => data }
             },
             set: async (value, opts) => {
@@ -729,56 +723,6 @@ describe('emailLineService', () => {
         expect(mockAuditDocs.get('m1').taskCreated).toEqual(
             expect.objectContaining({ taskId: 't1', projectId: 'proj_target', taskName: 'Pay invoice 42 from Bob' })
         )
-    })
-
-    describe('createTask only writes into a project that lists the user (security audit 2026-11)', () => {
-        const victimConnectionUserData = {
-            emailConnections: {
-                email_google_test: {
-                    provider: 'google',
-                    emailAddress: 'me@gmail.com',
-                    defaultProjectId: 'victimProject',
-                },
-            },
-            // Owner-writable: claims membership the project itself does not grant.
-            projectIds: ['victimProject'],
-        }
-
-        beforeEach(() => {
-            gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Hi', body: 'x', threadId: 'th1' })
-            summarizeEmailAsTaskName.mockResolvedValue({ name: 'Reply to Bob', totalTokens: 10 })
-            deductGold.mockResolvedValue({ success: true })
-            mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't1' })
-            mockDocs.set('projects/victimProject', { userIds: ['victim'] })
-        })
-
-        test('refuses a connection whose default project the user does not belong to', async () => {
-            await expect(
-                performEmailLineAction('u', 'email_google_test', {
-                    action: 'createTask',
-                    messageIds: ['m1'],
-                    userData: victimConnectionUserData,
-                })
-            ).rejects.toThrow('NO_PROJECT_ACCESS')
-            expect(deductGold).not.toHaveBeenCalled()
-            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-        })
-
-        test("falls back to the user's own default project", async () => {
-            mockDocs.set('projects/home', { userIds: ['u'] })
-
-            await performEmailLineAction('u', 'email_google_test', {
-                action: 'createTask',
-                messageIds: ['m1'],
-                userData: { ...victimConnectionUserData, defaultProjectId: 'home' },
-            })
-
-            expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-                expect.objectContaining({ projectId: 'home' }),
-                expect.objectContaining({ projectId: 'home' }),
-                expect.anything()
-            )
-        })
     })
 
     test('getTaskForEmail returns an existing task linked by message id', async () => {

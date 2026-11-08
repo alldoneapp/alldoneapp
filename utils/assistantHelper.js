@@ -603,7 +603,6 @@ export const generateTaskFromPreConfig = async (
         generatedTask.workflowAiPromptOverride = {
             stepId: ASSISTANT_WORKFLOW_FIRST_STEP_ID,
             prompt: generatedPrompt,
-            requestedByUserId: loggedUser.uid,
         }
     }
 

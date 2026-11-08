@@ -99,6 +99,16 @@ const copyObjectNotes = async (firebase, projectId, newProjectId, user, objectNo
         promiseResults.push(...results)
     }
 
+    // Security audit 2026-11: the note of a copied task, goal or contact is read by id, so it is
+    // filtered here like every other copied object: only notes shared with the whole project (the
+    // ones every member, and so the caller, can read) are copied. A missing or failed read is skipped.
+    promiseResults = promiseResults.filter(noteDoc => {
+        if (!noteDoc || !noteDoc.exists) return false
+        // A note without isPublicFor predates the field and counts as shared, as in mapNoteData.
+        const isPublicFor = noteDoc.data()?.isPublicFor
+        return !Array.isArray(isPublicFor) || isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
+    })
+
     await copyNotes(firebase, projectId, newProjectId, user, promiseResults, false)
 }
 

@@ -9,7 +9,6 @@ jest.mock('firebase-admin', () => {
         if (!refs.has(path)) {
             refs.set(path, {
                 path,
-                get: jest.fn(() => Promise.resolve({ exists: false, data: () => undefined })),
                 set: jest.fn(() => Promise.resolve()),
                 update: jest.fn(() => Promise.resolve()),
                 delete: jest.fn(() => Promise.resolve()),
@@ -43,8 +42,7 @@ jest.mock('firebase-admin', () => {
         return query
     })
 
-    const runTransaction = jest.fn(handler => handler({ get: ref => ref.get(), set: (ref, data) => ref.set(data) }))
-    const firestore = jest.fn(() => ({ doc, collection, runTransaction }))
+    const firestore = jest.fn(() => ({ doc, collection }))
     firestore.FieldPath = mockFieldPath
 
     return {
@@ -830,32 +828,5 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
 
         const written = admin.__mock.refs.get('items/target-project/tasks/event-1').set.mock.calls[0][0]
         expect(written.sortIndex).toBeGreaterThan(0)
-    })
-})
-
-describe('writeNewCalendarTask (security audit 2026-11)', () => {
-    const { writeNewCalendarTask } = require('./calendarTasks')
-    const makeRef = existing => ({
-        path: 'items/p1/tasks/event1',
-        get: jest.fn(async () => ({ exists: existing !== undefined, data: () => existing })),
-        set: jest.fn(async () => {}),
-    })
-    const db = { runTransaction: handler => handler({ get: ref => ref.get(), set: (ref, data) => ref.set(data) }) }
-
-    it("never replaces another user's task that carries the event id", async () => {
-        const ref = makeRef({ userId: 'victim', name: 'Board meeting' })
-
-        await expect(writeNewCalendarTask(db, ref, { userId: 'attacker' }, 'attacker')).resolves.toBe(false)
-        expect(ref.set).not.toHaveBeenCalled()
-    })
-
-    it("writes a new task, or refreshes the user's own", async () => {
-        const fresh = makeRef(undefined)
-        const own = makeRef({ userId: 'user1' })
-
-        await expect(writeNewCalendarTask(db, fresh, { userId: 'user1' }, 'user1')).resolves.toBe(true)
-        await expect(writeNewCalendarTask(db, own, { userId: 'user1' }, 'user1')).resolves.toBe(true)
-        expect(fresh.set).toHaveBeenCalledWith({ userId: 'user1' })
-        expect(own.set).toHaveBeenCalled()
     })
 })

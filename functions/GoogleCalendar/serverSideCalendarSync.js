@@ -78,16 +78,6 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             throw new Error('Calendar not connected for this project')
         }
 
-        // Security audit 2026-11: `apisConnected` is the user's own, owner-writable record, so it is
-        // no proof of membership. Events become project-public tasks written with the Admin SDK,
-        // so the project itself must still list the user (this also covers the scheduled sync and
-        // a binding left behind after the user was removed from the project).
-        const projectDoc = await admin.firestore().collection('projects').doc(projectId).get()
-        const projectUserIds = projectDoc.exists ? (projectDoc.data() || {}).userIds : null
-        if (!Array.isArray(projectUserIds) || !projectUserIds.includes(userId)) {
-            throw new Error('No access to this project')
-        }
-
         // AT-2480: the user's timezone and the local day it implies now come from
         // `calendarUserDay`, so the scheduled sync's "already synced for this local day" marker
         // and the window fetched here can never name different days.

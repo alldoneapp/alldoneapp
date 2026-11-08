@@ -446,13 +446,7 @@ const addOrUpdateCalendarTask = async (
         dataToUpdate.sortIndex = generateCalendarTaskSortIndex()
         const newTask = generateTask(dataToUpdate, userId)
         newTask.projectId = targetProjectId
-        const written = await writeNewCalendarTask(
-            admin.firestore(),
-            admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`),
-            newTask,
-            userId
-        )
-        if (!written) return
+        await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
         await addCalendarRoutingCommentIfNeeded({
             userData,
             projectId: targetProjectId,
@@ -463,23 +457,6 @@ const addOrUpdateCalendarTask = async (
         })
     }
 }
-
-/**
- * Security audit 2026-11: the task id is the provider's event id, which a calendar's owner can
- * choose. The lookup for an existing task only covers the syncing user's own tasks, so an
- * unconditional set() could replace another user's task that happens to carry that id. A new
- * calendar task is written only where no task exists, or where the existing one is the user's own.
- */
-const writeNewCalendarTask = async (db, taskRef, newTask, userId) =>
-    db.runTransaction(async transaction => {
-        const snapshot = await transaction.get(taskRef)
-        if (snapshot.exists && (snapshot.data() || {}).userId !== userId) {
-            console.warn('[calendarTasks] Not replacing a task owned by another user', { path: taskRef.path })
-            return false
-        }
-        transaction.set(taskRef, newTask)
-        return true
-    })
 
 const createTasksMap = tasks => {
     const tasksMap = {}
@@ -736,7 +713,6 @@ const removeCalendarTasks = async (
 }
 
 module.exports = {
-    writeNewCalendarTask,
     removeCalendarTasks,
     generateTask,
     addCalendarEvents,

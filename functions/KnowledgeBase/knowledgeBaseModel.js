@@ -57,10 +57,6 @@ const KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000
 const KNOWLEDGE_BASE_ENABLED_BY_MEMBER = 'member'
 const KNOWLEDGE_BASE_ENABLED_BY_DEFAULT = 'default'
 const KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON = 'owner_inactive'
-// Security audit 2026-11: a payer who is no longer in projects/{id}.userIds must not be charged
-// for the wiki of a project they left (and can no longer switch off). The run stops before any
-// model call and stays paused until a current member takes the wiki over in its settings.
-const KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON = 'owner_not_member'
 const KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON = 'monthly_cap'
 const KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON = 'project_archived'
 // A document's text is stored inside its Firestore document, so it stays well under the 1 MiB limit
@@ -323,14 +319,6 @@ function isKnowledgeBasePausedForInactiveOwner(data = {}) {
     )
 }
 
-function isKnowledgeBasePausedForDepartedOwner(data = {}) {
-    return (
-        data.enabled === true &&
-        !Number.isFinite(data.nextRunAt) &&
-        data.lastRunStopReason === KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON
-    )
-}
-
 // Archiving is per member in Alldone (users/{uid}.archivedProjectIds, the same list projectScope.js
 // reads): a project one member archived is still active for the others. `project.active` is a
 // different, project-wide flag and says nothing about it.
@@ -379,7 +367,6 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
         enabled: data.enabled === true,
         enabledByDefault: data.enabled === true && data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
         pausedForInactiveOwner: isKnowledgeBasePausedForInactiveOwner(data),
-        pausedForDepartedOwner: isKnowledgeBasePausedForDepartedOwner(data),
         pausedAtMonthlyCap: isKnowledgeBasePausedAtMonthlyCap(data, now),
         instructions: typeof data.instructions === 'string' ? data.instructions : '',
         model: resolveKnowledgeBaseModel(data.model),
@@ -428,7 +415,6 @@ module.exports = {
     KNOWLEDGE_BASE_ENABLED_BY_MEMBER,
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
-    KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON,
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON,
     KNOWLEDGE_DOCUMENT_MAX_CHARS,
@@ -458,7 +444,6 @@ module.exports = {
     splitKnowledgePageSources,
     getKnowledgeBaseLastSuccessfulRunAt,
     isKnowledgeBasePausedForInactiveOwner,
-    isKnowledgeBasePausedForDepartedOwner,
     isKnowledgeBasePausedForArchivedProject,
     isProjectArchivedForUser,
     getKnowledgeBaseMonthKey,
