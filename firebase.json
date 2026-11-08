@@ -214,7 +214,19 @@
         "source": "functions",
         "runtime": "nodejs22",
         "region": "europe-west1",
-        "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "e2b-template/**"]
+        "ignore": [
+            "node_modules",
+            ".git",
+            "firebase-debug.log",
+            "firebase-debug.*.log",
+            "e2b-template/**",
+            "service_accounts",
+            "service_accounts/**",
+            "**/*serviceAccountKey*.json",
+            "**/serv_account_key*.json",
+            "**/*-firebase-adminsdk-*.json",
+            "tmp_project_name"
+        ]
     },
     "firestore": {
         "rules": "firestore.rules",

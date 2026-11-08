@@ -369,12 +369,17 @@ describe('deploy marker credentials', () => {
                     CI_PROJECT_PATH: 'group/project',
                     CI_COMMIT_SHA: head,
                     CI_DEFAULT_BRANCH: 'master',
+                    CI_COMMIT_BRANCH: 'master',
+                    CI_COMMIT_REF_PROTECTED: 'true',
                     CI_JOB_TOKEN: 'job-token-secret',
+                    DEPLOY_MARKER_SIGNING_KEY: 'signing-key-secret',
                 },
             })
             const args = fs.readFileSync(argsFile, 'utf8')
+            expect(args).not.toContain('signing-key-secret')
             if (current) {
-                expect(args).toContain('tag --force --annotate deployed/web-full-tests')
+                expect(args).toContain('tag --force --annotate')
+                expect(args).toContain('deployed/web-full-tests')
                 expect(args).toContain('refs/tags/deployed/web-full-tests:refs/tags/deployed/web-full-tests')
             } else {
                 expect(args).not.toContain('tag --force')
@@ -403,7 +408,11 @@ describe('deploy marker credentials', () => {
                     CI_SERVER_HOST: 'gitlab.example.com',
                     CI_PROJECT_PATH: 'group/project',
                     CI_COMMIT_SHA: 'a'.repeat(40),
+                    CI_DEFAULT_BRANCH: 'master',
+                    CI_COMMIT_BRANCH: 'master',
+                    CI_COMMIT_REF_PROTECTED: 'true',
                     CI_JOB_TOKEN: 'job-token-secret',
+                    DEPLOY_MARKER_SIGNING_KEY: 'signing-key-secret',
                 },
             })
             const args = fs.readFileSync(argsFile, 'utf8')
@@ -411,6 +420,7 @@ describe('deploy marker credentials', () => {
             expect(args).toContain('username=gitlab-ci-token')
             expect(args).toContain('password=${MARKER_PUSH_TOKEN}')
             expect(args).not.toContain('job-token-secret')
+            expect(args).not.toContain('signing-key-secret')
         } finally {
             fs.rmSync(dir, { recursive: true, force: true })
         }
