@@ -7198,6 +7198,16 @@ export async function setDefaultVmApprovalPolicy(policy) {
     return runHttpsCallableFunction('setDefaultVmApprovalPolicy', { policy })
 }
 
+// NV-20: the assistant's memory about a user is private and server-only; these are the only reads
+// and writes a browser can make. Another member gets it only when the owner shared it, read-only.
+export async function getAssistantMemory(projectId, userId) {
+    return runHttpsCallableFunction('getAssistantMemorySecondGen', { projectId, userId })
+}
+
+export async function updateAssistantMemory(projectId, changes) {
+    return runHttpsCallableFunction('updateAssistantMemorySecondGen', { projectId, ...changes })
+}
+
 export async function setDefaultVmAgentModel(agent, family) {
     return runHttpsCallableFunction('setDefaultVmAgentModel', { agent, family })
 }

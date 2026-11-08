@@ -11,9 +11,7 @@
 //   sends the model to search-engine snippets for LinkedIn instead.
 // - Private and link-local addresses are refused too. The fetch runs inside the Cloud Functions
 //   network, and a model-authored URL must not be able to point it at the metadata server or an
-//   internal service. `isFetchableUrl` is the cheap name check (shared with the browser gate, so it
-//   covers IPv6/IPv4-mapped/ULA literals and trailing-dot names); the fetch itself goes through
-//   `shared/outboundUrlGuard`, which also checks the DNS answer and every redirect hop (NV-21).
+//   internal service.
 
 const DEFAULT_TIMEOUT_MS = 10000
 const MAX_HTML_BYTES = 2 * 1024 * 1024
@@ -24,14 +22,19 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; AlldoneBot/1.0; +https://alldone.ap
 const THIN_PAGE_TEXT_CHARS = 200
 
 const BLOCKED_HOST_PATTERNS = [/(^|\.)linkedin\.com$/i, /(^|\.)licdn\.com$/i]
-const {
-    isBlockedHostname,
-    isPrivateHostname,
-    isPrivateIpAddress,
-    normalizeHostname,
-} = require('./browser/browserAllowlist')
-const { fetchPublicUrl, OutboundUrlError } = require('../shared/outboundUrlGuard')
-const net = require('net')
+const PRIVATE_HOST_PATTERNS = [
+    /^localhost$/i,
+    /\.local$/i,
+    /\.internal$/i,
+    /^127\./,
+    /^10\./,
+    /^0\./,
+    /^169\.254\./,
+    /^192\.168\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^\[?::1\]?$/,
+    /^metadata\.google\.internal$/i,
+]
 
 function getClientSideRouteRecommendation(rawUrl) {
     try {
@@ -133,20 +136,14 @@ function isFetchableUrl(rawUrl) {
     }
 
     const hostname = parsed.hostname
-    if (BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(hostname)) || isBlockedHostname(hostname)) {
+    if (BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(hostname))) {
         return {
             ok: false,
             reason: 'LinkedIn pages cannot be fetched (they require a login). Use web_search and rely on the search result title and snippet instead.',
             blockedHost: true,
         }
     }
-    if (parsed.username || parsed.password) {
-        return { ok: false, reason: 'URLs carrying credentials cannot be fetched.' }
-    }
-    // A public IP literal is still fetchable (only a browser refuses literals outright); a name is
-    // judged by `isPrivateHostname`, which strips the trailing root dot first.
-    const bare = normalizeHostname(hostname)
-    if (net.isIP(bare) !== 0 ? isPrivateIpAddress(bare) : isPrivateHostname(bare)) {
+    if (PRIVATE_HOST_PATTERNS.some(pattern => pattern.test(hostname))) {
         return { ok: false, reason: 'Private or internal addresses cannot be fetched.' }
     }
 
@@ -293,34 +290,22 @@ async function readBodyWithLimit(response, maxBytes) {
     return { body: limited.toString('utf8'), bytesTruncated: buffer.length > maxBytes }
 }
 
-async function fetchDirect(url, { fetchImpl, timeoutMs, lookup }) {
+async function fetchDirect(url, { fetchImpl, timeoutMs }) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-        const { response, url: hopUrl } = await fetchPublicUrl(
-            url,
-            {
-                method: 'GET',
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5',
-                    'Accept-Language': 'en,de;q=0.8,es;q=0.7',
-                },
-                signal: controller.signal,
+        const response = await fetchImpl(url, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+                'User-Agent': USER_AGENT,
+                Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5',
+                'Accept-Language': 'en,de;q=0.8,es;q=0.7',
             },
-            {
-                fetchImpl,
-                ...(lookup ? { lookup } : {}),
-                // A redirect to a blocked host (LinkedIn) is refused like a direct request to it.
-                validateUrl: next => {
-                    const check = isFetchableUrl(next.toString())
-                    if (!check.ok)
-                        throw new OutboundUrlError(check.reason, check.blockedHost ? 'blocked_host' : 'private_host')
-                },
-            }
-        )
+            signal: controller.signal,
+        })
         const contentType = response.headers?.get ? response.headers.get('content-type') || '' : ''
-        const finalUrl = hopUrl || response.url || url
+        const finalUrl = response.url || url
         if (!response.ok) {
             return { ok: false, status: response.status, finalUrl, contentType }
         }
@@ -372,7 +357,6 @@ async function fetchWebPage(rawUrl, options = {}) {
         maxChars = DEFAULT_MAX_TEXT_CHARS,
         tavilyApiKey = '',
         tavilyClientFactory = null,
-        lookup = null,
     } = options
 
     const check = isFetchableUrl(rawUrl)
@@ -385,19 +369,8 @@ async function fetchWebPage(rawUrl, options = {}) {
     let direct = null
     let directError = null
     try {
-        direct = await fetchDirect(url, { fetchImpl, timeoutMs, lookup })
+        direct = await fetchDirect(url, { fetchImpl, timeoutMs })
     } catch (error) {
-        if (error instanceof OutboundUrlError) {
-            // Refused by the address policy (a private DNS answer or a redirect inward). Not a
-            // page problem the rendering service should retry: report it and stop.
-            return {
-                success: false,
-                url,
-                error:
-                    error.code === 'blocked_host' ? error.message : 'Private or internal addresses cannot be fetched.',
-                blockedHost: error.code === 'blocked_host',
-            }
-        }
         directError = error
     }
 

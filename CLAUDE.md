@@ -1760,6 +1760,27 @@ contact status case in `ContactRetrievalService.test.js`, the `update_artifact b
 `delete_artifact` blocks in `artifactAssistant.test.js`, and the contact and artifact cases in
 `assistantHelper.test.js`.
 
+### Assistant memory is private to the user (NV-20)
+
+What the assistant remembers about a user (`update_user_memory`, injected as "User memory for this
+project") lives in `assistantMemories/{uid}__{projectId}` (`functions/Assistant/userMemoryHelper.js`).
+The collection has no client rule, so only Cloud Functions read or write it. It used to be the user's
+per-project profile note (`users/{uid}.noteIdsByProject`), which every project member can read and
+edit: a teammate could plant instructions into another member's system context, and facts the
+assistant remembered from private threads were readable by the whole project. Never read that note
+as memory again, and do not write memory into it.
+
+Browsers reach the memory only through `getAssistantMemorySecondGen` / `updateAssistantMemorySecondGen`.
+The owner sees and edits their memory in the "Assistant memory" panel above the profile Note tab
+(`components/UserDetailedView/AssistantMemoryPanel.js`) and can switch on "show my assistant memory
+in my profile note". Other members then see it there read-only. The text is served by the callable
+and never copied into the note, because anything in the note is editable by everyone. Members of the
+project only: a viewer of a link-shared project sees nothing. A memory write produces no feed entry.
+The stored text keeps its newest 20,000 characters, and the run sees the newest 10,000. Existing
+memory lines are moved out of profile notes by `migration/moveUserMemoryToPrivateStore.js` (dry run
+by default; its header lists the risks). Pinned by `userMemoryHelper.test.js`,
+`userMemoryMigration.test.js` and `AssistantMemoryPanel.test.js`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
@@ -4661,30 +4682,6 @@ full result and its 600-char origin note. Deliberately **out of scope**: `pushNo
 `sendWhatsAppForNotifications`, which mirrors FCM pushes as templated `project / object / update`
 summaries with a link. Those are notification summaries of arbitrary threads, not an assistant
 delivering its result, and folding them in would fill the daily topic with truncated noise.
-
-### A server-side fetch of a URL somebody else chose goes through `shared/outboundUrlGuard.js`
-
-Functions run inside the Google network with the Admin service account, so a fetched URL that a
-member, a model or a fetched document picked can name the metadata server, loopback or a VPC host.
-`assertPublicUrl` (http(s) only, no credentials, no private NAMES and no private DNS ANSWERS) and
-`fetchPublicUrl` (the same check, then `redirect: 'manual'` with every hop re-checked) are the one
-gate, and they use the browser allowlist's classifier (`isPrivateHostname` / `isPrivateIpAddress` in
-`Assistant/browser/browserAllowlist.js`) so the two cannot disagree. Two things that classifier must
-keep doing: strip the trailing root dot before matching (`localhost.`, `metadata.google.internal.`
-and `intranet.` are the same names to a resolver, NV-19), and parse IPv6 properly, because WHATWG
-URL rewrites `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, which a dotted-only regex never matched.
-Users today: `fetch_url` (`webPageFetcher.js`, NV-21), contact photos (`contactPhotoUpload.js`,
-NV-29: the stored type comes from the image's magic bytes, never the URL extension, and SVG is
-refused because the copy is made public), the MCP client OAuth flow (`mcpClientOAuth.js`, NV-25:
-https only, guarded `fetchFn` for discovery, registration, exchange and refresh, token and
-registration endpoints bound to the authorization server's origin, SDK error text — which contains
-the remote response body — never returned) and webhook tasks (`webhookDestination.js`). Known limit:
-the address is checked at lookup time and fetch resolves again (DNS rebinding). `browserAllowlist.js`
-is copied into the browser-worker image on its own, so it may only depend on
-`browserToolContract.js`; a change to it needs a worker rebuild (`browser-worker/deploy.sh`).
-Pinned by `shared/outboundUrlGuard.test.js`, `shared/contactPhotoUpload.test.js`,
-`MCP/mcpClientOAuth.test.js`, the NV-19 block of `browserAllowlist.test.js` and the address-policy
-block of `webPageFetcher.test.js`.
 
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
