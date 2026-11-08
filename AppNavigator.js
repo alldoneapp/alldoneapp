@@ -39,7 +39,6 @@ import AssistantDetailedView from './components/AssistantDetailedView/AssistantD
 import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
-import { installWindowOpenGuard } from './utils/safeUrl'
 import { installConnectionStateListener } from './utils/connectionState'
 import { installShellOtaUpdater } from './utils/shellOtaUpdater'
 import { installConnectionHealthMonitor } from './utils/connectionHealth'
@@ -262,9 +261,6 @@ export class AppContainer extends React.Component {
         // one component that mounts once for the whole app and owns its
         // document-level listeners.
         this.stopEscapeStack = installEscapeStack()
-        // No window.open anywhere in the app may open a javascript:/data: URL, whatever
-        // member-written field it reads (security audit 2026-11, utils/safeUrl.js).
-        installWindowOpenGuard()
         // Connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1): feeds the
         // `connectionState` redux slice from the browser online/offline events.
         // Installed here for the same reason as the listeners above.

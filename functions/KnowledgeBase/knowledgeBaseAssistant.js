@@ -109,6 +109,8 @@ function resolveKnowledgeBaseAccess(context) {
     if (context.channel === 'email' || context.sourceChannel === 'email' || context.gmailContext) return ACCESS_NONE
     // Writing mode executes read tools only (assistantWritingTools.js).
     if (context.writingDraft) return ACCESS_READ
+    // An automatic reply answers another assistant's comment, not a member (NV-45).
+    if (context.automaticCommentReply === true) return ACCESS_READ
     return context.allowKnowledgeCorrections === true ? ACCESS_CORRECT : ACCESS_READ
 }
 

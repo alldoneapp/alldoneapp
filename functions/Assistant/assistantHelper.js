@@ -274,7 +274,7 @@ const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./
 const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
 const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 // Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
-const { ARTIFACT_TOOL_KEY, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
+const { ARTIFACT_TOOL_KEY, DELETE_ARTIFACT_TOOL_NAME, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
 const {
     MAX_MCP_TOOLS,
     OPEN_MCP_APP_TOOL_NAME,
@@ -5714,8 +5714,32 @@ async function executeToolNativelyImpl(
 
     // Every artifact write goes through commitArtifactVersion like an upload from the app, and acts
     // for the requesting user: an artifact needs a project member as its owner.
-    if (isArtifactToolName(toolName)) {
+    if (isArtifactToolName(toolName) || toolName === DELETE_ARTIFACT_TOOL_NAME) {
         const { executeArtifactTool } = require('../Artifacts/artifactAssistant')
+        const artifactProjectId = (typeof toolArgs.projectId === 'string' && toolArgs.projectId.trim()) || projectId
+        // update_artifact's `comment`: same service and notification rule as update_task, silent from an
+        // assistant, notifying (and labelled) from an MCP client.
+        const postComment = async ({ artifact, comment }) => {
+            const db = admin.firestore()
+            const { ObjectCommentService } = require('../shared/objectCommentService')
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                artifactProjectId,
+                assistantId,
+                requestUserId,
+                toolRuntimeContext
+            )
+            return new ObjectCommentService({ database: db }).addComment({
+                objectType: 'artifacts',
+                projectId: artifactProjectId,
+                objectId: artifact.id,
+                comment,
+                actor: feedUser,
+                fromAssistant: !!assistantId,
+                requestUserId,
+                silent: toolRuntimeContext?.sourceChannel !== 'mcp',
+            })
+        }
         return executeArtifactTool({
             toolName,
             args: toolArgs,
@@ -5723,6 +5747,7 @@ async function executeToolNativelyImpl(
             requestUserId,
             assistantId,
             toolRuntimeContext: { projectId, ...(toolRuntimeContext || {}) },
+            postComment,
         })
     }
 
@@ -6832,6 +6857,7 @@ async function executeToolNativelyImpl(
                 date: toolArgs.date || null,
                 limit: toolArgs.limit,
                 timezoneOffset,
+                contactStatus: toolArgs.contactStatus || null,
             })
 
             console.log('👥 GET_CONTACTS TOOL: Results', {
@@ -7952,15 +7978,22 @@ async function executeToolNativelyImpl(
             }
             const hasFieldUpdates = Object.keys(fieldUpdates.updates).length > 0
             const hasStatusUpdate = hasContactStatusUpdate(toolArgs)
+            // A comment goes into the contact's thread, by itself or next to other changes (as in
+            // update_task); the contact itself is then left untouched.
+            const contactComment = typeof toolArgs.comment === 'string' ? toolArgs.comment.trim() : ''
+            if (toolArgs.comment !== undefined && toolArgs.comment !== null && !contactComment) {
+                return { success: false, message: 'comment must not be empty.' }
+            }
             if (
                 !targetEmail &&
                 !hasFieldUpdates &&
                 !fieldUpdates.photoUrl &&
                 !fieldUpdates.clearPhoto &&
-                !hasStatusUpdate
+                !hasStatusUpdate &&
+                !contactComment
             ) {
                 throw new Error(
-                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description, photoUrl or Kontaktstatus).'
+                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description, photoUrl, Kontaktstatus) or a comment.'
                 )
             }
 
@@ -8050,12 +8083,48 @@ async function executeToolNativelyImpl(
             })
 
             const finalContact = updateResult.contact
+            let contactCommentResult = null
+            if (contactComment) {
+                const { ObjectCommentService } = require('../shared/objectCommentService')
+                const postContactComment = () =>
+                    new ObjectCommentService({ database: db }).addComment({
+                        objectType: 'contacts',
+                        projectId: targetProjectId,
+                        objectId: finalContact.uid,
+                        comment: contactComment,
+                        actor: feedUser,
+                        fromAssistant: !!assistantId,
+                        requestUserId: creatorId,
+                        // Same rule as update_task: silent from an assistant, notifying from MCP.
+                        silent: toolRuntimeContext?.sourceChannel !== 'mcp',
+                    })
+                const changedSomethingElse = updateResult.changes.length > 0 || !!contactResolution.contactCreated
+                if (changedSomethingElse) {
+                    try {
+                        contactCommentResult = await postContactComment()
+                    } catch (commentError) {
+                        console.warn('update_contact: comment failed', {
+                            projectId: targetProjectId,
+                            contactId: finalContact.uid,
+                            error: commentError.message,
+                        })
+                        warnings.push(`The comment could not be added: ${commentError.message}`)
+                    }
+                } else {
+                    // The comment is the whole request, so its failure is the call's.
+                    contactCommentResult = await postContactComment()
+                }
+            }
+
             let message = `Contact "${finalContact.displayName || 'Untitled'}" updated successfully`
             if (updateResult.changes.length > 0) {
                 message += ` (${updateResult.changes.join(', ')})`
+            } else if (contactCommentResult) {
+                message = `Comment added to contact "${finalContact.displayName || 'Untitled'}"`
             } else {
                 message = `Contact "${finalContact.displayName || 'Untitled'}" already had these values`
             }
+            if (contactCommentResult && updateResult.changes.length > 0) message += ' and comment added'
             message += ` in project "${targetProjectName}"`
             if (warnings.length > 0) message += `. ${warnings.join(' ')}`
 
@@ -8065,6 +8134,14 @@ async function executeToolNativelyImpl(
                 project: { id: targetProjectId, name: targetProjectName },
                 changes: updateResult.changes,
                 warnings,
+                ...(contactCommentResult
+                    ? {
+                          comment: {
+                              commentId: contactCommentResult.commentId,
+                              notifiedFollowers: contactCommentResult.notifiedFollowers || 0,
+                          },
+                      }
+                    : {}),
                 contact: {
                     contactId: finalContact.uid,
                     displayName: finalContact.displayName || '',
@@ -8131,10 +8208,11 @@ async function executeToolNativelyImpl(
                     // Same notification rule as update_task: an assistant's comment is in the thread
                     // but marks nothing unread; an MCP client's notifies like any comment.
                     const postComment = ({ goal, comment }) => {
-                        const { GoalCommentService } = require('../Goals/goalCommentService')
-                        return new GoalCommentService({ database: db }).addComment({
+                        const { ObjectCommentService } = require('../shared/objectCommentService')
+                        return new ObjectCommentService({ database: db }).addComment({
+                            objectType: 'goals',
                             projectId: project.id,
-                            goalId: goal.id,
+                            objectId: goal.id,
                             comment,
                             actor: feedUser,
                             fromAssistant: !!assistantId,
@@ -8158,6 +8236,48 @@ async function executeToolNativelyImpl(
                 if (error instanceof GoalToolError || error instanceof MilestoneDoneError) {
                     return { success: false, message: error.message, ...(error.details || {}), project }
                 }
+                throw error
+            }
+        }
+
+        case 'delete_contact': {
+            const db = admin.firestore()
+            const { deleteContact, ContactDeleteError } = require('../Contacts/contactDeleteService')
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                creatorId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+            const project = { id: targetProject.id, name: targetProject.name || targetProject.id }
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                project.id,
+                assistantId,
+                creatorId,
+                toolRuntimeContext
+            )
+            const writeDeletedFeed = async contact => {
+                const { loadFeedsStateForContactWrite } = require('../shared/contactUpdateHelper')
+                const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+                const { createContactDeletedFeed } = require('../Feeds/contactsFeeds')
+                await loadFeedsStateForContactWrite({ db, projectId: project.id, feedUser, userId: creatorId })
+                const batch = new BatchWrapper(admin.firestore())
+                await createContactDeletedFeed(project.id, contact.uid, batch, feedUser, true)
+                await batch.commit()
+            }
+            try {
+                const result = await deleteContact({
+                    db,
+                    projectId: project.id,
+                    userId: creatorId,
+                    args: toolArgs,
+                    writeDeletedFeed,
+                })
+                return { ...result, project }
+            } catch (error) {
+                if (error instanceof ContactDeleteError) return { success: false, message: error.message, project }
                 throw error
             }
         }

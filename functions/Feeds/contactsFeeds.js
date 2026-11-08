@@ -17,6 +17,7 @@ const {
     FEED_CONTACT_HIGHLIGHT_CHANGED,
     FEED_CONTACT_PHONE_NUMBER_CHANGED,
     FEED_CONTACT_EMAIL_CHANGED,
+    FEED_CONTACT_DELETED,
 } = require('./FeedsConstants')
 
 async function createContactAddedFeed(
@@ -376,8 +377,40 @@ async function createContactEmailChangedFeed(
     )
 }
 
+// The server copy of the app's entry (utils/backends/Contacts/contactUpdates.js), for delete_contact.
+// It has to be written before the contact document goes: the feed object is loaded from it.
+async function createContactDeletedFeed(projectId, contactId, batch, feedUser, needGenerateNotification) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const contactFeedObject = await loadFeedObject(projectId, contactId, 'contacts', currentMilliseconds, batch)
+    if (!contactFeedObject) return
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_CONTACT_DELETED,
+        lastChangeDate: currentMilliseconds,
+        entryText: 'deleted relevant person',
+        feedUser,
+        objectId: contactId,
+        isPublicFor: contactFeedObject.isPublicFor,
+    })
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        contactId,
+        'contacts',
+        contactFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+}
+
 module.exports = {
     createContactAddedFeed,
+    createContactDeletedFeed,
     createContactFollowedFeed,
     createContactPrivacyChangedFeed,
     createContactCompanyChangedFeed,

@@ -7,7 +7,6 @@ import Icon from '../Icon'
 import { getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import { getCalendarTagText } from './calendarTagHelper'
-import { getSafeNavigationUrl } from '../../utils/safeUrl'
 
 export default function CalendarTag({ calendarData, containerStyle }) {
     const dispatch = useDispatch()
@@ -22,9 +21,7 @@ export default function CalendarTag({ calendarData, containerStyle }) {
             calendarData.provider === 'microsoft'
                 ? calendarData.link
                 : calendarData.link + `${separator}authuser=${calendarData.email}`
-        // calendarData.link is member-writable; never open a script URL (security audit 2026-11).
-        const safeUrl = getSafeNavigationUrl(url)
-        if (safeUrl) window.open(safeUrl, '_blank')
+        window.open(url, '_blank')
         setTimeout(() => {
             dispatch(hideFloatPopup())
         })

@@ -42,6 +42,8 @@ const ACTION_PRESENTATION = {
     assistant_activity_update_note_plain: ['✏️', 'Updating a note'],
     assistant_activity_update_contact: ['👤', 'Updating the contact %s'],
     assistant_activity_update_contact_plain: ['👤', 'Updating a contact'],
+    assistant_activity_delete_contact: ['🗑️', 'Deleting a contact'],
+    assistant_activity_delete_artifact: ['🗑️', 'Deleting an artifact'],
     assistant_activity_create_goal: ['🎯', 'Creating the goal “%s”'],
     assistant_activity_create_goal_plain: ['🎯', 'Creating a goal'],
     assistant_activity_update_goal: ['🎯', 'Updating the goal “%s”'],

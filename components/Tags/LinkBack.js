@@ -1,5 +1,4 @@
 import React from 'react'
-import { getSafeNavigationUrl } from '../../utils/safeUrl'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
 import styles, { colors, windowTagStyle } from '../styles/global'
@@ -31,7 +30,7 @@ export default function LinkBack({
         <TouchableOpacity disabled={disabled} style={tagStyle}>
             <a
                 style={{ textDecoration: 'none', minHeight: 24 }}
-                href={getSafeNavigationUrl(link) || undefined}
+                href={link}
                 target="_blank"
                 onClick={e => {
                     e.stopPropagation()

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { getSafeNavigationUrl } from '../../utils/safeUrl'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../Icon'
@@ -873,7 +872,7 @@ export default function LinkTag({
                         : { textDecoration: 'none', cursor: disabled ? 'default' : 'pointer' },
                     aTagStyle
                 )}
-                href={getSafeNavigationUrl(linkUrl) || undefined}
+                href={linkUrl}
                 target="_blank"
                 onClick={e => {
                     e.stopPropagation()

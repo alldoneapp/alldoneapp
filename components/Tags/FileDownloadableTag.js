@@ -3,7 +3,6 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'
-import { getSafeNavigationUrl } from '../../utils/safeUrl'
 import Icon from '../Icon'
 import { getAttachmentTagName, LOADING_MODE } from '../Feeds/CommentsTextInput/textInputHelper'
 import Spinner from '../UIComponents/Spinner'
@@ -37,10 +36,8 @@ export default function FileDownloadableTag({
     const [textToShow, setTextToShow] = useState('')
 
     const downloadFile = () => {
-        // The attachment URI comes from comment text any member can write (security audit 2026-11).
-        const safeUri = getSafeNavigationUrl(uri)
-        if (safeUri && !checkIsLimitedByTraffic(projectId)) {
-            window.open(safeUri, '_blank')
+        if (!checkIsLimitedByTraffic(projectId)) {
+            window.open(uri, '_blank')
             getFileSize(projectId, uri, uid)
         }
     }

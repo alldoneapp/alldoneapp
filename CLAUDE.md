@@ -1085,7 +1085,11 @@ tools and the execution gate:
   messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
-  or delegated assistant is not a member saying "this is wrong".
+  or delegated assistant is not a member saying "this is wrong". Neither is an **automatic comment reply**
+  (`runAssistantCommentReply`, answering another assistant's comment such as a Gmail follow-up):
+  `askToOpenAIBot` derives `allowKnowledgeCorrections` from `!runOptions.automaticCommentReply`, and
+  `resolveKnowledgeBaseAccess` returns read-only for `automaticCommentReply` whatever the flag says
+  (security audit NV-45).
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
@@ -1720,16 +1724,44 @@ title and progress feeds existed only in the browser (`goalUpdates.js`); their s
 `Feeds/goalsFeeds.js` use the same feed types (81, 86) and texts.
 
 `update_goal` takes a `comment`, alone or next to other changes, written by
-`Goals/goalCommentService.js`. That is the goal counterpart of `TaskCommentService` without the
-email parts: the comment, the goal's `commentsData`, the chat object (`type: 'goals'`) and
-`followers/{p}/goals/{id}` are written in one transaction, then the unread markers, the email digest
-and the push follow. Followers are the goal's creator and assignees (never the `ws@` workstream
-placeholder) plus the author, and a private goal notifies only the people in its `isPublicFor`. The
-notification rule is update_task's: an assistant's comment is `silent` (in the thread, nothing
-marked unread), and an MCP client's comment carries the marker and notifies the user too. A comment
-that fails after other changes were saved becomes a warning, and a comment sent alone fails the
-call. Pinned by `goalToolService.test.js`, `goalCommentService.test.js`, `okrToolService.test.js`
-(all on `functions/Tests/fakeFirestore.js`) and the `goal, milestone and OKR tools` block in
+`shared/objectCommentService.js` (see the next section). Pinned by `goalToolService.test.js`,
+`okrToolService.test.js` (both on `functions/Tests/fakeFirestore.js`) and the `goal, milestone and
+OKR tools` block in `assistantHelper.test.js`.
+
+### Comments, deletes and sharing for contacts and artifacts over MCP
+
+`update_goal`, `update_contact` and `update_artifact` take a `comment`, alone or next to other
+changes. All three go through `shared/objectCommentService.js`, the counterpart of
+`TaskCommentService` for other object types (one entry per type in `OBJECT_COMMENT_TYPES`). The
+comment, the object's `commentsData`, the chat object and `followers/{p}/{type}/{id}` are written in
+one transaction, then the unread markers, the email digest and the push follow. The object's own
+people follow its thread: a goal's creator and assignees (never the `ws@` placeholder), a contact's
+`recorderUserId`, an artifact's owner and creator. A private object notifies only the people in its
+`isPublicFor`; when the field is missing the default is the one `mapContactData` and
+`buildArtifactIsPublicFor` use (project plus recorder or owner). Use a null check rather than
+`filter(Boolean)` for these defaults, because `FEED_PUBLIC_FOR_ALL` is 0. The notification rule is
+update_task's: an assistant's comment is `silent`, and an MCP client's comment carries the marker and
+notifies the user too. A comment that fails after other changes were saved becomes a warning; a
+comment sent alone fails the call.
+
+`delete_contact` and `delete_artifact` are separate Tools Access keys in `OPT_IN_ONLY_TOOLS`, so an
+assistant deletes only after its owner switched that on; the `artifacts` toggle does not grant
+`delete_artifact`. Over MCP each is its own switch under Settings → MCP. Both delete only the
+document, as the app does: `onDeleteContactSecondGen` and `onDeleteArtifactSecondGen` remove the
+thread, note, photos, versions, public link and backlinks. `delete_contact` takes an exact
+`contactId` only, because update_contact's fuzzy name matching must never pick the person to delete,
+and writes the app's "deleted relevant person" entry (ported to `Feeds/contactsFeeds.js`) before the
+document goes, since the feed object is loaded from it. `get_contacts` takes `contactStatus` (id or
+name, `none` for no status), applied before the limit.
+
+`update_artifact` can also restore an earlier version (`restoreVersion`, not combined with new
+content), change who sees it (`isPrivate`) and switch its public link (`publicLink: on|off|new`,
+through `setArtifactPublicLink`). These follow the app: only the owner changes privacy (the chat
+follows, and the update trigger withdraws the public link of an artifact made private), while any
+member who can see the artifact may switch the link or delete it. A private artifact never gets a
+link. Pinned by `shared/objectCommentService.test.js`, `Contacts/contactDeleteService.test.js`, the
+contact status case in `ContactRetrievalService.test.js`, the `update_artifact beyond content` and
+`delete_artifact` blocks in `artifactAssistant.test.js`, and the contact and artifact cases in
 `assistantHelper.test.js`.
 
 ### Assistant Tool Checklist
@@ -3452,6 +3484,13 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
+loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
+therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,
+the same rule `assertObjectAccess` applies to `askToBotSecondGen`. It used to accept anyone listed in
+`creatorId`, `lastEditorId`, `members` or `usersFollowing`, and `members` keeps every former commenter
+after a topic is made private.
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
@@ -5022,33 +5061,6 @@ non-member query projects by sharing level. Object lists inside a known With-lin
 open on purpose (that is what "With link" means). Ids already harvested keep working until the
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
-
-### A member-written link only ever opens as a web link (security audit 2026-11)
-
-`window.open('javascript:…')` and `<a href="javascript:…">` run in the app's own origin, and the CSP
-allows inline script, so any field another member, an assistant or an email can write and that the
-app opens on click was a stored cross-member XSS: a task's `calendarData.link`, a contact's
-`linkedInUrl`, an attachment or image token in comment text, a pre-configured task's `link`
-(NV-03, NV-05, NV-36). `utils/safeUrl.js` is the one place that decides: `getSafeNavigationUrl`
-allows http(s), mailto, tel, blob and relative paths, parsed with `new URL` so case, whitespace and
-control characters cannot hide the scheme; `getSafeFrameUrl` allows https only. `installWindowOpenGuard`
-(from `AppNavigator`) wraps `window.open` for the whole app, which also covers react-native-web's
-`Linking.openURL`; the known sinks check explicitly as well. Use the helper for every new `href`,
-`window.open` or `<iframe src>` that takes data, and never assign `location` from data.
-`firestore.rules` keeps the same values out of the data: `calendarData.link` and an assistant task's
-`link` must be http(s) or empty when they change (`isWebLinkOrEmpty`; an unchanged legacy value
-stays writable around it).
-
-The MCP login page on my.alldone.app ends in `window.location.href = redirect_to`, so an OAuth
-redirect URI is the same kind of sink (NV-34): `functions/MCP/auth/redirectUriPolicy.js` allows https,
-http on loopback and private-use app schemes (`cursor://`), and refuses any scheme the browser
-evaluates, at registration, at authorization (which also stops clients registered earlier) and before
-the login redirect is built. Assistant output may carry image/video tokens, which every viewer's
-browser fetches on render; `sanitizeAssistantResponseText` turns a token whose URL is not on the
-project's own storage bucket back into its plain URL (NV-04, `assistantTextSafety.js`). Pinned by
-`utils/safeUrl.test.js`, `functions/MCP/auth/redirectUriPolicy.test.js`,
-`functions/Assistant/assistantTextSafety.test.js` and the `must be web links` block of the rules
-emulator suite.
 
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 

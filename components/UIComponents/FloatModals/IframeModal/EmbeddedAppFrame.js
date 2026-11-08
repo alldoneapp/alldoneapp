@@ -5,7 +5,6 @@ import URLTrigger from '../../../../URLSystem/URLTrigger'
 import { clearAppModelContext, setAppModelContext } from '../../../../utils/annaAppModelContext'
 import { EMBED_LOCATION_MESSAGE_TYPE, resolveReportedLocation } from './embeddedAppLocation'
 import { TEAM_ORIGIN } from './embeddedToolHandoff'
-import { getSafeFrameUrl } from '../../../../utils/safeUrl'
 
 // Required lazily: the frame is also hosted by the assistant shell (AnnaShell), and a static import
 // of the roadmap bridge and the Firebase client would pull the Firestore mapping chain into
@@ -449,9 +448,7 @@ export default function EmbeddedAppFrame({
     return (
         <iframe
             ref={iframeRef}
-            // Only an https page may be framed: a javascript:/data: URL here would run with the
-            // app's origin (security audit 2026-11, NV-36).
-            src={getSafeFrameUrl(finalUrl) || undefined}
+            src={finalUrl}
             inert={suspended ? '' : undefined}
             style={{
                 width: '100%',

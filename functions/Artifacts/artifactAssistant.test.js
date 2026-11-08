@@ -270,6 +270,134 @@ describe('update_artifact', () => {
     })
 })
 
+describe('update_artifact beyond content: privacy, public link, versions and comments', () => {
+    const artifactPath = artifactId => `artifactItems/${PROJECT_ID}/artifacts/${artifactId}`
+
+    it('switches the public link off and on again, and refuses one for a private artifact', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        expect(db.read(artifactPath(artifactId)).publicLink).toBeTruthy()
+
+        const off = await run('update_artifact', { artifactId, publicLink: 'off' }, { userId: 'teammate' })
+        expect(off).toMatchObject({ success: true, publicLink: false, changes: ['public link off'] })
+        expect(db.read(artifactPath(artifactId)).publicLink).toBeNull()
+
+        const on = await run('update_artifact', { artifactId, publicLink: 'on' })
+        expect(on).toMatchObject({ success: true, publicLink: true, changes: ['public link on'] })
+
+        const { artifactId: privateId } = await run('create_artifact', { ...dashboard, isPrivate: true })
+        await expect(run('update_artifact', { artifactId: privateId, publicLink: 'on' })).resolves.toMatchObject({
+            success: false,
+            error: expect.stringContaining('private artifact has no public link'),
+        })
+        await expect(run('update_artifact', { artifactId, publicLink: 'maybe' })).resolves.toMatchObject({
+            success: false,
+            error: 'publicLink must be "on", "off" or "new".',
+        })
+    })
+
+    it('lets only the owner change who sees it, and takes the chat along', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        db.write(`chatObjects/${PROJECT_ID}/chats/${artifactId}`, {
+            isPublicFor: [0, 'owner'],
+            usersFollowing: ['owner', 'teammate'],
+        })
+
+        await expect(run('update_artifact', { artifactId, isPrivate: true }, { userId: 'teammate' })).resolves.toEqual({
+            success: false,
+            error: 'Only the owner of an artifact can change who sees it.',
+        })
+
+        const result = await run('update_artifact', { artifactId, isPrivate: true })
+        expect(result).toMatchObject({ success: true, isPrivate: true, changes: ['made private'] })
+        expect(db.read(artifactPath(artifactId))).toMatchObject({ isPrivate: true, isPublicFor: ['owner'] })
+        expect(db.read(`chatObjects/${PROJECT_ID}/chats/${artifactId}`)).toMatchObject({
+            isPublicFor: ['owner'],
+            usersFollowing: ['owner'],
+        })
+
+        await run('update_artifact', { artifactId, isPrivate: false })
+        expect(db.read(artifactPath(artifactId))).toMatchObject({ isPrivate: false, isPublicFor: [0, 'owner'] })
+    })
+
+    it('restores an earlier version, and does not mix a restore with new content', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        await run('update_artifact', {
+            artifactId,
+            edits: [{ path: 'index.html', find: 'Sales: 10', replace: 'Sales: 12' }],
+        })
+
+        const restored = await run('update_artifact', { artifactId, restoreVersion: 1 })
+        expect(restored).toMatchObject({ success: true, changes: ['version 1 restored'] })
+        expect((await run('read_artifact', { artifactId })).content).toContain('Sales: 10')
+        expect((await run('read_artifact', { artifactId, versionNumber: 2 })).content).toContain('Sales: 12')
+
+        await expect(
+            run('update_artifact', {
+                artifactId,
+                restoreVersion: 2,
+                files: [{ path: 'x.txt', content: 'x' }],
+            })
+        ).resolves.toMatchObject({ success: false, error: expect.stringContaining('cannot be combined') })
+        await expect(run('update_artifact', { artifactId, restoreVersion: 9 })).resolves.toMatchObject({
+            success: false,
+            error: 'The artifact has no version 9.',
+        })
+    })
+
+    it('adds a comment alone or after other changes, through the hook it is given', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        const postComment = jest.fn(async () => ({ commentId: 'c1', notifiedFollowers: 1 }))
+        const withHook = args =>
+            executeArtifactTool({
+                toolName: 'update_artifact',
+                args,
+                projectId: PROJECT_ID,
+                requestUserId: 'owner',
+                assistantId: 'assistant-1',
+                toolRuntimeContext: { projectId: PROJECT_ID },
+                db,
+                bucket,
+                baseUrl: BASE_URL,
+                postComment,
+            })
+
+        const alone = await withHook({ artifactId, comment: '  Numbers checked against Stripe.  ' })
+        expect(alone).toMatchObject({ success: true, changes: ['comment added'], comment: { commentId: 'c1' } })
+        expect(postComment).toHaveBeenCalledWith({
+            artifact: expect.objectContaining({ id: artifactId }),
+            comment: 'Numbers checked against Stripe.',
+        })
+        expect(db.read(artifactPath(artifactId)).versionCount).toBe(1)
+
+        postComment.mockRejectedValueOnce(new Error('thread unavailable'))
+        const withTitle = await withHook({ artifactId, title: 'Q3 sales', comment: 'Renamed.' })
+        expect(withTitle).toMatchObject({ success: true, title: 'Q3 sales' })
+        expect(withTitle.changes).toEqual(['details updated', 'comment failed (thread unavailable)'])
+
+        await expect(run('update_artifact', { artifactId, comment: 'x' })).resolves.toMatchObject({
+            success: false,
+            error: 'Comments on artifacts are not available here.',
+        })
+    })
+})
+
+describe('delete_artifact', () => {
+    it('deletes an artifact the requesting user can see, and nothing they cannot', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        const { artifactId: privateId } = await run('create_artifact', { ...dashboard, isPrivate: true })
+
+        await expect(run('delete_artifact', { artifactId: privateId }, { userId: 'teammate' })).resolves.toEqual({
+            success: false,
+            error: 'Artifact not found.',
+        })
+        expect(db.read(`artifactItems/${PROJECT_ID}/artifacts/${privateId}`)).toBeTruthy()
+
+        const result = await run('delete_artifact', { artifactId }, { userId: 'teammate' })
+        expect(result).toMatchObject({ success: true, deleted: true, artifactId, title: 'Sales dashboard' })
+        expect(db.read(`artifactItems/${PROJECT_ID}/artifacts/${artifactId}`)).toBeUndefined()
+    })
+})
+
 describe('over MCP', () => {
     // An MCP client acts in the user's name; the history says which client it was (shared/mcpActor.js).
     const mcp = { assistantId: null, runtime: { sourceChannel: 'mcp', mcpClient: 'Claude' } }
