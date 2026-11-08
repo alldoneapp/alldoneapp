@@ -1,31 +1,19 @@
-jest.mock(
-    'firebase-admin',
-    () => ({
-        firestore: jest.fn(),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin', () => ({
+    firestore: jest.fn(),
+}))
 
-jest.mock(
-    'firebase-functions/v2/https',
-    () => ({
-        HttpsError: class HttpsError extends Error {
-            constructor(code, message) {
-                super(message)
-                this.code = code
-            }
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/v2/https', () => ({
+    HttpsError: class HttpsError extends Error {
+        constructor(code, message) {
+            super(message)
+            this.code = code
+        }
+    },
+}))
 
-jest.mock(
-    'uuid',
-    () => ({
-        v4: jest.fn(() => 'generated-server-id'),
-    }),
-    { virtual: true }
-)
+jest.mock('uuid', () => ({
+    v4: jest.fn(() => 'generated-server-id'),
+}))
 
 jest.mock('../Assistant/mcpClient', () => ({
     listTools: jest.fn(),

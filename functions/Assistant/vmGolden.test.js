@@ -2,7 +2,7 @@ jest.mock('firebase-admin', () => ({
     firestore: jest.fn(),
     app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
 }))
-jest.mock('firebase-admin/functions', () => ({ getFunctions: jest.fn() }), { virtual: true })
+jest.mock('firebase-admin/functions', () => ({ getFunctions: jest.fn() }))
 jest.mock('../envFunctionsHelper', () => ({ getEnvFunctions: jest.fn(() => ({ E2B_API_KEY: 'test-key' })) }))
 jest.mock('./vmJobRunner', () => ({
     __private__: {
