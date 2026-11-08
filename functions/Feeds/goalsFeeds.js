@@ -6,18 +6,11 @@ const {
     addPrivacyForFeedObject,
 } = require('./globalFeedsHelper')
 const { generateGoalObjectModel } = require('./goalsFeedsHelper')
-const {
-    getTaskNameWithoutMeta,
-    FEED_PUBLIC_FOR_ALL,
-    CAPACITY_NONE,
-    DYNAMIC_PERCENT,
-} = require('../Utils/HelperFunctionsCloud')
+const { getTaskNameWithoutMeta, FEED_PUBLIC_FOR_ALL, CAPACITY_NONE } = require('../Utils/HelperFunctionsCloud')
 const { shrinkTagText } = require('../Utils/parseTextUtils')
 
 const {
     FEED_GOAL_CREATED,
-    FEED_GOAL_TITLE_CHANGED,
-    FEED_GOAL_PROGRESS_CHANGED,
     FEED_GOAL_FOLLOWED,
     FEED_GOAL_ASSIGNEES_CHANGED,
     FEED_GOAL_HIGHLIGHTED_CHANGED,
@@ -271,84 +264,8 @@ async function createGoalCapacityChangedFeed(
     )
 }
 
-// The app writes these two from the browser (utils/backends/Goals/goalUpdates.js); the server
-// copies exist for the goal tools of assistants and MCP clients, and use the same feed types and
-// entry texts so a change reads the same in Updates whoever made it.
-async function createGoalTitleChangedFeed(
-    projectId,
-    oldName,
-    newName,
-    goalId,
-    batch,
-    feedUser,
-    needGenerateNotification
-) {
-    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
-    const goalFeedObject = await loadFeedObject(projectId, goalId, 'goals', currentMilliseconds, batch)
-    if (!goalFeedObject) return
-
-    const simpleNewName = getTaskNameWithoutMeta(newName)
-    const simpleOldName = getTaskNameWithoutMeta(oldName)
-
-    const { feed, feedId } = generateFeedModel({
-        feedType: FEED_GOAL_TITLE_CHANGED,
-        lastChangeDate: currentMilliseconds,
-        entryText: `changed goal title • From ${simpleOldName} to ${simpleNewName}`,
-        feedUser,
-        objectId: goalId,
-        isPublicFor: goalFeedObject.isPublicFor,
-    })
-
-    goalFeedObject.name = newName
-
-    await proccessFeed(
-        projectId,
-        currentDateFormated,
-        [],
-        goalId,
-        'goals',
-        goalFeedObject,
-        feedId,
-        feed,
-        feedUser,
-        batch,
-        needGenerateNotification
-    )
-}
-
-async function createGoalProgressChangedFeed(projectId, progress, goalId, batch, feedUser, needGenerateNotification) {
-    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
-    const goalFeedObject = await loadFeedObject(projectId, goalId, 'goals', currentMilliseconds, batch)
-    if (!goalFeedObject) return
-
-    const { feed, feedId } = generateFeedModel({
-        feedType: FEED_GOAL_PROGRESS_CHANGED,
-        lastChangeDate: currentMilliseconds,
-        entryText: `changed progress to ${progress === DYNAMIC_PERCENT ? 'dynamic' : progress + '%'}`,
-        feedUser,
-        objectId: goalId,
-        isPublicFor: goalFeedObject.isPublicFor,
-    })
-
-    await proccessFeed(
-        projectId,
-        currentDateFormated,
-        [],
-        goalId,
-        'goals',
-        goalFeedObject,
-        feedId,
-        feed,
-        feedUser,
-        batch,
-        needGenerateNotification
-    )
-}
-
 module.exports = {
     createGoalCreatedFeed,
-    createGoalTitleChangedFeed,
-    createGoalProgressChangedFeed,
     createGoalFollowedFeed,
     createGoalAssigeesChangedFeed,
     createGoalHighlightedChangedFeed,

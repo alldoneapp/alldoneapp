@@ -666,7 +666,20 @@ const sendChatNotifications = async admin => {
     await Promise.all(promises)
 }
 
+// A plain transactional mail that the caller awaits, so a failed send is reported to the person who
+// asked for it (the Stripe link code, AT-2978) instead of only logged.
+const sendTransactionalEmail = async ({ to, subject, html }) => {
+    return SIB_API_TRANSACT.sendTransacEmail({
+        sender: { email: 'noreply@alldone.app', name: 'Alldone.app' },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        headers: { Connection: 'keep-alive' },
+    })
+}
+
 module.exports = {
+    sendTransactionalEmail,
     sendEmailInvitationToProject,
     sendMonthlyPremiumGoldNotification,
     sendFeedNotifications,

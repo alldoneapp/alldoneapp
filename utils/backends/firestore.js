@@ -2005,13 +2005,11 @@ export async function spentGold(userId, goldToReduce, context = {}) {
     })
 }
 
-function getRewardGoldAmount(maxGold, rewardKey) {
+// Must stay identical to getRewardGoldAmount in functions/Gold/serverGoldRewards.js: the server pays
+// exactly this amount for the same reward key, so the coins the animation shows are the coins paid.
+export function getRewardGoldAmount(maxGold, rewardKey) {
     const normalizedMaxGold = Number(maxGold)
-    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0) return 0
-
-    if (!rewardKey) {
-        return Math.floor(Math.random() * normalizedMaxGold) + 1
-    }
+    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0 || !rewardKey) return 0
 
     let hash = 0
     for (let i = 0; i < rewardKey.length; i++) {
@@ -2021,65 +2019,16 @@ function getRewardGoldAmount(maxGold, rewardKey) {
     return (Math.abs(hash) % normalizedMaxGold) + 1
 }
 
-export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext = {}) {
-    const { selectedSidebarTab, loggedUser, route } = store.getState()
+// Gold rewards are granted by the server from the task and comment triggers (AT-2978,
+// functions/Gold/serverGoldRewards.js). The browser only plays the coin animation for the reward the
+// server is about to pay; it no longer asks for anything.
+export function showGoldRewardAnimation(userId, maxGold, checkBoxId, rewardKey) {
+    const { loggedUser } = store.getState()
+    if (userId !== loggedUser.uid || !checkBoxId) return
 
-    //VALUES ARE IN THE RANGE OF 1-maxGold (INCLUDED maxGold)
-    const gold = getRewardGoldAmount(maxGold, rewardContext.rewardKey)
-
-    const goldToIncrease = gold > loggedUser.dailyGold ? loggedUser.dailyGold : gold
-    const timestamp = Number(rewardContext.timestamp) || moment().valueOf()
-    const date = moment(timestamp)
-    const slimDate = date.format('DDMMYYYY')
-    const dayDate = parseInt(date.format('YYYYMMDD'))
-
-    if (__DEV__) {
-        console.log('[gold][client] Prepared task reward call', {
-            projectId,
-            userId,
-            maxGold,
-            computedGold: gold,
-            goldToIncrease,
-            loggedUserId: loggedUser.uid,
-            loggedUserDailyGold: loggedUser.dailyGold,
-            rewardKey: rewardContext.rewardKey || '',
-            objectId: rewardContext.objectId || '',
-            objectType: rewardContext.objectType || '',
-            timestamp,
-            checkBoxId: checkBoxId || '',
-        })
-    }
-
-    if (goldToIncrease > 0) {
-        if (userId === loggedUser.uid && checkBoxId) {
-            store.dispatch(setTriggerGoldAnimation(goldToIncrease, checkBoxId))
-        }
-
-        runHttpsCallableFunction('earnGoldSecondGen', {
-            projectId,
-            userId,
-            gold,
-            slimDate,
-            timestamp,
-            dayDate,
-            rewardKey: rewardContext.rewardKey,
-            objectId: rewardContext.objectId,
-            objectType: rewardContext.objectType,
-        })
-    } else {
-        if (__DEV__) {
-            console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
-                projectId,
-                userId,
-                computedGold: gold,
-                loggedUserDailyGold: loggedUser.dailyGold,
-                rewardKey: rewardContext.rewardKey || '',
-                objectId: rewardContext.objectId || '',
-                objectType: rewardContext.objectType || '',
-                timestamp,
-            })
-        }
-    }
+    const gold = getRewardGoldAmount(maxGold, rewardKey)
+    const goldToShow = Math.min(gold, Number(loggedUser.dailyGold) || 0)
+    if (goldToShow > 0) store.dispatch(setTriggerGoldAnimation(goldToShow, checkBoxId))
 }
 
 export async function updateStatistics(

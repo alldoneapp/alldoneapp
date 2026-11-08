@@ -6,11 +6,6 @@ export const TOOL_OPTIONS = [
     // One key for get/read/create/update_artifact; the server fans it out (Artifacts/artifactToolSchemas.js).
     { key: 'artifacts', labelKey: 'Create and edit artifacts' },
     { key: 'update_contact', labelKey: 'Update contact' },
-    { key: 'create_goal', labelKey: 'Create goal' },
-    { key: 'update_goal', labelKey: 'Update goal' },
-    { key: 'update_milestone', labelKey: 'Update milestone' },
-    { key: 'create_okr', labelKey: 'Create OKR' },
-    { key: 'update_okr', labelKey: 'Update OKR' },
     { key: 'add_chat_comment', labelKey: 'Add chat comment' },
     { key: 'correct_email_classification', labelKey: 'Correct email classification' },
     { key: 'update_user_memory', labelKey: 'Update user memory' },

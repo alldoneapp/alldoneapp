@@ -549,7 +549,16 @@ const linkAccountByEmail = async (email, userName) => {
     }
 }
 
+// Whether Stripe has any customer with this address. Used only to decide whether a link code is
+// mailed (Premium/stripeLinkCode.js); the answer never goes back to the client.
+const hasStripeCustomerWithEmail = async email => {
+    if (!email) return false
+    const customers = await stripe.customers.list({ email, limit: 1 })
+    return Array.isArray(customers?.data) && customers.data.length > 0
+}
+
 module.exports = {
+    hasStripeCustomerWithEmail,
     getOrCreateCustomer,
     checkPremiumStatus,
     checkPremiumStatusByEmail,

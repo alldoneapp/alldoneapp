@@ -60,14 +60,9 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'get_chats',
     'get_user_projects',
     'get_updates',
-    // Goals, milestones, OKRs / project insights
+    // Goals / project insights
     'get_goals',
-    'create_goal',
-    'update_goal',
-    'update_milestone',
     'get_project_okrs',
-    'create_okr',
-    'update_okr',
     'get_project_happiness',
     // User memory
     'update_user_memory',
