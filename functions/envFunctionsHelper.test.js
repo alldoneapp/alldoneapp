@@ -26,6 +26,7 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
         delete process.env.FUNCTIONS_EMULATOR
         delete process.env.OPENROUTER_API_KEY
         delete process.env.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY
+        delete process.env.NOTES_COLLAB_ACCESS_SECRET
     })
 
     afterEach(() => {
@@ -48,6 +49,7 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
             !writeEnvJson({
                 OPENROUTER_API_KEY: 'or-json-key',
                 TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: 'typesense-parent-key',
+                NOTES_COLLAB_ACCESS_SECRET: 'notes-collab-secret',
                 PERPLEXITY_API_KEY: 'real-perplexity-value',
             })
         )
@@ -56,6 +58,7 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
         const env = load()
         expect(env.OPENROUTER_API_KEY).toBe('or-json-key')
         expect(env.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY).toBe('typesense-parent-key')
+        expect(env.NOTES_COLLAB_ACCESS_SECRET).toBe('notes-collab-secret')
     })
 
     test('falls back to process.env when the JSON has no entry for it', () => {
@@ -83,8 +86,10 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
     test('resolves from process.env when there is no JSON file at all', () => {
         if (hadEnvJson) return
         process.env.OPENROUTER_API_KEY = 'or-no-json-key'
+        process.env.NOTES_COLLAB_ACCESS_SECRET = 'notes-no-json-secret'
 
         expect(load().OPENROUTER_API_KEY).toBe('or-no-json-key')
+        expect(load().NOTES_COLLAB_ACCESS_SECRET).toBe('notes-no-json-secret')
     })
 
     test('resolves the scoped Typesense parent key from process.env when JSON does not contain it', () => {

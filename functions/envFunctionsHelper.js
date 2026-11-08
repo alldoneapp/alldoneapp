@@ -143,6 +143,8 @@ const getEnvFunctions = () => {
                     TYPESENSE_HOST: envJson.TYPESENSE_HOST || '',
                     TYPESENSE_ADMIN_API_KEY: envJson.TYPESENSE_ADMIN_API_KEY || '',
                     TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: envJson.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY || '',
+                    // Shared with alldone-notes-collab-server (NOTES_ACCESS_SECRET there).
+                    NOTES_COLLAB_ACCESS_SECRET: envJson.NOTES_COLLAB_ACCESS_SECRET || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -301,6 +303,7 @@ const getEnvFunctions = () => {
         'TYPESENSE_HOST',
         'TYPESENSE_ADMIN_API_KEY',
         'TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY',
+        'NOTES_COLLAB_ACCESS_SECRET',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })

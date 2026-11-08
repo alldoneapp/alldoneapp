@@ -885,6 +885,36 @@ exports.openInBrowserTab = onRequest(
     }
 )
 
+// Server-to-server: alldone-notes-collab-server asks whether a connection's Firebase user may read
+// and write a note's Yjs room (security audit 2026-11). Guarded by NOTES_COLLAB_ACCESS_SECRET; see
+// functions/Notes/notesCollabAccess.js.
+let notesCollabAccessSecret
+exports.notesCollabAccess = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { createNotesCollabAccessHandler } = require('./Notes/notesCollabAccess')
+        if (notesCollabAccessSecret === undefined) {
+            const { getEnvFunctions } = require('./envFunctionsHelper')
+            notesCollabAccessSecret = getEnvFunctions().NOTES_COLLAB_ACCESS_SECRET || ''
+        }
+        const handler = createNotesCollabAccessHandler({
+            db: admin.firestore(),
+            auth: admin.auth(),
+            getSecret: () => notesCollabAccessSecret,
+        })
+        try {
+            await handler(req, res)
+        } catch (error) {
+            console.error('[notesCollabAccess] failed', error?.message)
+            if (!res.headersSent) res.status(503).json({ error: 'unavailable' })
+        }
+    }
+)
+
 // Serves artifact files on this function's own origin and on artifacts.alldone.app (public links),
 // never the app's: an HTML artifact is code, and on my.alldone.app it would run with the viewer's
 // session. The only Hosting rewrite to it is the separate artifacts site (hosting/artifacts/);

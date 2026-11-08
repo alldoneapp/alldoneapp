@@ -772,10 +772,16 @@ The client-side findings of the same audit:
   link in content runs only on a press, and a prompt the viewer did not write is shown to them first
   (`utils/preConfigTaskRunConfirmation.js`, used by `UrlWrapper` and `LinkTag`).
 - Every notes collaboration connection carries `?auth=<Firebase ID token>&projectId=<projectId>`
-  (`noteCollaborationProvider.js`; the room stays the bare note id, and every socket, reconnects
-  included, is opened with the current token). The collaboration server
-  (alldone-notes-collab-server) ignores the parameters until its side ships, and enforces them once
-  deployed. Throwaway virtual editors (`notesHelper`) no longer connect at all.
+  (`noteCollaborationProvider.js`; the room stays the bare note id, every socket, reconnects
+  included, is opened with the current token, and the token is refreshed every 10 minutes so a
+  long-lived socket reconnects with a current one). The collaboration server
+  (alldone-notes-collab-server) asks `notesCollabAccess` (`functions/Notes/notesCollabAccess.js`,
+  server to server, guarded by `NOTES_COLLAB_ACCESS_SECRET`) whether the user may read and write
+  the note. It decides exactly like `storage.notes.rules`: member with access → read and write,
+  member and no note document yet → read and write, non-member of a public project and a public
+  note → read only. That missing-document allowance is safe only because the server keys its rooms
+  by `projectId/noteId` in `NOTES_AUTH_MODE=enforce`; keep both halves in step. Throwaway virtual
+  editors (`notesHelper`) no longer connect at all.
 - The MCP OAuth login page names the app that started the authorization and the host it redirects
   to, from the stored `oauthAuthSessions` / `oauthClients` documents (`MCP/auth/oauthClientConsent.js`;
   known hosts such as claude.ai are named by us, not by the registration). `completeAuthorizationCallback`
@@ -783,7 +789,7 @@ The client-side findings of the same audit:
   "Allow and sign in" button sends, and records `consentGrantedAt` / `consentClientId`.
 
 Pinned by `IframeModalUntrustedOrigin.test.js`, `UrlWrapperOpenAttribute.test.js`,
-`noteCollaborationProvider.test.js`, `oauthClientConsent.test.js`, `mcpOAuthConsentPage.test.js`,
+`noteCollaborationProvider.test.js`, `Notes/notesCollabAccess.test.js`, `oauthClientConsent.test.js`, `mcpOAuthConsentPage.test.js`,
 `MCP/auth/cloudOAuth.test.js` and the global catalog block of the rules emulator suite.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it

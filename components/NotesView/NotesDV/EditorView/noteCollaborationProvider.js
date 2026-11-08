@@ -8,7 +8,8 @@ import { WebsocketProvider } from 'y-websocket'
 //     <NOTES_COLLABORATION_SERVER>/<noteId>?auth=<Firebase ID token>&projectId=<projectId>
 //
 // The room name stays the bare note id. The server (alldone-notes-collab-server, another repository)
-// ignores the parameters today and enforces them once its side is deployed.
+// asks functions/Notes/notesCollabAccess.js whether the user may read and write the note, and refuses
+// the connection (or drops its edits, for read-only access) once it runs with NOTES_AUTH_MODE=enforce.
 //
 // An ID token lives one hour, and y-websocket 1.3.17 reconnects on its own, synchronously, with the
 // URL it built in its constructor (it has no `params` property to update). So the token is read when
@@ -17,6 +18,11 @@ import { WebsocketProvider } from 'y-websocket'
 // close to expiry, so the next reconnect carries a current one.
 
 export const NOTE_COLLABORATION_TOKEN_WAIT_MS = 5000
+// The collaboration server re-checks a connection's token periodically and closes it once the token
+// has expired; the provider then reconnects with whatever token it holds. A socket can stay open far
+// longer than the one hour a token lives, so the token is also refreshed on this interval: by the
+// time the server closes the connection, the provider already holds the token the SDK renewed.
+export const NOTE_COLLABORATION_TOKEN_REFRESH_MS = 10 * 60 * 1000
 
 const stripTrailingSlashes = url => {
     let result = String(url || '')
@@ -59,6 +65,7 @@ export function createNoteCollaborationProvider({
     WebSocketImpl = typeof WebSocket !== 'undefined' ? WebSocket : undefined,
     ProviderImpl = WebsocketProvider,
     tokenWaitMs = NOTE_COLLABORATION_TOKEN_WAIT_MS,
+    tokenRefreshMs = NOTE_COLLABORATION_TOKEN_REFRESH_MS,
     providerOptions = {},
 }) {
     let token = null
@@ -94,9 +101,12 @@ export function createNoteCollaborationProvider({
         WebSocketPolyfill: AuthenticatedNoteWebSocket,
     })
 
+    const refreshTimer = setInterval(refreshToken, tokenRefreshMs)
+
     const destroy = provider.destroy.bind(provider)
     provider.destroy = (...args) => {
         destroyed = true
+        clearInterval(refreshTimer)
         return destroy(...args)
     }
 

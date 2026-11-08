@@ -99,6 +99,22 @@ describe('the notes collaboration provider', () => {
         expect(params(sockets[1].url)).toEqual({ auth: 'token-2', projectId: 'project1' })
     })
 
+    it('keeps refreshing the token while the socket stays open', async () => {
+        // One refresh at creation and one per socket opened; anything beyond that is the interval.
+        const getIdToken = jest.fn().mockResolvedValue('token-1')
+        const provider = create({ getIdToken, tokenRefreshMs: 20 })
+        await waitFor(() => sockets.length === 1)
+
+        await waitFor(() => getIdToken.mock.calls.length >= 5)
+        expect(sockets).toHaveLength(1)
+
+        provider.destroy()
+        providers = []
+        const calls = getIdToken.mock.calls.length
+        await new Promise(resolve => setTimeout(resolve, 100))
+        expect(getIdToken.mock.calls.length).toBe(calls)
+    })
+
     it('never connects once destroyed before the token arrived', async () => {
         let resolveToken
         const provider = create({ getIdToken: () => new Promise(resolve => (resolveToken = resolve)) })
