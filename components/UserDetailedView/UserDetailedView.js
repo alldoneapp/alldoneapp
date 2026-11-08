@@ -41,7 +41,6 @@ import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import ChatBoard from '../ChatsView/ChatDV/ChatBoard'
 import { useDispatch, useSelector } from 'react-redux'
 import NoteIntegration from '../NoteIntegration/NoteIntegration'
-import AssistantMemoryPanel from './AssistantMemoryPanel'
 import { unwatch, watchUserData } from '../../utils/backends/firestore'
 import UserProfileDv from '../SettingsView/Profile/UserProfileDv'
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
@@ -242,28 +241,19 @@ const UserDetailedView = ({ navigation }) => {
                                             )
                                         case DV_TAB_USER_NOTE:
                                             return (
-                                                <>
-                                                    {!isFullscreen && !loggedUser.isAnonymous && (
-                                                        <AssistantMemoryPanel
-                                                            projectId={projectId}
-                                                            userId={user.uid}
-                                                            loggedUserId={loggedUser.uid}
-                                                        />
-                                                    )}
-                                                    <NoteIntegration
-                                                        project={project}
-                                                        noteId={user.noteIdsByProject[projectId]}
-                                                        objectId={user.uid}
-                                                        objectName={user.displayName}
-                                                        objectPrivacy={user.isPublicFor}
-                                                        isFullscreen={isFullscreen}
-                                                        setFullscreen={setFullscreen}
-                                                        objectType="users"
-                                                        object={user}
-                                                        hideCreateNoteSection={hideCreateNoteSection}
-                                                        creatorId={user.uid}
-                                                    />
-                                                </>
+                                                <NoteIntegration
+                                                    project={project}
+                                                    noteId={user.noteIdsByProject[projectId]}
+                                                    objectId={user.uid}
+                                                    objectName={user.displayName}
+                                                    objectPrivacy={user.isPublicFor}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
+                                                    objectType="users"
+                                                    object={user}
+                                                    hideCreateNoteSection={hideCreateNoteSection}
+                                                    creatorId={user.uid}
+                                                />
                                             )
                                     }
                                 })()}
