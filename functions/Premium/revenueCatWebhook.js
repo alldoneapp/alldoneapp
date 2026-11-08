@@ -168,6 +168,20 @@ const processRevenueCatEvent = async event => {
     return 'ignored_event_type'
 }
 
+// The price of every paid event, for the growth scoreboard's revenue (functions/Growth). Never
+// allowed to fail the webhook: granting access matters more than counting the payment.
+const recordRevenueForScoreboard = async event => {
+    try {
+        const { recordRevenueCatRevenue } = require('../Growth/growthRevenue')
+        await recordRevenueCatRevenue(event)
+    } catch (error) {
+        functions.logger.warn('RevenueCat revenue could not be recorded for the scoreboard', {
+            error: error.message,
+            id: event?.id,
+        })
+    }
+}
+
 const handleRevenueCatWebhook = async (req, res) => {
     if (req.method !== 'POST') {
         res.status(405).send('Method not allowed')
@@ -195,6 +209,7 @@ const handleRevenueCatWebhook = async (req, res) => {
 
     try {
         const outcome = await processRevenueCatEvent(event)
+        await recordRevenueForScoreboard(event)
         functions.logger.info('RevenueCat webhook processed', {
             outcome,
             type: event?.type,

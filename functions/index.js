@@ -6256,6 +6256,24 @@ exports.applyKnowledgeBaseDefaults = onSchedule(
     }
 )
 
+// GROWTH SCOREBOARD - the growth loop's reward signal: yesterday's funnel (outreach, traffic,
+// signups by source, activation, paying users, revenue from actual payments, Gold cost) into the
+// server-only growthMetrics/daily/days/{day}, plus a private "Growth Scoreboard" artifact in
+// production. Mondays also compute the margin per paying user. See functions/Growth/.
+exports.growthScoreboardSecondGen = onSchedule(
+    {
+        schedule: '30 3 * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { runGrowthScoreboardJob } = require('./Growth/growthScoreboardJob')
+        await runGrowthScoreboardJob()
+    }
+)
+
 exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     {
         schedule: '17 2 * * *',

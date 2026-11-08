@@ -4040,6 +4040,42 @@ Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequ
 
     **Historical data is not backfilled, and cannot be honestly.** Entries written before this shipped carry no `model`/`billingExempt`/`correlationId` at all, and the only way to reconstruct them would be an approximate `vmJobs` match on projectId + objectId + a time window — several runs share a thread, so it would write silent misattribution into buckets that currently just do not exist. Every pre-existing number is therefore **unchanged and still correct**: `spend`, `count` and `spendBySource` are untouched, and a transaction declaring no dimensions writes no dimension fields, so `migration/backfillGoldStats.js` keeps working as-is. Read a dimension map as covering only the period since deploy, and cross-check its per-source total against `spendBySource[source]` for the same window to see how much of it is attributed.
 
+### The growth scoreboard is the growth loop's reward signal, and only code defines it
+
+`growthScoreboardSecondGen` (daily 03:30 UTC, `functions/Growth/`) writes yesterday's funnel to
+`growthMetrics/daily/days/{YYYY-MM-DD}`: the Growth project's contacts per status (outreach), GA4
+traffic, signups by source, three activation candidates, paying users (started/stopped), revenue
+from actual payments, Gold spent with an ESTIMATED upstream cost, and on Mondays the margin per
+paying user over 90 days. In production it then rewrites a private artifact "Growth Scoreboard" in
+the Alldone Growth project as a new version, so the artifact's history is the scoreboard's history.
+`growthMetrics` and `revenueEvents` have no client rule (catch-all deny): no browser and no agent can
+read or change the numbers, and an edit to the artifact is replaced by the next run. Every
+assumption lives in `growthConfig.js`; the artifact lists them under "What is estimated".
+
+Four things are load-bearing. **Revenue is what was paid, not a price list**: Stripe balance
+transactions (real fees, settlement currency; VAT is an estimated share until invoice tax is read)
+and the RevenueCat webhook, which now records every priced event in `revenueEvents` because Apple
+money never reaches Stripe; Apple subscription revenue therefore only counts from that deploy. A
+subscription payment is spread over the month or year it pays for, or a yearly customer would look
+unprofitable for nine months. **Signup origin is written once by the browser**:
+`utils/growth/signupAttribution.js` keeps the first page load's campaign labels in sessionStorage
+(nothing for a visit without a signal; never a click id, a full referrer or a query string) and
+writes `users/{uid}/private/signupAttribution` right after the signup batch, outside it so it can
+never block provisioning. The owner can write that document, so the server re-sanitises it before it
+becomes a map key. **No person leaves the run**: the day document holds counts, sums and
+percentiles only; the premium user ids the next run needs to count who started and stopped live in
+the server-only `growthMetrics/state`. The administrator and `EXCLUDED_USER_IDS` are left out of
+margins. **GA4 needs no configuration in code**: the run lists the properties its own service
+account (the Firebase Admin SDK account) may read, so granting that account Viewer on a property is
+the setup; until then the section says what is missing. GA only sees consenting visitors, so the
+run compares the `sign_up` events GA saw with the real signups from Firebase Auth (`visibleShare`).
+
+Costs are bounded: Firebase Auth's user list (API pages, no Firestore reads), three days of
+signups, count() queries, one goldStats rollup, the day's Stripe transactions; only the Monday
+margin reads every paying user's Gold ledger. `run` on each document reports what was read. Pinned
+by `functions/Growth/growthModels.test.js`, `growthScoreboard.test.js` and
+`utils/growth/signupAttribution.test.js`.
+
 ### Contact "Enrich profile" is an assistant run, not a scraper (replaces Apify)
 
 **LinkedIn profile pages cannot be read without a login, and that is the whole reason the Apify

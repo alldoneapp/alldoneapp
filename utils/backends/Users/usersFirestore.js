@@ -591,6 +591,12 @@ export async function uploadNewUser(uid, user, project, task, workstream, assist
     await batch.commit()
 }
 
+// Written once, right after the signup batch, and never again. Kept out of that batch on purpose:
+// it is optional metadata, and the account must never fail to provision because of it.
+export async function storeUserSignupAttribution(uid, attribution) {
+    await getDb().doc(`users/${uid}/private/signupAttribution`).set(attribution)
+}
+
 export const addNewUserToAlldoneTemplate = async userId => {
     const alldoneTemplateId = inProductionEnvironment() ? 'DK8eqfrVViztt7HiwoID' : 'KlUVBlKKMbVmtyHIIB9U'
     const alldoneTemplate = await getProjectData(alldoneTemplateId)

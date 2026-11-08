@@ -14,7 +14,12 @@ import {
     getFirestoreTime,
     uploadNewProject,
 } from '../backends/firestore'
-import { addNewUserToAlldoneTemplate, uploadNewUser } from '../backends/Users/usersFirestore'
+import {
+    addNewUserToAlldoneTemplate,
+    storeUserSignupAttribution,
+    uploadNewUser,
+} from '../backends/Users/usersFirestore'
+import { clearSignupAttribution, getSignupAttribution } from '../growth/signupAttribution'
 import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
@@ -40,6 +45,19 @@ import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants
 import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
 import { generateInitialAssistant, getWelcomeMessage } from './newUserDefaults'
 import { shouldUseFirebaseEmulators } from '../firebaseEmulators'
+
+const recordSignupAttribution = (userId, initialUrl) => {
+    let attribution
+    try {
+        attribution = getSignupAttribution({ initialUrl })
+    } catch (error) {
+        console.warn('[NewUser] Could not read the signup attribution:', error)
+        return
+    }
+    storeUserSignupAttribution(userId, attribution)
+        .then(() => clearSignupAttribution())
+        .catch(error => console.warn('[NewUser] Could not store the signup attribution:', error))
+}
 
 const generateInitialWorkstream = (projectId, userId) => {
     return getDefaultMainWorkstream(projectId, userId)
@@ -244,6 +262,7 @@ export const processNewUser = async firebaseUser => {
     // Otherwise mounted views begin project listeners and feed cleanup while the project does not
     // exist yet, producing permission-denied noise and racing the actual signup commit.
     await uploadNewUser(userId, user, project, task, workstream, assistant)
+    recordSignupAttribution(userId, initialUrl)
 
     store.dispatch(
         setInitialDataForNewUser(
