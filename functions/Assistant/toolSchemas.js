@@ -1393,7 +1393,7 @@ const toolSchemas = {
         function: {
             name: 'update_user_memory',
             description:
-                'Saves a noteworthy fact about the current app user into their per-project memory note. The tool resolves the correct user and project from runtime context and auto-creates the project-specific user note if missing.',
+                'Saves a noteworthy fact about the current app user into their private per-project assistant memory. Only this user (and their assistant) can read it unless they choose to share it with the project. The tool resolves the correct user and project from runtime context.',
             parameters: {
                 type: 'object',
                 properties: {

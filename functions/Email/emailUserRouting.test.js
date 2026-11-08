@@ -491,6 +491,79 @@ describe('emailUserRouting', () => {
             expect(result.user.uid).toBe('user1')
         })
 
+        // NV-07: Graph's `mail` attribute is set by a tenant administrator, so an attacker's own
+        // tenant can name a victim's address. That attestation must not beat the victim's login.
+        test('a Microsoft-attested mailbox never outranks a verified login email', async () => {
+            const userDataById = {
+                attacker: {
+                    email: 'attacker@attacker.test',
+                    emailConnections: {
+                        email_microsoft_33333333: { provider: 'microsoft', emailAddress: 'victim@example.com' },
+                    },
+                },
+            }
+            mockFirestore({
+                primaryDocs: [buildUserDoc('victim', { email: 'victim@example.com' })],
+                credentialDocs: [
+                    buildCredentialDoc(
+                        'attacker',
+                        'microsoftAuth_email_microsoft_33333333',
+                        { service: 'email', email: 'victim@example.com' },
+                        userDataById
+                    ),
+                ],
+            })
+            mockAuth({ victim: { email: 'victim@example.com', emailVerified: true } })
+
+            const result = await resolveEmailSenderIdentity('victim@example.com')
+            expect(result.status).toBe('matched')
+            expect(result.user.uid).toBe('victim')
+            expect(result.candidates).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ userId: 'attacker', connectionProof: 'verified', rank: 4 }),
+                    expect.objectContaining({ userId: 'victim', rank: 3 }),
+                ])
+            )
+        })
+
+        test('a Microsoft-attested mailbox still beats an unattested connection', async () => {
+            ensureEmailIdentityAttestation.mockImplementation(async ({ userId }) =>
+                userId === 'msUser' ? 'verified' : 'unverifiable'
+            )
+            const userDataById = {
+                msUser: {
+                    email: 'a@example.com',
+                    emailConnections: {
+                        email_microsoft_44444444: { provider: 'microsoft', emailAddress: 'shared@example.com' },
+                    },
+                },
+                googleUser: {
+                    email: 'b@example.com',
+                    apisConnected: { p1: { gmail: true, gmailEmail: 'shared@example.com' } },
+                },
+            }
+            mockFirestore({
+                credentialDocs: [
+                    buildCredentialDoc(
+                        'msUser',
+                        'microsoftAuth_email_microsoft_44444444',
+                        { service: 'email', email: 'shared@example.com' },
+                        userDataById
+                    ),
+                    buildCredentialDoc(
+                        'googleUser',
+                        'googleAuth_p1_gmail',
+                        { service: 'gmail', email: 'shared@example.com' },
+                        userDataById
+                    ),
+                ],
+            })
+
+            const result = await resolveEmailSenderIdentity('shared@example.com')
+            expect(result.status).toBe('matched')
+            expect(result.user.uid).toBe('msUser')
+        })
+
         test('falls back cleanly when the connected mailbox lookup errors', async () => {
             const userData = { email: 'karsten.wysk@gmail.com', apisConnected: {} }
             admin.firestore.mockReturnValue({

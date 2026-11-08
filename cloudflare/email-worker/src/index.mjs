@@ -1,5 +1,7 @@
 import PostalMime from 'postal-mime'
 
+import { buildSenderAuthentication } from './senderAuthentication.mjs'
+
 export default {
     async email(message, env, ctx) {
         const payload = await buildNormalizedPayload(message, env)
@@ -32,7 +34,7 @@ export function parseDateHeader(value) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-export async function buildNormalizedPayload(message, env = {}) {
+export async function buildNormalizedPayload(message, env = {}, options = {}) {
     const rawHeaders = objectFromHeaders(message.headers)
     // Use only the SMTP envelope sender for authorization. Header From can be spoofed independently.
     const parsedFrom = extractMailboxAddress(message.from || '')
@@ -41,9 +43,21 @@ export async function buildNormalizedPayload(message, env = {}) {
     // a visible To header, or Anna could expose a blind copy by replying to everyone.
     const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || '')
     const ccEmails = extractMailboxAddresses(rawHeaders.cc || rawHeaders.Cc || '')
-    const parsedEmail = await parseMimeMessage(message)
-    const { textBody, htmlBody } = await readBodyParts(message, parsedEmail)
+    // `message.raw` is a stream that can be read once, so it is buffered here and shared by the
+    // MIME parser and the DKIM check.
+    const rawMessage = await readRawMessage(message)
+    const parsedEmail = await parseMimeMessage(rawMessage.bytes)
+    const { textBody, htmlBody } = await readBodyParts(message, parsedEmail, rawMessage.legacyText)
     const attachments = await readAttachments(message, parsedEmail)
+    // NV-06: the envelope sender is only a claim. Cloud Functions route the message to an account
+    // only when a DKIM signature aligned with that sender's domain verified here.
+    const senderAuthentication = await buildSenderAuthentication({
+        rawBytes: rawMessage.bytes,
+        headers: message.headers,
+        env,
+        resolveTxt: options.resolveTxt,
+        now: options.now,
+    })
 
     return {
         messageId: String(message.headers?.get?.('message-id') || message.messageId || cryptoRandomId()).trim(),
@@ -64,22 +78,38 @@ export async function buildNormalizedPayload(message, env = {}) {
             references: String(message.headers?.get?.('references') || '').trim(),
         },
         attachments,
+        senderAuthentication,
     }
 }
 
-async function parseMimeMessage(message) {
+async function readRawMessage(message) {
     try {
         const raw = await message.raw
-        if (!raw) return null
+        if (!raw) return { bytes: null, legacyText: '' }
+        if (raw instanceof Uint8Array) return { bytes: raw, legacyText: '' }
+        if (raw instanceof ArrayBuffer) return { bytes: new Uint8Array(raw), legacyText: '' }
+        if (typeof raw === 'string') return { bytes: new TextEncoder().encode(raw), legacyText: '' }
+        if (typeof raw.getReader === 'function') {
+            return { bytes: new Uint8Array(await new Response(raw).arrayBuffer()), legacyText: '' }
+        }
+        // Local tests may provide only a simple text() helper instead of a full raw MIME payload.
+        if (typeof raw.text === 'function') return { bytes: null, legacyText: String((await raw.text()) || '') }
+    } catch (_) {}
+    return { bytes: null, legacyText: '' }
+}
+
+async function parseMimeMessage(rawBytes) {
+    try {
+        if (!rawBytes) return null
 
         const parser = new PostalMime()
-        return await parser.parse(raw)
+        return await parser.parse(rawBytes)
     } catch (_) {
         return null
     }
 }
 
-async function readBodyParts(message, parsedEmail = null) {
+async function readBodyParts(message, parsedEmail = null, legacyText = '') {
     let textBody = ''
     let htmlBody = ''
 
@@ -91,11 +121,7 @@ async function readBodyParts(message, parsedEmail = null) {
             htmlBody = parsedEmail.html
         }
 
-        const raw = await message.raw
-        if (!textBody && typeof raw?.text === 'function') {
-            // Local tests may provide only a simple text() helper instead of a full raw MIME payload.
-            textBody = await raw.text()
-        }
+        if (!textBody && legacyText) textBody = legacyText
     } catch (_) {}
 
     if (message.text) {
