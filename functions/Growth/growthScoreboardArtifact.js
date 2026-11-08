@@ -108,7 +108,13 @@ function renderFunnel(latest = {}, latestMargin = null) {
         ],
         [
             '5. Paying users',
-            `${formatNumber(premium.payingUsers)} · net revenue today ${formatEur(latest.revenue && latest.revenue.netEur)}`,
+            `${formatNumber(premium.payingUsers)} (${Object.entries(premium.byPlan || {})
+                .map(([plan, count]) => `${plan} ${formatNumber(count)}`)
+                .join(
+                    ', '
+                )}) · Stripe subscriptions ${formatEur(premium.stripeMonthlyGrossEur)}/month gross · net revenue today ${formatEur(
+                latest.revenue && latest.revenue.netEur
+            )}`,
         ],
         [
             '6. Margin per paying user',
@@ -319,10 +325,19 @@ function renderScoreboardHtml({
     const active = latest.activeUsers || {}
     const sourceRows = sortedEntries(signups.bySource).map(([source, count]) => [source, formatNumber(count)])
     const campaignRows = sortedEntries(signups.byCampaign).map(([campaign, count]) => [campaign, formatNumber(count)])
-    const payingNote =
+    const payingChange =
         premium.started === null || premium.started === undefined
             ? 'first snapshot'
             : `${formatSigned(premium.started)} started · ${premium.stopped ? `−${premium.stopped}` : '0'} stopped`
+    const payingNote = [
+        payingChange,
+        Number.isFinite(premium.trialing) ? `${formatNumber(premium.trialing)} in trial` : '',
+        premium.unmatchedStripeCustomers
+            ? `${formatNumber(premium.unmatchedStripeCustomers)} not matched to an account`
+            : '',
+    ]
+        .filter(Boolean)
+        .join(' · ')
     const data = { latest, latestMargin, latestMarginDay, history }
 
     return `<!DOCTYPE html>
@@ -338,7 +353,11 @@ ${card('Signups', formatNumber(signups.count), `${formatNumber(signups.withAttri
 ${card('Paying users', formatNumber(premium.payingUsers), payingNote)}
 ${card('Net revenue', formatEur(latest.revenue && latest.revenue.netEur), 'after fees and taxes')}
 ${card('Gold spent', formatNumber(latest.gold && latest.gold.spent), `≈ ${formatEur(latest.gold && latest.gold.estimatedCostEur)} upstream`)}
-${card('Active users', formatNumber(active.week), `${formatNumber(active.day)} today · ${formatNumber(active.month)} in 30 days`)}
+${card(
+    'Logged in (7 days)',
+    formatNumber(active.week),
+    `${formatNumber(active.day)} today · ${formatNumber(active.month)} in 30 days, by last login`
+)}
 </div>
 ${renderFunnel(latest, latestMargin)}
 ${renderTraffic(latest.traffic)}

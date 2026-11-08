@@ -4070,6 +4070,20 @@ account (the Firebase Admin SDK account) may read, so granting that account View
 the setup; until then the section says what is missing. GA only sees consenting visitors, so the
 run compares the `sign_up` events GA saw with the real signups from Firebase Auth (`visibleShare`).
 
+**Paying users come from Stripe, not from `users/{uid}.premium`.** That flag is only refreshed when
+the premium checker runs for a user (login, checkout) and is stale for most subscribers: the first
+production run (2026-11-08) counted 2 flagged users against about 26 active subscriptions. The run
+lists Stripe's `active` subscriptions (and counts `trialing`/`past_due`), matches each customer to an
+account by `stripeCustomerId` or, failing that, by its VERIFIED email (`findUserIdByVerifiedEmail`),
+and reads Apple subscribers from the premium status RevenueCat sets (`premium.source == 'apple_iap'`).
+"Logged in" counts `lastLogin`, which moves only on a real login, so it understates daily use.
+
+**Never hand a `google-auth-library` client to a `googleapis` module in Functions.** `googleapis`
+bundles google-auth-library 10 while `functions/` uses 9; googleapis-common then reads the v9
+client's headers in the v10 shape and sends the request with NO credentials, which Google answers
+with "Login Required" — it looks like a permission problem and is not one. `growthTraffic.js` calls
+the GA REST endpoints with a token from our own `GoogleAuth` instead.
+
 Costs are bounded: Firebase Auth's user list (API pages, no Firestore reads), three days of
 signups, count() queries, one goldStats rollup, the day's Stripe transactions; only the Monday
 margin reads every paying user's Gold ledger. `run` on each document reports what was read. Pinned

@@ -29,7 +29,7 @@ const {
     DAY_MS,
 } = require('./growthSignups')
 const { summarizeMargins, percentile } = require('./growthMargin')
-const { summarizePropertyReports, readTraffic } = require('./growthTraffic')
+const { createAnalyticsClient, summarizePropertyReports, readTraffic } = require('./growthTraffic')
 const { VM_GOLD_PER_MINUTE, FX_TO_EUR, MAX_BREAKDOWN_KEYS } = require('./growthConfig')
 
 const SIGNUP = Date.UTC(2026, 10, 1, 9, 0, 0)
@@ -381,6 +381,47 @@ describe('growth margin distribution', () => {
 })
 
 describe('growth traffic (Google Analytics)', () => {
+    test('the REST client sends its own bearer token and pages through the account summaries', async () => {
+        const calls = []
+        const fetchImpl = jest.fn(async (url, init) => {
+            calls.push({ url, init })
+            if (url.includes('accountSummaries') && !url.includes('pageToken')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        accountSummaries: [{ propertySummaries: [{ property: 'properties/1', displayName: 'Web' }] }],
+                        nextPageToken: 'next',
+                    }),
+                }
+            }
+            if (url.includes('accountSummaries')) {
+                return {
+                    ok: true,
+                    json: async () => ({ accountSummaries: [{ propertySummaries: [{ property: 'properties/2' }] }] }),
+                }
+            }
+            return {
+                ok: false,
+                status: 403,
+                json: async () => ({ error: { message: 'User does not have sufficient permissions' } }),
+            }
+        })
+        const client = createAnalyticsClient({ auth: { getAccessToken: async () => 'token-1' }, fetchImpl })
+
+        expect(await client.listProperties()).toEqual([
+            { property: 'properties/1', displayName: 'Web' },
+            { property: 'properties/2', displayName: 'properties/2' },
+        ])
+        expect(calls[0].init.headers.Authorization).toBe('Bearer token-1')
+        expect(calls[1].url).toContain('pageToken=next')
+        await expect(client.runReport('properties/1', {})).rejects.toThrow('sufficient permissions')
+        expect(calls[2].url).toBe('https://analyticsdata.googleapis.com/v1beta/properties/1:runReport')
+        expect(calls[2].init.method).toBe('POST')
+        await expect(client.runReport('properties/1/../x', {})).rejects.toThrow('Not a GA4 property')
+        const noToken = createAnalyticsClient({ auth: { getAccessToken: async () => null }, fetchImpl })
+        await expect(noToken.listProperties()).rejects.toThrow('No access token')
+    })
+
     test('summarizes a property report by host, source / medium and campaign', () => {
         const row = (host, source, medium, campaign, sessions, users, newUsers) => ({
             dimensionValues: [host, source, medium, campaign].map(value => ({ value })),

@@ -35,28 +35,56 @@ function topEntries(counts) {
     return Object.fromEntries([...entries.slice(0, MAX_KEYS - 1), ['other', rest]])
 }
 
-// The production client: googleapis' per-API modules (loading all of googleapis takes seconds).
-function createAnalyticsClient() {
-    const { GoogleAuth } = require('google-auth-library')
-    const { analyticsadmin } = require('googleapis/build/src/apis/analyticsadmin')
-    const { analyticsdata } = require('googleapis/build/src/apis/analyticsdata')
-    const auth = new GoogleAuth({ scopes: SCOPES })
-    const adminApi = analyticsadmin({ version: 'v1beta', auth })
-    const dataApi = analyticsdata({ version: 'v1beta', auth })
+const ADMIN_API = 'https://analyticsadmin.googleapis.com/v1beta'
+const DATA_API = 'https://analyticsdata.googleapis.com/v1beta'
+const MAX_LISTED_PROPERTIES = 200
+
+// The production client: plain REST with a token from the Functions' own google-auth-library.
+// Not googleapis: it bundles google-auth-library 10 while the Functions use 9, and handing a v9
+// GoogleAuth to it sends the requests without credentials (GA answers "Login Required").
+function createAnalyticsClient({ auth, fetchImpl = fetch } = {}) {
+    let googleAuth = auth
+    if (!googleAuth) {
+        const { GoogleAuth } = require('google-auth-library')
+        googleAuth = new GoogleAuth({ scopes: SCOPES })
+    }
+    const call = async (url, init = {}) => {
+        const token = await googleAuth.getAccessToken()
+        if (!token) throw new Error('No access token for Google Analytics')
+        const response = await fetchImpl(url, {
+            ...init,
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) {
+            throw new Error(
+                (body && body.error && body.error.message) || `Google Analytics answered ${response.status}`
+            )
+        }
+        return body || {}
+    }
     return {
         async listProperties() {
-            const response = await adminApi.accountSummaries.list({ pageSize: 50 })
-            const summaries = (response.data && response.data.accountSummaries) || []
-            return summaries.flatMap(account =>
-                (account.propertySummaries || []).map(property => ({
-                    property: property.property,
-                    displayName: property.displayName || property.property,
-                }))
-            )
+            const properties = []
+            let pageToken = ''
+            do {
+                const query = `pageSize=50${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`
+                const body = await call(`${ADMIN_API}/accountSummaries?${query}`)
+                ;(body.accountSummaries || []).forEach(account =>
+                    (account.propertySummaries || []).forEach(property =>
+                        properties.push({
+                            property: property.property,
+                            displayName: property.displayName || property.property,
+                        })
+                    )
+                )
+                pageToken = body.nextPageToken || ''
+            } while (pageToken && properties.length < MAX_LISTED_PROPERTIES)
+            return properties
         },
         async runReport(property, requestBody) {
-            const response = await dataApi.properties.runReport({ property, requestBody })
-            return response.data || {}
+            if (!/^properties\/\d+$/.test(String(property))) throw new Error(`Not a GA4 property: ${property}`)
+            return call(`${DATA_API}/${property}:runReport`, { method: 'POST', body: JSON.stringify(requestBody) })
         },
     }
 }
@@ -166,4 +194,4 @@ async function readTraffic({ day, signups, client }) {
     return result
 }
 
-module.exports = { SIGNUP_EVENT_NAMES, summarizePropertyReports, readTraffic, sanitizeLabel }
+module.exports = { SIGNUP_EVENT_NAMES, createAnalyticsClient, summarizePropertyReports, readTraffic, sanitizeLabel }

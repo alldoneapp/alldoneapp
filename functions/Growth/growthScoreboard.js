@@ -14,8 +14,9 @@
 //   - on the weekly margin run: every paying user's Gold ledger over MARGIN_WINDOW_DAYS
 //
 // Every value is an aggregate: counts, sums, percentiles. No email, name or user id is written to
-// the daily document; the only ids kept are the premium user ids in the server-only state
-// document, which the next run needs to count who started and who stopped paying.
+// the daily document; the only ids kept are the paying customers' keys (stripe:<customer>,
+// apple:<uid>) in the server-only state document, which the next run needs to count who started
+// and who stopped paying.
 
 const admin = require('firebase-admin')
 const moment = require('moment')
@@ -228,35 +229,140 @@ async function countActiveUsers(db, now, counter) {
     return result
 }
 
-async function readPremiumUsers(db, counter) {
-    const snapshot = await db.collection('users').where('premium.status', '==', 'premium').select('premium').get()
-    counter.firestoreDocs += snapshot.size || 1
-    return snapshot.docs.map(doc => {
-        const premium = (doc.data() || {}).premium || {}
-        return {
-            uid: doc.id,
-            plan: premium.source === 'apple_iap' ? 'apple' : 'stripe',
-            planInterval: premium.planInterval || null,
-        }
-    })
+// Who is paying today. Stripe is asked directly, because users/{uid}.premium is only refreshed when
+// the premium checker runs for a user (at login, at checkout) and is stale for most subscribers:
+// the first production run counted 2 paying users there against about 26 active subscriptions.
+// Apple subscriptions only exist as the premium status RevenueCat sets, so they are read from it.
+// Each payer is keyed by where the money comes from (stripe:<customer>, apple:<uid>); the keys go
+// to the server-only state document so the next run can count who started and who stopped.
+const STRIPE_INTERVAL_MONTHS = { day: 1 / 30, week: 12 / 52, month: 1, year: 12 }
+
+function describeStripeSubscription(subscription = {}) {
+    const items = (subscription.items && subscription.items.data) || []
+    const recurring = (items[0] && items[0].price && items[0].price.recurring) || {}
+    const months = (STRIPE_INTERVAL_MONTHS[recurring.interval] || 1) * (Number(recurring.interval_count) || 1)
+    const amount = items.reduce(
+        (sum, item) => sum + ((Number(item.price && item.price.unit_amount) || 0) * (Number(item.quantity) || 1)) / 100,
+        0
+    )
+    const currency = String((items[0] && items[0].price && items[0].price.currency) || 'eur').toUpperCase()
+    const rate = FX_TO_EUR[currency]
+    return {
+        planInterval: recurring.interval || null,
+        monthlyGrossEur: Number.isFinite(rate) ? (amount * rate) / months : null,
+    }
 }
 
-function summarizePremium(premiumUsers, previousIds) {
-    const current = new Set(premiumUsers.map(user => user.uid))
-    const previous = Array.isArray(previousIds) ? new Set(previousIds) : null
+async function listStripeSubscriptions(stripe, status, counter) {
+    const subscriptions = []
+    let startingAfter
+    for (let page = 0; page < 20; page += 1) {
+        const result = await stripe.subscriptions.list({
+            status,
+            limit: 100,
+            expand: ['data.customer'],
+            ...(startingAfter ? { starting_after: startingAfter } : {}),
+        })
+        counter.stripeApiCalls += 1
+        const data = (result && result.data) || []
+        subscriptions.push(...data)
+        if (!result || !result.has_more || data.length === 0) break
+        startingAfter = data[data.length - 1].id
+    }
+    return subscriptions
+}
+
+async function readPayingCustomers({ db, auth, stripe, counter }) {
+    const premiumSnapshot = await db
+        .collection('users')
+        .where('premium.status', '==', 'premium')
+        .select('premium')
+        .get()
+    counter.firestoreDocs += premiumSnapshot.size || 1
+    const appleUsers = premiumSnapshot.docs.filter(doc => ((doc.data() || {}).premium || {}).source === 'apple_iap')
+    const payers = appleUsers.map(doc => ({
+        key: `apple:${doc.id}`,
+        uid: doc.id,
+        plan: 'apple',
+        planInterval: ((doc.data() || {}).premium || {}).planInterval || null,
+        monthlyGrossEur: null,
+    }))
+    const diagnostics = {
+        premiumFlags: premiumSnapshot.size,
+        stripeAvailable: !!stripe,
+        trialing: null,
+        pastDue: null,
+        unmatchedStripeCustomers: 0,
+    }
+    if (!stripe) return { payers, diagnostics }
+
+    const [active, trialing, pastDue] = await Promise.all([
+        listStripeSubscriptions(stripe, 'active', counter),
+        listStripeSubscriptions(stripe, 'trialing', counter),
+        listStripeSubscriptions(stripe, 'past_due', counter),
+    ])
+    diagnostics.trialing = trialing.length
+    diagnostics.pastDue = pastDue.length
+
+    const { findUserIdByVerifiedEmail } = require('../shared/verifiedAccountEmail')
+    const byCustomer = new Map()
+    active.forEach(subscription => {
+        const customer = subscription.customer && typeof subscription.customer === 'object' ? subscription.customer : {}
+        const customerId = customer.id || (typeof subscription.customer === 'string' ? subscription.customer : '')
+        if (!customerId) return
+        const described = describeStripeSubscription(subscription)
+        const existing = byCustomer.get(customerId)
+        if (existing) {
+            existing.monthlyGrossEur = (existing.monthlyGrossEur || 0) + (described.monthlyGrossEur || 0)
+            return
+        }
+        byCustomer.set(customerId, { customerId, email: customer.email || '', ...described })
+    })
+    for (const subscriber of byCustomer.values()) {
+        const snapshot = await db
+            .collection('users')
+            .where('stripeCustomerId', '==', subscriber.customerId)
+            .limit(1)
+            .get()
+        counter.firestoreDocs += snapshot.size || 1
+        let uid = snapshot.empty ? null : snapshot.docs[0].id
+        // A Payment Link customer is often not linked to its account yet; its verified email is.
+        if (!uid && subscriber.email && auth) {
+            uid = await findUserIdByVerifiedEmail(subscriber.email, { auth }).catch(() => null)
+        }
+        if (!uid) diagnostics.unmatchedStripeCustomers += 1
+        payers.push({
+            key: `stripe:${subscriber.customerId}`,
+            uid: uid || null,
+            plan: 'stripe',
+            planInterval: subscriber.planInterval,
+            monthlyGrossEur: subscriber.monthlyGrossEur,
+        })
+    }
+    return { payers, diagnostics }
+}
+
+function summarizePremium(payers, previousKeys, diagnostics = {}) {
+    const current = new Set(payers.map(payer => payer.key))
+    const previous = Array.isArray(previousKeys) ? new Set(previousKeys) : null
     const byPlan = {}
     const byInterval = {}
-    premiumUsers.forEach(user => {
-        byPlan[user.plan] = (byPlan[user.plan] || 0) + 1
-        const interval = user.planInterval || 'unknown'
+    let monthlyGrossEur = 0
+    payers.forEach(payer => {
+        byPlan[payer.plan] = (byPlan[payer.plan] || 0) + 1
+        const interval = payer.planInterval || 'unknown'
         byInterval[interval] = (byInterval[interval] || 0) + 1
+        monthlyGrossEur += payer.monthlyGrossEur || 0
     })
     return {
         payingUsers: current.size,
         byPlan,
         byInterval,
-        started: previous ? [...current].filter(uid => !previous.has(uid)).length : null,
-        stopped: previous ? [...previous].filter(uid => !current.has(uid)).length : null,
+        // List price of the active Stripe subscriptions per month, VAT included; Apple not included.
+        stripeMonthlyGrossEur: round2(monthlyGrossEur),
+        started: previous ? [...current].filter(key => !previous.has(key)).length : null,
+        stopped: previous ? [...previous].filter(key => !current.has(key)).length : null,
+        ...diagnostics,
     }
 }
 
@@ -284,7 +390,8 @@ async function computeGold(db, reportDay, counter) {
 // Payments up to a year back: a yearly plan's payment is spread over the year it pays for.
 const REVENUE_LOOKBACK_DAYS = 365
 
-async function computeMargin({ db, stripe, now, premiumUsers, createdAtByUid, excludedIds, counter }) {
+async function computeMargin({ db, stripe, now, payers: currentPayers, createdAtByUid, excludedIds, counter }) {
+    const premiumUsers = currentPayers.filter(payer => payer.uid)
     const from = now - MARGIN_WINDOW_DAYS * DAY_MS
     const revenueFrom = now - REVENUE_LOOKBACK_DAYS * DAY_MS
     const [stripeResult, appleResult] = await Promise.all([
@@ -418,11 +525,10 @@ async function runGrowthScoreboard(options = {}, deps = {}) {
     const { signups, activation } = await computeSignups({ db, createdAtByUid, reportDayStart, counter })
     const activeUsers = await countActiveUsers(db, now, counter)
 
-    const premiumUsers = await readPremiumUsers(db, counter)
+    const { payers, diagnostics: payerDiagnostics } = await readPayingCustomers({ db, auth, stripe, counter })
     // A rerun of the same day compares with the snapshot before that day, not with itself.
-    const previousPremiumIds =
-        state.premiumSnapshotDay === reportDay ? state.previousPremiumUserIds : state.premiumUserIds
-    const premium = summarizePremium(premiumUsers, previousPremiumIds)
+    const previousPayingKeys = state.payingSnapshotDay === reportDay ? state.previousPayingKeys : state.payingKeys
+    const premium = summarizePremium(payers, previousPayingKeys, payerDiagnostics)
 
     const [stripeDay, appleDay] = await Promise.all([
         readStripeRevenueRows({ stripe, from: reportDayStart, to: reportDayEnd }),
@@ -443,7 +549,7 @@ async function runGrowthScoreboard(options = {}, deps = {}) {
     const isMarginDay = moment.utc(now).isoWeekday() === MARGIN_WEEKDAY_UTC
     const margin =
         options.forceMargin || isMarginDay
-            ? await computeMargin({ db, stripe, now, premiumUsers, createdAtByUid, excludedIds, counter })
+            ? await computeMargin({ db, stripe, now, payers, createdAtByUid, excludedIds, counter })
             : null
 
     const metrics = {
@@ -469,9 +575,9 @@ async function runGrowthScoreboard(options = {}, deps = {}) {
     const nextState = {
         lastRunDay: reportDay,
         lastRunAt: now,
-        premiumSnapshotDay: reportDay,
-        previousPremiumUserIds: Array.isArray(previousPremiumIds) ? previousPremiumIds : null,
-        premiumUserIds: premiumUsers.map(user => user.uid),
+        payingSnapshotDay: reportDay,
+        previousPayingKeys: Array.isArray(previousPayingKeys) ? previousPayingKeys : null,
+        payingKeys: payers.map(payer => payer.key),
     }
     if (margin) {
         nextState.latestMargin = margin
@@ -498,5 +604,6 @@ module.exports = {
     runGrowthScoreboard,
     readScoreboardHistory,
     summarizePremium,
+    describeStripeSubscription,
     listAccountCreationTimes,
 }

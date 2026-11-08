@@ -86,6 +86,11 @@ function createWorld() {
         { uid: 'admin', email: 'k@example.com', providerData: [{}], created: Date.UTC(2020, 4, 6) },
     ]
     const auth = {
+        getUserByEmail: jest.fn(async email => {
+            if (email === 'mail@example.com') return { uid: 'p-mail', email, emailVerified: true }
+            if (email === 'unverified@example.com') return { uid: 'p-unverified', email, emailVerified: false }
+            throw Object.assign(new Error('no user'), { code: 'auth/user-not-found' })
+        }),
         listUsers: jest.fn(async (max, pageToken) => {
             const page = pageToken ? authUsers.slice(4) : authUsers.slice(0, 4)
             return {
@@ -237,6 +242,31 @@ function createWorld() {
             })),
         },
         charges: { retrieve: jest.fn() },
+        subscriptions: {
+            list: jest.fn(async ({ status }) => ({ data: world.subscriptions[status] || [], has_more: false })),
+        },
+    }
+    const subscription = (customer, interval = 'month', amount = 1190) => ({
+        customer,
+        items: {
+            data: [
+                {
+                    quantity: 1,
+                    price: { unit_amount: amount, currency: 'eur', recurring: { interval, interval_count: 1 } },
+                },
+            ],
+        },
+    })
+    const world = {
+        subscriptions: {
+            active: [
+                subscription({ id: 'cus_p', email: 'p@example.com' }),
+                subscription({ id: 'cus_mail', email: 'Mail@Example.com' }, 'year', 11900),
+                subscription({ id: 'cus_ghost', email: 'unverified@example.com' }),
+            ],
+            trialing: [subscription({ id: 'cus_trial', email: 't@example.com' })],
+            past_due: [],
+        },
     }
     db.docs.set('users/admin', { ...db.docs.get('users/admin'), stripeCustomerId: 'cus_admin' })
 
@@ -256,7 +286,7 @@ function createWorld() {
                       ],
                   },
     }
-    return { db, auth, stripe, analytics }
+    return Object.assign(world, { db, auth, stripe, analytics })
 }
 
 const run = (world, now, options = {}, environment = 'production') =>
@@ -294,12 +324,20 @@ describe('growth scoreboard daily run', () => {
         })
         expect(metrics.activation.longCohort).toMatchObject({ day: '2026-10-25', signups: 1, goldOnThreeDays: 1 })
         expect(metrics.activeUsers).toEqual({ day: 4, week: 6, month: 6 })
+        // Paying users come from Stripe's active subscriptions plus Apple; the stale premium flag of
+        // the administrator (no subscription) does not count, and an unverified address does not match.
         expect(metrics.premium).toMatchObject({
-            payingUsers: 3,
-            byPlan: { stripe: 2, apple: 1 },
+            payingUsers: 4,
+            byPlan: { stripe: 3, apple: 1 },
+            byInterval: { month: 2, year: 2 },
+            premiumFlags: 3,
+            trialing: 1,
+            pastDue: 0,
+            unmatchedStripeCustomers: 1,
             started: null,
             stopped: null,
         })
+        expect(metrics.premium.stripeMonthlyGrossEur).toBeCloseTo(11.9 + 11.9 + 119 / 12, 2)
         // Day revenue: the subscription after Stripe's fee and estimated VAT, minus a Stripe fee;
         // the sandbox event is not revenue.
         expect(metrics.revenue.byKind.subscription.count).toBe(1)
@@ -327,8 +365,10 @@ describe('growth scoreboard daily run', () => {
         const margin = metrics.margin
         expect(margin.windowDays).toBe(90)
         // The administrator's huge VM spend and Gold pack are not a customer's.
-        expect(margin.payingUsers).toBe(2)
-        expect(margin.byPlan.stripe.payingUsers).toBe(1)
+        // p-stripe (customer id), p-mail (verified email) and p-apple; the unmatched customer has no
+        // ledger to read.
+        expect(margin.payingUsers).toBe(3)
+        expect(margin.byPlan.stripe.payingUsers).toBe(2)
         expect(margin.byPlan.apple.payingUsers).toBe(1)
         // A yearly Apple plan paid 10 days ago counts with 10/365 of its net.
         expect(margin.byPlan.apple.revenueEur).toBeCloseTo((99.99 * 0.84 * 0.85 * 0.87 * 10) / 365, 1)
@@ -339,12 +379,12 @@ describe('growth scoreboard daily run', () => {
     test('no margin outside Mondays; started and stopped come from the previous snapshot', async () => {
         const world = createWorld()
         await run(world, MONDAY)
-        world.db.docs.set('users/p-new', { premium: { status: 'premium' }, lastLogin: TUESDAY })
+        world.db.docs.set('users/p-new', { premium: { status: 'premium', source: 'apple_iap' }, lastLogin: TUESDAY })
         world.db.docs.set('users/p-apple', { premium: { status: 'free' } })
 
         const { metrics } = await run(world, TUESDAY)
         expect(metrics.margin).toBe(null)
-        expect(metrics.premium).toMatchObject({ payingUsers: 3, started: 1, stopped: 1 })
+        expect(metrics.premium).toMatchObject({ payingUsers: 4, started: 1, stopped: 1 })
 
         // Running the same day again compares with the same earlier snapshot, not with itself.
         const rerun = await run(world, TUESDAY)
