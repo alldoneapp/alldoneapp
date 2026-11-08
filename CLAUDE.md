@@ -644,10 +644,8 @@ Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/
   for any callable that writes one (`assistantProjectAccess.js`). `addCalendarEventsToTasksSecondGen`
   was removed (no caller).
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
-the test next to each guard module above and `functions/Utils/callableIdentityBindings.test.js`, which
-checks the wiring in `index.js`.
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
+Pinned by the test next to each guard module above and `functions/Utils/callableIdentityBindings.test.js`,
+which checks the wiring in `index.js`. The payment callables are pinned by
 `functions/Payment/subscriptionAccess.test.js` and `functions/Premium/linkStripeAccount.test.js`.
 
 **Membership is `projects/{pid}.userIds`, on every Admin SDK path.** The arrays on `users/{uid}`
@@ -756,8 +754,7 @@ withdrawn-source block of `knowledgePageStore.test.js` and the same-Message-ID b
   the runner). An unpriceable model is refused. A new endpoint an agent CLI starts using shows up as a
   `rejected request to a non-inference endpoint` warning and has to be added to the list.
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`,
-and for the VM path by `vmProxyModelBinding.test.js`, the `security audit 2026-11` blocks of
+The VM path is pinned by `vmProxyModelBinding.test.js`, the `security audit 2026-11` blocks of
 `vmJobRunner.test.js` / `vmGolden.test.js` and the rules emulator suite. These VM changes reach the
 `vm-job-runner` Cloud Run image only when it is rebuilt.
 
