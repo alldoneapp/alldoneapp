@@ -4712,6 +4712,22 @@ framework's `trust proxy` is the leftmost, client-controlled one), encoded, 10 l
 day (`shared/callableRateLimit.js`). Any failure returns the United States fallback the client
 already handles. Pinned by `functions/IpRegistry/ipRegistryLookup.test.js`.
 
+### A deleted project's id is tombstoned and its every root removed (NV-26)
+
+`onDeleteProject` (`functions/Projects/onDeleteProjectFunctions.js`) first writes the server-only
+`deletedProjects/{projectId}`, and the `projects` create rule refuses an id that has one. Before,
+the create rule accepted any client-chosen id, so whoever knew a deleted project's id (a removed
+member, a viewer of a link-shared project) could register it and become the only member of
+everything the cleanup had missed: the wiki tree with its document texts, OKRs, VM sessions, the
+upload index. The cleanup list now also covers `knowledgeBases`, `okrs`, `vmGoldens`,
+`artifactUploadIndex`, `assistantSkills`, `assistantSkillImports`, `projectHappiness`,
+`chatFollowers`, `oldFeeds`, `workstreams`, `notesCollab`, `firestoreAccessProjectionJobs`, the
+project's `vmSessions` (queried by `projectId`) and, best effort, the note bodies under
+`notesData/{projectId}/` in the notes bucket. **A new root keyed by project id belongs in that
+list.** Not covered: the E2B sandboxes and golden snapshot of a deleted project (their documents
+go, the E2B objects stay until E2B expires them) and skill bundle bytes in Storage. Pinned by
+`Projects/onDeleteProjectFunctions.test.js` and the NV-26 block of the rules emulator suite.
+
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. Gen2 Functions are configured through `setGlobalOptions` to run as the environment's `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account, and `functions/firebaseConfig*.js` uses application-default credentials in that managed runtime. Therefore **every firebase-admin call that hits a Google Cloud API authenticates as the firebase-adminsdk service account — NOT the `<projectNumber>-compute@developer.gserviceaccount.com` default runtime SA**. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing. The old CI service-account JSON files may still be prepared for legacy tooling, but Functions no longer depend on baking that long-lived key into Cloud Run revisions. IAM changes also take up to ~7 min to propagate — wait before re-testing.
