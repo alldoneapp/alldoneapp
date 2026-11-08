@@ -2676,13 +2676,21 @@ exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     },
     async request => {
         const { data, auth } = request
-        if (auth) {
-            const admin = require('firebase-admin')
-            const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
-            const { projectId, goalId } = data
-            await proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        const admin = require('firebase-admin')
+        const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
+        const { reindexUnlockedGoalForUser, UnlockGoalReindexError } = require('./Goals/unlockGoalReindex')
+        try {
+            await reindexUnlockedGoalForUser({
+                db: admin.firestore(),
+                userId: auth.uid,
+                projectId: data?.projectId,
+                goalId: data?.goalId,
+                reindex: (projectId, goalId) => proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin),
+            })
+        } catch (error) {
+            if (error instanceof UnlockGoalReindexError) throw new HttpsError(error.code, error.message)
+            throw error
         }
     }
 )
