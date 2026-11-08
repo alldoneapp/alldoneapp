@@ -15,6 +15,33 @@ function getAccessibleProjectIdsFromUserData(userData = {}) {
     return Array.from(allIds)
 }
 
+// security audit 2026-11: projects/{pid}.userIds is the ONLY membership authority. The arrays on
+// users/{uid} (projectIds, guideProjectIds, templateProjectIds, archivedProjectIds) are navigation
+// state the owner can write, so on an Admin SDK path they may only nominate candidate projects.
+function isProjectMemberData(projectData, userId) {
+    return !!userId && Array.isArray(projectData?.userIds) && projectData.userIds.includes(userId)
+}
+
+// Keeps the candidate project ids whose project document lists the user as a member, in order.
+// A project that cannot be read counts as "not a member": failing closed is the safe direction.
+async function filterMemberProjectIds(db, userId, projectIds) {
+    const uniqueIds = [
+        ...new Set((Array.isArray(projectIds) ? projectIds : []).filter(id => typeof id === 'string' && id)),
+    ]
+    if (!userId || uniqueIds.length === 0) return []
+    const memberships = await Promise.all(
+        uniqueIds.map(projectId =>
+            db
+                .collection('projects')
+                .doc(projectId)
+                .get()
+                .then(doc => doc.exists && isProjectMemberData(doc.data(), userId))
+                .catch(() => false)
+        )
+    )
+    return uniqueIds.filter((projectId, index) => memberships[index])
+}
+
 async function getUserDataOrThrow(db, userId) {
     const userDoc = await db.collection('users').doc(userId).get()
     if (!userDoc.exists) {
@@ -130,6 +157,8 @@ async function assertObjectAccess(db, userId, projectId, objectType, objectId) {
 module.exports = {
     FEED_PUBLIC_FOR_ALL,
     getAccessibleProjectIdsFromUserData,
+    isProjectMemberData,
+    filterMemberProjectIds,
     assertProjectAccess,
     canAccessObject,
     filterReadableObjects,

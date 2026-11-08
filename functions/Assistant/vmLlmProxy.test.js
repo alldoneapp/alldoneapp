@@ -378,7 +378,7 @@ describe('vmLlmProxy job authorization', () => {
                 credentialMode: 'byok',
                 db,
             })
-        ).resolves.toEqual(expect.objectContaining({ allowed: true, currentGold: 10 }))
+        ).resolves.toEqual({ allowed: true, currentGold: 10 })
     })
 
     test('rejects proxy use after an interrupted job has settled', async () => {

@@ -597,23 +597,36 @@ not in the repo) found many callables that skip this. The first fixes:
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
 
-- VM coding jobs (`vmRepoTokenBinding.js`): a member's GitHub/GitLab token is used only for the host,
-  API base and repository recorded in that member's own `users/{uid}/private/{provider}Auth_{projectId}`
-  when the connect callable validated it. A project repo URL that differs gives the job no token
-  (`repoTokenMismatch`), the API base is derived from the token's host, the git credential helper is
-  scoped to that origin (`GIT_CRED_ORIGIN`), and the base branch must be a plain branch name. The repo
-  fields and `vmGolden` on the project doc are server-owned in `firestore.rules`; the golden itself
-  lives in `vmGoldens/{projectId}` (see the golden VM template section).
-- `vmLlmProxy` (`vmProxyModelBinding.js`): a platform-billed request may only reach the agents'
-  inference endpoints (`PROXY_ALLOWED_ENDPOINTS`) on the route its token was minted for, and is billed
-  at the job's rate or the requested model's rate, whichever is dearer (`premiumTokens`, also settled by
-  the runner). An unpriceable model is refused. A new endpoint an agent CLI starts using shows up as a
-  `rejected request to a non-inference endpoint` warning and has to be added to the list.
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`,
-and for the VM path by `vmProxyModelBinding.test.js`, the `security audit 2026-11` blocks of
-`vmJobRunner.test.js` / `vmGolden.test.js` and the rules emulator suite. These VM changes reach the
-`vm-job-runner` Cloud Run image only when it is rebuilt.
+**Membership is `projects/{pid}.userIds`, on every Admin SDK path.** The arrays on `users/{uid}`
+(`projectIds`, `guideProjectIds`, `templateProjectIds`, `archivedProjectIds`) only nominate
+candidate projects: the owner writes them, and until this fix the `invitation-remove` branch of the
+membership-mutation rule let any account add an arbitrary project id to its own `projectIds` (that
+branch, and `invitation-add`, may now only touch `invitedProjectIds`). `ProjectService.getUserProjects`
+(the MCP tool gate and most assistant tool resolvers), `SearchService`, `TaskSearchService`, the
+create_task fallback, the delegation and settings resolvers in `assistantHelper.js`, the voice
+vocabulary scan and `UndoActionService` all drop a project whose `userIds` omits the user. Use
+`isProjectMemberData` / `filterMemberProjectIds` from `shared/privacyAccess.js`; never treat
+`userData.projectIds.includes(id)` as access. Three more rules from the same audit:
+
+- Undo records (`users/{uid}/undoActions`) are client-written and replayed with the Admin SDK, so
+  `reverseAction` treats one as a request: per operation it requires membership, an object visible
+  to the caller before AND after the write, a non-empty expected state, the `projectId` binding, and
+  no access-projection fields, mirroring the object write rules.
+- A manual project move only takes what the actor can read. `collectTaskTreeForMove` follows a
+  `subtaskIds` entry only to a real child (`parentId`) and refuses a tree holding an unreadable task;
+  a goal move unlinks (does not move) goal tasks the actor cannot read; a goal's or task's linked
+  note the actor cannot read is left behind and unlinked.
+- Caller-supplied recipients (`followerIds`, `userIdsToNotify` on `askToBotSecondGen` and
+  `generatePreConfigTaskResultSecondGen`) are narrowed by `Assistant/assistantNotificationAudience.js`
+  to project members who can read the thread's parent, the same audience the comment rules allow.
+  The menubar note push acts on a note id only when `menubarUserCanAccessNote` says the token user
+  may read it.
+
+Pinned by `ProjectService.test.js`, `SearchService.test.js`, `UndoActionService.test.js`,
+`projectMoveAccess.test.js`, `menubarPushNoteAccess.test.js`, `assistantNotificationAudience.test.js`
+and the invitation cases in the rules emulator suite.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
@@ -4385,7 +4398,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 - **The build worker** (`runGoldenBuild`, `onTaskDispatched` in `index.js`, 30-min ceiling): create sandbox from the managed base → `setupGitRepo` (reused from the runner) → detect package manager + install (`npm ci`/`yarn`/`pnpm`, or a per-project `vmGolden.setupCommand` override — that override is how a repo carries a bespoke post-install step such as alldone_app's `replacement_node_modules/quill` swap) → hash the lockfile → `POST …/snapshots` → write `projects/{projectId}.vmGolden` → `Sandbox.kill`. It runs **no agent and spends no Gold** — it is platform infra. Only the current lease owner writes the result; a superseded build no-ops. On failure the lease is released preserving any prior snapshot (a failed rebuild leaves the old golden usable). The golden is built agent-agnostic from the `claude` managed base; a Codex job seeding from it still installs the Codex CLI on top via `ensureAgentCliAvailable` exactly as on a cold managed start (no regression).
 - **Agent prompt**: `buildAgentPrompt` now tells the agent deps may be pre-installed at `/home/user/repo/node_modules`; skip install if the lockfile is unchanged, and when installing with modules already present use the **incremental** installer (`npm install`) — **never `npm ci`** (it deletes `node_modules` and discards the baked cache).
 - **Storage & cleanup**: golden snapshots live in the **E2B team account** (tied to `E2B_API_KEY`) as persistent template images — one named `alldone-golden-<projectId>` per project, each rebuild a new build under that name. They persist indefinitely and cost E2B storage, so `cleanupUnusedVmGoldenSnapshots` (`onSchedule` daily, `index.js`) deletes any whose `vmGolden.lastUsedAt` is older than `GOLDEN_UNUSED_TTL_MS` (30 days) via `DELETE /templates/{snapshotId}` and resets the project pointer (the next cold job rebuilds). `lastUsedAt` is stamped by `touchGoldenUsage` whenever a cold job actually seeds from the golden (and initialized at build time so the cleanup query always matches a ready golden). A cold job that finds its golden snapshot **unusable** at create time force-triggers a rebuild (`maybeTriggerGoldenRebuild({ force: true })`).
-- **Deploy**: `firebase deploy --only functions:runGoldenBuild,functions:rebuildProjectVmGolden,functions:cleanupUnusedVmGoldenSnapshots` (use the repo-pinned `firebase-tools@13.29.3` — newer CLIs reject pre-existing 3600s scheduled-function timeouts elsewhere in `index.js`); **also rebuild the `vm-job-runner` Cloud Run Job** because the golden **seeding + drift + prompt** changes live in `vmJobRunner.js`, which runs in that image, not the Functions runtime. **CI now does this automatically**: `deploy:cloud:runner:{staging,production}` in `.gitlab-ci.yml` runs `deploy.sh` with `CI_MODE=1` (skips one-time project setup) on any `functions/**` change, authenticating as the `firebase-adminsdk` SA — which therefore also needs `roles/cloudbuild.builds.editor` + `roles/run.developer` + `roles/artifactregistry.writer` (granted alongside the golden Cloud Tasks roles). For a manual rebuild: `functions/Assistant/cloud-run-job/deploy.sh <projectId>`. Then run `functions/Assistant/grant-golden-builder-task-worker.sh <projectId>` once per env (grants the three Cloud Tasks roles to the **firebase-adminsdk SA** — enqueuer at project level, self `actAs`, `run.invoker` on the `rungoldenbuild` service; IAM propagates in ~7 min). **Gotcha — staging has TWO `firebase-adminsdk` SAs** (`-5wi3r` and `-9idaq`); the script auto-picks the first alphabetically, which may not be the cert SA the runtime authenticates as, so grant to **both** (`grant-golden-builder-task-worker.sh <projectId> <sa-email>` for the second). **The golden state is server-only (security audit 2026-11)**: the pointer, lease, lockfile hash and `setupCommand` live in `vmGoldens/{projectId}` (no client rule, default deny); `projects/{projectId}.vmGolden` is only a display mirror (`status`, `builtAt`, `hasSnapshot`, … — `buildGoldenMirrorUpdate`) that nothing on the server reads, and the `projects` update rule refuses client changes to it. Every member's cold coding job boots from the golden with that member's credentials and the build `eval`s `setupCommand`, so a member-writable copy was code execution in other members' sandboxes. Wherever this section says `projects/{projectId}.vmGolden` below, read `vmGoldens/{projectId}`. `setupCommand` is administered with the Admin SDK only; `migration/moveVmGoldenSetupCommands.js` lists the old project-doc commands for review and moves the reviewed ones (`--only=… --execute`).
+- **Deploy**: `firebase deploy --only functions:runGoldenBuild,functions:rebuildProjectVmGolden,functions:cleanupUnusedVmGoldenSnapshots` (use the repo-pinned `firebase-tools@13.29.3` — newer CLIs reject pre-existing 3600s scheduled-function timeouts elsewhere in `index.js`); **also rebuild the `vm-job-runner` Cloud Run Job** because the golden **seeding + drift + prompt** changes live in `vmJobRunner.js`, which runs in that image, not the Functions runtime. **CI now does this automatically**: `deploy:cloud:runner:{staging,production}` in `.gitlab-ci.yml` runs `deploy.sh` with `CI_MODE=1` (skips one-time project setup) on any `functions/**` change, authenticating as the `firebase-adminsdk` SA — which therefore also needs `roles/cloudbuild.builds.editor` + `roles/run.developer` + `roles/artifactregistry.writer` (granted alongside the golden Cloud Tasks roles). For a manual rebuild: `functions/Assistant/cloud-run-job/deploy.sh <projectId>`. Then run `functions/Assistant/grant-golden-builder-task-worker.sh <projectId>` once per env (grants the three Cloud Tasks roles to the **firebase-adminsdk SA** — enqueuer at project level, self `actAs`, `run.invoker` on the `rungoldenbuild` service; IAM propagates in ~7 min). **Gotcha — staging has TWO `firebase-adminsdk` SAs** (`-5wi3r` and `-9idaq`); the script auto-picks the first alphabetically, which may not be the cert SA the runtime authenticates as, so grant to **both** (`grant-golden-builder-task-worker.sh <projectId> <sa-email>` for the second). **No Firestore rules change**: `vmGolden` is a non-secret, member-readable field on the project doc, written by the Admin SDK (which bypasses rules). A member could in principle write a bogus `vmGolden` client-side, but the cold-start fallback + self-healing rebuild neutralize it; an optional field-diff guard on the `projects` update rule is the hardening if ever wanted (none exists on that doc today).
 - **Caveat**: E2B snapshot persistence is beta ([E2B #884](https://github.com/e2b-dev/E2B/issues/884)). **Validation checklist (run against your E2B account — cannot be unit-tested):** (1) trigger a build (connect a repo, run a VM task or press Rebuild) and confirm `projects/{projectId}.vmGolden.status` flips `building → ready` with a `snapshotId`; (2) run a fresh cold job and confirm the log line `creating sandbox … fromGolden:true` and that `node_modules` is present without an install; (3) change the lockfile and confirm the next cold job enqueues a rebuild while still running; (4) delete the snapshot in the E2B dashboard and confirm a cold job falls back to the managed template and re-enqueues a build.
 
 **VM dispatch and dependent steps (AT-2896):** `execute_task_in_vm` starts asynchronous work;

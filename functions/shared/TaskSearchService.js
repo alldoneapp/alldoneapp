@@ -29,6 +29,8 @@ async function loadDependencies() {
     }
 }
 
+const { isProjectMemberData } = require('./privacyAccess')
+
 // Search collection name for tasks
 const TASKS_INDEX_NAME = 'dev_tasks'
 
@@ -491,7 +493,8 @@ class TaskSearchService {
         for (const projectId of projectIds) {
             try {
                 const projectDoc = await db.collection('projects').doc(projectId).get()
-                if (projectDoc.exists) {
+                // security audit 2026-11: users/{uid}.projectIds only nominates; userIds decides.
+                if (projectDoc.exists && isProjectMemberData(projectDoc.data(), userId)) {
                     projects.push({
                         id: projectId,
                         ...projectDoc.data(),

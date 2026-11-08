@@ -160,6 +160,14 @@ service cloud.firestore {
         );
     }
 
+    // security audit 2026-11: an invitation decline/cancel may only drop the invitation. It must
+    // never put the project id into a membership list, or any account could add an arbitrary project
+    // id to its own projectIds (which the users read rule and older server paths trust).
+    function doesNotAddProjectId(fieldName, projectId) {
+      return !(projectId in request.resource.data.get(fieldName, [])) ||
+        projectId in resource.data.get(fieldName, []);
+    }
+
     function isValidProjectMembershipMutation(userId) {
       let mutation = request.resource.data.get('projectMembershipMutation', {});
       let projectId = mutation.get('projectId', '');
@@ -239,12 +247,22 @@ service cloud.firestore {
             action == 'invitation-add' &&
             request.auth.uid in projectBefore &&
             request.auth.uid in projectAfter &&
-            projectId in request.resource.data.get('invitedProjectIds', [])
+            projectId in request.resource.data.get('invitedProjectIds', []) &&
+            doesNotAddProjectId('projectIds', projectId) &&
+            doesNotAddProjectId('guideProjectIds', projectId) &&
+            doesNotAddProjectId('templateProjectIds', projectId) &&
+            doesNotAddProjectId('archivedProjectIds', projectId) &&
+            doesNotAddProjectId('copyProjectIds', projectId)
           ) ||
           (
             action == 'invitation-remove' &&
             (request.auth.uid in projectBefore || request.auth.uid == userId) &&
-            !(projectId in request.resource.data.get('invitedProjectIds', []))
+            !(projectId in request.resource.data.get('invitedProjectIds', [])) &&
+            doesNotAddProjectId('projectIds', projectId) &&
+            doesNotAddProjectId('guideProjectIds', projectId) &&
+            doesNotAddProjectId('templateProjectIds', projectId) &&
+            doesNotAddProjectId('archivedProjectIds', projectId) &&
+            doesNotAddProjectId('copyProjectIds', projectId)
           )
         );
     }
@@ -596,16 +614,7 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid in resource.data.get('userIds', []);
       allow read: if resource.data.get('isShared', privateProject()) != privateProject();
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
-      // security audit 2026-11: the repository connection and the golden VM environment feed
-      // other members' credentialed VM coding jobs, so only Cloud Functions write them
-      // (connect/disconnect{Github,Gitlab}Repo, the golden build). `vmGolden` here is a display
-      // mirror; the authoritative state is the server-only vmGoldens/{projectId}.
-      allow update: if isProjectMember(projectId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'vmGolden',
-          'githubRepoUrl', 'githubBaseBranch', 'githubHost', 'githubApiBase', 'githubConnectedAt',
-          'gitlabRepoUrl', 'gitlabBaseBranch', 'gitlabHost', 'gitlabConnectedAt'
-        ]);
+      allow update: if isProjectMember(projectId);
       allow delete: if signedIn() &&
         request.auth.uid in resource.data.get('userIds', []);
     }

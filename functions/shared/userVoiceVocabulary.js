@@ -42,6 +42,7 @@ const {
     isDistinctiveTerm,
     MAX_DYNAMIC_TERMS,
 } = require('./voiceVocabularyTerms')
+const { isProjectMemberData } = require('./privacyAccess')
 
 /**
  * The ceiling on terms accepted FROM the cache document. Matches the build cap, so a hand-written
@@ -243,9 +244,15 @@ async function scanProject(db, userId, projectId) {
             db.collection(`assistants/${projectId}/items`).limit(MAX_ASSISTANTS_PER_PROJECT).get(),
         ])
 
+        // security audit 2026-11: the scope comes from the owner-writable users/{uid}.projectIds,
+        // so a project that does not list the user in userIds contributes nothing.
+        if (!projectDoc.exists || !isProjectMemberData(projectDoc.data(), userId)) {
+            return { projectId, projectName: '', contacts: [], assistants: [], failed: false }
+        }
+
         return {
             projectId,
-            projectName: projectDoc.exists ? projectDoc.data()?.name || '' : '',
+            projectName: projectDoc.data()?.name || '',
             contacts: contactsSnapshot.docs.map(doc => doc.data() || {}),
             assistants: assistantsSnapshot.docs.map(doc => doc.data() || {}),
             failed: false,

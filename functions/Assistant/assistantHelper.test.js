@@ -4265,7 +4265,7 @@ describe('resolveCreateTaskTargetProject', () => {
                             : collectionName === 'projects' && docId === 'p-default'
                               ? {
                                     exists: true,
-                                    data: () => ({ name: 'Inbox' }),
+                                    data: () => ({ name: 'Inbox', userIds: ['u-1'] }),
                                 }
                               : { exists: false, data: () => ({}) }
                     ),
@@ -4298,6 +4298,46 @@ describe('resolveCreateTaskTargetProject', () => {
             includeArchived: false,
             includeCommunity: false,
         })
+    })
+
+    // security audit 2026-11: users/{uid}.projectIds and defaultProjectId are owner-writable. The
+    // assistant-project fallback must never pick a project whose userIds omit the creator.
+    test('never falls back to a project the user document lists but the project does not', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([]),
+        }))
+        const projects = {
+            'p-foreign': { name: 'Foreign', userIds: ['victim'] },
+            'p-own': { name: 'Own', userIds: ['u-1'] },
+        }
+        const fakeDb = {
+            collection: jest.fn(collectionName => ({
+                doc: jest.fn(docId => ({
+                    get: jest.fn().mockResolvedValue(
+                        collectionName === 'users'
+                            ? {
+                                  exists: true,
+                                  data: () => ({ defaultProjectId: 'p-foreign', projectIds: ['p-foreign', 'p-own'] }),
+                              }
+                            : collectionName === 'projects' && projects[docId]
+                              ? { exists: true, data: () => projects[docId] }
+                              : { exists: false, data: () => ({}) }
+                    ),
+                })),
+            })),
+            doc: jest.fn(path => ({ path })),
+            // The assistant exists in both projects; only membership can tell them apart.
+            getAll: jest.fn(async (...refs) =>
+                refs.map(ref => ({
+                    exists: ref.path === 'assistants/p-foreign/items/a-1' || ref.path === 'assistants/p-own/items/a-1',
+                }))
+            ),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, { creatorId: 'u-1', assistantId: 'a-1', globalProjectId: 'global' })
+        ).resolves.toMatchObject({ targetProjectId: 'p-own' })
     })
 
     test('explains exact project-name matches', async () => {
@@ -4435,7 +4475,7 @@ describe('resolveCreateTaskTargetProject', () => {
                             : collectionName === 'projects' && docId === 'p-private'
                               ? {
                                     exists: true,
-                                    data: () => ({ name: 'Privat' }),
+                                    data: () => ({ name: 'Privat', userIds: ['u-1'] }),
                                 }
                               : { exists: false, data: () => ({}) }
                     ),
@@ -6983,6 +7023,9 @@ describe('assistant settings prompt history', () => {
                 exists: true,
                 data: () => ({ projectIds: ['chat-project', 'target-project'] }),
             })
+            // Both projects list the user as a member (projects/{pid}.userIds is the authority).
+            .mockResolvedValueOnce({ exists: true, data: () => ({ userIds: ['user-1'] }) })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ userIds: ['user-1'] }) })
             // Search chat, global, then the other accessible project.
             .mockResolvedValueOnce(missingDoc)
             .mockResolvedValueOnce(missingDoc)
@@ -7008,6 +7051,43 @@ describe('assistant settings prompt history', () => {
             targetProjectId: 'target-project',
             isSelf: false,
         })
+    })
+
+    // security audit 2026-11: users/{uid}.projectIds is owner-writable, so listing a project there
+    // must not let the assistant edit settings of an assistant in a project the user is not in.
+    test('does not target an assistant in a project whose userIds omit the user', async () => {
+        const callerAssistant = {
+            uid: 'assistant-1',
+            allowedTools: ['update_assistant_settings'],
+            instructions: 'Caller instructions',
+        }
+        const missingDoc = { exists: false, data: () => ({}) }
+
+        mockDocGet
+            .mockResolvedValueOnce({ exists: true, data: () => callerAssistant })
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ projectIds: ['chat-project', 'target-project'] }),
+            })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ userIds: ['user-1'] }) })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ userIds: ['victim'] }) })
+            // Only the chat project and the global project are searched.
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValue({ exists: true, data: () => ({ uid: 'assistant-2' }) })
+
+        await executeToolNatively(
+            'update_assistant_settings',
+            { assistantId: 'assistant-2', description: 'Hijacked description' },
+            'chat-project',
+            'assistant-1',
+            'user-1',
+            null
+        ).catch(error => error)
+
+        expect(mockTransactionUpdate).not.toHaveBeenCalled()
+        mockDocGet.mockReset()
     })
 
     test('versions instructions changes and caps history at 10 entries', async () => {

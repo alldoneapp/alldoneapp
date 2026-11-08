@@ -1,3 +1,5 @@
+const { filterMemberProjectIds } = require('../shared/privacyAccess')
+
 const normalizeProjectNameForLookup = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
 
 const VERY_LOW_ROUTING_CONFIDENCE = 0.1
@@ -381,14 +383,35 @@ async function resolveCreateTaskTargetProject(
         }
     }
 
+    // security audit 2026-11: defaultProjectId and projectIds come from the owner-writable user
+    // document, so they only nominate candidates; a project whose userIds does not list the creator
+    // is never a place to create a task in.
+    const userDocProjectIds = [
+        userData?.defaultProjectId,
+        ...(Array.isArray(userData?.projectIds) ? userData.projectIds : []),
+    ].filter(pid => typeof pid === 'string' && pid.trim() && pid.trim() !== globalProjectId)
+    const memberProjectIds = new Set(
+        creatorId && userDocProjectIds.length > 0
+            ? await filterMemberProjectIds(
+                  database,
+                  creatorId,
+                  userDocProjectIds.map(pid => pid.trim())
+              )
+            : []
+    )
+    const appendMemberProjectId = (value, source) => {
+        const projectId = typeof value === 'string' ? value.trim() : ''
+        if (memberProjectIds.has(projectId)) appendProjectId(projectId, source)
+    }
+
     if (normalizedRequestedProjectName) {
-        appendProjectId(userData?.defaultProjectId, 'defaultProjectFallback')
+        appendMemberProjectId(userData?.defaultProjectId, 'defaultProjectFallback')
     }
 
     appendProjectId(contextProjectId, 'contextProject')
-    appendProjectId(userData?.defaultProjectId, 'defaultProject')
+    appendMemberProjectId(userData?.defaultProjectId, 'defaultProject')
     if (Array.isArray(userData?.projectIds)) {
-        userData.projectIds.forEach(pid => appendProjectId(pid, 'assistantProject'))
+        userData.projectIds.forEach(pid => appendMemberProjectId(pid, 'assistantProject'))
     }
     appendProjectId(globalProjectId, 'globalProject')
 

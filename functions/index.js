@@ -3433,6 +3433,15 @@ exports.askToBotSecondGen = onCall(
                 }
             }
 
+            // security audit 2026-11: the recipient lists come from request.data and drive Admin SDK
+            // push/WhatsApp/email fan-out, so they are narrowed to the thread's audience here.
+            const { narrowAssistantNotificationRecipients } = require('./Assistant/assistantNotificationAudience')
+            const recipients = await narrowAssistantNotificationRecipients(
+                admin.firestore(),
+                { projectId, objectType, objectId },
+                { followerIds, userIdsToNotify }
+            )
+
             const askToOpenAIBotStart = Date.now()
             console.log('🚀 [TIMING] Invoking askToOpenAIBot now...')
             let result
@@ -3443,11 +3452,11 @@ exports.askToBotSecondGen = onCall(
                     projectId,
                     objectType,
                     objectId,
-                    userIdsToNotify,
+                    recipients.userIdsToNotify,
                     isPublicFor,
                     language,
                     assistantId,
-                    followerIds,
+                    recipients.followerIds,
                     functionEntryTime, // Pass entry time for time-to-first-token tracking
                     assistantRunLock.lockId
                 )
@@ -4045,13 +4054,22 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 }
             }
 
+            // security audit 2026-11: userIdsToNotify comes from request.data; narrow it to the
+            // thread's audience before it reaches the Admin SDK notification fan-out.
+            const { narrowAssistantNotificationRecipients } = require('./Assistant/assistantNotificationAudience')
+            const recipients = await narrowAssistantNotificationRecipients(
+                admin.firestore(),
+                { projectId, objectType, objectId: taskId },
+                { userIdsToNotify }
+            )
+
             let result
             try {
                 result = await generatePreConfigTaskResult(
                     userId,
                     projectId,
                     taskId,
-                    userIdsToNotify,
+                    recipients.userIdsToNotify,
                     isPublicFor,
                     assistantId,
                     prompt,

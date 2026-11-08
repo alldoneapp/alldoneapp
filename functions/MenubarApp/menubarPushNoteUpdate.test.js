@@ -10,7 +10,8 @@ const { updateExistingMenubarNote } = __private__
 // update contract: same note identity, content replaced, existing chat left
 // untouched.
 function makeDb(initialDocs = {}) {
-    const docs = { ...initialDocs }
+    // The token user is a member of project-1 (projects/{pid}.userIds is the membership authority).
+    const docs = { 'projects/project-1': { userIds: ['user-1'] }, ...initialDocs }
     return {
         docs,
         doc: path => ({
@@ -44,7 +45,7 @@ function makeNoteService(result = { success: true }) {
 describe('updateExistingMenubarNote', () => {
     test('replaces the content and keeps the note identity', async () => {
         const db = makeDb({
-            'noteItems/project-1/notes/note-1': { title: 'Meeting in progress — Jul 24, 3:45 PM' },
+            'noteItems/project-1/notes/note-1': { title: 'Meeting in progress — Jul 24, 3:45 PM', isPublicFor: [0] },
             'chatObjects/project-1/chats/note-1': {
                 title: 'Meeting in progress — Jul 24, 3:45 PM',
                 commentsData: { amount: 3 },
@@ -85,7 +86,7 @@ describe('updateExistingMenubarNote', () => {
 
     test('never re-creates an existing chat (comment counters survive)', async () => {
         const db = makeDb({
-            'noteItems/project-1/notes/note-1': { title: 'Old title' },
+            'noteItems/project-1/notes/note-1': { title: 'Old title', isPublicFor: [0] },
             'chatObjects/project-1/chats/note-1': {
                 title: 'Old title',
                 commentsData: { amount: 7, lastComment: 'hi' },
@@ -114,7 +115,7 @@ describe('updateExistingMenubarNote', () => {
 
     test('updates the note title and syncs the existing chat header', async () => {
         const db = makeDb({
-            'noteItems/project-1/notes/note-1': { title: 'Meeting in progress — Jul 24, 3:45 PM' },
+            'noteItems/project-1/notes/note-1': { title: 'Meeting in progress — Jul 24, 3:45 PM', isPublicFor: [0] },
             'chatObjects/project-1/chats/note-1': {
                 title: 'Meeting in progress — Jul 24, 3:45 PM',
                 commentsData: { amount: 2 },
@@ -193,7 +194,7 @@ describe('updateExistingMenubarNote', () => {
 
     test('throws when replacing the content fails (handler answers 500)', async () => {
         const db = makeDb({
-            'noteItems/project-1/notes/note-1': { title: 'Meeting' },
+            'noteItems/project-1/notes/note-1': { title: 'Meeting', isPublicFor: [0] },
         })
 
         await expect(
@@ -213,5 +214,32 @@ describe('updateExistingMenubarNote', () => {
                 }
             )
         ).rejects.toThrow('storage down')
+    })
+
+    // security audit 2026-11: the push record's noteId came from a request, so an in-place update
+    // must not overwrite a note the token user cannot access.
+    test('does not overwrite a note that is private to another member', async () => {
+        const db = makeDb({
+            'noteItems/project-1/notes/note-1': { title: 'Victim note', isPublicFor: ['victim'] },
+        })
+        const noteService = makeNoteService()
+
+        const response = await updateExistingMenubarNote(
+            db,
+            {
+                userId: 'user-1',
+                pushData,
+                userData: {},
+                title: 'Hijacked',
+                content: 'attacker content',
+                attachments: [],
+                enableAssistantChat: false,
+            },
+            { noteService, assistantActor }
+        )
+
+        expect(response).toBeNull()
+        expect(noteService.replaceContentInStorage).not.toHaveBeenCalled()
+        expect(db.docs['noteItems/project-1/notes/note-1'].title).toBe('Victim note')
     })
 })

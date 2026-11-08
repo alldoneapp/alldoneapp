@@ -79,7 +79,8 @@ describe('SearchService note lookup cost', () => {
                     get: async () => {
                         reads.push(`${name}/${id}`)
                         if (name === 'users') return snapshot({ projectIds })
-                        if (name === 'projects') return snapshot(projects[id] || { name: `Project ${id}` })
+                        if (name === 'projects')
+                            return snapshot(projects[id] || { name: `Project ${id}`, userIds: ['user-1'] })
                         return snapshot(undefined)
                     },
                 }),
@@ -112,12 +113,13 @@ describe('SearchService note lookup cost', () => {
                 note: expect.objectContaining({ id: 'note-1' }),
             }),
         ])
-        expect(reads).toHaveLength(3)
+        expect(reads).toHaveLength(2)
     })
 
     test('does not let the fast path bypass project membership', async () => {
         const { database } = makeDatabase({
             projectIds: ['p1'],
+            projects: { p9: { name: 'Foreign', userIds: ['victim'] } },
             notesByPath: { 'noteItems/p9/notes/note-1': { title: 'Foreign', isPublicFor: [0] } },
         })
         const service = new SearchService({ database })
@@ -144,6 +146,22 @@ describe('SearchService note lookup cost', () => {
         await expect(service.findNoteById('note-1', projects, 'user-1')).resolves.toMatchObject({ projectId: 'p2' })
     })
 
+    // security audit 2026-11: the owner can write users/{uid}.projectIds, so listing a project
+    // there is not membership. projects/{pid}.userIds decides, for every lookup path.
+    test('ignores a project the user document lists but whose userIds omit the user', async () => {
+        const { database } = makeDatabase({
+            projectIds: ['own', 'foreign'],
+            projects: { foreign: { name: 'Foreign', userIds: ['victim'] } },
+            notesByPath: { 'noteItems/foreign/notes/note-1': { title: 'Foreign', isPublicFor: [0] } },
+        })
+        const service = new SearchService({ database })
+
+        await expect(service.getUserProjects('user-1')).resolves.toEqual([expect.objectContaining({ id: 'own' })])
+        await expect(service.findNoteInProject('note-1', 'foreign', 'user-1')).resolves.toBeNull()
+        await expect(service.userBelongsToProject('user-1', 'foreign')).resolves.toBe(false)
+        await expect(service.userBelongsToProject('user-1', 'own')).resolves.toBe(true)
+    })
+
     test('lists projects concurrently but returns them in the user’s order', async () => {
         const { database } = makeDatabase({ projectIds: ['a', 'b', 'c'] })
         const service = new SearchService({ database })
@@ -160,9 +178,22 @@ describe('SearchService explicit project scope', () => {
     // buildTypesenseFilters narrows to projectId exactly as given, so an id the caller does not
     // belong to must be refused before any search pass runs.
     const buildService = () => {
-        const userGet = jest.fn().mockResolvedValue({ exists: true, data: () => ({ projectIds: ['project-1'] }) })
+        // The user document claims both projects; only project-1 lists the user in its userIds.
+        const docs = {
+            users: { 'user-1': { projectIds: ['project-1', 'project-foreign'] } },
+            projects: { 'project-1': { userIds: ['user-1'] }, 'project-foreign': { userIds: ['victim'] } },
+        }
         const service = new SearchService({
-            database: { collection: jest.fn(() => ({ doc: jest.fn(() => ({ get: userGet })) })) },
+            database: {
+                collection: jest.fn(name => ({
+                    doc: jest.fn(id => ({
+                        get: jest.fn().mockResolvedValue({
+                            exists: !!docs[name]?.[id],
+                            data: () => docs[name]?.[id],
+                        }),
+                    })),
+                })),
+            },
         })
         service.initialized = true
         service.searchWithOptimization = jest.fn().mockResolvedValue({ results: {}, totalResults: 0 })

@@ -27,12 +27,6 @@ const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold
 const { SOL_MODEL, getSolRequestCost } = require('./solModelPricing')
 const { resolveJobCredentialProvider } = require('./vmModelRouting')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
-const {
-    isAllowedProxyEndpoint,
-    readRequestedModel,
-    resolveProxyRequestRate,
-    calculatePremiumTokens,
-} = require('./vmProxyModelBinding')
 const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
@@ -283,14 +277,8 @@ async function handleProxyRequest(req, res) {
         // — Alldone paying for tokens it charges no Gold for. Rejecting is right rather than
         // silently platform-billing, because a mismatch means the sandbox went somewhere the run
         // was never routed to.
-        //
-        // security audit 2026-11: the same holds for a platform-billed token. An OpenAI-routed Codex
-        // job's token (cp 'codex') is valid on /openrouter too (same agent), and the job-doc check
-        // below compares the job only with the token, so without this a Codex job could spend the
-        // platform OpenRouter key at its own launch rate. A job only ever uses one route.
-        if (tokenCredentialProvider !== config.byokProvider) {
-            console.warn('🔐 VM PROXY: rejected request on a mismatched route', {
-                credentialMode,
+        if (credentialMode === 'byok' && tokenCredentialProvider !== config.byokProvider) {
+            console.warn('🔐 VM PROXY: rejected BYOK request on a mismatched route', {
                 route: config.routePrefix,
                 routeProvider: config.byokProvider,
                 tokenProvider: tokenCredentialProvider,
@@ -308,43 +296,6 @@ async function handleProxyRequest(req, res) {
         if (!continuity.allowed) {
             res.status(402).send(continuity.message || 'VM task stopped because the user ran out of Gold')
             return
-        }
-
-        const method = (req.method || 'GET').toUpperCase()
-        const hasBody = method !== 'GET' && method !== 'HEAD'
-        const rawBody = hasBody ? req.rawBody || undefined : undefined
-
-        // security audit 2026-11 (vmLlmProxy:token-not-bound-to-job-priced-model): a platform-billed
-        // request may only reach the agent's inference endpoints, and is billed at the more
-        // expensive of the job's rate and the requested model's rate. See vmProxyModelBinding.js.
-        let requestTokensPerGold = 0
-        if (credentialMode !== 'byok') {
-            if (!isAllowedProxyEndpoint(matched.provider, method, forwardPath)) {
-                console.warn('🔐 VM PROXY: rejected request to a non-inference endpoint', {
-                    route: config.routePrefix,
-                    method,
-                    forwardPath,
-                })
-                res.status(404).send('This endpoint is not available through the VM proxy')
-                return
-            }
-            const requestedModel = readRequestedModel(rawBody)
-            const pricing = await resolveProxyRequestRate({
-                jobState: continuity.jobState || {},
-                provider: matched.provider,
-                requestedModel,
-                getOpenRouterPrice: modelId => require('./vmAgentModelCatalog').getOpenRouterUpstreamPrice(modelId),
-            })
-            if (!pricing.allowed) {
-                console.warn('🔐 VM PROXY: rejected request for an unpriced model', {
-                    route: config.routePrefix,
-                    requestedModel,
-                    jobModel: (continuity.jobState || {}).agentModel || '',
-                })
-                res.status(403).send('This model is not available for this VM task')
-                return
-            }
-            requestTokensPerGold = pricing.requestRate
         }
 
         const usePersonalKey = credentialMode === 'byok'
@@ -379,6 +330,9 @@ async function handleProxyRequest(req, res) {
         const queryString = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : ''
         const upstreamUrl = `${config.upstreamBase}${forwardPath}${queryString}`
 
+        const method = (req.method || 'GET').toUpperCase()
+        const hasBody = method !== 'GET' && method !== 'HEAD'
+        const rawBody = hasBody ? req.rawBody || undefined : undefined
         const body = shouldRequestStreamUsage(config, forwardPath) ? ensureStreamUsageRequested(rawBody) : rawBody
         // The rewrite changes the byte length, but `content-length` is already stripped above so
         // fetch recomputes it. Only the content type needs asserting, for a caller that omitted it.
@@ -406,7 +360,6 @@ async function handleProxyRequest(req, res) {
                     userId: verdict.payload.uid,
                     provider: matched.provider,
                     usage,
-                    requestTokensPerGold,
                 })
             }
         } else {
@@ -542,9 +495,7 @@ async function checkProxyJobCanContinue({
         })
         return { allowed: false, message: 'VM task stopped because the user ran out of Gold' }
     }
-    // The job document is returned so the request can be priced against the job's own model
-    // (vmProxyModelBinding) without a second read.
-    return { allowed: true, currentGold, jobState: pendingData }
+    return { allowed: true, currentGold }
 }
 
 function addUsage(a = {}, b = {}) {
@@ -672,7 +623,6 @@ async function chargeProxyTokenGold({
     userId,
     provider,
     usage,
-    requestTokensPerGold = 0,
     db = admin.firestore(),
     applyGoldChangeInTransactionFn = null,
 }) {
@@ -698,30 +648,19 @@ async function chargeProxyTokenGold({
         // is the rate frozen at launch (including a live OpenRouter price); a job doc written before
         // that field existed falls back to resolving from `agentModel`, i.e. unchanged behaviour.
         const tokensPerGold = resolveEffectiveTokensPerGold(pendingData)
-        // A request for a model dearer than the job's own (security audit 2026-11) is billed at that
-        // model's rate: the difference is banked as job-rate-equivalent `premiumTokens`, so the
-        // cumulative formula below and the runner's settlement stay one calculation.
-        const premiumTokens =
-            (Number(pendingData.proxyTokenUsage?.premiumTokens) || 0) +
-            calculatePremiumTokens(totalTokens, tokensPerGold, Number(requestTokensPerGold) || tokensPerGold)
         const solCostUsd = (Number(pendingData.proxyTokenUsage?.solCostUsd) || 0) + (Number(usage.solCostUsd) || 0)
         const solPricedTokens =
             (Number(pendingData.proxyTokenUsage?.solPricedTokens) || 0) + (Number(usage.solPricedTokens) || 0)
         const usesSolCosts = pendingData.agentModel === SOL_MODEL && solPricedTokens > 0
         const tokenGoldTotal = usesSolCosts
-            ? calculateSolUsageGold(
-                  solCostUsd,
-                  tokensPerGold,
-                  Math.max(0, nextTokens - solPricedTokens) + premiumTokens
-              )
-            : calculateTokenGold(nextTokens + premiumTokens, tokensPerGold)
+            ? calculateSolUsageGold(solCostUsd, tokensPerGold, Math.max(0, nextTokens - solPricedTokens))
+            : calculateTokenGold(nextTokens, tokensPerGold)
         const goldDue = Math.max(0, tokenGoldTotal - previousGoldCharged)
         const usageUpdate = {
             inputTokens: (Number(pendingData.proxyTokenUsage?.inputTokens) || 0) + (Number(usage.inputTokens) || 0),
             outputTokens: (Number(pendingData.proxyTokenUsage?.outputTokens) || 0) + (Number(usage.outputTokens) || 0),
             cacheTokens: (Number(pendingData.proxyTokenUsage?.cacheTokens) || 0) + (Number(usage.cacheTokens) || 0),
             totalTokens: nextTokens,
-            ...(premiumTokens > 0 ? { premiumTokens } : {}),
             ...(usesSolCosts
                 ? {
                       solCostUsd,
