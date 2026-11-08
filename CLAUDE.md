@@ -3484,6 +3484,19 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A PSTN phone call is the account holder only when the carrier says so (NV-35).** Twilio passes
+the STIR/SHAKEN verdict as `StirVerstat`; `handleIncomingPhoneCall` records it on the session as
+`callerVerified` / `callerAttestation`, and only `TN-Validation-Passed-A` counts. Any other value,
+or none (international calls, carriers without STIR/SHAKEN, sessions from before this change), makes
+`runLiveAssistant` run as an unverified caller (`functions/shared/callerVerification.js`): no
+`getOptimizedContextMessages` (no chat history, memory, instructions or project data) and no Anna
+context, a fixed context saying the account cannot be used, `runtime.callerIdentityUnverified`, which
+`filterAllowedToolsForRuntimeContext`, `isToolAllowedForExecution`, `interactWithChatStream` (no
+implicit `load_skill` or wiki tools) and `resolveKnowledgeBaseAccess` all honour, so only `web_search`
+remains, and no `post_voice_answer_in_chat`. WhatsApp and in-app calls are not affected. Two residuals:
+the unverified call still spends the account's voice Gold, and its spoken transcript still lands in
+the account's WhatsApp daily topic, where a later WhatsApp run reads it as history.
+
 **A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
 loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
 therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,

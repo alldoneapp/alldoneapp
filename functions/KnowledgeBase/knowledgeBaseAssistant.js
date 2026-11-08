@@ -106,6 +106,8 @@ function resolveKnowledgeBaseAccess(context) {
     // Like load_skill, the wiki comes with an assistant: a bare model call (the writing router)
     // has no tools at all.
     if (!context?.projectId || !context?.requestUserId || !context?.assistantId) return ACCESS_NONE
+    // A phone caller whose number is not fully attested may be anybody (NV-35).
+    if (context.callerIdentityUnverified === true) return ACCESS_NONE
     if (context.channel === 'email' || context.sourceChannel === 'email' || context.gmailContext) return ACCESS_NONE
     // Writing mode executes read tools only (assistantWritingTools.js).
     if (context.writingDraft) return ACCESS_READ
