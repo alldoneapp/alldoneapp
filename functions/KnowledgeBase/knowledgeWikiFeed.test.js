@@ -29,7 +29,6 @@ function createDb(extra = {}) {
     return new KnowledgeFirestoreDouble({
         [`projects/${PROJECT_ID}`]: { userIds: [OWNER, MEMBER, OTHER, 'ws@workstream-1'] },
         [`knowledgeBases/${PROJECT_ID}`]: { enabled: true, ownerUserId: OWNER },
-        [`items/${PROJECT_ID}/tasks/t1`]: { isPublicFor: [0] },
         ...extra,
     })
 }
@@ -72,8 +71,7 @@ async function correctPage(db, expectedRevision = 1) {
     return db.read(revisionPath('kunden-und-partner', expectedRevision + 1))
 }
 
-const feedPaths = db =>
-    [...db.documents.keys()].filter(path => !path.startsWith('knowledgeBases/') && !path.startsWith('items/'))
+const feedPaths = db => [...db.documents.keys()].filter(path => !path.startsWith('knowledgeBases/'))
 
 describe('a wiki revision in the Updates feed', () => {
     it('lists an ingest change for the project and follows it for the owner', async () => {

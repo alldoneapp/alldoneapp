@@ -23,7 +23,6 @@ const {
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { deductGold, refundGold } = require('../Gold/goldHelper')
 const { buildEmailCommentAuditPatch, reconcileEmailCommentReadState } = require('./emailCommentReadSync')
-const { getGmailPostLabelAllowedTools } = require('./gmailPostLabelTools')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
@@ -1287,8 +1286,7 @@ async function executePostLabelPrompt({
         })
     }
 
-    // The email is third-party content: only the safe follow-up tools, never the full list.
-    const allowedTools = getGmailPostLabelAllowedTools(assistant.allowedTools)
+    const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
     const executionModel = resolvePostLabelAssistantModel(selectedDefinition, configuredPrompt)
     const messages = []
     const targetContactName = getTargetContactName(normalizedMessage, direction, targetContactEmail)

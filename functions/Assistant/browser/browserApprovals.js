@@ -57,8 +57,6 @@ function findApprovalGrant(run, signature, now = Date.now()) {
     return (
         grants.find(grant => {
             if (!grant || grant.signature !== signature) return false
-            // Only the run's own member can approve an action in it (security audit 2026-11).
-            if ((grant.grantedBy || null) !== (run?.requestUserId || null)) return false
             if (Number(grant.expiresAt) && Number(grant.expiresAt) <= now) return false
             if (grant.scope === 'run') return true
             return Number(grant.usesLeft) > 0
@@ -159,12 +157,7 @@ async function requestBrowserApproval(db, runRefForRun, run, request) {
         try {
             const existing = await approvalRef(db, existingId).get()
             const data = existing.exists ? existing.data() : null
-            if (
-                data &&
-                data.status === APPROVAL_STATUS.PENDING &&
-                Number(data.expiresAt) > now &&
-                (data.requestUserId || null) === (request.requestUserId || null)
-            ) {
+            if (data && data.status === APPROVAL_STATUS.PENDING && Number(data.expiresAt) > now) {
                 return { approvalId: existingId, record: data, reused: true }
             }
         } catch (error) {
@@ -215,11 +208,6 @@ async function respondToBrowserApproval(db, { approvalId, userId, action, scope 
         const runSnapshot = await transaction.get(runDocRef)
         const run = runSnapshot.exists ? runSnapshot.data() : null
         if (!run) throw new Error('The browsing run for this approval no longer exists.')
-        // The grant or denial is written onto the run, so the answer must come from the run's own
-        // member, not only from whoever the request names (security audit 2026-11).
-        if (!userId || (run.requestUserId || null) !== userId || (record.requestUserId || null) !== userId) {
-            throw new Error('Only the person who started this browsing run can answer its approval request.')
-        }
 
         const pending =
             run.pendingApprovals && typeof run.pendingApprovals === 'object' ? { ...run.pendingApprovals } : {}

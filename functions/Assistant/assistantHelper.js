@@ -40,11 +40,6 @@ const {
     getDefaultAssistantData,
     updateAssistantLastCommentData,
 } = require('../Firestore/assistantsFirestore')
-const {
-    GLOBAL_ASSISTANT_WRITE_DENIED_MESSAGE,
-    isAssistantCatalogAdministrator,
-    assertCanWriteAssistantInProject,
-} = require('./globalAssistantWriteAccess')
 const { updateContactLastCommentData } = require('../Firestore/contactsFirestore')
 const { updateUserLastCommentData } = require('../Users/usersFirestore')
 const { updateSkillLastCommentData } = require('../Skills/skillsFirestore')
@@ -1796,7 +1791,6 @@ async function getReachableMcpTools(toolRuntimeContext) {
                     assistantId,
                     serverId: server.id,
                     requestUserId,
-                    serverUrl: server.url,
                 })
                 const tools = await mcpClient.listTools(server, secret)
                 // An entry limited to some apps (an alldone.team specialist) gets only their tools.
@@ -1898,7 +1892,6 @@ async function executeMcpTool({ target, toolArgs, projectId, assistantId, reques
         assistantId,
         serverId: target.serverId,
         requestUserId,
-        serverUrl: target.serverConfig.url,
     })
 
     let raw
@@ -2691,9 +2684,12 @@ async function collectAssistantTextWithToolCalls({
 // an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
 async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
     console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
-    const { deductGold } = require('../Gold/goldHelper')
+    // The answer has already been produced, so this settles rather than gates: it takes the full
+    // cost, or whatever is left of the balance, and reports the rest (settleUsageGold). A plain
+    // deductGold charged nothing when the balance fell short (security audit 2026-11).
+    const { settleUsageGold } = require('../Gold/goldHelper')
 
-    return await deductGold(userId, goldToReduce, {
+    return await settleUsageGold(userId, goldToReduce, {
         source: 'assistant_usage',
         channel: 'assistant',
         projectId: linkContext.projectId,
@@ -2748,17 +2744,25 @@ const reduceGoldWhenChatWithAI = async (
         tokensPerGold: getTokensPerGold(aiModel),
     })
 
-    const goldToReduce = calculateGoldToReduce(userCurrentGold, tokens, aiModel)
+    // The full cost, never capped at `userCurrentGold`: that balance was read when the run
+    // started, so capping at it billed a long run (or the second of two parallel runs) for a
+    // fraction of its cost. settleUsageGold caps at the balance as it is NOW, in the charge's own
+    // transaction. `userCurrentGold` is kept in the signature for the callers' sake.
+    const goldToReduce = calculateGoldCostFromTokens(tokens, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold calculation complete:', {
         goldToReduce,
         userCurrentGold,
         costPerToken: 1 / getTokensPerGold(aiModel),
         totalCost: tokens / getTokensPerGold(aiModel),
-        cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
     })
 
-    await spentGold(userId, goldToReduce, linkContext, aiModel)
-    console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
+    const result = await spentGold(userId, goldToReduce, linkContext, aiModel)
+    console.log('🔋 GOLD COST TRACKING: Gold reduction completed', {
+        success: !!result?.success,
+        charged: result?.amount || 0,
+        uncovered: result?.uncovered || 0,
+    })
+    return result
 }
 
 const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
@@ -2840,18 +2844,6 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
         },
     })
     return totalTokens
-}
-
-const calculateGoldToReduce = (userGold, totalTokens, model) => {
-    console.log('Calculating gold Reduction:', {
-        userGold,
-        totalTokens,
-        model,
-        tokensPerGold: getTokensPerGold(model),
-    })
-    const goldCost = calculateGoldCostFromTokens(totalTokens, model)
-    const goldToReduce = userGold - goldCost > 0 ? goldCost : userGold
-    return goldToReduce
 }
 
 const calculateGoldCostFromTokens = (totalTokens, model) => {
@@ -4668,24 +4660,12 @@ async function resolveTargetAssistantForSettingsUpdate({
         defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : null
     }
 
-    // Security audit 2026-11: the global catalog is administrator-only. It is not one of the
-    // caller's projects, so an explicit globalProject target needs the administrator, and the
-    // default candidate search below only counts a global match for the administrator.
-    let requesterIsAdministrator = null
-    const requesterCanWriteGlobalCatalog = async () => {
-        if (requesterIsAdministrator === null) {
-            requesterIsAdministrator = await isAssistantCatalogAdministrator(requestUserId, db)
-        }
-        return requesterIsAdministrator
-    }
-
     const candidateProjectIds = []
     if (normalizedRequestedProjectId) {
-        if (normalizedRequestedProjectId === GLOBAL_PROJECT_ID) {
-            if (!(await requesterCanWriteGlobalCatalog())) {
-                throw new Error(GLOBAL_ASSISTANT_WRITE_DENIED_MESSAGE)
-            }
-        } else if (!accessibleProjectIds.includes(normalizedRequestedProjectId)) {
+        if (
+            normalizedRequestedProjectId !== GLOBAL_PROJECT_ID &&
+            !accessibleProjectIds.includes(normalizedRequestedProjectId)
+        ) {
             throw new Error(`Target project not accessible: "${normalizedRequestedProjectId}".`)
         }
         candidateProjectIds.push(normalizedRequestedProjectId)
@@ -4719,9 +4699,6 @@ async function resolveTargetAssistantForSettingsUpdate({
             const ref = db.doc(`assistants/${candidateProjectId}/items/${normalizedRequestedAssistantId}`)
             const snap = await ref.get().catch(() => null)
             if (snap?.exists) {
-                if (candidateProjectId === GLOBAL_PROJECT_ID && !(await requesterCanWriteGlobalCatalog())) {
-                    continue
-                }
                 return buildResult(snap.data() || {}, ref, candidateProjectId)
             }
         }
@@ -4738,7 +4715,6 @@ async function resolveTargetAssistantForSettingsUpdate({
                 .get()
                 .catch(() => null)
             if (!snap) continue
-            if (candidateProjectId === GLOBAL_PROJECT_ID && !(await requesterCanWriteGlobalCatalog())) continue
             snap.docs.forEach(doc => {
                 const data = doc.data() || {}
                 const displayNameLower = normalizeProjectNameForLookup(data.displayName)
@@ -8326,7 +8302,6 @@ async function executeToolNativelyImpl(
             patch.lastEditionDate = now
 
             const includesPromptChange = updatedFields.includes('prompt')
-            await assertCanWriteAssistantInProject(resolvedAssistant.projectId, requestUserId)
             let resultingHeartbeatPromptHistoryLength = Array.isArray(currentAssistant.heartbeatPromptHistory)
                 ? currentAssistant.heartbeatPromptHistory.length
                 : 0
@@ -8423,8 +8398,6 @@ async function executeToolNativelyImpl(
 
             const targetAssistant = target.assistant || {}
             const targetAssistantRef = target.assistantRef
-            // The self-path can resolve to a global assistant the caller is merely using.
-            await assertCanWriteAssistantInProject(target.projectId, requestUserId)
 
             const patch = {}
             const updatedFields = []

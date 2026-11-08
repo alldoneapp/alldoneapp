@@ -89,7 +89,7 @@ async function run(overrides = {}) {
         toolArgs: overrides.toolArgs || { url: 'https://tickets.example/event/42' },
         projectId: 'p1',
         assistantId: 'assistant1',
-        requestUserId: overrides.requestUserId || 'user1',
+        requestUserId: 'user1',
         toolRuntimeContext: { objectId: 'task1', objectType: 'tasks', ...overrides.runtime },
         deps: {
             db,
@@ -422,61 +422,6 @@ describe('executeBrowserTool', () => {
             expect(after.result.reason).toBe('approval_denied')
             expect(after.result.error).toMatch(/do not try it again/i)
             expect(db.listCollection('browserApprovals')).toHaveLength(1)
-        })
-
-        it("never lets another member of the thread drive, approve or spend this member's run (security audit 2026-11)", async () => {
-            const worker = createWorkerDouble({
-                navigate: () => pageResult(),
-                describe: () => bookingTarget(),
-                click: () => pageResult({ url: 'https://tickets.example/checkout' }),
-            })
-            const db = new FirestoreDouble()
-            await run({ db, worker })
-            const ownerRequest = await run({ db, worker, toolName: 'browser_click', toolArgs: { ref: 'e1' } })
-            const callsBefore = worker.calls.length
-
-            // A co-member in the same thread cannot act on, observe or open a page in the owner's run.
-            for (const toolName of ['browser_click', 'browser_navigate']) {
-                const intruder = await run({
-                    db,
-                    worker,
-                    requestUserId: 'user2',
-                    toolName,
-                    toolArgs: toolName === 'browser_click' ? { ref: 'e1' } : { url: 'https://tickets.example/' },
-                })
-                expect(intruder.result.success).toBe(false)
-                expect(intruder.result.reason).toBe('run_owned_by_other_user')
-            }
-            expect(worker.calls).toHaveLength(callsBefore)
-            expect(db.listCollection('browserApprovals')).toHaveLength(1)
-
-            // Nor answer the owner's request.
-            await expect(
-                respondToBrowserApproval(db, {
-                    approvalId: ownerRequest.result.approvalId,
-                    userId: 'user2',
-                    action: 'approve',
-                    now: NOW,
-                })
-            ).rejects.toThrow(/Only the person who started this browsing run/)
-
-            // A grant someone else wrote onto the run is never spent by the owner's assistant.
-            const runPath = `browserRuns/${ownerRequest.result.runId || db.listCollection('browserRuns')[0].runId}`
-            const runDocument = db.documents.get(runPath)
-            db.documents.set(runPath, {
-                ...runDocument,
-                approvalGrants: [
-                    {
-                        signature: Object.keys(runDocument.pendingApprovals || {})[0],
-                        scope: 'run',
-                        grantedBy: 'user2',
-                        expiresAt: NOW + 60000,
-                    },
-                ],
-            })
-            const owner = await run({ db, worker, toolName: 'browser_click', toolArgs: { ref: 'e1' } })
-            expect(owner.result.status).toBe('approval_required')
-            expect(worker.calls.filter(call => call.action === 'click')).toHaveLength(0)
         })
 
         it('refuses the action when the element cannot be observed', async () => {

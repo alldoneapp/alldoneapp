@@ -596,39 +596,24 @@ not in the repo) found many callables that skip this. The first fixes:
   HTML escaping, nonce CSP), because hosting serves them on the app origin.
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
+- The Mollie subscription callables act on `request.auth.uid`'s subscription only
+  (`functions/Payment/subscriptionAccess.js`); a different `userPayingId` is refused. Seat lists are
+  checked against the stored subscription, a seat holder may only remove their own seat, and
+  `createCompanySubscriptionSecondGen` reuses the stored Mollie customer, never one from the request.
+  The billing fields of `subscriptions/{uid}` and `users/{uid}.customerId` are server-owned in
+  `firestore.rules` (the app may edit `companyData`, `selectedUserIds`, `showSuccessfullyPayment`).
+  The generic `updateMollieSubscription` callable was removed.
+- `linkStripeAccount` looks up only the caller's verified login email (`getVerifiedAccountEmail`) and
+  never returns the Stripe customer id. Linking a subscription paid under another address needs
+  support. `checkPremiumStatusById` still finds customers by `users/{uid}.email` (the token email,
+  which may be unverified); moving it to the verified email is open.
+- The guide welcome-message runs are platform-paid on purpose and therefore run once: the group
+  welcome once per guide, the personal welcome once per guide and member
+  (`assistantWelcomeMessageClaims`, server-only), only in a guide, with the guide name read from the
+  stored template.
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
-
-The assistant-side fixes of the same audit follow one rule: a value a member can write from the
-client is never trusted by an Admin SDK path that acts for somebody else.
-
-- A stored MCP credential is bound to the URL it was validated against (`boundUrl` on the
-  `mcpSecrets` document, `mcpAssistantConnect.js`). The URL itself stays member-writable on the
-  assistant document, so `resolveMcpSecret` needs the `serverUrl` it will call and returns nothing
-  for any other address; an `alldone_app` token only ever goes to alldone.team. A secret without
-  `boundUrl` is refused (reconnect), never bound on first use; the existing ones are bound once by
-  `migration/bindMcpCredentialsToServerUrl.js` (dry run by default, review its list, then `--execute`).
-- `update_assistant_settings` and `update_heartbeat_settings` write `assistants/globalProject/*`
-  only for the administrator (`globalAssistantWriteAccess.js`), including when the caller is merely
-  chatting with a global assistant.
-- A skill file is mounted into a VM only from its own prefix, `assistantSkills/{owner}/{skillId}/`
-  (`isOwnSkillStoragePath`), because `files[].storagePath` is client-written.
-- The Gmail post-label run reads third-party email unattended, so it gets only
-  `GMAIL_POST_LABEL_SAFE_TOOLS` (`functions/Gmail/gmailPostLabelTools.js`), intersected with the
-  assistant's own list.
-- A browser run belongs to the member who started it: another member's call in the same thread is
-  refused (`run_owned_by_other_user`), and only the run's own member can answer or spend its approvals.
-- `writeKnowledgePage` reads every source it cites for the first time again inside its transaction
-  (`findWithdrawnKnowledgeSourceKeys`) and refuses the write if one is gone or no longer visible.
-- Anna inbound email stores attachments under `anna-email-inbound/{userId}/{uuid}/` (create-only) and
-  keys dedup and audit records by account plus a hash of the sender-chosen Message-ID
-  (`inboundEmailRecordId.js`).
-
-Pinned by `mcpSecretUrlBinding.test.js`, the `global assistant catalog` block of
-`assistantHelper.test.js`, `assistantSkillsMountScope.test.js`, the safe-tools case in
-`serverSideGmailLabelingSync.test.js`, the co-member case in `browserSession.test.js`, the
-withdrawn-source block of `knowledgePageStore.test.js` and the same-Message-ID block of
-`emailIncomingHandler.test.js`.
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
+`functions/Payment/subscriptionAccess.test.js` and `functions/Premium/linkStripeAccount.test.js`.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
@@ -1498,7 +1483,7 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 - Implement native execution in `functions/Assistant/assistantHelper.js`, including permission/runtime-context checks, conversation-safe results, and focused tests in `functions/Assistant/assistantHelper.test.js`.
 - Add the tool to the assistant settings UI in `components/AssistantDetailedView/Customizations/ToolsAccess/toolOptions.js` so it can be enabled per assistant. Decide deliberately whether it belongs in `DEFAULT_ALLOWED_TOOLS` or `OPT_IN_ONLY_TOOLS`, then cover that in `toolOptions.test.js`.
 - Add local strings for the tool label in `i18n/translations/en.json`, `de.json`, and `es.json`.
-- Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up only gets `GMAIL_POST_LABEL_SAFE_TOOLS` (`functions/Gmail/gmailPostLabelTools.js`); email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
+- Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up uses the normal assistant `allowedTools`, while email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
 - If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
 
 ### Browsing (`browser_*`) — the classification runs on the PAGE, not on the tool call
@@ -3828,7 +3813,11 @@ Until October 2026 any signed-in account could mint Gold three ways: write `user
 - **A ledger direction carries its sign** (`deltaMatchesDirection` in `goldTransactions.js`): `spend` negative, `earn` and `refund` positive, only `adjustment` either way.
 - **A client refund gives back one of the caller's own charges** (`refundClientSpend`): the refund source must be paired with a spend source in `REFUNDABLE_CLIENT_SPENDS` (`iframe_refund` ↔ `iframe_deduction`, `goal_unlock` ↔ `goal_unlock`), it is matched to the newest spend of that source in the last 24h (and the same `objectId` when given), and the spend's `refundedAmount` caps the total. A new client flow that needs to refund adds its pair there. Server code refunding its own charges keeps using `refundGold`.
 
-`earnGoldSecondGen` still accepts a `userId` other than the caller's (task workflows reward the reviewer); what bounds it is the server-owned `dailyGold`. Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Premium/premiumSignupGold.test.js` and the `server-owned` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
+`earnGoldSecondGen` still accepts a `userId` other than the caller's (task workflows reward the reviewer), but since the 2026-11 audit (`functions/Gold/clientGoldRequests.js`) the caller and that user must both be members of the project, one call pays at most 5 Gold (a task reward) and the statistics date must be `DDMMYYYY`; what bounds the total is still the server-owned `dailyGold`. The reward amount and the decision that a task was completed are still the browser's, so a member can collect up to the daily cap by calling it directly: closing that means awarding from the task trigger, not from the client. `deductGoldSecondGen` accepts only the spends the app starts itself (`CLIENT_SPEND_SOURCES`): `goal_unlock` at the server's price (80, must equal `UNLOCK_GOAL_COST`) and `iframe_deduction` as a whole amount up to 10,000. Any other source is refused, so a client cannot write ledger entries under server sources and skew `goldStats`. A new client spend adds its source there. Note the goal unlock itself (`unlockedKeysByGuides`) is still written by the client after the charge, so that paywall is UI-only. An idempotency claim settles a change only if the ledger wrote it (matching `idempotencyKey` and `direction`); an empty claim at a predictable key used to count as paid.
+
+**Usage that already happened is settled, not deducted** (`settleUsageGold` in `goldHelper.js`). An assistant answer (`reduceGoldWhenChatWithAI` → `spentGold`) and a dictation (`processRamble`) are charged after the model and Deepgram have run. `deductGold` is all-or-nothing, so a cost above the balance used to charge nothing, and the assistant path also capped the cost at the balance read when the run started: parallel runs and long runs went largely unbilled, and a dictation could be retried for free at a balance of 1. `settleUsageGold` charges the full cost, or whatever is left of the balance read in its own transaction, logs the uncovered rest at `console.error` (`[gold] Usage was not fully covered by the balance`), and leaves the balance at 0, which every paid entry point refuses. A dictation that empties the balance now returns its text; only one that finds the balance already empty is withheld. This bounds the loss to one run per positive balance; it is not a reservation. The full fix reserves an estimated budget before the model call, settles provider-reported usage of every tool round against it, stops the tool loop when it runs out, limits concurrent paid runs per user and records an uncovered rest as debt that blocks the next run.
+
+Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequests.test.js`, `functions/Assistant/assistantGoldSettlement.test.js`, `functions/Premium/premiumSignupGold.test.js` and the `server-owned` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
 #### Gold analytics & rollups (tracking earn/spend over time)
 

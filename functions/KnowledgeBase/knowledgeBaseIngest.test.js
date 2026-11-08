@@ -1243,8 +1243,6 @@ describe('the weekly health check', () => {
                     status: 'applied',
                     createdAt: NOW - 2 * DAY,
                 },
-                // A source a write cites for the first time is read again at write time.
-                [`items/${PROJECT_ID}/tasks/team-source`]: { isPublicFor: [0] },
             }
         )
         const { runConversation, calls } = scriptedModel(async tools => {

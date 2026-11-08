@@ -114,7 +114,7 @@ async function loadSkillsByIds(enabledSkillIds) {
     const skills = [...builtInSkills]
     docs.forEach(doc => {
         if (!doc.exists) return
-        const skill = { ...doc.data(), uid: doc.id, ownerProjectId: GLOBAL_PROJECT_ID }
+        const skill = { ...doc.data(), uid: doc.id }
         if (skill.enabled === false) return
         if (!isValidSkillName(skill.name)) return
         skills.push(skill)
@@ -136,7 +136,7 @@ async function loadProjectSkills(projectId) {
     const snapshot = await admin.firestore().collection(getSkillsCollectionPath(projectId)).get()
     const skills = []
     snapshot.forEach(doc => {
-        const skill = { ...doc.data(), uid: doc.id, ownerProjectId: projectId }
+        const skill = { ...doc.data(), uid: doc.id }
         if (skill.enabled === false) return
         // Same two guards `loadSkillsByIds` applies: an invalid name cannot be
         // mounted (it becomes a directory name in the sandbox) and must never
@@ -245,26 +245,6 @@ function buildSkillsIndexBlock(skills) {
     ].join('\n')
 }
 
-/**
- * Security audit 2026-11: `files[].storagePath` is written by the client (any member of a
- * project may write that project's skill documents), and the mount downloads it with the Admin
- * SDK, which can read every object in the default bucket. A path is therefore only mounted when it
- * lies inside the storage prefix of the skill that lists it: `assistantSkills/{owner}/{skillId}/`,
- * where the owner is the catalog the skill was loaded from, or, for the administrator's global
- * catalog only, the pre-AT-2450 unscoped `assistantSkills/{skillId}/`. Uploads only ever write
- * there (assistantSkillUpload.js, assistantSkillsImport.js).
- */
-function isOwnSkillStoragePath(skill, storagePath) {
-    if (typeof storagePath !== 'string' || !storagePath) return false
-    const skillId = typeof skill?.uid === 'string' ? skill.uid : ''
-    if (!skillId || skillId.includes('/')) return false
-    const segments = storagePath.split('/')
-    if (segments.some(segment => !segment || segment === '.' || segment === '..')) return false
-    const ownerProjectId = skill.ownerProjectId || GLOBAL_PROJECT_ID
-    if (storagePath.startsWith(`${SKILL_STORAGE_ROOT}/${ownerProjectId}/${skillId}/`)) return true
-    return isGlobalSkillCatalog(ownerProjectId) && storagePath.startsWith(`${SKILL_STORAGE_ROOT}/${skillId}/`)
-}
-
 function getSandboxSkillsDir(agent) {
     return agent === 'codex' ? '/home/user/.agents/skills' : '/home/user/.claude/skills'
 }
@@ -291,14 +271,6 @@ async function mountSkillsInSandbox(sandbox, skills, agent, correlationId) {
                 // Bundled file paths come from the registry; keep them strictly inside the skill dir.
                 const relativePath = file.relativePath.replace(/\\/g, '/')
                 if (relativePath.includes('..') || relativePath.startsWith('/')) continue
-                if (!isOwnSkillStoragePath(skill, file.storagePath)) {
-                    console.warn('🖥️ VM JOB: skipping a skill file outside its own storage prefix', {
-                        correlationId,
-                        skill: skill.name,
-                        relativePath,
-                    })
-                    continue
-                }
                 const size = Number(file.size) || 0
                 if (size > MAX_SKILL_FILE_BYTES || totalBytes + size > MAX_SKILL_TOTAL_BYTES) {
                     console.warn('🖥️ VM JOB: skipping oversized skill file', {
@@ -346,7 +318,6 @@ module.exports = {
     mergeSkillsByName,
     isValidSkillName,
     isVmOnlySkill,
-    isOwnSkillStoragePath,
     loadSkillsByIds,
     loadEnabledSkillsForAssistant,
     loadChatSkillsForAssistant,

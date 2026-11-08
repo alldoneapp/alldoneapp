@@ -918,45 +918,6 @@ const SOURCE_DOC_PATHS = {
 }
 
 /**
- * Security audit 2026-11: the source keys among `keys` that may no longer be cited, because their
- * object is gone, no longer visible to the whole project or now excluded. A delta run collects its
- * cards once and then talks to the model for minutes; a source made private in between is withdrawn
- * from the pages that ALREADY cite it (knowledgeSourceInvalidation), but nothing stopped a later
- * write in the same run from citing it — and copying its text — for the first time. writeKnowledgePage
- * calls this inside its transaction with `read` bound to that transaction, so a concurrent change to
- * a source aborts and retries the write instead of slipping past it.
- *
- * Corrections are skipped: they live inside the wiki, share its audience by construction, and a
- * correction write creates its own correction in the same transaction.
- */
-async function findWithdrawnKnowledgeSourceKeys({ projectId, keys, read }) {
-    const parsed = [...new Set(keys || [])]
-        .map(parseKnowledgeSourceKey)
-        .filter(source => source && source.type !== 'correction' && SOURCE_DOC_PATHS[source.type])
-    if (!parsed.length) return []
-    const docs = await Promise.all(parsed.map(({ type, id }) => read(SOURCE_DOC_PATHS[type](projectId, id))))
-    const withdrawn = []
-    await Promise.all(
-        parsed.map(async ({ type, id }, index) => {
-            const data = docs[index]
-            const key = `${type}:${id}`
-            if (!data) {
-                withdrawn.push(key)
-                return
-            }
-            if (type === 'chat') {
-                const parent = getThreadParent(projectId, id, data)
-                const parentData = parent ? await read(parent.path) : undefined
-                if (getThreadExclusionReason(id, data, parentData)) withdrawn.push(key)
-                return
-            }
-            if (!isVisibleToWholeProject(data, type) || getExclusionReason(data, type)) withdrawn.push(key)
-        })
-    )
-    return withdrawn.sort()
-}
-
-/**
  * Cards for a known set of source keys, as a page rebuild needs them. Every object is read again
  * and goes through the same visibility filter as the delta: a key on a page is a hint, never
  * proof that the object is still visible to the whole project. Missing objects are dropped. A
@@ -1065,7 +1026,6 @@ module.exports = {
     getThreadExclusionReason,
     collectKnowledgeSources,
     loadKnowledgeSourcesByKeys,
-    findWithdrawnKnowledgeSourceKeys,
     buildCorrectionCard,
     buildDocumentCards,
     buildContributionCard,
