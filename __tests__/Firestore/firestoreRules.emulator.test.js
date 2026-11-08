@@ -280,6 +280,24 @@ describe('project membership authority', () => {
         await assertFails(getDoc(doc(outsiderDb, `items/${PROJECT_ID}/tasks/public-task`)))
     })
 
+    it('lets anyone open a project shared with link by id but never list such projects (incident 2026-11-08)', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const anonymousDb = testEnv.unauthenticatedContext().firestore()
+
+        await assertSucceeds(getDoc(doc(outsiderDb, `projects/${SHARED_PROJECT_ID}`)))
+        await assertSucceeds(getDoc(doc(anonymousDb, `projects/${SHARED_PROJECT_ID}`)))
+        for (const db of [outsiderDb, anonymousDb]) {
+            await assertFails(getDocs(query(collection(db, 'projects'), where('isShared', 'in', [0, 1]))))
+            await assertFails(getDocs(query(collection(db, 'projects'), where('isShared', '==', 1))))
+        }
+        await assertFails(getDoc(doc(outsiderDb, `projects/${PROJECT_ID}`)))
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(
+            getDocs(query(collection(memberDb, 'projects'), where('userIds', 'array-contains', MEMBER_ID)))
+        )
+    })
+
     it('does not let an outsider self-enrol by editing their own denormalized projectIds', async () => {
         const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
 

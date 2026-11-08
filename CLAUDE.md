@@ -4943,6 +4943,21 @@ browser before trusting a bigger change.
   `JSON.parse` message quotes it. Never hide a check's stderr when the checker itself may
   be missing. Pinned by `__tests__/CiValidateJsonFile.test.js`.
 
+### A project shared "With link" may be opened by id, never listed (incident 2026-11-08)
+
+New projects default to `isShared: PROJECT_PUBLIC` ("With link"). The `projects` rule used to grant
+`read` (get **and** list) on any such project to everyone, even signed out, so a single query
+`where('isShared', 'in', [0, 1])` returned every With-link project of every account. Together with
+`canReadSharedObject` (project-wide objects of a With-link project are readable by anyone who
+names the project), that made those projects and their notes enumerable. An external host did
+exactly that from 2026-11-06 and fed the harvested note ids to the then-unauthenticated collab
+server. The non-member path is now `allow get` only. Every client query on `projects` filters on
+`userIds`, so none relied on the list; keep it that way, and never add a rule or index that lets a
+non-member query projects by sharing level. Object lists inside a known With-link project stay
+open on purpose (that is what "With link" means). Ids already harvested keep working until the
+project is made private. Pinned by the incident case in the `project membership authority` block of
+`__tests__/Firestore/firestoreRules.emulator.test.js`.
+
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
 **Before these files, both buckets let any signed-in account read, list and write every object**
