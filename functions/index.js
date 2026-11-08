@@ -706,49 +706,11 @@ function assertPremiumFeatureAccess(userData, featureName = 'This feature') {
     }
 }
 
-async function assertAssistantProjectAccess(userId, projectId, assistantId) {
-    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-    if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
-    const userData = userDoc.data() || {}
-    if (projectId !== 'globalProject') {
-        await assertProjectAccess(userId, projectId)
-        return
-    }
-
-    const memberProjects = await admin
-        .firestore()
-        .collection('projects')
-        .where('userIds', 'array-contains', userId)
-        .get()
-    const accessibleProjectIds = memberProjects.docs.map(doc => doc.id)
-
-    const assistantDoc = await admin.firestore().doc(`assistants/globalProject/items/${assistantId}`).get()
-    if (!assistantDoc.exists) throw new HttpsError('not-found', 'Assistant not found')
-
-    const administratorRoleDoc = await admin
-        .firestore()
-        .doc('roles/administrator')
-        .get()
-        .catch(() => null)
-    const isAdministrator = administratorRoleDoc?.exists && administratorRoleDoc.data()?.userId === userId
-    if (isAdministrator) return
-
-    let hasAccessToGlobalAssistant = false
-    for (let i = 0; i < accessibleProjectIds.length; i++) {
-        const projectDoc = await admin.firestore().doc(`projects/${accessibleProjectIds[i]}`).get()
-        if (!projectDoc.exists) continue
-        const globalAssistantIds = Array.isArray(projectDoc.data()?.globalAssistantIds)
-            ? projectDoc.data().globalAssistantIds
-            : []
-        if (globalAssistantIds.includes(assistantId)) {
-            hasAccessToGlobalAssistant = true
-            break
-        }
-    }
-
-    if (!hasAccessToGlobalAssistant) {
-        throw new HttpsError('permission-denied', 'No access to global assistant')
-    }
+// Read access to an assistant, or with { forWrite: true } the right to change it: a global catalog
+// assistant may only be changed by the administrator (security audit 2026-11).
+async function assertAssistantProjectAccess(userId, projectId, assistantId, options) {
+    const { assertAssistantProjectAccess: assertAccess } = require('./Assistant/assistantProjectAccess')
+    return assertAccess(admin.firestore(), userId, projectId, assistantId, options)
 }
 
 // MCP SERVER (defer ESM-only deps to runtime)
@@ -1370,15 +1332,16 @@ exports.addContactToBrevoMarketingList = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
-            const { addContactToMarketingList } = require('./Brevo/addContactToMarketingList')
-            // Add user ID from auth context to the data
-            const dataWithUserId = {
-                ...data,
-                userId: auth.uid,
-            }
-            return await addContactToMarketingList(dataWithUserId)
+            const {
+                addContactToMarketingList,
+                resolveMarketingSubscriptionRequest,
+            } = require('./Brevo/addContactToMarketingList')
+            // Security audit 2026-11: only the caller's own verified address is subscribed
+            // (data.email is ignored), and Brevo's response is not handed back.
+            await addContactToMarketingList(resolveMarketingSubscriptionRequest(request))
+            return { success: true }
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
@@ -2726,13 +2689,19 @@ exports.sendUserJoinsToGuideEmailSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
             const admin = require('firebase-admin')
             const SendInBlueManager = require('./SendInBlueManager')
             const { inProductionEnvironment } = require('./Utils/HelperFunctionsCloud.js')
 
-            const { usersToReceiveEmailIds, guideId, newUserId } = data
+            const { resolveGuideJoinEmailRequest } = require('./Templates/guideJoinEmail')
+            // Security audit 2026-11: the joining user is the caller, who must be a member of the
+            // guide; the recipients are the template's creator and the administrator, derived here.
+            const { usersToReceiveEmailIds, guideId, newUserId } = await resolveGuideJoinEmailRequest(
+                admin.firestore(),
+                request
+            )
             const inProduction = inProductionEnvironment()
 
             return inProduction
@@ -4182,7 +4151,7 @@ exports.generateAssistantDelegationDescriptionSecondGen = onCall(
             throw new HttpsError('invalid-argument', 'projectId and assistantId are required')
         }
 
-        await assertAssistantProjectAccess(auth.uid, projectId, assistantId)
+        await assertAssistantProjectAccess(auth.uid, projectId, assistantId, { forWrite: true })
 
         const {
             collectAssistantDelegationInputs,
@@ -4275,11 +4244,14 @@ exports.generateBotDailyTopicCommentSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
             const admin = require('firebase-admin')
             const { generateBotDailyTopicFirstComment } = require('./Assistant/assistantDailyTopic')
+            const { resolveDailyTopicRequest } = require('./Assistant/dailyTopicAccess')
 
+            // Security audit 2026-11: the run is always the caller's own daily recap; the user,
+            // topic, recipients and prompt date labels are derived, never taken from request.data.
             const {
                 userId,
                 startDate,
@@ -4290,7 +4262,7 @@ exports.generateBotDailyTopicCommentSecondGen = onCall(
                 userIdsToNotify,
                 language,
                 assistantId,
-            } = data
+            } = await resolveDailyTopicRequest(admin.firestore(), request)
 
             return await generateBotDailyTopicFirstComment(
                 admin,
@@ -5580,10 +5552,14 @@ exports.sendPushNotificationSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
             const { processPushNotifications } = require('./PushNotifications/pushNotifications')
-            return await processPushNotifications([data])
+            const { resolvePushNotificationRequest } = require('./PushNotifications/pushNotificationAccess')
+            // Security audit 2026-11: never deliver a client-composed notification. Recipients must
+            // follow an object the caller can read; names, link and type are derived server-side.
+            const notification = await resolvePushNotificationRequest(admin.firestore(), request)
+            return await processPushNotifications([notification])
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -5598,11 +5574,14 @@ exports.onRemoveWorkstreamSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
             const admin = require('firebase-admin')
             const { onRemoveWorkstream } = require('./Workstreams/WorkstreamHelper')
-            const { projectId, streamId } = data
+            const { assertWorkstreamRemovalAllowed } = require('./Workstreams/workstreamRemovalAccess')
+            // Security audit 2026-11: only a member may re-scope the project's tasks and goals, and
+            // only for a workstream that exists in that project.
+            const { projectId, streamId } = await assertWorkstreamRemovalAllowed(admin.firestore(), request)
             return await onRemoveWorkstream(admin, projectId, streamId)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -5610,25 +5589,10 @@ exports.onRemoveWorkstreamSecondGen = onCall(
     }
 )
 
-exports.addCalendarEventsToTasksSecondGen = onCall(
-    {
-        timeoutSeconds: 540,
-        memory: '512MiB',
-        // minInstances: 0, //inProduction ? 5 : 1,
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { addCalendarEvents } = require('./GoogleCalendarTasks/calendarTasks')
-            const { events, projectId, uid, email } = data
-            await addCalendarEvents(events, projectId, uid, email)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
-    }
-)
+// addCalendarEventsToTasksSecondGen was removed (security audit 2026-11): it wrote client-supplied
+// events as tasks into any project for any user id, and had no caller left. Calendar tasks are
+// written by syncCalendarEventsSecondGen and the scheduled sync, which bind the user to the caller
+// and fetch the events server-side.
 
 exports.removeOldCalendarTasksSecondGen = onCall(
     {
@@ -5769,9 +5733,15 @@ exports.createApiEmailTasksSecondGen = onCall(
         )
         if (auth) {
             const { addUnreadMailsTask } = require('./apis/EmailIntegration')
-            const { projectId, date, uid, unreadMails, email, timezone, provider } = data
+            const { resolveApiEmailTaskRequest } = require('./apis/emailTasksAccess')
+            // Security audit 2026-11: the inbox task is always the caller's own, in a project they
+            // belong to, for an address stored on their connection.
+            const { projectId, date, uid, unreadMails, email, timezone, provider } = await resolveApiEmailTaskRequest(
+                admin.firestore(),
+                request
+            )
             console.log('[createApiEmailTasksSecondGen] Calling addUnreadMailsTask with timezone:', timezone)
-            await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone, provider || 'google')
+            await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone, provider)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }

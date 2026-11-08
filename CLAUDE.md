@@ -614,6 +614,25 @@ Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/
 `templateCopyAccess.test.js`, `templateObjectVisibility.test.js`, `copyProjectAccess.test.js`,
 `copyObjectNotesVisibility.test.js` and `GlobalState/globalState.test.js`.
 
+- Second pass: each callable resolves its request through a guard module that takes the user from
+  `request.auth`, checks membership/object access and derives the rest. `generateBotDailyTopicCommentSecondGen`
+  only runs the caller's own `BotChat<date><uid>` recap and formats the prompt dates itself
+  (`dailyTopicAccess.js`). `onRemoveWorkstreamSecondGen` needs a member and an existing `ws@` stream
+  (`workstreamRemovalAccess.js`). `createApiEmailTasksSecondGen` writes only the caller's own inbox task,
+  for an address stored on their connection (`apis/emailTasksAccess.js`). `sendUserJoinsToGuideEmailSecondGen`
+  reports the caller to the template creator and the administrator, read from Firestore, in escaped
+  HTML (`Templates/guideJoinEmail.js`). `addContactToBrevoMarketingList` subscribes only the token's
+  verified email. `sendPushNotificationSecondGen` now takes `{ projectId, objectType, objectId }`
+  (projects, users or tasks). Its recipients must follow that object, and the names, link and type come
+  from stored data. Only the caller's update line survives (`pushNotificationAccess.js`). A global
+  catalog assistant may only be changed by the administrator: use `assertAssistantProjectAccess(..., { forWrite: true })`
+  for any callable that writes one (`assistantProjectAccess.js`). `addCalendarEventsToTasksSecondGen`
+  was removed (no caller).
+
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
+the test next to each guard module above and `functions/Utils/callableIdentityBindings.test.js`, which
+checks the wiring in `index.js`.
+
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
 A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —
