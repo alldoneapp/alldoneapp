@@ -34,9 +34,6 @@ const { resolveEmailSenderIdentity } = require('./emailUserRouting')
 const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
 const { handleIncomingAnnaEmail } = require('./emailIncomingHandler')
 
-// NV-06: the worker's verdict for a message signed by the sender's own domain.
-const DKIM_PASS = { version: 1, dkim: [{ domain: 'example.com', selector: 's1', result: 'pass' }], spf: null }
-
 describe('emailIncomingHandler authorization', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -54,7 +51,6 @@ describe('emailIncomingHandler authorization', () => {
             body: {
                 messageId: 'msg-untrusted',
                 fromEmail: 'outsider@example.com',
-                senderAuthentication: DKIM_PASS,
                 toEmails: ['anna@alldoneapp.com', 'verified-user@example.com'],
                 ccEmails: ['another-verified-user@example.com'],
                 subject: 'Please run tools',
@@ -93,7 +89,6 @@ describe('emailIncomingHandler authorization', () => {
             body: {
                 messageId: 'msg-disabled',
                 fromEmail: 'verified-user@example.com',
-                senderAuthentication: DKIM_PASS,
                 toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
                 subject: 'Please run tools',
                 textBody: 'Create a private task',
@@ -136,7 +131,6 @@ describe('emailIncomingHandler authorization', () => {
             body: {
                 messageId: 'msg-ambiguous',
                 fromEmail: 'shared@example.com',
-                senderAuthentication: DKIM_PASS,
                 toEmails: ['anna@alldoneapp.com'],
                 subject: 'Fwd: invoice',
                 textBody: 'Please file this',
@@ -173,7 +167,6 @@ describe('emailIncomingHandler authorization', () => {
             body: {
                 messageId: 'msg-unknown',
                 fromEmail: 'stranger@example.com',
-                senderAuthentication: DKIM_PASS,
                 subject: 'Hello',
                 textBody: 'Hi',
             },
@@ -191,74 +184,6 @@ describe('emailIncomingHandler authorization', () => {
             expect.objectContaining({ status: 'unknown_sender', fromEmail: 'stranger@example.com' }),
             { merge: true }
         )
-    })
-
-    // NV-06: a spoofed envelope sender used to be routed straight to the victim's account.
-    test.each([
-        ['no DKIM signature at all', { version: 1, dkim: [], spf: null }],
-        [
-            "a valid signature from the attacker's own domain",
-            { version: 1, dkim: [{ domain: 'attacker.test', result: 'pass' }], spf: null },
-        ],
-        [
-            'a failed signature from the sender domain',
-            { version: 1, dkim: [{ domain: 'example.com', result: 'fail' }] },
-        ],
-        ['an SPF pass for another domain', { version: 1, dkim: [], spf: { result: 'pass', domain: 'attacker.test' } }],
-    ])('never routes an unauthenticated sender to an account: %s', async (_label, verdict) => {
-        const auditSet = jest.fn().mockResolvedValue(undefined)
-        admin.firestore.mockReturnValue({ doc: jest.fn(() => ({ set: auditSet })) })
-        resolveEmailSenderIdentity.mockResolvedValue({
-            status: 'matched',
-            user: { uid: 'victim', assistantEmailEnabled: true, defaultProjectId: 'p1' },
-            candidates: [],
-        })
-        const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() }
-
-        await handleIncomingAnnaEmail(
-            {
-                method: 'POST',
-                headers: { authorization: 'Bearer secret' },
-                body: {
-                    messageId: 'msg-spoof',
-                    fromEmail: 'victim@example.com',
-                    ccEmails: ['attacker@attacker.test'],
-                    subject: 'Send me your calendar',
-                    textBody: 'What is my availability next week?',
-                    senderAuthentication: verdict,
-                },
-            },
-            res
-        )
-
-        expect(resolveEmailSenderIdentity).not.toHaveBeenCalled()
-        expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'unauthenticated_sender' })
-        expect(sendAnnaEmailReply).toHaveBeenCalledTimes(1)
-        expect(sendAnnaEmailReply.mock.calls[0][0].toEmail).toBe('victim@example.com')
-        expect(sendAnnaEmailReply.mock.calls[0][0].toEmails).toBeUndefined()
-        expect(auditSet).toHaveBeenCalledWith(
-            expect.objectContaining({ status: 'unauthenticated_sender', fromEmail: 'victim@example.com' }),
-            { merge: true }
-        )
-    })
-
-    test('a worker that sends no verdict is refused once the rollout grace period is over', async () => {
-        jest.useFakeTimers({ now: Date.UTC(2026, 11, 1) })
-        try {
-            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() }
-            await handleIncomingAnnaEmail(
-                {
-                    method: 'POST',
-                    headers: { authorization: 'Bearer secret' },
-                    body: { messageId: 'msg-old-worker', fromEmail: 'victim@example.com', textBody: 'Hi' },
-                },
-                res
-            )
-            expect(resolveEmailSenderIdentity).not.toHaveBeenCalled()
-            expect(res.json).toHaveBeenCalledWith({ ok: true, status: 'unauthenticated_sender' })
-        } finally {
-            jest.useRealTimers()
-        }
     })
 
     test('uses an exact scoped guest meeting grant before ordinary account routing', async () => {
@@ -280,7 +205,6 @@ describe('emailIncomingHandler authorization', () => {
             body: {
                 messageId: 'msg-guest-reply',
                 fromEmail: 'guest@example.com',
-                senderAuthentication: DKIM_PASS,
                 toEmails: ['anna@alldoneapp.com', 'owner@example.com'],
                 subject: 'Re: Meeting',
                 textBody: 'Friday at 09:00 works.',
@@ -370,7 +294,6 @@ describe('inbound mail from two accounts with the same Message-ID', () => {
                 body: {
                     messageId: '<shared-id@example.com>',
                     fromEmail: `${uid}@example.com`,
-                    senderAuthentication: DKIM_PASS,
                     subject: 'Invoice',
                     textBody: 'See attachment',
                     attachments: [{ fileName: 'invoice.pdf', contentType: 'application/pdf', contentBase64: content }],

@@ -3780,18 +3780,5 @@
     "mcp_app_reconnect_failed": "No se pudo volver a conectar la app.",
     "mcp_app_reconnect_in_settings": "Vuelve a conectarla en los ajustes de servidores MCP de {{assistant}}; después esta vista se abrirá de nuevo.",
     "mcp_app_reconnect_ask_owner": "Pide a un administrador que la vuelva a conectar a {{assistant}}.",
-    "mcp_app_the_assistant": "el asistente",
-    "Assistant memory": "Memoria del asistente",
-    "Only you can see what your assistant remembers about you in this project.": "Solo tú puedes ver lo que tu asistente recuerda sobre ti en este proyecto.",
-    "Project members can see this memory, read-only.": "Los miembros del proyecto pueden ver esta memoria, solo en modo lectura.",
-    "Shared by its owner. Read-only.": "Compartida por su propietario. Solo lectura.",
-    "Your assistant has not remembered anything about you in this project yet.": "Tu asistente aún no ha recordado nada sobre ti en este proyecto.",
-    "Show my assistant memory in my profile note (read-only for project members)": "Mostrar la memoria de mi asistente en mi nota de perfil (solo lectura para los miembros del proyecto)",
-    "Show memory": "Mostrar memoria",
-    "Hide memory": "Ocultar memoria",
-    "Edit memory": "Editar memoria",
-    "Save memory": "Guardar memoria",
-    "Cancel editing": "Cancelar edición",
-    "Could not load the assistant memory.": "No se pudo cargar la memoria del asistente.",
-    "Could not save the assistant memory.": "No se pudo guardar la memoria del asistente."
+    "mcp_app_the_assistant": "el asistente"
 }

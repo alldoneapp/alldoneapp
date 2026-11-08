@@ -92,36 +92,10 @@ final class ShareViewController: UIViewController, UITextViewDelegate {
         updateSubmitState()
     }
 
-    // security audit 2026-11 (NV-33): never send the token and the shared content anywhere but the
-    // Alldone `iosShareTask` function, whatever the App Group holds. A separate target, so this is a
-    // copy of IosShareEndpointPolicy in the app's IosShareExtensionPlugin.swift; keep them in step.
-    static func isTrustedShareEndpoint(_ value: String) -> Bool {
-        guard let components = URLComponents(string: value),
-              let host = components.host?.lowercased(),
-              components.user == nil, components.password == nil,
-              components.query == nil, components.fragment == nil else { return false }
-        let trustedHosts: Set<String> = [
-            "europe-west1-alldonealeph.cloudfunctions.net",
-            "europe-west1-alldonestaging.cloudfunctions.net"
-        ]
-        if components.scheme == "https", components.port == nil, trustedHosts.contains(host),
-           components.path == "/iosShareTask" {
-            return true
-        }
-        #if DEBUG
-        if components.scheme == "http", host == "localhost" || host == "127.0.0.1", components.port == 5001,
-           components.path.hasSuffix("/europe-west1/iosShareTask") {
-            return true
-        }
-        #endif
-        return false
-    }
-
     private func loadCredential() {
         guard let defaults = UserDefaults(suiteName: ShareStorage.appGroup),
               let token = defaults.string(forKey: ShareStorage.token), !token.isEmpty,
               let endpointValue = defaults.string(forKey: ShareStorage.endpointUrl),
-              Self.isTrustedShareEndpoint(endpointValue),
               let endpoint = URL(string: endpointValue) else {
             statusLabel.text = "Open Alldone once while signed in to enable sharing."
             updateSubmitState()

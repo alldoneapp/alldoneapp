@@ -268,3 +268,37 @@ describe('access modes', () => {
         })
     })
 })
+
+describe('trailing-dot and IPv6 forms (NV-19)', () => {
+    const allPublic = buildBrowsingPolicy({ mode: ACCESS_MODE_ALL_PUBLIC })
+
+    it.each([
+        'http://metadata.google.internal./computeMetadata/v1/',
+        'http://localhost.:8080/',
+        'http://foo.localhost./',
+        'http://intranet./',
+        'http://metadata./',
+        'http://printer.local./',
+        'http://[::ffff:7f00:1]/',
+        'http://[::ffff:169.254.169.254]/',
+        'http://[fd00::1]/',
+    ])('refuses %s in all_public mode', url => {
+        const result = checkUrlAgainstAllowlist(url, allPublic)
+        expect(result.allowed).toBe(false)
+        expect(result.reason).toBe('private_host')
+    })
+
+    it('applies the login-wall denylist to a trailing-dot name', () => {
+        const result = checkUrlAgainstAllowlist('https://www.linkedin.com./in/x', allPublic)
+        expect(result).toMatchObject({ allowed: false, reason: 'blocked_host' })
+    })
+
+    it('still allows a public name written with its root dot', () => {
+        expect(checkUrlAgainstAllowlist('https://example.com./events', allPublic).allowed).toBe(true)
+    })
+
+    it('classifies hex-form IPv4-mapped addresses', () => {
+        expect(isPrivateHostname('::ffff:7f00:1')).toBe(true)
+        expect(isPrivateHostname('64:ff9b::a00:1')).toBe(true)
+    })
+})
