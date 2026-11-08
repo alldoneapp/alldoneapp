@@ -4702,6 +4702,16 @@ and hung every call until the 540s timeout). 30 conversions per user per hour vi
 `shared/callableRateLimit.js` (`callableRateLimits/{name}__{uid}`, server-only by default deny).
 Pinned by `functions/videosHelper.test.js`.
 
+### `ipRegistryLookup` looks up the caller and nobody else (NV-24)
+
+It used to put a caller-supplied `data.ip` into the ipregistry URL path (any address, or 1024 of them
+comma-separated, on our paid key), and the app's own call without `ip` geolocated the Functions
+egress address rather than the user. It now ignores `request.data` and looks up one address: the
+rightmost public `X-Forwarded-For` entry (Google's front end appends what it saw; `req.ip` under the
+framework's `trust proxy` is the leftmost, client-controlled one), encoded, 10 lookups per user per
+day (`shared/callableRateLimit.js`). Any failure returns the United States fallback the client
+already handles. Pinned by `functions/IpRegistry/ipRegistryLookup.test.js`.
+
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. Gen2 Functions are configured through `setGlobalOptions` to run as the environment's `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account, and `functions/firebaseConfig*.js` uses application-default credentials in that managed runtime. Therefore **every firebase-admin call that hits a Google Cloud API authenticates as the firebase-adminsdk service account — NOT the `<projectNumber>-compute@developer.gserviceaccount.com` default runtime SA**. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing. The old CI service-account JSON files may still be prepared for legacy tooling, but Functions no longer depend on baking that long-lived key into Cloud Run revisions. IAM changes also take up to ~7 min to propagate — wait before re-testing.

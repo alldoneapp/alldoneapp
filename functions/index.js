@@ -1396,10 +1396,11 @@ exports.ipRegistryLookup = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
+            // `request.data` is ignored on purpose: only the caller's own address is looked up (NV-24).
             const { ipRegistryLookup } = require('./IpRegistry/ipRegistryLookup')
-            return await ipRegistryLookup(data)
+            return await ipRegistryLookup({ userId: auth.uid, rawRequest: request.rawRequest })
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
