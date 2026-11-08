@@ -4600,6 +4600,20 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### A phone number routes WhatsApp and calls only when exactly one account claims it (NV-44)
+
+`users/{uid}.phone` is written by its owner (`setUserPhone`) with no proof of possession; no
+verification flow exists. `resolveUserByPhone` (`functions/WhatsApp/whatsAppIncomingHandler.js`)
+therefore looks the number up in both stored formats (with and without `+`) and refuses to route
+when more than one account claims it. It logs the claimant ids at ERROR, replies to a WhatsApp
+message with a neutral "linked to more than one account" note, and rejects a call as unlinked.
+`findUserByPhone` keeps its old contract (an id or null). Before this, `limit(1)` silently picked
+whichever document sorted first, so anyone could take over the owner's WhatsApp channel by saving
+the same number. The real fix is a verified claim: a server-owned `phone` set by a Cloud Function
+after a WhatsApp one-time-code challenge, a unique `phoneClaims/{e164}` document written in a
+transaction, and a rules change refusing client writes to `phone`. Until that exists, ambiguity
+refusal is the only protection.
+
 ### WhatsApp replies must finish or report failure before their worker expires
 
 `WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
