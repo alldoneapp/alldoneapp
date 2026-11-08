@@ -48,6 +48,7 @@ const {
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
+const { bindTokenToProjectRepository, sanitizeBaseBranch } = require('./vmRepoTokenBinding')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const { recordVmSandboxDeletion, drainVmSandboxDeletions } = require('./vmSandboxCleanup')
 
@@ -879,7 +880,14 @@ if ! command -v git >/dev/null 2>&1; then
   (sudo apt-get update && sudo apt-get install -y git) >/dev/null 2>&1 || (apt-get update && apt-get install -y git) >/dev/null 2>&1 || true
 fi
 command -v git >/dev/null 2>&1 || { echo "git is not available in this sandbox and could not be installed automatically" >&2; exit 3; }
-git config --global credential.helper '!f() { echo "username=$GIT_CRED_USERNAME"; echo "password=$GIT_TOKEN"; }; f'
+# security audit 2026-11: the helper is scoped to the ONE origin the token was validated for
+# (GIT_CRED_ORIGIN, from the token owner's own private doc). An unscoped helper hands the token
+# to any HTTPS host that answers 401 — a redirected remote, a submodule, an agent's own clone.
+# Drop the unscoped helper earlier runs (and golden snapshots) left in ~/.gitconfig.
+git config --global --unset-all credential.helper >/dev/null 2>&1 || true
+if [ -n "\${GIT_CRED_ORIGIN:-}" ]; then
+  git config --global --replace-all "credential.$GIT_CRED_ORIGIN.helper" '!f() { echo "username=$GIT_CRED_USERNAME"; echo "password=$GIT_TOKEN"; }; f'
+fi
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
 git config --global advice.detachedHead false
@@ -917,30 +925,34 @@ git_base=$(git rev-parse "origin/$GIT_BASE_BRANCH")
 echo "GIT_SETUP_OK branch=$git_branch head=$git_head base=$git_base preserve=$GIT_PRESERVE_WORKTREE"
 `
 
-// Build the provider-specific context from a project's repo config + a user token doc.
+// Build the provider-specific context from the repository a user token doc was validated for.
 // GitLab auths git as oauth2:<token> and opens MRs; GitHub auths as x-access-token:<token>
-// and opens PRs (via the gh CLI / REST API).
-function buildProviderContext(provider, repoUrl, project, tokenData) {
+// and opens PRs (via the gh CLI / REST API). `bound` comes from bindTokenToProjectRepository: the
+// clone URL, credential origin and API base are the token's own binding, never the shared
+// (member-writable) project fields. Only the base branch is read from the project, sanitized.
+function buildProviderContext(provider, bound, project, tokenData) {
     if (provider === 'github') {
         const login = tokenData.username || ''
         return {
             enabled: true,
             provider: 'github',
-            repoUrl,
-            baseBranch: (project.githubBaseBranch || 'main').trim() || 'main',
+            repoUrl: bound.repoUrl,
+            credentialOrigin: bound.origin,
+            baseBranch: sanitizeBaseBranch(project.githubBaseBranch),
             token: tokenData.token,
             credentialUsername: 'x-access-token',
             identityName: login || 'Alldone Assistant',
             identityEmail: tokenData.email || (login ? `${login}@users.noreply.github.com` : 'assistant@alldone.app'),
-            apiBase: project.githubApiBase || 'https://api.github.com',
-            repoSlug: tokenData.repoSlug || '',
+            apiBase: bound.apiBase,
+            repoSlug: bound.repoSlug,
         }
     }
     return {
         enabled: true,
         provider: 'gitlab',
-        repoUrl,
-        baseBranch: (project.gitlabBaseBranch || 'main').trim() || 'main',
+        repoUrl: bound.repoUrl,
+        credentialOrigin: bound.origin,
+        baseBranch: sanitizeBaseBranch(project.gitlabBaseBranch),
         token: tokenData.token,
         credentialUsername: 'oauth2',
         identityName: tokenData.username || 'Alldone Assistant',
@@ -950,9 +962,11 @@ function buildProviderContext(provider, repoUrl, project, tokenData) {
 
 // Read the project's connected repo (GitHub or GitLab) + the requesting user's token. Returns
 // an { enabled: true, provider, ... } context only when a repo is connected AND the user has a
-// token for it; { enabled: false, repoConnectedButNoToken: true } when a repo is connected but
-// the user hasn't linked a token; otherwise null. Best-effort — never throws. GitHub is
-// preferred if both providers happen to be connected on the same project.
+// token validated for exactly that repo; { enabled: false, repoConnectedButNoToken: true } when a
+// repo is connected but the user hasn't linked a token; { enabled: false, repoTokenMismatch: true }
+// when the user's token was validated for a different repo than the project now names (security
+// audit 2026-11 — the project fields are member-writable, the token binding is not); otherwise
+// null. Best-effort — never throws. GitHub is preferred if both providers are connected.
 async function loadRepoContext(vmJob) {
     try {
         const db = admin.firestore()
@@ -968,17 +982,34 @@ async function loadRepoContext(vmJob) {
         ].filter(p => p.url)
         if (!providers.length) return null
 
+        let mismatch = null
         for (const p of providers) {
             const tokenSnap = await db.doc(`users/${userId}/private/${p.name}Auth_${vmJob.projectId}`).get()
             const tokenData = tokenSnap.exists ? tokenSnap.data() || {} : {}
-            if (tokenData.token) {
-                tokenSnap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
-                const ctx = buildProviderContext(p.name, p.url, project, tokenData)
-                // Carry the project's golden-snapshot pointer so cold sandbox creation can seed
-                // from it (deps pre-baked) and drift can be detected after clone. See vmGolden.js.
-                ctx.vmGolden = project.vmGolden || null
-                return ctx
+            if (!tokenData.token) continue
+            const binding = bindTokenToProjectRepository(p.name, p.url, tokenData)
+            if (!binding.allowed) {
+                // Never pair this token with a repo it was not validated for. Logged without the
+                // URLs' secrets (there are none) so a reconnect can be suggested.
+                console.warn('🖥️ VM JOB: repo token not bound to the project repository', {
+                    correlationId: vmJob.correlationId,
+                    provider: p.name,
+                    reason: binding.reason,
+                })
+                mismatch = mismatch || { provider: p.name, reason: binding.reason }
+                continue
             }
+            tokenSnap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
+            const ctx = buildProviderContext(p.name, binding.bound, project, tokenData)
+            // Carry the project's golden-snapshot state so cold sandbox creation can seed from it
+            // (deps pre-baked) and drift can be detected after clone. Read from the server-only
+            // vmGoldens/{projectId} document, never from the member-writable project doc (security
+            // audit 2026-11). See vmGolden.js.
+            ctx.vmGolden = await require('./vmGolden').readGoldenState(vmJob.projectId)
+            return ctx
+        }
+        if (mismatch) {
+            return { enabled: false, repoTokenMismatch: true, provider: mismatch.provider, reason: mismatch.reason }
         }
         // A repo is connected for the project, but THIS user hasn't linked their own token.
         return { enabled: false, repoConnectedButNoToken: true }
@@ -996,6 +1027,8 @@ function buildGitEnv(gitContext) {
     const env = {
         GIT_TOKEN: gitContext.token,
         GIT_CRED_USERNAME: gitContext.credentialUsername || 'oauth2',
+        // The only origin the credential helper answers for (see GIT_SETUP_SCRIPT).
+        GIT_CRED_ORIGIN: gitContext.credentialOrigin || '',
         GIT_REPO_URL: gitContext.repoUrl,
         GIT_BASE_BRANCH: gitContext.baseBranch,
         GIT_USER_NAME: gitContext.identityName,
@@ -1285,6 +1318,15 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
                 `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
             `If you made repository changes, your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why). If you made no repository changes, your final message MUST say that no ${reqName} was opened because no code change was needed.`
+        )
+    }
+    if (gitContext && gitContext.repoTokenMismatch) {
+        parts.push(
+            '',
+            '# Connected Git repository (not available)',
+            "The project's connected repository is not the repository the requesting user's access token was validated for, " +
+                'so no repository was cloned and no repository credentials are available in this run. If the task needs the ' +
+                'repository, say so in your final message and ask the user to reconnect the repository (with their token) in the project settings.'
         )
     }
     if (gcpContext && gcpContext.enabled) {
@@ -2442,6 +2484,9 @@ function calculateCompletionGoldCharges({
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
     // The proxy sees all requests across turns/resumes, while CLI usage may cover only the last turn.
     const totalTokens = Math.max(Number(usage?.totalTokens) || 0, Number(proxyTokenUsage.totalTokens) || 0)
+    // Job-rate-equivalent tokens the proxy banked for requests on a dearer model than the job's own
+    // (security audit 2026-11, vmProxyModelBinding.js) — settled at the same rate as the rest.
+    const premiumTokens = Math.max(0, Number(proxyTokenUsage.premiumTokens) || 0)
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
     const tokensPerGold = resolveEffectiveTokensPerGold({ tokensPerGold: persistedTokensPerGold, agentModel })
@@ -2451,9 +2496,9 @@ function calculateCompletionGoldCharges({
           ? calculateSolUsageGold(
                 proxyTokenUsage.solCostUsd,
                 tokensPerGold,
-                Math.max(0, totalTokens - proxyTokenUsage.solPricedTokens)
+                Math.max(0, totalTokens - proxyTokenUsage.solPricedTokens) + premiumTokens
             )
-          : calculateTokenGold(totalTokens, tokensPerGold)
+          : calculateTokenGold(totalTokens + premiumTokens, tokensPerGold)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,

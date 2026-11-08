@@ -23,6 +23,15 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 //
 // The build itself runs no agent and costs no Gold — it is platform infra.
 // It executes in the `runGoldenBuild` Cloud Tasks worker (see index.js).
+//
+// security audit 2026-11 (vmGolden:member-writable-setupCommand-snapshotId-seeds-credentialed-
+// sandboxes): the golden's state lives in the SERVER-ONLY `vmGoldens/{projectId}` document (no
+// client rule, so Firestore's default deny applies). Every member's cold coding job boots from the
+// snapshot it names and runs with that member's repo/GCP/agent credentials, and the build evals
+// `setupCommand`, so neither may come from `projects/{projectId}`, which every member can update.
+// The project doc only carries a display mirror (`vmGolden.status`, `builtAt`, …) for the settings
+// row; nothing on the server reads it back. `setupCommand` is administered with the Admin SDK only
+// (see migration/moveVmGoldenSetupCommands.js), and `snapshotId` is written only by runGoldenBuild.
 // ---------------------------------------------------------------------------
 
 const REGION = 'europe-west1'
@@ -171,42 +180,96 @@ async function readGoldenLockfileHash(sandbox) {
     return { lockfile: null, lockfileHash: null }
 }
 
+const GOLDEN_COLLECTION = 'vmGoldens'
+
 function projectRef(projectId) {
     return admin.firestore().doc(`projects/${projectId}`)
 }
 
-// CAS a rebuild lease onto projects/{projectId}.vmGolden so a burst of cold jobs
-// enqueues exactly one build. `status` is intentionally left as-is when a golden
-// already exists (cold jobs keep serving the old snapshot while the new one
-// builds); only `rebuildState` gates the enqueue. Returns { claimed, buildId }.
+// The authoritative, server-only golden state for a project.
+function goldenRef(projectId) {
+    return admin.firestore().doc(`${GOLDEN_COLLECTION}/${projectId}`)
+}
+
+// Fields copied onto projects/{projectId}.vmGolden so the settings row can show the status.
+// Display only: the server never reads the mirror back. The snapshot pointer, lockfile hash and
+// setup command are deliberately NOT mirrored (and a legacy pointer is cleared).
+const GOLDEN_MIRROR_FIELDS = [
+    'status',
+    'rebuildState',
+    'rebuildReason',
+    'rebuildRequestedAt',
+    'builtAt',
+    'packageManager',
+    'lockfile',
+    'lastError',
+    'lastFailedAt',
+    'deletedAt',
+    'deletedReason',
+]
+
+// Dotted field paths so the mirror merges into the existing map (a legacy `setupCommand` stays
+// until the migration moves it) and `update` refuses to resurrect a deleted project document.
+function buildGoldenMirrorUpdate(state = {}) {
+    const update = {}
+    for (const field of GOLDEN_MIRROR_FIELDS) {
+        if (state[field] !== undefined) update[`vmGolden.${field}`] = state[field]
+    }
+    update['vmGolden.hasSnapshot'] = !!(state.status === 'ready' && state.snapshotId)
+    update['vmGolden.snapshotId'] = null
+    update['vmGolden.lockfileHash'] = null
+    return update
+}
+
+function mirrorGoldenToProject(projectId, state) {
+    return projectRef(projectId)
+        .update(buildGoldenMirrorUpdate(state))
+        .catch(error => console.warn('🌱 GOLDEN: status mirror failed', { projectId, error: error && error.message }))
+}
+
+// Read the server-only golden state. Best-effort: a failure reads as "no golden", which only
+// costs a cold job its warm start (and makes it trigger a rebuild).
+async function readGoldenState(projectId) {
+    if (!projectId) return null
+    try {
+        const snap = await goldenRef(projectId).get()
+        return snap.exists ? snap.data() || {} : null
+    } catch (error) {
+        console.warn('🌱 GOLDEN: reading golden state failed', { projectId, error: error && error.message })
+        return null
+    }
+}
+
+// CAS a rebuild lease onto vmGoldens/{projectId} so a burst of cold jobs enqueues exactly one
+// build. `status` is intentionally left as-is when a golden already exists (cold jobs keep serving
+// the old snapshot while the new one builds); only `rebuildState` gates the enqueue. Returns
+// { claimed, buildId }.
 async function claimGoldenRebuildLease(projectId, requestUserId, reason) {
-    const ref = projectRef(projectId)
+    const pRef = projectRef(projectId)
+    const gRef = goldenRef(projectId)
     const now = Date.now()
     return admin.firestore().runTransaction(async transaction => {
-        const snapshot = await transaction.get(ref)
-        if (!snapshot.exists) return { claimed: false }
-        const g = (snapshot.data() || {}).vmGolden || {}
+        const [projectSnap, goldenSnap] = await Promise.all([transaction.get(pRef), transaction.get(gRef)])
+        if (!projectSnap.exists) return { claimed: false }
+        const g = goldenSnap.exists ? goldenSnap.data() || {} : {}
         if (g.rebuildState === 'building' && Number(g.rebuildLeaseExpiresAt) > now) {
             return { claimed: false }
         }
         const buildId = crypto.randomUUID()
-        transaction.set(
-            ref,
-            {
-                vmGolden: {
-                    status: g.status || 'building',
-                    rebuildState: 'building',
-                    rebuildReason: reason || 'manual',
-                    rebuildLeaseOwner: buildId,
-                    rebuildLeaseExpiresAt: now + GOLDEN_REBUILD_LEASE_MS,
-                    rebuildRequestedBy: requestUserId || null,
-                    rebuildRequestedAt: now,
-                    lastBuildId: buildId,
-                    lastError: null,
-                },
-            },
-            { merge: true }
-        )
+        const next = {
+            projectId,
+            status: g.status || 'building',
+            rebuildState: 'building',
+            rebuildReason: reason || 'manual',
+            rebuildLeaseOwner: buildId,
+            rebuildLeaseExpiresAt: now + GOLDEN_REBUILD_LEASE_MS,
+            rebuildRequestedBy: requestUserId || null,
+            rebuildRequestedAt: now,
+            lastBuildId: buildId,
+            lastError: null,
+        }
+        transaction.set(gRef, next, { merge: true })
+        transaction.update(pRef, buildGoldenMirrorUpdate({ ...g, ...next }))
         return { claimed: true, buildId }
     })
 }
@@ -216,29 +279,26 @@ async function claimGoldenRebuildLease(projectId, requestUserId, reason) {
 // its lease. Preserves any existing snapshot so a failed rebuild leaves the prior
 // golden usable.
 async function releaseGoldenRebuildLease(projectId, buildId, errorMessage) {
-    const ref = projectRef(projectId)
+    const pRef = projectRef(projectId)
+    const gRef = goldenRef(projectId)
     await admin
         .firestore()
         .runTransaction(async transaction => {
-            const snapshot = await transaction.get(ref)
-            if (!snapshot.exists) return
-            const g = (snapshot.data() || {}).vmGolden || {}
+            const [projectSnap, goldenSnap] = await Promise.all([transaction.get(pRef), transaction.get(gRef)])
+            const g = goldenSnap.exists ? goldenSnap.data() || {} : {}
             if (g.rebuildLeaseOwner && g.rebuildLeaseOwner !== buildId) return
-            transaction.set(
-                ref,
-                {
-                    vmGolden: {
-                        status: g.snapshotId ? 'ready' : 'failed',
-                        rebuildState: 'idle',
-                        rebuildLeaseOwner: null,
-                        rebuildLeaseExpiresAt: 0,
-                        lastBuildId: buildId,
-                        lastError: errorMessage ? String(errorMessage).slice(0, 500) : null,
-                        lastFailedAt: errorMessage ? Date.now() : g.lastFailedAt || null,
-                    },
-                },
-                { merge: true }
-            )
+            const next = {
+                projectId,
+                status: g.snapshotId ? 'ready' : 'failed',
+                rebuildState: 'idle',
+                rebuildLeaseOwner: null,
+                rebuildLeaseExpiresAt: 0,
+                lastBuildId: buildId,
+                lastError: errorMessage ? String(errorMessage).slice(0, 500) : null,
+                lastFailedAt: errorMessage ? Date.now() : g.lastFailedAt || null,
+            }
+            transaction.set(gRef, next, { merge: true })
+            if (projectSnap.exists) transaction.update(pRef, buildGoldenMirrorUpdate({ ...g, ...next }))
         })
         .catch(error => console.warn('🌱 GOLDEN: release lease failed', { projectId, error: error.message }))
 }
@@ -259,7 +319,8 @@ async function enqueueGoldenRebuild(projectId, buildId, requestUserId) {
 
 // True when the project has a usable golden snapshot to seed a cold sandbox from.
 // Stays truthy DURING a rebuild (status remains 'ready' while the old snapshot is
-// still served), so cold starts are never blocked waiting on a build.
+// still served), so cold starts are never blocked waiting on a build. `project.vmGolden` here is
+// the server-only state from readGoldenState — never the project doc's display mirror.
 function resolveGoldenTemplate(project) {
     const g = (project && project.vmGolden) || {}
     if (g.status === 'ready' && g.snapshotId) return g.snapshotId
@@ -269,8 +330,8 @@ function resolveGoldenTemplate(project) {
 // Mark the project's golden as used now, so the unused-TTL cleanup only deletes snapshots
 // no cold job has seeded from in a long time. Best-effort, fire-and-forget.
 function touchGoldenUsage(projectId) {
-    projectRef(projectId)
-        .set({ vmGolden: { lastUsedAt: Date.now() } }, { merge: true })
+    goldenRef(projectId)
+        .set({ lastUsedAt: Date.now() }, { merge: true })
         .catch(() => {})
 }
 
@@ -329,7 +390,8 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
     const db = admin.firestore()
     const projectSnap = await db.doc(`projects/${projectId}`).get()
     const project = projectSnap.exists ? projectSnap.data() : null
-    const g = (project && project.vmGolden) || {}
+    // Lease and setup command come from the server-only golden doc, never the project doc.
+    const g = (await readGoldenState(projectId)) || {}
     // A newer build superseded this one before it started — do nothing.
     if (!project || (g.rebuildLeaseOwner && g.rebuildLeaseOwner !== buildId)) {
         console.warn('🌱 GOLDEN: build superseded before start', {
@@ -351,7 +413,9 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
         await releaseGoldenRebuildLease(
             projectId,
             buildId,
-            'No connected repository, or the requesting user has no token for it'
+            gitContext && gitContext.repoTokenMismatch
+                ? "The requesting user's repository token was validated for a different repository than the project's"
+                : 'No connected repository, or the requesting user has no token for it'
         )
         return
     }
@@ -372,32 +436,30 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
         const name = sanitizeGoldenName(projectId)
         const snapshotId = await createGoldenSnapshot(sandbox.sandboxId, name, e2bApiKey)
 
-        await db.doc(`projects/${projectId}`).set(
-            {
-                vmGolden: {
-                    snapshotId,
-                    name,
-                    lockfile: lockfile || null,
-                    lockfileHash: lockfileHash || null,
-                    packageManager,
-                    baseTemplate: GOLDEN_BASE_TEMPLATE,
-                    status: 'ready',
-                    rebuildState: 'idle',
-                    rebuildLeaseOwner: null,
-                    rebuildLeaseExpiresAt: 0,
-                    builtAt: Date.now(),
-                    // Initialize lastUsedAt so the unused-TTL cleanup query always matches a ready
-                    // golden; cold jobs refresh it via touchGoldenUsage when they seed from it.
-                    lastUsedAt: Date.now(),
-                    builtByUserId: requestUserId || null,
-                    lastBuildId: buildId,
-                    lastError: null,
-                    deletedAt: null,
-                    deletedReason: null,
-                },
-            },
-            { merge: true }
-        )
+        const built = {
+            projectId,
+            snapshotId,
+            name,
+            lockfile: lockfile || null,
+            lockfileHash: lockfileHash || null,
+            packageManager,
+            baseTemplate: GOLDEN_BASE_TEMPLATE,
+            status: 'ready',
+            rebuildState: 'idle',
+            rebuildLeaseOwner: null,
+            rebuildLeaseExpiresAt: 0,
+            builtAt: Date.now(),
+            // Initialize lastUsedAt so the unused-TTL cleanup query always matches a ready
+            // golden; cold jobs refresh it via touchGoldenUsage when they seed from it.
+            lastUsedAt: Date.now(),
+            builtByUserId: requestUserId || null,
+            lastBuildId: buildId,
+            lastError: null,
+            deletedAt: null,
+            deletedReason: null,
+        }
+        await goldenRef(projectId).set(built, { merge: true })
+        await mirrorGoldenToProject(projectId, built)
         console.log('🌱 GOLDEN: built', { projectId, buildId, snapshotId, packageManager, lockfile })
     } catch (error) {
         console.error('🌱 GOLDEN: build failed', { projectId, buildId, error: error && error.message })
@@ -425,8 +487,9 @@ async function deleteGoldenSnapshot(snapshotId, e2bApiKey) {
 }
 
 // Scheduled reclaimer: delete golden snapshots no cold job has seeded from in GOLDEN_UNUSED_TTL_MS,
-// and reset the project pointer so a future cold job rebuilds. Skips goldens mid-rebuild. The query
-// matches only projects whose vmGolden.lastUsedAt is old (ready goldens always have it set).
+// and reset the pointer so a future cold job rebuilds. Skips goldens mid-rebuild. Scans the
+// server-only vmGoldens collection: a snapshot id read from the member-writable project doc would
+// let a member make the server delete any template in the shared E2B team account.
 async function cleanupUnusedVmGoldenSnapshots({ now = Date.now(), ttlMs = GOLDEN_UNUSED_TTL_MS } = {}) {
     const stats = { scanned: 0, deleted: 0, alreadyGone: 0, failed: 0 }
     const e2bApiKey = getEnvFunctions().E2B_API_KEY
@@ -436,31 +499,28 @@ async function cleanupUnusedVmGoldenSnapshots({ now = Date.now(), ttlMs = GOLDEN
     }
     const db = admin.firestore()
     const cutoff = now - ttlMs
-    const snap = await db.collection('projects').where('vmGolden.lastUsedAt', '<', cutoff).get()
+    const snap = await db.collection(GOLDEN_COLLECTION).where('lastUsedAt', '<', cutoff).get()
     for (const doc of snap.docs) {
-        const g = (doc.data() || {}).vmGolden || {}
+        const g = doc.data() || {}
         if (!g.snapshotId || g.rebuildState === 'building') continue
         stats.scanned++
         try {
             const deleted = await deleteGoldenSnapshot(g.snapshotId, e2bApiKey)
             if (deleted) stats.deleted++
             else stats.alreadyGone++
-            await doc.ref.set(
-                {
-                    vmGolden: {
-                        status: 'idle',
-                        snapshotId: null,
-                        lockfile: null,
-                        lockfileHash: null,
-                        rebuildState: 'idle',
-                        rebuildLeaseOwner: null,
-                        rebuildLeaseExpiresAt: 0,
-                        deletedAt: now,
-                        deletedReason: 'unused_ttl',
-                    },
-                },
-                { merge: true }
-            )
+            const reset = {
+                status: 'idle',
+                snapshotId: null,
+                lockfile: null,
+                lockfileHash: null,
+                rebuildState: 'idle',
+                rebuildLeaseOwner: null,
+                rebuildLeaseExpiresAt: 0,
+                deletedAt: now,
+                deletedReason: 'unused_ttl',
+            }
+            await doc.ref.set(reset, { merge: true })
+            await mirrorGoldenToProject(doc.id, reset)
         } catch (error) {
             stats.failed++
             console.warn('🌱 GOLDEN CLEANUP: delete failed', { projectId: doc.id, error: error.message })
@@ -471,6 +531,10 @@ async function cleanupUnusedVmGoldenSnapshots({ now = Date.now(), ttlMs = GOLDEN
 }
 
 module.exports = {
+    GOLDEN_COLLECTION,
+    GOLDEN_MIRROR_FIELDS,
+    buildGoldenMirrorUpdate,
+    readGoldenState,
     GOLDEN_BASE_TEMPLATE,
     GOLDEN_REBUILD_LEASE_MS,
     GOLDEN_UNUSED_TTL_MS,
