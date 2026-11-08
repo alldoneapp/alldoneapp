@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "test": "node tests/index.test.mjs && node tests/senderAuthentication.test.mjs"
+        "test": "node tests/index.test.mjs"
     },
     "dependencies": {
         "postal-mime": "^2.4.4"

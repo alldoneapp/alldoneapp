@@ -71,12 +71,18 @@ describe('buildEmbeddedAccessFilter', () => {
                 projectIds: ['project-1', 'project-2'],
                 userId: 'user-1',
                 isAnonymous: false,
-                workstreamIds: ['ws@custom', 'ws@custom'],
             })
-        ).toBe(
-            'projectId:=[`project-1`,`project-2`,`globalProject`] && ' +
-                'isPublicFor:=[`0`,`user-1`,`ws@default`,`ws@custom`]'
-        )
+        ).toBe('projectId:=[`project-1`,`project-2`,`globalProject`] && isPublicFor:=[`0`,`user-1`]')
+    })
+
+    test('never admits workstream ids, which Firestore readerIds never honoured (NV-40)', () => {
+        const filter = buildEmbeddedAccessFilter({
+            projectIds: ['project-1'],
+            userId: 'user-1',
+            isAnonymous: false,
+            workstreamIds: ['ws@custom'],
+        })
+        expect(filter).not.toMatch(/ws@/)
     })
 
     test('anonymous users get public records only', () => {
@@ -97,12 +103,12 @@ describe('buildEmbeddedAccessFilter', () => {
                 userId: 'user`-1',
                 isAnonymous: false,
             })
-        ).toBe('projectId:=[`project-1`,`globalProject`] && isPublicFor:=[`0`,`user-1`,`ws@default`]')
+        ).toBe('projectId:=[`project-1`,`globalProject`] && isPublicFor:=[`0`,`user-1`]')
     })
 })
 
 describe('createTypesenseScopedSearchCredentials', () => {
-    test('derives the scope from project and workstream membership stored by the server', async () => {
+    test('derives the scope from project membership stored by the server', async () => {
         const db = makeDb({
             projectIds: ['project-1', 'project-2'],
             workstreamsByProject: { 'project-1': ['ws@one'], 'project-2': ['ws@two'] },
@@ -117,11 +123,9 @@ describe('createTypesenseScopedSearchCredentials', () => {
             }
         )
 
-        expect(db.get).toHaveBeenCalledTimes(3)
+        expect(db.get).toHaveBeenCalledTimes(1)
         expect(generateTypesenseScopedSearchKey).toHaveBeenCalledWith('parent-search-key', {
-            filter_by:
-                'projectId:=[`project-1`,`project-2`,`globalProject`] && ' +
-                'isPublicFor:=[`0`,`user-1`,`ws@default`,`ws@one`,`ws@two`]',
+            filter_by: 'projectId:=[`project-1`,`project-2`,`globalProject`] && isPublicFor:=[`0`,`user-1`]',
             exclude_fields: 'content,cleanComments',
             limit_multi_searches: 8,
             per_page: 20,

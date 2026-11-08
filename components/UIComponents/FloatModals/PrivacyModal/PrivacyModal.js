@@ -106,7 +106,7 @@ export const getAllOwnerIds = (projectId, ownerIds) => {
             const memebersIds = getWorkstreamMembers(projectId, ownerId).filter(
                 id => !secondaryOwnersIds.includes(id) && !ownerIds.includes(id)
             )
-            secondaryOwnersIds - [...secondaryOwnersIds, ...memebersIds]
+            secondaryOwnersIds = [...secondaryOwnersIds, ...memebersIds]
         } else {
             const mainOwnerContact = TasksHelper.getContactInProject(projectId, ownerId)
             if (mainOwnerContact && !secondaryOwnersIds.includes(mainOwnerContact.recorderUserId))

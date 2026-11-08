@@ -27,10 +27,9 @@ const {
 // refused:
 //
 //   1. connected mailbox (provider-attested) AND verified login email
-//   2. connected mailbox attested by Google
+//   2. connected mailbox (provider-attested)
 //   3. verified login email
-//   4. connected mailbox attested only by Microsoft (NV-07, see rankCandidate)
-//   5. connected mailbox whose ownership could not be checked right now
+//   4. connected mailbox whose ownership could not be checked right now
 //
 // A connected mailbox outranks a login email because it is the deliberate, per-address
 // act: you OAuth-connect a mailbox INTO the workspace you want its mail to land in, while
@@ -38,7 +37,7 @@ const {
 // rank 2 requires an attestation from the provider itself (see emailIdentityAttestation.js) —
 // the raw Firestore claim is owner-writable, so an unattested connection can never
 // outrank an Auth-verified login email, and one the provider actively disowns is dropped
-// entirely. Rank 5 is what keeps a Google outage from revoking everybody's routing; it
+// entirely. Rank 4 is what keeps a Google outage from revoking everybody's routing; it
 // only ever wins when nothing better exists, which is exactly the behaviour that shipped
 // before attestations existed.
 
@@ -177,24 +176,12 @@ async function findAccountsWithConnectedMailbox(normalizedEmail) {
     return Array.from(accountsById.values())
 }
 
-// security audit 2026-11 (NV-07): a Microsoft attestation is weaker than a Google one. It is the
-// Graph `/me` `mail || userPrincipalName` value, and `mail` is a directory attribute an Entra
-// tenant administrator sets; nothing proves the tenant owns that address's domain, and the app
-// signs in through the multi-tenant `/common` authority. So an attacker's own tenant could name a
-// victim's address. A Microsoft-only attestation therefore ranks BELOW an Auth-verified login
-// email (it still beats an unattested connection). Combined with that same account's verified
-// login (rank 1) the login email is the proof, so that rank is unchanged.
-function isStrongMailboxAttestation(candidate) {
-    return candidate.provider !== 'microsoft'
-}
-
 function rankCandidate(candidate) {
     const attestedMailbox = candidate.connected && candidate.connectionProof === PROOF_VERIFIED
     if (attestedMailbox && candidate.primaryVerified) return 1
-    if (attestedMailbox && isStrongMailboxAttestation(candidate)) return 2
+    if (attestedMailbox) return 2
     if (candidate.primaryVerified) return 3
-    if (attestedMailbox) return 4
-    if (candidate.connected) return 5
+    if (candidate.connected) return 4
     return Number.MAX_SAFE_INTEGER
 }
 

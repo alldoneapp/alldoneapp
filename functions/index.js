@@ -1396,10 +1396,11 @@ exports.ipRegistryLookup = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
+        const { auth } = request
         if (auth) {
+            // `request.data` is ignored on purpose: only the caller's own address is looked up (NV-24).
             const { ipRegistryLookup } = require('./IpRegistry/ipRegistryLookup')
-            return await ipRegistryLookup(data)
+            return await ipRegistryLookup({ userId: auth.uid, rawRequest: request.rawRequest })
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
@@ -2140,63 +2141,6 @@ exports.setDefaultVmApprovalPolicy = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { setDefaultVmApprovalPolicy } = require('./Assistant/vmAgentSettings')
         return await setDefaultVmApprovalPolicy({ userId: auth.uid, policy: data && data.policy })
-    }
-)
-
-// security audit 2026-11 (NV-20): the assistant's memory about a user is private and lives in the
-// server-only `assistantMemories` collection. These two callables are the only way a browser sees
-// or changes it: the owner reads and edits their own, other project members read it only when the
-// owner chose to share it (read-only). See functions/Assistant/userMemoryHelper.js.
-const runAssistantMemoryCallable = async work => {
-    try {
-        return await work()
-    } catch (error) {
-        const { AssistantMemoryAccessError } = require('./Assistant/userMemoryHelper')
-        if (error instanceof AssistantMemoryAccessError) throw new HttpsError(error.code, error.message)
-        throw error
-    }
-}
-
-exports.getAssistantMemorySecondGen = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { getAssistantMemoryForViewer } = require('./Assistant/userMemoryHelper')
-        return await runAssistantMemoryCallable(() =>
-            getAssistantMemoryForViewer({
-                projectId: data && data.projectId,
-                userId: data && data.userId,
-                viewerId: auth.uid,
-            })
-        )
-    }
-)
-
-exports.updateAssistantMemorySecondGen = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { updateOwnAssistantMemory } = require('./Assistant/userMemoryHelper')
-        return await runAssistantMemoryCallable(() =>
-            updateOwnAssistantMemory({
-                projectId: data && data.projectId,
-                userId: auth.uid,
-                content: data ? data.content : undefined,
-                shareWithProjectMembers: data ? data.shareWithProjectMembers : undefined,
-            })
-        )
     }
 )
 
@@ -4407,8 +4351,13 @@ exports.convertVideosSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const admin = require('firebase-admin')
-            const { convertVideos } = require('./videosHelper')
-            return await convertVideos(admin, data)
+            const { convertVideos, VideoConversionError } = require('./videosHelper')
+            try {
+                return await convertVideos(admin, data, auth.uid)
+            } catch (error) {
+                if (error instanceof VideoConversionError) throw new HttpsError(error.code, error.message)
+                throw error
+            }
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
