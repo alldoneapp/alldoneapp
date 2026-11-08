@@ -597,22 +597,24 @@ not in the repo) found many callables that skip this. The first fixes:
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
 
-- `copyTemplateObjectsSecondGen` derives everything through `Templates/templateCopyAccess.js`: the
-  template must be a template the caller can read (`isTemplate`, member or not private), the
-  copied creator is its stored `templateCreatorId`, and the guide must name it as `parentTemplateId`
-  and have the caller as a member (the join flow adds the user and links the guide before it calls).
-  A copy carries only what the template creator can see. `onCopyProjectSecondGen` needs a member of
-  the source project, the copy belongs to the caller (`CopyProject/copyProjectAccess.js`, the
-  request's `user` is ignored), and an object's note is copied only when shared with the project.
-- Feed state (`GlobalState/globalState.js`) is process-wide unless the code runs inside
-  `runWithFeedsState`, which gives the invocation its own store across awaits. A gen2 function serves
-  up to 80 requests per process, so concurrent guide copies read each other's feed creator and
-  members and followed each other's guides. The template copy runs inside it. Any other callable that
-  loads feed state and reads it again after an await has the same race and should be wrapped too.
+- Second pass: each callable resolves its request through a guard module that takes the user from
+  `request.auth`, checks membership/object access and derives the rest. `generateBotDailyTopicCommentSecondGen`
+  only runs the caller's own `BotChat<date><uid>` recap and formats the prompt dates itself
+  (`dailyTopicAccess.js`). `onRemoveWorkstreamSecondGen` needs a member and an existing `ws@` stream
+  (`workstreamRemovalAccess.js`). `createApiEmailTasksSecondGen` writes only the caller's own inbox task,
+  for an address stored on their connection (`apis/emailTasksAccess.js`). `sendUserJoinsToGuideEmailSecondGen`
+  reports the caller to the template creator and the administrator, read from Firestore, in escaped
+  HTML (`Templates/guideJoinEmail.js`). `addContactToBrevoMarketingList` subscribes only the token's
+  verified email. `sendPushNotificationSecondGen` now takes `{ projectId, objectType, objectId }`
+  (projects, users or tasks). Its recipients must follow that object, and the names, link and type come
+  from stored data. Only the caller's update line survives (`pushNotificationAccess.js`). A global
+  catalog assistant may only be changed by the administrator: use `assertAssistantProjectAccess(..., { forWrite: true })`
+  for any callable that writes one (`assistantProjectAccess.js`). `addCalendarEventsToTasksSecondGen`
+  was removed (no caller).
 
 Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
-`templateCopyAccess.test.js`, `templateObjectVisibility.test.js`, `copyProjectAccess.test.js`,
-`copyObjectNotesVisibility.test.js` and `GlobalState/globalState.test.js`.
+the test next to each guard module above and `functions/Utils/callableIdentityBindings.test.js`, which
+checks the wiring in `index.js`.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 
