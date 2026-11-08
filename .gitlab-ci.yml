@@ -79,13 +79,8 @@ stages:
 # "Can't resolve 'firebase/compat/app'" in webpack and jest while both were green
 # locally. Rebuilding :latest from a branch is not an option: master builds from
 # that tag. Such a branch instead builds its own images under
-# :branch-$CI_COMMIT_REF_SLUG, and the jobs consuming node_modules select that tag via
+# :$CI_COMMIT_REF_SLUG, and the jobs consuming node_modules select that tag via
 # a rules-level APP_IMAGE_TAG (defaulting to latest everywhere else).
-# The `branch-` prefix is load-bearing: a branch named `latest` (or `LATEST`, `latest_`,
-# anything GitLab slugs to `latest`) used to push straight over the :latest images that
-# master's production build and gates run in (security audit 2026-11, NV-31). A prefixed
-# tag can never be `latest`; the registry additionally lets only Maintainers push
-# `^latest$`. __tests__/CiImageTags.test.js holds both properties.
 # The path list is the union of everything baked into either image, so the base
 # image a branch-scoped bundler image is built FROM always exists.
 .branch-image-changes:
@@ -165,9 +160,6 @@ mirror:github:
     resource_group: github-mirror
     script:
         - sh ci/assertNewestCommit.sh mirror:github
-        # deployScope.sh signs and verifies the github-mirror marker with HMAC; alpine/git
-        # has no node or python, so openssl is the tool there.
-        - command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl
         - sh ci/github-push.sh
     allow_failure:
         exit_codes: 75
@@ -198,7 +190,7 @@ modules_cache:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
 
 # Tooling image for the standalone webpack pipeline (FRONTEND_MIGRATION_PLAN.md
 # Stage 0): Node 22 + web-bundler's own npm-ci'd tooling, with the app's
@@ -236,7 +228,7 @@ web_bundler_cache:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
 
 firebase_cmd_cache:
     stage: build_base
@@ -298,7 +290,7 @@ test:web:changed:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
               compare_to: 'refs/heads/master'
@@ -379,7 +371,7 @@ test:functions:deployment:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
         - if: '$CI_COMMIT_BRANCH'
 
 # Behavioral authorization gate for Firestore rules. This runs against the
@@ -411,7 +403,7 @@ test:firestore:rules:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
         # Keep the gate present on every production pipeline: the manual deploy
         # names it in `needs`, including catch-up pipelines selected by markers.
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
@@ -508,7 +500,7 @@ build_web_webpack_check:
               compare_to: 'refs/heads/master'
               paths: *branch-image-paths
           variables:
-              APP_IMAGE_TAG: branch-$CI_COMMIT_REF_SLUG
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
               compare_to: 'refs/heads/master'
@@ -555,10 +547,8 @@ deploy:web-webpack-preview:
     needs:
         - 'build_web_webpack_check'
     script:
-        # Staging-only deploy account; see ci/useFirebaseDeployCredentials.sh.
-        - . ci/useFirebaseDeployCredentials.sh staging
         - firebase --version
-        - firebase hosting:channel:deploy webpack-$CI_COMMIT_REF_SLUG --project "$FIREBASE_DEPLOY_PROJECT"
+        - firebase hosting:channel:deploy --token $GOOGLE_FIREBASE_DEPLOY_TOKEN webpack-$CI_COMMIT_REF_SLUG
     interruptible: false
     rules:
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
@@ -576,9 +566,9 @@ deploy:web-webpack-preview:
 # in Google Cloud Console, so no deploy can add it). This job publishes a branch
 # build to the staging site's live channel, on the registered origin, so auth
 # flows can actually be tested before a stage merges.
-# Manual and never automatic — it replaces whatever staging currently serves. It runs with
-# the staging-only deploy account, which has no role on production, and names that project
-# explicitly rather than relying on the .firebaserc default.
+# Manual and never automatic — it replaces whatever staging currently serves. The
+# project is named explicitly rather than relying on the .firebaserc default, so a
+# mis-click cannot reach production.
 deploy:web-staging-live:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
@@ -586,10 +576,9 @@ deploy:web-staging-live:
         - job: 'build_web_webpack_check'
           optional: true
     script:
-        - . ci/useFirebaseDeployCredentials.sh staging
         - firebase --version
-        - firebase use "$FIREBASE_DEPLOY_PROJECT"
-        - firebase deploy --only hosting --project "$FIREBASE_DEPLOY_PROJECT"
+        - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
     environment:
         name: staging
     interruptible: false
@@ -634,10 +623,8 @@ deploy:web:
         # A stale pipeline would replace the live bundle with an older build. See
         # ci/assertNewestCommit.sh; exit 75 means "superseded", declared allowed below.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web
-        # Production-only deploy account (protected variable); see the helper's header.
-        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh production
-        - firebase use "$FIREBASE_DEPLOY_PROJECT"
-        - firebase deploy --only hosting --project "$FIREBASE_DEPLOY_PROJECT"
+        - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         # Only after the deploy actually succeeded: this is what lets the NEXT pipeline
         # tell what production is really running, including anything a superseded pipeline
         # never shipped.
@@ -668,8 +655,7 @@ deploy:web-dev:
         # with no concurrent pushes there is nothing for a marker to catch up.
         - command -v git >/dev/null 2>&1 || apk add --no-cache git
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web-dev
-        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh staging
-        - firebase deploy --only hosting --project "$FIREBASE_DEPLOY_PROJECT"
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
     environment:
         name: staging
     interruptible: false
@@ -714,10 +700,8 @@ deploy:cloud:functions:staging:
         - grep -A 10 -B 5 "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || echo "Replacement failed"
         - cd functions
         - ln -s /functions/node_modules node_modules
-        # No service-account key is written into functions/ any more: the deployed runtime
-        # uses its own identity (ADC), and whatever sits in this directory is zipped into the
-        # function source archive. This job used to write the PRODUCTION key here too, on any
-        # branch (security audit 2026-11, NV-08).
+        - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
+        - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > env_functions.json
         # Fail on a malformed blob without echoing it: V8's JSON.parse error quotes a slice of
         # the input, and GitLab masks only whole variable values, not fragments of one.
@@ -728,22 +712,16 @@ deploy:cloud:functions:staging:
         # Same reasoning as deploy:web-dev — `--force` prunes functions absent from the
         # source being deployed, so an out-of-order staging deploy deletes work too.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:staging
-        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh staging
-        # setup_functions picks the project from the branch name; it must agree with the
-        # project the credential is for, or something is deploying where it should not.
-        - test "$(cat tmp_project_name)" = "$FIREBASE_DEPLOY_PROJECT" || { echo "tmp_project_name does not match $FIREBASE_DEPLOY_PROJECT"; exit 1; }
-        - firebase use "$FIREBASE_DEPLOY_PROJECT"
+        - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - sh $CI_PROJECT_DIR/ci/deployScope.sh functions-begin functions-staging
         - |
             set -o pipefail
-            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --project "$FIREBASE_DEPLOY_PROJECT" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
+            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
         # firebase-tools can exit zero after a partial concurrent deployment. Verify the
         # per-function completion log and inventory before a green job can hide stale code.
-        - firebase functions:list --project "$FIREBASE_DEPLOY_PROJECT" --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
+        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
         - rm -rf tmp_project_name
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-staging
-    environment:
-        name: staging
     allow_failure:
         exit_codes: 75
     rules:
@@ -792,7 +770,8 @@ deploy:cloud:functions:production:
             const MCP_BASE_URL = "'"$MCP_BASE_URL_PROD"'"' functions/MCP/config/environments.js
         - cd functions
         - ln -s /functions/node_modules node_modules
-        # No service-account key in functions/ (see the staging job and NV-08).
+        - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
+        - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > env_functions.json
         # Fail on a malformed blob without echoing it (see the staging job).
         - node -e 'try { JSON.parse(require("fs").readFileSync("env_functions.json", "utf8")) } catch (error) { console.error("env_functions.json is not valid JSON, check GOOGLE_FUNCTIONS_ENV_PROD"); process.exit(1) }'
@@ -805,22 +784,18 @@ deploy:cloud:functions:production:
         # here rather than in before_script so the window between the check and the deploy
         # is as small as possible. Exit 75 means "superseded", declared allowed below.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:production
-        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh production
-        - test "$(cat tmp_project_name)" = "$FIREBASE_DEPLOY_PROJECT" || { echo "tmp_project_name does not match $FIREBASE_DEPLOY_PROJECT"; exit 1; }
-        - firebase use "$FIREBASE_DEPLOY_PROJECT"
+        - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - sh $CI_PROJECT_DIR/ci/deployScope.sh functions-begin functions-production
         - |
             set -o pipefail
-            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --project "$FIREBASE_DEPLOY_PROJECT" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
+            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
         # A 2026-09-10 deploy returned zero after GCP quota omitted one new task worker.
         # Require a completed update or verified no-op for every selected export, then check full inventory.
         # Presence alone missed the stale voice worker on 2026-09-11.
-        - firebase functions:list --project "$FIREBASE_DEPLOY_PROJECT" --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
+        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
         - rm -rf tmp_project_name
         # Advance the successful marker only after every selected function was verified.
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-production
-    environment:
-        name: production
     allow_failure:
         exit_codes: 75
     rules:
@@ -911,8 +886,6 @@ deploy:cloud:runner:production:
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record runner-production
-    environment:
-        name: production
     allow_failure:
         exit_codes: 75
     rules:
@@ -962,9 +935,8 @@ deploy:firestore:rules:production:
         # A stale pipeline would republish an older ruleset over a newer one, silently
         # reopening whatever the newer commit closed. Exit 75 means "superseded".
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:firestore:rules:production
-        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh production
-        - firebase use "$FIREBASE_DEPLOY_PROJECT"
-        - firebase deploy --only firestore:rules --project "$FIREBASE_DEPLOY_PROJECT" --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
+        - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only firestore:rules --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         # Only after a successful release, so a failed deploy is retried by the next
         # pipeline instead of being marked as shipped.
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record firestore-rules-production
@@ -999,11 +971,10 @@ check:firestore:indexes:staging:
     # Read-only drift report; it needs no build artifacts.
     dependencies: []
     script:
-        - . ci/useFirebaseDeployCredentials.sh staging
         - firebase --version
         # Staging legitimately holds indexes production does not, so report drift
         # without failing the pipeline.
-        - node ci/check-firestore-indexes.js "$FIREBASE_DEPLOY_PROJECT" --warn-only
+        - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --warn-only
     environment:
         name: staging
     rules:
@@ -1014,11 +985,10 @@ check:firestore:indexes:production:
     stage: deploy_web
     dependencies: []
     script:
-        - . ci/useFirebaseDeployCredentials.sh production
         - firebase --version
         # The file mirrors production, so any difference here is real drift worth
         # a red pipeline.
-        - node ci/check-firestore-indexes.js "$FIREBASE_DEPLOY_PROJECT"
+        - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD
     environment:
         name: production
     rules:

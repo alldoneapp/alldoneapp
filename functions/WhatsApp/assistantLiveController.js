@@ -1,3 +1,4 @@
+const { isUnverifiedPhoneCallSession } = require('../shared/callerVerification')
 const crypto = require('crypto')
 const { sanitizeCallPageContext, formatCallPageContext } = require('./assistantCallPageContext')
 const admin = require('firebase-admin')
@@ -244,6 +245,7 @@ async function runAssistantLiveCall(sessionId) {
                 source: channel,
                 updateExisting: true,
                 createdAt: Number(session.startedAt) + group.start,
+                callerUnverified: isUnverifiedPhoneCallSession(session),
             })
             persistedGroups.set(group.id, group.text)
         }

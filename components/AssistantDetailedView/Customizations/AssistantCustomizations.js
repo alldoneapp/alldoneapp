@@ -37,6 +37,7 @@ import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
 import HeartbeatStatusProperty from './Heartbeat/HeartbeatStatusProperty'
+import HeartbeatOptInProperty from './Heartbeat/HeartbeatOptInProperty'
 import InboundEmailModelProperty from './AssistantEmail/InboundEmailModelProperty'
 import EmailSignatureProperty from './EmailSignature/EmailSignatureProperty'
 import UpdateFromTemplate from './UpdateFromTemplate/UpdateFromTemplate'
@@ -250,6 +251,9 @@ export default function AssistantCustomizations({
                     />
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
+                    {!isGlobalAsisstant && !isInGlobalProject && !isAnonymous && belongsToProject && (
+                        <HeartbeatOptInProperty projectId={projectId} assistant={assistant} />
+                    )}
                     <HeartbeatStatusProperty projectId={projectId} assistant={assistant} />
                     <HeartbeatPromptProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                 </View>

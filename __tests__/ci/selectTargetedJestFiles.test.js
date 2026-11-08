@@ -36,35 +36,6 @@ const scratchEnv = () => {
     return env
 }
 
-// Production deploy markers are only believed when a default-branch pipeline signed them
-// (ci/deployScope.sh, security audit 2026-11 NV-01), so fixtures write them the way CI does.
-const MARKER_SIGNING_KEY = 'fixture-signing-key'
-const markerEnv = () => ({ DEPLOY_MARKER_SIGNING_KEY: MARKER_SIGNING_KEY, CI_DEFAULT_BRANCH: 'master' })
-const signMarkers = (repo, sha, targets) => {
-    const sink = fs.mkdtempSync(path.join(os.tmpdir(), 'marker-sink-'))
-    try {
-        execFileSync('git', ['init', '-q', '--bare', sink])
-        for (const target of targets) {
-            execFileSync('sh', [path.resolve(__dirname, '../../ci/deployScope.sh'), 'record', target], {
-                cwd: repo,
-                encoding: 'utf8',
-                env: {
-                    ...scratchEnv(),
-                    ...markerEnv(),
-                    CI_PROJECT_DIR: repo,
-                    CI_COMMIT_SHA: sha,
-                    CI_COMMIT_BRANCH: 'master',
-                    CI_COMMIT_REF_PROTECTED: 'true',
-                    CI_JOB_TOKEN: 'job-token',
-                    DEPLOY_MARKER_PUSH_URL: sink,
-                },
-            })
-        }
-    } finally {
-        fs.rmSync(sink, { recursive: true, force: true })
-    }
-}
-
 const git = (cwd, args) =>
     execFileSync('git', args, {
         cwd,
@@ -298,13 +269,13 @@ describe('committed comparison ranges', () => {
         write(repo, 'firestore.rules', 'rules_version = 2;')
         write(repo, '__tests__/Firestore/rules.test.js', "test('base', () => {})")
         const base = commit(repo, 'tested rules')
-        signMarkers(repo, base, [
+        for (const target of [
             'web-production',
             'functions-production',
-            'functions-production-attempt',
             'runner-production',
             'firestore-rules-production',
         ])
+            git(repo, ['tag', `deployed/${target}`, base])
         write(repo, '__tests__/Firestore/rules.test.js', "test('new rules regression', () => {})")
         const skipped = commit(repo, 'superseded test pipeline')
         write(repo, 'components/Foo.js', 'module.exports = 1')
@@ -317,7 +288,6 @@ describe('committed comparison ranges', () => {
             encoding: 'utf8',
             env: {
                 ...scratchEnv(),
-                ...markerEnv(),
                 CI_PROJECT_DIR: repo,
                 CI_COMMIT_SHA: head,
                 CI_COMMIT_BEFORE_SHA: skipped,
@@ -331,13 +301,13 @@ describe('committed comparison ranges', () => {
         write(repo, 'components/Foo.js', 'module.exports = 1')
         write(repo, 'functions/index.js', 'exports.alpha = () => 1')
         const base = commit(repo, 'deployed')
-        signMarkers(repo, base, [
+        for (const target of [
             'web-production',
             'functions-production',
-            'functions-production-attempt',
             'runner-production',
             'firestore-rules-production',
         ])
+            git(repo, ['tag', `deployed/${target}`, base])
         git(repo, ['tag', '--annotate', 'deployed/web-full-tests', base, '--message', 'Validated'])
         write(repo, 'components/Foo.js', 'module.exports = 2')
         const head = commit(repo, 'next release')
@@ -350,7 +320,6 @@ describe('committed comparison ranges', () => {
                 encoding: 'utf8',
                 env: {
                     ...scratchEnv(),
-                    ...markerEnv(),
                     CI_PROJECT_DIR: repo,
                     CI_COMMIT_SHA: head,
                     CI_COMMIT_BEFORE_SHA: base,

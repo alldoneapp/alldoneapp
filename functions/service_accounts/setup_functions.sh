@@ -44,11 +44,8 @@ if [[ -s $ACCOUNT_KEY_TO_USE ]]; then
 
 else
 
-  # Expected in CI: deploys no longer write any key here, because the deployed runtime uses
-  # its own identity (ADC) and this directory used to be zipped into the function source
-  # (security audit 2026-11, NV-08). A local key is only for running scripts on your machine.
   echo "-------------------------------------------------------------------------------------"
-  echo "No [${ACCOUNT_KEY_TO_USE}] for branch [${GIT_BRANCH}]; the runtime uses application default credentials."
+  echo "The file [${ACCOUNT_KEY_TO_USE}] for branch [${GIT_BRANCH}] do not exists or is empty!"
   echo "-------------------------------------------------------------------------------------"
 
 fi

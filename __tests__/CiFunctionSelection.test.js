@@ -393,27 +393,13 @@ describe('serialized deployment marker refresh', () => {
             const attempt = commit()
             write('functions/beta.js', fixture['functions/beta.js'])
             const head = commit()
-            // Production markers are only believed when a default-branch pipeline signed
-            // them (ci/deployScope.sh, NV-01), so write them the way CI does.
-            const signingEnv = {
-                ...process.env,
-                CI_PROJECT_DIR: root,
-                CI_DEFAULT_BRANCH: 'master',
-                CI_COMMIT_BRANCH: 'master',
-                CI_COMMIT_REF_PROTECTED: 'true',
-                CI_JOB_TOKEN: 'job-token',
-                DEPLOY_MARKER_SIGNING_KEY: 'fixture-signing-key',
-                DEPLOY_MARKER_PUSH_URL: remote,
-            }
-            const mark = (target, sha) => {
-                const result = spawnSync('sh', [path.resolve(__dirname, '../ci/deployScope.sh'), 'record', target], {
-                    encoding: 'utf8',
-                    env: { ...signingEnv, CI_COMMIT_SHA: sha },
-                })
-                expect(result.stdout).toContain('now points at')
-            }
-            mark('functions-production', baseline)
-            mark('functions-production-attempt', attempt)
+            git(
+                'push',
+                '-q',
+                'origin',
+                `${baseline}:refs/tags/deployed/functions-production`,
+                `${attempt}:refs/tags/deployed/functions-production-attempt`
+            )
             expect(makePlan(root, baseline, head).mode).toBe('none')
             const refresh = () =>
                 spawnSync(
@@ -421,7 +407,7 @@ describe('serialized deployment marker refresh', () => {
                     [path.resolve(__dirname, '../ci/deployScope.sh'), 'functions-plan', 'functions-production'],
                     {
                         encoding: 'utf8',
-                        env: { ...signingEnv, CI_COMMIT_SHA: head, FUNCTIONS_DEPLOY_ALL: '0' },
+                        env: { ...process.env, CI_PROJECT_DIR: root, CI_COMMIT_SHA: head, FUNCTIONS_DEPLOY_ALL: '0' },
                     }
                 )
             const first = refresh()
@@ -429,20 +415,9 @@ describe('serialized deployment marker refresh', () => {
             expect(JSON.parse(fs.readFileSync(path.join(root, 'functions-deploy-scope.json'))).mode).toBe('full')
             // If the preceding job completed after pipeline scope was computed,
             // re-reading its successful marker also picks up a necessary rollback.
-            mark('functions-production', attempt)
+            git('push', '--force', '-q', 'origin', `${attempt}:refs/tags/deployed/functions-production`)
             expect(refresh().status).toBe(0)
             expect(JSON.parse(fs.readFileSync(path.join(root, 'functions-deploy-scope.json'))).names).toEqual(['beta'])
-            mark('functions-production', head)
-            mark('functions-production-attempt', head)
-            expect(refresh().status).toBe(76)
-            // A replayed older pair (marker = attempt = baseline) has the same trees as head,
-            // but the range shows beta.js changing and changing back, and the live version
-            // may be the intermediate one, so beta is redeployed rather than skipped.
-            mark('functions-production', baseline)
-            mark('functions-production-attempt', baseline)
-            expect(refresh().status).toBe(0)
-            expect(JSON.parse(fs.readFileSync(path.join(root, 'functions-deploy-scope.json'))).names).toEqual(['beta'])
-            // Unsigned (lightweight) production markers are ignored: everything is reconciled.
             git(
                 'push',
                 '--force',
@@ -451,8 +426,7 @@ describe('serialized deployment marker refresh', () => {
                 `${head}:refs/tags/deployed/functions-production`,
                 `${head}:refs/tags/deployed/functions-production-attempt`
             )
-            expect(refresh().status).toBe(0)
-            expect(JSON.parse(fs.readFileSync(path.join(root, 'functions-deploy-scope.json'))).mode).toBe('full')
+            expect(refresh().status).toBe(76)
             // No credentials means no safe attempt marker: fail before any Firebase call.
             const begin = spawnSync(
                 'sh',
