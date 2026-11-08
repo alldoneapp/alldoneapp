@@ -12,11 +12,73 @@ const NOW = 1_800_000_000_000
 const pagePath = slug => `knowledgeBases/${PROJECT_ID}/pages/${slug}`
 const revisionPath = (slug, revision) => `${pagePath(slug)}/revisions/${String(revision).padStart(6, '0')}`
 
+const SOURCE_PATHS = {
+    task: id => `items/${PROJECT_ID}/tasks/${id}`,
+    note: id => `noteItems/${PROJECT_ID}/notes/${id}`,
+}
+
+// Every source a test lets the run cite exists and is visible to the whole project, unless the test
+// seeded it otherwise: writeKnowledgePage reads newly cited sources again at write time.
+function seedVisibleSources(db, keys) {
+    for (const key of keys || []) {
+        const [type, id] = key.split(':')
+        const path = SOURCE_PATHS[type] && SOURCE_PATHS[type](id)
+        if (path && !db.documents.has(path)) db.documents.set(path, { isPublicFor: [0] })
+    }
+}
+
 function write(db, args) {
+    seedVisibleSources(db, args.allowedSourceKeys)
     return writeKnowledgePage({ db, projectId: PROJECT_ID, now: NOW, fieldValue, runId: 'run-1', ...args })
 }
 
 describe('writeKnowledgePage', () => {
+    describe('a source withdrawn while the run was writing (security audit 2026-11)', () => {
+        const writeCiting = (db, key) =>
+            writeKnowledgePage({
+                db,
+                projectId: PROJECT_ID,
+                now: NOW,
+                fieldValue,
+                runId: 'run-1',
+                title: 'Kunden',
+                summary: 'Wer.',
+                body: `Acme ist Pilotkunde [[${key}]].`,
+                sourceKeys: [key],
+                allowedSourceKeys: new Set([key]),
+                expectedRevision: 0,
+            })
+
+        it('refuses to cite a source made private after the run collected it', async () => {
+            const db = new KnowledgeFirestoreDouble({
+                [`items/${PROJECT_ID}/tasks/t1`]: { isPublicFor: [1], isPrivate: true },
+            })
+            const result = await writeCiting(db, 'task:t1')
+            expect(result).toMatchObject({ success: false, error: expect.stringMatching(/\[\[task:t1\]\]/) })
+            expect(db.read(pagePath('kunden'))).toBeUndefined()
+            expect(db.read(revisionPath('kunden', 1))).toBeUndefined()
+        })
+
+        it('refuses to cite a deleted source', async () => {
+            const db = new KnowledgeFirestoreDouble({})
+            await expect(writeCiting(db, 'note:n1')).resolves.toMatchObject({ success: false })
+            expect(db.read(pagePath('kunden'))).toBeUndefined()
+        })
+
+        it('refuses a thread whose object turned private', async () => {
+            const db = new KnowledgeFirestoreDouble({
+                [`chatObjects/${PROJECT_ID}/chats/t1`]: { type: 'tasks', isPublicFor: [0] },
+                [`items/${PROJECT_ID}/tasks/t1`]: { isPublicFor: [1] },
+            })
+            await expect(writeCiting(db, 'chat:t1')).resolves.toMatchObject({ success: false })
+        })
+
+        it('still cites a source that is visible at write time', async () => {
+            const db = new KnowledgeFirestoreDouble({ [`items/${PROJECT_ID}/tasks/t1`]: { isPublicFor: [0] } })
+            await expect(writeCiting(db, 'task:t1')).resolves.toMatchObject({ success: true, revision: 1 })
+        })
+    })
+
     it('creates a page with its first revision and records what it cites and links', async () => {
         const db = new KnowledgeFirestoreDouble({})
 

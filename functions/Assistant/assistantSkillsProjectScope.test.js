@@ -204,7 +204,7 @@ describe('assistant skills project scoping (AT-2450)', () => {
                 snapshotOf([skillDoc('s1', { name: 'deploy-runbook', body: 'x', enabled: true })])
             )
             await expect(loadProjectSkills(PROJECT_ID)).resolves.toEqual([
-                { uid: 's1', name: 'deploy-runbook', body: 'x', enabled: true },
+                { uid: 's1', name: 'deploy-runbook', body: 'x', enabled: true, ownerProjectId: PROJECT_ID },
             ])
             expect(collectionGet).toHaveBeenCalledWith(`assistantSkills/${PROJECT_ID}/items`)
         })

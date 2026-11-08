@@ -39,9 +39,6 @@ exports.mcpOAuthCallback = onRequest(
         // body so they never enter browser history or HTTP request URL logs.
         const params = (req.method === 'POST' ? req.body : req.query) || {}
         const { sessionId, authCode, redirectUri, state } = params
-        // Sent only by the login page's approve button (security audit 2026-11, oauthClientConsent.js).
-        // A JSON boolean from the page's POST; a query string (the legacy GET) never approves.
-        const consentApproved = req.method === 'POST' && params.consentApproved === true
         const firebaseToken = params.firebaseToken || params.idToken
         console.log('MCP OAuth callback', { method: req.method, hasAuthorization: !!authCode })
         if (typeof sessionId !== 'string' || typeof firebaseToken !== 'string' || !sessionId || !firebaseToken) {
@@ -54,7 +51,6 @@ exports.mcpOAuthCallback = onRequest(
                 authCode,
                 redirectUri,
                 state,
-                consentApproved,
             })
             if (!result.success) {
                 res.status(result.retryable ? 503 : 400).json(result)

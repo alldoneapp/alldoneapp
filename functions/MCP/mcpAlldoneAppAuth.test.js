@@ -34,6 +34,7 @@ test('a run uses a token for its requesting user and sends it as a bearer token'
         assistantId: 'a',
         serverId: 's',
         requestUserId: 'user-1',
+        serverUrl: 'https://alldone.team/mcp',
     })
     expect(mockGetAlldoneTeamMcpToken).toHaveBeenCalledWith('user-1')
     expect(buildAuthHeaders({ authType: 'alldone_app' }, secret)).toEqual({ Authorization: 'Bearer adapp_user-1' })

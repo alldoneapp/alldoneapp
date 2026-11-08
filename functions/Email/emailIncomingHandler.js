@@ -5,6 +5,7 @@ const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
 
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { buildInboundEmailRecordId } = require('./inboundEmailRecordId')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress, normalizeEmailAddressList } = require('./emailChannelHelpers')
 const {
@@ -40,7 +41,7 @@ async function handleIncomingAnnaEmail(req, res) {
         const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
         const guestMeetingResult = await tryHandleGuestMeetingReply(payload)
         if (guestMeetingResult.matched) {
-            await upsertAuditRecord(payload.messageId, {
+            await upsertAuditRecord(guestMeetingResult.ownerUserId || null, payload.messageId, {
                 status: guestMeetingResult.status,
                 userId: guestMeetingResult.ownerUserId || null,
                 fromEmail: payload.fromEmail,
@@ -64,7 +65,7 @@ async function handleIncomingAnnaEmail(req, res) {
                     ? `This email address belongs to more than one Alldone account, so I can't tell which one this should go to. Disconnect it from the account you don't want it on, or write from an address that only one account uses.`
                     : `I couldn't match this sender to a verified Alldone account email.`
             )
-            await upsertAuditRecord(payload.messageId, {
+            await upsertAuditRecord(null, payload.messageId, {
                 status,
                 fromEmail: payload.fromEmail,
                 subject: payload.subject,
@@ -89,7 +90,9 @@ async function handleIncomingAnnaEmail(req, res) {
         }
 
         const assistantId = await getDefaultAssistantIdForUser(user, projectId)
-        const attachments = await uploadInboundAttachments(payload.messageId, payload.attachments)
+        // Stored under the routed account and a server-minted id, never under the sender-chosen
+        // Message-ID alone, so one account's mail cannot replace another account's attachments.
+        const attachments = await uploadInboundAttachments(user.uid, payload.attachments)
         const enqueueResult = await enqueueIncomingEmailMessage({
             userId: user.uid,
             projectId,
@@ -108,7 +111,9 @@ async function handleIncomingAnnaEmail(req, res) {
             attachments,
         })
 
-        await upsertAuditRecord(payload.messageId, {
+        if (enqueueResult.duplicate) await deleteUploadedAttachments(attachments)
+
+        await upsertAuditRecord(user.uid, payload.messageId, {
             status: enqueueResult.duplicate ? 'duplicate' : 'queued',
             userId: user.uid,
             projectId,
@@ -197,11 +202,12 @@ function normalizeInboundAttachments(rawAttachments = []) {
         .filter(attachment => attachment.fileName || attachment.contentBase64)
 }
 
-async function uploadInboundAttachments(messageId, attachments = []) {
+async function uploadInboundAttachments(userId, attachments = []) {
     if (!Array.isArray(attachments) || attachments.length === 0) return []
 
     const bucket = admin.storage().bucket()
     const results = []
+    const uploadId = uuidv4()
 
     for (let index = 0; index < attachments.length; index++) {
         const attachment = attachments[index]
@@ -218,9 +224,11 @@ async function uploadInboundAttachments(messageId, attachments = []) {
 
         const buffer = Buffer.from(base64, 'base64')
         const safeFileName = sanitizeFileName(attachment.fileName || `attachment-${index + 1}`)
-        const storagePath = `anna-email-inbound/${messageId}/${index + 1}-${safeFileName}`
+        const storagePath = `anna-email-inbound/${userId}/${uploadId}/${index + 1}-${safeFileName}`
         await bucket.file(storagePath).save(buffer, {
             resumable: false,
+            // Create-only: an upload never replaces an object that already exists.
+            preconditionOpts: { ifGenerationMatch: 0 },
             contentType: attachment.contentType || 'application/octet-stream',
             metadata: {
                 metadata: {
@@ -240,6 +248,22 @@ async function uploadInboundAttachments(messageId, attachments = []) {
     return results
 }
 
+async function deleteUploadedAttachments(attachments = []) {
+    const bucket = admin.storage().bucket()
+    await Promise.all(
+        attachments
+            .filter(attachment => attachment.storagePath)
+            .map(attachment =>
+                bucket
+                    .file(attachment.storagePath)
+                    .delete()
+                    .catch(error =>
+                        console.warn('Email Channel: Failed removing a duplicate attachment', { error: error.message })
+                    )
+            )
+    )
+}
+
 function sanitizeFileName(fileName = '') {
     return String(fileName || 'attachment')
         .replace(/[^\w.\-]+/g, '_')
@@ -255,14 +279,24 @@ async function enqueueIncomingEmailMessage(payload) {
         throw new Error('Cannot enqueue email without messageId and userId')
     }
 
-    const dedupRef = db.doc(`annaEmailInboundDedup/${normalizedMessageId}`)
+    // Per account (security audit 2026-11): another account's mail with the same Message-ID is not
+    // a duplicate of this one and must not suppress it.
+    const dedupRef = db.doc(`annaEmailInboundDedup/${buildInboundEmailRecordId(userId, normalizedMessageId)}`)
+    const legacyDedupRef = normalizedMessageId.includes('/')
+        ? null
+        : db.doc(`annaEmailInboundDedup/${normalizedMessageId}`)
     const queueRef = db.doc(`annaEmailInboundQueue/${userId}/items/${normalizedMessageId}`)
     const now = Date.now()
     let duplicate = false
 
     await db.runTransaction(async transaction => {
-        const dedupDoc = await transaction.get(dedupRef)
-        if (dedupDoc.exists) {
+        const [dedupDoc, legacyDedupDoc] = await Promise.all([
+            transaction.get(dedupRef),
+            legacyDedupRef ? transaction.get(legacyDedupRef) : Promise.resolve(null),
+        ])
+        // A record from before the per-account key still stops a redelivery of the same account's mail.
+        const legacyDuplicate = !!legacyDedupDoc?.exists && (legacyDedupDoc.data() || {}).userId === userId
+        if (dedupDoc.exists || legacyDuplicate) {
             duplicate = true
             return
         }
@@ -290,12 +324,12 @@ async function enqueueIncomingEmailMessage(payload) {
     }
 }
 
-async function upsertAuditRecord(messageId, patch = {}) {
+async function upsertAuditRecord(userId, messageId, patch = {}) {
     if (!messageId) return
 
     await admin
         .firestore()
-        .doc(`annaEmailInboundAudit/${messageId}`)
+        .doc(`annaEmailInboundAudit/${buildInboundEmailRecordId(userId, messageId)}`)
         .set(
             {
                 messageId,

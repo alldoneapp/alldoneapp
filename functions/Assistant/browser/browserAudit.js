@@ -120,6 +120,20 @@ async function beginBrowserStep(
             }
         }
 
+        // Security audit 2026-11: a run, its worker session and every approval on it belong to the
+        // member who started it. The session is keyed by thread, and a thread is shared by every
+        // member who can read it, so another member's call must not drive this run's page, raise
+        // approvals on it or spend the grants its owner gave.
+        if (run && (run.requestUserId || null) !== (requestUserId || null)) {
+            return {
+                ok: false,
+                runId,
+                reason: 'run_owned_by_other_user',
+                message:
+                    'Another member is browsing in this thread. Wait until their browsing session ends, or browse in your own thread.',
+            }
+        }
+
         if (!run) {
             if (!startsRun) {
                 return {

@@ -17,11 +17,9 @@ describe('MCP OAuth callback recovery', () => {
         authCode: 'auth-test',
         redirectUri: 'https://chatgpt.com/connector/oauth/test',
         state: 'state-test',
-        consentApproved: true,
     }
     const validAuth = () => ({
         sessionId: 'login-test',
-        clientId: 'client-test',
         redirectUri: authorization.redirectUri,
         state: authorization.state,
         status: 'pending',
@@ -205,53 +203,7 @@ describe('MCP OAuth callback recovery', () => {
         const { elements } = loginPage(fetch)
         await elements.loginBtn.click()
         expect(fetch).toHaveBeenCalledTimes(1)
-        expect(elements.loginBtn.textContent).toBe('Allow and sign in with Google')
+        expect(elements.loginBtn.textContent).toBe('Sign in with Google')
         expect(elements.status.innerHTML).toContain('Authorization expired')
-    })
-
-    describe('client consent (security audit 2026-11)', () => {
-        test.each([
-            ['missing', undefined],
-            ['not a boolean', 'true'],
-            ['false', false],
-        ])('signing in without approving the client (%s) completes nothing', async (_, consentApproved) => {
-            expect(await complete({ consentApproved })).toMatchObject({ success: false })
-            expect(sessions()).toHaveLength(0)
-            expect(documents.get('oauthAuthSessions/auth-test').status).toBe('pending')
-            expect(documents.has('mcpUserSessions/user-test')).toBe(false)
-        })
-
-        test('an approved authorization records the consent and the client it covers', async () => {
-            expect(await complete()).toMatchObject({ success: true })
-            const auth = documents.get('oauthAuthSessions/auth-test')
-            expect(auth.status).toBe('completed')
-            expect(auth.consentGrantedAt).toBeDefined()
-            expect(auth.consentClientId).toBe('client-test')
-        })
-
-        test('the page names the client and the redirect host, escaped', () => {
-            const html = handler.generateAuthPage('login-test', 'auth-test', 'https://evil.example/cb', 's', {
-                clientLabel: '<img src=x onerror=alert(1)>Claude',
-                redirectHost: 'evil.example',
-                kind: 'unverified',
-            })
-            expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;Claude')
-            expect(html).not.toContain('<img src=x')
-            expect(html).toContain('<strong id="redirectHost">evil.example</strong>')
-            expect(html).toContain('has not verified this app')
-            expect(html).toContain('Allow and sign in with Google')
-        })
-
-        test('the page sends its approval only from the button', async () => {
-            const bodies = []
-            const fetch = jest.fn(async (url, options) => {
-                bodies.push(JSON.parse(options.body))
-                return { ok: true, status: 200, json: async () => ({ success: true, redirect_to: 'https://x/cb' }) }
-            })
-            const { elements } = loginPage(fetch)
-            await elements.loginBtn.click()
-            await jest.advanceTimersByTimeAsync(1000)
-            expect(bodies[0].consentApproved).toBe(true)
-        })
     })
 })

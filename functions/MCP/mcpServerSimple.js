@@ -232,7 +232,6 @@ function getBaseUrl() {
 // We'll use the existing admin instance directly
 
 const { CloudOAuthHandler, CloudSessionManager, UserSessionManager } = require('./auth/cloudOAuth.js')
-const { describeOAuthClientForConsent, sanitizeClientName } = require('./auth/oauthClientConsent')
 
 // Import Alldone constants (still needed for other operations)
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
@@ -556,27 +555,6 @@ class AlldoneSimpleMCPServer {
      * @param {string|null} userId - User ID if authenticated
      * @returns {Promise<{allowed: boolean, errorResponse?: Object}>}
      */
-    // The consent screen's facts: which client started this authorization, and the redirect it was
-    // stored with. A missing or unreadable record shows an unknown app; the callback refuses it anyway.
-    async loadOAuthConsentDetails(authCode) {
-        try {
-            if (typeof authCode !== 'string' || !authCode) return describeOAuthClientForConsent(null, null)
-            const db = admin.firestore()
-            const authDoc = await db.collection('oauthAuthSessions').doc(authCode).get()
-            if (!authDoc.exists) return describeOAuthClientForConsent(null, null)
-            const auth = authDoc.data() || {}
-            let clientData = null
-            if (typeof auth.clientId === 'string' && auth.clientId) {
-                const clientDoc = await db.collection('oauthClients').doc(auth.clientId).get()
-                clientData = clientDoc.exists ? clientDoc.data() : null
-            }
-            return describeOAuthClientForConsent(clientData, auth.redirectUri)
-        } catch (error) {
-            console.error('MCP OAuth consent details unavailable', { code: error.code || 'internal' })
-            return describeOAuthClientForConsent(null, null)
-        }
-    }
-
     async checkRateLimits(req, operation, userId = null) {
         const clientId = this.getClientIdFromRequest(req)
         const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown'
@@ -2503,8 +2481,6 @@ class AlldoneSimpleMCPServer {
                         grantTypes: ['authorization_code', 'refresh_token'],
                         scopes: ['read', 'write', 'mcp:tools'],
                         tokenEndpointAuthMethod: 'none',
-                        // Self-declared; shown on the consent screen only next to the real redirect host.
-                        clientName: sanitizeClientName(req.body?.client_name) || null,
                     }
 
                     // Store client registration in Firestore for later validation
@@ -2550,12 +2526,8 @@ class AlldoneSimpleMCPServer {
                     return
                 }
 
-                // security audit 2026-11: name the app asking for access and where the code goes, from
-                // the STORED authorization and client registration, never from this page's query.
-                const consent = auth_code ? await this.loadOAuthConsentDetails(auth_code) : null
-                const authPage = this.oauthHandler.generateAuthPage(session_id, auth_code, redirect_uri, state, consent)
+                const authPage = this.oauthHandler.generateAuthPage(session_id, auth_code, redirect_uri, state)
                 res.set('Content-Type', 'text/html')
-                res.set('Cache-Control', 'no-store')
                 res.send(authPage)
                 return
             }

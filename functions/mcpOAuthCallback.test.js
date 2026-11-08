@@ -14,7 +14,6 @@ describe('MCP OAuth callback HTTP endpoint', () => {
         authCode: 'auth-test',
         redirectUri: 'https://chatgpt.com/connector/oauth/test',
         state: 'secret-state',
-        consentApproved: true,
     }
     beforeEach(() => {
         jest.clearAllMocks()
@@ -43,8 +42,6 @@ describe('MCP OAuth callback HTTP endpoint', () => {
             authCode: params.authCode,
             redirectUri: params.redirectUri,
             state: params.state,
-            // security audit 2026-11: only the POSTed approve button counts as consent.
-            consentApproved: method === 'POST',
         })
         expect(res.json).toHaveBeenCalledWith(
             expect.objectContaining({ success: true, redirect_to: expect.any(String) })
@@ -53,14 +50,6 @@ describe('MCP OAuth callback HTTP endpoint', () => {
         expect(JSON.stringify([...log.mock.calls, ...errorLog.mock.calls])).not.toMatch(
             /secret-firebase-token|secret-state|auth-test/
         )
-    })
-
-    test('forwards no consent when the page did not send its approval (security audit 2026-11)', async () => {
-        const { consentApproved, ...withoutConsent } = params
-        await mcpOAuthCallback({ method: 'POST', body: withoutConsent }, res)
-        await mcpOAuthCallback({ method: 'POST', body: { ...params, consentApproved: 'true' } }, res)
-        expect(mockHandleOAuthCallback.mock.calls[0][2].consentApproved).toBe(false)
-        expect(mockHandleOAuthCallback.mock.calls[1][2].consentApproved).toBe(false)
     })
 
     test('accepts the idToken alias in a POST body', async () => {

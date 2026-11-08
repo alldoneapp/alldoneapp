@@ -33,17 +33,6 @@ import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
 import { isLegacyEmailUrlFragment } from './legacyEmailUrlFragment'
 import { translate } from '../../../../../i18n/TranslationService'
-import { confirmPreConfigTaskRunFromLink } from '../../../../../utils/preConfigTaskRunConfirmation'
-
-// Only an empty link embed whose tag owner is the viewer (the toolbar's freshly inserted link) opens
-// its edit field by itself. Anything with a URL, or owned by someone else, waits for a press.
-export const shouldOpenLinkEditorOnMount = (value, viewerId, { virtualQuillLoaded, inReadOnlyNote } = {}) =>
-    value?.open?.toString() === 'true' &&
-    !virtualQuillLoaded &&
-    !inReadOnlyNote &&
-    !value?.url &&
-    !!viewerId &&
-    value?.userIdAllowedToEditTags === viewerId
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -68,13 +57,8 @@ export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
     const inReadOnlyNote = activeNoteId !== '' && (activeNoteIsReadOnly || loggedUser.isAnonymous)
 
     useEffect(() => {
-        // security audit 2026-11: `open` is part of the stored embed, i.e. shared document content that
-        // any collaborator can write. It only ever means "show the edit field of the empty link I just
-        // inserted from the toolbar" (EditorToolbar sets it with the inserting user as the tag owner).
-        // Mounting an embed never runs its action: a pre-configured task, an iframe or a link needs a
-        // press on the chip.
-        if (shouldOpenLinkEditorOnMount(value, loggedUser?.uid, { virtualQuillLoaded, inReadOnlyNote })) {
-            setIsOpen(true)
+        if (value.open?.toString() === 'true' && !virtualQuillLoaded) {
+            openModal()
         }
     }, [])
 
@@ -210,7 +194,6 @@ export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
                                 sendWhatsApp: !!task.sendWhatsApp,
                                 executionMode: task.executionMode,
                             }
-                            if (!confirmPreConfigTaskRunFromLink(task, loggedUser?.uid)) return
                             generateTaskFromPreConfig(
                                 targetProjectId,
                                 task.name,

@@ -54,28 +54,7 @@ const getAlldoneTeamEmbedToken = async () => {
     }
 }
 
-// security audit 2026-11: the address of an iframe task is member-writable data (a pre-configured
-// task's `link`), so it must never decide who is trusted. Only these Alldone-controlled origins get
-// the privileged half of the protocol (user data, the alldone.team token, Gold, the roadmap source,
-// the handoff). Any other page still renders, and may only report its own location and app context,
-// which flow INTO Alldone and are treated as untrusted there. Add an origin here, never derive one.
-export const TRUSTED_EMBED_ORIGINS = Object.freeze([TEAM_ORIGIN])
-
-export const getTrustedEmbedOrigin = url => {
-    try {
-        const parsed = new URL(url)
-        if (parsed.username || parsed.password) return null
-        return TRUSTED_EMBED_ORIGINS.includes(parsed.origin) ? parsed.origin : null
-    } catch (error) {
-        return null
-    }
-}
-
-// Messages any framed page may send: they carry nothing out of Alldone.
-const UNPRIVILEGED_MESSAGE_TYPES = new Set(['APP_CONTEXT', EMBED_LOCATION_MESSAGE_TYPE])
-
-export const isRoadmapUrl = url => {
-    if (!getTrustedEmbedOrigin(url)) return false
+const isRoadmapUrl = url => {
     try {
         const path = new URL(url).pathname
         return path === '/embed/create-roadmap' || path.includes('/paul-product-manager/create-roadmap')
@@ -139,10 +118,7 @@ export default function EmbeddedAppFrame({
     useEffect(() => {
         if (!finalUrl) return
 
-        // The frame's own origin: every message must come from it. Privileged messages additionally
-        // need it to be on the allowlist (trustedOrigin).
-        let frameOrigin = null
-        const trustedOrigin = getTrustedEmbedOrigin(finalUrl)
+        let trustedOrigin = null
         let unsubscribeRoadmapProject = null
         let pendingCapture = null
         let restored = false
@@ -151,7 +127,7 @@ export default function EmbeddedAppFrame({
         let serverBilled = false
 
         try {
-            frameOrigin = finalUrl ? new URL(finalUrl).origin : null
+            trustedOrigin = finalUrl ? new URL(finalUrl).origin : null
         } catch (error) {
             console.error('IframeModal: invalid iframe URL', {
                 url: finalUrl,
@@ -171,18 +147,10 @@ export default function EmbeddedAppFrame({
             // window and the roadmap capability URL before exposing project data.
             if (event.source !== iframeRef.current?.contentWindow) return
 
-            if (!frameOrigin || event.origin !== frameOrigin) {
+            if (!trustedOrigin || event.origin !== trustedOrigin) {
                 console.warn('IframeModal: ignoring message from untrusted origin', {
                     origin: event.origin,
-                    trustedOrigin: frameOrigin,
-                    type: messageType,
-                })
-                return
-            }
-
-            if (!trustedOrigin && !UNPRIVILEGED_MESSAGE_TYPES.has(messageType)) {
-                console.warn('IframeModal: embedded page is not on an allowlisted origin', {
-                    origin: event.origin,
+                    trustedOrigin,
                     type: messageType,
                 })
                 return
@@ -433,8 +401,12 @@ export default function EmbeddedAppFrame({
     // This covers the iframe opening before the app's project watcher has delivered.
     useEffect(() => {
         if (!isRoadmapUrl(finalUrl) || !iframeRef.current?.contentWindow) return
-        const targetOrigin = getTrustedEmbedOrigin(finalUrl)
-        if (!targetOrigin) return
+        let targetOrigin
+        try {
+            targetOrigin = new URL(finalUrl).origin
+        } catch (error) {
+            return
+        }
         iframeRef.current.contentWindow.postMessage(
             {
                 type: 'ROADMAP_PROJECTS',

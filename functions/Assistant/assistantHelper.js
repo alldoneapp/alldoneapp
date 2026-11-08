@@ -40,6 +40,11 @@ const {
     getDefaultAssistantData,
     updateAssistantLastCommentData,
 } = require('../Firestore/assistantsFirestore')
+const {
+    GLOBAL_ASSISTANT_WRITE_DENIED_MESSAGE,
+    isAssistantCatalogAdministrator,
+    assertCanWriteAssistantInProject,
+} = require('./globalAssistantWriteAccess')
 const { updateContactLastCommentData } = require('../Firestore/contactsFirestore')
 const { updateUserLastCommentData } = require('../Users/usersFirestore')
 const { updateSkillLastCommentData } = require('../Skills/skillsFirestore')
@@ -1791,6 +1796,7 @@ async function getReachableMcpTools(toolRuntimeContext) {
                     assistantId,
                     serverId: server.id,
                     requestUserId,
+                    serverUrl: server.url,
                 })
                 const tools = await mcpClient.listTools(server, secret)
                 // An entry limited to some apps (an alldone.team specialist) gets only their tools.
@@ -1892,6 +1898,7 @@ async function executeMcpTool({ target, toolArgs, projectId, assistantId, reques
         assistantId,
         serverId: target.serverId,
         requestUserId,
+        serverUrl: target.serverConfig.url,
     })
 
     let raw
@@ -4661,12 +4668,24 @@ async function resolveTargetAssistantForSettingsUpdate({
         defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : null
     }
 
+    // Security audit 2026-11: the global catalog is administrator-only. It is not one of the
+    // caller's projects, so an explicit globalProject target needs the administrator, and the
+    // default candidate search below only counts a global match for the administrator.
+    let requesterIsAdministrator = null
+    const requesterCanWriteGlobalCatalog = async () => {
+        if (requesterIsAdministrator === null) {
+            requesterIsAdministrator = await isAssistantCatalogAdministrator(requestUserId, db)
+        }
+        return requesterIsAdministrator
+    }
+
     const candidateProjectIds = []
     if (normalizedRequestedProjectId) {
-        if (
-            normalizedRequestedProjectId !== GLOBAL_PROJECT_ID &&
-            !accessibleProjectIds.includes(normalizedRequestedProjectId)
-        ) {
+        if (normalizedRequestedProjectId === GLOBAL_PROJECT_ID) {
+            if (!(await requesterCanWriteGlobalCatalog())) {
+                throw new Error(GLOBAL_ASSISTANT_WRITE_DENIED_MESSAGE)
+            }
+        } else if (!accessibleProjectIds.includes(normalizedRequestedProjectId)) {
             throw new Error(`Target project not accessible: "${normalizedRequestedProjectId}".`)
         }
         candidateProjectIds.push(normalizedRequestedProjectId)
@@ -4700,6 +4719,9 @@ async function resolveTargetAssistantForSettingsUpdate({
             const ref = db.doc(`assistants/${candidateProjectId}/items/${normalizedRequestedAssistantId}`)
             const snap = await ref.get().catch(() => null)
             if (snap?.exists) {
+                if (candidateProjectId === GLOBAL_PROJECT_ID && !(await requesterCanWriteGlobalCatalog())) {
+                    continue
+                }
                 return buildResult(snap.data() || {}, ref, candidateProjectId)
             }
         }
@@ -4716,6 +4738,7 @@ async function resolveTargetAssistantForSettingsUpdate({
                 .get()
                 .catch(() => null)
             if (!snap) continue
+            if (candidateProjectId === GLOBAL_PROJECT_ID && !(await requesterCanWriteGlobalCatalog())) continue
             snap.docs.forEach(doc => {
                 const data = doc.data() || {}
                 const displayNameLower = normalizeProjectNameForLookup(data.displayName)
@@ -8303,6 +8326,7 @@ async function executeToolNativelyImpl(
             patch.lastEditionDate = now
 
             const includesPromptChange = updatedFields.includes('prompt')
+            await assertCanWriteAssistantInProject(resolvedAssistant.projectId, requestUserId)
             let resultingHeartbeatPromptHistoryLength = Array.isArray(currentAssistant.heartbeatPromptHistory)
                 ? currentAssistant.heartbeatPromptHistory.length
                 : 0
@@ -8399,6 +8423,8 @@ async function executeToolNativelyImpl(
 
             const targetAssistant = target.assistant || {}
             const targetAssistantRef = target.assistantRef
+            // The self-path can resolve to a global assistant the caller is merely using.
+            await assertCanWriteAssistantInProject(target.projectId, requestUserId)
 
             const patch = {}
             const updatedFields = []
