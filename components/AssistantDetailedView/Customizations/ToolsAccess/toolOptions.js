@@ -6,8 +6,6 @@ export const TOOL_OPTIONS = [
     // One key for get/read/create/update_artifact; the server fans it out (Artifacts/artifactToolSchemas.js).
     { key: 'artifacts', labelKey: 'Create and edit artifacts' },
     { key: 'update_contact', labelKey: 'Update contact' },
-    { key: 'delete_contact', labelKey: 'Delete contact' },
-    { key: 'delete_artifact', labelKey: 'Delete artifact' },
     { key: 'create_goal', labelKey: 'Create goal' },
     { key: 'update_goal', labelKey: 'Update goal' },
     { key: 'update_milestone', labelKey: 'Update milestone' },
@@ -75,9 +73,7 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
 // interact with a third-party site rather than read it, it needs an explicit site allowlist before
 // it does anything at all, and it runs on infrastructure that costs money per session. Whoever
 // switches it on should be making that decision deliberately.
-// `delete_contact` and `delete_artifact` cannot be undone, so an assistant only deletes once its owner
-// has switched that on for it.
-export const OPT_IN_ONLY_TOOLS = new Set(['mcp_servers', 'browser_automation', 'delete_contact', 'delete_artifact'])
+export const OPT_IN_ONLY_TOOLS = new Set(['mcp_servers', 'browser_automation'])
 
 export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
 

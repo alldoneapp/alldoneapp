@@ -3,19 +3,12 @@
 const admin = require('firebase-admin')
 
 const { canAccessObject, getObjectDocPath, FEED_PUBLIC_FOR_ALL } = require('../shared/privacyAccess')
-const {
-    commitArtifactVersion,
-    restoreArtifactVersion,
-    setArtifactDataAccess,
-    setArtifactPublicLink,
-} = require('./artifactStore')
+const { commitArtifactVersion, setArtifactDataAccess } = require('./artifactStore')
 const { MCP_CHANNEL, buildLastEditorVia, buildMcpActorMarker } = require('../shared/mcpActor')
 const {
     ARTIFACT_SOURCES,
     ArtifactInputError,
     buildArtifactAppPath,
-    buildArtifactIsPublicFor,
-    buildArtifactPublicUrl,
     getArtifactDocPath,
     getArtifactFileStoragePath,
     getArtifactVersionsCollectionPath,
@@ -27,7 +20,6 @@ const {
     normalizeArtifactDescription,
     normalizeArtifactPath,
     normalizeArtifactTitle,
-    resolveArtifactPublicBaseUrl,
     sortArtifactsByLastEdition,
 } = require('./artifactModel')
 
@@ -325,73 +317,7 @@ async function updateMetadata({ db, projectId, artifactId, userId, title, descri
     await db.doc(getArtifactDocPath(projectId, artifactId)).update(patch)
 }
 
-const PUBLIC_LINK_ARGUMENTS = { on: 'enable', off: 'disable', new: 'change' }
-const MAX_COMMENT_LENGTH = 5000
-
-function readUpdateOptions(args, artifact, userId) {
-    const restoreVersion =
-        args.restoreVersion === undefined || args.restoreVersion === null ? undefined : args.restoreVersion
-    const isPrivate = typeof args.isPrivate === 'boolean' ? args.isPrivate : undefined
-    if (args.isPrivate !== undefined && args.isPrivate !== null && isPrivate === undefined) {
-        fail('isPrivate must be true or false.')
-    }
-    let publicLinkAction
-    if (args.publicLink !== undefined && args.publicLink !== null && args.publicLink !== '') {
-        publicLinkAction = PUBLIC_LINK_ARGUMENTS[String(args.publicLink).trim().toLowerCase()]
-        if (!publicLinkAction) fail('publicLink must be "on", "off" or "new".')
-    }
-    let comment
-    if (args.comment !== undefined && args.comment !== null) {
-        if (typeof args.comment !== 'string' || !args.comment.trim()) fail('comment must be a non-empty text.')
-        comment = args.comment.trim()
-        if (comment.length > MAX_COMMENT_LENGTH) fail(`comment must not exceed ${MAX_COMMENT_LENGTH} characters.`)
-    }
-
-    // The app shows the privacy switch to the owner only (firestore.rules lets a write through only
-    // when the new audience still includes the writer), and a private artifact has no public link.
-    const changesPrivacy = isPrivate !== undefined && isPrivate !== artifact.isPrivate
-    if (changesPrivacy && artifact.userId !== userId) {
-        fail('Only the owner of an artifact can change who sees it.')
-    }
-    const endsPrivate = isPrivate === undefined ? artifact.isPrivate : isPrivate
-    if (publicLinkAction && publicLinkAction !== 'disable' && endsPrivate) {
-        fail('A private artifact has no public link. Share it with the project first (isPrivate: false).')
-    }
-    return { restoreVersion, isPrivate, changesPrivacy, publicLinkAction, comment }
-}
-
-// The artifact's chat follows its privacy, like a note's (utils setArtifactPrivacy). The public link
-// of an artifact made private is withdrawn by the update trigger (withdrawPublicLinkWhenMadePrivate).
-async function setPrivacy({ db, projectId, artifact, userId, isPrivate, actorChannel }) {
-    const isPublicFor = buildArtifactIsPublicFor(isPrivate, artifact.userId || userId)
-    const lastEditionDate = Date.now()
-    await db.doc(getArtifactDocPath(projectId, artifact.id)).update({
-        isPrivate,
-        isPublicFor,
-        lastEditorId: userId,
-        lastEditionDate,
-        lastEditorVia: buildLastEditorVia(actorChannel, lastEditionDate),
-    })
-    const chatRef = db.doc(`chatObjects/${projectId}/chats/${artifact.id}`)
-    const chat = await chatRef.get()
-    if (chat.exists) {
-        const followers = Array.isArray(chat.data()?.usersFollowing) ? chat.data().usersFollowing : []
-        await chatRef.update({
-            isPublicFor,
-            usersFollowing: isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                ? followers
-                : followers.filter(followerId => isPublicFor.includes(followerId)),
-        })
-    }
-}
-
-function getPublicUrl(publicLink) {
-    if (!publicLink || !publicLink.token) return null
-    const firebaseProjectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || ''
-    return buildArtifactPublicUrl(resolveArtifactPublicBaseUrl(firebaseProjectId, null), publicLink.token)
-}
-
-async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, args, runtime, baseUrl, postComment }) {
+async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, args, runtime, baseUrl }) {
     await assertMember(db, projectId, userId)
     const actorChannel = getMcpActorChannel(runtime)
     const artifact = await readArtifact(db, projectId, args.artifactId, userId)
@@ -400,63 +326,11 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
     const hasEdits = Array.isArray(args.edits) && args.edits.length > 0
     const files = encodeTextFiles(args.files)
     const removePaths = Array.isArray(args.removePaths) ? args.removePaths : []
-    const hasContent = hasEdits || files.length > 0 || removePaths.length > 0
-    const switchesLiveData = typeof args.liveData === 'boolean'
-    const options = readUpdateOptions(args, artifact, userId)
 
-    if (
-        !hasContent &&
-        !title &&
-        description === undefined &&
-        !switchesLiveData &&
-        options.restoreVersion === undefined &&
-        options.isPrivate === undefined &&
-        !options.publicLinkAction &&
-        !options.comment
-    ) {
-        fail(
-            'Nothing to change: give edits, files, removePaths, a title, a description, liveData, restoreVersion, isPrivate, publicLink or a comment.'
-        )
-    }
-    if (options.restoreVersion !== undefined && hasContent) {
-        fail('restoreVersion cannot be combined with edits, files or removePaths: restore first, then edit.')
-    }
-    if (options.comment && typeof postComment !== 'function') fail('Comments on artifacts are not available here.')
-
-    const changes = []
-    let versionNumber
-    let changedFiles
-    if (hasContent) {
-        const version = await readVersion(db, projectId, artifact)
-        const edited = hasEdits
-            ? await applyEdits({ edits: args.edits, version, bucket, projectId, artifactId: artifact.id })
-            : []
-        const replacedPaths = new Set(files.map(file => normalizeArtifactPath(file.path)))
-        for (const file of edited) {
-            if (replacedPaths.has(file.path)) fail(`The file ${file.path} is both edited and replaced; do one of them.`)
-        }
-        const result = await commitArtifactVersion({
-            db,
-            bucket,
-            userId,
-            projectId,
-            artifactId: artifact.id,
-            files: [...files, ...encodeTextFiles(edited, 'edits')],
-            removePaths,
-            keepUnchangedFiles: true,
-            baseVersionId: version.id,
-            title: title || undefined,
-            description,
-            changeSummary: args.changeSummary,
-            source: ARTIFACT_SOURCES.ASSISTANT,
-            assistantId: assistantId || null,
-            dataAccess: switchesLiveData ? args.liveData : undefined,
-            actorChannel,
-        })
-        versionNumber = result.versionNumber
-        changedFiles = [...files.map(file => normalizeArtifactPath(file.path)), ...edited.map(file => file.path)]
-        changes.push(`version ${result.versionNumber} saved`)
-    } else {
+    if (!hasEdits && files.length === 0 && removePaths.length === 0) {
+        const switchesLiveData = typeof args.liveData === 'boolean'
+        if (!title && description === undefined && !switchesLiveData)
+            fail('Nothing to change: give edits, files, removePaths, a title, a description or liveData.')
         if (switchesLiveData) {
             await setArtifactDataAccess({
                 db,
@@ -466,101 +340,52 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
                 enabled: args.liveData,
                 actorChannel,
             })
-            changes.push(args.liveData ? 'live data on' : 'live data off')
         }
-        if (title || description !== undefined) {
+        if (title || description !== undefined)
             await updateMetadata({ db, projectId, artifactId: artifact.id, userId, title, description, actorChannel })
-            changes.push('details updated')
+        const updated = await readArtifact(db, projectId, artifact.id, userId)
+        return {
+            success: true,
+            ...summarizeArtifact(updated, projectId, baseUrl),
+            message: 'Artifact details updated.',
         }
     }
 
-    if (options.restoreVersion !== undefined) {
-        const version = await readVersion(db, projectId, artifact, options.restoreVersion)
-        if (version.id === artifact.currentVersionId) {
-            changes.push(`version ${version.versionNumber} is already the current one`)
-        } else {
-            await restoreArtifactVersion({ userId, projectId, artifactId: artifact.id, versionId: version.id, db })
-            changes.push(`version ${version.versionNumber} restored`)
-        }
+    const version = await readVersion(db, projectId, artifact)
+    const edited = hasEdits
+        ? await applyEdits({ edits: args.edits, version, bucket, projectId, artifactId: artifact.id })
+        : []
+    const replacedPaths = new Set(files.map(file => normalizeArtifactPath(file.path)))
+    for (const file of edited) {
+        if (replacedPaths.has(file.path)) fail(`The file ${file.path} is both edited and replaced; do one of them.`)
     }
 
-    if (options.changesPrivacy) {
-        await setPrivacy({ db, projectId, artifact, userId, isPrivate: options.isPrivate, actorChannel })
-        changes.push(options.isPrivate ? 'made private' : 'shared with the project')
-    }
-
-    let publicLinkResult = null
-    if (options.publicLinkAction) {
-        publicLinkResult = await setArtifactPublicLink({
-            userId,
-            projectId,
-            artifactId: artifact.id,
-            action: options.publicLinkAction,
-            actorChannel,
-            db,
-        })
-        if (publicLinkResult.changed) {
-            changes.push(
-                options.publicLinkAction === 'disable'
-                    ? 'public link off'
-                    : options.publicLinkAction === 'change'
-                      ? 'new public link'
-                      : 'public link on'
-            )
-        }
-    }
-
-    let commentResult = null
-    if (options.comment) {
-        const somethingElseChanged = changes.length > 0
-        try {
-            commentResult = await postComment({ artifact, comment: options.comment })
-            changes.push('comment added')
-        } catch (error) {
-            // The comment alone is the whole request; next to other changes, those stay saved.
-            if (!somethingElseChanged) throw error
-            changes.push(`comment failed (${error.message})`)
-        }
-    }
-
-    const updated = await readArtifact(db, projectId, artifact.id, userId).catch(() => null)
-    const publicUrl = getPublicUrl(updated ? updated.publicLink : null)
-    return {
-        success: true,
-        ...summarizeArtifact(updated || artifact, projectId, baseUrl),
-        ...(versionNumber ? { versionNumber } : {}),
-        ...(changedFiles ? { changedFiles, removedFiles: removePaths } : {}),
-        publicLink: !!(updated && updated.publicLink),
-        ...(publicUrl ? { publicUrl } : {}),
-        ...(commentResult
-            ? {
-                  comment: {
-                      commentId: commentResult.commentId,
-                      notifiedFollowers: commentResult.notifiedFollowers || 0,
-                  },
-              }
-            : {}),
-        changes,
-        message: versionNumber
-            ? `Version ${versionNumber} saved. Give the user the url.`
-            : `Artifact updated (${changes.join(', ')}).`,
-    }
-}
-
-// Deleting is the document delete the app does; onDeleteArtifactSecondGen removes the versions, the
-// stored files, the history, the public link, the thread and the backlinks. Any member who can see
-// the artifact may delete it in the app, so the tool asks for nothing more.
-async function deleteArtifactTool({ db, projectId, userId, args }) {
-    await assertMember(db, projectId, userId)
-    const artifact = await readArtifact(db, projectId, args.artifactId, userId)
-    await db.doc(getArtifactDocPath(projectId, artifact.id)).delete()
-    return {
-        success: true,
-        deleted: true,
-        artifactId: artifact.id,
+    const result = await commitArtifactVersion({
+        db,
+        bucket,
+        userId,
         projectId,
-        title: artifact.title,
-        message: `Artifact "${artifact.title}" was deleted permanently with all its versions.`,
+        artifactId: artifact.id,
+        files: [...files, ...encodeTextFiles(edited, 'edits')],
+        removePaths,
+        keepUnchangedFiles: true,
+        baseVersionId: version.id,
+        title: title || undefined,
+        description,
+        changeSummary: args.changeSummary,
+        source: ARTIFACT_SOURCES.ASSISTANT,
+        assistantId: assistantId || null,
+        dataAccess: typeof args.liveData === 'boolean' ? args.liveData : undefined,
+        actorChannel,
+    })
+    const updated = await readArtifact(db, projectId, artifact.id, userId)
+    return {
+        success: true,
+        ...summarizeArtifact(updated, projectId, baseUrl),
+        versionNumber: result.versionNumber,
+        changedFiles: [...files.map(file => normalizeArtifactPath(file.path)), ...edited.map(file => file.path)],
+        removedFiles: removePaths,
+        message: `Version ${result.versionNumber} saved. Give the user the url.`,
     }
 }
 
@@ -569,7 +394,6 @@ const EXECUTORS = {
     read_artifact: readArtifactTool,
     create_artifact: createArtifactTool,
     update_artifact: updateArtifactTool,
-    delete_artifact: deleteArtifactTool,
 }
 
 // Input mistakes come back as `{ success: false, error }` so the model can correct itself; anything
@@ -584,7 +408,6 @@ async function executeArtifactTool({
     db = admin.firestore(),
     bucket = admin.storage().bucket(),
     baseUrl,
-    postComment,
 }) {
     const execute = EXECUTORS[toolName]
     if (!execute) throw new Error(`Unknown artifact tool: ${toolName}`)
@@ -599,14 +422,11 @@ async function executeArtifactTool({
             args: args || {},
             runtime: { ...(toolRuntimeContext || {}), projectId: toolRuntimeContext?.projectId || projectId },
             baseUrl: baseUrl === undefined ? getBaseUrl() : baseUrl,
-            postComment,
         })
     } catch (error) {
         const expected =
             error instanceof ArtifactToolError ||
-            ['invalid-argument', 'not-found', 'permission-denied', 'aborted', 'failed-precondition'].includes(
-                error && error.code
-            ) ||
+            ['invalid-argument', 'not-found', 'permission-denied', 'aborted'].includes(error && error.code) ||
             error instanceof ArtifactInputError
         if (!expected) throw error
         return { success: false, error: error.message }

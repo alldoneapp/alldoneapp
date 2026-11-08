@@ -239,36 +239,6 @@ describe('ContactRetrievalService', () => {
         })
     })
 
-    test('filters by Kontaktstatus id or name before the limit, and "none" finds contacts without one', async () => {
-        const database = createFakeDb({
-            userProjects: ['project-2'],
-            projects: {
-                'project-2': {
-                    ...projects['project-2'],
-                    contactStatuses: { s1: { name: 'Reached out' }, s2: { name: 'In conversation' } },
-                },
-            },
-            contactsByProject: {
-                'project-2': contactsByProject['project-2'].map((contact, index) => ({
-                    ...contact,
-                    data: { ...contact.data, contactStatusId: ['s1', 's2', null][index] || null },
-                })),
-            },
-        })
-        const service = new ContactRetrievalService({ database, moment: nowFactory })
-        await service.initialize()
-
-        const byName = await service.getContacts({ userId: 'user-1', contactStatus: 'reached OUT', limit: 1 })
-        expect(byName.contacts.map(contact => contact.contactId)).toEqual(['contact-2'])
-        expect(byName.appliedFilters.contactStatus).toBe('reached out')
-
-        const byId = await service.getContacts({ userId: 'user-1', contactStatus: 's2' })
-        expect(byId.contacts.map(contact => contact.contactId)).toEqual(['contact-3'])
-
-        const withoutStatus = await service.getContacts({ userId: 'user-1', contactStatus: 'none' })
-        expect(withoutStatus.contacts.map(contact => contact.contactId)).toEqual(['contact-old'])
-    })
-
     test('retrieves contacts across accessible active regular projects by default', async () => {
         const service = createService()
         await service.initialize()

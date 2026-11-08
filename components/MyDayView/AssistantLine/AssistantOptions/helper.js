@@ -12,6 +12,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskIcon'
+import { getSafeNavigationUrl } from '../../../../utils/safeUrl'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
@@ -34,7 +35,9 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
                         name: task.name,
                     })
                 } else if (task.type !== TASK_TYPE_PROMPT) {
-                    window.open(task.link, '_blank')
+                    // task.link is member-writable (security audit 2026-11).
+                    const safeLink = getSafeNavigationUrl(task.link)
+                    if (safeLink) window.open(safeLink, '_blank')
                 } else if (task.variables.length === 0) {
                     store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration

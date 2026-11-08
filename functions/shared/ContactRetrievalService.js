@@ -244,7 +244,6 @@ class ContactRetrievalService {
             date = null,
             limit = DEFAULT_CONTACT_LIMIT,
             timezoneOffset = null,
-            contactStatus = null,
         } = params
 
         if (!userId) {
@@ -252,8 +251,6 @@ class ContactRetrievalService {
         }
 
         const normalizedLimit = ContactRetrievalService.normalizeLimit(limit)
-        const normalizedStatus =
-            typeof contactStatus === 'string' && contactStatus.trim() ? contactStatus.trim().toLowerCase() : null
         const normalizedDate = typeof date === 'string' && date.trim() ? date.trim() : null
         const dateRange = this.buildDateRange(normalizedDate, timezoneOffset)
         const { projects, targetProject } = await this.resolveProjectTarget(userId, projectId, projectName)
@@ -268,7 +265,6 @@ class ContactRetrievalService {
                     projectId: targetProject?.id || null,
                     projectName: targetProject?.name || null,
                     date: normalizedDate,
-                    ...(normalizedStatus ? { contactStatus: normalizedStatus } : {}),
                     limit: normalizedLimit,
                 },
             }
@@ -285,7 +281,6 @@ class ContactRetrievalService {
                         return lastEditedAt >= dateRange.start && lastEditedAt <= dateRange.end
                     })
                     .map(contact => this.mapContact(contact, project))
-                    .filter(contact => ContactRetrievalService.matchesStatus(contact, normalizedStatus))
             })
         )
 
@@ -299,23 +294,9 @@ class ContactRetrievalService {
                 projectId: targetProject?.id || null,
                 projectName: targetProject?.name || null,
                 date: normalizedDate,
-                ...(normalizedStatus ? { contactStatus: normalizedStatus } : {}),
                 limit: normalizedLimit,
             },
         }
-    }
-
-    // Filtered before the limit is applied, so "all contacts in status X" is never cut short by
-    // contacts in other statuses. Matches the status id or its name; "none" finds contacts without one.
-    static matchesStatus(contact, normalizedStatus) {
-        if (!normalizedStatus) return true
-        if (normalizedStatus === 'none') return !contact.contactStatusId
-        return (
-            String(contact.contactStatusId || '').toLowerCase() === normalizedStatus ||
-            String(contact.contactStatusName || '')
-                .trim()
-                .toLowerCase() === normalizedStatus
-        )
     }
 }
 

@@ -1,57 +1,25 @@
 'use strict'
 
 /**
- * Writes a comment into the thread of a goal, a contact or an artifact from the server (the
- * `comment` of update_goal, update_contact and update_artifact, for assistants and MCP clients).
- * The counterpart of shared/TaskCommentService.js for the other object types, with the same shape
- * on purpose: the comment, the object's `commentsData`, the chat object and the followers document
- * are written in one transaction, and the notifications (unread marker, email digest, push) follow.
+ * Writes a comment into a goal's thread from the server (update_goal's `comment`, assistants and MCP
+ * clients). The goal counterpart of shared/TaskCommentService.js, with the same shape on purpose:
+ * the comment, the goal's `commentsData`, the chat object and the followers document are written in
+ * one transaction, and the notifications (unread marker, email digest, push) follow it.
  *
  * Two rules come from the task version and matter just as much here. An MCP client's comment is
  * news to the user too, so the actor is notified as well (shared/mcpActor.js). And a comment an
- * assistant writes as part of an update is `silent`: it is in the thread but marks nothing unread;
- * the calling tool decides that exactly as update_task does.
- *
- * Adding a type means one entry in OBJECT_COMMENT_TYPES. The object's own people (creator,
- * assignees, owner) follow its thread; the `ws@` workstream placeholder is never a person.
+ * assistant writes as part of an update is `silent`: it is in the thread, but marks nothing unread;
+ * update_goal decides that exactly as update_task does.
  */
 
 const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
-const { MCP_CHANNEL, formatActorDisplayName, getActorChannelFields, isMcpActor } = require('./mcpActor')
+const { MCP_CHANNEL, formatActorDisplayName, getActorChannelFields, isMcpActor } = require('../shared/mcpActor')
+const { COMMENT_MAX_LENGTH } = require('../shared/TaskCommentService')
 
-const COMMENT_MAX_LENGTH = 5000
-
-// Not `filter(Boolean)`: FEED_PUBLIC_FOR_ALL is 0, and dropping it would make the thread private.
-const withoutEmpty = values => values.filter(value => value !== undefined && value !== null && value !== '')
-
-const OBJECT_COMMENT_TYPES = Object.freeze({
-    goals: {
-        docPath: (projectId, id) => `goals/${projectId}/items/${id}`,
-        title: data => data.extendedName || data.name || 'Goal',
-        people: data => [data.creatorId, ...(Array.isArray(data.assigneesIds) ? data.assigneesIds : [])],
-        defaultIsPublicFor: () => [FEED_PUBLIC_FOR_ALL],
-        label: 'Goal',
-    },
-    contacts: {
-        docPath: (projectId, id) => `projectsContacts/${projectId}/contacts/${id}`,
-        title: data => data.displayName || 'Contact',
-        people: data => [data.recorderUserId],
-        defaultIsPublicFor: data => withoutEmpty([FEED_PUBLIC_FOR_ALL, data.recorderUserId]),
-        label: 'Contact',
-    },
-    artifacts: {
-        docPath: (projectId, id) => `artifactItems/${projectId}/artifacts/${id}`,
-        title: data => data.title || 'Artifact',
-        people: data => [data.userId, data.creatorId],
-        defaultIsPublicFor: data => withoutEmpty([FEED_PUBLIC_FOR_ALL, data.userId]),
-        label: 'Artifact',
-    },
-})
-
-function normalizeObjectComment(comment) {
+function normalizeGoalComment(comment) {
     if (typeof comment !== 'string') throw new Error('The comment must be a string.')
     const normalized = comment.trim()
     if (!normalized) throw new Error('The comment must not be empty.')
@@ -62,14 +30,13 @@ function normalizeObjectComment(comment) {
 }
 
 const uniqueStrings = values => [...new Set((values || []).filter(value => typeof value === 'string' && value.trim()))]
-const isPerson = id => typeof id === 'string' && !!id && !id.startsWith('ws@')
 
 const nowTimestamp = () => {
     const { Timestamp } = require('firebase-admin/firestore')
     return Timestamp.now()
 }
 
-class ObjectCommentService {
+class GoalCommentService {
     constructor({ database, createId = getId, createTimestamp = nowTimestamp, baseUrl } = {}) {
         this.database = database || admin.firestore()
         this.createId = createId
@@ -78,57 +45,52 @@ class ObjectCommentService {
     }
 
     async addComment({
-        objectType,
         projectId,
-        objectId,
+        goalId,
         comment,
         actor,
         fromAssistant = false,
         silent = false,
         requestUserId = null,
     }) {
-        const config = OBJECT_COMMENT_TYPES[objectType]
-        if (!config) throw new Error(`Comments are not supported for "${objectType}".`)
-        if (!projectId || !objectId) throw new Error('Project ID and object ID are required to add a comment.')
-        const commentText = normalizeObjectComment(comment)
+        if (!projectId || !goalId) throw new Error('Project ID and goal ID are required to add a comment.')
+        const commentText = normalizeGoalComment(comment)
         const actorId = actor?.uid || actor?.id || actor?.creatorId
         if (!actorId) throw new Error('A valid comment author is required.')
         const actorChannelFields = getActorChannelFields(actor)
         const notifyActor = isMcpActor(actor)
 
-        const objectRef = this.database.doc(config.docPath(projectId, objectId))
-        const chatRef = this.database.doc(`chatObjects/${projectId}/chats/${objectId}`)
-        const followersRef = this.database.doc(`followers/${projectId}/${objectType}/${objectId}`)
+        const goalRef = this.database.doc(`goals/${projectId}/items/${goalId}`)
+        const chatRef = this.database.doc(`chatObjects/${projectId}/chats/${goalId}`)
+        const followersRef = this.database.doc(`followers/${projectId}/goals/${goalId}`)
         const commentId = this.createId()
-        const commentRef = this.database.doc(
-            `chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`
-        )
+        const commentRef = this.database.doc(`chatComments/${projectId}/goals/${goalId}/comments/${commentId}`)
         const now = Date.now()
         let notificationData = null
 
         await this.database.runTransaction(async transaction => {
-            const [objectSnapshot, chatSnapshot, followersSnapshot] = await Promise.all([
-                transaction.get(objectRef),
+            const [goalSnapshot, chatSnapshot, followersSnapshot] = await Promise.all([
+                transaction.get(goalRef),
                 transaction.get(chatRef),
                 transaction.get(followersRef),
             ])
-            if (!objectSnapshot.exists) throw new Error(`${config.label} not found: ${objectId}`)
+            if (!goalSnapshot.exists) throw new Error(`Goal not found: ${goalId}`)
 
-            const objectData = objectSnapshot.data() || {}
+            const goalData = goalSnapshot.data() || {}
             const chatData = chatSnapshot.exists ? chatSnapshot.data() || {} : {}
             const followersData = followersSnapshot.exists ? followersSnapshot.data() || {} : {}
-            const objectPeople = uniqueStrings(config.people(objectData)).filter(isPerson)
+            const goalPeople = uniqueStrings([goalData.creatorId, ...(goalData.assigneesIds || [])]).filter(
+                id => !id.startsWith('ws@')
+            )
             const followers = uniqueStrings([
                 ...(followersData.usersFollowing || []),
                 ...(chatData.usersFollowing || []),
                 ...(chatData.followerIds || []),
-                ...objectPeople,
+                ...goalPeople,
                 actorId,
             ])
-            const members = uniqueStrings([...(chatData.members || []), ...objectPeople, actorId])
-            const isPublicFor = Array.isArray(objectData.isPublicFor)
-                ? objectData.isPublicFor
-                : config.defaultIsPublicFor(objectData)
+            const members = uniqueStrings([...(chatData.members || []), ...goalPeople, actorId])
+            const isPublicFor = Array.isArray(goalData.isPublicFor) ? goalData.isPublicFor : [FEED_PUBLIC_FOR_ALL]
             const usersToNotify = followers.filter(userId => notifyActor || userId !== actorId)
             const visibleUsersToNotify = isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
                 ? usersToNotify
@@ -146,32 +108,32 @@ class ObjectCommentService {
                 ...actorChannelFields,
             })
 
-            const objectCommentsData =
-                objectData.commentsData && typeof objectData.commentsData === 'object' ? objectData.commentsData : {}
+            const goalCommentsData =
+                goalData.commentsData && typeof goalData.commentsData === 'object' ? goalData.commentsData : {}
             const lastCommentData = {
                 lastCommentOwnerId: actorId,
                 lastComment: commentText.substring(0, 500),
                 lastCommentType: STAYWARD_COMMENT,
             }
-            transaction.update(objectRef, {
+            transaction.update(goalRef, {
                 commentsData: {
-                    ...objectCommentsData,
+                    ...goalCommentsData,
                     ...lastCommentData,
-                    amount: (Number(objectCommentsData.amount) || 0) + 1,
+                    amount: (Number(goalCommentsData.amount) || 0) + 1,
                 },
             })
 
             const nextChatData = {
-                id: objectId,
+                id: goalId,
                 projectId,
-                title: config.title(objectData),
-                type: objectType,
-                creatorId: chatData.creatorId || objectPeople[0] || actorId,
-                created: chatData.created || objectData.created || now,
+                title: goalData.extendedName || goalData.name || 'Goal',
+                type: 'goals',
+                creatorId: chatData.creatorId || goalData.creatorId || actorId,
+                created: chatData.created || goalData.created || now,
                 lastEditionDate: now,
                 lastEditorId: actorId,
                 isPublicFor,
-                hasStar: chatData.hasStar || objectData.hasStar || '#ffffff',
+                hasStar: chatData.hasStar || goalData.hasStar || '#ffffff',
                 stickyData: chatData.stickyData || { days: 0, stickyEndDate: 0 },
                 usersFollowing: followers,
                 followerIds: followers,
@@ -183,14 +145,14 @@ class ObjectCommentService {
                 },
             }
             if (fromAssistant) {
-                nextChatData.assistantId = objectData.assistantId || chatData.assistantId || actorId
+                nextChatData.assistantId = goalData.assistantId || chatData.assistantId || actorId
                 nextChatData.lastAssistantComment = now
             }
             transaction.set(chatRef, nextChatData, { merge: true })
             transaction.set(followersRef, { usersFollowing: followers }, { merge: true })
 
             notificationData = {
-                objectName: config.title(objectData),
+                goal: goalData,
                 followers: visibleUsersToNotify,
                 actorName: formatActorDisplayName(actor.displayName || actor.name || 'Assistant', actor),
             }
@@ -200,9 +162,8 @@ class ObjectCommentService {
         if (!silent && notificationData.followers.length > 0) {
             try {
                 await this.notifyFollowers({
-                    objectType,
                     projectId,
-                    objectId,
+                    goalId,
                     ...notificationData,
                     actorId,
                     actorChannelFields,
@@ -212,10 +173,9 @@ class ObjectCommentService {
                 })
             } catch (error) {
                 notificationError = error.message
-                console.error('ObjectCommentService: comment saved but notifying followers failed', {
-                    objectType,
+                console.error('GoalCommentService: comment saved but notifying followers failed', {
                     projectId,
-                    objectId,
+                    goalId,
                     commentId,
                     error: error.message,
                 })
@@ -235,10 +195,9 @@ class ObjectCommentService {
     }
 
     async notifyFollowers({
-        objectType,
         projectId,
-        objectId,
-        objectName,
+        goalId,
+        goal,
         followers,
         actorId,
         actorName,
@@ -249,13 +208,14 @@ class ObjectCommentService {
     }) {
         const projectSnapshot = await this.database.doc(`projects/${projectId}`).get()
         const projectName = projectSnapshot.exists ? projectSnapshot.data()?.name || '' : ''
+        const objectName = goal.extendedName || goal.name || 'Goal'
         const messageTimestamp = Date.now()
         const batch = this.database.batch()
 
         followers.forEach(userId => {
             batch.set(this.database.doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
-                chatId: objectId,
-                chatType: objectType,
+                chatId: goalId,
+                chatType: 'goals',
                 followed: true,
                 date: messageTimestamp,
                 creatorId: actorId,
@@ -265,26 +225,25 @@ class ObjectCommentService {
         })
 
         batch.set(
-            this.database.doc(`emailNotifications/${objectId}`),
+            this.database.doc(`emailNotifications/${goalId}`),
             {
                 userIds: followers,
                 projectId,
-                objectType,
-                objectId,
+                objectType: 'goals',
+                objectId: goalId,
                 objectName,
                 messageTimestamp,
             },
             { merge: true }
         )
 
-        // Same text and link shape as the app's own comment notification (chatsComments.js).
         batch.set(this.database.doc(`pushNotifications/${commentId}`), {
             userIds: followers,
             body: `${projectName}\n  ✔ ${objectName}\n ${actorName} commented: ${commentText}`,
-            link: `${this.baseUrl || getBaseUrl()}/projects/${projectId}/${objectType}/${objectId}/chat`,
+            link: `${this.baseUrl || getBaseUrl()}/projects/${projectId}/goals/${goalId}/chat`,
             messageTimestamp,
             type: 'Chat Notification',
-            chatId: objectId,
+            chatId: goalId,
             projectId,
             initiatorId: actorId,
             ...(actorChannelFields.via === MCP_CHANNEL ? { initiatorVia: MCP_CHANNEL } : {}),
@@ -294,4 +253,4 @@ class ObjectCommentService {
     }
 }
 
-module.exports = { COMMENT_MAX_LENGTH, OBJECT_COMMENT_TYPES, ObjectCommentService, normalizeObjectComment }
+module.exports = { GoalCommentService, normalizeGoalComment }

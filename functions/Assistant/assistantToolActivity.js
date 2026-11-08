@@ -145,8 +145,6 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_update_contact',
         plainKey: 'assistant_activity_update_contact_plain',
     },
-    delete_contact: { plainKey: 'assistant_activity_delete_contact' },
-    delete_artifact: { plainKey: 'assistant_activity_delete_artifact' },
     create_goal: {
         params: ['name'],
         subjectKey: 'assistant_activity_create_goal',

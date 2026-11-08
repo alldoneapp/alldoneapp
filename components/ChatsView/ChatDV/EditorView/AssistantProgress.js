@@ -65,8 +65,6 @@ export const ACTION_EMOJI = {
     assistant_activity_update_note_plain: '✏️',
     assistant_activity_update_contact: '👤',
     assistant_activity_update_contact_plain: '👤',
-    assistant_activity_delete_contact: '🗑️',
-    assistant_activity_delete_artifact: '🗑️',
     assistant_activity_create_goal: '🎯',
     assistant_activity_create_goal_plain: '🎯',
     assistant_activity_update_goal: '🎯',

@@ -48,8 +48,6 @@ const ASSISTANT_TOOL_KEYS = [
     'update_note',
     'artifacts',
     'update_contact',
-    'delete_contact',
-    'delete_artifact',
     'create_goal',
     'update_goal',
     'update_milestone',
@@ -99,7 +97,7 @@ const ASSISTANT_TOOL_KEYS = [
     'mcp_servers',
     'talk_to_assistant',
 ]
-const OPT_IN_ONLY_ASSISTANT_TOOL_KEYS = ['mcp_servers', 'browser_automation', 'delete_contact', 'delete_artifact']
+const OPT_IN_ONLY_ASSISTANT_TOOL_KEYS = ['mcp_servers', 'browser_automation']
 const DEFAULT_ASSISTANT_TOOL_KEYS = ASSISTANT_TOOL_KEYS.filter(key => !OPT_IN_ONLY_ASSISTANT_TOOL_KEYS.includes(key))
 
 // The app's project marker colours (Themes/Modern/ProjectColors.js → Themes/Colors.js).

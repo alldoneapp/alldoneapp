@@ -18,8 +18,6 @@ const WORKSPACE_CHANGE_TOOLS = new Set([
     'create_note',
     'update_note',
     'update_contact',
-    'delete_contact',
-    'delete_artifact',
     'create_goal',
     'update_goal',
     'update_milestone',
