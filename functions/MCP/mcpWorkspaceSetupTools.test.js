@@ -41,6 +41,7 @@ function createFakeDb(initial = {}) {
         const exists = docs.has(path)
         return {
             id: path.split('/').pop(),
+            ref: docRef(path),
             exists,
             data: () => (exists ? JSON.parse(JSON.stringify(docs.get(path))) : undefined),
         }
@@ -396,6 +397,131 @@ describe('MCP workspace setup tools', () => {
         it('rejects malformed dates and times', () => {
             expect(() => buildSchedule({ startTime: '8am', userData: {}, now: NOW })).toThrow('startTime')
             expect(() => buildSchedule({ startDate: '09.11.2026', userData: {}, now: NOW })).toThrow('startDate')
+        })
+    })
+
+    describe('update_assistant', () => {
+        const ASSISTANT_PATH = 'assistants/p-existing/items/a1'
+        const withAssistant = (assistant = {}, extra = {}) =>
+            baseDb({
+                [ASSISTANT_PATH]: {
+                    displayName: 'Growth Lead',
+                    description: 'Finds customers',
+                    instructions: 'Old instructions',
+                    model: 'MODEL_GPT6_SOL',
+                    allowedTools: ['web_search', 'get_notes', 'legacy_tool_key'],
+                    ...assistant,
+                },
+                ...extra,
+            })
+
+        it('switches a tool on without touching the others and records the MCP editor', async () => {
+            const db = withAssistant()
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                addTools: ['artifacts', 'web_search'],
+            })
+
+            expect(result.changed).toEqual(['allowedTools'])
+            expect(result.toolsAdded).toEqual(['artifacts'])
+            expect(result.toolsRemoved).toEqual([])
+            const stored = db.docs.get(ASSISTANT_PATH)
+            expect(stored.allowedTools).toEqual(['web_search', 'get_notes', 'legacy_tool_key', 'artifacts'])
+            expect(stored.instructions).toBe('Old instructions')
+            expect(stored.lastEditorId).toBe(USER)
+            expect(stored.lastEditionDate).toBe(NOW)
+            expect(stored.lastEditorVia).toEqual({ via: 'mcp', viaClient: 'Claude', editionDate: NOW })
+        })
+
+        it('replaces the list but keeps entries that are not Tools Access keys', async () => {
+            const db = withAssistant()
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                allowedTools: ['artifacts'],
+            })
+            expect(db.docs.get(ASSISTANT_PATH).allowedTools).toEqual(['legacy_tool_key', 'artifacts'])
+            expect(result.toolsRemoved).toEqual(['web_search', 'get_notes'])
+        })
+
+        it('starts from the default tools when the assistant has no list of its own', async () => {
+            const db = withAssistant({ allowedTools: undefined })
+            await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                removeTools: ['web_search'],
+            })
+            const stored = db.docs.get(ASSISTANT_PATH).allowedTools
+            expect(stored).toEqual(DEFAULT_ASSISTANT_TOOL_KEYS.filter(key => key !== 'web_search'))
+        })
+
+        it('carries new instructions into scheduled tasks that still hold the old copy, and only those', async () => {
+            const db = withAssistant(
+                {},
+                {
+                    'assistantTasks/p-existing/a1/t-copy': { name: 'Daily', aiSystemMessage: 'Old instructions' },
+                    'assistantTasks/p-existing/a1/t-own': { name: 'Weekly', aiSystemMessage: 'Edited by hand' },
+                }
+            )
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                instructions: '  New instructions  ',
+                model: 'MODEL_GPT6_LUNA',
+                description: '',
+            })
+
+            expect(result.changed).toEqual(['description', 'instructions', 'model'])
+            expect(result.tasksWithUpdatedInstructions).toBe(1)
+            const stored = db.docs.get(ASSISTANT_PATH)
+            expect(stored.instructions).toBe('New instructions')
+            expect(stored.model).toBe('MODEL_GPT6_LUNA')
+            expect(stored.description).toBe('')
+            expect(db.docs.get('assistantTasks/p-existing/a1/t-copy').aiSystemMessage).toBe('New instructions')
+            expect(db.docs.get('assistantTasks/p-existing/a1/t-own').aiSystemMessage).toBe('Edited by hand')
+        })
+
+        it('writes nothing and spends no quota when nothing changes', async () => {
+            const db = withAssistant()
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                name: 'Growth Lead',
+                addTools: ['web_search'],
+            })
+            expect(result.changed).toEqual([])
+            expect(db.docs.get(ASSISTANT_PATH).lastEditorId).toBeUndefined()
+            expect(db.docs.has(`users/${USER}/private/mcpWorkspaceSetupQuota`)).toBe(false)
+        })
+
+        it('refuses invalid input, other projects and unknown assistants', async () => {
+            const db = withAssistant()
+            const call = args => run(db, 'update_assistant', { projectId: 'p-existing', assistantId: 'a1', ...args })
+
+            await expect(call({})).rejects.toThrow('Pass at least one of')
+            await expect(call({ addTools: ['not_a_tool'] })).rejects.toThrow('Unknown Tools Access keys: not_a_tool')
+            await expect(call({ allowedTools: ['get_notes'], addTools: ['artifacts'] })).rejects.toThrow('not both')
+            await expect(call({ addTools: ['artifacts'], removeTools: ['artifacts'] })).rejects.toThrow(
+                'added and removed at once'
+            )
+            await expect(call({ model: 'gpt-4' })).rejects.toThrow('model must be one of')
+            await expect(call({ instructions: '   ' })).rejects.toThrow('instructions must not be empty')
+            await expect(call({ assistantId: 'missing', name: 'x' })).rejects.toThrow('Assistant not found')
+            await expect(
+                run(db, 'update_assistant', { projectId: 'p-other', assistantId: 'a1', name: 'x' })
+            ).rejects.toThrow('Project not found or not accessible')
+            expect(db.docs.get(ASSISTANT_PATH).displayName).toBe('Growth Lead')
+        })
+
+        it('is capped per day', async () => {
+            const db = withAssistant()
+            for (let i = 0; i < DAILY_LIMITS.update_assistant; i++) {
+                await run(db, 'update_assistant', { projectId: 'p-existing', assistantId: 'a1', name: `Name ${i}` })
+            }
+            await expect(
+                run(db, 'update_assistant', { projectId: 'p-existing', assistantId: 'a1', name: 'One too many' })
+            ).rejects.toThrow('limited to')
         })
     })
 

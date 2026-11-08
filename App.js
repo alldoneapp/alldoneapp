@@ -22,11 +22,7 @@ import { startAppBootConnectionWait } from './utils/performance/userWaitConnecti
 import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
 import { initializeResponsiveLayout } from './AppNavigator'
 import { restoreAnnaLayout } from './utils/annaMode'
-import { captureLandingAttribution } from './utils/growth/signupAttribution'
 
-// Before any routing rewrites the address bar: the campaign labels of the landing URL are
-// what a later signup in this tab records as its origin (growth scoreboard).
-captureLandingAttribution()
 restoreAnnaLayout()
 // React Native Web reports the real viewport synchronously. Apply it before
 // mounting AppContent so a phone never paints the cached task board with the
