@@ -2684,9 +2684,12 @@ async function collectAssistantTextWithToolCalls({
 // an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
 async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
     console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
-    const { deductGold } = require('../Gold/goldHelper')
+    // The answer has already been produced, so this settles rather than gates: it takes the full
+    // cost, or whatever is left of the balance, and reports the rest (settleUsageGold). A plain
+    // deductGold charged nothing when the balance fell short (security audit 2026-11).
+    const { settleUsageGold } = require('../Gold/goldHelper')
 
-    return await deductGold(userId, goldToReduce, {
+    return await settleUsageGold(userId, goldToReduce, {
         source: 'assistant_usage',
         channel: 'assistant',
         projectId: linkContext.projectId,
@@ -2741,17 +2744,25 @@ const reduceGoldWhenChatWithAI = async (
         tokensPerGold: getTokensPerGold(aiModel),
     })
 
-    const goldToReduce = calculateGoldToReduce(userCurrentGold, tokens, aiModel)
+    // The full cost, never capped at `userCurrentGold`: that balance was read when the run
+    // started, so capping at it billed a long run (or the second of two parallel runs) for a
+    // fraction of its cost. settleUsageGold caps at the balance as it is NOW, in the charge's own
+    // transaction. `userCurrentGold` is kept in the signature for the callers' sake.
+    const goldToReduce = calculateGoldCostFromTokens(tokens, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold calculation complete:', {
         goldToReduce,
         userCurrentGold,
         costPerToken: 1 / getTokensPerGold(aiModel),
         totalCost: tokens / getTokensPerGold(aiModel),
-        cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
     })
 
-    await spentGold(userId, goldToReduce, linkContext, aiModel)
-    console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
+    const result = await spentGold(userId, goldToReduce, linkContext, aiModel)
+    console.log('🔋 GOLD COST TRACKING: Gold reduction completed', {
+        success: !!result?.success,
+        charged: result?.amount || 0,
+        uncovered: result?.uncovered || 0,
+    })
+    return result
 }
 
 const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
@@ -2833,18 +2844,6 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
         },
     })
     return totalTokens
-}
-
-const calculateGoldToReduce = (userGold, totalTokens, model) => {
-    console.log('Calculating gold Reduction:', {
-        userGold,
-        totalTokens,
-        model,
-        tokensPerGold: getTokensPerGold(model),
-    })
-    const goldCost = calculateGoldCostFromTokens(totalTokens, model)
-    const goldToReduce = userGold - goldCost > 0 ? goldCost : userGold
-    return goldToReduce
 }
 
 const calculateGoldCostFromTokens = (totalTokens, model) => {

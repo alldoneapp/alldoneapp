@@ -1092,9 +1092,11 @@ exports.updateCreditCardNumberSecondGen = onCall(
     async request => {
         const { auth, data } = request
         if (auth) {
+            // The payer is always the caller (security audit 2026-11; Payment/subscriptionAccess.js).
+            const { requireOwnPayer } = require('./Payment/subscriptionAccess')
+            const userPayingId = requireOwnPayer(request)
             const { updateCreditCardNumber } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, urlOrigin } = data
-            return await updateCreditCardNumber(userPayingId, urlOrigin)
+            return await updateCreditCardNumber(userPayingId, data?.urlOrigin)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -1111,9 +1113,10 @@ exports.createCompanySubscriptionSecondGen = onCall(
     async request => {
         const { auth, data } = request
         if (auth) {
+            const { resolveCompanySubscription } = require('./Payment/subscriptionAccess')
             const { createCompanySubscription } = require('./Payment/SubscriptionsActions')
             const { customerId, userId, userName, userEmail, selectedUserIds, companyData, paymentMethod, urlOrigin } =
-                data
+                await resolveCompanySubscription(admin.firestore(), request)
 
             return await createCompanySubscription(
                 customerId,
@@ -1141,8 +1144,9 @@ exports.removeUserFromSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolveSeatRemoval } = require('./Payment/subscriptionAccess')
+            const { userPayingId, userId } = await resolveSeatRemoval(admin.firestore(), request)
             const { removePaidUsersFromSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, userId } = data
             return await removePaidUsersFromSubscription(userPayingId, [userId])
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -1160,8 +1164,9 @@ exports.addedPaidUsersToSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolvePaidSeatsToAdd } = require('./Payment/subscriptionAccess')
+            const { userPayingId, paidAddedUserIds } = await resolvePaidSeatsToAdd(admin.firestore(), request)
             const { addedPaidUsersToSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, paidAddedUserIds } = data
             return await addedPaidUsersToSubscription(userPayingId, paidAddedUserIds)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -1179,8 +1184,9 @@ exports.addedPaidUsersWhenActivateSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolvePaidSeatsToAdd } = require('./Payment/subscriptionAccess')
+            const { userPayingId, paidAddedUserIds } = await resolvePaidSeatsToAdd(admin.firestore(), request)
             const { addedPaidUsersWhenActivateSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, paidAddedUserIds } = data
             return await addedPaidUsersWhenActivateSubscription(userPayingId, paidAddedUserIds)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -1198,8 +1204,9 @@ exports.removePaidUsersFromSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolveSeatsToRemove } = require('./Payment/subscriptionAccess')
+            const { userPayingId, removedUserIds } = await resolveSeatsToRemove(admin.firestore(), request)
             const { removePaidUsersFromSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, removedUserIds } = data
             return await removePaidUsersFromSubscription(userPayingId, removedUserIds)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -1217,8 +1224,9 @@ exports.addedUsersToSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolveNewSeats } = require('./Payment/subscriptionAccess')
+            const { userPayingId, newAddedUserIds, newSelectedUserIds, urlOrigin } = resolveNewSeats(request)
             const { addedUsersToSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, newAddedUserIds, newSelectedUserIds, urlOrigin } = data
             return await addedUsersToSubscription(userPayingId, newAddedUserIds, urlOrigin, newSelectedUserIds)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -1236,8 +1244,9 @@ exports.addedUsersWhenActivateSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { resolveNewSeats } = require('./Payment/subscriptionAccess')
+            const { userPayingId, newAddedUserIds, newSelectedUserIds, urlOrigin } = resolveNewSeats(request)
             const { addedUsersWhenActivateSubscription } = require('./Payment/SubscriptionsActions')
-            const { userPayingId, newAddedUserIds, newSelectedUserIds, urlOrigin } = data
             return await addedUsersWhenActivateSubscription(
                 userPayingId,
                 newAddedUserIds,
@@ -1260,8 +1269,9 @@ exports.cancelSubscriptionSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            const { requireOwnPayer } = require('./Payment/subscriptionAccess')
+            const userPayingId = requireOwnPayer(request)
             const { cancelSubscription } = require('./Payment/CancelSubscriptions')
-            const { userPayingId } = data
             await cancelSubscription(userPayingId)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
@@ -2573,24 +2583,9 @@ exports.webhook = onRequest(
     }
 )
 
-exports.updateMollieSubscription = onCall(
-    {
-        timeoutSeconds: 540,
-        memory: '1GiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { updateMollieSubscription } = require('./Payment/Mollie.js')
-            const { subscriptionIdInMollie, customerId, dataToUpdate } = data
-            await updateMollieSubscription(subscriptionIdInMollie, customerId, dataToUpdate)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
-    }
-)
+// updateMollieSubscription was a callable that sent any caller-chosen update to any Mollie
+// subscription; nothing in the app called it (security audit 2026-11). Subscription changes go
+// through the payer-bound callables above.
 
 exports.sendMonthlyInvoiceSecondGen = onRequest(
     {
@@ -2814,13 +2809,21 @@ exports.earnGoldSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            // The caller and the rewarded user must share the project, and one call pays at most a
+            // task reward (security audit 2026-11; clientGoldRequests.js).
+            const { resolveClientReward } = require('./Gold/clientGoldRequests')
+            const reward = await resolveClientReward(admin.firestore(), auth.uid, data)
+            if (!reward.ok) return { success: false, message: reward.message }
             const { earnGold } = require('./Gold/goldHelper')
-            const { projectId, userId, gold, slimDate, timestamp, dayDate, rewardKey, objectId, objectType } = data
-            return await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate, {
-                rewardKey,
-                objectId,
-                objectType,
-            })
+            return await earnGold(
+                reward.projectId,
+                reward.userId,
+                reward.gold,
+                reward.slimDate,
+                reward.timestamp,
+                reward.dayDate,
+                reward.context
+            )
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -2875,17 +2878,13 @@ exports.deductGoldSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
+            // Only the spends the app starts itself, at the server's price where it has one
+            // (security audit 2026-11; clientGoldRequests.js).
+            const { resolveClientSpend } = require('./Gold/clientGoldRequests')
+            const spend = resolveClientSpend(data)
+            if (!spend.ok) return { success: false, message: spend.message }
             const { deductGold } = require('./Gold/goldHelper')
-            const { gold, source, projectId, goalId, objectId, objectType, channel, note } = data
-            return await deductGold(auth.uid, gold, {
-                source,
-                projectId,
-                goalId,
-                objectId,
-                objectType,
-                channel,
-                note,
-            })
+            return await deductGold(auth.uid, spend.amount, spend.context)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -3845,16 +3844,20 @@ exports.generateBotWelcomeMessageSecondGen = onCall(
     },
     async request => {
         // The run acts for the signed-in member only; see welcomeMessageAccess.js.
-        const { resolveWelcomeMessageRequest } = require('./Assistant/welcomeMessageAccess')
+        // Platform-paid, so it runs once per guide; see welcomeMessageAccess.js.
+        const { resolveWelcomeMessageRequest, runWelcomeMessageOnce } = require('./Assistant/welcomeMessageAccess')
+        const db = admin.firestore()
         const resolved = await resolveWelcomeMessageRequest(admin.firestore(), request)
         const { generateBotWelcomeMessageForGuide } = require('./Assistant/assistantWelcomeMessageForGuide')
-        return await generateBotWelcomeMessageForGuide(
-            resolved.projectId,
-            resolved.objectId,
-            resolved.userIdsToNotify,
-            resolved.guideName,
-            resolved.language,
-            resolved.assistantId
+        return await runWelcomeMessageOnce(db, resolved, {}, () =>
+            generateBotWelcomeMessageForGuide(
+                resolved.projectId,
+                resolved.objectId,
+                resolved.userIdsToNotify,
+                resolved.guideName,
+                resolved.language,
+                resolved.assistantId
+            )
         )
     }
 )
@@ -3868,19 +3871,23 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
     },
     async request => {
         // Greets the signed-in member, never a user named in the request; see welcomeMessageAccess.js.
-        const { resolveWelcomeMessageRequest } = require('./Assistant/welcomeMessageAccess')
+        // Platform-paid, so it runs once per guide and member; see welcomeMessageAccess.js.
+        const { resolveWelcomeMessageRequest, runWelcomeMessageOnce } = require('./Assistant/welcomeMessageAccess')
+        const db = admin.firestore()
         const resolved = await resolveWelcomeMessageRequest(admin.firestore(), request, { greetCaller: true })
         const { generateBotWelcomeMessageForGuideUser } = require('./Assistant/assistantWelcomeMessageForGuideUser')
-        return await generateBotWelcomeMessageForGuideUser(
-            resolved.projectId,
-            resolved.objectId,
-            resolved.userIdsToNotify,
-            resolved.guideName,
-            resolved.language,
-            resolved.callerUid,
-            resolved.userName,
-            resolved.taskListUrlOrigin,
-            resolved.assistantId
+        return await runWelcomeMessageOnce(db, resolved, { greetCaller: true }, () =>
+            generateBotWelcomeMessageForGuideUser(
+                resolved.projectId,
+                resolved.objectId,
+                resolved.userIdsToNotify,
+                resolved.guideName,
+                resolved.language,
+                resolved.callerUid,
+                resolved.userName,
+                resolved.taskListUrlOrigin,
+                resolved.assistantId
+            )
         )
     }
 )

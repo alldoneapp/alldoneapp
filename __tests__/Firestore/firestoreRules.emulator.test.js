@@ -10,6 +10,7 @@ const {
     arrayUnion,
     collection,
     deleteDoc,
+    deleteField,
     doc,
     getDoc,
     getDocs,
@@ -584,6 +585,7 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         dailyGold: 100000,
         premium: { status: 'premium' },
         stripeCustomerId: 'cus_somebody_else',
+        customerId: 'cst_somebody_else',
     }
 
     beforeEach(async () => {
@@ -594,6 +596,7 @@ describe('gold, premium and the Stripe link are server-owned', () => {
                 dailyGold: 100,
                 premium: { status: 'free' },
                 stripeCustomerId: '',
+                customerId: '',
             })
             await setDoc(doc(db, `users/${MEMBER_ID}/goldTransactions/charge-1`), {
                 direction: 'spend',
@@ -639,6 +642,8 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         await assertFails(bootstrap('rich-user', { ...defaults, gold: 1000 }))
         await assertFails(bootstrap('premium-user', { ...defaults, premium: { status: 'premium' } }))
         await assertFails(bootstrap('linked-user', { ...defaults, stripeCustomerId: 'cus_somebody_else' }))
+        await assertFails(bootstrap('mollie-user', { ...defaults, customerId: 'cst_somebody_else' }))
+        await assertSucceeds(bootstrap('empty-mollie-user', { ...defaults, customerId: '' }))
     })
 
     it('lets the owner read the gold ledger but not write it or its claims', async () => {
@@ -656,6 +661,59 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         )
         await assertFails(deleteDoc(doc(memberDb, `users/${MEMBER_ID}/goldRewardClaims/task-reward`)))
         await assertFails(setDoc(doc(memberDb, `users/${MEMBER_ID}/goldChangeClaims/claim`), { amount: 1 }))
+    })
+})
+
+describe('the Mollie subscription billing fields are server-owned (security audit 2026-11)', () => {
+    // The subscription callables act on subscriptions/{auth.uid} and trust these fields; a client
+    // that could copy another payer's Mollie ids into its own document could re-price or cancel
+    // that payer's subscription through them.
+    const subscriptionPath = `subscriptions/${MEMBER_ID}`
+
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), subscriptionPath), {
+                customerId: 'cst_member',
+                subscriptionIdInMollie: 'sub_member',
+                status: 'active',
+                activePaidUsersIds: [MEMBER_ID],
+                paidUsersIds: [MEMBER_ID],
+                selectedUserIds: [MEMBER_ID],
+                companyData: { name: 'Member GmbH' },
+                showSuccessfullyPayment: true,
+            })
+        })
+    })
+
+    it('lets the owner edit company data and the seat selection, clear the banner and delete', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const subscription = doc(memberDb, subscriptionPath)
+
+        await assertSucceeds(getDoc(subscription))
+        await assertSucceeds(updateDoc(subscription, { companyData: { name: 'Renamed GmbH' } }))
+        await assertSucceeds(updateDoc(subscription, { selectedUserIds: [MEMBER_ID, OUTSIDER_ID] }))
+        await assertSucceeds(updateDoc(subscription, { showSuccessfullyPayment: deleteField() }))
+        await assertSucceeds(deleteDoc(subscription))
+    })
+
+    it.each([
+        ['customerId', 'cst_victim'],
+        ['subscriptionIdInMollie', 'sub_victim'],
+        ['status', 'canceled'],
+        ['activePaidUsersIds', [MEMBER_ID, OUTSIDER_ID]],
+        ['paidUsersIds', [MEMBER_ID, OUTSIDER_ID]],
+    ])('refuses an owner write of %s', async (field, value) => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(updateDoc(doc(memberDb, subscriptionPath), { [field]: value }))
+    })
+
+    it('refuses a client-created subscription and any access by somebody else', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertFails(setDoc(doc(outsiderDb, `subscriptions/${OUTSIDER_ID}`), { customerId: 'cst_victim' }))
+        await assertFails(getDoc(doc(outsiderDb, subscriptionPath)))
+        await assertFails(updateDoc(doc(outsiderDb, subscriptionPath), { companyData: { name: 'x' } }))
     })
 })
 

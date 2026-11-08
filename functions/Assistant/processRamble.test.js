@@ -57,7 +57,7 @@ jest.mock('./ramblerCleanup', () => ({
 
 const mockDeductGold = jest.fn()
 jest.mock('../Gold/goldHelper', () => ({
-    deductGold: (...args) => mockDeductGold(...args),
+    settleUsageGold: (...args) => mockDeductGold(...args),
 }))
 
 const mockGetUserVocabularyTerms = jest.fn()
