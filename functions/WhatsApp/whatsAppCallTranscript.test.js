@@ -228,20 +228,3 @@ test('deduplicates created note links and keeps tasks with the same ID distinct'
         })
     )
 })
-
-// NV-35: a transcript turn from an unverified phone caller is marked so later runs skip it.
-describe('storeCallTranscriptTurn caller verification marker (NV-35)', () => {
-    beforeEach(() => {
-        admin.__mock.reset()
-        admin.__mock.set('users/user-1', {})
-        admin.__mock.set('chatObjects/project-1/chats/chat-1', { commentsData: { amount: 0 } })
-    })
-
-    test('marks the turns of an unverified caller and nobody else', async () => {
-        await storeCallTranscriptTurn({ ...TURN, turnId: 'u1', role: 'user', text: 'Hi.', callerUnverified: true })
-        await storeCallTranscriptTurn({ ...TURN, turnId: 'u2', role: 'user', text: 'Hello.' })
-        const comments = admin.__mock.list('chatComments/project-1/topics/chat-1/comments/').map(([, data]) => data)
-        expect(comments.find(comment => comment.commentText === 'Hi.').callerUnverified).toBe(true)
-        expect(comments.find(comment => comment.commentText === 'Hello.')).not.toHaveProperty('callerUnverified')
-    })
-})

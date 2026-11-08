@@ -25,7 +25,6 @@ const { operationKey } = require('./assistantLiveProgress')
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { displayCreatedCallEntity } = require('./assistantLiveChatDisplay')
 const { canCorrectKnowledgeBaseOnChannel } = require('../KnowledgeBase/knowledgeBaseAssistant')
-const { isUnverifiedPhoneCallSession } = require('../shared/callerVerification')
 
 const asChatSchema = schema => ({
     type: 'function',
@@ -34,21 +33,6 @@ const asChatSchema = schema => ({
 
 // The transport is new; model routing, context, tool implementations and the Gold
 // divisor are the same ones used by chat. No separate voice backend model exists.
-// The whole context of an unverified phone call. No chat history, memory, instructions, project or
-// wiki data: the caller may not be the account holder, and anything in the context can be spoken.
-function buildUnverifiedCallerContext({ assistant, user }) {
-    return [
-        [
-            'system',
-            `You are ${assistant?.displayName || assistant?.name || 'the assistant'}, answering a phone call. ` +
-                `Answer in ${user?.language || 'English'}. ` +
-                "The caller's phone number could not be verified, so this call cannot use the account: you have no access to its tasks, notes, goals, contacts, calendar, email, chats, memory or projects, and you cannot create, change or send anything. " +
-                'You may answer general questions and look up public information on the web. ' +
-                'If the caller asks for anything that needs the account, explain this briefly and suggest calling through WhatsApp or the Alldone app instead. Never guess or invent account data.',
-        ],
-    ]
-}
-
 async function runLiveAssistant({
     session,
     delegationId,
@@ -85,15 +69,8 @@ async function runLiveAssistant({
     // In-app and WhatsApp calls may correct the project wiki; a phone call, known only by its caller
     // ID, may not (KnowledgeBase/knowledgeBaseAssistant.js).
     runtime.allowKnowledgeCorrections = canCorrectKnowledgeBaseOnChannel(runtime.sourceChannel)
-    // A phone call without full STIR/SHAKEN attestation may come from anybody who knows the
-    // account's number (NV-35): public read-only tools, no account context, no chat writes.
-    const callerUnverified = isUnverifiedPhoneCallSession(session)
-    if (callerUnverified) {
-        runtime.callerIdentityUnverified = true
-        runtime.allowKnowledgeCorrections = false
-    }
     const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('../Assistant/annaWorkspace')
-    const annaContext = callerUnverified ? null : await loadAnnaContext(db, runtime, { includeActivity: true })
+    const annaContext = await loadAnnaContext(db, runtime, { includeActivity: true })
     if (annaContext) {
         runtime.annaConversation = true
         annaContext.history = await loadAnnaHistoryContext(db, runtime, {
@@ -311,28 +288,25 @@ async function runLiveAssistant({
             },
         },
     }
-    if (callerUnverified) delete localTools.post_voice_answer_in_chat
     runtime.additionalToolSchemas = Object.values(localTools).map(tool => tool.schema)
-    const messages = callerUnverified
-        ? buildUnverifiedCallerContext({ assistant, user })
-        : await getOptimizedContextMessages(
-              null,
-              session.projectId,
-              'topics',
-              session.chatId,
-              user.language || 'English',
-              assistant.displayName || assistant.name,
-              assistant.instructions,
-              allowedTools,
-              resolveUserTimezoneOffset(user),
-              session.userId,
-              session.assistantId,
-              {
-                  includeAllRecent: true,
-                  excludeCallSessionId: session.id,
-                  allowKnowledgeCorrections: runtime.allowKnowledgeCorrections,
-              }
-          )
+    const messages = await getOptimizedContextMessages(
+        null,
+        session.projectId,
+        'topics',
+        session.chatId,
+        user.language || 'English',
+        assistant.displayName || assistant.name,
+        assistant.instructions,
+        allowedTools,
+        resolveUserTimezoneOffset(user),
+        session.userId,
+        session.assistantId,
+        {
+            includeAllRecent: true,
+            excludeCallSessionId: session.id,
+            allowKnowledgeCorrections: runtime.allowKnowledgeCorrections,
+        }
+    )
     const previousActions = await sessionRef.collection('liveToolResults').orderBy('createdAt', 'desc').limit(12).get()
     if (annaContext)
         messages.push(['system', annaInstructions(annaContext, { allowedTools, mcpServers: assistant.mcpServers })])
@@ -442,4 +416,4 @@ async function runLiveAssistant({
     )
 }
 
-module.exports = { runLiveAssistant, buildUnverifiedCallerContext }
+module.exports = { runLiveAssistant }

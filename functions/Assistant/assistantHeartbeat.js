@@ -42,7 +42,6 @@ const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNotic
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
 const { FieldValue } = require('firebase-admin/firestore')
-const { isHeartbeatAuthorizedForMember } = require('./heartbeatOptIn')
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -143,11 +142,6 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userDat
             patchData.isAssistantEnabled = true
         }
 
-        // Heartbeat topics used to be created for the whole project.
-        if (!Array.isArray(data.isPublicFor) || data.isPublicFor.length !== 1 || data.isPublicFor[0] !== userId) {
-            patchData.isPublicFor = [userId]
-        }
-
         if (Object.keys(patchData).length > 0) {
             await chatRef.update(patchData)
         }
@@ -162,8 +156,7 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userDat
         id: chatId,
         title,
         type: 'topics',
-        // What a heartbeat says runs on the member's own data, so only the member reads it (NV-17).
-        isPublicFor: [userId],
+        isPublicFor: [FEED_PUBLIC_FOR_ALL],
         assistantId: assistantId || null,
         creatorId: userId,
         created: now,
@@ -415,7 +408,7 @@ async function postHeartbeatInsufficientGoldNotice(projectId, assistant, userId,
         assistant.uid,
         HEARTBEAT_INSUFFICIENT_GOLD_NOTICE,
         [userId],
-        [userId],
+        [FEED_PUBLIC_FOR_ALL],
         [userId]
     )
 
@@ -580,16 +573,6 @@ async function checkAndExecuteHeartbeats() {
                         if (!activeUsersMap.has(userId)) continue
 
                         let userData = activeUsersMap.get(userId)
-                        if (
-                            !isHeartbeatAuthorizedForMember({
-                                project: { userIds: [...projectMembers] },
-                                projectId,
-                                assistant,
-                                userId,
-                                userData,
-                            })
-                        )
-                            continue
                         const afterReplyChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
                         const beforeReplyChancePercent = getEffectiveChanceNoReplyPercent(
                             assistant,
@@ -770,7 +753,7 @@ async function checkAndExecuteHeartbeats() {
                     projectId,
                     chatId,
                     [userId],
-                    shouldSendWhatsApp ? [FEED_PUBLIC_FOR_ALL] : [userId],
+                    [FEED_PUBLIC_FOR_ALL],
                     assistant.uid,
                     prompt,
                     'en',
@@ -977,8 +960,7 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData,
         projectId,
         chatId,
         [userId],
-        // The WhatsApp daily topic is shared with the project by design; a heartbeat topic is private.
-        shouldSendWhatsApp ? [FEED_PUBLIC_FOR_ALL] : [userId],
+        [FEED_PUBLIC_FOR_ALL],
         assistant.uid,
         prompt,
         'en',
@@ -1067,9 +1049,7 @@ async function executeScheduledHeartbeat(task = {}) {
             !isMember ||
             !isProjectHeartbeatEligible(project) ||
             !isUserHeartbeatEligible(userData) ||
-            !isAssistantHeartbeatEligible(assistant, projectId, userData) ||
-            // Re-checked at run time: the configuration may have changed since the schedule was built.
-            !isHeartbeatAuthorizedForMember({ project, projectId, assistant, userId, userData })
+            !isAssistantHeartbeatEligible(assistant, projectId, userData)
         ) {
             await scheduleRef.delete().catch(() => {})
             return { outcome: 'ineligible' }

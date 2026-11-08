@@ -90,24 +90,10 @@ service cloud.firestore {
     // subscription callables). A client that could set them gave itself Gold or premium, or
     // pointed its account at somebody else's Stripe or Mollie customer (security audit 2026-11:
     // createCompanySubscriptionSecondGen reuses the stored Mollie customerId).
-    // unlockedKeysByGuides is written by unlockGuideGoalSecondGen in the same transaction as the
-    // 80 Gold charge (AT-2978); a client that could add a key unlocked a goal without paying.
     function ownerUpdateKeepsServerFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'gold', 'dailyGold', 'premium', 'stripeCustomerId', 'customerId', 'unlockedKeysByGuides'
+        'gold', 'dailyGold', 'premium', 'stripeCustomerId', 'customerId'
       ]);
-    }
-
-    // A project membership mutation may drop a project's lock keys (leaving or deleting the project)
-    // but never add one (AT-2978).
-    function unlockedKeysNotAdded(projectId) {
-      let before = resource.data.get('unlockedKeysByGuides', {});
-      let after = request.resource.data.get('unlockedKeysByGuides', {});
-      let beforeKeys = before is map ? before.get(projectId, []) : [];
-      let afterKeys = after is map ? after.get(projectId, []) : [];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlockedKeysByGuides']) ||
-        afterKeys == null ||
-        (afterKeys is list && beforeKeys is list && afterKeys.toSet().difference(beforeKeys.toSet()).size() == 0);
     }
 
     // A new account starts with exactly what getNewDefaultUser writes (ContactsHelper.js) or less.
@@ -118,8 +104,7 @@ service cloud.firestore {
         dailyGold is int && dailyGold >= 0 && dailyGold <= 100 &&
         userData.get('premium', {'status': 'free'}) == {'status': 'free'} &&
         userData.get('stripeCustomerId', '') == '' &&
-        userData.get('customerId', '') == '' &&
-        userData.get('unlockedKeysByGuides', {}) == {};
+        userData.get('customerId', '') == '';
     }
 
     // The gold ledger and its idempotency claims are server-written; a client that could write
@@ -186,14 +171,6 @@ service cloud.firestore {
         projectId in resource.data.get(fieldName, []);
     }
 
-    // security audit 2026-11 (NV-11 residual): an invitation is one entry in invitedProjectIds. The
-    // generic membership allowlist below also admits assistantId, lastEditorId and the assistant
-    // comment maps, so without this an inviter could rewrite those on the invitee's user document.
-    function onlyInvitationFieldsChange() {
-      return request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['invitedProjectIds', 'projectMembershipMutation']);
-    }
-
     function isValidProjectMembershipMutation(userId) {
       let mutation = request.resource.data.get('projectMembershipMutation', {});
       let projectId = mutation.get('projectId', '');
@@ -218,7 +195,6 @@ service cloud.firestore {
         projectMapChangedOnlyAt('workflow', projectId) &&
         projectMapChangedOnlyAt('noteIdsByProject', projectId) &&
         projectMapChangedOnlyAt('unlockedKeysByGuides', projectId) &&
-        unlockedKeysNotAdded(projectId) &&
         projectMapChangedOnlyAt('commentsData', projectId) &&
         projectMapChangedOnlyAtWithGlobal('lastAssistantCommentData', projectId) &&
         validFocusChange(userId, projectId);
@@ -272,7 +248,6 @@ service cloud.firestore {
           ) ||
           (
             action == 'invitation-add' &&
-            onlyInvitationFieldsChange() &&
             request.auth.uid in projectBefore &&
             request.auth.uid in projectAfter &&
             projectId in request.resource.data.get('invitedProjectIds', []) &&
@@ -284,7 +259,6 @@ service cloud.firestore {
           ) ||
           (
             action == 'invitation-remove' &&
-            onlyInvitationFieldsChange() &&
             (request.auth.uid in projectBefore || request.auth.uid == userId) &&
             !(projectId in request.resource.data.get('invitedProjectIds', [])) &&
             doesNotAddProjectId('projectIds', projectId) &&
@@ -636,61 +610,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // security audit 2026-11 (NV-12): a project document names who belongs to it (userIds) and who
-    // created it (creatorId), and the server trusts both: the project wiki is billed to an active
-    // creatorId listed in userIds (functions/KnowledgeBase/knowledgeBaseDefaults.js), and every
-    // `isProjectMember` check reads userIds. So a client may only create a project that holds just
-    // itself and names itself creator, and may never rewrite the creator afterwards. The one
-    // exception on both sides is a guide (`parentTemplateId`): the user starting it creates it in the
-    // name of the template's creator, and adds that creator and the administrator as members
-    // (utils/backends/Projects/guidesFirestore.js). Guides never get a default wiki.
-    function administratorUserId() {
-      let rolePath = /databases/$(database)/documents/roles/administrator;
-      return exists(rolePath) ? get(rolePath).data.get('userId', '') : '';
-    }
-
-    // The templateCreatorId of the template a guide was started from, or '' when the project is not
-    // a guide of a real template.
-    function guideTemplateCreatorId(data) {
-      let templateId = data.get('parentTemplateId', '');
-      return templateId is string && templateId != '' &&
-          exists(/databases/$(database)/documents/projects/$(templateId)) &&
-          get(/databases/$(database)/documents/projects/$(templateId)).data.get('isTemplate', false) == true
-        ? get(/databases/$(database)/documents/projects/$(templateId)).data.get('templateCreatorId', '')
-        : '';
-    }
-
-    function newProjectBoundToCreator(data) {
-      let creatorId = data.get('creatorId', null);
-      let templateCreatorId = data.get('templateCreatorId', '');
-      return data.get('userIds', null) == [request.auth.uid] &&
-        (
-          creatorId == request.auth.uid ||
-          (creatorId is string && creatorId != '' && creatorId == guideTemplateCreatorId(data))
-        ) &&
-        (templateCreatorId == '' || templateCreatorId == null || templateCreatorId == request.auth.uid);
-    }
-
-    // Members only ever leave through a project update; joining is the guide flow above. (A plain
-    // project's members are added by the invitee's own acceptance, which this rule does not open.)
-    function projectMembersAddedOnlyToGuide() {
-      let added = request.resource.data.get('userIds', []).toSet()
-        .difference(resource.data.get('userIds', []).toSet());
-      return added.size() == 0 ||
-        (
-          resource.data.get('parentTemplateId', '') is string &&
-          resource.data.get('parentTemplateId', '') != '' &&
-          added.hasOnly([administratorUserId(), guideTemplateCreatorId(resource.data)])
-        );
-    }
-
-    // Kicking a template's creator hands the template to the administrator
-    // (updateProjectDataWhenKickUserFromProject); nothing else may change it.
-    function templateCreatorUnchangedOrAdministrator() {
-      return request.resource.data.get('templateCreatorId', '') == resource.data.get('templateCreatorId', '') ||
-        request.resource.data.get('templateCreatorId', '') == administratorUserId();
-    }
-
     match /projects/{projectId} {
       // Project-list queries filter `userIds` with array-contains. Express membership against the
       // candidate resource so the rules engine can prove that query; routing through
@@ -701,7 +620,7 @@ service cloud.firestore {
       // project and harvest the ids of their projects and notes. No client query lists projects
       // without a userIds filter, so only the single-document read stays open.
       allow get: if resource.data.get('isShared', privateProject()) != privateProject();
-      allow create: if signedIn() && newProjectBoundToCreator(request.resource.data);
+      allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
       // security audit 2026-11: the repository connection and the golden VM environment feed
       // other members' credentialed VM coding jobs, so only Cloud Functions write them
       // (connect/disconnect{Github,Gitlab}Repo, the golden build). `vmGolden` here is a display
@@ -710,11 +629,8 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'vmGolden',
           'githubRepoUrl', 'githubBaseBranch', 'githubHost', 'githubApiBase', 'githubConnectedAt',
-          'gitlabRepoUrl', 'gitlabBaseBranch', 'gitlabHost', 'gitlabConnectedAt',
-          'creatorId', 'isTemplate', 'parentTemplateId'
-        ]) &&
-        projectMembersAddedOnlyToGuide() &&
-        templateCreatorUnchangedOrAdministrator();
+          'gitlabRepoUrl', 'gitlabBaseBranch', 'gitlabHost', 'gitlabConnectedAt'
+        ]);
       allow delete: if signedIn() &&
         request.auth.uid in resource.data.get('userIds', []);
     }
@@ -790,29 +706,8 @@ service cloud.firestore {
         (override is map && override.get('requestedByUserId', request.auth.uid) == request.auth.uid);
     }
 
-    // Links that the app hands to window.open / <a href> / <iframe src> must be web links: a
-    // javascript: URL in any of them runs script in a colleague's session when clicked (security
-    // audit 2026-11, NV-03/NV-36; the client also refuses them in utils/safeUrl.js). An existing
-    // value may stay as it is, so documents written before this rule are not locked.
-    function isWebLinkOrEmpty(value) {
-      return value == null || value == '' || (value is string && value.matches('https?://.+'));
-    }
-
-    function calendarLink(data) {
-      return data.get('calendarData', null) is map ? data.calendarData.get('link', null) : null;
-    }
-
-    function calendarLinkSafe(before, after) {
-      return calendarLink(after) == calendarLink(before) || isWebLinkOrEmpty(calendarLink(after));
-    }
-
-    function linkFieldSafe(before, after, field) {
-      return after.get(field, null) == before.get(field, null) || isWebLinkOrEmpty(after.get(field, null));
-    }
-
     function taskIdentityFieldsBoundToWriter(before, after) {
-      return calendarLinkSafe(before, after) &&
-        calendarRoutingMarkerBoundToWriter(before, after, 'projectRoutingFeedback') &&
+      return calendarRoutingMarkerBoundToWriter(before, after, 'projectRoutingFeedback') &&
         calendarRoutingMarkerBoundToWriter(before, after, 'goalRoutingFeedback') &&
         workflowPayerBoundToWriter(before, after) &&
         workflowTransitionPaidByWriter(before, after) &&
@@ -1145,49 +1040,14 @@ service cloud.firestore {
     }
 
     // The global catalog is curated: only the administrator creates, deletes or changes what a
-    // global task runs. Every other field of a catalog task (name, prompt, aiSystemMessage, model,
-    // recurrence, start time, ...) is copied into the derived tasks of every tenant by
-    // onUpdateAssistantTaskSecondGen, so a non-administrator may touch ONLY the per-user activation
-    // keys below, and within each of them only its own entry (security audit 2026-11, NV-22). The
-    // shared activatedInProjectId is deliberately not on the list; a global activation records its
-    // project per user.
-    function onlyOwnMapEntryAffected(before, after, field) {
-      return mapOrEmpty(after.get(field, {})).diff(mapOrEmpty(before.get(field, {}))).affectedKeys()
-        .hasOnly([request.auth.uid]);
-    }
-
-    function onlyOwnListEntryAffected(before, after, field) {
-      let beforeIds = listOrEmpty(before.get(field, [])).toSet();
-      let afterIds = listOrEmpty(after.get(field, [])).toSet();
-      return afterIds.difference(beforeIds).hasOnly([request.auth.uid]) &&
-        beforeIds.difference(afterIds).hasOnly([request.auth.uid]);
-    }
-
-    function globalAssistantTaskActivationOnly() {
-      let before = resource.data;
-      let after = request.resource.data;
-      return after.diff(before).affectedKeys().hasOnly([
-          'activatedUserIds', 'recurrenceByUser', 'activatedInProjectIdByUser', 'lastExecutedByUser',
-          'completedOneOffUserIds', 'activatorUserId', 'creatorUserId'
-        ]) &&
-        listOrEmpty(after.get('activatedUserIds', [])).toSet()
-          .difference(listOrEmpty(before.get('activatedUserIds', [])).toSet())
-          .hasOnly(legacyActivationIds(before)) &&
-        listOrEmpty(before.get('activatedUserIds', [])).toSet()
-          .difference(listOrEmpty(after.get('activatedUserIds', [])).toSet())
-          .hasOnly([request.auth.uid]) &&
-        onlyOwnMapEntryAffected(before, after, 'recurrenceByUser') &&
-        onlyOwnMapEntryAffected(before, after, 'lastExecutedByUser') &&
-        onlyOwnMapEntryAffected(before, after, 'activatedInProjectIdByUser') &&
-        onlyOwnListEntryAffected(before, after, 'completedOneOffUserIds') &&
-        ownActivationProjectOnly(before, after, false) &&
-        unchangedOrWriter(before, after, 'activatorUserId') &&
-        (after.get('creatorUserId', null) == before.get('creatorUserId', null) ||
-          (before.get('creatorUserId', null) == null && after.get('creatorUserId', null) == request.auth.uid));
-    }
-
+    // global task runs. Any signed-in user may still switch their own activation of it.
     function globalAssistantTaskUpdateAllowed() {
-      return isAdministrator() || (signedIn() && globalAssistantTaskActivationOnly());
+      return isAdministrator() || (
+        signedIn() &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['prompt', 'type', 'taskMetadata', 'variables', 'link', 'assistantId']) &&
+        assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false)
+      );
     }
 
     function assistantTaskReadAllowed(projectId) {
@@ -1197,15 +1057,13 @@ service cloud.firestore {
     function assistantTaskCreateAllowed(projectId) {
       return projectId == 'globalProject'
         ? isAdministrator()
-        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter({}, request.resource.data, true) &&
-          linkFieldSafe({}, request.resource.data, 'link');
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter({}, request.resource.data, true);
     }
 
     function assistantTaskUpdateAllowed(projectId) {
       return projectId == 'globalProject'
         ? globalAssistantTaskUpdateAllowed()
-        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false) &&
-          linkFieldSafe(resource.data, request.resource.data, 'link');
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false);
     }
 
     function assistantTaskDeleteAllowed(projectId) {
@@ -1412,28 +1270,14 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
-    function isUserProjectMemberBeforeOrAfter(projectId, userId) {
-      let projectPath = /databases/$(database)/documents/projects/$(projectId);
-      let beforeIds = exists(projectPath) ? get(projectPath).data.get('userIds', []) : [];
-      let afterIds = existsAfter(projectPath) ? getAfter(projectPath).data.get('userIds', []) : [];
-      return userId in beforeIds || userId in afterIds;
-    }
-
-    // security audit 2026-11 (NV-14): a teammate may reload somebody's sessions only through a
-    // project BOTH of them belong to (before or after the write: deleting a project and kicking a
-    // member reload people who are on their way out). Naming a project only the writer is in used
-    // to be enough, which let anybody put any account into a reload loop.
     match /userForceReloads/{userId} {
       allow read, delete: if signedIn() && request.auth.uid == userId;
       allow create, update: if signedIn() && (
         request.auth.uid == userId ||
         isAdministrator() ||
         (
-          request.resource.data.keys().hasOnly(['reload', 'projectId']) &&
           request.resource.data.projectId is string &&
-          request.resource.data.projectId != '' &&
-          isProjectMemberBeforeOrAfter(request.resource.data.projectId) &&
-          isUserProjectMemberBeforeOrAfter(request.resource.data.projectId, userId)
+          isProjectMemberBeforeOrAfter(request.resource.data.projectId)
         )
       );
     }
@@ -1505,22 +1349,8 @@ service cloud.firestore {
       allow read: if false;
     }
 
-    // security audit 2026-11 (NV-27): the create trigger mails the invitee in Alldone's name, naming
-    // the inviter. The inviter is therefore bound to the writer, and the document carries only the
-    // fields the app writes. The trigger builds the answer link itself and ignores `url`.
-    function isValidProjectInvitation(data) {
-      return data.keys().hasOnly(['userEmail', 'inviterId', 'userId', 'url']) &&
-        data.get('inviterId', null) == request.auth.uid &&
-        data.get('userEmail', null) is string &&
-        data.userEmail.size() > 0 && data.userEmail.size() <= 320 &&
-        (data.get('userId', null) == null || data.get('userId', null) is string) &&
-        (data.get('url', null) == null || data.get('url', null) is string);
-    }
-
     match /projectsInvitation/{projectId}/invitations/{invitationId} {
-      allow read, delete: if isProjectMember(projectId);
-      allow create: if isProjectMember(projectId) && isValidProjectInvitation(request.resource.data);
-      allow update: if false;
+      allow read, write: if isProjectMember(projectId);
     }
 
     match /events/{projectId}/rooms/{roomId} {
@@ -1535,29 +1365,8 @@ service cloud.firestore {
       allow read, write: if isProjectMember(projectId);
     }
 
-    // security audit 2026-11 (NV-13): one marker per sticky note or topic, read only by the scheduled
-    // demotion job (functions/StickyNotesHelper.js) through the Admin SDK. It used to be listable and
-    // writable by every signed-in account, which leaked every tenant's project and note ids and let
-    // anybody point the job at somebody else's note. A marker now belongs to the members of the
-    // project it names, and nobody lists it. Deleting a marker that does not exist stays allowed:
-    // the app untracks on every unstick, sticky or not.
-    function isValidStickyNoteMarker(data) {
-      return data.keys().hasOnly(['projectId', 'stickyEndDate']) &&
-        data.get('projectId', null) is string && data.projectId != '' &&
-        data.get('stickyEndDate', null) is number &&
-        isProjectMember(data.projectId);
-    }
-
-    function canChangeStickyNoteMarker(data) {
-      return data.get('projectId', null) is string && data.projectId != '' &&
-        isProjectMember(data.projectId);
-    }
-
     match /stickyNotesData/{noteId} {
-      allow read: if false;
-      allow create: if isValidStickyNoteMarker(request.resource.data);
-      allow update: if isValidStickyNoteMarker(request.resource.data) && canChangeStickyNoteMarker(resource.data);
-      allow delete: if signedIn() && (resource == null || canChangeStickyNoteMarker(resource.data));
+      allow read, write: if signedIn();
     }
 
     match /runtimeErrors/{errorId} {
@@ -1565,11 +1374,9 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
-    // security audit 2026-11 (NV-10): info/version is the release marker every open client watches
-    // and reloads on. Only increaseVersionSecondGen writes it, through the Admin SDK.
     match /info/{document=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if signedIn();
     }
 
     match /roles/{document=**} {

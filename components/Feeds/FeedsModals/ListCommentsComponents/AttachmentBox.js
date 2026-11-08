@@ -3,14 +3,10 @@ import { Image, StyleSheet, View } from 'react-native'
 import * as Linking from '../../../../utils/WebShims/Linking'
 import Spinner from '../../../UIComponents/Spinner'
 import { colors } from '../../../styles/global'
-import { getSafeNavigationUrl } from '../../../../utils/safeUrl'
 
 export default function AttachmentBox({ attachment }) {
     const [imgHeight, setImgHeight] = useState(0)
-    const openLink = rawLink => {
-        // Attachment URIs come from member-written comment text (security audit 2026-11).
-        const link = getSafeNavigationUrl(rawLink)
-        if (!link) return
+    const openLink = link => {
         Linking.canOpenURL(link, '_blank').then(() => {
             if (window) {
                 return window.open(link, '_blank')
@@ -22,7 +18,7 @@ export default function AttachmentBox({ attachment }) {
 
     const linkComponent = (child, uri) => {
         return (
-            <a href={getSafeNavigationUrl(uri) || undefined} target={'_blank'} style={{ textDecoration: 'none' }}>
+            <a href={uri} target={'_blank'} style={{ textDecoration: 'none' }}>
                 {child}
             </a>
         )

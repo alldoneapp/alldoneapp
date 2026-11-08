@@ -43,7 +43,6 @@ function getTransactionLabel(source) {
         task_completion: 'Task completion',
         assistant_usage: 'Assistant usage',
         goal_unlock: 'Goal unlock',
-        guide_comment: 'Comment in a guide',
         gmail_labeling: 'Gmail labeling',
         gmail_label_follow_up: 'Gmail label follow-up',
         calendar_project_routing: 'Calendar project routing',

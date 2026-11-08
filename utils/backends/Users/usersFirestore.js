@@ -56,6 +56,7 @@ import {
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import { addUserToTemplate } from '../Projects/guidesFirestore'
 import { FOLLOWER_PROJECTS_TYPE, FOLLOWER_USERS_TYPE } from '../../../components/Followers/FollowerConstants'
+import { UNLOCK_GOAL_COST } from '../../../components/Guides/guidesHelper'
 import { updateChatAssistantWithoutFeeds, updateChatPrivacy } from '../Chats/chatsFirestore'
 import { updateNotePrivacy } from '../Notes/notesFirestore'
 import { DEFAULT_WORKSTREAM_ID } from '../../../components/Workstreams/WorkstreamHelper'
@@ -941,22 +942,56 @@ export async function setDefaultProjectId(userId, projectId) {
     }
 }
 
-// The server charges the unlock and stores the lock key in one transaction, reading the key and the
-// goal's owner from the stored goal (AT-2978, functions/Guides/unlockGuideGoal.js). The browser can
-// no longer write unlockedKeysByGuides itself.
-async function unlockGuideGoalOnServer(projectId, goalId) {
-    try {
-        return await runHttpsCallableFunction('unlockGuideGoalSecondGen', { projectId, goalId })
-    } catch (error) {
-        console.error('Failed unlocking goal', { projectId, goalId, error: error?.message })
-        return { success: false, message: error?.message || 'Failed to unlock goal' }
-    }
+async function spendGoldForGoalUnlock(userId, projectId, goalId) {
+    return await runHttpsCallableFunction('deductGoldSecondGen', {
+        gold: UNLOCK_GOAL_COST,
+        source: 'goal_unlock',
+        projectId,
+        goalId,
+        objectId: goalId,
+        channel: 'guides',
+    })
+}
+
+async function refundGoldForGoalUnlock(projectId, goalId) {
+    return await runHttpsCallableFunction('refundGoldSecondGen', {
+        gold: UNLOCK_GOAL_COST,
+        source: 'goal_unlock',
+        projectId,
+        goalId,
+        objectId: goalId,
+        channel: 'guides',
+        note: 'Goal unlock rollback',
+    })
 }
 
 export async function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId) {
-    const result = await unlockGuideGoalOnServer(projectId, goalId)
-    if (result?.success && !result.alreadyUnlocked) logEvent('UnlockGoal', { userId, goalId })
-    return result
+    const goldResult = await spendGoldForGoalUnlock(userId, projectId, goalId)
+    if (!goldResult?.success) return goldResult
+
+    try {
+        await updateUserData(
+            userId,
+            { [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey) },
+            null,
+            projectId
+        )
+    } catch (error) {
+        await refundGoldForGoalUnlock(projectId, goalId)
+        console.error('Failed unlocking goal after gold deduction', { userId, projectId, goalId, error: error.message })
+        return { success: false, message: error.message || 'Failed to unlock goal' }
+    }
+
+    logEvent('UnlockGoal', {
+        userId,
+        goalId,
+    })
+    runHttpsCallableFunction('proccessAlgoliaRecordsWhenUnlockGoalSecondGen', {
+        projectId,
+        goalId,
+    })
+
+    return goldResult
 }
 
 export const updateUserLastCommentData = async (projectId, userId, lastComment, commentType) => {
@@ -993,9 +1028,38 @@ export const resetUserLastCommentData = async (projectId, userId) => {
 }
 
 export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalId, goalOwnerId) {
-    const goldResult = await unlockGuideGoalOnServer(projectId, goalId)
+    const goldResult = await spendGoldForGoalUnlock(userUnlockingId, projectId, goalId)
     if (!goldResult?.success) return goldResult
-    if (!goldResult.alreadyUnlocked) logEvent('UnlockGoal', { userUnlockingId, goalId })
+
+    try {
+        await updateUserData(
+            goalOwnerId,
+            {
+                [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey),
+            },
+            null,
+            projectId
+        )
+    } catch (error) {
+        await refundGoldForGoalUnlock(projectId, goalId)
+        console.error('Failed unlocking goal owner after gold deduction', {
+            userUnlockingId,
+            projectId,
+            goalId,
+            goalOwnerId,
+            error: error.message,
+        })
+        return { success: false, message: error.message || 'Failed to unlock goal' }
+    }
+
+    logEvent('UnlockGoal', {
+        userUnlockingId,
+        goalId,
+    })
+    runHttpsCallableFunction('proccessAlgoliaRecordsWhenUnlockGoalSecondGen', {
+        projectId,
+        goalId,
+    })
 
     const { projectUsers } = store.getState()
 
@@ -1007,8 +1071,8 @@ export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey,
     const index = usersInProject.findIndex(user => user.uid === goalOwnerId)
     const user = usersInProject[index]
 
-    if (user && goldResult.unlockedFor === goalOwnerId && !goldResult.alreadyUnlocked) {
-        const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides) || {}
+    if (user) {
+        const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides)
         if (unlockedKeysByGuides[projectId]) {
             unlockedKeysByGuides[projectId].push(lockKey)
         } else {

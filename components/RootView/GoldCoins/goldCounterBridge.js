@@ -2,9 +2,8 @@
  * Lets the Gold counter count up coin by coin while the coins fly in, before the server has
  * confirmed the reward — then hands back to the real balance.
  *
- * The balance on the user document only changes once the server has paid the reward from its task or
- * comment trigger (functions/Gold/serverGoldRewards.js), which can be before, during or after the
- * flight. So the counter shows `base + landed` while coins are still in
+ * The balance on the user document only changes once `earnGoldSecondGen` has run, which can be
+ * before, during or after the flight. So the counter shows `base + landed` while coins are still in
  * the air (`base` is the balance when the first coin launched), and afterwards whichever is higher
  * of that and the real balance, until the real balance has caught up — or, if the reward never
  * arrives, until `SETTLE_MS` after the last landing, when it falls back to the real balance.

@@ -784,43 +784,19 @@ const linkStripeAccount = async (data, context) => {
     }
 
     // Security audit 2026-11 (stripe-link-account-unverified-email): a Stripe customer is found by
-    // its email address, so the address is the billing identity. Any other address used to let one
-    // account find, and open the billing portal of, somebody else's Stripe customer. The caller's own
-    // verified login email links directly; any other address needs the code Alldone mails to it
-    // (AT-2978, Premium/stripeLinkCode.js), which proves the mailbox is the caller's.
-    const { HttpsError } = require('firebase-functions/v2/https')
+    // its email address, so the address is the billing identity. Only the caller's own verified
+    // login email may be looked up; any other address let one account find, and open the billing
+    // portal of, somebody else's Stripe customer.
     const { getVerifiedAccountEmail } = require('../shared/verifiedAccountEmail')
     const verifiedEmail = await getVerifiedAccountEmail(userId)
     if (!verifiedEmail || verifiedEmail !== requestedEmail) {
-        const { requestStripeLinkCode, consumeStripeLinkCode, StripeLinkCodeError } = require('./stripeLinkCode')
-        const db = admin.firestore()
-        try {
-            if (!data?.code) {
-                const userDoc = await db.doc(`users/${userId}`).get()
-                const { hasStripeCustomerWithEmail } = require('../Payment/stripeHelper')
-                const { sendTransactionalEmail } = require('../SendInBlueManager')
-                await requestStripeLinkCode({
-                    db,
-                    userId,
-                    email: requestedEmail,
-                    language: userDoc.exists ? userDoc.data()?.language : '',
-                    hasStripeCustomer: hasStripeCustomerWithEmail,
-                    sendEmail: sendTransactionalEmail,
-                })
-                return {
-                    success: false,
-                    codeRequired: true,
-                    message:
-                        'If this address has a Stripe subscription, we sent a six-digit code to it. Enter the code to link it.',
-                }
-            }
-            await consumeStripeLinkCode({ db, userId, email: requestedEmail, code: data.code })
-        } catch (error) {
-            if (error instanceof StripeLinkCodeError) throw new HttpsError(error.code, error.message, error.details)
-            throw error
-        }
+        const { HttpsError } = require('firebase-functions/v2/https')
+        throw new HttpsError(
+            'permission-denied',
+            'You can only link the Stripe subscription of the email address you sign in with. If you paid with another address, please contact support.'
+        )
     }
-    const linkingEmail = requestedEmail
+    const linkingEmail = verifiedEmail
 
     functions.logger.info('Processing manual account linking', { userId, linkingEmail })
 

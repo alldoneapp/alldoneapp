@@ -501,10 +501,6 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
-    // A caller whose identity the channel could not verify (a phone call without full STIR/SHAKEN
-    // attestation) gets public, read-only tools only (shared/callerVerification.js, NV-35).
-    const { isUnverifiedCallerRuntime, restrictToolsForUnverifiedCaller } = require('../shared/callerVerification')
-    if (isUnverifiedCallerRuntime(toolRuntimeContext)) return restrictToolsForUnverifiedCaller(allowedTools)
     if (toolRuntimeContext?.writingDraft) {
         const { writingReadTools } = require('./assistantWritingTools')
         allowedTools = writingReadTools(allowedTools)
@@ -2427,14 +2423,6 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
 }
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
-    const { isUnverifiedCallerRuntime, UNVERIFIED_CALLER_TOOLS } = require('../shared/callerVerification')
-    if (isUnverifiedCallerRuntime(toolRuntimeContext)) {
-        return (
-            Array.isArray(assistantAllowedTools) &&
-            assistantAllowedTools.includes(toolName) &&
-            UNVERIFIED_CALLER_TOOLS.includes(toolName)
-        )
-    }
     if (['show_workspace', 'highlight_workspace'].includes(toolName)) {
         const { loadAnnaContext } = require('./annaWorkspace')
         return !!(await loadAnnaContext(require('firebase-admin').firestore(), toolRuntimeContext))
@@ -2722,9 +2710,9 @@ async function collectAssistantTextWithToolCalls({
 // an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
 async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
     console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
-    // The answer has already been produced, so this settles rather than gates: it always takes the
-    // full cost, even below 0, and the next run is refused until the balance is positive again
-    // (settleUsageGold, AT-2978).
+    // The answer has already been produced, so this settles rather than gates: it takes the full
+    // cost, or whatever is left of the balance, and reports the rest (settleUsageGold). A plain
+    // deductGold charged nothing when the balance fell short (security audit 2026-11).
     const { settleUsageGold } = require('../Gold/goldHelper')
 
     return await settleUsageGold(userId, goldToReduce, {
@@ -2784,8 +2772,8 @@ const reduceGoldWhenChatWithAI = async (
 
     // The full cost, never capped at `userCurrentGold`: that balance was read when the run
     // started, so capping at it billed a long run (or the second of two parallel runs) for a
-    // fraction of its cost. settleUsageGold charges it in full, even below 0 (AT-2978).
-    // `userCurrentGold` is kept in the signature for the callers' sake.
+    // fraction of its cost. settleUsageGold caps at the balance as it is NOW, in the charge's own
+    // transaction. `userCurrentGold` is kept in the signature for the callers' sake.
     const goldToReduce = calculateGoldCostFromTokens(tokens, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold calculation complete:', {
         goldToReduce,
@@ -2798,7 +2786,7 @@ const reduceGoldWhenChatWithAI = async (
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed', {
         success: !!result?.success,
         charged: result?.amount || 0,
-        newBalance: result?.newBalance,
+        uncovered: result?.uncovered || 0,
     })
     return result
 }
@@ -2905,12 +2893,9 @@ async function interactWithChatStream(
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
     // Server-authored channel controls (for example voice hangup), never supplied by model arguments.
     const additionalToolSchemas = toolRuntimeContext?.additionalToolSchemas || []
-    // An unverified caller gets no implicit tools either (no skills, no wiki).
-    const callerUnverified = require('../shared/callerVerification').isUnverifiedCallerRuntime(toolRuntimeContext)
     // load_skill is implicit (no per-assistant toggle): it becomes available whenever the
     // assistant has chat-usable skills enabled. The skill list itself is the access control.
     if (
-        !callerUnverified &&
         toolRuntimeContext?.projectId &&
         toolRuntimeContext?.assistantId &&
         !runtimeAllowedTools.includes('load_skill')
@@ -2928,9 +2913,7 @@ async function interactWithChatStream(
     // KnowledgeBase/knowledgeBaseAssistant.js for which runs may read and which may correct).
     try {
         const { getKnowledgeBaseToolNamesForRun } = require('../KnowledgeBase/knowledgeBaseAssistant')
-        const wikiToolNames = callerUnverified
-            ? []
-            : await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
+        const wikiToolNames = await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
         wikiToolNames.forEach(toolName => !runtimeAllowedTools.includes(toolName) && runtimeAllowedTools.push(toolName))
     } catch (error) {
         console.warn('[knowledge base] Wiki tool availability check failed', { error: error.message })
@@ -15004,8 +14987,6 @@ async function getOptimizedContextMessages(
             // Live calls supply their revision-bound transcript directly. Its
             // asynchronously stored copy can lag behind or duplicate spoken answers.
             if (options.excludeCallSessionId && messageData.callSessionId === options.excludeCallSessionId) continue
-            // An unverified phone caller's words are not the account holder's (NV-35).
-            if (messageData.callerUnverified === true) continue
             const { commentText, fromAssistant } = messageData
 
             if (commentText) {

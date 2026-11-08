@@ -325,7 +325,7 @@ export default function RichCommentModal({
     const done = async ({ comment, mentions, privacy, hasKarma }) => {
         if (sendingRef.current) return
         const shouldTriggerAssistant = isThreadAssistantEnabled === true
-        if (shouldTriggerAssistant && !(gold > 0)) {
+        if (shouldTriggerAssistant && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
             return

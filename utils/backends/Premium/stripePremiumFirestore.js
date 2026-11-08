@@ -198,23 +198,18 @@ export const createStripePortalSession = async () => {
  * @param {string} email - Email address used for Stripe subscription
  * @returns {Promise<Object>} Linking result
  */
-export const linkStripeAccountByEmail = async (email, code) => {
+export const linkStripeAccountByEmail = async email => {
     try {
         if (!email || !email.trim()) {
             throw new Error('Email is required for account linking')
         }
 
-        // An address other than the login email needs the code the server mails to it (AT-2978):
-        // without `code` the server sends one and answers `codeRequired`.
-        const trimmedCode = typeof code === 'string' ? code.replace(/\s/g, '') : ''
         const result = await runHttpsCallableFunction('linkStripeAccount', {
             email: email.trim().toLowerCase(),
-            ...(trimmedCode ? { code: trimmedCode } : {}),
         })
 
         return {
             success: result.success,
-            codeRequired: !!result.codeRequired,
             premiumStatus: result.premiumStatus,
             subscription: result.subscription,
             customer: result.customer,

@@ -26,9 +26,6 @@ export default function StripePremiumTab() {
     const [premiumData, setPremiumData] = useState(null)
     const [showLinkingSection, setShowLinkingSection] = useState(false)
     const [linkingEmail, setLinkingEmail] = useState('')
-    // Set once the server has mailed a code to an address that is not the login email (AT-2978).
-    const [codeSentTo, setCodeSentTo] = useState('')
-    const [linkingCode, setLinkingCode] = useState('')
 
     const isPremium = loggedUser.premium?.status === PLAN_STATUS_PREMIUM
 
@@ -107,40 +104,19 @@ export default function StripePremiumTab() {
         }
     }
 
-    const changeLinkingEmail = email => {
-        setLinkingEmail(email)
-        if (codeSentTo && email.trim().toLowerCase() !== codeSentTo) {
-            setCodeSentTo('')
-            setLinkingCode('')
-        }
-    }
-
-    const handleLinkAccount = async ({ resendCode = false } = {}) => {
+    const handleLinkAccount = async () => {
         if (!linkingEmail.trim()) {
             alert(translate('Please enter the email you used for your Stripe subscription'))
-            return
-        }
-        const waitingForCode = !!codeSentTo && !resendCode
-        if (waitingForCode && !linkingCode.trim()) {
-            alert(translate('Please enter the code we sent to this email address'))
             return
         }
 
         setIsLoading(true)
         try {
-            const result = await linkStripeAccountByEmail(linkingEmail, waitingForCode ? linkingCode : '')
-
-            if (result.codeRequired) {
-                setCodeSentTo(linkingEmail.trim().toLowerCase())
-                setLinkingCode('')
-                return
-            }
+            const result = await linkStripeAccountByEmail(linkingEmail)
 
             if (result.success) {
                 setShowLinkingSection(false)
                 setLinkingEmail('')
-                setCodeSentTo('')
-                setLinkingCode('')
                 // Refresh the premium status to show the updated state
                 await checkPremiumStatus()
                 alert(translate('Account successfully linked! Your premium subscription is now active.'))
@@ -377,49 +353,20 @@ export default function StripePremiumTab() {
                                 style={localStyles.emailInput}
                                 placeholder={translate('Email used for Stripe subscription')}
                                 value={linkingEmail}
-                                onChangeText={changeLinkingEmail}
+                                onChangeText={setLinkingEmail}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
                                 autoCorrect={false}
                             />
 
-                            {!!codeSentTo && (
-                                <TextInput
-                                    style={localStyles.emailInput}
-                                    placeholder={translate('Six-digit code from the email')}
-                                    value={linkingCode}
-                                    onChangeText={setLinkingCode}
-                                    keyboardType="number-pad"
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    maxLength={8}
-                                />
-                            )}
-
                             <Button
-                                title={translate(codeSentTo ? 'Confirm code' : 'Link Account')}
+                                title={translate('Link Account')}
                                 type="primary"
-                                onPress={() => handleLinkAccount()}
+                                onPress={handleLinkAccount}
                                 loading={isLoading}
                                 style={localStyles.linkButton}
                             />
                         </View>
-
-                        {!!codeSentTo && (
-                            <View style={localStyles.linkingCodeHint}>
-                                <Text style={localStyles.linkingDescription}>
-                                    {translate(
-                                        'If this address belongs to a Stripe subscription, we sent a six-digit code to it. The code is valid for 15 minutes.'
-                                    )}
-                                </Text>
-                                <Button
-                                    title={translate('Send a new code')}
-                                    type="ghost"
-                                    onPress={() => handleLinkAccount({ resendCode: true })}
-                                    disabled={isLoading}
-                                />
-                            </View>
-                        )}
                     </View>
                 )}
             </View>
@@ -700,10 +647,6 @@ const localStyles = StyleSheet.create({
     },
     goldPackButtonEmbedded: {
         minWidth: 220,
-    },
-    linkingCodeHint: {
-        marginTop: 12,
-        alignItems: 'flex-start',
     },
     linkingSection: {
         backgroundColor: '#FFFFFF',

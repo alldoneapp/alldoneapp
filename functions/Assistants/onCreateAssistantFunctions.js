@@ -48,16 +48,12 @@ const onCreateAssistant = async (projectId, assistant) => {
     )
     promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_created'))
     if (projectId !== GLOBAL_PROJECT_ID) {
-        // The only member of a project is the only one who can have configured it (NV-17).
-        const { confirmHeartbeatsForSoleMember } = require('../Assistant/heartbeatOptIn')
         promises.push(
-            confirmHeartbeatsForSoleMember({ db: admin.firestore(), projectId, assistantId: assistant.uid }).then(() =>
-                safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistant.uid), {
-                    source: 'assistant_created',
-                    projectId,
-                    assistantId: assistant.uid,
-                })
-            )
+            safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistant.uid), {
+                source: 'assistant_created',
+                projectId,
+                assistantId: assistant.uid,
+            })
         )
     }
     await Promise.all(promises)

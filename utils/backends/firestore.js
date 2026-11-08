@@ -369,7 +369,6 @@ import { getWorkstreamData, uploadNewMainWorkstream } from './Workstreams/workst
 import { updateChatEditionData, updateChatNote } from './Chats/chatsFirestore'
 import { unwatchProjectData, watchProjectData } from '../InitialLoad/initialLoadHelper'
 import { ROOT_ROUTES } from '../TabNavigationConstants'
-import { putAttachmentAsUploader } from './attachmentUploads'
 import {
     addFollowerToChat,
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
@@ -1060,11 +1059,9 @@ export async function inviteUserToProject(userEmail, projectId, inviterUserId) {
     ).docs
 
     if (invitations.length === 0) {
-        // firestore.rules binds the inviter to the writer (security audit 2026-11): the invitation mail
-        // names this person, so it is always the signed-in user, whatever the caller passed.
         let invitedUserData = {
             userEmail: userEmail,
-            inviterId: store.getState().loggedUser?.uid || inviterUserId,
+            inviterId: inviterUserId,
             userId: null,
             url: `${window.location.origin}/projects/${projectId}/contacts/${userEmail}/add`,
         }
@@ -2008,11 +2005,13 @@ export async function spentGold(userId, goldToReduce, context = {}) {
     })
 }
 
-// Must stay identical to getRewardGoldAmount in functions/Gold/serverGoldRewards.js: the server pays
-// exactly this amount for the same reward key, so the coins the animation shows are the coins paid.
-export function getRewardGoldAmount(maxGold, rewardKey) {
+function getRewardGoldAmount(maxGold, rewardKey) {
     const normalizedMaxGold = Number(maxGold)
-    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0 || !rewardKey) return 0
+    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0) return 0
+
+    if (!rewardKey) {
+        return Math.floor(Math.random() * normalizedMaxGold) + 1
+    }
 
     let hash = 0
     for (let i = 0; i < rewardKey.length; i++) {
@@ -2022,16 +2021,65 @@ export function getRewardGoldAmount(maxGold, rewardKey) {
     return (Math.abs(hash) % normalizedMaxGold) + 1
 }
 
-// Gold rewards are granted by the server from the task and comment triggers (AT-2978,
-// functions/Gold/serverGoldRewards.js). The browser only plays the coin animation for the reward the
-// server is about to pay; it no longer asks for anything.
-export function showGoldRewardAnimation(userId, maxGold, checkBoxId, rewardKey) {
-    const { loggedUser } = store.getState()
-    if (userId !== loggedUser.uid || !checkBoxId) return
+export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext = {}) {
+    const { selectedSidebarTab, loggedUser, route } = store.getState()
 
-    const gold = getRewardGoldAmount(maxGold, rewardKey)
-    const goldToShow = Math.min(gold, Number(loggedUser.dailyGold) || 0)
-    if (goldToShow > 0) store.dispatch(setTriggerGoldAnimation(goldToShow, checkBoxId))
+    //VALUES ARE IN THE RANGE OF 1-maxGold (INCLUDED maxGold)
+    const gold = getRewardGoldAmount(maxGold, rewardContext.rewardKey)
+
+    const goldToIncrease = gold > loggedUser.dailyGold ? loggedUser.dailyGold : gold
+    const timestamp = Number(rewardContext.timestamp) || moment().valueOf()
+    const date = moment(timestamp)
+    const slimDate = date.format('DDMMYYYY')
+    const dayDate = parseInt(date.format('YYYYMMDD'))
+
+    if (__DEV__) {
+        console.log('[gold][client] Prepared task reward call', {
+            projectId,
+            userId,
+            maxGold,
+            computedGold: gold,
+            goldToIncrease,
+            loggedUserId: loggedUser.uid,
+            loggedUserDailyGold: loggedUser.dailyGold,
+            rewardKey: rewardContext.rewardKey || '',
+            objectId: rewardContext.objectId || '',
+            objectType: rewardContext.objectType || '',
+            timestamp,
+            checkBoxId: checkBoxId || '',
+        })
+    }
+
+    if (goldToIncrease > 0) {
+        if (userId === loggedUser.uid && checkBoxId) {
+            store.dispatch(setTriggerGoldAnimation(goldToIncrease, checkBoxId))
+        }
+
+        runHttpsCallableFunction('earnGoldSecondGen', {
+            projectId,
+            userId,
+            gold,
+            slimDate,
+            timestamp,
+            dayDate,
+            rewardKey: rewardContext.rewardKey,
+            objectId: rewardContext.objectId,
+            objectType: rewardContext.objectType,
+        })
+    } else {
+        if (__DEV__) {
+            console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
+                projectId,
+                userId,
+                computedGold: gold,
+                loggedUserDailyGold: loggedUser.dailyGold,
+                rewardKey: rewardContext.rewardKey || '',
+                objectId: rewardContext.objectId || '',
+                objectType: rewardContext.objectType || '',
+                timestamp,
+            })
+        }
+    }
 }
 
 export async function updateStatistics(
@@ -3222,6 +3270,13 @@ const updateProjectStatusFeedChain = async (project, projectStatus) => {
     await batch.commit()
 }
 
+export async function uploadAttachments(commentId, attachments) {
+    for (let attachment of attachments) {
+        let attachmentRef = firebase.storage().ref(`attachments/${commentId}/${attachment.name}`)
+        attachmentRef.put(attachment)
+    }
+}
+
 export function findTask(taskId, projectsTasks) {
     // Use binary search since Firebase IDs are ordered in chronological order
     for (let projectTasks of projectsTasks) {
@@ -3318,6 +3373,31 @@ export async function deleteSubTaskFromParent(projectId, subtaskId, subtask, bat
             parentRef.update({ subtaskIds, subtaskNames })
         }
     }
+}
+
+export async function getAttachments(commentId) {
+    const attachments = []
+    const promises = []
+    return firebase
+        .storage()
+        .ref(`attachments/${commentId}`)
+        .listAll()
+        .then(folder => {
+            for (let file of folder.items) {
+                if (
+                    !file.name.match(/[\S]+_50x50(.[\w]{1,4})?$/g) &&
+                    !file.name.match(/[\S]+_300x300(.[\w]{1,4})?$/g)
+                ) {
+                    promises.push(firebase.storage().ref(file.fullPath).getDownloadURL())
+                }
+            }
+            return Promise.all(promises).then(urls => {
+                for (let i = 0; i < urls.length; ++i) {
+                    attachments.push({ name: folder.items[i].name, downloadURL: urls[i] })
+                }
+                return attachments
+            })
+        })
 }
 
 export { getStepWorkflowDirection } from './Tasks/workflowDirection'
@@ -4493,13 +4573,11 @@ export async function storeAttachment(projectId, attachment, inNotes) {
     const { name } = attachment
     const currentDateFormated = moment().format('DDMMYYYY')
     const randomHash = getId()
+    const storageRef = await firebase.storage().ref()
+    const attachmentRef = await storageRef.child(`${path}/${currentDateFormated}/${randomHash}/${name}`)
+    await attachmentRef.put(attachment)
+    const attachmentUri = await attachmentRef.getDownloadURL()
     const loggedUserId = store.getState().loggedUser.uid
-    const attachmentUri = await putAttachmentAsUploader(
-        firebase.storage().ref(),
-        `${path}/${currentDateFormated}/${randomHash}/${name}`,
-        attachment,
-        loggedUserId
-    )
     updateQuotaTraffic(projectId, loggedUserId, attachment.size / 1024 / 1024)
     return attachmentUri
 }
@@ -4509,13 +4587,11 @@ export async function storeConvertedVideos(projectId, attachment) {
     const { name } = attachment
     const currentDateFormated = moment().format('DDMMYYYY')
     const randomHash = getId()
+    const storageRef = firebase.storage().ref()
+    const attachmentRef = storageRef.child(`${path}/${currentDateFormated}/${randomHash}/${name}`)
+    await attachmentRef.put(attachment)
+    const attachmentUri = await attachmentRef.getDownloadURL()
     const loggedUserId = store.getState().loggedUser.uid
-    const attachmentUri = await putAttachmentAsUploader(
-        firebase.storage().ref(),
-        `${path}/${currentDateFormated}/${randomHash}/${name}`,
-        attachment,
-        loggedUserId
-    )
     updateQuotaTraffic(projectId, loggedUserId, attachment.size / 1024 / 1024)
     return new Promise(function (resolve, reject) {
         connectToConverter({ videoUri: attachmentUri, uri: currentDateFormated, hash: randomHash })
