@@ -597,7 +597,22 @@ not in the repo) found many callables that skip this. The first fixes:
 - `sanityCheckSecondGen`, `getLinkPreviewDataSecondGen` and `backfillLastLogin` were removed.
   `increaseVersionSecondGen` needs the administrator's Firebase ID token (`Authorization: Bearer …`, POST).
 
-Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
+- `copyTemplateObjectsSecondGen` derives everything through `Templates/templateCopyAccess.js`: the
+  template must be a template the caller can read (`isTemplate`, member or not private), the
+  copied creator is its stored `templateCreatorId`, and the guide must name it as `parentTemplateId`
+  and have the caller as a member (the join flow adds the user and links the guide before it calls).
+  A copy carries only what the template creator can see. `onCopyProjectSecondGen` needs a member of
+  the source project, the copy belongs to the caller (`CopyProject/copyProjectAccess.js`, the
+  request's `user` is ignored), and an object's note is copied only when shared with the project.
+- Feed state (`GlobalState/globalState.js`) is process-wide unless the code runs inside
+  `runWithFeedsState`, which gives the invocation its own store across awaits. A gen2 function serves
+  up to 80 requests per process, so concurrent guide copies read each other's feed creator and
+  members and followed each other's guides. The template copy runs inside it. Any other callable that
+  loads feed state and reads it again after an await has the same race and should be wrapped too.
+
+Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js`, `functions/Utils/oauthCallbackPage.test.js`,
+`templateCopyAccess.test.js`, `templateObjectVisibility.test.js`, `copyProjectAccess.test.js`,
+`copyObjectNotesVisibility.test.js` and `GlobalState/globalState.test.js`.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 

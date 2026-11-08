@@ -2752,42 +2752,34 @@ exports.copyTemplateObjectsSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const admin = require('firebase-admin')
-            const { copyDataFromTemplateToGuide } = require('./Templates/TemplatesHelper')
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        const admin = require('firebase-admin')
+        const { resolveTemplateCopyRequest } = require('./Templates/templateCopyAccess')
+        const { copyDataFromTemplateToGuide } = require('./Templates/TemplatesHelper')
+        const { runWithFeedsState } = require('./GlobalState/globalState')
 
-            const {
-                templateId,
-                creatorId,
-                guideId,
-                userId,
-                userName,
-                userPhotoUrl,
-                dateMiddleOfDay,
-                dateNow,
-                unlockedTemplate,
-                isNewGuide,
-                globalAssistantIds,
-            } = data
-            await copyDataFromTemplateToGuide(
+        // Security audit 2026-11: template, creator, guide and user are derived from stored
+        // documents and request.auth.uid, never taken from the request (templateCopyAccess.js).
+        const copy = await resolveTemplateCopyRequest(admin.firestore(), request)
+        // The copy loads feed state and reads it again after long awaits; concurrent copies in this
+        // process must not read each other's feed creator, project or members (globalState.js).
+        await runWithFeedsState(() =>
+            copyDataFromTemplateToGuide(
                 admin,
                 admin,
-                templateId,
-                creatorId,
-                guideId,
-                userId,
-                userName,
-                userPhotoUrl,
-                dateMiddleOfDay,
-                dateNow,
-                unlockedTemplate,
-                isNewGuide,
-                globalAssistantIds
+                copy.templateId,
+                copy.creatorId,
+                copy.guideId,
+                copy.userId,
+                copy.userName,
+                copy.userPhotoUrl,
+                copy.dateMiddleOfDay,
+                copy.dateNow,
+                copy.unlockedTemplate,
+                copy.isNewGuide,
+                copy.globalAssistantIds
             )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        )
     }
 )
 
@@ -5750,15 +5742,13 @@ exports.onCopyProjectSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            const admin = require('firebase-admin')
-            const { onCopyProject } = require('./CopyProject/CopyProjectHelper')
-            const { projectId, user, options } = data
-            return await onCopyProject(admin, projectId, user, options)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        const admin = require('firebase-admin')
+        const { resolveCopyProjectRequest } = require('./CopyProject/copyProjectAccess')
+        const { onCopyProject } = require('./CopyProject/CopyProjectHelper')
+        // Security audit 2026-11: only a member may copy a project, and the copy is the caller's.
+        const { projectId, user, options } = await resolveCopyProjectRequest(admin.firestore(), request)
+        return await onCopyProject(admin, projectId, user, options)
     }
 )
 
