@@ -1384,6 +1384,14 @@ instance, so any change lands within a minute.
   blocks of `artifactStore.test.js`, `serveArtifact.test.js`, `artifactModel.test.js` and
   `ArtifactDetail.test.js`.
 
+**Making a project private rotates every artifact's serve secret (security audit NV-16).** While a
+project is shared by link (`isShared` 0 or 1) non-members may read its project-visible artifact
+documents, `serveSecret` included, and the internal address is authorized by that secret alone.
+`onUpdateProjectSecondGen` therefore calls `rotateServeSecretsForProject` (`artifactStore.js`) when
+`isShared` moves INTO 2, with a `link_rotated` history entry per artifact. `publicLink` is not
+touched: it is public by intent, and whether a project's privacy should end it is an open product
+decision. Pinned by the NV-16 cases in `artifactStore.test.js`.
+
 **An HTML artifact is framed at its natural height, which only the page can report (AT-2881).**
 The frame is cross-origin and sandboxed, so the app cannot measure it. `serveArtifact` appends a
 small reporter (`Artifacts/artifactFrameHeight.js`) to an HTML response **only** when the browser

@@ -4410,6 +4410,18 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
         const oldProject = mapProjectData(projectId, event.data.before.data())
         const newProject = mapProjectData(projectId, event.data.after.data())
         const work = [onUpdateProject(projectId, oldProject, newProject)]
+        const { projectBecamePrivate, rotateServeSecretsForProject } = require('./Artifacts/artifactStore')
+        if (projectBecamePrivate(event.data.before.data(), event.data.after.data())) {
+            // Link viewers lose document access here; their copied artifact addresses must die too (NV-16).
+            work.push(
+                rotateServeSecretsForProject({ db: admin.firestore(), projectId }).catch(error =>
+                    console.error('onUpdateProject: artifact serve secrets not rotated', {
+                        projectId,
+                        error: error.message,
+                    })
+                )
+            )
+        }
         if (JSON.stringify(oldProject.userIds || []) !== JSON.stringify(newProject.userIds || [])) {
             work.push(
                 queueProjectAccessProjectionSync(admin.firestore(), projectId, newProject.userIds || [], event.id)
