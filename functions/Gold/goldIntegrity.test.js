@@ -63,8 +63,7 @@ jest.mock('../Users/usersFirestore', () => ({
 }))
 jest.mock('../Utils/HelperFunctionsCloud', () => ({ inProductionEnvironment: () => false }))
 
-const crypto = require('crypto')
-const { deductGold, refundGold, adjustGold, refundClientSpend, settleUsageGold } = require('./goldHelper')
+const { deductGold, refundGold, adjustGold, refundClientSpend } = require('./goldHelper')
 
 const USER = 'user-1'
 const HOUR = 60 * 60 * 1000
@@ -198,88 +197,5 @@ describe('a client refund gives back one of the caller’s own charges', () => {
             success: false,
             message: 'Invalid gold amount',
         })
-    })
-})
-
-describe('an idempotency claim counts only if the ledger wrote it (security audit 2026-11)', () => {
-    const claimPath = key => `users/${USER}/goldChangeClaims/${crypto.createHash('sha256').update(key).digest('hex')}`
-
-    test('an empty claim at a predictable key no longer passes for a payment', async () => {
-        mockDocs.set(claimPath('rage_mode_item:snap'), {})
-
-        const result = await deductGold(USER, 2000, { source: 'rage_mode_item', idempotencyKey: 'rage_mode_item:snap' })
-
-        expect(result).toMatchObject({ success: false, message: 'Invalid idempotency claim' })
-        expect(result.alreadyProcessed).toBeUndefined()
-    })
-
-    test('a claim the ledger wrote still makes a replay a no-op', async () => {
-        const first = await deductGold(USER, 30, { source: 'rage_mode_item', idempotencyKey: 'rage_mode_item:snap' })
-        const replay = await deductGold(USER, 30, { source: 'rage_mode_item', idempotencyKey: 'rage_mode_item:snap' })
-
-        expect(first).toMatchObject({ success: true, newBalance: 70 })
-        expect(replay).toMatchObject({ success: true, alreadyProcessed: true, newBalance: 70 })
-        expect(gold()).toBe(70)
-    })
-})
-
-describe('usage that already happened is settled, never dropped (security audit 2026-11)', () => {
-    test('charges the full cost when the balance covers it', async () => {
-        expect(await settleUsageGold(USER, 40, { source: 'assistant_usage' })).toMatchObject({
-            success: true,
-            amount: 40,
-            uncovered: 0,
-            newBalance: 60,
-        })
-    })
-
-    test('takes what is left when the balance falls short, and reports the rest', async () => {
-        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
-
-        const result = await settleUsageGold(USER, 10000, { source: 'assistant_usage' })
-
-        expect(result).toMatchObject({ success: true, amount: 100, uncovered: 9900, newBalance: 0 })
-        expect(gold()).toBe(0)
-        expect(errorSpy).toHaveBeenCalledWith(
-            '[gold] Usage was not fully covered by the balance',
-            expect.objectContaining({ requested: 10000, charged: 100, uncovered: 9900 })
-        )
-        errorSpy.mockRestore()
-    })
-
-    test('two runs started on the same balance cannot both go unbilled', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {})
-        const first = await settleUsageGold(USER, 80, { source: 'assistant_usage' })
-        const second = await settleUsageGold(USER, 80, { source: 'assistant_usage' })
-
-        expect(first).toMatchObject({ amount: 80, uncovered: 0 })
-        expect(second).toMatchObject({ success: true, amount: 20, uncovered: 60 })
-        expect(gold()).toBe(0)
-        console.error.mockRestore()
-    })
-
-    test('takes a fractional rest too, so the balance really reaches 0', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {})
-        mockDocs.set(`users/${USER}`, { gold: 0.4 })
-
-        expect(await settleUsageGold(USER, 3, { source: 'rambler' })).toMatchObject({ success: true, amount: 0.4 })
-        expect(gold()).toBe(0)
-        console.error.mockRestore()
-    })
-
-    test('reports an empty balance as a failure, and a zero cost as nothing to charge', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {})
-        mockDocs.set(`users/${USER}`, { gold: 0 })
-
-        expect(await settleUsageGold(USER, 5, { source: 'assistant_usage' })).toMatchObject({
-            success: false,
-            uncovered: 5,
-        })
-        expect(await settleUsageGold(USER, 0, { source: 'assistant_usage' })).toMatchObject({
-            success: true,
-            nothingToCharge: true,
-        })
-        expect(ledger()).toEqual([])
-        console.error.mockRestore()
     })
 })

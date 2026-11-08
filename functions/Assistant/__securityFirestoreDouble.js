@@ -2,7 +2,7 @@
 
 /**
  * Minimal in-memory Firestore for the 2026-11 security regression suites. Supports exactly what
- * the code under test touches: doc(path).get/set/update/create/delete, collection(name).doc(id) and getAll.
+ * the code under test touches: doc(path).get/set/update, collection(name).doc(id) and getAll.
  */
 function createFirestoreDouble(seed = {}) {
     const store = new Map(Object.entries(seed).map(([path, data]) => [path, { ...data }]))
@@ -23,19 +23,6 @@ function createFirestoreDouble(seed = {}) {
         update: async data => {
             writes.push({ op: 'update', path, data })
             store.set(path, { ...(store.get(path) || {}), ...data })
-        },
-        create: async data => {
-            if (store.has(path)) {
-                const error = new Error(`Document already exists: ${path}`)
-                error.code = 6
-                throw error
-            }
-            writes.push({ op: 'create', path, data })
-            store.set(path, { ...data })
-        },
-        delete: async () => {
-            writes.push({ op: 'delete', path })
-            store.delete(path)
         },
     })
 

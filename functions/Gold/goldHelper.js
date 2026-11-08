@@ -362,79 +362,6 @@ const deductGold = async (userId, gold, context = {}) => {
     return result
 }
 
-// Settles work that has ALREADY been done (an assistant answer, a dictation). deductGold is
-// all-or-nothing, so a settlement larger than the balance used to charge nothing at all, and the
-// callers ignored the failure: two runs started on the same balance were billed once, and a
-// dictation could be repeated for free at a balance of 1. The assistant path also capped the cost
-// at the balance read when the run STARTED (security audit 2026-11).
-//
-// This charges the full cost when the balance covers it, otherwise everything that is left, read
-// in the charge's own transaction. The balance then reaches 0, which every paid entry point
-// refuses, so an uncovered run cannot be repeated. The uncovered part is reported, never dropped
-// silently.
-const settleUsageGold = async (userId, cost, context = {}) => {
-    const source = context.source || 'unknown_spend'
-    const requested = Math.round(Number(cost))
-    if (!Number.isFinite(requested) || requested <= 0) {
-        return { success: true, amount: 0, uncovered: 0, nothingToCharge: true }
-    }
-
-    const userRef = admin.firestore().doc(`users/${userId}`)
-    let result = { success: false, message: 'User not found', amount: 0, uncovered: requested }
-
-    await admin.firestore().runTransaction(async transaction => {
-        const userDoc = await transaction.get(userRef)
-        if (!userDoc.exists) {
-            result = { success: false, message: 'User not found', amount: 0, uncovered: requested }
-            return
-        }
-        const userData = userDoc.data() || {}
-        // Not rounded: meeting transcription charges fractions, and a fractional rest must still
-        // be taken, or a balance of 0.4 would pass every `gold > 0` gate forever.
-        const balance = Number(userData.gold) || 0
-        const amount = Math.min(requested, balance)
-        if (amount <= 0) {
-            result = {
-                success: false,
-                message: 'Insufficient gold',
-                amount: 0,
-                uncovered: requested,
-                currentGold: balance,
-            }
-            return
-        }
-        result = {
-            ...applyGoldChangeInTransaction({
-                transaction,
-                userRef,
-                userData,
-                delta: -amount,
-                direction: 'spend',
-                source,
-                context,
-            }),
-            uncovered: requested - amount,
-        }
-    })
-
-    if (result.success) {
-        await logGoldAnalytics(userId, 'spend_gold', result.amount, source, context)
-    }
-    if (result.uncovered > 0) {
-        console.error('[gold] Usage was not fully covered by the balance', {
-            userId,
-            source,
-            requested,
-            charged: result.amount || 0,
-            uncovered: result.uncovered,
-            projectId: context.projectId || '',
-            objectId: context.objectId || '',
-        })
-    }
-
-    return result
-}
-
 const refundGold = async (userId, gold, context = {}) => {
     console.log('refundGold: starting refund', { userId, gold, source: context.source || 'manual_refund' })
 
@@ -570,7 +497,6 @@ module.exports = {
     earnGold,
     resetDailyGoldLimit,
     deductGold,
-    settleUsageGold,
     refundGold,
     refundClientSpend,
     getGoldChangeClaim,

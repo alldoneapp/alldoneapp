@@ -250,14 +250,8 @@ const processRambleSecondGen = onCall(
             modelKey,
         })
         const billingStartedAt = Date.now()
-        // Transcription and cleanup are already paid for upstream, so this settles: the full cost,
-        // or whatever is left when the balance falls short. A short balance used to charge nothing
-        // and withhold the text, so the same dictation could be retried for free forever at a
-        // balance of 1; now it empties the balance, the text is delivered once, and the gold <= 0
-        // check above refuses the next one (security audit 2026-11). Only a balance that is already
-        // empty here still withholds the text.
-        const { settleUsageGold } = require('../Gold/goldHelper')
-        const goldResult = await settleUsageGold(auth.uid, goldCost, {
+        const { deductGold } = require('../Gold/goldHelper')
+        const goldResult = await deductGold(auth.uid, goldCost, {
             source: RAMBLER_GOLD_SOURCE,
             channel: normalizedTargetKind,
             projectId,

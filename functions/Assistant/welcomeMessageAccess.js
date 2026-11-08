@@ -14,14 +14,6 @@
  * here: the caller must be able to read the welcome chat, notifications only go to current
  * project members, the greeted user's name comes from their own user document, and the task
  * link origin must be an Alldone app origin.
- *
- * The run is platform-paid on purpose (no Gold is charged): it is the greeting a guide posts when
- * somebody joins, the joiner did not ask for it, and a newcomer without Gold must still get it.
- * What keeps that from being a free assistant (security audit 2026-11,
- * assistantWelcomeMessageForGuide.js:uncharged-assistant-run): the project must be a guide, the
- * guide name in the prompt comes from the stored template or guide, not from the request, and
- * each greeting runs once (`claimWelcomeMessage`): the group welcome once per guide, the personal
- * welcome once per guide and member. A repeat call returns without a model call.
  */
 
 const { HttpsError } = require('firebase-functions/v2/https')
@@ -30,8 +22,6 @@ const { isAllowedRedirectTarget } = require('../WebApp/openInBrowserTab')
 
 const DEFAULT_APP_ORIGIN = 'https://my.alldone.app'
 const MAX_NAME_LENGTH = 200
-// Server-only (no client rule, so firestore.rules' default deny applies).
-const WELCOME_CLAIMS_COLLECTION = 'assistantWelcomeMessageClaims'
 
 function requireString(value, field) {
     if (typeof value !== 'string' || !value.trim()) {
@@ -75,15 +65,9 @@ async function resolveWelcomeMessageRequest(db, request, { greetCaller = false }
         db.doc(`projects/${projectId}`).get(),
         greetCaller ? db.doc(`users/${uid}`).get() : Promise.resolve(null),
     ])
-    const projectData = projectDoc.exists ? projectDoc.data() || {} : {}
-    const parentTemplateId = typeof projectData.parentTemplateId === 'string' ? projectData.parentTemplateId : ''
-    if (!parentTemplateId) throw new HttpsError('failed-precondition', 'Welcome messages are only posted in guides')
-    const templateDoc = await db.doc(`projects/${parentTemplateId}`).get()
-    // The app sends the template's name; read it rather than take it from the request.
-    const guideName =
-        optionalString(templateDoc.exists ? templateDoc.data()?.name : '') || optionalString(projectData.name)
-
-    const memberIds = new Set(Array.isArray(projectData.userIds) ? projectData.userIds : [])
+    const memberIds = new Set(
+        projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
+    )
     const requestedRecipients = Array.isArray(data.userIdsToNotify) ? data.userIdsToNotify : []
     const userIdsToNotify = [...new Set(requestedRecipients.filter(id => typeof id === 'string' && memberIds.has(id)))]
 
@@ -92,7 +76,7 @@ async function resolveWelcomeMessageRequest(db, request, { greetCaller = false }
         projectId,
         objectId,
         userIdsToNotify,
-        guideName,
+        guideName: optionalString(data.guideName),
         language: optionalString(data.language, 64) || 'english',
         assistantId: typeof data.assistantId === 'string' ? data.assistantId.trim() : '',
     }
@@ -106,51 +90,8 @@ async function resolveWelcomeMessageRequest(db, request, { greetCaller = false }
     return resolved
 }
 
-function getWelcomeClaimRef(db, resolved, { greetCaller = false } = {}) {
-    const scope = greetCaller ? `user__${resolved.callerUid}` : 'guide'
-    return db.doc(`${WELCOME_CLAIMS_COLLECTION}/${resolved.projectId}__${scope}`)
-}
-
-// True when this call may run the greeting; false when it already ran (or is running).
-async function claimWelcomeMessage(db, resolved, options = {}) {
-    try {
-        await getWelcomeClaimRef(db, resolved, options).create({
-            projectId: resolved.projectId,
-            objectId: resolved.objectId,
-            userId: resolved.callerUid,
-            createdAt: Date.now(),
-        })
-        return true
-    } catch (error) {
-        if (error?.code === 6 || error?.code === 'already-exists') return false
-        throw error
-    }
-}
-
-// A run that failed gives its claim back, so the greeting is not lost to a transient error.
-async function releaseWelcomeMessage(db, resolved, options = {}) {
-    try {
-        await getWelcomeClaimRef(db, resolved, options).delete()
-    } catch (error) {
-        console.warn('welcomeMessageAccess: could not release the claim', { error: error?.message })
-    }
-}
-
-async function runWelcomeMessageOnce(db, resolved, options, run) {
-    if (!(await claimWelcomeMessage(db, resolved, options))) return { skipped: 'already_welcomed' }
-    try {
-        return await run()
-    } catch (error) {
-        await releaseWelcomeMessage(db, resolved, options)
-        throw error
-    }
-}
-
 module.exports = {
     resolveWelcomeMessageRequest,
-    claimWelcomeMessage,
-    runWelcomeMessageOnce,
-    WELCOME_CLAIMS_COLLECTION,
     resolveAppOrigin,
     DEFAULT_APP_ORIGIN,
 }

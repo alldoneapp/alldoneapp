@@ -21,7 +21,9 @@ export default function VmGoldenProperty({ project, disabled }) {
     if (!repoConnected) return null
 
     const building = busy || (golden && golden.rebuildState === 'building')
-    const ready = !!(golden && golden.status === 'ready' && golden.snapshotId)
+    // project.vmGolden is a display mirror written by the server (the snapshot pointer itself is
+    // server-only since the 2026-11 security audit); `snapshotId` covers a mirror not yet rewritten.
+    const ready = !!(golden && golden.status === 'ready' && (golden.hasSnapshot || golden.snapshotId))
     const failed = !!(golden && golden.status === 'failed')
 
     let statusText

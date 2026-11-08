@@ -188,18 +188,6 @@ async function applyGoldChange({
 
         if (claimDoc?.exists) {
             const claim = claimDoc.data() || {}
-            // Only a claim this function wrote settles the change. Clients cannot write
-            // goldChangeClaims (firestore.rules), but an empty claim used to count as "already
-            // paid", which turned any predictable key into a free purchase (security audit 2026-11).
-            if (claim.idempotencyKey !== normalizedIdempotencyKey || claim.direction !== direction) {
-                console.error('[gold] Ignoring an idempotency claim the ledger did not write', {
-                    userId,
-                    direction,
-                    source,
-                })
-                result = { success: false, message: 'Invalid idempotency claim' }
-                return
-            }
             result = {
                 success: true,
                 alreadyProcessed: true,

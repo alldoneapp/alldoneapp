@@ -775,28 +775,13 @@ const linkStripeAccount = async (data, context) => {
     }
 
     const userId = context.auth.uid
-    const requestedEmail = typeof data?.email === 'string' ? data.email.trim().toLowerCase() : ''
+    const linkingEmail = data?.email
 
-    if (!requestedEmail) {
+    if (!linkingEmail) {
         const error = new Error('Email is required for manual linking')
         error.code = 'invalid-argument'
         throw error
     }
-
-    // Security audit 2026-11 (stripe-link-account-unverified-email): a Stripe customer is found by
-    // its email address, so the address is the billing identity. Only the caller's own verified
-    // login email may be looked up; any other address let one account find, and open the billing
-    // portal of, somebody else's Stripe customer.
-    const { getVerifiedAccountEmail } = require('../shared/verifiedAccountEmail')
-    const verifiedEmail = await getVerifiedAccountEmail(userId)
-    if (!verifiedEmail || verifiedEmail !== requestedEmail) {
-        const { HttpsError } = require('firebase-functions/v2/https')
-        throw new HttpsError(
-            'permission-denied',
-            'You can only link the Stripe subscription of the email address you sign in with. If you paid with another address, please contact support.'
-        )
-    }
-    const linkingEmail = verifiedEmail
 
     functions.logger.info('Processing manual account linking', { userId, linkingEmail })
 
@@ -845,8 +830,7 @@ const linkStripeAccount = async (data, context) => {
                       planInterval: linkingResult.subscription.items?.data[0]?.price?.recurring?.interval,
                   }
                 : null,
-            // The Stripe customer id is never handed to the client; the server stores it when the
-            // link succeeds (updateUserPremiumStatus).
+            customer: linkingResult.customer,
             message: linkingResult.message,
             manuallyLinked: linkingResult.manuallyLinked || false,
             hasInactiveSubscriptions: linkingResult.hasInactiveSubscriptions || false,

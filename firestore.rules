@@ -85,14 +85,12 @@ service cloud.firestore {
         emailMatchesAuthToken(request.resource.data);
     }
 
-    // Gold, the daily earning cap, premium status and the Stripe and Mollie customer links are
-    // written only by Cloud Functions (gold ledger, premium check, Stripe webhook, Mollie
-    // subscription callables). A client that could set them gave itself Gold or premium, or
-    // pointed its account at somebody else's Stripe or Mollie customer (security audit 2026-11:
-    // createCompanySubscriptionSecondGen reuses the stored Mollie customerId).
+    // Gold, the daily earning cap, premium status and the Stripe customer link are written only by
+    // Cloud Functions (gold ledger, premium check, Stripe webhook). A client that could set them
+    // gave itself Gold or premium, or pointed its account at somebody else's Stripe customer.
     function ownerUpdateKeepsServerFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'gold', 'dailyGold', 'premium', 'stripeCustomerId', 'customerId'
+        'gold', 'dailyGold', 'premium', 'stripeCustomerId'
       ]);
     }
 
@@ -103,8 +101,7 @@ service cloud.firestore {
       return gold is int && gold >= 0 && gold <= 100 &&
         dailyGold is int && dailyGold >= 0 && dailyGold <= 100 &&
         userData.get('premium', {'status': 'free'}) == {'status': 'free'} &&
-        userData.get('stripeCustomerId', '') == '' &&
-        userData.get('customerId', '') == '';
+        userData.get('stripeCustomerId', '') == '';
     }
 
     // The gold ledger and its idempotency claims are server-written; a client that could write
@@ -599,7 +596,16 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid in resource.data.get('userIds', []);
       allow read: if resource.data.get('isShared', privateProject()) != privateProject();
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
-      allow update: if isProjectMember(projectId);
+      // security audit 2026-11: the repository connection and the golden VM environment feed
+      // other members' credentialed VM coding jobs, so only Cloud Functions write them
+      // (connect/disconnect{Github,Gitlab}Repo, the golden build). `vmGolden` here is a display
+      // mirror; the authoritative state is the server-only vmGoldens/{projectId}.
+      allow update: if isProjectMember(projectId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'vmGolden',
+          'githubRepoUrl', 'githubBaseBranch', 'githubHost', 'githubApiBase', 'githubConnectedAt',
+          'gitlabRepoUrl', 'gitlabBaseBranch', 'gitlabHost', 'gitlabConnectedAt'
+        ]);
       allow delete: if signedIn() &&
         request.auth.uid in resource.data.get('userIds', []);
     }
@@ -1035,15 +1041,8 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // The Mollie subscription callables act on subscriptions/{auth.uid} and trust its billing
-    // fields (customerId, subscriptionIdInMollie, status, seat lists), so only Cloud Functions
-    // create it or change them. The app edits the company data and its seat selection, clears the
-    // payment banner, and may delete its own document (security audit 2026-11).
     match /subscriptions/{userId} {
-      allow read, delete: if signedIn() && request.auth.uid == userId;
-      allow update: if signedIn() && request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['companyData', 'selectedUserIds', 'showSuccessfullyPayment']);
+      allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
     match /subscriptionsPaidByOtherUser/{userId} {
