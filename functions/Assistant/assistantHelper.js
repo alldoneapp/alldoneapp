@@ -13656,11 +13656,10 @@ function inferMimeTypeFromFileName(fileName = '') {
     return 'application/octet-stream'
 }
 
+// Security audit 2026-11 (#20): the URL comes from a member-written comment, so only this project's
+// Storage bucket is fetched and redirects are refused (shared/storageMediaUrl.js).
 async function fetchBinaryFileAsBase64(fileUrl, fileName = '', maxSizeBytes = MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES) {
-    const response = await fetch(fileUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(30000),
-    })
+    const response = await require('../shared/storageMediaUrl').fetchStorageMedia(fileUrl)
 
     if (!response.ok) {
         throw new Error(`File fetch failed with HTTP ${response.status}`)
@@ -13683,10 +13682,7 @@ async function fetchBinaryFileAsBase64(fileUrl, fileName = '', maxSizeBytes = MA
 }
 
 async function fetchBinaryFileBuffer(fileUrl, fileName = '', maxSizeBytes = MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES) {
-    const response = await fetch(fileUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(30000),
-    })
+    const response = await require('../shared/storageMediaUrl').fetchStorageMedia(fileUrl)
 
     if (!response.ok) {
         throw new Error(`File fetch failed with HTTP ${response.status}`)
