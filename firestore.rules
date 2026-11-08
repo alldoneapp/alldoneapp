@@ -622,6 +622,85 @@ service cloud.firestore {
         request.auth.uid in resource.data.get('userIds', []);
     }
 
+    // Security audit 2026-11: Firestore triggers have no request.auth. Every task field that a
+    // trigger treats as "the user who asked for this" (and then spends that user's Gold, reads
+    // that user's private goals or rules, or runs an assistant with that user's tools) has to be
+    // bound to the writer HERE, at the moment it is written. Each rule below fires only when the
+    // field is written (present on create, changed on update), so writes that leave it alone, and
+    // Admin SDK writes, are unaffected. Pinned by the `task identity fields` block of
+    // __tests__/Firestore/firestoreRules.emulator.test.js.
+
+    // Automatic project routing (functions/Tasks/taskProjectRouting.js) acts as creatorId.
+    function projectRoutingRequestBoundToWriter(data) {
+      return !(data.get('projectRouting', null) is map &&
+          data.projectRouting.get('status', null) == 'pending') ||
+        data.get('creatorId', null) == request.auth.uid;
+    }
+
+    function goalRoutingEligible(data) {
+      return data.get('parentId', null) == null &&
+        data.get('isSubtask', false) != true &&
+        data.get('parentGoalId', null) == null &&
+        data.get('done', false) != true &&
+        data.get('inDone', false) != true &&
+        data.get('goalSuggestion', null) == null;
+    }
+
+    // Automatic goal routing (functions/Tasks/taskGoalRouting.js) acts only for a created task
+    // whose creatorId equals its lastEditorId; a client may only create such a task as itself.
+    function goalRoutingIdentityBoundToWriter(data) {
+      let creatorId = data.get('creatorId', null);
+      return creatorId == null || creatorId == '' || creatorId == request.auth.uid ||
+        creatorId != data.get('lastEditorId', null) ||
+        !goalRoutingEligible(data);
+    }
+
+    function calendarRoutingMarker(data, markerName) {
+      return data.get('calendarData', null) is map ? data.calendarData.get(markerName, null) : null;
+    }
+
+    // Calendar routing feedback rewrites the requester's private routing rules.
+    function calendarRoutingMarkerBoundToWriter(before, after, markerName) {
+      let marker = calendarRoutingMarker(after, markerName);
+      return marker == null || marker == calendarRoutingMarker(before, markerName) ||
+        (marker is map && marker.get('requestedByUserId', '') == request.auth.uid);
+    }
+
+    // An AI workflow run is paid for by, and acts as, workflowPayerUserId.
+    function workflowPayerBoundToWriter(before, after) {
+      let payer = after.get('workflowPayerUserId', null);
+      return payer == null || payer == before.get('workflowPayerUserId', null) ||
+        payer == request.auth.uid;
+    }
+
+    // Moving an assistant workflow task (workflowTask) into a step makes the mover the payer:
+    // otherwise a co-member could re-enter an AI step and spend a payer stamped earlier.
+    // Moves to Open (-1) and Done (-2) start no run.
+    function workflowTransitionPaidByWriter(before, after) {
+      let steps = after.get('stepHistory', []);
+      return !(after.get('workflowTask', false) == true &&
+          after.get('parentId', null) == null &&
+          steps is list && steps.size() > 0 &&
+          steps != before.get('stepHistory', []) &&
+          !(steps[steps.size() - 1] in [-1, -2])) ||
+        after.get('workflowPayerUserId', null) == request.auth.uid;
+    }
+
+    // A prompt override names its author; the server runs it only as that author.
+    function workflowPromptOverrideBoundToWriter(before, after) {
+      let override = after.get('workflowAiPromptOverride', null);
+      return override == null || override == before.get('workflowAiPromptOverride', null) ||
+        (override is map && override.get('requestedByUserId', request.auth.uid) == request.auth.uid);
+    }
+
+    function taskIdentityFieldsBoundToWriter(before, after) {
+      return calendarRoutingMarkerBoundToWriter(before, after, 'projectRoutingFeedback') &&
+        calendarRoutingMarkerBoundToWriter(before, after, 'goalRoutingFeedback') &&
+        workflowPayerBoundToWriter(before, after) &&
+        workflowTransitionPaidByWriter(before, after) &&
+        workflowPromptOverrideBoundToWriter(before, after);
+    }
+
     match /items/{projectId}/tasks/{taskId} {
       allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
@@ -629,13 +708,17 @@ service cloud.firestore {
       allow create: if
         request.resource.data.get('projectId', '') == projectId &&
         canCreateObjectWithProject(projectId, request.resource.data) &&
-        accessProjectionAbsent(request.resource.data);
+        accessProjectionAbsent(request.resource.data) &&
+        projectRoutingRequestBoundToWriter(request.resource.data) &&
+        goalRoutingIdentityBoundToWriter(request.resource.data) &&
+        taskIdentityFieldsBoundToWriter({}, request.resource.data);
       allow update: if
         resource.data.get('projectId', '') == projectId &&
         request.resource.data.get('projectId', '') == projectId &&
         canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) &&
-        accessProjectionUnchanged();
+        accessProjectionUnchanged() &&
+        taskIdentityFieldsBoundToWriter(resource.data, request.resource.data);
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
@@ -882,12 +965,110 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Security audit 2026-11: the recurring-task scheduler (functions/Assistant/
+    // assistantRecurringTasks.js) runs a task's prompt AS every user its activation fields name,
+    // in the project they name for that user. Those fields are therefore bound to their writer:
+    // a client may add or change only its own activation entry (removing someone else's only
+    // stops a run), may point its own entry only at a project it belongs to, and may name only
+    // itself as activator, creator or userId. A legacy task without explicit activation state
+    // runs for activatorUserId/creatorUserId/userId, so materializing exactly those ids into
+    // activatedUserIds is no escalation and stays allowed.
+    function listOrEmpty(value) {
+      return value is list ? value : [];
+    }
+
+    function mapOrEmpty(value) {
+      return value is map ? value : {};
+    }
+
+    function addedOnlyOwnMapKeys(before, after, field) {
+      let beforeMap = mapOrEmpty(before.get(field, {}));
+      let afterMap = mapOrEmpty(after.get(field, {}));
+      let changes = afterMap.diff(beforeMap);
+      return changes.addedKeys().union(changes.changedKeys()).hasOnly([request.auth.uid]);
+    }
+
+    function legacyActivationIds(before) {
+      return before.get('activatedUserIds', null) == null && before.get('recurrenceByUser', null) == null
+        ? [request.auth.uid, before.get('activatorUserId', null), before.get('creatorUserId', null),
+            before.get('userId', null)]
+        : [request.auth.uid];
+    }
+
+    function unchangedOrWriter(before, after, field) {
+      return after.get(field, null) == before.get(field, null) || after.get(field, null) == request.auth.uid;
+    }
+
+    // The shared activatedInProjectId is where every legacy activation without a per-user entry
+    // runs, so only a writer who also names itself activator may move it.
+    function ownActivationProjectOnly(before, after, isCreate) {
+      let afterProjects = mapOrEmpty(after.get('activatedInProjectIdByUser', {}));
+      let ownProject = afterProjects.get(request.auth.uid, null);
+      let sharedProject = after.get('activatedInProjectId', null);
+      return addedOnlyOwnMapKeys(before, after, 'activatedInProjectIdByUser') &&
+        (ownProject == null ||
+          ownProject == mapOrEmpty(before.get('activatedInProjectIdByUser', {})).get(request.auth.uid, null) ||
+          (ownProject is string && isProjectMember(ownProject))) &&
+        (sharedProject == null || sharedProject == before.get('activatedInProjectId', null) ||
+          (sharedProject is string && isProjectMember(sharedProject) &&
+            (isCreate || after.get('activatorUserId', null) == request.auth.uid)));
+    }
+
+    function assistantTaskActivationBoundToWriter(before, after, isCreate) {
+      return listOrEmpty(after.get('activatedUserIds', [])).toSet()
+          .difference(listOrEmpty(before.get('activatedUserIds', [])).toSet())
+          .hasOnly(legacyActivationIds(before)) &&
+        addedOnlyOwnMapKeys(before, after, 'recurrenceByUser') &&
+        addedOnlyOwnMapKeys(before, after, 'lastExecutedByUser') &&
+        ownActivationProjectOnly(before, after, isCreate) &&
+        unchangedOrWriter(before, after, 'activatorUserId') &&
+        unchangedOrWriter(before, after, 'creatorUserId') &&
+        unchangedOrWriter(before, after, 'userId');
+    }
+
+    // The global catalog is curated: only the administrator creates, deletes or changes what a
+    // global task runs. Any signed-in user may still switch their own activation of it.
+    function globalAssistantTaskUpdateAllowed() {
+      return isAdministrator() || (
+        signedIn() &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['prompt', 'type', 'taskMetadata', 'variables', 'link', 'assistantId']) &&
+        assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false)
+      );
+    }
+
+    function assistantTaskReadAllowed(projectId) {
+      return projectId == 'globalProject' ? signedIn() : isProjectMember(projectId);
+    }
+
+    function assistantTaskCreateAllowed(projectId) {
+      return projectId == 'globalProject'
+        ? isAdministrator()
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter({}, request.resource.data, true);
+    }
+
+    function assistantTaskUpdateAllowed(projectId) {
+      return projectId == 'globalProject'
+        ? globalAssistantTaskUpdateAllowed()
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false);
+    }
+
+    function assistantTaskDeleteAllowed(projectId) {
+      return projectId == 'globalProject' ? isAdministrator() : isProjectMember(projectId);
+    }
+
     match /assistantTasks/{projectId}/{assistantId}/{taskId} {
-      allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
+      allow read: if assistantTaskReadAllowed(projectId);
+      allow create: if assistantTaskCreateAllowed(projectId);
+      allow update: if assistantTaskUpdateAllowed(projectId);
+      allow delete: if assistantTaskDeleteAllowed(projectId);
     }
 
     match /assistantTasks/{projectId}/preConfigTasks/{taskId} {
-      allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
+      allow read: if assistantTaskReadAllowed(projectId);
+      allow create: if assistantTaskCreateAllowed(projectId);
+      allow update: if assistantTaskUpdateAllowed(projectId);
+      allow delete: if assistantTaskDeleteAllowed(projectId);
     }
 
     match /projectHappiness/{projectId}/users/{userId}/days/{dayId} {

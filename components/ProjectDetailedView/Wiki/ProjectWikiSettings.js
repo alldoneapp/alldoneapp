@@ -226,6 +226,11 @@ export default function ProjectWikiSettings({ project }) {
                     {translate('Wiki paused while its payer is inactive')}
                 </Text>
             )}
+            {settings.pausedForDepartedOwner && (
+                <Text testID="project-wiki-departed-payer-hint" style={localStyles.hint}>
+                    {translate('Wiki paused because its payer left the project')}
+                </Text>
+            )}
             {!canManage && (
                 <Text style={localStyles.hint}>{translate('Only the paying member can change the wiki')}</Text>
             )}

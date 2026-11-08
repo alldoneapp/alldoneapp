@@ -722,6 +722,23 @@ describe('runKnowledgeBaseIngest', () => {
         expect(db.read(KB_PATH)).not.toHaveProperty('leaseOwner')
     })
 
+    it('never charges a payer who was removed from the project, and pauses (security audit 2026-11)', async () => {
+        const db = createDb({
+            [`projects/${PROJECT_ID}`]: { name: 'Alldone Product', userIds: ['teammate'] },
+            ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - DAY },
+            [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+        })
+        const { runConversation } = scriptedModel()
+        const charge = jest.fn()
+
+        const result = await run(db, { runConversation, charge })
+
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(charge).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'owner_not_member', nextRunAt: null })
+        expect(db.read(KB_PATH)).toMatchObject({ nextRunAt: null, lastRunStopReason: 'owner_not_member' })
+    })
+
     it('keeps a refresh requested while a paused run was going, instead of making it due forever', async () => {
         const db = createDb({ ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - 31 * DAY } })
         let ticks = 0

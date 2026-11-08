@@ -50,6 +50,7 @@ const {
     getKnowledgeBasePath,
     isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
+    isKnowledgeBasePausedForDepartedOwner,
     isProjectArchivedForUser,
 } = require('./knowledgeBaseModel')
 const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
@@ -100,7 +101,11 @@ async function resolveDefaultOwner({ projectId, project, userId, userData, loadU
 
 // isKnowledgeBasePausedForArchivedProject only matches wikis paused before AT-2893.
 function isKnowledgeBasePaused(data) {
-    return isKnowledgeBasePausedForInactiveOwner(data) || isKnowledgeBasePausedForArchivedProject(data)
+    return (
+        isKnowledgeBasePausedForInactiveOwner(data) ||
+        isKnowledgeBasePausedForDepartedOwner(data) ||
+        isKnowledgeBasePausedForArchivedProject(data)
+    )
 }
 
 function buildDefaultKnowledgeBase({ projectId, ownerUserId, ownerData, now }) {

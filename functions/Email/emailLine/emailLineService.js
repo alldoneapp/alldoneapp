@@ -821,6 +821,21 @@ async function getTaskService() {
 // project: the label's mapped project from the audit record when the user is still a
 // member, else the connection's project. Gold is deducted after summarization and
 // refunded if task persistence fails (mirrors draftReply).
+/**
+ * The first of `candidateProjectIds` whose projects/{id}.userIds lists the user, or null.
+ */
+async function pickMemberProjectId(db, userId, candidateProjectIds) {
+    const seen = new Set()
+    for (const projectId of candidateProjectIds) {
+        if (typeof projectId !== 'string' || !projectId || seen.has(projectId)) continue
+        seen.add(projectId)
+        const snapshot = await db.doc(`projects/${projectId}`).get()
+        const userIds = snapshot.exists ? (snapshot.data() || {}).userIds : null
+        if (Array.isArray(userIds) && userIds.includes(userId)) return projectId
+    }
+    return null
+}
+
 async function createTaskFromEmail({ userId, projectId, connection, userData, messageId, messageIds, labelName }) {
     const candidateMessageIds = [
         ...new Set([messageId, ...(Array.isArray(messageIds) ? messageIds : [])].filter(Boolean)),
@@ -911,8 +926,21 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
           })
     const configuredLabelProjectId = configuredLabelProject?.projectId || ''
     const labelProjectId = auditProjectId || configuredLabelProjectId
-    const targetProjectId =
+    const preferredProjectId =
         labelProjectId && memberProjectIds.includes(labelProjectId) ? labelProjectId : connectionProjectId
+    // Security audit 2026-11: the connection's default project and users/{uid}.projectIds are the
+    // user's own, owner-writable records. The task (and its feeds) is written with the Admin SDK and
+    // is project-public, so it may only land in a project whose own member list names the user.
+    const targetProjectId = await pickMemberProjectId(admin.firestore(), userId, [
+        preferredProjectId,
+        connectionProjectId,
+        userData?.defaultProjectId,
+    ])
+    if (!targetProjectId) {
+        const error = new Error('NO_PROJECT_ACCESS')
+        error.code = 'NO_PROJECT_ACCESS'
+        throw error
+    }
 
     const webUrl =
         connection.provider === 'microsoft'
@@ -1133,6 +1161,7 @@ module.exports = {
     performEmailLineAction,
     draftReply,
     createTaskFromEmail,
+    pickMemberProjectId,
     getTaskForEmail,
     getProviderModule,
     GOLD_SOURCE_DRAFT_REPLY,

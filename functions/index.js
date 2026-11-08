@@ -4905,7 +4905,8 @@ exports.retryWorkflowAiRunSecondGen = onCall(
 
         await assertObjectAccess(admin.firestore(), auth.uid, projectId, 'tasks', taskId)
         const { retryFailedWorkflowAiRun } = require('./Tasks/workflowAiStep')
-        const runId = await retryFailedWorkflowAiRun(projectId, taskId)
+        // The signed-in caller pays for (and acts in) a retried assistant workflow run.
+        const runId = await retryFailedWorkflowAiRun(projectId, taskId, auth.uid)
         return { success: true, runId }
     }
 )
@@ -6813,14 +6814,23 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service, returnUrl, connectionId } = data
+        const { projectId, service, returnUrl, connectionId } = data || {}
         const userId = auth.uid
+        if (!projectId && !connectionId) {
+            throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
+        }
 
         try {
+            // Security audit 2026-11: the project a connection is bound to becomes the destination
+            // of Admin SDK writes (calendar and email-line tasks), so only a member may bind one,
+            // exactly as microsoftOAuthInitiate already required.
+            if (projectId) await assertProjectAccess(userId, projectId)
+            else await assertConnectionAccess(userId, connectionId)
             const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
+            if (error instanceof HttpsError) throw error
             throw new HttpsError('internal', `Failed to initiate OAuth: ${error.message}`)
         }
     }

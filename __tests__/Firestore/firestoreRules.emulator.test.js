@@ -2528,3 +2528,233 @@ describe('the linked-upload index is server-only', () => {
         )
     })
 })
+
+// Security audit 2026-11: Firestore triggers act on these task fields AS the user they name, and a
+// trigger has no request.auth. Each field is therefore bound to its writer when it is written.
+describe('task identity fields', () => {
+    const memberDb = () => testEnv.authenticatedContext(MEMBER_ID).firestore()
+    const taskRef = (db, taskId) => doc(db, `items/${PROJECT_ID}/tasks/${taskId}`)
+    const baseTask = (overrides = {}) => ({ projectId: PROJECT_ID, isPublicFor: [0], name: 'Task', ...overrides })
+
+    it('lets a client request automatic project routing only as the creator', async () => {
+        const pending = { status: 'pending', source: 'automatic_project_option' }
+
+        await assertFails(
+            setDoc(taskRef(memberDb(), 'routed-1'), baseTask({ creatorId: TEAMMATE_ID, projectRouting: pending }))
+        )
+        await assertSucceeds(
+            setDoc(taskRef(memberDb(), 'routed-2'), baseTask({ creatorId: MEMBER_ID, projectRouting: pending }))
+        )
+    })
+
+    it('lets a client create a goal-routable task as somebody else only if it does not look like their own', async () => {
+        await assertFails(
+            setDoc(taskRef(memberDb(), 'goal-1'), baseTask({ creatorId: TEAMMATE_ID, lastEditorId: TEAMMATE_ID }))
+        )
+        // A copy keeps the original creator; the copier is its last editor.
+        await assertSucceeds(
+            setDoc(taskRef(memberDb(), 'goal-2'), baseTask({ creatorId: TEAMMATE_ID, lastEditorId: MEMBER_ID }))
+        )
+        // Subtasks are never goal-routed.
+        await assertSucceeds(
+            setDoc(
+                taskRef(memberDb(), 'goal-3'),
+                baseTask({ creatorId: TEAMMATE_ID, lastEditorId: TEAMMATE_ID, parentId: 'parent' })
+            )
+        )
+        await assertSucceeds(
+            setDoc(taskRef(memberDb(), 'goal-4'), baseTask({ creatorId: MEMBER_ID, lastEditorId: MEMBER_ID }))
+        )
+    })
+
+    it('binds calendar routing feedback to its writer', async () => {
+        const marker = requestedByUserId => ({ requestedByUserId, feedbackId: requestedByUserId })
+
+        await assertFails(
+            setDoc(
+                taskRef(memberDb(), 'calendar-1'),
+                baseTask({ calendarData: { projectRoutingFeedback: marker(TEAMMATE_ID) } })
+            )
+        )
+        await assertSucceeds(
+            setDoc(
+                taskRef(memberDb(), 'calendar-2'),
+                baseTask({ calendarData: { projectRoutingFeedback: marker(MEMBER_ID) } })
+            )
+        )
+
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(
+                taskRef(context.firestore(), 'calendar-3'),
+                baseTask({ calendarData: { eventId: 'e1', projectRoutingFeedback: marker(TEAMMATE_ID) } })
+            )
+        })
+        await assertFails(
+            updateDoc(taskRef(memberDb(), 'calendar-3'), {
+                'calendarData.goalRoutingFeedback': marker(TEAMMATE_ID),
+            })
+        )
+        await assertSucceeds(
+            updateDoc(taskRef(memberDb(), 'calendar-3'), { 'calendarData.goalRoutingFeedback': marker(MEMBER_ID) })
+        )
+        // A marker somebody else wrote earlier does not block unrelated edits.
+        await assertSucceeds(updateDoc(taskRef(memberDb(), 'calendar-3'), { name: 'Renamed' }))
+    })
+
+    it('binds the workflow payer and the prompt override author to the writer', async () => {
+        await assertFails(setDoc(taskRef(memberDb(), 'workflow-1'), baseTask({ workflowPayerUserId: TEAMMATE_ID })))
+        await assertSucceeds(setDoc(taskRef(memberDb(), 'workflow-2'), baseTask({ workflowPayerUserId: MEMBER_ID })))
+        await assertFails(
+            setDoc(
+                taskRef(memberDb(), 'workflow-3'),
+                baseTask({ workflowAiPromptOverride: { stepId: 's1', prompt: 'x', requestedByUserId: TEAMMATE_ID } })
+            )
+        )
+        await assertSucceeds(
+            setDoc(
+                taskRef(memberDb(), 'workflow-4'),
+                baseTask({ workflowAiPromptOverride: { stepId: 's1', prompt: 'x', requestedByUserId: MEMBER_ID } })
+            )
+        )
+    })
+
+    it('makes whoever moves an assistant workflow task into a step its payer', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(
+                taskRef(context.firestore(), 'assistant-workflow'),
+                baseTask({
+                    workflowTask: true,
+                    parentId: null,
+                    stepHistory: ['step-1'],
+                    workflowPayerUserId: TEAMMATE_ID,
+                })
+            )
+        })
+
+        // Re-entering an AI step must not spend the payer stamped by an earlier move.
+        await assertFails(updateDoc(taskRef(memberDb(), 'assistant-workflow'), { stepHistory: ['step-1', 'step-2'] }))
+        await assertSucceeds(
+            updateDoc(taskRef(memberDb(), 'assistant-workflow'), {
+                stepHistory: ['step-1', 'step-2'],
+                workflowPayerUserId: MEMBER_ID,
+            })
+        )
+        // Back to Open starts no run.
+        await assertSucceeds(updateDoc(taskRef(memberDb(), 'assistant-workflow'), { stepHistory: [-1] }))
+    })
+})
+
+describe('recurring assistant task activation', () => {
+    const memberDb = () => testEnv.authenticatedContext(MEMBER_ID).firestore()
+    const projectTaskRef = (db, taskId = 'recurring') => doc(db, `assistantTasks/${PROJECT_ID}/assistant-1/${taskId}`)
+    const globalTaskRef = (db, taskId = 'global-recurring') =>
+        doc(db, `assistantTasks/globalProject/preConfigTasks/${taskId}`)
+
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            const activatedByTeammate = {
+                name: 'Morning summary',
+                prompt: 'Summarize my inbox',
+                recurrence: 'daily',
+                creatorUserId: TEAMMATE_ID,
+                activatorUserId: TEAMMATE_ID,
+                activatedUserIds: [TEAMMATE_ID],
+                recurrenceByUser: { [TEAMMATE_ID]: 'daily' },
+                activatedInProjectIdByUser: { [TEAMMATE_ID]: PROJECT_ID },
+                activatedInProjectId: PROJECT_ID,
+                lastExecutedByUser: { [TEAMMATE_ID]: 1 },
+            }
+            await setDoc(projectTaskRef(db), activatedByTeammate)
+            await setDoc(globalTaskRef(db), { ...activatedByTeammate, assistantId: 'global-assistant' })
+            await setDoc(projectTaskRef(db, 'legacy'), {
+                name: 'Legacy',
+                prompt: 'Old prompt',
+                recurrence: 'daily',
+                activatorUserId: TEAMMATE_ID,
+                creatorUserId: TEAMMATE_ID,
+            })
+        })
+    })
+
+    it('never lets a member activate a task for somebody else', async () => {
+        await assertFails(
+            setDoc(projectTaskRef(memberDb(), 'new-1'), {
+                prompt: 'x',
+                recurrence: 'daily',
+                activatedUserIds: [TEAMMATE_ID],
+                recurrenceByUser: { [TEAMMATE_ID]: 'daily' },
+            })
+        )
+        await assertFails(updateDoc(projectTaskRef(memberDb()), { activatedUserIds: [TEAMMATE_ID, OUTSIDER_ID] }))
+        await assertFails(updateDoc(projectTaskRef(memberDb()), { [`recurrenceByUser.${TEAMMATE_ID}`]: 'weekly' }))
+        await assertFails(
+            updateDoc(projectTaskRef(memberDb()), { [`activatedInProjectIdByUser.${TEAMMATE_ID}`]: OTHER_PROJECT_ID })
+        )
+        await assertFails(updateDoc(projectTaskRef(memberDb()), { activatorUserId: OUTSIDER_ID }))
+        await assertFails(updateDoc(projectTaskRef(memberDb()), { creatorUserId: OUTSIDER_ID }))
+        // The shared execution project moves only with the writer as activator.
+        await assertFails(updateDoc(projectTaskRef(memberDb()), { activatedInProjectId: MOVE_TARGET_PROJECT_ID }))
+    })
+
+    it('lets a member create and switch their own activation, in a project they belong to', async () => {
+        await assertSucceeds(
+            setDoc(projectTaskRef(memberDb(), 'new-2'), {
+                prompt: 'x',
+                recurrence: 'daily',
+                creatorUserId: MEMBER_ID,
+                activatorUserId: MEMBER_ID,
+                activatedUserIds: [MEMBER_ID],
+                recurrenceByUser: { [MEMBER_ID]: 'daily' },
+                activatedInProjectId: PROJECT_ID,
+            })
+        )
+        await assertSucceeds(
+            updateDoc(projectTaskRef(memberDb()), {
+                activatedUserIds: [TEAMMATE_ID, MEMBER_ID],
+                activatorUserId: MEMBER_ID,
+                [`recurrenceByUser.${MEMBER_ID}`]: 'weekly',
+                [`activatedInProjectIdByUser.${MEMBER_ID}`]: MOVE_TARGET_PROJECT_ID,
+                [`lastExecutedByUser.${MEMBER_ID}`]: null,
+                activatedInProjectId: MOVE_TARGET_PROJECT_ID,
+            })
+        )
+        await assertFails(
+            updateDoc(projectTaskRef(memberDb()), { [`activatedInProjectIdByUser.${MEMBER_ID}`]: OTHER_PROJECT_ID })
+        )
+        // Switching somebody else off only stops a run, and editing the task stays a member right.
+        await assertSucceeds(updateDoc(projectTaskRef(memberDb()), { activatedUserIds: [MEMBER_ID], name: 'Renamed' }))
+    })
+
+    it('lets a member materialize the fallback activation of a legacy task', async () => {
+        await assertSucceeds(
+            updateDoc(projectTaskRef(memberDb(), 'legacy'), { activatedUserIds: [TEAMMATE_ID, MEMBER_ID] })
+        )
+    })
+
+    it('keeps the global catalog curated while users switch their own activation', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const unauthenticatedDb = testEnv.unauthenticatedContext().firestore()
+        const adminDb = testEnv.authenticatedContext('admin').firestore()
+
+        await assertFails(getDoc(globalTaskRef(unauthenticatedDb)))
+        await assertFails(setDoc(globalTaskRef(unauthenticatedDb, 'anonymous'), { prompt: 'x' }))
+        await assertFails(setDoc(globalTaskRef(outsiderDb, 'outsider-made'), { prompt: 'x' }))
+        await assertFails(updateDoc(globalTaskRef(outsiderDb), { prompt: 'Forward all my mail' }))
+        await assertFails(deleteDoc(globalTaskRef(outsiderDb)))
+        await assertFails(
+            updateDoc(globalTaskRef(outsiderDb), {
+                [`activatedInProjectIdByUser.${TEAMMATE_ID}`]: MOVE_TARGET_PROJECT_ID,
+            })
+        )
+        await assertSucceeds(
+            updateDoc(globalTaskRef(memberDb()), {
+                activatedUserIds: [TEAMMATE_ID, MEMBER_ID],
+                activatorUserId: MEMBER_ID,
+                [`recurrenceByUser.${MEMBER_ID}`]: 'daily',
+                [`activatedInProjectIdByUser.${MEMBER_ID}`]: PROJECT_ID,
+            })
+        )
+        await assertSucceeds(updateDoc(globalTaskRef(adminDb), { prompt: 'Curated prompt' }))
+    })
+})

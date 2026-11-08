@@ -223,9 +223,17 @@ async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL
     }
 }
 
+// Security audit 2026-11: this runs from the onCreate trigger, which has no request.auth, and it
+// spends the routing user's Gold and reads goals private to that user. It therefore acts only for
+// a task whose creatorId EQUALS its lastEditorId: firestore.rules lets a client create such a
+// routable task only as itself, and every server writer stamps lastEditorId itself (TaskModelBuilder
+// uses the assignee), so the two agree only when the creator really is the actor. A task created
+// for, copied or moved by somebody else is not routed rather than routed as the wrong person.
 const getRoutingUserId = (task, project) => {
     const projectUserIds = Array.isArray(project?.userIds) ? project.userIds : []
-    return [task.creatorId, task.lastEditorId].find(userId => userId && projectUserIds.includes(userId)) || null
+    const creatorId = task?.creatorId
+    if (!creatorId || creatorId !== task.lastEditorId) return null
+    return projectUserIds.includes(creatorId) ? creatorId : null
 }
 
 const buildCurrentMilestoneQuery = (db, projectId, ownerId) =>

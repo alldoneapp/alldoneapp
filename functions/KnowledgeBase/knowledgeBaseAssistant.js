@@ -43,6 +43,7 @@ const {
     isKnowledgeBasePausedAtMonthlyCap,
     isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
+    isKnowledgeBasePausedForDepartedOwner,
     isKnowledgePageVisible,
     normalizeKnowledgePageSlug,
     splitKnowledgePageSources,
@@ -176,6 +177,7 @@ function describeKnowledgeBaseFreshness(knowledgeBase = {}, now = Date.now()) {
     } else if (
         isKnowledgeBasePausedAtMonthlyCap(knowledgeBase, now) ||
         isKnowledgeBasePausedForInactiveOwner(knowledgeBase) ||
+        isKnowledgeBasePausedForDepartedOwner(knowledgeBase) ||
         isKnowledgeBasePausedForArchivedProject(knowledgeBase)
     ) {
         sentences.push('Its updates are paused at the moment.')

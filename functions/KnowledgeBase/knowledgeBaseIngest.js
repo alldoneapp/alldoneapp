@@ -47,6 +47,7 @@ const {
 const {
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
+    KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON,
     getKnowledgeBaseMonthKey,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
@@ -623,6 +624,13 @@ async function runKnowledgeBaseIngest({
 
     try {
         if (!ownerUserId) throw new KnowledgeBaseRunStop('no_owner')
+        // Security audit 2026-11: the payer must still be a member. Removing a member never touched
+        // this document, and the removed payer can no longer switch the wiki off.
+        const projectSnapshot = await db.doc(`projects/${projectId}`).get()
+        const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
+        if (!Array.isArray(projectData.userIds) || !projectData.userIds.includes(ownerUserId)) {
+            throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON)
+        }
         const ownerSnapshot = await db.doc(`users/${ownerUserId}`).get()
         ownerData = ownerSnapshot.exists ? ownerSnapshot.data() || {} : {}
         if (ownerSnapshot.exists && !isKnowledgeBaseOwnerActive(ownerData, startedAt)) {
@@ -633,8 +641,6 @@ async function runKnowledgeBaseIngest({
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
         if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
-        const projectSnapshot = await db.doc(`projects/${projectId}`).get()
-        const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
         const projectName = projectData.name || projectId
         const projectDescription =
             typeof projectData.description === 'string'
@@ -909,7 +915,8 @@ async function runKnowledgeBaseIngest({
         !!failure && isTransientModelError(failure) && previousTransientRetries < MAX_TRANSIENT_FAILURE_RETRIES
     const transientFailureRetries = retryTransientFailure ? previousTransientRetries + 1 : 0
     const nextRunAt =
-        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
+        stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON ||
+        stopReason === KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON
             ? null
             : stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON
               ? startOfNextMonthUtc(finishedAt)

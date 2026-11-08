@@ -34,11 +34,18 @@ export const isNextWorkflowStepAi = (workflow, task) => isAiWorkflowStep(getNext
 // A transition-popup comment is a one-run prompt override only when the selected destination is an
 // AI step. Keeping the target step and persisted comment id alongside the prompt lets the backend
 // consume exactly this handoff without relying on chat/task trigger ordering.
-export const buildWorkflowAiPromptOverride = (workflow, stepId, comment, triggerMessageId) => {
+// requestedByUserId names the author (firestore.rules bind it to the writer). The server runs an
+// override in a user's own workflow only when that user wrote it (security audit 2026-11).
+export const buildWorkflowAiPromptOverride = (workflow, stepId, comment, triggerMessageId, requestedByUserId) => {
     const prompt = typeof comment === 'string' ? comment.trim() : ''
     if (!prompt || !isAiWorkflowStep(workflow && workflow[stepId])) return null
 
-    return { stepId, prompt, triggerMessageId: triggerMessageId || null }
+    return {
+        stepId,
+        prompt,
+        triggerMessageId: triggerMessageId || null,
+        ...(requestedByUserId ? { requestedByUserId } : {}),
+    }
 }
 
 // Cleared whenever a step stops pointing at a given assistant, so a step never keeps a prompt that
