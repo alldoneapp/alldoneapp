@@ -107,3 +107,42 @@ describe('booking email join links', () => {
         })
     })
 })
+
+// Security audit 2026-11 (#10): the visitor mail goes to an address an unauthenticated caller typed.
+describe('visitor confirmation content', () => {
+    test('does not echo the note and cuts long names short', () => {
+        const html = buildVisitorEmailHtml({
+            visitorName: 'V'.repeat(200),
+            hostName: 'Buy cheap pills at spam.example '.repeat(10),
+            note: 'Click https://phish.example now',
+            meetingTimeText: 'Thursday',
+            durationMinutes: 30,
+            joinUrl: '',
+        })
+        expect(html).not.toContain('phish.example')
+        expect(html).not.toContain('V'.repeat(61))
+        expect(html).not.toContain('spam.example '.repeat(3))
+    })
+
+    test('uses a fixed subject, never the host-chosen display name', async () => {
+        jest.resetModules()
+        const sendTransacEmail = jest.fn().mockResolvedValue({})
+        jest.doMock('sib-api-v3-sdk', () => ({
+            ApiClient: { instance: { authentications: { 'api-key': {} } } },
+            TransactionalEmailsApi: jest.fn(() => ({ sendTransacEmail })),
+        }))
+        jest.doMock('../envFunctionsHelper', () => ({ getEnvFunctions: () => ({ SIB_API_KEY: 'key' }) }))
+        const emails = require('./bookingEmails')
+        await emails.sendBookingConfirmationToVisitor({
+            visitorName: 'Visitor',
+            visitorEmail: 'visitor@example.com',
+            hostName: 'WIN A PRIZE at spam.example',
+            start: '2026-06-18T09:00:00+02:00',
+            end: '2026-06-18T09:30:00+02:00',
+            timeZone: 'Europe/Berlin',
+            durationMinutes: 30,
+            joinUrl: '',
+        })
+        expect(sendTransacEmail).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Your meeting is confirmed' }))
+    })
+})
