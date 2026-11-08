@@ -64,6 +64,20 @@ describe('notesCollabAccess endpoint', () => {
         expect((await call({ secret: null, body: {} })).statusCode).toBe(401)
     })
 
+    test('refuses everything and says so when no secret is configured', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const handler = createNotesCollabAccessHandler({ db: createDb(docs), auth, getSecret: () => '' })
+        const res = createRes()
+        await handler(
+            { method: 'POST', get: () => '', body: { idToken: 'valid-member', projectId: 'p1', noteId: 'public' } },
+            res
+        )
+        expect(res.statusCode).toBe(503)
+        expect(res.body).toEqual({ error: 'not_configured' })
+        expect(errorSpy).toHaveBeenCalled()
+        errorSpy.mockRestore()
+    })
+
     test('refuses a missing or invalid ID token', async () => {
         expect((await call({ body: { projectId: 'p1', noteId: 'public' } })).statusCode).toBe(400)
         expect((await call({ body: { idToken: 'forged', projectId: 'p1', noteId: 'public' } })).statusCode).toBe(401)

@@ -19,11 +19,7 @@ function readConstant(file, constantName, open, close) {
 const readStringArray = (file, constantName) =>
     [...readConstant(file, constantName, '[', ']').matchAll(/'([a-z_]+)'/g)].map(entry => entry[1])
 
-const serverTools = [
-    ...readStringArray('functions/MCP/mcpServerSimple.js', 'MCP_DELEGATED_ASSISTANT_TOOLS'),
-    // MCP-only tools that set up projects and assistants; mcpServerSimple.js serves them alongside.
-    ...readStringArray('functions/MCP/mcpWorkspaceSetupTools.js', 'MCP_WORKSPACE_SETUP_TOOLS'),
-]
+const serverTools = readStringArray('functions/MCP/mcpServerSimple.js', 'MCP_DELEGATED_ASSISTANT_TOOLS')
 const settingsTools = readStringArray(SETTINGS_FILE, 'MCP_TOOL_KEYS')
 const mcpToolLabels = Object.fromEntries(
     [...readConstant(SETTINGS_FILE, 'MCP_TOOL_LABELS', '{', '}').matchAll(/^\s+([a-z_]+): '([^']+)'/gm)].map(entry => [

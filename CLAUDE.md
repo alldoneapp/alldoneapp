@@ -1556,27 +1556,6 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Four MCP-only tools in
-`functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
-`create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`
-and `create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
-config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
-rules keep agents from making a mess:
-
-- **Idempotent by name.** A second call with an existing project, assistant or task name returns
-  the existing object (`alreadyExisted: true`) instead of creating a duplicate.
-- **Capped per user per day.** The caps are in `DAILY_LIMITS`; the counter lives at
-  `users/{uid}/private/mcpWorkspaceSetupQuota`.
-- **No more than the app's own screens allow.** Tools Access keys come from a copy of `toolOptions.js`
-  (`ASSISTANT_TOOL_KEYS`, pinned by `__tests__/MCP/mcpWorkspaceSetupToolKeysParity.test.js`), and models
-  from `SELECTABLE_ASSISTANT_MODELS`.
-
-The documents are built field for field like the app's own forms (`getNewDefaultProject`,
-`getNewDefaultAssistant`, `PreConfigTaskModal`). An assistant task stores its start the same way the
-form does: the UTC instant of the local start, the local `HH:mm` and the offset. A project gets no
-project-created feed; `onCreateProject` still runs. Assistant tasks are `direct` mode only. Each tool
-is its own switch under Settings → MCP. Pinned by `functions/MCP/mcpWorkspaceSetupTools.test.js`.
-
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 
 Assistants that cannot add a custom connector but can drive a browser (Gemini in Chrome, Claude in

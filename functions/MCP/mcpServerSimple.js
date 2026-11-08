@@ -23,10 +23,7 @@ const { Timestamp } = require('firebase-admin/firestore')
 // load_skill) or that mutate assistant/project/user configuration
 // (update_assistant_settings, update_heartbeat_settings,
 // update_project_description, update_user_description) are deliberately NOT
-// exposed over MCP. The one exception is the small set of workspace setup tools
-// in ./mcpWorkspaceSetupTools.js (create a project with contact statuses, an
-// assistant, and the recurring tasks it runs): MCP-only, idempotent by name,
-// capped per day, and each its own switch under Settings → MCP.
+// exposed over MCP.
 // ---------------------------------------------------------------------------
 const MCP_DELEGATED_ASSISTANT_TOOLS = [
     // Tasks
@@ -99,9 +96,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
 ]
 
 const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
-
-const { MCP_WORKSPACE_SETUP_TOOLS, MCP_WORKSPACE_SETUP_TOOL_SCHEMAS } = require('./mcpWorkspaceSetupTools')
-const MCP_WORKSPACE_SETUP_TOOL_SET = new Set(MCP_WORKSPACE_SETUP_TOOLS)
 
 const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
     'read_knowledge_page',
@@ -1085,17 +1079,6 @@ class AlldoneSimpleMCPServer {
         const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId, request)
 
         return await executeToolNatively(name, toolArgs, contextProjectId, null, userId, {}, runtimeContext)
-    }
-
-    // Workspace setup tools (./mcpWorkspaceSetupTools.js) check project membership themselves and
-    // write as the authenticated user; the client label marks what they create as "via <client>".
-    async executeWorkspaceSetupTool(name, args, request) {
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const { executeWorkspaceSetupTool } = require('./mcpWorkspaceSetupTools')
-        return await executeWorkspaceSetupTool(name, userId, args, {
-            mcpClient: this.getMcpClientLabel(request),
-            baseUrl: getBaseUrl(),
-        })
     }
 
     hasNonEmptyString(value) {
@@ -2169,12 +2152,8 @@ class AlldoneSimpleMCPServer {
                     .filter(schema => !disabled.has(schema.function.name))
                     .map(adaptToolSchemaForMcp)
 
-                const workspaceSetupTools = MCP_WORKSPACE_SETUP_TOOL_SCHEMAS.filter(
-                    schema => !disabled.has(schema.name)
-                )
-
                 const tools = {
-                    tools: [...delegatedTools, ...workspaceSetupTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
+                    tools: [...delegatedTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
                 }
                 return {
                     jsonrpc: '2.0',
@@ -2247,8 +2226,6 @@ class AlldoneSimpleMCPServer {
 
                     if (MCP_DELEGATED_ASSISTANT_TOOL_SET.has(toolName)) {
                         result = await this.executeDelegatedAssistantTool(toolName, args, httpReq)
-                    } else if (MCP_WORKSPACE_SETUP_TOOL_SET.has(toolName)) {
-                        result = await this.executeWorkspaceSetupTool(toolName, args, httpReq)
                     } else {
                         switch (toolName) {
                             case 'delete_authentication_data':

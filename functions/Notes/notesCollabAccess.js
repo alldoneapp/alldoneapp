@@ -97,7 +97,15 @@ function createNotesCollabAccessHandler({ db, auth, getSecret }) {
             res.status(405).json({ error: 'method_not_allowed' })
             return
         }
-        if (!secretMatches(req.get('X-Notes-Access-Secret'), getSecret())) {
+        const expectedSecret = getSecret()
+        if (!expectedSecret) {
+            // Not configured: refuse everything, but say so. A 401 here would read like a wrong
+            // secret on the collab server's side and hide the missing NOTES_COLLAB_ACCESS_SECRET.
+            console.error('[notesCollabAccess] NOTES_COLLAB_ACCESS_SECRET is not configured')
+            res.status(503).json({ error: 'not_configured' })
+            return
+        }
+        if (!secretMatches(req.get('X-Notes-Access-Secret'), expectedSecret)) {
             res.status(401).json({ error: 'unauthorized' })
             return
         }

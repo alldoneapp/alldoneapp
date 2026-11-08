@@ -65,17 +65,11 @@ const MCP_TOOL_KEYS = [
     'create_calendar_event',
     'update_calendar_event',
     'delete_calendar_event',
-    'create_project',
-    'add_contact_statuses',
-    'create_assistant',
-    'create_assistant_task',
 ]
 
 // MCP lists the artifact and browser tools one by one; in an assistant's Tools Access each family is
 // a single permission, so they have no label of their own there. The wiki tools have no Tools Access
-// entry at all (an assistant gets them with the wiki), and neither do the workspace setup tools
-// (create_project … create_assistant_task), which only MCP clients get
-// (functions/MCP/mcpWorkspaceSetupTools.js).
+// entry at all (an assistant gets them with the wiki).
 const MCP_TOOL_LABELS = {
     browser_navigate: 'Open a web page',
     browser_inspect: 'Look at a web page',
@@ -93,10 +87,6 @@ const MCP_TOOL_LABELS = {
     search_knowledge: 'Search the project wiki',
     save_knowledge_contribution: 'Save knowledge to the wiki',
     remove_knowledge_contribution: 'Remove saved knowledge from the wiki',
-    create_project: 'Create project',
-    add_contact_statuses: 'Add contact statuses',
-    create_assistant: 'Create assistant',
-    create_assistant_task: 'Create scheduled assistant task',
 }
 
 // What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.
