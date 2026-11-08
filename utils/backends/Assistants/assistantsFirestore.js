@@ -54,6 +54,8 @@ import {
 } from '../../assistantWorkflow'
 import { normalizeAssistantReasoningEffort } from '../../../functions/Assistant/selectableAssistantReasoningEfforts'
 import { getAssistantTemplateState, getTaskTemplateState } from '../../../functions/Assistants/templateMerge'
+import { approveAssistantTaskContentAsShown, stripServerOwnedAssistantTaskFields } from './assistantTaskApproval'
+import { isAssistantTaskContentApprovedByUser } from '../../../functions/Assistant/assistantTaskContentHash'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -1019,7 +1021,7 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
     const taskId = getId()
     task.id = taskId
 
-    const taskToStore = { ...task }
+    const taskToStore = stripServerOwnedAssistantTaskFields(task)
     delete taskToStore.id
     delete taskToStore.aiModel
     delete taskToStore.aiTemperature
@@ -1146,7 +1148,7 @@ export const buildOwnActivationUpdate = ({ currentTask, editedTask, userId, payl
 
 export function updatePreConfigTask(projectId, assistantId, task) {
     clearAssistantTasksCache(projectId, assistantId)
-    const taskToStore = { ...task }
+    const taskToStore = stripServerOwnedAssistantTaskFields(task)
     delete taskToStore.id
     const aiModelOverride = getPreConfigTaskModelOverride(taskToStore)
     delete taskToStore.aiModel
@@ -1208,8 +1210,32 @@ export function updatePreConfigTask(projectId, assistantId, task) {
             const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`)
             batch.delete(legacyRef)
         }
-        batch.commit()
+        return batch.commit().then(() => confirmSavedTaskForEditor(projectId, assistantId, currentTask, payload))
     })
+}
+
+// Security audit 2026-11 (NEW-A): saving a task you are activated for is reviewing it, so it confirms
+// the saved content for you. A content change is already confirmed by the server-side write trigger;
+// this covers a save that changed nothing, which produces no write event (the notice tells a user
+// whose task was changed by somebody else to open it and save it).
+export const buildSavedAssistantTask = (currentTask, payload) => {
+    const saved = { ...(currentTask || {}) }
+    Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value instanceof firebase.firestore.FieldValue) delete saved[key]
+        else saved[key] = value
+    })
+    return saved
+}
+
+function confirmSavedTaskForEditor(projectId, assistantId, currentTask, payload) {
+    const userId = store.getState().loggedUser?.uid
+    const saved = buildSavedAssistantTask(currentTask, payload)
+    if (!userId || !saved.id || !getActivatedUserIds(saved).includes(userId)) return
+    const taskProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
+    if (isAssistantTaskContentApprovedByUser(saved, userId, taskProjectId)) return
+    return approveAssistantTaskContentAsShown({ projectId: taskProjectId, assistantId, task: saved }).catch(error =>
+        console.warn('Could not confirm the saved assistant task', error?.message || error)
+    )
 }
 
 export async function toggleRecurringTaskActivation(
@@ -1421,7 +1447,7 @@ export async function moveAssistantToProject(sourceProjectId, targetProjectId, a
     sourceTasksSnapshot.forEach(doc => {
         const task = doc.data()
         const movedTask = {
-            ...task,
+            ...stripServerOwnedAssistantTaskFields(task),
             assistantId,
         }
 

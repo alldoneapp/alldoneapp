@@ -21,6 +21,7 @@ import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 import { setPreConfigTaskExecuting, setTriggerChatDraft } from '../../../../redux/actions'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { confirmAssistantTaskRunForCurrentUser } from '../../../../utils/assistantTaskRunGate'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
@@ -47,6 +48,9 @@ export default function PreConfigTaskGeneratorModal({
 
     const addTask = async () => {
         closeModal()
+        // Security audit 2026-11: show prompt, system instruction and model of content the user has
+        // not approved before it runs with their Gold and tools.
+        if (!confirmAssistantTaskRunForCurrentUser(task, assistant?.uid, projectId)) return
         if (processPromp) {
             processPromp(generatedPrompt)
         } else {

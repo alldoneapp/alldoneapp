@@ -41,6 +41,11 @@ jest.mock('../../../ModalsManager/modalsManager', () => ({
 }))
 jest.mock('./PreConfigTaskButton', () => 'PreConfigTaskButton')
 
+const mockConfirmRun = jest.fn(() => true)
+jest.mock('../../../../utils/assistantTaskRunGate', () => ({
+    confirmAssistantTaskRunForCurrentUser: (...args) => mockConfirmRun(...args),
+}))
+
 describe('PreConfigTaskGeneratorWrapper custom execution control', () => {
     const task = {
         id: 'scheduled-task-1',
@@ -97,6 +102,19 @@ describe('PreConfigTaskGeneratorWrapper custom execution control', () => {
             },
             { skipNavigation: true }
         )
+    })
+
+    // Security audit 2026-11: a member-editable task runs only after the user approved its content.
+    it('runs nothing when the user declines the unapproved content', () => {
+        mockConfirmRun.mockReturnValueOnce(false)
+        const tree = renderer.create(
+            <PreConfigTaskGeneratorWrapper projectId="project-1" task={task} assistant={{ uid: 'assistant-1' }}>
+                {props => <TouchableOpacity testID="play-task" {...props} />}
+            </PreConfigTaskGeneratorWrapper>
+        )
+        tree.root.findByProps({ testID: 'play-task' }).props.onPress({ stopPropagation: jest.fn() })
+        expect(mockConfirmRun).toHaveBeenCalledWith(task, 'assistant-1', 'project-1')
+        expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
     })
 
     it('passes the running state through and blocks duplicate execution', () => {

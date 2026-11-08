@@ -35,7 +35,6 @@ clientsClaim()
 const NAVIGATION_DENYLIST = [
     /^\/__\/auth\//,
     /\/googleOAuthCallback/,
-    /\/microsoftOAuthCallback/,
     /\/mcpServer/,
     /\/mcpOAuthCallback/,
     /\/mcpClientOAuthCallback/,
