@@ -8,6 +8,7 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const { buildInboundEmailRecordId } = require('./inboundEmailRecordId')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress, normalizeEmailAddressList } = require('./emailChannelHelpers')
+const { evaluateSenderAuthentication } = require('./emailSenderAuthentication')
 const {
     SENDER_STATUS_AMBIGUOUS,
     getDefaultAssistantIdForUser,
@@ -49,6 +50,30 @@ async function handleIncomingAnnaEmail(req, res) {
                 updatedAt: Date.now(),
             })
             return res.status(200).json({ ok: true, status: guestMeetingResult.status })
+        }
+
+        // NV-06: the envelope sender is only a claim. It names an account only when the worker found
+        // a DKIM signature aligned with that sender's domain (or a trusted SPF pass); otherwise the
+        // mail is handled like mail from an unknown sender and reaches no assistant.
+        const senderAuthentication = evaluateSenderAuthentication(payload)
+        if (senderAuthentication.legacy) {
+            console.warn('Email Channel: worker sent no sender verdict; accepted during the rollout grace period', {
+                messageId: payload.messageId,
+            })
+        }
+        if (!senderAuthentication.authenticated) {
+            await replySafely(
+                payload,
+                `I couldn't verify that this email really comes from ${payload.fromEmail}, so I didn't act on it. Anna only accepts mail that carries a valid DKIM signature from the sender's own domain; ask your email administrator to enable DKIM signing for it.`
+            )
+            await upsertAuditRecord(null, payload.messageId, {
+                status: 'unauthenticated_sender',
+                fromEmail: payload.fromEmail,
+                subject: payload.subject,
+                senderAuthentication,
+                updatedAt: Date.now(),
+            })
+            return res.status(200).json({ ok: true, status: 'unauthenticated_sender' })
         }
 
         // A sender that cannot be routed used to leave no trace at all: no audit record,
@@ -184,6 +209,7 @@ function normalizeInboundEmailPayload(body = {}, headers = {}) {
             ).trim(),
         },
         attachments: normalizeInboundAttachments(body.attachments),
+        senderAuthentication: isObject(body.senderAuthentication) ? body.senderAuthentication : null,
         rawForSignature: body,
     }
 }

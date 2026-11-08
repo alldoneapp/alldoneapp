@@ -228,8 +228,8 @@ export default class Backend {
         return bridge.handleGoogleRedirectResult()
     }
 
-    static logout(onComplete, options) {
-        bridge.logoutWeb(onComplete, options)
+    static logout(onComplete) {
+        bridge.logoutWeb(onComplete)
     }
 
     static async initGAPI() {
