@@ -264,8 +264,17 @@ async function routeNewTaskToProject({
     if (task.parentId || task.isSubtask || task.done || task.inDone) return { action: 'skipped' }
     if (!String(task.extendedName || task.name || task.description || '').trim()) return { action: 'skipped' }
 
-    const userId = task.creatorId || task.userId
+    // Security audit 2026-11: this trigger has no request.auth, so it may act only as a user the
+    // stored task proves asked for routing. firestore.rules lets a client stamp a pending
+    // `projectRouting` only together with `creatorId == request.auth.uid`; `userId` is the
+    // assignee, which any member may set to anyone, so it is never the routing user. The creator
+    // must also still be a member of the host project, or another tenant's Gold and private
+    // projects would be reachable through a task in a project they never joined.
+    const userId = task.creatorId
     if (!userId) return { action: 'skipped' }
+    const hostProjectSnapshot = await db.doc(`projects/${projectId}`).get()
+    const hostUserIds = hostProjectSnapshot.exists ? hostProjectSnapshot.data()?.userIds : null
+    if (!Array.isArray(hostUserIds) || !hostUserIds.includes(userId)) return { action: 'skipped' }
 
     const taskRef = db.doc(`items/${projectId}/tasks/${task.id}`)
     const userSnapshot = await db.doc(`users/${userId}`).get()

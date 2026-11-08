@@ -36,7 +36,7 @@ const {
 
 describe('resolveProjectForContactNote with an explicit projectId', () => {
     // ProjectService reads users/{uid} and then projects/{id}; both projects exist here, so only
-    // membership (projects/{pid}.userIds) can tell them apart.
+    // membership can tell them apart.
     const db = {
         collection: name => ({
             doc: id => ({
@@ -44,14 +44,7 @@ describe('resolveProjectForContactNote with an explicit projectId', () => {
                     if (name === 'users') {
                         return { exists: true, id, data: () => ({ projectIds: ['p-own'] }) }
                     }
-                    return {
-                        exists: true,
-                        id,
-                        data: () =>
-                            id === 'p-own'
-                                ? { name: 'Own', userIds: ['u-1'] }
-                                : { name: 'Foreign', userIds: ['other'] },
-                    }
+                    return { exists: true, id, data: () => ({ name: id === 'p-own' ? 'Own' : 'Foreign' }) }
                 },
             }),
         }),

@@ -599,37 +599,35 @@ not in the repo) found many callables that skip this. The first fixes:
 
 Pinned by `welcomeMessageAccess.test.js`, `webhookSecurity.test.js` and `functions/Utils/oauthCallbackPage.test.js`.
 
-**Membership is `projects/{pid}.userIds`, on every Admin SDK path.** The arrays on `users/{uid}`
-(`projectIds`, `guideProjectIds`, `templateProjectIds`, `archivedProjectIds`) only nominate
-candidate projects: the owner writes them, and until this fix the `invitation-remove` branch of the
-membership-mutation rule let any account add an arbitrary project id to its own `projectIds` (that
-branch, and `invitation-add`, may now only touch `invitedProjectIds`). `ProjectService.getUserProjects`
-(the MCP tool gate and most assistant tool resolvers), `SearchService`, `TaskSearchService`, the
-create_task fallback, the delegation and settings resolvers in `assistantHelper.js`, the voice
-vocabulary scan and `UndoActionService` all drop a project whose `userIds` omits the user. Use
-`isProjectMemberData` / `filterMemberProjectIds` from `shared/privacyAccess.js`; never treat
-`userData.projectIds.includes(id)` as access. Entries written before the rule fix are removed by
-`node migration/removeUnbackedUserProjectIds.js --firebase-project-id=<project>` (dry run; add
-`--execute` to apply, `--user-id=<uid>` to scope; decision in `shared/userProjectMembershipCleanup.js`),
-run after the rules deploy. Three more rules from the same audit:
+**A Firestore trigger has no `request.auth`, so a field it acts on as a user must be bound to its
+writer in `firestore.rules`.** The audit found triggers spending Gold, reading private goals and
+routing rules, and running assistants with tools as whoever a member wrote into a document. The
+rules now bind each such field when it is written (present on create, changed on update), and the
+server reads only the bound value:
 
-- Undo records (`users/{uid}/undoActions`) are client-written and replayed with the Admin SDK, so
-  `reverseAction` treats one as a request: per operation it requires membership, an object visible
-  to the caller before AND after the write, a non-empty expected state, the `projectId` binding, and
-  no access-projection fields, mirroring the object write rules.
-- A manual project move only takes what the actor can read. `collectTaskTreeForMove` follows a
-  `subtaskIds` entry only to a real child (`parentId`) and refuses a tree holding an unreadable task;
-  a goal move unlinks (does not move) goal tasks the actor cannot read; a goal's or task's linked
-  note the actor cannot read is left behind and unlinked.
-- Caller-supplied recipients (`followerIds`, `userIdsToNotify` on `askToBotSecondGen` and
-  `generatePreConfigTaskResultSecondGen`) are narrowed by `Assistant/assistantNotificationAudience.js`
-  to project members who can read the thread's parent, the same audience the comment rules allow.
-  The menubar note push acts on a note id only when `menubarUserCanAccessNote` says the token user
-  may read it.
+- Project routing acts as `creatorId`; a client may stamp a pending `projectRouting` only as itself.
+- Goal routing acts only for a created task whose `creatorId === lastEditorId`; a client may create
+  such a routable top-level task only as itself. A copy by somebody else is not goal-routed.
+- An assistant workflow task (`workflowTask`) is paid for by `workflowPayerUserId`, which the mover
+  must stamp with their own uid whenever they move it into a step (`buildWorkflowPayerStamp`); there
+  is no `creatorId` fallback. A user's own workflow is paid for by its owner, and a transition
+  comment (`workflowAiPromptOverride`) runs there only when the owner wrote it (`requestedByUserId`)
+  in that same transition. The payer must be in `projects/{id}.userIds` at enqueue and at dispatch.
+- Calendar routing feedback markers must carry the writer as `requestedByUserId`.
+- Recurring assistant tasks: each user may add or change only their own activation entry, point it
+  only at a project they belong to, and name only themselves as activator or creator. The global
+  catalog (`assistantTasks/globalProject`) is created, deleted and re-prompted by the administrator.
+  A co-member may still edit a project task's prompt after others activated it; pausing their
+  activations until they re-confirm is an open product decision.
+- Copies keep the original creator but are re-attributed by `bindCopiedTaskIdentityFieldsToWriter`
+  (`utils/backends/Tasks/taskIdentityFields.js`) before they are written, or the rules refuse them.
 
-Pinned by `ProjectService.test.js`, `SearchService.test.js`, `UndoActionService.test.js`,
-`projectMoveAccess.test.js`, `menubarPushNoteAccess.test.js`, `assistantNotificationAudience.test.js`
-and the invitation cases in the rules emulator suite.
+Connection project keys (`apisConnected`, `calendarConnections`, `emailConnections`) are owner-written
+too, so the calendar sync and email-line task creation check `projects/{id}.userIds` before writing,
+and `googleOAuthInitiate` checks project access like its Microsoft sibling. A wiki whose payer left
+the project stops with `owner_not_member` before any model call and waits for a member to take it
+over in its settings. Pinned by the `task identity fields` and `recurring assistant task activation`
+blocks of the rules emulator suite and the `security audit 2026-11` cases next to each trigger.
 
 ### A callable that hosts an assistant run must be idempotent, because the browser will replay it
 

@@ -162,7 +162,69 @@ const findLiveTaskAiWork = async (projectId, taskId, now = Date.now()) => {
  * A run that lands on a task the assistant is already working on is created parked rather than
  * pending, so the step's configured prompt is never posted on top of that work.
  */
-const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, newTask = {}) => {
+const stableStringify = value => {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value)
+            .sort()
+            .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+            .join(',')}}`
+    }
+    return JSON.stringify(value === undefined ? null : value)
+}
+
+const isProjectMember = async (projectId, userId) => {
+    if (!projectId || !userId) return false
+    const projectDoc = await admin.firestore().doc(`projects/${projectId}`).get()
+    const userIds = projectDoc.exists ? (projectDoc.data() || {}).userIds : null
+    return Array.isArray(userIds) && userIds.includes(userId)
+}
+
+/**
+ * Who a workflow run acts as and pays with, and which prompt override it may use.
+ *
+ * Security audit 2026-11: this is decided in a Firestore trigger, which has no request.auth, from a
+ * task any project member can write. So only values firestore.rules binds to their writer count:
+ *
+ * - An assistant workflow task (workflowTask) is paid for by `workflowPayerUserId`, which the rules
+ *   force to equal the writer whenever a client moves the task into a step. There is no creatorId
+ *   fallback: creatorId is free client input.
+ * - A user's own workflow is paid for by its owner, whose own configured step prompt is what runs.
+ *   A stale or foreign `workflowPayerUserId` on such a task is ignored.
+ * - A prompt override is honoured only when it was written by this same transition (an unchanged
+ *   override is a leftover from an earlier move) and, for a user's workflow, only when the owner
+ *   wrote it (`requestedByUserId`, rule-bound). A co-member's transition comment stays in the thread
+ *   but does not become an instruction executed as the owner.
+ * - An explicit `actorUserId` (the signed-in caller of the retry callable) pays for an assistant
+ *   workflow retry itself.
+ */
+const resolveWorkflowRunIdentity = ({ workflowOwnerType, workflowOwnerId, oldTask, newTask, stepId, actorUserId }) => {
+    const payerUserId =
+        workflowOwnerType === 'assistant' ? actorUserId || newTask.workflowPayerUserId || null : workflowOwnerId
+
+    const persistedOverride = newTask.workflowAiPromptOverride
+    const overrideForThisStep =
+        persistedOverride &&
+        persistedOverride.stepId === stepId &&
+        typeof persistedOverride.prompt === 'string' &&
+        persistedOverride.prompt.trim()
+            ? persistedOverride
+            : null
+    if (!overrideForThisStep) return { payerUserId, promptOverride: null }
+
+    const writtenByThisTransition =
+        stableStringify(oldTask && oldTask.workflowAiPromptOverride) !== stableStringify(persistedOverride)
+    const author = persistedOverride.requestedByUserId || null
+    let usable
+    if (workflowOwnerType === 'assistant') {
+        usable = !!actorUserId || (writtenByThisTransition && (!author || author === payerUserId))
+    } else {
+        usable = (writtenByThisTransition || !!actorUserId) && !!author && author === workflowOwnerId
+    }
+    return { payerUserId, promptOverride: usable ? overrideForThisStep : null }
+}
+
+const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, newTask = {}, options = {}) => {
     // Subtasks mirror their parent's stepHistory and currentReviewerId (see updateSubtasksState in
     // the client's moveTasksFromMiddleOfWorkflow), so without this a parent with N subtasks would
     // fire N+1 runs and spend N+1× the Gold.
@@ -180,23 +242,28 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
 
     const step = getWorkflow(workflowOwner.data(), projectId)[stepId]
 
-    const persistedOverride = newTask.workflowAiPromptOverride
-    const promptOverride =
-        persistedOverride &&
-        persistedOverride.stepId === stepId &&
-        typeof persistedOverride.prompt === 'string' &&
-        persistedOverride.prompt.trim()
-            ? persistedOverride
-            : null
+    const { payerUserId, promptOverride } = resolveWorkflowRunIdentity({
+        workflowOwnerType,
+        workflowOwnerId,
+        oldTask,
+        newTask,
+        stepId,
+        actorUserId: options.actorUserId || null,
+    })
     const bypassWorkflow =
         workflowOwnerType === 'assistant' && !!promptOverride && (!isAiWorkflowStep(step) || !step.reviewerUid)
     if (!bypassWorkflow && (!isAiWorkflowStep(step) || !step.reviewerUid)) return null
 
-    const payerUserId =
-        workflowOwnerType === 'assistant'
-            ? newTask.workflowPayerUserId || newTask.creatorId
-            : newTask.workflowPayerUserId || workflowOwnerId
     if (!payerUserId) return null
+    // The run acts with the payer's tools and Gold inside this project, so the payer must belong to it.
+    if (!(await isProjectMember(projectId, payerUserId))) {
+        console.warn('[workflowAiStep] Payer is not a member of the project; not running the step', {
+            projectId,
+            taskId,
+            stepId,
+        })
+        return null
+    }
 
     // The discriminator has to be derived from the task itself: a redelivery of this same update
     // must produce the same id, or the duplicate would be charged for a second time. Every workflow
@@ -470,6 +537,18 @@ const runWorkflowAiStep = async (runId, run) => {
     const task = { ...taskDoc.data(), id: taskId }
     if (getCurrentStepId(task) !== stepId) {
         await runRef.set({ status: RUN_STATUS_SKIPPED, reason: 'task_moved', settledAt: Date.now() }, { merge: true })
+        return
+    }
+
+    // Security audit 2026-11: a payer removed from the project between enqueue and dispatch must not
+    // have an assistant run with their identity in it.
+    if (!(await isProjectMember(projectId, payerUserId))) {
+        await runRef.set(
+            { status: RUN_STATUS_SKIPPED, reason: 'payer_not_member', settledAt: Date.now() },
+            { merge: true }
+        )
+        // Shown as failed so a current member can retry the step, paying for it themselves.
+        await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, RUN_STATUS_FAILED, 'payer_not_member')
         return
     }
 
@@ -1373,7 +1452,7 @@ const sweepStalledWorkflowAiRuns = async () => {
     return stalled.size
 }
 
-const retryFailedWorkflowAiRun = async (projectId, taskId) => {
+const retryFailedWorkflowAiRun = async (projectId, taskId, actorUserId = null) => {
     const taskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).get()
     if (!taskDoc.exists) throw new Error('Task not found')
 
@@ -1390,7 +1469,8 @@ const retryFailedWorkflowAiRun = async (projectId, taskId) => {
         projectId,
         taskId,
         { ...task, stepHistory: stepHistory.slice(0, -1) },
-        { ...task, completed: Date.now(), workflowAiStatus: null }
+        { ...task, completed: Date.now(), workflowAiStatus: null },
+        { actorUserId }
     )
 }
 

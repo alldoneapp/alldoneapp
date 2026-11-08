@@ -1097,6 +1097,53 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
         })
 }
 
+const ACTIVATION_BOOKKEEPING_FIELDS = [
+    'activatedUserIds',
+    'recurrenceByUser',
+    'activatedInProjectIdByUser',
+    'lastExecutedByUser',
+    'executionByUser',
+    'completedOneOffUserIds',
+    'creatorUserId',
+    'activatorUserId',
+]
+
+/**
+ * Security audit 2026-11: a recurring task runs AS every user its activation fields name, so
+ * firestore.rules let each user write only their own activation entry. An edit therefore sends the
+ * editor's own activation change merged into the stored document, never the copy the modal loaded
+ * (which may be stale, and would otherwise re-add or re-time other people's activations).
+ */
+export const buildOwnActivationUpdate = ({ currentTask, editedTask, userId, payload }) => {
+    const update = { ...payload }
+    ACTIVATION_BOOKKEEPING_FIELDS.forEach(field => delete update[field])
+    if (!userId) return update
+
+    const stored = currentTask || {}
+    const edited = editedTask || {}
+    const hasExplicitActivationState = Array.isArray(stored.activatedUserIds) || stored.recurrenceByUser !== undefined
+    // A legacy task runs for its fallback ids; materializing exactly those is what the rules allow.
+    const storedActivatedUserIds = hasExplicitActivationState
+        ? (Array.isArray(stored.activatedUserIds) ? stored.activatedUserIds : []).filter(Boolean)
+        : getActivatedUserIds(stored)
+    const wantsActivation = Array.isArray(edited.activatedUserIds) && edited.activatedUserIds.includes(userId)
+    const nextActivatedUserIds = wantsActivation
+        ? [...new Set([...storedActivatedUserIds, userId])]
+        : storedActivatedUserIds.filter(id => id !== userId)
+    update.activatedUserIds = nextActivatedUserIds
+
+    const nextRecurrenceByUser =
+        stored.recurrenceByUser && typeof stored.recurrenceByUser === 'object' ? { ...stored.recurrenceByUser } : {}
+    const ownRecurrence = edited.recurrenceByUser && edited.recurrenceByUser[userId]
+    if (ownRecurrence) nextRecurrenceByUser[userId] = ownRecurrence
+    else delete nextRecurrenceByUser[userId]
+    update.recurrenceByUser = nextRecurrenceByUser
+
+    if (edited.activatorUserId === userId) update.activatorUserId = userId
+    if (!stored.creatorUserId) update.creatorUserId = userId
+    return update
+}
+
 export function updatePreConfigTask(projectId, assistantId, task) {
     clearAssistantTasksCache(projectId, assistantId)
     const taskToStore = { ...task }
@@ -1139,20 +1186,15 @@ export function updatePreConfigTask(projectId, assistantId, task) {
                 : { aiReasoningEffort: taskToStore.aiReasoningEffort }),
         }
 
-        if (!payload.creatorUserId) {
-            payload.creatorUserId = currentTask?.creatorUserId || task?.creatorUserId
-        }
-        if (!payload.activatorUserId) {
-            payload.activatorUserId = currentTask?.activatorUserId || task?.activatorUserId || payload.creatorUserId
-        }
-
-        const activatedUserIds = getActivatedUserIds({
-            ...currentTask,
-            ...task,
-            creatorUserId: payload.creatorUserId,
-            activatorUserId: payload.activatorUserId,
-        })
-        if (activatedUserIds.length > 0) payload.activatedUserIds = activatedUserIds
+        Object.assign(
+            payload,
+            buildOwnActivationUpdate({
+                currentTask,
+                editedTask: task,
+                userId: store.getState().loggedUser?.uid,
+                payload,
+            })
+        )
 
         const batch = new BatchWrapper(getDb())
         updateAssistantData(projectId, assistantId, {}, batch)

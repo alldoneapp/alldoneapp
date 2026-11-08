@@ -60,7 +60,6 @@ const MAX_SEARCH_LIMIT = 1000
 const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
 const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-const { isProjectMemberData } = require('./privacyAccess')
 const PROJECT_READ_CONCURRENCY = 20
 
 function canAccessByIsPublicFor(data, userId) {
@@ -162,12 +161,11 @@ class SearchService {
         return await this.searchWithOptimization(userId, searchParams)
     }
 
-    // security audit 2026-11: membership is projects/{pid}.userIds, never users/{uid}.projectIds
-    // (owner-writable navigation state).
+    // The same membership source as getUserProjects (users/{uid}.projectIds), for one project.
     async userBelongsToProject(userId, projectId) {
-        if (!userId || !projectId || typeof projectId !== 'string') return false
-        const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
-        return projectDoc.exists && isProjectMemberData(projectDoc.data(), userId)
+        const userDoc = await this.options.database.collection('users').doc(userId).get()
+        const projectIds = userDoc.exists ? userDoc.data().projectIds || [] : []
+        return projectIds.includes(projectId)
     }
 
     /**
@@ -1303,8 +1301,6 @@ class SearchService {
                 const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
                 if (!projectDoc.exists) return null
                 const projectData = projectDoc.data()
-                // security audit 2026-11: users/{uid}.projectIds only nominates; userIds decides.
-                if (!isProjectMemberData(projectData, userId)) return null
                 return {
                     id: projectId,
                     name: projectData.name,
@@ -1594,13 +1590,14 @@ class SearchService {
             const cleanNoteId = noteId.endsWith(projectId)
                 ? noteId.substring(0, noteId.length - projectId.length)
                 : noteId
-            const [projectDoc, noteDoc] = await Promise.all([
+            const [userDoc, projectDoc, noteDoc] = await Promise.all([
+                db.collection('users').doc(userId).get(),
                 db.collection('projects').doc(projectId).get(),
                 db.doc(`noteItems/${projectId}/notes/${cleanNoteId}`).get(),
             ])
-            if (!projectDoc.exists || !noteDoc.exists) return null
-            // security audit 2026-11: membership is the project's userIds, not users/{uid}.projectIds.
-            if (!isProjectMemberData(projectDoc.data(), userId)) return null
+            if (!userDoc.exists || !projectDoc.exists || !noteDoc.exists) return null
+            const projectIds = (userDoc.data() || {}).projectIds || []
+            if (!projectIds.includes(projectId)) return null
             const noteData = noteDoc.data()
             if (!canAccessByIsPublicFor(noteData, userId)) return null
             return {

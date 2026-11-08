@@ -44,15 +44,14 @@ class FakeQuery {
 
 function createFakeDb() {
     const projects = {
-        'project-1': { name: 'Operations', userIds: ['user-1'] },
-        'project-2': { name: 'Marketing', userIds: ['user-1'] },
+        'project-1': { name: 'Operations' },
+        'project-2': { name: 'Marketing' },
         'project-3': {
             name: 'Revenue',
-            userIds: ['user-1'],
             estimationType: 'TIME',
             hourlyRatesData: { currency: 'EUR', hourlyRates: { 'user-1': 100 } },
         },
-        'project-archived': { name: 'Archived', userIds: ['user-1'] },
+        'project-archived': { name: 'Archived' },
     }
 
     const okrsByProject = {

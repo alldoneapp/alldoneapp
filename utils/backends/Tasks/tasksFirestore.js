@@ -166,6 +166,7 @@ import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayT
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
+import { bindCopiedTaskIdentityFieldsToWriter } from './taskIdentityFields'
 import { TASK_EXECUTION_MODE_DIRECT, getTaskExecutionMode } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
 import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
@@ -321,6 +322,12 @@ const updateEditionData = data => {
     data.lastEditionDate = Date.now()
     data.lastEditorId = loggedUser.uid
 }
+
+// Security audit 2026-11: firestore.rules make whoever moves an assistant workflow task
+// (workflowTask) into a step its payer, so the AI step runs as, and is paid for by, that user and
+// never by a payer stamped by an earlier move.
+export const buildWorkflowPayerStamp = task =>
+    task?.workflowTask === true ? { workflowPayerUserId: store.getState().loggedUser.uid } : {}
 
 const buildManuallyPinnedCalendarData = (task, sourceProjectId, targetProjectId, requestedByUserId) => {
     if (!task?.calendarData) return null
@@ -584,6 +591,7 @@ export async function uploadNewTask(
         if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} created with humanReadableId: null`)
 
         const { loggedUser } = store.getState()
+        Object.assign(taskCopy, bindCopiedTaskIdentityFieldsToWriter(taskCopy, loggedUser.uid))
 
         storeLastAddedTaskId(taskId)
 
@@ -2330,6 +2338,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     taskCopy.subtaskNames = []
 
     updateEditionData(taskCopy)
+    Object.assign(taskCopy, bindCopiedTaskIdentityFieldsToWriter(taskCopy, loggedUser.uid))
 
     delete taskCopy.time
     taskCopy.projectId = newProject.id
@@ -2442,6 +2451,7 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     taskCopy.subtaskNames = []
 
     updateEditionData(taskCopy)
+    Object.assign(taskCopy, bindCopiedTaskIdentityFieldsToWriter(taskCopy, loggedUser.uid))
 
     delete taskCopy.time
     taskCopy.projectId = newProject.id
@@ -3097,7 +3107,14 @@ export async function moveTasksFromMiddleOfWorkflow(
         ...updateData,
         ...buildCrossUserTaskStatisticsMarker(userId, updateData.completed),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
-        workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
+        workflowAiPromptOverride: buildWorkflowAiPromptOverride(
+            workflow,
+            stepToMoveId,
+            comment,
+            transitionCommentId,
+            store.getState().loggedUser.uid
+        ),
+        ...buildWorkflowPayerStamp(task),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
         sortIndex,
@@ -3361,7 +3378,14 @@ export async function moveTasksFromOpen(
         ...buildCrossUserTaskStatisticsMarker(newUserId, completionDate),
         ...(task.suggestedBy ? { suggestedBy: null } : {}),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
-        workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
+        workflowAiPromptOverride: buildWorkflowAiPromptOverride(
+            workflow,
+            stepToMoveId,
+            comment,
+            transitionCommentId,
+            store.getState().loggedUser.uid
+        ),
+        ...buildWorkflowPayerStamp(task),
         ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
@@ -3496,6 +3520,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         // Reopening a completed task has no transition-popup comment. Explicitly clear any old
         // handoff so landing on an AI step runs its configured prompt.
         workflowAiPromptOverride: null,
+        ...buildWorkflowPayerStamp(task),
         done: false,
         inDone: false,
         sortIndex,

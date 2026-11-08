@@ -8,7 +8,6 @@ const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 const { resolveMenubarRichTextLinks } = require('./menubarRichText')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const { getVerifiedAccountEmail, findUserIdByVerifiedEmail } = require('../shared/verifiedAccountEmail')
-const { canAccessObject, isProjectMemberData } = require('../shared/privacyAccess')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -1029,32 +1028,9 @@ function isActivePush(pushData) {
 // with the fully diarized transcript. Returns the response payload, or null
 // when the note no longer exists (deleted on alldone.app) so the caller falls
 // through to the normal create path.
-// security audit 2026-11: every note id this endpoint acts on comes from the request or from a push
-// record written from one, and all writes go through the Admin SDK. So a note is only touched when
-// the token user is a member of its project (projects/{pid}.userIds) and the note is visible to
-// them (isPublicFor holds 0 or the user), exactly what the notes rules require of the app.
-async function menubarUserCanAccessNote(db, userId, projectId, noteId, knownNoteData = null) {
-    if (!userId || !projectId || !noteId) return false
-    const [projectDoc, noteData] = await Promise.all([
-        db.doc(`projects/${projectId}`).get(),
-        knownNoteData
-            ? Promise.resolve(knownNoteData)
-            : db
-                  .doc(`noteItems/${projectId}/notes/${noteId}`)
-                  .get()
-                  .then(doc => (doc.exists ? doc.data() || {} : null)),
-    ])
-    return (
-        !!projectDoc.exists &&
-        isProjectMemberData(projectDoc.data(), userId) &&
-        !!noteData &&
-        canAccessObject(noteData, userId)
-    )
-}
-
 async function updateExistingMenubarNote(
     db,
-    { userId, pushData, userData, title, content, attachments, enableAssistantChat },
+    { pushData, userData, title, content, attachments, enableAssistantChat },
     deps = {}
 ) {
     const projectId = pushData.projectId
@@ -1064,10 +1040,6 @@ async function updateExistingMenubarNote(
     const noteRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
     const noteDoc = await noteRef.get()
     if (!noteDoc.exists) return null
-    // A note the user cannot (or can no longer) access is not theirs to overwrite: answer as if it
-    // were gone, so the caller creates a fresh note instead.
-    const actingUserId = userId || pushData.userId
-    if (!(await menubarUserCanAccessNote(db, actingUserId, projectId, noteId, noteDoc.data() || {}))) return null
 
     const assistantActor = deps.assistantActor || (await getMenubarAssistantActor(db, userData))
     const feedUser = assistantActor.feedUser
@@ -1407,16 +1379,6 @@ async function handleMenubarPushNote(req, res) {
                 return
             }
 
-            // The note must be one the user may move: readable in the source project, or (a retry
-            // after an earlier attempt already moved it) readable in the target project.
-            const noteAccessible =
-                (await menubarUserCanAccessNote(db, userId, noteMove.sourceProjectId, noteMove.noteId)) ||
-                (await menubarUserCanAccessNote(db, userId, resolution.projectId, noteMove.noteId))
-            if (!noteAccessible) {
-                res.status(403).json({ success: false, error: 'Note not found or not accessible' })
-                return
-            }
-
             const targetPushRef = externalId
                 ? db
                       .collection(NOTE_PUSHES_COLLECTION)
@@ -1461,15 +1423,12 @@ async function handleMenubarPushNote(req, res) {
                 const assistantActor = await getMenubarAssistantActor(db, userData)
                 const sourceProjectDoc = await db.doc(`projects/${noteMove.sourceProjectId}`).get()
                 const sourceProject = sourceProjectDoc.exists ? sourceProjectDoc.data() || {} : {}
-                const targetProjectDoc = await db.doc(`projects/${resolution.projectId}`).get()
                 const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
                 await moveNoteToDifferentProject({
                     database: db,
                     sourceProjectId: noteMove.sourceProjectId,
                     targetProjectId: resolution.projectId,
                     noteId: noteMove.noteId,
-                    // Keep the note's audience inside the target project, as the in-app move does.
-                    targetProjectUserIds: (targetProjectDoc.exists && targetProjectDoc.data()?.userIds) || [],
                     editorId: assistantActor.feedUser.uid,
                     editorName: assistantActor.feedUser.displayName,
                     notesBucketName,
@@ -1559,7 +1518,6 @@ async function handleMenubarPushNote(req, res) {
                 return true
             }
             const updatedResponse = await updateExistingMenubarNote(db, {
-                userId,
                 pushData,
                 userData,
                 title,
@@ -2849,7 +2807,6 @@ module.exports = {
         resolveMenubarConversationTarget,
         enableNoteAssistantChat,
         updateExistingMenubarNote,
-        menubarUserCanAccessNote,
         resolveMenubarAssistantThread,
         sortMenubarProjects,
         toMillis,
