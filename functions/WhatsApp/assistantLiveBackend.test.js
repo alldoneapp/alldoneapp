@@ -310,8 +310,12 @@ test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
             expect(result).toEqual({ success: true, chatPosted: true, commentId: 'requested-answer' })
             return { finalResponseText: 'I posted the requested answer.' }
         })
+        // A phone caller is verified here; an unverified one may not post (NV-35, below).
         await runLiveAssistant(
-            request({ session: { ...session, channel }, lastUserTurn: { text: 'Please post the answer in chat.' } })
+            request({
+                session: { ...session, channel, callerVerified: true },
+                lastUserTurn: { text: 'Please post the answer in chat.' },
+            })
         )
         expect(storeCallTranscriptTurn).toHaveBeenCalledTimes(1)
         expect(storeCallTranscriptTurn).toHaveBeenCalledWith({
@@ -536,7 +540,10 @@ test.each([
     ['phone_call', false],
 ])('a %s may correct the project wiki: %s', async (channel, allowed) => {
     helper.getAssistantForChat.mockResolvedValue({ model: 'MODEL_GPT6_SOL', allowedTools: [] })
-    await expect(runLiveAssistant(request({ session: { ...session, channel } }))).resolves.toBe('Done')
+    // Even a fully attested phone caller may not correct the wiki.
+    await expect(runLiveAssistant(request({ session: { ...session, channel, callerVerified: true } }))).resolves.toBe(
+        'Done'
+    )
     const runtime = helper.interactWithChatStream.mock.calls[0][4]
     expect(runtime).toMatchObject({ sourceChannel: channel, allowKnowledgeCorrections: allowed })
     expect(helper.getOptimizedContextMessages.mock.calls[0][11]).toMatchObject({ allowKnowledgeCorrections: allowed })
@@ -718,4 +725,45 @@ test('persists a thrown cause and instructs the backend not to turn spoken error
         'system',
         expect.stringContaining('never invent an explanation such as a display bug'),
     ])
+})
+
+// NV-35: a phone call without full STIR/SHAKEN attestation may come from anybody who knows the
+// account's number, so it runs without the account's context, tools or chat writes.
+describe('unverified phone callers (NV-35)', () => {
+    const phoneSession = overrides => ({ ...session, channel: 'phone_call', ...overrides })
+
+    test.each([
+        ['without an attestation record', {}],
+        ['with partial attestation', { callerVerified: false, callerAttestation: 'TN-Validation-Passed-B' }],
+    ])('restricts a phone call %s', async (label, overrides) => {
+        await runLiveAssistant(request({ session: phoneSession(overrides) }))
+
+        expect(helper.getOptimizedContextMessages).not.toHaveBeenCalled()
+        const [messages, , , , runtime] = helper.interactWithChatStream.mock.calls[0]
+        expect(runtime).toMatchObject({ callerIdentityUnverified: true, allowKnowledgeCorrections: false })
+        const context = messages.map(([, text]) => text).join('\n')
+        expect(context).toContain('could not be verified')
+        const options = helper.collectAssistantTextWithToolCalls.mock.calls[0][0]
+        expect(Object.keys(options.localTools)).toEqual(['end_call'])
+        expect(runtime.additionalToolSchemas.map(schema => schema.function.name)).toEqual(['end_call'])
+    })
+
+    test('keeps the account context for a fully attested phone caller', async () => {
+        await runLiveAssistant(
+            request({ session: phoneSession({ callerVerified: true, callerAttestation: 'TN-Validation-Passed-A' }) })
+        )
+
+        expect(helper.getOptimizedContextMessages).toHaveBeenCalled()
+        const runtime = helper.interactWithChatStream.mock.calls[0][4]
+        expect(runtime.callerIdentityUnverified).toBeUndefined()
+        expect(Object.keys(helper.collectAssistantTextWithToolCalls.mock.calls[0][0].localTools)).toContain(
+            'post_voice_answer_in_chat'
+        )
+    })
+
+    test('does not restrict WhatsApp or in-app calls, whose identity the channel verified', async () => {
+        await runLiveAssistant(request({ session: { ...session, channel: 'whatsapp_call' } }))
+        expect(helper.getOptimizedContextMessages).toHaveBeenCalled()
+        expect(helper.interactWithChatStream.mock.calls[0][4].callerIdentityUnverified).toBeUndefined()
+    })
 })

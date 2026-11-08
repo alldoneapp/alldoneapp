@@ -1781,6 +1781,31 @@ exports.resetArtifactLink = onCall(
 
 // Undo of a wiki correction from the page history. The assistant's undo_knowledge_correction tool
 // runs the same function; see KnowledgeBase/knowledgeBaseAssistant.js.
+// NV-17: a heartbeat runs as a member only after that member confirmed the assistant's current
+// heartbeat configuration (Assistant/heartbeatOptIn.js).
+exports.assistantHeartbeatOptIn = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { handleHeartbeatOptInRequest } = require('./Assistant/heartbeatOptIn')
+        const { FieldValue } = require('firebase-admin/firestore')
+        const result = await handleHeartbeatOptInRequest({
+            db: admin.firestore(),
+            userId: auth.uid,
+            data,
+            fieldValue: FieldValue,
+        })
+        if (!result.success) throw new HttpsError('failed-precondition', result.error)
+        return result
+    }
+)
+
 exports.undoKnowledgeCorrection = onCall(
     {
         timeoutSeconds: 30,

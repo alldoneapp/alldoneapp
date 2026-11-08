@@ -1085,7 +1085,11 @@ tools and the execution gate:
   messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
-  or delegated assistant is not a member saying "this is wrong".
+  or delegated assistant is not a member saying "this is wrong". Neither is an **automatic comment reply**
+  (`runAssistantCommentReply`, answering another assistant's comment such as a Gmail follow-up):
+  `askToOpenAIBot` derives `allowKnowledgeCorrections` from `!runOptions.automaticCommentReply`, and
+  `resolveKnowledgeBaseAccess` returns read-only for `automaticCommentReply` whatever the flag says
+  (security audit NV-45).
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
@@ -3480,6 +3484,28 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A PSTN phone call is the account holder only when the carrier says so (NV-35).** Twilio passes
+the STIR/SHAKEN verdict as `StirVerstat`; `handleIncomingPhoneCall` records it on the session as
+`callerVerified` / `callerAttestation`, and only `TN-Validation-Passed-A` counts. Any other value,
+or none (international calls, carriers without STIR/SHAKEN, sessions from before this change), makes
+`runLiveAssistant` run as an unverified caller (`functions/shared/callerVerification.js`): no
+`getOptimizedContextMessages` (no chat history, memory, instructions or project data) and no Anna
+context, a fixed context saying the account cannot be used, `runtime.callerIdentityUnverified`, which
+`filterAllowedToolsForRuntimeContext`, `isToolAllowedForExecution`, `interactWithChatStream` (no
+implicit `load_skill` or wiki tools) and `resolveKnowledgeBaseAccess` all honour, so only `web_search`
+remains, and no `post_voice_answer_in_chat`. WhatsApp and in-app calls are not affected. The
+transcript still lands in the account's daily topic for display, but each turn carries
+`callerUnverified: true`, and `getOptimizedContextMessages` and the WhatsApp `getConversationHistory`
+skip such comments, so a later run never reads a stranger's words as the account holder's. Residual:
+an unverified call still spends the account's voice Gold.
+
+**A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
+loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
+therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,
+the same rule `assertObjectAccess` applies to `askToBotSecondGen`. It used to accept anyone listed in
+`creatorId`, `lastEditorId`, `members` or `usersFollowing`, and `members` keeps every former commenter
+after a topic is made private.
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
@@ -4589,6 +4615,20 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### A phone number routes WhatsApp and calls only when exactly one account claims it (NV-44)
+
+`users/{uid}.phone` is written by its owner (`setUserPhone`) with no proof of possession; no
+verification flow exists. `resolveUserByPhone` (`functions/WhatsApp/whatsAppIncomingHandler.js`)
+therefore looks the number up in both stored formats (with and without `+`) and refuses to route
+when more than one account claims it. It logs the claimant ids at ERROR, replies to a WhatsApp
+message with a neutral "linked to more than one account" note, and rejects a call as unlinked.
+`findUserByPhone` keeps its old contract (an id or null). Before this, `limit(1)` silently picked
+whichever document sorted first, so anyone could take over the owner's WhatsApp channel by saving
+the same number. The real fix is a verified claim: a server-owned `phone` set by a Cloud Function
+after a WhatsApp one-time-code challenge, a unique `phoneClaims/{e164}` document written in a
+transaction, and a rules change refusing client writes to `phone`. Until that exists, ambiguity
+refusal is the only protection.
+
 ### WhatsApp replies must finish or report failure before their worker expires
 
 `WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
@@ -4753,6 +4793,7 @@ Ship both the Functions package (assistant entry points and MCP) and the rebuilt
 - Run `node migration/backfillAssistantHeartbeatSchedules.js --firebase-project-id=<project> --execute` after deploying the worker and indexes. Without `--execute` the script is a dry run.
 - Cloud Tasks IAM must be granted to the **firebase-adminsdk SA** after deploying `runAssistantHeartbeat`. Run `functions/Assistant/grant-heartbeat-task-worker.sh <projectId>`; it grants project-level enqueue, self `actAs`, and `run.invoker` on the worker.
 - Rollback requires pausing or purging the `runassistantheartbeat` task queue before restoring the legacy scanner. Legacy assistant heartbeat status maps are intentionally retained.
+- **A heartbeat runs as a member only after that member confirmed it (security audit NV-17).** A heartbeat runs unattended with the member's identity, Gold and connected accounts (`search_gmail` reads their mailbox), while its prompt, tools and instructions sit on the shared assistant document that every member may edit. `functions/Assistant/heartbeatOptIn.js` therefore requires `users/{uid}.heartbeatOptIns["<projectId>__<assistantId>"].configHash` to equal the hash of the assistant's current heartbeat prompt, `allowedTools`, `instructions` and `mcpServers`. Chance, interval, awake window, model and WhatsApp delivery are not hashed. `buildHeartbeatScheduleData`, the worker and the legacy scanner all check it, so any other member's change to one of those fields stops the heartbeat for everyone who confirmed the old version. Members confirm, re-confirm or revoke through the `assistantHeartbeatOptIn` callable (row "Run heartbeat for me" in the heartbeat settings; the client never computes the hash). The client calls `refresh` after the member's own edit to instructions, heartbeat prompt or tools, which re-confirms only for a member who had already confirmed. The server confirms for a project's **only** member at the moments nobody else can have written the configuration: assistant created, hashed field changed, project created (`confirmHeartbeatsForSoleMember`, before the schedule sync). Being alone is not trust in itself: someone who changes the prompt and then leaves must not have it run as the member left behind. MCP-server changes made through the server-side connect flow need a fresh confirmation in shared projects. A heartbeat topic (`Heartbeat<date><uid>`) is now `isPublicFor: [uid]`, and an existing project-visible one is made private on reuse. The WhatsApp daily topic stays project-visible by design. One-time migration: `node migration/confirmAssistantHeartbeats.js --firebase-project-id=<project>` (dry run; `--execute`). Run it right before and again right after the functions deploy. The default `--scope=owner` confirms the only member of a one-member project and the assistant's `creatorId` in shared projects; `--scope=all` keeps today's fan-out.
 
 ### Code Style
 
@@ -5050,55 +5091,6 @@ non-member query projects by sharing level. Object lists inside a known With-lin
 open on purpose (that is what "With link" means). Ids already harvested keep working until the
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
-
-### What a Firestore trigger reads from a client document must be bound by the rules (security audit 2026-11)
-
-Several documents are written by any member (or any signed-in account) and then acted on by the
-server with the Admin SDK, which trusts what it reads. Anonymous sign-in is enabled in production, so
-"signed in" means "anyone". The rules now bind each of these at write time:
-
-- **Projects** (`newProjectBoundToCreator`, `projectMembersAddedOnlyToGuide`): a client creates a
-  project only with `userIds == [itself]` and `creatorId == itself`, and `creatorId`, `isTemplate`
-  and `parentTemplateId` never change afterwards. `creatorId` listed in `userIds` is who pays for the
-  default project wiki (`knowledgeBaseDefaults.js`), so before this any account could create a
-  project naming another user as creator and member and spend that user's Gold. The one exception is
-  a guide: it is created in the name of its template's `templateCreatorId` (the parent must really be
-  a template), and a guide member may add exactly that creator and the administrator. Members are
-  otherwise never added by a member; `templateCreatorId` may only be set to oneself on create or
-  handed to the administrator by a kick. Accepting an invitation to a plain project (the invitee
-  adding itself) was already refused by the `isProjectMember` update rule before this change and
-  still is: that flow needs a server path, not a wider rule.
-- **Global assistant catalog** (`globalAssistantTaskActivationOnly`): every field of
-  `assistantTasks/globalProject/preConfigTasks/*` outside the activation keys is copied into every
-  tenant's derived assistant. A non-administrator may change only `activatedUserIds`,
-  `recurrenceByUser`, `activatedInProjectIdByUser`, `lastExecutedByUser`, `completedOneOffUserIds`,
-  `activatorUserId` and a missing `creatorUserId`, each only in its own entry. The activation dialog
-  therefore sends only that entry for a global task (`buildGlobalTaskActivationUpdate` in
-  `assistantsFirestore.js`, a transaction without the admin-only assistant bump). The triggers ignore
-  anything under `globalProject` that is not in `preConfigTasks` (`globalCatalogTaskPath.js`), and the
-  update trigger propagates nothing when the template state (`getTaskTemplateState`) is unchanged, so
-  switching an activation no longer rewrites every tenant's copy and posts a sync activity.
-- **Invitations** (`isValidProjectInvitation`): `inviterId` must be the writer, only the four fields
-  the app writes are allowed, and no client updates one. `onCreateProjectInvitation` ignores the
-  stored `url`, builds the answer link from `app_url` + project id + address (refusing an address that
-  could break out of the path), sends nothing when the inviter is not a member, and caps mails at 50
-  per inviter per UTC day (`projectInvitationEmailQuota`, server-only).
-- **Forced reloads** (`userForceReloads/{uid}`): a teammate write must name a project that both the
-  writer and the target belong to, before or after the write (deleting a project and kicking a member
-  reload people on their way out).
-- **Sticky note markers** (`stickyNotesData`): never readable or listable by a client, writable only
-  by members of the project the marker names (old and new), and deleting a marker that does not exist
-  stays allowed because the app untracks on every unstick. `checkStickyNotes` re-reads the note's own
-  `stickyData.stickyEndDate` and re-arms the marker instead of demoting a note that is still sticky.
-- **`info/**`** is server-only; `increaseVersionSecondGen` is the only writer of `info/version`.
-- **Invitation membership mutations** (`onlyInvitationFieldsChange`): `invitation-add` and
-  `invitation-remove` may touch only `invitedProjectIds` and the proof, not the invitee's
-  `assistantId`, `lastEditorId` or assistant comment maps.
-
-Pinned by the `security audit 2026-11: rules package` block of
-`__tests__/Firestore/firestoreRules.emulator.test.js` (each case fails against the previous rules),
-`functions/AssistantTasks/globalCatalogTaskTriggers.test.js`, `functions/StickyNotesHelper.test.js`,
-`functions/Utils/projectInvitation.test.js` and `utils/backends/Assistants/globalTaskActivation.test.js`.
 
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
