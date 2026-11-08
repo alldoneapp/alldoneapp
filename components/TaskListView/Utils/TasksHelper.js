@@ -35,6 +35,7 @@ import ProjectHelper, {
     ALL_PROJECTS_INDEX,
     checkIfSelectedAllProjects,
     checkIfSelectedProject,
+    PROJECT_PRIVATE,
 } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import SearchHelper from '../../../utils/SearchHelper'
 import { compareTasksByPriorityThenCompleted, TASK_PRIORITY_NONE } from '../../../utils/TaskPriority'
@@ -625,17 +626,23 @@ class TasksHelper {
         // If I'm not a member, then try to join to it
         const { loggedUser } = store.getState()
 
+        let project = await Backend.getProjectData(projectId)
+
         const failProcess = (showMessage = true) => {
             navigateToAllProjects()
             if (showMessage) store.dispatch(setShowProjectDontExistInInvitationModal(true))
             redirectFn?.()
         }
 
-        // A private project cannot be read by a non-member, but an invitee may still join it, so
-        // joinProjectSecondGen decides (ProjectHelper.processProjectInvitation).
-        ProjectHelper.processProjectInvitation(navigation, loggedUser.uid, projectId).then(user => {
-            if (user == null) failProcess()
-        })
+        if (project.isShared !== PROJECT_PRIVATE) {
+            ProjectHelper.processProjectInvitation(navigation, loggedUser.uid, projectId).then(user => {
+                if (user == null) {
+                    failProcess()
+                }
+            })
+        } else {
+            failProcess(false)
+        }
     }
 
     static processURLProjectsUserTasks = async (

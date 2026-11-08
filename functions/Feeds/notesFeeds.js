@@ -243,7 +243,7 @@ async function createNoteOwnerChangedFeed(
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_NOTE_OWNER_CHANGED,
         lastChangeDate: currentMilliseconds,
-        entryText: '',
+        entryText: `changed note title • From ${simpleOldName} to ${simpleNewName}`,
         feedUser,
         objectId: noteId,
         isPublicFor: noteFeedObject.isPublicFor,

@@ -1,3 +1,4 @@
+const { filterToProjectMembers } = require('../shared/projectMemberRecipients')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const fs = require('fs')
@@ -676,8 +677,8 @@ async function applyVmCompletionMetadata(
     const db = admin.firestore()
     const now = Date.now()
     const userIdsToNotify = uniqueDefined([...(pendingWebhook.userIdsToNotify || []), pendingWebhook.userId])
-    const followerIds = await resolveVmCompletionFollowers(pendingWebhook)
-    const notificationUsers = uniqueDefined(userIdsToNotify)
+    const threadFollowerIds = await resolveVmCompletionFollowers(pendingWebhook)
+    const requestedNotificationUsers = uniqueDefined(userIdsToNotify)
     const lastComment = cleanTextMetaData(removeFormatTagsFromText(text), true)
     const parentLastComment = shrinkTagText(lastComment, LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN)
     const commentRef = db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
@@ -722,6 +723,10 @@ async function applyVmCompletionMetadata(
         const chat = chatSnap.exists ? chatSnap.data() || {} : {}
         const project = projectSnap && projectSnap.exists ? projectSnap.data() || {} : {}
         const assistant = assistantSnap && assistantSnap.exists ? assistantSnap.data() || {} : {}
+        // Security audit 2026-11 (#11): the follower list and userIdsToNotify are member-writable and
+        // outlive membership, so a VM result reaches only current members of the project.
+        const followerIds = filterToProjectMembers(threadFollowerIds, project)
+        const notificationUsers = filterToProjectMembers(requestedNotificationUsers, project)
         const members = uniqueDefined([...(chat.members || []), ...notificationUsers, assistantId])
         const followersMap = {}
         followerIds.forEach(followerId => {

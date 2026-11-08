@@ -22,7 +22,7 @@ import ModalHeader from '../FloatModals/ModalHeader'
 import Line from '../FloatModals/GoalMilestoneModal/Line'
 import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/ColoredCircleSmall'
 import store from '../../../redux/store'
-import { joinProjectAsLoggedUser } from '../../../utils/backends/Users/usersFirestore'
+import { tryAddUserToProjectByUidOrEmail } from '../../../utils/backends/firestore'
 import { unwatchProjectData } from '../../../utils/InitialLoad/initialLoadHelper'
 import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 import { useFixedModalOverlayPadding } from '../../../hooks/useSafeAreaOverlayPadding'
@@ -33,11 +33,8 @@ export default function ProjectInvitationPopup() {
     const newUserNeedToJoinToProject = useSelector(state => state.newUserNeedToJoinToProject)
     const data = useSelector(state => state.showProjectInvitationPopup.data)
     const [processing, setProcessing] = useState(false)
-    const [joinError, setJoinError] = useState(false)
 
-    const { project, user, invited } = data
-    // An invitation lets the invitee join even a project that is shared "restricted" (copy only).
-    const canOnlyCopy = project.isShared === PROJECT_RESTRICTED && !invited
+    const { project, user } = data
 
     const hidePopup = () => {
         dispatch([hideProjectInvitation(), setProjectInvitationData({ project: null, user: null })])
@@ -54,20 +51,12 @@ export default function ProjectInvitationPopup() {
 
     const joinToProject = () => {
         setProcessing(true)
-        // joinProjectSecondGen checks the invitation or link and adds the membership; a non-member
-        // cannot write a project's userIds itself.
-        joinProjectAsLoggedUser(project.id)
-            .then(() => {
-                hidePopup()
-                const { initialUrl } = store.getState()
-                URLTrigger.processUrl(NavigationService, initialUrl)
-                showUserInfoModalIfNeeded()
-            })
-            .catch(error => {
-                console.warn('[Join project] Could not join the project:', error)
-                setProcessing(false)
-                setJoinError(true)
-            })
+        tryAddUserToProjectByUidOrEmail(user.uid, project.id).then(() => {
+            hidePopup()
+            const { initialUrl } = store.getState()
+            URLTrigger.processUrl(NavigationService, initialUrl)
+            showUserInfoModalIfNeeded()
+        })
     }
 
     const unmountProjectWhenDeclineInvitation = () => {
@@ -84,7 +73,7 @@ export default function ProjectInvitationPopup() {
     }
 
     const declineInvitation = () => {
-        if (canOnlyCopy) {
+        if (project.isShared === PROJECT_RESTRICTED) {
             hidePopup()
             URLTrigger.processUrl(NavigationService, '/projects/tasks/open')
             showUserInfoModalIfNeeded()
@@ -104,7 +93,11 @@ export default function ProjectInvitationPopup() {
             <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <ModalHeader
                     closeModal={closeModalWithoutAcceptInvitation}
-                    title={translate(canOnlyCopy ? 'Interaction with the project' : 'Invitation to project')}
+                    title={translate(
+                        project.isShared === PROJECT_RESTRICTED
+                            ? 'Interaction with the project'
+                            : 'Invitation to project'
+                    )}
                     description={translate('Select your interaction with this project')}
                 />
                 <View style={localStyles.projectName}>
@@ -118,19 +111,14 @@ export default function ProjectInvitationPopup() {
                     <Text style={[styles.body1, localStyles.title]}>{project.name}</Text>
                 </View>
                 <Line />
-                {joinError && (
-                    <Text style={[styles.body2, localStyles.joinError]}>
-                        {translate('Could not join this project. Please try again.')}
-                    </Text>
-                )}
                 <View style={localStyles.buttonsContainer}>
                     <Button
-                        title={translate(canOnlyCopy ? 'Cancel' : 'Decline')}
+                        title={translate(project.isShared === PROJECT_RESTRICTED ? 'Cancel' : 'Decline')}
                         type={'secondary'}
                         buttonStyle={{ marginRight: 16 }}
                         onPress={declineInvitation}
                     />
-                    {canOnlyCopy ? (
+                    {project.isShared === PROJECT_RESTRICTED ? (
                         <CopyProjectWrapper project={project} hidePopup={closeModalWithoutAcceptInvitation} />
                     ) : (
                         <Button
@@ -181,9 +169,5 @@ const localStyles = StyleSheet.create({
     title: {
         marginLeft: 8,
         color: '#ffffff',
-    },
-    joinError: {
-        marginTop: 8,
-        color: colors.UtilityRed125,
     },
 })

@@ -7,6 +7,10 @@ const { normalizeGoalMilestonesConfig } = require('../shared/goalMilestonesHelpe
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
 const { buildLastEditorVia, buildMcpActorMarker } = require('../shared/mcpActor')
 const {
+    APPROVED_CONTENT_HASH_FIELD,
+    computeAssistantTaskContentHash,
+} = require('../Assistant/assistantTaskContentHash')
+const {
     SELECTABLE_ASSISTANT_MODELS,
     normalizeSelectableAssistantModelKey,
 } = require('../Assistant/selectableAssistantModels')
@@ -982,6 +986,9 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
         lastExecuted: null,
         createdVia: buildMcpActorMarker(context.mcpClient),
     }
+    // The user asked for this task through their own MCP client, so its content is approved for
+    // them (security audit 2026-11, NEW-A: a scheduled run executes only approved content).
+    task[APPROVED_CONTENT_HASH_FIELD] = { [userId]: computeAssistantTaskContentHash(task) }
 
     const batch = db.batch()
     batch.set(collection.doc(taskId), task)
@@ -1029,6 +1036,4 @@ module.exports = {
     executeWorkspaceSetupTool,
     buildSchedule,
     normalizeContactStatuses,
-    // joinProjectSecondGen builds a template's new guide from the same defaults.
-    buildProjectDocument,
 }

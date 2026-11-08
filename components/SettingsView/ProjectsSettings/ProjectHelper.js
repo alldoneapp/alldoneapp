@@ -80,7 +80,6 @@ import {
     setUserPhone,
     setUserRole,
     setUserRoleInProject,
-    previewProjectJoin,
 } from '../../../utils/backends/Users/usersFirestore'
 import { generateSortIndex } from '../../../utils/backends/firestore'
 import { normalizeGoalMilestonesConfig } from '../../../utils/GoalMilestonesHelper'
@@ -328,36 +327,11 @@ class ProjectHelper {
         navigation.navigate('SettingsView')
     }
 
-    /**
-     * Offers a non-member the project behind a link or an invitation. joinProjectSecondGen answers
-     * whether the caller may join (`access`) and what the project is called: an invitee of a private
-     * project cannot read the project document before joining it.
-     */
     static processProjectInvitation = async (navigation, uidOrEmail, projectId) => {
-        let preview = null
-        try {
-            preview = await previewProjectJoin(projectId)
-        } catch (error) {
-            console.warn('[Join project] No access to this project:', error?.code || error)
-            return null
-        }
-        if (!preview?.project) return null
-        // Only a restricted project is offered without the right to join it (to be copied).
-        if (!preview.access && preview.project.isShared !== PROJECT_RESTRICTED) return null
-
-        let project = null
-        try {
-            project = await Backend.getProjectData(projectId)
-        } catch (error) {
-            project = null
-        }
+        const project = await Backend.getProjectData(projectId)
         const user = await Backend.getUserDataByUidOrEmail(uidOrEmail)
-        if (user != null) {
-            const data = {
-                project: project || preview.project,
-                user: user,
-                invited: preview.access === 'invitation',
-            }
+        if (project != null && user != null) {
+            const data = { project: project, user: user }
             ProjectHelper.showModalForJointToProject(navigation, data)
             return user.uid
         }

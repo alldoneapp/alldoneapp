@@ -5051,40 +5051,6 @@ open on purpose (that is what "With link" means). Ids already harvested keep wor
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
-### Joining a project is a server operation (`joinProjectSecondGen`)
-
-`firestore.rules` let only an existing member update `projects/{id}` (and vouch for a membership
-change on a user document), so the browser can never add itself to a project. The invitation
-popup's "Join", a template link (which places the visitor in a guide) and joining a guide used to
-batch-write `userIds` and the joiner's `projectIds` from the client and were all refused (pinned by
-"never lets an invitee or a link visitor add itself" in the rules emulator suite). Now
-`functions/Projects/joinProject.js` decides and writes, in one transaction, what the client wrote:
-project `userIds`, every added user's `projectIds` + `guideProjectIds`/`templateProjectIds`, the
-default workstream (not for guides), a new guide document plus the template's `guideProjectIds`, and
-it consumes the caller's invitation. Who may join: an invitation naming the caller's uid or
-**Firebase-Auth-verified** email (never `users/{uid}.email`); a project shared "With link"
-(`isShared === 0`; restricted is copy-only unless invited); a guide directly only by its template's
-creator or the administrator; a template with `startGuide: true` by anyone who may open it (last guide
-with room, else a new guide with the creator and administrator), the administrator joining the
-template itself. `preview: true` returns the project summary and `access` (an invitee of a private
-project cannot read it before joining), `decline: true` removes the caller's invitation. Feeds,
-followers, welcome chats and `copyTemplateObjectsSecondGen` stay on the client and run after the
-callable returns, as a member (`joinProjectAsLoggedUser`, `createProjectJoinFeeds` in
-`usersFirestore.js`, `addUserToTemplate` in `guidesFirestore.js`). The template's "guide added" feed
-is no longer written: the joiner is not a template member. Never reintroduce a client write of
-another project's membership; `__tests__/Projects/JoinProjectClientGuardrails.test.js` ratchets it.
-Pinned by `functions/Projects/joinProject.test.js` and `utils/backends/Projects/guidesJoin.test.js`.
-
-### Every `<origin>/<name>Callback` a function builds needs a hosting rewrite
-
-OAuth redirect URIs are built on the app origin (`https://my.alldone.app/googleOAuthCallback`,
-`/microsoftOAuthCallback`, `/mcpClientOAuthCallback`, `/mcpOAuthCallback`). Without a rewrite in
-`firebase.json` the provider's redirect falls through to `** -> /index.html` and the code lands in the
-SPA: `/microsoftOAuthCallback` did exactly that in production until it got its rewrite. Add the
-rewrite (above `**`) and the service worker's `NAVIGATION_DENYLIST` entry with the function;
-`__tests__/OAuthCallbackHostingRewrites.test.js` scans `functions/` and fails otherwise. The redirect
-URI must also be registered with the provider (Google Cloud console / Microsoft Entra app).
-
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
 **Before these files, both buckets let any signed-in account read, list and write every object**

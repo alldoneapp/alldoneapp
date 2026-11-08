@@ -16,6 +16,7 @@ const {
     onDocumentUpdated,
     onDocumentDeleted,
     onDocumentWritten,
+    onDocumentWrittenWithAuthContext,
 } = require('firebase-functions/v2/firestore')
 
 const admin = require('firebase-admin')
@@ -2706,22 +2707,6 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
 
 //TEMPLATE AND COMMUNITY PROJECTS
 
-// Accepting an invitation, joining a project shared with link, joining a guide and starting a
-// template's guide. A non-member cannot write a project's userIds under firestore.rules, so the
-// right to join is checked and the membership written here (Projects/joinProject.js).
-exports.joinProjectSecondGen = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { handleJoinProjectRequest } = require('./Projects/joinProject')
-        return await handleJoinProjectRequest(admin.firestore(), request)
-    }
-)
-
 exports.sendUserJoinsToGuideEmailSecondGen = onCall(
     {
         timeoutSeconds: 540,
@@ -5093,6 +5078,61 @@ exports.onUpdateAssistantTaskSecondGen = onDocumentUpdated(
         const { onUpdateAssistantTask } = require('./AssistantTasks/onUpdateAssistantTaskFunctions.js')
         const { projectId, assistantId, assistantTaskId } = event.params
         await onUpdateAssistantTask(projectId, assistantId, assistantTaskId, event.data)
+    }
+)
+
+// Security audit 2026-11 (NEW-A): a scheduled assistant task runs AS each user who activated it,
+// while its content is member-editable. This records, for the user who wrote it, the content a write
+// shows them approving (activating it, or editing it while activated). It needs the writer's
+// identity, which only the auth-context event carries; see Assistant/assistantTaskContentApproval.js.
+exports.onWriteAssistantTaskApprovalSecondGen = onDocumentWrittenWithAuthContext(
+    {
+        document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { recordWriterApprovalFromEvent } = require('./Assistant/assistantTaskContentApproval')
+        const { projectId, assistantId, assistantTaskId } = event.params
+        const before = event.data?.before?.exists ? event.data.before.data() : null
+        const after = event.data?.after?.exists ? event.data.after.data() : null
+        await recordWriterApprovalFromEvent({
+            docPath: `assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`,
+            projectId,
+            before,
+            after,
+            authType: event.authType,
+            authId: event.authId,
+        })
+    }
+)
+
+// The explicit half: a user confirms a run (or saves a task) whose current content they had not
+// approved. `expectedHash` is the hash of what they were shown; a different stored content is refused.
+exports.approveAssistantTaskContentSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('unauthenticated', 'Authentication required')
+        const { approveAssistantTaskContent, ApprovalError } = require('./Assistant/assistantTaskContentApproval')
+        try {
+            return await approveAssistantTaskContent({
+                userId: auth.uid,
+                projectId: data?.projectId,
+                assistantId: data?.assistantId,
+                taskId: data?.taskId,
+                expectedHash: data?.expectedHash,
+            })
+        } catch (error) {
+            if (error instanceof ApprovalError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
     }
 )
 

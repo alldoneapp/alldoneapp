@@ -1,4 +1,5 @@
 'use strict'
+const { filterToProjectMembers } = require('./shared/projectMemberRecipients')
 const handlebars = require('handlebars')
 const fs = require('fs')
 const moment = require('moment')
@@ -579,12 +580,13 @@ const sendChatNotificationToUsers = async (
     objectName,
     messageTimestamp
 ) => {
-    const promises = []
-    promises.push(getProject(admin, projectId))
-    promises.push(getUserDocs(admin, userIds))
-    const [project, userDocs] = await Promise.all(promises)
-
+    const project = await getProject(admin, projectId)
     if (!project) return
+    // Security audit 2026-11 (#11): an emailNotifications document names its recipients; only
+    // current project members are mailed, whoever wrote the list.
+    const recipients = filterToProjectMembers(userIds, project)
+    if (recipients.length === 0) return
+    const userDocs = await getUserDocs(admin, recipients)
     const { color: projectColor, name: projectName } = project
 
     for (let userData of userDocs) {

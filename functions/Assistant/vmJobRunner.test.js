@@ -2629,6 +2629,7 @@ describe('VM completion chat metadata', () => {
         commentData = {},
         chatData = {},
         taskData = { commentsData: { amount: 1 } },
+        projectUserIds = ['user-1', 'user-2'],
     } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
@@ -2649,7 +2650,7 @@ describe('VM completion chat metadata', () => {
                     return { exists: true, data: () => taskData }
                 }
                 if (ref.path === 'projects/project-1') {
-                    return { exists: true, data: () => ({ name: 'Product' }) }
+                    return { exists: true, data: () => ({ name: 'Product', userIds: projectUserIds }) }
                 }
                 if (ref.path === 'assistants/project-1/items/assistant-1') {
                     return { exists: true, data: () => ({ displayName: 'Anna' }) }
@@ -2668,6 +2669,35 @@ describe('VM completion chat metadata', () => {
         jest.clearAllMocks()
         mockFirestore.FieldValue.increment.mockImplementation(value => ({ __op: 'increment', value }))
         mockGetObjectFollowersIds.mockResolvedValue(['user-1', 'user-2'])
+    })
+
+    // Security audit 2026-11 (#11): follower lists and userIdsToNotify are member-writable and
+    // outlive membership; a VM result reaches only current project members.
+    test('notifies only current project members', async () => {
+        mockGetObjectFollowersIds.mockResolvedValue(['user-1', 'user-2', 'removed-member'])
+        const { transaction } = createFirestoreMock({ projectUserIds: ['user-1', 'user-2'] })
+
+        const result = await __private__.applyVmCompletionMetadata(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1', 'stranger'],
+                isPublicFor: [0],
+            },
+            'comment-1',
+            'Finished VM result'
+        )
+
+        expect(result.followerIds).toEqual(['user-1', 'user-2'])
+        expect(result.userIdsToNotify).toEqual(['user-1'])
+        const writtenPaths = transaction.set.mock.calls.map(([ref]) => ref.path)
+        expect(writtenPaths.some(path => path.includes('removed-member') || path.includes('stranger'))).toBe(false)
+        const push = transaction.set.mock.calls.find(([ref]) => ref.path === 'pushNotifications/comment-1')[1]
+        expect(push.userIds).toEqual(['user-1', 'user-2'])
     })
 
     test('applies the same unread and task metadata as a normal assistant message', async () => {
