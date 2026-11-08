@@ -223,63 +223,63 @@ describe('an idempotency claim counts only if the ledger wrote it (security audi
     })
 })
 
-describe('usage that already happened is charged in full, even below 0 (AT-2978)', () => {
+describe('usage that already happened is settled, never dropped (security audit 2026-11)', () => {
     test('charges the full cost when the balance covers it', async () => {
         expect(await settleUsageGold(USER, 40, { source: 'assistant_usage' })).toMatchObject({
             success: true,
             amount: 40,
+            uncovered: 0,
             newBalance: 60,
         })
     })
 
-    test('charges the full cost when the balance falls short, leaving a negative balance', async () => {
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    test('takes what is left when the balance falls short, and reports the rest', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
         const result = await settleUsageGold(USER, 10000, { source: 'assistant_usage' })
 
-        expect(result).toMatchObject({ success: true, amount: 10000, newBalance: -9900 })
-        expect(gold()).toBe(-9900)
-        expect(ledger()).toEqual([
-            expect.objectContaining({ direction: 'spend', amount: 10000, balanceBefore: 100, balanceAfter: -9900 }),
-        ])
-        expect(warnSpy).toHaveBeenCalledWith(
-            '[gold] Usage settled into a negative balance',
-            expect.objectContaining({ charged: 10000, newBalance: -9900 })
+        expect(result).toMatchObject({ success: true, amount: 100, uncovered: 9900, newBalance: 0 })
+        expect(gold()).toBe(0)
+        expect(errorSpy).toHaveBeenCalledWith(
+            '[gold] Usage was not fully covered by the balance',
+            expect.objectContaining({ requested: 10000, charged: 100, uncovered: 9900 })
         )
-        warnSpy.mockRestore()
+        errorSpy.mockRestore()
     })
 
-    test('two runs started on the same balance are both billed in full', async () => {
-        jest.spyOn(console, 'warn').mockImplementation(() => {})
+    test('two runs started on the same balance cannot both go unbilled', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {})
         const first = await settleUsageGold(USER, 80, { source: 'assistant_usage' })
         const second = await settleUsageGold(USER, 80, { source: 'assistant_usage' })
 
-        expect(first).toMatchObject({ amount: 80, newBalance: 20 })
-        expect(second).toMatchObject({ success: true, amount: 80, newBalance: -60 })
-        expect(gold()).toBe(-60)
-        console.warn.mockRestore()
+        expect(first).toMatchObject({ amount: 80, uncovered: 0 })
+        expect(second).toMatchObject({ success: true, amount: 20, uncovered: 60 })
+        expect(gold()).toBe(0)
+        console.error.mockRestore()
     })
 
-    test('charges a run that finished after the balance was already empty', async () => {
-        jest.spyOn(console, 'warn').mockImplementation(() => {})
+    test('takes a fractional rest too, so the balance really reaches 0', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+        mockDocs.set(`users/${USER}`, { gold: 0.4 })
+
+        expect(await settleUsageGold(USER, 3, { source: 'rambler' })).toMatchObject({ success: true, amount: 0.4 })
+        expect(gold()).toBe(0)
+        console.error.mockRestore()
+    })
+
+    test('reports an empty balance as a failure, and a zero cost as nothing to charge', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {})
         mockDocs.set(`users/${USER}`, { gold: 0 })
 
         expect(await settleUsageGold(USER, 5, { source: 'assistant_usage' })).toMatchObject({
-            success: true,
-            amount: 5,
-            newBalance: -5,
+            success: false,
+            uncovered: 5,
         })
         expect(await settleUsageGold(USER, 0, { source: 'assistant_usage' })).toMatchObject({
             success: true,
             nothingToCharge: true,
         })
-        console.warn.mockRestore()
-    })
-
-    test('a negative balance is never allowed for an ordinary spend', async () => {
-        mockDocs.set(`users/${USER}`, { gold: -5 })
-
-        expect(await deductGold(USER, 1, { source: 'mcp_tool_call' })).toMatchObject({ success: false })
-        expect(gold()).toBe(-5)
+        expect(ledger()).toEqual([])
+        console.error.mockRestore()
     })
 })

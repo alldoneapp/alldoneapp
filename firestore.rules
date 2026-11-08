@@ -90,24 +90,10 @@ service cloud.firestore {
     // subscription callables). A client that could set them gave itself Gold or premium, or
     // pointed its account at somebody else's Stripe or Mollie customer (security audit 2026-11:
     // createCompanySubscriptionSecondGen reuses the stored Mollie customerId).
-    // unlockedKeysByGuides is written by unlockGuideGoalSecondGen in the same transaction as the
-    // 80 Gold charge (AT-2978); a client that could add a key unlocked a goal without paying.
     function ownerUpdateKeepsServerFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'gold', 'dailyGold', 'premium', 'stripeCustomerId', 'customerId', 'unlockedKeysByGuides'
+        'gold', 'dailyGold', 'premium', 'stripeCustomerId', 'customerId'
       ]);
-    }
-
-    // A project membership mutation may drop a project's lock keys (leaving or deleting the project)
-    // but never add one (AT-2978).
-    function unlockedKeysNotAdded(projectId) {
-      let before = resource.data.get('unlockedKeysByGuides', {});
-      let after = request.resource.data.get('unlockedKeysByGuides', {});
-      let beforeKeys = before is map ? before.get(projectId, []) : [];
-      let afterKeys = after is map ? after.get(projectId, []) : [];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlockedKeysByGuides']) ||
-        afterKeys == null ||
-        (afterKeys is list && beforeKeys is list && afterKeys.toSet().difference(beforeKeys.toSet()).size() == 0);
     }
 
     // A new account starts with exactly what getNewDefaultUser writes (ContactsHelper.js) or less.
@@ -118,8 +104,7 @@ service cloud.firestore {
         dailyGold is int && dailyGold >= 0 && dailyGold <= 100 &&
         userData.get('premium', {'status': 'free'}) == {'status': 'free'} &&
         userData.get('stripeCustomerId', '') == '' &&
-        userData.get('customerId', '') == '' &&
-        userData.get('unlockedKeysByGuides', {}) == {};
+        userData.get('customerId', '') == '';
     }
 
     // The gold ledger and its idempotency claims are server-written; a client that could write
@@ -210,7 +195,6 @@ service cloud.firestore {
         projectMapChangedOnlyAt('workflow', projectId) &&
         projectMapChangedOnlyAt('noteIdsByProject', projectId) &&
         projectMapChangedOnlyAt('unlockedKeysByGuides', projectId) &&
-        unlockedKeysNotAdded(projectId) &&
         projectMapChangedOnlyAt('commentsData', projectId) &&
         projectMapChangedOnlyAtWithGlobal('lastAssistantCommentData', projectId) &&
         validFocusChange(userId, projectId);

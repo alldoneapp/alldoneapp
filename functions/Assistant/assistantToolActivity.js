@@ -145,6 +145,23 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_update_contact',
         plainKey: 'assistant_activity_update_contact_plain',
     },
+    create_goal: {
+        params: ['name'],
+        subjectKey: 'assistant_activity_create_goal',
+        plainKey: 'assistant_activity_create_goal_plain',
+    },
+    update_goal: {
+        params: ['goalName', 'name'],
+        subjectKey: 'assistant_activity_update_goal',
+        plainKey: 'assistant_activity_update_goal_plain',
+    },
+    update_milestone: { plainKey: 'assistant_activity_update_milestone' },
+    create_okr: {
+        params: ['label'],
+        subjectKey: 'assistant_activity_create_okr',
+        plainKey: 'assistant_activity_create_okr_plain',
+    },
+    update_okr: { plainKey: 'assistant_activity_update_okr' },
     add_chat_comment: { plainKey: 'assistant_activity_add_comment' },
     update_user_memory: { plainKey: 'assistant_activity_update_memory' },
     compact_thread_context: { plainKey: 'assistant_activity_compact_context' },

@@ -27,7 +27,7 @@ import {
 } from '../Artifacts/artifactsFirestore'
 import {
     addFollowerWithoutFeeds,
-    showGoldRewardAnimation,
+    earnGold,
     getDb,
     getFirestoreTime,
     getId,
@@ -497,23 +497,14 @@ const generatePushAndEmailNotifcations = (notificationIdentity, comment, followe
     }
 }
 
-// Must stay identical to buildCommentRewardKey in functions/Gold/serverGoldRewards.js.
-const buildCommentRewardKey = (objectType, objectId, commentId) =>
-    objectType && objectId && commentId ? `comment:${objectType}:${objectId}:${commentId}` : ''
-
-// The server pays the reward from the comment trigger (AT-2978); this only plays the animation.
-const showCommentGoldRewardInGuide = (projectId, objectType, objectId, commentId, isPublicFor, creatorId) => {
+const earnGoldInCommunitesWhenComment = (projectId, editingCommentId, isPublicFor, creatorId) => {
     const { loggedUser } = store.getState()
     if (
+        !editingCommentId &&
         isPublicFor.includes(FEED_PUBLIC_FOR_ALL) &&
         ProjectHelper.getTypeOfProject(loggedUser, projectId) === PROJECT_TYPE_GUIDE
     ) {
-        showGoldRewardAnimation(
-            creatorId,
-            MAX_GOLD_TO_EARN_BY_COMMENT,
-            'buttonContainerId',
-            buildCommentRewardKey(objectType, objectId, commentId)
-        )
+        earnGold(projectId, creatorId, MAX_GOLD_TO_EARN_BY_COMMENT, 'buttonContainerId')
     }
 }
 
@@ -981,7 +972,7 @@ async function sendObjectMessage(
         })
 
         if (!editingCommentId) {
-            showCommentGoldRewardInGuide(projectId, objectType, objectId, commentId, isPublicFor, creatorId)
+            earnGoldInCommunitesWhenComment(projectId, editingCommentId, isPublicFor, creatorId)
             logEvent('new_chat_message', {
                 id: commentId,
                 objectId: objectId,

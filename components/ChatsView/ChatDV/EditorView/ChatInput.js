@@ -195,7 +195,7 @@ export default function ChatInput({
         if (sendingRef.current) return
         const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
         if (!textToSubmit?.trim()) return
-        if (isAssistantActive && !(gold > 0)) {
+        if (isAssistantActive && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
             return
