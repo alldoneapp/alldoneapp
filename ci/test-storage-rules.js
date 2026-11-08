@@ -10,7 +10,9 @@
 //         pending  just created, no projection yet, isPublicFor [0]
 //         pending4 just created by u4, no projection yet, isPublicFor [u4]
 //         moved    no note document yet (setNoteProject writes the body first)
+//         gone4    deleted: no note document, but its version copies are still in the bucket
 //   p2  public project (isShared 0), member u2, notes "pub" (readerIds has 0) and "priv"
+//         gonepub  deleted note in the public project
 //   admin1 is roles/administrator; u3 is a member of nothing
 //
 //   node ci/test-storage-rules.js [gcp-project-id]      (default alldonestaging)
@@ -35,7 +37,11 @@ const MOCK_DATA = {
     [`${DOCS}/noteItems/p2/notes/pub`]: { readerIds: [0, 'u2'], isPublicFor: [0] },
     [`${DOCS}/noteItems/p2/notes/priv`]: { readerIds: ['u2'], isPublicFor: ['u2'] },
 }
-const MISSING_NOTES = [`${DOCS}/noteItems/p1/notes/moved`]
+const MISSING_NOTES = [
+    `${DOCS}/noteItems/p1/notes/moved`,
+    `${DOCS}/noteItems/p1/notes/gone4`,
+    `${DOCS}/noteItems/p2/notes/gonepub`,
+]
 const functionMocks = [
     ...Object.entries(MOCK_DATA).map(([docPath, data]) => ({
         function: 'firestore.get',
@@ -89,19 +95,65 @@ const DEFAULT_CASES = [
     ['ALLOW', 'delete', 'invoiceLogos/p1/u1/logo', 'u1'],
     ['DENY', 'create', 'invoiceLogos/p1/u3/logo', 'u3'],
     ['DENY', 'get', 'invoiceLogos/p1/u1/logo', 'u3'],
-    ['ALLOW', 'create', 'attachments/c1/file.png', 'u3'],
-    ['ALLOW', 'list', 'attachments/c1', 'u3'],
-    ['ALLOW', 'get', 'attachments/c1/file.png', 'u3'],
+    // NV-39: version copies of a deleted note are no longer reachable through membership
+    ['DENY', 'get', 'noteDailyVersionsData/p1/gone4', 'u1'],
+    ['DENY', 'get', 'noteDailyVersionsData/p1/gone4', 'u4'],
+    ['DENY', 'create', 'noteDailyVersionsData/p1/gone4', 'u1'],
+    ['DENY', 'update', 'noteDailyVersionsData/p1/gone4', 'u1'],
+    ['DENY', 'delete', 'noteDailyVersionsData/p1/gone4', 'u1'],
+    ['DENY', 'get', 'noteVersionsData/p1/gone4/v1', 'u1'],
+    ['DENY', 'create', 'noteVersionsData/p1/gone4/v1', 'u1'],
+    ['DENY', 'delete', 'noteVersionsData/p1/gone4/v1', 'u1'],
+    ['DENY', 'get', 'noteVersionsData/p1/moved/v1', 'u1'],
+    ['DENY', 'get', 'noteVersionsData/p2/gonepub/v1', 'u3'],
+    ['DENY', 'get', 'noteVersionsData/p2/gonepub/v1', 'u2'],
+    // ...while a note that exists keeps every flow: save a version, restore, daily copy
+    ['ALLOW', 'update', 'noteDailyVersionsData/p1/n1', 'u1'],
+    ['ALLOW', 'get', 'noteDailyVersionsData/p1/mine4', 'u4'],
+    ['ALLOW', 'delete', 'noteDailyVersionsData/p1/mine4', 'u4'],
+    ['ALLOW', 'delete', 'noteVersionsData/p1/mine4/v1', 'u4'],
+    ['DENY', 'delete', 'noteVersionsData/p1/mine4/v1', 'u1'],
+    // NV-38: comment attachments are server-only (the VM runner writes them through the Admin SDK)
+    ['DENY', 'create', 'attachments/c1/file.png', 'u3'],
+    ['DENY', 'create', 'attachments/c1/file.png', 'u1', { requestUploader: 'u1' }],
+    ['DENY', 'update', 'attachments/c1/file.png', 'u3', { uploader: 'u3', requestUploader: 'u3' }],
+    ['DENY', 'delete', 'attachments/c1/file.png', 'u3', { uploader: 'u1' }],
+    ['DENY', 'list', 'attachments/c1', 'u3'],
+    ['DENY', 'get', 'attachments/c1/file.png', 'u3', { uploader: 'u1' }],
     ['DENY', 'list', 'attachments', 'u3'],
-    ['ALLOW', 'create', 'feedAttachments/251025/abc/file.png', 'u3'],
-    ['ALLOW', 'get', 'feedAttachments/251025/abc/file.png', 'u3'],
-    ['DENY', 'list', 'feedAttachments/251025', 'u3'],
-    ['ALLOW', 'create', 'notesAttachments/251025/abc/file.png', 'u3'],
-    ['DENY', 'list', 'notesAttachments/251025', 'u3'],
-    ['ALLOW', 'get', 'someServerFolder/x.png', 'u1'],
+    ['DENY', 'get', 'attachments/c1/file.png', null],
+    // NV-38: feed and note uploads are bound to their uploader (customMetadata.uploaderId)
+    ...['feedAttachments', 'notesAttachments'].flatMap(folder => {
+        const file = `${folder}/251025/abc/file.png`
+        return [
+            ['ALLOW', 'create', file, 'u3', { requestUploader: 'u3' }],
+            ['DENY', 'create', file, 'u3'],
+            ['DENY', 'create', file, 'u3', { requestUploader: 'u1' }],
+            ['ALLOW', 'get', file, 'u3', { uploader: 'u3' }],
+            ['DENY', 'get', file, 'u1', { uploader: 'u3' }],
+            ['DENY', 'get', file, 'u1', { uploader: null }],
+            ['ALLOW', 'update', file, 'u3', { uploader: 'u3', requestUploader: 'u3' }],
+            ['DENY', 'update', file, 'u3', { uploader: 'u3', requestUploader: 'u1' }],
+            ['DENY', 'update', file, 'u1', { uploader: 'u3', requestUploader: 'u1' }],
+            ['DENY', 'update', file, 'u1', { uploader: null, requestUploader: 'u1' }],
+            ['ALLOW', 'delete', file, 'u3', { uploader: 'u3' }],
+            ['DENY', 'delete', file, 'u1', { uploader: 'u3' }],
+            ['DENY', 'delete', file, 'u1', { uploader: null }],
+            ['DENY', 'list', `${folder}/251025`, 'u3'],
+            ['DENY', 'get', file, null, { uploader: 'u3' }],
+        ]
+    }),
+    // NV-37: server-written folders are no longer readable by path; invoices above all
+    ['DENY', 'get', 'Invoice/u1/2026 - 0001.pdf', 'u3'],
+    ['DENY', 'get', 'Invoice/u1/2026 - 0001.pdf', 'u1'],
+    ['DENY', 'create', 'Invoice/u3/2026 - 0001.pdf', 'u3'],
+    ['DENY', 'list', 'Invoice/u1', 'u1'],
+    ['DENY', 'get', 'anna-email-inbound/m1/raw.eml', 'u1'],
+    ['DENY', 'get', 'browserEvidence/r1/s1.png', 'u1'],
+    ['DENY', 'get', 'whatsapp-images/x.jpg', 'u1'],
+    ['DENY', 'get', 'someServerFolder/x.png', 'u1'],
     ['DENY', 'create', 'someServerFolder/x.png', 'u1'],
     ['DENY', 'list', 'someServerFolder', 'u1'],
-    ['DENY', 'get', 'attachments/c1/file.png', null],
     ['DENY', 'get', 'projectsContacts/p1/c1/c1@123', null],
 ]
 
@@ -134,12 +186,27 @@ const NOTES_CASES = [
     ['DENY', 'get', 'noteDailyVersionsData/p1/n1', 'u1'],
 ]
 
-function testCase(bucket, [expectation, method, objectPath, uid]) {
+// Optional fifth element: { uploader, requestUploader }. `uploader` describes the EXISTING object
+// (`resource`, present for get/update/delete; null means an object without custom metadata, as
+// every upload from before NV-38 is), `requestUploader` the custom metadata of the put.
+function storageObject(bucket, objectPath, uploader) {
+    return {
+        name: objectPath,
+        bucket,
+        size: 10,
+        contentType: 'application/octet-stream',
+        metadata: uploader ? { uploaderId: uploader } : {},
+    }
+}
+
+function testCase(bucket, [expectation, method, objectPath, uid, objects = {}]) {
     const request = { method, path: `/b/${bucket}/o/${objectPath}`, auth: uid ? { uid, token: { sub: uid } } : null }
     if (method === 'create' || method === 'update') {
-        request.resource = { size: 10, contentType: 'application/octet-stream' }
+        request.resource = storageObject(bucket, objectPath, objects.requestUploader)
     }
-    return { expectation, request, functionMocks }
+    const entry = { expectation, request, functionMocks }
+    if ('uploader' in objects) entry.resource = storageObject(bucket, objectPath, objects.uploader)
+    return entry
 }
 
 async function runSuite(token, rulesFile, bucket, cases) {

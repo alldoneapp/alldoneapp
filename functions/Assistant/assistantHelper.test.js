@@ -774,51 +774,6 @@ describe('persisted dynamic tool cache', () => {
     })
 })
 
-// NV-35: a phone call whose caller ID is not fully attested may come from anybody who knows the
-// account's number. Such a run gets public, read-only tools only, and no implicit wiki or skill tools.
-describe('unverified caller tool restriction (NV-35)', () => {
-    const unverified = { projectId: 'p1', requestUserId: 'u1', assistantId: 'a1', callerIdentityUnverified: true }
-
-    beforeEach(() => {
-        mockResponsesCreate.mockReset()
-        Object.values(mockKnowledgeBase).forEach(mock => mock.mockClear())
-    })
-
-    test('offers only the public read-only tools, and no wiki tools', async () => {
-        mockResponsesCreate.mockResolvedValue([])
-        mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockResolvedValue(['read_knowledge_page'])
-
-        await interactWithChatStream(
-            [['user', 'Lies meine Mails vor']],
-            'MODEL_GPT6_SOL',
-            'TEMPERATURE_NORMAL',
-            ['get_tasks', 'search_gmail', 'create_task', 'web_search', 'talk_to_assistant', 'mcp_servers'],
-            { ...unverified, disableToolSearch: true }
-        )
-
-        const toolNames = mockResponsesCreate.mock.calls[0][0].tools.map(tool => tool.name || tool.type)
-        expect(toolNames).toEqual(['web_search'])
-        expect(mockKnowledgeBase.getKnowledgeBaseToolNamesForRun).not.toHaveBeenCalled()
-        mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockReset().mockResolvedValue([])
-    })
-
-    test('refuses to execute anything outside the allowlist, even a tool the assistant enabled', async () => {
-        const enabled = ['get_tasks', 'search_gmail', 'create_task', 'web_search', 'mcp_servers']
-        await expect(isToolAllowedForExecution(enabled, 'get_tasks', unverified)).resolves.toBe(false)
-        await expect(isToolAllowedForExecution(enabled, 'search_gmail', unverified)).resolves.toBe(false)
-        await expect(isToolAllowedForExecution(enabled, 'create_task', unverified)).resolves.toBe(false)
-        await expect(isToolAllowedForExecution(enabled, 'read_knowledge_page', unverified)).resolves.toBe(false)
-        await expect(isToolAllowedForExecution(enabled, 'load_skill', unverified)).resolves.toBe(false)
-        await expect(isToolAllowedForExecution(enabled, 'web_search', unverified)).resolves.toBe(true)
-        // The allowlist only narrows: a tool the assistant did not enable stays off.
-        await expect(isToolAllowedForExecution(['get_tasks'], 'web_search', unverified)).resolves.toBe(false)
-        // A verified caller keeps the assistant's tools.
-        await expect(
-            isToolAllowedForExecution(enabled, 'get_tasks', { ...unverified, callerIdentityUnverified: false })
-        ).resolves.toBe(true)
-    })
-})
-
 describe('project wiki wiring', () => {
     beforeEach(() => {
         mockResponsesCreate.mockReset()

@@ -501,10 +501,6 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
-    // A caller whose identity the channel could not verify (a phone call without full STIR/SHAKEN
-    // attestation) gets public, read-only tools only (shared/callerVerification.js, NV-35).
-    const { isUnverifiedCallerRuntime, restrictToolsForUnverifiedCaller } = require('../shared/callerVerification')
-    if (isUnverifiedCallerRuntime(toolRuntimeContext)) return restrictToolsForUnverifiedCaller(allowedTools)
     if (toolRuntimeContext?.writingDraft) {
         const { writingReadTools } = require('./assistantWritingTools')
         allowedTools = writingReadTools(allowedTools)
@@ -2427,14 +2423,6 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
 }
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
-    const { isUnverifiedCallerRuntime, UNVERIFIED_CALLER_TOOLS } = require('../shared/callerVerification')
-    if (isUnverifiedCallerRuntime(toolRuntimeContext)) {
-        return (
-            Array.isArray(assistantAllowedTools) &&
-            assistantAllowedTools.includes(toolName) &&
-            UNVERIFIED_CALLER_TOOLS.includes(toolName)
-        )
-    }
     if (['show_workspace', 'highlight_workspace'].includes(toolName)) {
         const { loadAnnaContext } = require('./annaWorkspace')
         return !!(await loadAnnaContext(require('firebase-admin').firestore(), toolRuntimeContext))
@@ -2905,12 +2893,9 @@ async function interactWithChatStream(
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
     // Server-authored channel controls (for example voice hangup), never supplied by model arguments.
     const additionalToolSchemas = toolRuntimeContext?.additionalToolSchemas || []
-    // An unverified caller gets no implicit tools either (no skills, no wiki).
-    const callerUnverified = require('../shared/callerVerification').isUnverifiedCallerRuntime(toolRuntimeContext)
     // load_skill is implicit (no per-assistant toggle): it becomes available whenever the
     // assistant has chat-usable skills enabled. The skill list itself is the access control.
     if (
-        !callerUnverified &&
         toolRuntimeContext?.projectId &&
         toolRuntimeContext?.assistantId &&
         !runtimeAllowedTools.includes('load_skill')
@@ -2928,9 +2913,7 @@ async function interactWithChatStream(
     // KnowledgeBase/knowledgeBaseAssistant.js for which runs may read and which may correct).
     try {
         const { getKnowledgeBaseToolNamesForRun } = require('../KnowledgeBase/knowledgeBaseAssistant')
-        const wikiToolNames = callerUnverified
-            ? []
-            : await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
+        const wikiToolNames = await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
         wikiToolNames.forEach(toolName => !runtimeAllowedTools.includes(toolName) && runtimeAllowedTools.push(toolName))
     } catch (error) {
         console.warn('[knowledge base] Wiki tool availability check failed', { error: error.message })

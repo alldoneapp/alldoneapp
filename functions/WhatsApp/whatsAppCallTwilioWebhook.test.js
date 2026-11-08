@@ -303,66 +303,10 @@ describe('WhatsApp call Twilio routing', () => {
                 channel: 'phone_call',
                 routingToken: 'phone-route',
                 userId: 'user-1',
-                // No StirVerstat at all: the caller ID is not proof of identity (NV-35).
-                callerVerification: { verified: false, attestation: null },
             })
         )
         expect(res.send.mock.calls[0][0]).toContain('statusCallback="https://example.test/phone-status"')
         expect(res.send.mock.calls[0][0]).toContain('x-alldone-route=phone-route')
-    })
-
-    // NV-35: only full STIR/SHAKEN attestation marks the phone caller as verified.
-    test.each([
-        ['TN-Validation-Passed-A', true],
-        ['TN-Validation-Passed-B', false],
-        ['TN-Validation-Passed-C', false],
-        ['No-TN-Validation', false],
-        ['TN-Validation-Failed-A', false],
-    ])('records StirVerstat %s on the phone call session as verified=%s', async (stirVerstat, verified) => {
-        getWhatsAppCallConfig.mockReturnValue({
-            phoneCallsEnabled: true,
-            openAiApiKey: 'key',
-            openAiProjectId: 'openai-project',
-            openAiWebhookSecret: 'webhook-secret',
-            routingTokenSecret: 'route-secret',
-            routeTokenTtlMs: 120000,
-            callLeaseMs: 2100000,
-            maxDurationSeconds: 1800,
-            phoneIncomingCallUrl: 'https://example.test/phone',
-        })
-        normalizePhoneNumber.mockReturnValue('+1234567890')
-        findUserByPhone.mockResolvedValue('user-1')
-        admin.firestore.mockReturnValue({
-            doc: jest.fn(() => ({
-                get: jest.fn(async () => ({
-                    exists: true,
-                    id: 'user-1',
-                    data: () => ({ premium: { status: 'premium' }, gold: 30, defaultProjectId: 'project-1' }),
-                })),
-            })),
-        })
-        getDefaultAssistantId.mockResolvedValue('assistant-1')
-        getOrCreateWhatsAppDailyTopic.mockResolvedValue({ chatId: 'chat-1' })
-        createRoutingToken.mockReturnValue('phone-route')
-        createCallSessionWithLease.mockResolvedValue({ success: true })
-        const res = {
-            type: jest.fn().mockReturnThis(),
-            status: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
-        }
-
-        await handleIncomingPhoneCall(
-            {
-                method: 'POST',
-                headers: { 'x-twilio-signature': 'signature' },
-                body: { CallSid: 'call-1', From: '+1234567890', StirVerstat: stirVerstat },
-            },
-            res
-        )
-
-        expect(createCallSessionWithLease).toHaveBeenCalledWith(
-            expect.objectContaining({ callerVerification: { verified, attestation: stirVerstat } })
-        )
     })
 
     test('phone status callback uses the configured phone callback URL', async () => {

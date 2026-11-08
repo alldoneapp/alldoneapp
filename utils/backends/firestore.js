@@ -369,6 +369,7 @@ import { getWorkstreamData, uploadNewMainWorkstream } from './Workstreams/workst
 import { updateChatEditionData, updateChatNote } from './Chats/chatsFirestore'
 import { unwatchProjectData, watchProjectData } from '../InitialLoad/initialLoadHelper'
 import { ROOT_ROUTES } from '../TabNavigationConstants'
+import { putAttachmentAsUploader } from './attachmentUploads'
 import {
     addFollowerToChat,
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
@@ -3270,13 +3271,6 @@ const updateProjectStatusFeedChain = async (project, projectStatus) => {
     await batch.commit()
 }
 
-export async function uploadAttachments(commentId, attachments) {
-    for (let attachment of attachments) {
-        let attachmentRef = firebase.storage().ref(`attachments/${commentId}/${attachment.name}`)
-        attachmentRef.put(attachment)
-    }
-}
-
 export function findTask(taskId, projectsTasks) {
     // Use binary search since Firebase IDs are ordered in chronological order
     for (let projectTasks of projectsTasks) {
@@ -3373,31 +3367,6 @@ export async function deleteSubTaskFromParent(projectId, subtaskId, subtask, bat
             parentRef.update({ subtaskIds, subtaskNames })
         }
     }
-}
-
-export async function getAttachments(commentId) {
-    const attachments = []
-    const promises = []
-    return firebase
-        .storage()
-        .ref(`attachments/${commentId}`)
-        .listAll()
-        .then(folder => {
-            for (let file of folder.items) {
-                if (
-                    !file.name.match(/[\S]+_50x50(.[\w]{1,4})?$/g) &&
-                    !file.name.match(/[\S]+_300x300(.[\w]{1,4})?$/g)
-                ) {
-                    promises.push(firebase.storage().ref(file.fullPath).getDownloadURL())
-                }
-            }
-            return Promise.all(promises).then(urls => {
-                for (let i = 0; i < urls.length; ++i) {
-                    attachments.push({ name: folder.items[i].name, downloadURL: urls[i] })
-                }
-                return attachments
-            })
-        })
 }
 
 export { getStepWorkflowDirection } from './Tasks/workflowDirection'
@@ -4573,11 +4542,13 @@ export async function storeAttachment(projectId, attachment, inNotes) {
     const { name } = attachment
     const currentDateFormated = moment().format('DDMMYYYY')
     const randomHash = getId()
-    const storageRef = await firebase.storage().ref()
-    const attachmentRef = await storageRef.child(`${path}/${currentDateFormated}/${randomHash}/${name}`)
-    await attachmentRef.put(attachment)
-    const attachmentUri = await attachmentRef.getDownloadURL()
     const loggedUserId = store.getState().loggedUser.uid
+    const attachmentUri = await putAttachmentAsUploader(
+        firebase.storage().ref(),
+        `${path}/${currentDateFormated}/${randomHash}/${name}`,
+        attachment,
+        loggedUserId
+    )
     updateQuotaTraffic(projectId, loggedUserId, attachment.size / 1024 / 1024)
     return attachmentUri
 }
@@ -4587,11 +4558,13 @@ export async function storeConvertedVideos(projectId, attachment) {
     const { name } = attachment
     const currentDateFormated = moment().format('DDMMYYYY')
     const randomHash = getId()
-    const storageRef = firebase.storage().ref()
-    const attachmentRef = storageRef.child(`${path}/${currentDateFormated}/${randomHash}/${name}`)
-    await attachmentRef.put(attachment)
-    const attachmentUri = await attachmentRef.getDownloadURL()
     const loggedUserId = store.getState().loggedUser.uid
+    const attachmentUri = await putAttachmentAsUploader(
+        firebase.storage().ref(),
+        `${path}/${currentDateFormated}/${randomHash}/${name}`,
+        attachment,
+        loggedUserId
+    )
     updateQuotaTraffic(projectId, loggedUserId, attachment.size / 1024 / 1024)
     return new Promise(function (resolve, reject) {
         connectToConverter({ videoUri: attachmentUri, uri: currentDateFormated, hash: randomHash })
