@@ -46,6 +46,7 @@ import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
 import UndoActionBar from './components/Undo/UndoActionBar'
 import { cleanWebShareTargetParamsFromCurrentUrl, loadPendingWebShareTarget } from './utils/webShareTarget'
+import { captureAppAuthStateFromLocation } from './components/AppAuth/appAuthState'
 import { ensureIosShareExtensionCredential } from './utils/iosShareExtensionCredential'
 import { runBootIntegrityCheck } from './utils/InitialLoad/bootIntegrityHealer'
 import useDeferredStartupWork, { useInitialTaskDataPublished } from './hooks/useDeferredStartupWork'
@@ -60,6 +61,10 @@ const LOGIN_RETRY_DELAY_MS = 3000
 // the incoming share-target URL. The payload itself is consumed only after the
 // All Projects add-task popup has opened.
 const pendingWebShareTargetAtBoot = loadPendingWebShareTarget()
+
+// Anna's one-time sign-in state (/app-auth?state=…) is captured here for the same reason, and taken
+// out of the address bar at once: from now on only the callback to Anna carries it.
+captureAppAuthStateFromLocation()
 
 const getCurrentUrl = () => `${window.location.pathname}${window.location.search}`
 

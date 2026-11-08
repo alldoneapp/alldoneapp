@@ -1,6 +1,7 @@
 import momentTz from 'moment-timezone'
 import moment from 'moment-timezone'
 import { readEmbeddedToolWindow } from '../embeddedToolWindowUrl'
+import { resolveAppAuthReturnUrl } from '../../components/AppAuth/appAuthState'
 
 import store from '../../redux/store'
 import { fetchUserDataResult, updateUserDataDirectly } from '../backends/Users/usersFirestore'
@@ -264,7 +265,10 @@ function getInitialRoutingUrl() {
     const { initialUrl } = store.getState()
     if (initialUrl && initialUrl !== '/') return initialUrl
     const { pathname, search } = window.location
-    return readEmbeddedToolWindow(pathname + search) ? pathname + search : pathname
+    if (readEmbeddedToolWindow(pathname + search)) return pathname + search
+    // A Google redirect login can come back to /login without the login screen setting initialUrl;
+    // a pending Anna sign-in from /app-auth must still end on that page.
+    return resolveAppAuthReturnUrl(pathname) || pathname
 }
 
 async function loadInitialData() {

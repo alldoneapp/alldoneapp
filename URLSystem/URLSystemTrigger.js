@@ -38,7 +38,7 @@ class URLSystemTrigger {
             [URL_ONBOARDING]: /^\/onboarding$/,
             [URL_START_TRIAL]: /^\/starttrial(?:\?(.*))?$/,
             [URL_PAYMENT_SUCCESS]: /^\/paymentsuccess$/,
-            [URL_APP_AUTH]: /^\/app-auth$/,
+            [URL_APP_AUTH]: /^\/app-auth(?:\?.*)?$/,
         }
     }
 

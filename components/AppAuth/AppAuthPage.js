@@ -9,19 +9,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setNavigationRoute } from '../../redux/actions'
 import { logEvent, mintMenubarAppToken } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
-
-const APP_SCHEME = 'hybridmeetingguard'
-
-const buildAppAuthUrl = ({ token, email, name, gold }) => {
-    const params = [
-        `provider=${encodeURIComponent('alldone-app')}`,
-        `token=${encodeURIComponent(token || '')}`,
-        `email=${encodeURIComponent(email || '')}`,
-        `name=${encodeURIComponent(name || '')}`,
-        `gold=${encodeURIComponent(gold != null ? gold : 0)}`,
-    ]
-    return `${APP_SCHEME}://auth?${params.join('&')}`
-}
+import { buildAppAuthCallbackUrl, clearPendingAppAuthState, readPendingAppAuthState } from './appAuthState'
 
 export default function AppAuthPage() {
     const dispatch = useDispatch()
@@ -29,6 +17,10 @@ export default function AppAuthPage() {
     const [appUrl, setAppUrl] = useState('')
     const [error, setError] = useState(false)
     const mintingRef = useRef(false)
+    // Anna's one-time state, captured at boot and kept through any login detour. Read once: it is
+    // removed from storage as soon as a callback carries it, and retries reuse this copy.
+    const annaStateRef = useRef(undefined)
+    if (annaStateRef.current === undefined) annaStateRef.current = readPendingAppAuthState()
 
     const mintTokenAndOpenApp = async () => {
         if (mintingRef.current) return
@@ -40,12 +32,14 @@ export default function AppAuthPage() {
             const { token, email, name, gold } = result.data || {}
             if (!token) throw new Error('No token returned')
 
-            const url = buildAppAuthUrl({
+            const url = buildAppAuthCallbackUrl({
                 token,
                 email: email || loggedUser.email,
                 name: name || loggedUser.displayName,
                 gold: gold != null ? gold : loggedUser.gold,
+                state: annaStateRef.current,
             })
+            clearPendingAppAuthState()
             setAppUrl(url)
             logEvent('menubar_app_token_minted')
 
