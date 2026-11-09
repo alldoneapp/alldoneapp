@@ -65,6 +65,10 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_PROJECT_CALENDAR_ACTIVITY', 'projects'],
     // MCP feed parity: assistants and projects
     ['FEED_PROJECT_CONTACT_STATUSES_ADDED', 'projects'],
+    // MCP feed parity: goals, OKRs, wiki
+    ['FEED_PROJECT_MILESTONE_CHANGED', 'projects'],
+    ['FEED_PROJECT_OKR_CREATED', 'projects'],
+    ['FEED_PROJECT_OKR_CHANGED', 'projects'],
 
     [41, 'contacts'],
     // MCP feed parity: contacts and moves
