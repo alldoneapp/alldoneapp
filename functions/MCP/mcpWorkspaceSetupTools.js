@@ -929,8 +929,18 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
         // copy. A copy nobody changed follows the assistant; one somebody edited is left alone.
         const tasks = await db.collection(`assistantTasks/${projectId}/${assistantId}`).get()
         tasks.docs.forEach(taskDoc => {
-            if ((taskDoc.data() || {}).aiSystemMessage === current.instructions) {
-                batch.update(taskDoc.ref, { aiSystemMessage: update.instructions })
+            const taskData = taskDoc.data() || {}
+            if (taskData.aiSystemMessage === current.instructions) {
+                const taskUpdate = { aiSystemMessage: update.instructions }
+                // NEW-A: the caller wrote these instructions, so a task they run stays approved for
+                // them. Everyone else confirms the changed content before their next scheduled run.
+                if (getActiveUserIds(taskData).includes(userId)) {
+                    taskUpdate[`${APPROVED_CONTENT_HASH_FIELD}.${userId}`] = computeAssistantTaskContentHash({
+                        ...taskData,
+                        ...taskUpdate,
+                    })
+                }
+                batch.update(taskDoc.ref, taskUpdate)
                 result.tasksWithUpdatedInstructions += 1
             }
         })
@@ -1220,6 +1230,15 @@ async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
     update.lastEditionDate = now
     update.lastEditorId = userId
     update.lastEditedVia = buildMcpActorMarker(context.mcpClient)
+
+    // NEW-A: as the approval trigger does for a client write, a caller who runs the task approves
+    // the content of their own change (or of their own resume). Admin writes carry no auth context,
+    // so the trigger cannot do it here.
+    const contentAfter = { ...task, ...update }
+    const changedContent = computeAssistantTaskContentHash(task) !== computeAssistantTaskContentHash(contentAfter)
+    if (active && (changedContent || changes.includes('resumed'))) {
+        update[`${APPROVED_CONTENT_HASH_FIELD}.${userId}`] = computeAssistantTaskContentHash(contentAfter)
+    }
 
     const batch = db.batch()
     batch.update(collection.doc(task.id), update)

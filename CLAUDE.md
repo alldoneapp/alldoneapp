@@ -1838,7 +1838,11 @@ run whose content differs and posts one private notice per change
 `confirmPreConfigTaskRun` / `confirmAssistantTaskRunForCurrentUser`: approved content runs at once,
 anything else shows prompt, system instruction and model first, and confirming approves it.
 Global-catalog tasks are exempt (only the administrator edits them). A template sync that changes a
-derived task's content therefore pauses it for its activator until they review it. After deploying,
+derived task's content therefore pauses it for its activator until they review it. Server writes
+carry no auth context, so the MCP tools record the caller's approval themselves:
+`create_assistant_task`, `update_assistant_task` (a content change or a resume by an activated
+caller) and `update_assistant` (the instructions it carries into the caller's tasks); everyone else
+reviews the change first. A new server path that writes task content must do the same. After deploying,
 run `node migration/approveExistingAssistantTaskContent.js --firebase-project-id=<project> --execute`
 (dry run without `--execute`), or every existing activation pauses once.
 
