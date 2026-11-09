@@ -4589,10 +4589,9 @@ function. The binding only works when the app runs on the callback's host (`my.a
 or a preview channel fails with "started in a different browser". `returnUrl` must be an Alldone
 origin (the `openInBrowserTab` allowlist; localhost only in the emulator) at initiation and again
 before the redirect. The callback page posts its result once per app origin instead of to `'*'`,
-and the clients accept only same-origin messages. **Microsoft connect does not work in production
-at all**: `firebase.json` has no rewrite for `/microsoftOAuthCallback`, so the redirect lands on
-the SPA, and no real callback reached the function in the last 180 days. The binding is
-implemented for it anyway. Pinned by `functions/Utils/oauthBrowserBinding.test.js`,
+and the clients accept only same-origin messages. Microsoft connect was broken in production for
+about 180 days because `firebase.json` had no rewrite for `/microsoftOAuthCallback`; the rewrite is
+back (see the hosting-rewrite note below). Pinned by `functions/Utils/oauthBrowserBinding.test.js`,
 `functions/GoogleOAuth/googleOAuthBrowserBinding.test.js`,
 `functions/MCP/mcpClientOAuthBrowserBinding.test.js`, `functions/Utils/oauthCallbackPage.test.js`
 and `utils/oauthBrowserBinding.test.js`.
@@ -5453,7 +5452,7 @@ server with the Admin SDK, which trusts what it reads. Anonymous sign-in is enab
   otherwise never added by a member; `templateCreatorId` may only be set to oneself on create or
   handed to the administrator by a kick. Accepting an invitation to a plain project (the invitee
   adding itself) was already refused by the `isProjectMember` update rule before this change and
-  still is: that flow needs a server path, not a wider rule.
+  still is: it goes through `joinProjectSecondGen` (see below), not a wider rule.
 - **Global assistant catalog** (`globalAssistantTaskActivationOnly`): every field of
   `assistantTasks/globalProject/preConfigTasks/*` outside the activation keys is copied into every
   tenant's derived assistant. A non-administrator may change only `activatedUserIds`,
@@ -5485,6 +5484,40 @@ Pinned by the `security audit 2026-11: rules package` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js` (each case fails against the previous rules),
 `functions/AssistantTasks/globalCatalogTaskTriggers.test.js`, `functions/StickyNotesHelper.test.js`,
 `functions/Utils/projectInvitation.test.js` and `utils/backends/Assistants/globalTaskActivation.test.js`.
+
+### Joining a project is a server operation (`joinProjectSecondGen`)
+
+`firestore.rules` let only an existing member update `projects/{id}` (and vouch for a membership
+change on a user document), so the browser can never add itself to a project. The invitation
+popup's "Join", a template link (which places the visitor in a guide) and joining a guide used to
+batch-write `userIds` and the joiner's `projectIds` from the client and were all refused (pinned by
+"never lets an invitee or a link visitor add itself" in the rules emulator suite). Now
+`functions/Projects/joinProject.js` decides and writes, in one transaction, what the client wrote:
+project `userIds`, every added user's `projectIds` + `guideProjectIds`/`templateProjectIds`, the
+default workstream (not for guides), a new guide document plus the template's `guideProjectIds`, and
+it consumes the caller's invitation. Who may join: an invitation naming the caller's uid or
+**Firebase-Auth-verified** email (never `users/{uid}.email`); a project shared "With link"
+(`isShared === 0`; restricted is copy-only unless invited); a guide directly only by its template's
+creator or the administrator; a template with `startGuide: true` by anyone who may open it (last guide
+with room, else a new guide with the creator and administrator), the administrator joining the
+template itself. `preview: true` returns the project summary and `access` (an invitee of a private
+project cannot read it before joining), `decline: true` removes the caller's invitation. Feeds,
+followers, welcome chats and `copyTemplateObjectsSecondGen` stay on the client and run after the
+callable returns, as a member (`joinProjectAsLoggedUser`, `createProjectJoinFeeds` in
+`usersFirestore.js`, `addUserToTemplate` in `guidesFirestore.js`). The template's "guide added" feed
+is no longer written: the joiner is not a template member. Never reintroduce a client write of
+another project's membership; `__tests__/Projects/JoinProjectClientGuardrails.test.js` ratchets it.
+Pinned by `functions/Projects/joinProject.test.js` and `utils/backends/Projects/guidesJoin.test.js`.
+
+### Every `<origin>/<name>Callback` a function builds needs a hosting rewrite
+
+OAuth redirect URIs are built on the app origin (`https://my.alldone.app/googleOAuthCallback`,
+`/microsoftOAuthCallback`, `/mcpClientOAuthCallback`, `/mcpOAuthCallback`). Without a rewrite in
+`firebase.json` the provider's redirect falls through to `** -> /index.html` and the code lands in the
+SPA: `/microsoftOAuthCallback` did exactly that in production until it got its rewrite. Add the
+rewrite (above `**`) and the service worker's `NAVIGATION_DENYLIST` entry with the function;
+`__tests__/OAuthCallbackHostingRewrites.test.js` scans `functions/` and fails otherwise. The redirect
+URI must also be registered with the provider (Google Cloud console / Microsoft Entra app).
 
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 

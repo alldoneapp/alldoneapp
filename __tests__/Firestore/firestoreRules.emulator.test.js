@@ -340,6 +340,34 @@ describe('project membership authority', () => {
         await assertFails(getDoc(doc(outsiderDb, `users/${TEAMMATE_ID}`)))
     })
 
+    it('never lets an invitee or a link visitor add itself to a project (they join through joinProjectSecondGen)', async () => {
+        const linkProjectId = 'link-project'
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `projects/${linkProjectId}`), {
+                creatorId: MEMBER_ID,
+                isShared: 0,
+                userIds: [MEMBER_ID],
+            })
+            await setDoc(doc(db, `projectsInvitation/${linkProjectId}/invitations/invite`), {
+                userEmail: 'outsider@example.com',
+                inviterId: MEMBER_ID,
+                userId: OUTSIDER_ID,
+            })
+        })
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID, { email: 'outsider@example.com' }).firestore()
+
+        // The batch the browser used to write when "Join" was pressed (usersFirestore.tryAddUserToProject).
+        const batch = writeBatch(outsiderDb)
+        batch.update(doc(outsiderDb, `projects/${linkProjectId}`), { userIds: arrayUnion(OUTSIDER_ID) })
+        batch.update(doc(outsiderDb, `users/${OUTSIDER_ID}`), {
+            projectIds: arrayUnion(linkProjectId),
+            projectMembershipMutation: { projectId: linkProjectId, action: 'add', actorId: OUTSIDER_ID, updatedAt: 1 },
+        })
+        await assertFails(batch.commit())
+        await assertFails(updateDoc(doc(outsiderDb, `projects/${linkProjectId}`), { userIds: arrayUnion(OUTSIDER_ID) }))
+    })
+
     it('allows ordinary owner edits while requiring proof for project navigation state', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

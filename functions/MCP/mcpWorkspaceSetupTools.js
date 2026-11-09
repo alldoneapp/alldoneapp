@@ -1258,4 +1258,6 @@ module.exports = {
     executeWorkspaceSetupTool,
     buildSchedule,
     normalizeContactStatuses,
+    // joinProjectSecondGen builds a template's new guide from the same defaults.
+    buildProjectDocument,
 }
