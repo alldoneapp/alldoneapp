@@ -437,7 +437,7 @@ function functionDeploymentEnvironment(tree) {
     })
 }
 
-function selectDeployment({ before, after, changed, force = false }) {
+function selectDeployment({ before, after, changed, force = false, rangeChanged = [] }) {
     const current = buildGraph(after)
     const names = [...current.keys()].sort()
     const full = reason => ({ mode: 'full', names, reason })
@@ -455,6 +455,9 @@ function selectDeployment({ before, after, changed, force = false }) {
             return true
         }
     })
+    // Changed and changed back inside the range: equal at both ends, so the semantic filter
+    // above would drop them, but production may run the intermediate version.
+    for (const file of rangeChanged) if (!relevant.includes(file)) relevant.push(file)
     if (relevant.includes('.gitlab-ci.yml')) {
         try {
             if (functionDeploymentEnvironment(before) !== functionDeploymentEnvironment(after))
@@ -523,7 +526,25 @@ function selectDeployment({ before, after, changed, force = false }) {
     }
 }
 
-function makePlan(root, base, head, force = false) {
+// Paths touched anywhere in base..head that the two-tree diff cannot see because they
+// were changed and later changed back. ci/deployScope.sh passes them for a verified
+// ancestor marker, so a replayed older marker cannot hide a reverted function whose
+// intermediate version may be live (security audit 2026-11, NV-01).
+function readExtraChangedFiles(file) {
+    if (!file) return []
+    let text
+    try {
+        text = fs.readFileSync(file, 'utf8')
+    } catch (_) {
+        return []
+    }
+    return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+}
+
+function makePlan(root, base, head, force = false, extraChanged = []) {
     const blobs = new Map()
     const after = gitTree(root, head, blobs)
     let before = null
@@ -539,7 +560,8 @@ function makePlan(root, base, head, force = false) {
               .split('\0')
               .filter(Boolean)
         : []
-    const selection = selectDeployment({ before, after, changed, force })
+    const rangeChanged = before ? extraChanged.filter(file => !changed.includes(file)) : []
+    const selection = selectDeployment({ before, after, changed, force, rangeChanged })
     return {
         version: 1,
         head: after.sha,
@@ -556,7 +578,8 @@ if (require.main === module) {
             process.env.CI_PROJECT_DIR || path.resolve(__dirname, '..'),
             base,
             head,
-            process.env.FUNCTIONS_DEPLOY_ALL === '1'
+            process.env.FUNCTIONS_DEPLOY_ALL === '1',
+            readExtraChangedFiles(process.env.FUNCTIONS_EXTRA_CHANGED_FILES)
         )
         fs.writeFileSync(output, JSON.stringify(plan, null, 2) + '\n')
         console.log(`Functions scope: ${plan.mode}, ${plan.names.length} functions. ${plan.reason}`)
@@ -568,6 +591,7 @@ if (require.main === module) {
     }
 }
 module.exports = {
+    readExtraChangedFiles,
     buildGraph,
     selectDeployment,
     makePlan,

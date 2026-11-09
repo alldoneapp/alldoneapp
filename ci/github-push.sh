@@ -159,18 +159,27 @@ git fetch alldoneapp_github master || true
 # appending onto the wrong repository's commit.
 MIRROR_TIP=$(git ls-remote alldoneapp_github refs/heads/master 2>/dev/null | awk 'NR == 1 { print $1 }')
 
+# marker-read only returns a marker signed by a default-branch pipeline that is an ancestor
+# of this commit (see 'WHO MAY MOVE A MARKER' in ci/deployScope.sh). Its diagnostics go to
+# stderr, which stays in the job log.
 LAST_MIRRORED=""
 if [ -x "$SCRIPT_DIR/deployScope.sh" ] || [ -f "$SCRIPT_DIR/deployScope.sh" ]; then
-    LAST_MIRRORED=$(sh "$SCRIPT_DIR/deployScope.sh" marker-read "$MIRROR_MARKER" 2>/dev/null || true)
+    LAST_MIRRORED=$(sh "$SCRIPT_DIR/deployScope.sh" marker-read "$MIRROR_MARKER" || true)
 fi
 
 MIRROR_PUSHED=0
 
+# The incremental path replays LAST_MIRRORED..HEAD, so it must never start before the
+# cutoff: a marker pointing at an older commit would publish exactly the history the
+# truncation withholds (security audit 2026-11, NV-01). The mirror tip must also carry
+# the same tree as LAST_MIRRORED, i.e. really be its replay; otherwise rebuild.
 if [ -n "$LAST_MIRRORED" ] &&
     git cat-file -e "${LAST_MIRRORED}^{commit}" 2>/dev/null &&
+    git merge-base --is-ancestor "$CUTOFF_COMMIT" "$LAST_MIRRORED" 2>/dev/null &&
     git merge-base --is-ancestor "$LAST_MIRRORED" "$ORIGINAL_HEAD" 2>/dev/null &&
     [ -n "$MIRROR_TIP" ] &&
-    git cat-file -e "${MIRROR_TIP}^{commit}" 2>/dev/null; then
+    git cat-file -e "${MIRROR_TIP}^{commit}" 2>/dev/null &&
+    [ "$(git rev-parse "${MIRROR_TIP}^{tree}" 2>/dev/null)" = "$(git rev-parse "${LAST_MIRRORED}^{tree}" 2>/dev/null)" ]; then
 
     if [ "$LAST_MIRRORED" = "$ORIGINAL_HEAD" ]; then
         echo "Truncated mirror is already at $ORIGINAL_HEAD; nothing to append."

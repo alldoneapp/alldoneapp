@@ -4824,7 +4824,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 - **Templates and CLI versions**: the worker always starts from E2B's managed `claude` or `codex` template, queries the selected package's npm `latest` version, and validates the active CLI before every run (including resumed sandboxes). Current CLIs are reused without calling `npm install`. For an install or upgrade, the runner takes a per-agent `flock`, temporarily moves only `/home/user/.local/bin/{claude,codex}` out of npm's link path, installs the exact resolved version, validates it, and restores the prior launcher if npm or validation fails. This avoids the managed-template `EEXIST` collision without `npm --force`. Bootstrap output is retained in bounded buffers; failures include sanitized npm stdout and stderr in logs and the job result. The legacy `functions/e2b-template` builder remains in the repository for reference but is not selected by the runner.
 - Secrets `E2B_API_KEY`, `ANTHROPIC_API_KEY`, `VM_PROXY_SIGNING_SECRET` are read via `getEnvFunctions()` (so they come from the `GOOGLE_FUNCTIONS_ENV_DEV` / `_PROD` GitLab variables that build `env_functions.json` in CI — add new keys into those JSON blobs, not as standalone CI variables).
 - **LLM key never enters the sandbox (proxy)**: the real Anthropic/OpenAI key is NOT injected into the VM. The worker mints a short-lived, per-job, HMAC-signed token (`functions/Assistant/vmLlmProxy.js`, `mintProxyToken`) and points the agent at the `vmLlmProxy` `onRequest` function, passing the token in place of the key. Claude uses `ANTHROPIC_BASE_URL=<proxy>/anthropic`. Codex is configured per command with an explicit custom Responses provider whose `base_url` is `<proxy>/openai/v1` and whose `supports_websockets=false`; this is required because current Codex CLIs may otherwise open `wss://api.openai.com/v1/responses`, bypass the HTTP-only proxy, and send the proxy token to OpenAI. `OPENAI_BASE_URL` remains only as compatibility for older Codex CLIs. `vmLlmProxy` verifies the token (signature + expiry + agent-match), checks that the job can continue, swaps in the real key server-side, streams the upstream response, and accounts token usage. This means a compromised/prompt-injected agent (which runs with `--dangerously-skip-permissions` + internet) can at most leak a per-job token usable only against the proxy for its short TTL — not the permanent platform key. **`VM_PROXY_SIGNING_SECRET` is required**; if it or the upstream key/base URL is unavailable, VM execution fails closed. Rotating the secret instantly revokes all outstanding tokens. The proxy base URL defaults to the deployed function URL; override with `VM_LLM_PROXY_BASE_URL` if needed.
-- **GitLab / GitHub coding flow (clone → code → optional Merge/Pull Request)**: a `prototype` VM task can run inside a checkout of the project's connected GitLab **or** GitHub repo and open an MR/PR only when it actually changed repository files. Wiring is per-provider but symmetric: per-project repo config (`gitlabRepoUrl`/`gitlabBaseBranch`/`gitlabHost`, or `githubRepoUrl`/`githubBaseBranch`/`githubHost`/`githubApiBase`) lives on the `projects/{projectId}` doc (non-secret, member-readable); the **per-user** token lives at `users/{uid}/private/{provider}Auth_{projectId}` (`gitlabAuth_…` / `githubAuth_…`, owner+server read only — never on the project doc). The `connect{Gitlab,Github}Repo` / `disconnect{Gitlab,Github}Repo` callables (`functions/Gitlab/gitlabConnect.js`, `functions/Github/githubConnect.js`, registered in `index.js`) validate the token + repo against the provider REST API and persist it; the UI is `components/ProjectDetailedView/ProjectProperties/ConnectGitLab/` + `ConnectGitHub/` (mirror ConnectGmail, but a simple paste-token form). In `vmJobRunner.js`, `loadRepoContext()` reads the repo + the **requesting user's** token (GitHub preferred if both are connected), and `setupGitRepo()` clones (fresh) or fetches (resume) into `/home/user/repo`. The runner does **not** install repository dependencies before starting the agent; the agent installs them lazily with the repository's package manager only when the requested change or necessary validation requires them. `buildAgentPrompt()` branches on provider: **GitLab** → branch/commit/push with **push options** (`-o merge_request.create …`, no `glab`/API needed); **GitHub** → push then `gh pr create` (gh baked into the E2B template; falls back to the REST API via curl). The E2B sandbox is created/connected with internet access enabled, and Codex is invoked with `sandbox_workspace_write.network_access=true` because Codex has its own inner command sandbox; GitHub is normal outbound HTTPS traffic, not a special E2B permission, though transient DNS/network errors should be retried. The agent returns the MR/PR URL in its final message when one is opened, or explains that no MR/PR was opened because no code change was needed. For task threads, the newest VM run that returns an MR/PR becomes the canonical `vmMergeRequest`; thread-run ordering plus transactional status writes prevent delayed older runs or refreshes from restoring a previous link. **Security**: the token is injected ONLY as a per-command env var (`GIT_TOKEN`, plus `GH_TOKEN`/`GITHUB_TOKEN` for GitHub) and a git credential helper that resolves `$GIT_TOKEN` at push time (username `oauth2` for GitLab, `x-access-token` for GitHub) — never written to `.git/config`, `prompt.txt`, logs, or the paused-session snapshot. Recommend users supply a repo-scoped token (GitLab **Project Access Token** `api` + `write_repository`, Developer+; GitHub **fine-grained PAT** with Contents + Pull requests read/write) and keep the base branch protected so the agent can only open MRs/PRs, not push to it or merge.
+- **GitLab / GitHub coding flow (clone → code → optional Merge/Pull Request)**: a `prototype` VM task can run inside a checkout of the project's connected GitLab **or** GitHub repo and open an MR/PR only when it actually changed repository files. Wiring is per-provider but symmetric: per-project repo config (`gitlabRepoUrl`/`gitlabBaseBranch`/`gitlabHost`, or `githubRepoUrl`/`githubBaseBranch`/`githubHost`/`githubApiBase`) lives on the `projects/{projectId}` doc (non-secret, member-readable); the **per-user** token lives at `users/{uid}/private/{provider}Auth_{projectId}` (`gitlabAuth_…` / `githubAuth_…`, owner+server read only — never on the project doc). The `connect{Gitlab,Github}Repo` / `disconnect{Gitlab,Github}Repo` callables (`functions/Gitlab/gitlabConnect.js`, `functions/Github/githubConnect.js`, registered in `index.js`) validate the token + repo against the provider REST API and persist it; the UI is `components/ProjectDetailedView/ProjectProperties/ConnectGitLab/` + `ConnectGitHub/` (mirror ConnectGmail, but a simple paste-token form). In `vmJobRunner.js`, `loadRepoContext()` reads the repo + the **requesting user's** token (GitHub preferred if both are connected), and `setupGitRepo()` clones (fresh) or fetches (resume) into `/home/user/repo`. The runner does **not** install repository dependencies before starting the agent; the agent installs them lazily with the repository's package manager only when the requested change or necessary validation requires them. `buildAgentPrompt()` branches on provider: **GitLab** → branch/commit/push with **push options** (`-o merge_request.create …`, no `glab`/API needed); **GitHub** → push then `gh pr create` (gh baked into the E2B template; falls back to the REST API via curl). The E2B sandbox is created/connected with internet access enabled, and Codex is invoked with `sandbox_workspace_write.network_access=true` because Codex has its own inner command sandbox; GitHub is normal outbound HTTPS traffic, not a special E2B permission, though transient DNS/network errors should be retried. The agent returns the MR/PR URL in its final message when one is opened, or explains that no MR/PR was opened because no code change was needed. For task threads, the newest VM run that returns an MR/PR becomes the canonical `vmMergeRequest`; thread-run ordering plus transactional status writes prevent delayed older runs or refreshes from restoring a previous link. **Security**: the token is injected ONLY as a per-command env var (`GIT_TOKEN`, plus `GH_TOKEN`/`GITHUB_TOKEN` for GitHub) and a git credential helper that resolves `$GIT_TOKEN` at push time (username `oauth2` for GitLab, `x-access-token` for GitHub) — never written to `.git/config`, `prompt.txt`, logs, or the paused-session snapshot. Recommend users supply a repo-scoped token (GitLab **Project Access Token** `api` + `write_repository`, Developer+; GitHub **fine-grained PAT** with Contents + Pull requests read/write) and keep the base branch protected so the agent can only open MRs/PRs, not push to it or merge (in this repository `master` is protected since 2026-11-08: Maintainers only, no force push; before that it was not, whatever this note assumed).
 - **Codex Git metadata and sandboxing**: Codex's `workspace-write` mode deliberately protects `.git` recursively even when the checkout is writable, so branch/ref/index updates against a conventional checkout fail with `cannot lock ref`. This is an inner Codex policy, not an E2B mount, Unix ownership, or worktree-permission problem. `setupGitRepo()` therefore moves mutable metadata to `/home/user/git-metadata/repo`, injects `GIT_DIR` + `GIT_WORK_TREE` into setup and agent commands, and grants only `/home/user/git-metadata` as an additional Codex `writable_root`. Resumed pre-fix sessions with `/home/user/repo/.git` are migrated automatically. Do not replace this with `danger-full-access` or try to add `.git` itself as a writable root: the former broadens the sandbox unnecessarily and the latter remains blocked by Codex's protected-path policy.
 - **Google Cloud read access (clone the GitHub/GitLab connect pattern, but for GCP)**: any project member can connect **their own** Google Cloud project so their VM tasks can **read** its Firestore + Cloud Logging (e.g. inspect `goldStats`, tail Cloud Functions logs). It is per-user and self-limiting — you can only grant read access to a project you already have a service-account key for. The secret lives at `users/{uid}/private/gcpAuth_{projectId}` (owner+server read only; `serviceAccountKey` = the pasted SA JSON, plus `gcpProjectId`/`clientEmail`/`capabilities`); **nothing GCP-related is written to the project doc** (unlike git — the connection is purely per-user, so the per-user doc is self-contained). `connectGcpProject`/`disconnectGcpProject` (`functions/Gcp/gcpConnect.js`, registered in `index.js`) validate the key by minting a token from it and probing Firestore `:listCollectionIds` + Logging `entries:list`, storing which reads succeeded as `capabilities` and rejecting a key that can read neither. UI mirrors ConnectGitHub: `components/ProjectDetailedView/ProjectProperties/ConnectGCP/` (a paste-the-SA-JSON form). **The raw SA key never enters the sandbox.** In `vmJobRunner.js`, `loadGcpContext()` runs for **every** task type (not just `prototype`), reads the requesting user's key, and — because we hold the private key — mints a **short-lived OAuth access token** directly (`mintGcpAccessToken`: JWT→token exchange with scopes `datastore` + `logging.read`; no `iam.serviceAccountTokenCreator` / no Alldone-side IAM grant needed). **Scope gotcha**: the Firestore API rejects `cloud-platform.read-only` (403 "insufficient authentication scopes") and there is no read-only Firestore/Datastore scope, so the read/write `datastore` scope is used and **Firestore read-only is enforced by the SA's IAM role** (`datastore.viewer`), not the scope; Logging keeps its read-only `logging.read` scope. `buildGcpEnv()` injects it per-command as `GCP_ACCESS_TOKEN` (+ `CLOUDSDK_AUTH_ACCESS_TOKEN`, `GOOGLE_CLOUD_PROJECT`) merged into `runEnvs` alongside the git env — minted fresh each run, never written to disk or the paused snapshot. `buildAgentPrompt()` adds a "Connected Google Cloud project (read-only)" section pointing the agent at the Firestore/Logging **REST APIs via curl** (no `gcloud` in the E2B template by default; functions logs = filter `resource.type="cloud_run_revision"` for gen2). **Trust model** (chosen trade-off vs. the `vmLlmProxy` approach): the token is read-only (Firestore via the SA's viewer role, Logging via both scope and role), ~1h TTL, and only reaches the user's own project, so a prompt-injected agent can at most do read-only calls the user already authorized for the token's lifetime — accepted in exchange for far less code than a full proxy. Read-only ultimately rests on the SA's IAM roles, so users MUST connect a read-only SA (recommend `datastore.viewer` + `logging.viewer`, or `roles/viewer`). No Gold changes — GCP reads happen inside the run and are billed via the existing LLM-token metering. Optional future hardening: KMS-encrypt the stored SA key at rest (higher-value than a repo token), or Workload Identity Federation to avoid storing a long-lived key at all.
 
@@ -5029,14 +5029,76 @@ browser before trusting a bigger change.
   skipping: a redundant deploy is visible and cheap, a silently skipped one ships nothing.
   Note a job with an explicit `needs` list loses the default "artifacts from all earlier
   stages", so it must name `deploy_scope` or it silently falls back to deploying always.
-  **Recording a marker pushes a tag, which `CI_JOB_TOKEN` may not do** — it needs a project
-  access token with `write_repository` in the masked CI/CD variable `DEPLOY_MARKER_TOKEN`.
-  Until that exists `record` warns and no-ops, every target falls back to the old push-range
-  comparison, and behaviour is exactly what it was before (hole included); the first
-  successful deploy after the variable is added lays the marker and switches catch-up on.
-  Tag pushes cannot trigger pipelines here — the `workflow` rules only admit pipelines that
-  have `$CI_COMMIT_BRANCH`. Pinned by `__tests__/CiDeployScope.test.js`, which also fails the
-  build if `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+  Markers are pushed with `CI_JOB_TOKEN` ("Allow Git push requests to the repository" is on),
+  `DEPLOY_MARKER_TOKEN` remaining an explicit override. Tag pushes cannot trigger pipelines
+  here — the `workflow` rules only admit pipelines that have `$CI_COMMIT_BRANCH`. Pinned by
+  `__tests__/CiDeployScope.test.js`, which also fails the build if
+  `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+- **A production marker is only believed when a default-branch pipeline signed it
+  (security audit 2026-11, NV-01).** A marker can only make a deploy smaller, so a forged
+  one holds back a reviewed fix: `deployed/firestore-rules-production` pointed at any
+  commit with master's rules (the MR source commit is one) made the rules release report
+  "already deployed", and an old `deployed/github-mirror` would have replayed pre-cutoff
+  history onto the public mirror. The tags cannot be GitLab-protected, because a protected
+  tag can never be moved again and CI moves them on every deploy, and anyone with Developer
+  access (the VM-agent bot token included) or a branch job token can push them. So
+  `record` writes an annotated tag whose message (target, commit, ref, pipeline, job) is
+  HMAC-SHA256-signed with the protected, masked variable `DEPLOY_MARKER_SIGNING_KEY`, and
+  only from a protected default-branch pipeline; `verified_marker` rejects a lightweight
+  tag, a bad signature, another target's marker and a commit that is not an ancestor of the
+  one under test (deepening the shallow clone as needed). Changes are read from every commit
+  in `marker..HEAD` as well as the tree diff, so replaying an older genuine marker after a
+  revert still deploys (for Functions those files go to the selector as `rangeChanged`). A
+  rejected or missing production marker means **deploy**; the old push-range fallback is
+  gone for production, since deleting a tag would have reopened the hole. Without the key,
+  `compute` and `functions-plan` fail on master naming the variable, instead of deploying
+  everything (Functions in full) on every push. `functions-staging*` markers stay unsigned:
+  feature branches write them and staging is branch-reachable anyway. The first master
+  pipeline after this shipped found only unsigned markers and deployed every target once.
+  `ci/github-push.sh` additionally appends only when the cutoff commit is an ancestor of
+  the last mirrored one and the mirror tip carries that commit's tree; otherwise it rebuilds.
+  `fetch_marker` no longer uses `--depth=1` in a complete clone, where it grafted a shallow
+  boundary at the marker and cut off the mirror's cutoff commit. Pinned by
+  `__tests__/CiDeployMarkers.test.js` (real git: replay, forgery, copied and non-ancestor
+  markers, shallow clones, HMAC tools agreeing) and the marker case in
+  `__tests__/CiFunctionSelection.test.js`.
+- **Firebase deploys use one service account per environment, never a login token
+  (security audit 2026-11, NV-32).** Everything used to authenticate with one
+  `firebase login:ci` token (`GOOGLE_FIREBASE_DEPLOY_TOKEN`) that could deploy both projects
+  and that every feature-branch pipeline could read, because the preview, staging-live and
+  staging-functions jobs need a credential. Every job that runs firebase-tools now sources
+  `ci/useFirebaseDeployCredentials.sh production|staging`, which sets
+  `GOOGLE_APPLICATION_CREDENTIALS` and `FIREBASE_DEPLOY_PROJECT` and unsets
+  `FIREBASE_TOKEN` / `GOOGLE_FIREBASE_DEPLOY_TOKEN` (firebase-tools prefers a token over
+  ADC). `FIREBASE_DEPLOY_SA_PROD` (protected, File variable) is a key for a deploy account
+  with roles on `alldonealeph` only, and the helper also refuses it outside a protected
+  default-branch pipeline; `FIREBASE_DEPLOY_SA_STAGING` (not protected) is a key for an
+  account with roles on `alldonestaging` only. There is no fallback to the old token: a
+  missing variable fails the job with its name. The helper checks the key's `project_id`
+  and `client_email` domain, so a production key in the staging variable is refused.
+  `__tests__/CiDeployCredentials.test.js` fails the build if a job running firebase-tools
+  on a non-default branch selects production (or vice versa), if `--token` or the old
+  variable comes back, or if a job other than `deploy:cloud:runner:production` touches
+  `GOOGLE_SERVICE_ACCOUNT_MASTER`. The runner jobs still authenticate gcloud with the
+  runtime keys (`GOOGLE_SERVICE_ACCOUNT_MASTER` protected, `_DEVELOP` staging-only).
+- **No service-account key is written into `functions/` any more (NV-08).** Both functions
+  deploy jobs wrote `GOOGLE_SERVICE_ACCOUNT_DEVELOP` and `_MASTER` into
+  `functions/service_accounts/`, and firebase-tools zips the whole functions directory
+  minus `firebase.json` `functions.ignore` (it does NOT read `functions/.gcloudignore`), so
+  every deploy uploaded both keys into the target project's function source, the staging
+  one included. The deployed runtime never used them (`firebaseConfig.master.js` /
+  `.develop.js` use ADC). The jobs write no key now, and `functions.ignore` excludes
+  `service_accounts/`, key-shaped file names and `tmp_project_name` as well, so a local
+  `firebase deploy` from a machine with keys in that folder is covered too.
+- **GitLab protection state (2026-11-08).** `master` is protected: push and merge
+  Maintainers only, no force push. `GOOGLE_SERVICE_ACCOUNT_MASTER`,
+  `GOOGLE_FUNCTIONS_ENV_PROD`, `GITHUB_TOKEN`, `GITHUB_TOKEN_ALLDONEAPP` (and the new
+  `FIREBASE_DEPLOY_SA_PROD`, `DEPLOY_MARKER_SIGNING_KEY`) are protected variables, so only
+  master pipelines see them; staging variables stay unprotected because feature-branch QA
+  jobs use them. The container registry lets only Maintainers push or delete tag
+  `^latest$`. `deployed/*` tags are deliberately NOT protected (see the marker note).
+  Earlier notes in this repo that said there were no protected branches (for example in
+  `TYPESENSE_MIGRATION.md`) describe the state before that date.
 - **Functions deploy only affected exports.** `ci/selectFunctionsDeployment.js` parses
   committed `functions/index.js`, follows entrypoint helpers and transitive local imports,
   and compares both trees against `deployed/functions-production` (or `functions-staging`).
@@ -5090,9 +5152,12 @@ browser before trusting a bigger change.
   bumping a dependency compiled and tested against the _previous_ lockfile's tree and
   failed with unresolvable imports (the firebase 8 → 12 branch: `Can't resolve 'firebase/compat/app'`) while being green locally. Now a feature branch whose
   dependency manifests differ from master builds its own images tagged
-  `:$CI_COMMIT_REF_SLUG`, selected by the consuming jobs through a rules-level
+  `:branch-$CI_COMMIT_REF_SLUG`, selected by the consuming jobs through a rules-level
   `APP_IMAGE_TAG` (default `latest`); `:latest` is still only ever written from
-  develop/master, because master builds from it. Two consequences: the branch's first
+  develop/master, because master builds from it. The `branch-` prefix is a security
+  boundary (NV-31): with the bare slug, a branch named `latest` (or anything GitLab slugs to
+  it, like `LATEST`) pushed its own `node_modules` over the images master's production
+  build and gates run in. `__tests__/CiImageTags.test.js` holds it. Two consequences: the branch's first
   pipeline is slow (full `npm ci` + two image pushes), and each such branch leaves an
   image in the registry — bound that with a tag cleanup policy.
 - **`test:web:changed` runs only what a branch changed, so read the selection line
@@ -5117,7 +5182,7 @@ browser before trusting a bigger change.
   (250 → 1000 → `--unshallow`) only until `git merge-base` resolves, so the usual recent
   branch pays nothing.
 - **The registry cleanup policy must always keep `latest`.** Branch-scoped images
-  (`build_base:<ref-slug>`, `build_web_bundler:<ref-slug>`) accumulate one per
+  (`build_base:branch-<ref-slug>`, `build_web_bundler:branch-<ref-slug>`) accumulate one per
   dependency-changing branch, so a cleanup policy is needed — but the policy this project
   had was `name_regex: ".*"` with `name_regex_keep: null`, i.e. **nothing protected**,
   including `latest`. That is a live hazard rather than a theoretical one: GitLab reports

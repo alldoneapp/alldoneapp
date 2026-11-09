@@ -52,7 +52,9 @@
 > GitLab variables `TYPESENSE_HOST` / `TYPESENSE_SEARCH_ONLY_API_KEY` were first created as
 > "protected" in a project with **no protected branches**, so every pipeline saw empty
 > strings and the key-aware flag silently kept Algolia reads — the working variables here
-> are all unprotected; match that.
+> are all unprotected; match that. **Superseded 2026-11-08:** `master` is now a protected
+> branch, so protected variables do reach master pipelines, and production secrets are
+> protected on purpose (see "GitLab protection state" in CLAUDE.md). Do not unprotect them.
 > **Scoped-key hardening (2026-08-27):** the static browser key was found to be only
 > collection-scoped, so a caller could omit the UI's `filter_by` and search every indexed
 > record. The client now obtains a five-minute key from
