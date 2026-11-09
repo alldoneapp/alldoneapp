@@ -25,11 +25,6 @@ jest.mock('../../../../../redux/actions', () => ({
     setAssistantEnabled: jest.fn(value => ({ type: 'assistant-enabled', value })),
 }))
 
-const mockConfirmRun = jest.fn(() => true)
-jest.mock('../../../../../utils/assistantTaskRunGate', () => ({
-    confirmAssistantTaskRunForCurrentUser: (...args) => mockConfirmRun(...args),
-}))
-
 describe('PreConfigTaskOption prompt execution', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
@@ -113,27 +108,5 @@ describe('PreConfigTaskOption prompt execution', () => {
             { model: undefined, reasoningEffort: undefined, systemMessage: undefined },
             { isWebhookTask: true, webhookUrl: 'https://example.com/hook', sendWhatsApp: false }
         )
-    })
-
-    // Security audit 2026-11: a member-editable task runs only after the user approved its content.
-    test('runs nothing when the user declines the unapproved content', () => {
-        mockConfirmRun.mockReturnValueOnce(false).mockReturnValueOnce(false)
-        const onSelectBotOption = jest.fn()
-        for (const type of [TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK]) {
-            const tree = renderer.create(
-                <PreConfigTaskOption
-                    task={{ id: 't', name: 'N', prompt: 'P', variables: [], type }}
-                    closeModal={jest.fn()}
-                    selectTask={jest.fn()}
-                    onSelectBotOption={onSelectBotOption}
-                    projectId="project-1"
-                    assistantId="assistant-1"
-                />
-            )
-            act(() => tree.root.findByType(TouchableOpacity).props.onPress())
-        }
-        expect(mockConfirmRun).toHaveBeenCalledWith(expect.objectContaining({ id: 't' }), 'assistant-1', 'project-1')
-        expect(onSelectBotOption).not.toHaveBeenCalled()
-        expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
     })
 })

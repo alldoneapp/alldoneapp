@@ -16,7 +16,6 @@
  * assignees, owner) follow its thread; the `ws@` workstream placeholder is never a person.
  */
 
-const { filterToProjectMembers } = require('./projectMemberRecipients')
 const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
@@ -198,10 +197,9 @@ class ObjectCommentService {
         })
 
         let notificationError = null
-        let notifiedCount = 0
         if (!silent && notificationData.followers.length > 0) {
             try {
-                notifiedCount = await this.notifyFollowers({
+                await this.notifyFollowers({
                     objectType,
                     projectId,
                     objectId,
@@ -231,7 +229,7 @@ class ObjectCommentService {
             creatorId: actorId,
             fromAssistant: !!fromAssistant,
             silent: !!silent,
-            notifiedFollowers: silent ? 0 : notifiedCount || 0,
+            notifiedFollowers: silent ? 0 : notificationData.followers.length,
             notificationError,
         }
     }
@@ -250,15 +248,11 @@ class ObjectCommentService {
         fromAssistant,
     }) {
         const projectSnapshot = await this.database.doc(`projects/${projectId}`).get()
-        const projectData = projectSnapshot.exists ? projectSnapshot.data() || {} : {}
-        const projectName = projectData.name || ''
-        // Security audit 2026-11 (#11): follower lists are member-writable and outlive membership.
-        const recipients = filterToProjectMembers(followers, projectData)
-        if (recipients.length === 0) return 0
+        const projectName = projectSnapshot.exists ? projectSnapshot.data()?.name || '' : ''
         const messageTimestamp = Date.now()
         const batch = this.database.batch()
 
-        recipients.forEach(userId => {
+        followers.forEach(userId => {
             batch.set(this.database.doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
                 chatId: objectId,
                 chatType: objectType,
@@ -273,7 +267,7 @@ class ObjectCommentService {
         batch.set(
             this.database.doc(`emailNotifications/${objectId}`),
             {
-                userIds: recipients,
+                userIds: followers,
                 projectId,
                 objectType,
                 objectId,
@@ -285,7 +279,7 @@ class ObjectCommentService {
 
         // Same text and link shape as the app's own comment notification (chatsComments.js).
         batch.set(this.database.doc(`pushNotifications/${commentId}`), {
-            userIds: recipients,
+            userIds: followers,
             body: `${projectName}\n  ✔ ${objectName}\n ${actorName} commented: ${commentText}`,
             link: `${this.baseUrl || getBaseUrl()}/projects/${projectId}/${objectType}/${objectId}/chat`,
             messageTimestamp,
@@ -297,7 +291,6 @@ class ObjectCommentService {
         })
 
         await batch.commit()
-        return recipients.length
     }
 }
 

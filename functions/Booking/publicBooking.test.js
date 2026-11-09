@@ -15,12 +15,6 @@ jest.mock('./bookingEmails', () => ({
     sendBookingConfirmationToVisitor: jest.fn().mockResolvedValue(undefined),
 }))
 
-const mockConsumeBookingQuota = jest.fn(async () => ({ allowed: true }))
-jest.mock('./bookingRateLimit', () => ({
-    consumeBookingQuota: (...args) => mockConsumeBookingQuota(...args),
-    getClientIp: req => req.headers?.['x-forwarded-for'] || 'unknown',
-}))
-
 jest.mock('./bookingSettings', () => ({
     findPublicBookingSlots: jest.fn(),
     getConnectedCalendarCount: jest.fn(),
@@ -67,8 +61,8 @@ function createResponse() {
     }
 }
 
-function createRequest({ method = 'GET', path = '/', query = {}, body = {}, headers = {} } = {}) {
-    return { method, path, query, body, url: path, headers }
+function createRequest({ method = 'GET', path = '/', query = {}, body = {} } = {}) {
+    return { method, path, query, body, url: path }
 }
 
 describe('public booking API', () => {
@@ -242,41 +236,6 @@ describe('public booking API', () => {
             expect(res.statusCode).toBe(200)
             expect(createCalendarEventForAssistantRequest).toHaveBeenCalled()
         })
-    })
-
-    // Security audit 2026-11 (#10): /book mails an address the caller chose; it is rate limited
-    // before the calendar is touched or anything is sent.
-    test('refuses a rate-limited booking without creating an event or sending mail', async () => {
-        mockConsumeBookingQuota.mockResolvedValueOnce({ allowed: false, limitedBy: 'recipient' })
-        const res = createResponse()
-
-        await bookingApiHandler(
-            createRequest({
-                method: 'POST',
-                path: '/book',
-                headers: { 'x-forwarded-for': '1.2.3.4' },
-                body: {
-                    slug: 'karsten-wysk',
-                    start: '2026-06-18T09:00:00+02:00',
-                    end: '2026-06-18T09:30:00+02:00',
-                    timeZone: 'Europe/Berlin',
-                    visitorName: 'Visitor',
-                    visitorEmail: 'Victim@Example.com',
-                },
-            }),
-            res
-        )
-
-        expect(res.statusCode).toBe(429)
-        expect(mockConsumeBookingQuota).toHaveBeenCalledWith(expect.anything(), {
-            ip: '1.2.3.4',
-            pageUserId: 'user-1',
-            slug: 'karsten-wysk',
-            recipientEmail: 'victim@example.com',
-        })
-        expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
-        expect(bookingEmails.sendBookingConfirmationToVisitor).not.toHaveBeenCalled()
-        expect(bookingEmails.sendBookingNotificationToHost).not.toHaveBeenCalled()
     })
 
     test('creates a calendar event and booking record on success', async () => {

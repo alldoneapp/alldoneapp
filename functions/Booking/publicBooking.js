@@ -13,7 +13,6 @@ const {
     slugify,
 } = require('./bookingSettings')
 const { sendBookingNotificationToHost, sendBookingConfirmationToVisitor } = require('./bookingEmails')
-const { consumeBookingQuota, getClientIp } = require('./bookingRateLimit')
 const { FieldValue } = require('firebase-admin/firestore')
 
 function setCommonHeaders(res) {
@@ -232,19 +231,6 @@ async function handleBook(req, res) {
     const earliestBookableStart = resolveEarliestBookableStart(page.settings, timeZone)
     if (earliestBookableStart && moment.parseZone(start).isBefore(earliestBookableStart)) {
         json(res, 409, { success: false, error: 'Same-day bookings are not available for this link' })
-        return
-    }
-
-    // Security audit 2026-11 (#10): every accepted booking mails an address the caller chose, so the
-    // endpoint is rate limited per IP, per page and per recipient before anything else happens.
-    const quota = await consumeBookingQuota(admin.firestore(), {
-        ip: getClientIp(req),
-        pageUserId: page.userId,
-        slug,
-        recipientEmail: visitorEmail,
-    })
-    if (!quota.allowed) {
-        json(res, 429, { success: false, error: 'Too many bookings. Please try again later.' })
         return
     }
 

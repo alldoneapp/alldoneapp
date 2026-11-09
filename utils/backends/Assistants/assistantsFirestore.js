@@ -1,5 +1,6 @@
 import { runWithLoading, subscribeWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
+import { isEqual } from 'lodash'
 
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import {
@@ -54,8 +55,6 @@ import {
 } from '../../assistantWorkflow'
 import { normalizeAssistantReasoningEffort } from '../../../functions/Assistant/selectableAssistantReasoningEfforts'
 import { getAssistantTemplateState, getTaskTemplateState } from '../../../functions/Assistants/templateMerge'
-import { approveAssistantTaskContentAsShown, stripServerOwnedAssistantTaskFields } from './assistantTaskApproval'
-import { isAssistantTaskContentApprovedByUser } from '../../../functions/Assistant/assistantTaskContentHash'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -681,6 +680,32 @@ export async function deleteAssistant(projectId, assistant) {
     if (!isGlobalAssistant(assistant.uid)) deleteAssistantUpdatesChain(projectId, assistant)
 }
 
+// A heartbeat runs as a member only after that member confirmed the assistant's current prompt,
+// tools, instructions and MCP servers (functions/Assistant/heartbeatOptIn.js, security audit NV-17).
+export function getAssistantHeartbeatOptIn(projectId, assistantId) {
+    return runHttpsCallableFunction('assistantHeartbeatOptIn', { projectId, assistantId, action: 'get' })
+}
+
+export function setAssistantHeartbeatOptIn(projectId, assistantId, enabled) {
+    return runHttpsCallableFunction('assistantHeartbeatOptIn', {
+        projectId,
+        assistantId,
+        action: enabled ? 'confirm' : 'revoke',
+    })
+}
+
+// After the signed-in member changed what a heartbeat runs, their own confirmation follows the
+// change (only if they had confirmed before). Another member's change still needs a new confirmation.
+export function refreshOwnHeartbeatConfirmation(projectId, assistantId) {
+    if (!projectId || !assistantId || isGlobalAssistant(assistantId)) return Promise.resolve(null)
+    return runHttpsCallableFunction('assistantHeartbeatOptIn', { projectId, assistantId, action: 'refresh' }).catch(
+        error => {
+            console.warn('Could not refresh the heartbeat confirmation', { error: error?.message })
+            return null
+        }
+    )
+}
+
 export async function updateAssistant(projectId, updatedAssistant, oldAssistant) {
     const assistantId = updatedAssistant.uid
 
@@ -701,7 +726,10 @@ export async function updateAssistant(projectId, updatedAssistant, oldAssistant)
             )
     }
 
-    batch.commit()
+    const committed = batch.commit()
+    if (!isEqual(updatedAssistant.allowedTools || [], oldAssistant.allowedTools || [])) {
+        Promise.resolve(committed).then(() => refreshOwnHeartbeatConfirmation(projectId, assistantId))
+    }
 
     if (!isGlobalAssistant(updatedAssistant.uid)) updateAssistantFeedsChain(projectId, updatedAssistant, oldAssistant)
 }
@@ -757,12 +785,13 @@ export async function updateAssistantInstructions(projectId, assistant, instruct
     )
     if (updated && !isGlobalAssistant(assistant.uid))
         assistantInstructionsChangedUpdatesChain(projectId, assistant, assistant.instructions, instructions)
+    if (updated) refreshOwnHeartbeatConfirmation(projectId, assistant.uid)
 }
 
 export async function updateAssistantHeartbeatSettings(projectId, assistant, data) {
     if (Object.prototype.hasOwnProperty.call(data, ASSISTANT_PROMPT_FIELD_HEARTBEAT)) {
         const { heartbeatPrompt, ...settingsData } = data
-        await updateAssistantPromptFieldWithHistory(
+        const updated = await updateAssistantPromptFieldWithHistory(
             projectId,
             assistant,
             ASSISTANT_PROMPT_FIELD_HEARTBEAT,
@@ -770,6 +799,7 @@ export async function updateAssistantHeartbeatSettings(projectId, assistant, dat
             heartbeatPrompt,
             settingsData
         )
+        if (updated) refreshOwnHeartbeatConfirmation(projectId, assistant.uid)
     } else {
         await updateAssistantData(projectId, assistant.uid, data, null)
     }
@@ -1021,7 +1051,7 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
     const taskId = getId()
     task.id = taskId
 
-    const taskToStore = stripServerOwnedAssistantTaskFields(task)
+    const taskToStore = { ...task }
     delete taskToStore.id
     delete taskToStore.aiModel
     delete taskToStore.aiTemperature
@@ -1146,9 +1176,51 @@ export const buildOwnActivationUpdate = ({ currentTask, editedTask, userId, payl
     return update
 }
 
+/**
+ * Security audit 2026-11 (NV-22): a task in the global catalog (assistantTasks/globalProject) is
+ * copied into every tenant's derived assistant whenever it changes, so firestore.rules let anybody
+ * but the administrator change only their own activation entry of it. Saving the activation dialog
+ * as a non-administrator therefore sends just that entry, never the edited task.
+ */
+export const buildGlobalTaskActivationUpdate = ({ currentTask, editedTask, userId }) => {
+    const update = buildOwnActivationUpdate({ currentTask, editedTask, userId, payload: {} })
+    if (!userId) return update
+    if (update.activatedUserIds.includes(userId)) {
+        const edited = editedTask || {}
+        const activatedInProjectId = edited.activatedInProjectIdByUser?.[userId] || edited.activatedInProjectId
+        if (activatedInProjectId) update[`activatedInProjectIdByUser.${userId}`] = activatedInProjectId
+        if (currentTask?.lastExecutedByUser?.[userId] === undefined) update[`lastExecutedByUser.${userId}`] = null
+    }
+    return update
+}
+
+const isAdministratorLoggedIn = () => {
+    const { loggedUser, administratorUser } = store.getState()
+    return !!loggedUser?.uid && administratorUser?.uid === loggedUser.uid
+}
+
+function updateOwnGlobalTaskActivation(projectId, assistantId, task) {
+    const userId = store.getState().loggedUser?.uid
+    if (!userId || !task?.id) return Promise.resolve()
+    const taskRef = getAssistantTaskDocRef(projectId, assistantId, task.id)
+    return getDb().runTransaction(async transaction => {
+        const doc = await transaction.get(taskRef)
+        if (!doc.exists) return
+        transaction.update(
+            taskRef,
+            buildGlobalTaskActivationUpdate({ currentTask: doc.data(), editedTask: task, userId })
+        )
+    })
+}
+
 export function updatePreConfigTask(projectId, assistantId, task) {
     clearAssistantTasksCache(projectId, assistantId)
-    const taskToStore = stripServerOwnedAssistantTaskFields(task)
+    if (projectId === GLOBAL_PROJECT_ID && !isAdministratorLoggedIn()) {
+        return updateOwnGlobalTaskActivation(projectId, assistantId, task).catch(error =>
+            console.warn('[assistants] could not save the activation of a global task:', error)
+        )
+    }
+    const taskToStore = { ...task }
     delete taskToStore.id
     const aiModelOverride = getPreConfigTaskModelOverride(taskToStore)
     delete taskToStore.aiModel
@@ -1210,32 +1282,8 @@ export function updatePreConfigTask(projectId, assistantId, task) {
             const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`)
             batch.delete(legacyRef)
         }
-        return batch.commit().then(() => confirmSavedTaskForEditor(projectId, assistantId, currentTask, payload))
+        batch.commit()
     })
-}
-
-// Security audit 2026-11 (NEW-A): saving a task you are activated for is reviewing it, so it confirms
-// the saved content for you. A content change is already confirmed by the server-side write trigger;
-// this covers a save that changed nothing, which produces no write event (the notice tells a user
-// whose task was changed by somebody else to open it and save it).
-export const buildSavedAssistantTask = (currentTask, payload) => {
-    const saved = { ...(currentTask || {}) }
-    Object.entries(payload || {}).forEach(([key, value]) => {
-        if (value instanceof firebase.firestore.FieldValue) delete saved[key]
-        else saved[key] = value
-    })
-    return saved
-}
-
-function confirmSavedTaskForEditor(projectId, assistantId, currentTask, payload) {
-    const userId = store.getState().loggedUser?.uid
-    const saved = buildSavedAssistantTask(currentTask, payload)
-    if (!userId || !saved.id || !getActivatedUserIds(saved).includes(userId)) return
-    const taskProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
-    if (isAssistantTaskContentApprovedByUser(saved, userId, taskProjectId)) return
-    return approveAssistantTaskContentAsShown({ projectId: taskProjectId, assistantId, task: saved }).catch(error =>
-        console.warn('Could not confirm the saved assistant task', error?.message || error)
-    )
 }
 
 export async function toggleRecurringTaskActivation(
@@ -1447,7 +1495,7 @@ export async function moveAssistantToProject(sourceProjectId, targetProjectId, a
     sourceTasksSnapshot.forEach(doc => {
         const task = doc.data()
         const movedTask = {
-            ...stripServerOwnedAssistantTaskFields(task),
+            ...task,
             assistantId,
         }
 

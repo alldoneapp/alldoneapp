@@ -1,4 +1,5 @@
 import { beginMcpOAuth, completeMcpOAuth } from '../backends/firestore'
+import { createOAuthBrowserBinding, MCP_CLIENT_OAUTH_CALLBACK_PATH } from '../oauthBrowserBinding'
 
 const POLL_INTERVAL_MS = 2000
 const TIMEOUT_MS = 5 * 60 * 1000
@@ -18,7 +19,15 @@ const TIMEOUT_MS = 5 * 60 * 1000
  * Returns: { oauthState } to hand to connectAssistantMcpServer as the server secret.
  */
 export async function startMcpOAuthFlow({ serverUrl, clientId, clientSecret, scope }) {
-    const { authorizationUrl, state } = await beginMcpOAuth({ serverUrl, clientId, clientSecret, scope })
+    // NV-23: only this browser may complete the flow it starts.
+    const browserNonceHash = await createOAuthBrowserBinding(MCP_CLIENT_OAUTH_CALLBACK_PATH)
+    const { authorizationUrl, state } = await beginMcpOAuth({
+        serverUrl,
+        clientId,
+        clientSecret,
+        scope,
+        browserNonceHash,
+    })
     if (!authorizationUrl || !state) {
         throw new Error('Could not start the OAuth flow.')
     }
@@ -60,6 +69,7 @@ export async function startMcpOAuthFlow({ serverUrl, clientId, clientSecret, sco
         }
 
         const onMessage = event => {
+            if (!event || event.origin !== window.location.origin) return
             const data = event && event.data
             if (!data || data.type !== 'mcp_oauth_complete' || data.state !== state) return
             if (!data.ok) {

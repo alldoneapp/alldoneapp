@@ -152,10 +152,6 @@ export default class Backend {
         return bridge.convertToActiveProject(user, project)
     }
 
-    static async uploadAttachments(commentId, attachments) {
-        bridge.uploadAttachments(commentId, attachments)
-    }
-
     static watchBacklinksCount(projectId, linkedParentObject, callback, watcherKey) {
         bridge.watchBacklinksCount(projectId, linkedParentObject, callback, watcherKey)
     }
@@ -182,10 +178,6 @@ export default class Backend {
 
     static async getTasksByProject(projectId) {
         return bridge.getTasksByProject(projectId)
-    }
-
-    static async getAttachments(commentId) {
-        return bridge.getAttachments(commentId)
     }
 
     static getStepWorkflowDirection(targetStepId, task, workflow) {

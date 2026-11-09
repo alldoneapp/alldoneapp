@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 
 const { getProject, getTemplateGuideIds } = require('../Firestore/generalFirestoreCloud')
 const { GLOBAL_PROJECT_ID, deleteAssistantTask } = require('../Firestore/assistantsFirestore')
+const { isGlobalCatalogTaskPath } = require('./globalCatalogTaskPath')
 
 const deleteAssistantInGuidesWhenDeleteAssisntantInTemplate = async (projectId, assistantId, assistantTaskId) => {
     let promises = []
@@ -20,6 +21,7 @@ const deleteAssistantInGuidesWhenDeleteAssisntantInTemplate = async (projectId, 
 
 const onDeleteAssistantTask = async (projectId, assistantId, assistantTaskId, deletedAssistantTask) => {
     if (projectId === GLOBAL_PROJECT_ID) {
+        if (!isGlobalCatalogTaskPath(assistantId)) return
         const { propagateTemplateTaskChange } = require('../Assistants/templateSync')
         const previousTask = { ...(deletedAssistantTask || {}), id: assistantTaskId }
         await propagateTemplateTaskChange(previousTask.assistantId, previousTask, null, 'delete')

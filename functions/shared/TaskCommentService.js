@@ -1,6 +1,5 @@
 'use strict'
 
-const { filterToProjectMembers } = require('./projectMemberRecipients')
 const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
@@ -231,10 +230,9 @@ class TaskCommentService {
         // which is the sole source of the chatNotifications unread markers (plus push/email).
         // This keeps assistant-authored update_task comments from marking threads as unread.
         let notificationError = null
-        let notifiedCount = 0
         if (!silent && !existing) {
             try {
-                notifiedCount = await this.notifyFollowers({ projectId, taskId, ...notificationData, fromAssistant })
+                await this.notifyFollowers({ projectId, taskId, ...notificationData, fromAssistant })
             } catch (error) {
                 notificationError = error.message
                 console.error('TaskCommentService: Comment saved but follower notification failed', {
@@ -253,7 +251,7 @@ class TaskCommentService {
             creatorId: actorId,
             fromAssistant: !!fromAssistant,
             silent: !!silent,
-            notifiedFollowers: silent ? 0 : notifiedCount || 0,
+            notifiedFollowers: silent ? 0 : notificationData?.followers?.length || 0,
             notificationError,
             ...(suppliedCommentId ? { existing } : {}),
             ...(emailContinuation ? { taskName: updatedTaskName } : {}),
@@ -272,19 +270,15 @@ class TaskCommentService {
         fromAssistant,
         actorChannelFields = {},
     }) {
-        if (followers.length === 0) return 0
+        if (followers.length === 0) return
 
         const projectSnapshot = await this.database.doc(`projects/${projectId}`).get()
-        const projectData = projectSnapshot.exists ? projectSnapshot.data() || {} : {}
-        const projectName = projectData.name || ''
-        // Security audit 2026-11 (#11): follower lists are member-writable and outlive membership.
-        const recipients = filterToProjectMembers(followers, projectData)
-        if (recipients.length === 0) return 0
+        const projectName = projectSnapshot.exists ? projectSnapshot.data()?.name || '' : ''
         const objectName = task.extendedName || task.name || 'Task'
         const messageTimestamp = Date.now()
         const batch = this.database.batch()
 
-        recipients.forEach(userId => {
+        followers.forEach(userId => {
             batch.set(this.database.doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
                 chatId: taskId,
                 chatType: 'tasks',
@@ -299,7 +293,7 @@ class TaskCommentService {
         batch.set(
             this.database.doc(`emailNotifications/${taskId}`),
             {
-                userIds: recipients,
+                userIds: followers,
                 projectId,
                 objectType: 'tasks',
                 objectId: taskId,
@@ -310,7 +304,7 @@ class TaskCommentService {
         )
 
         batch.set(this.database.doc(`pushNotifications/${commentId}`), {
-            userIds: recipients,
+            userIds: followers,
             body: `${projectName}\n  ✔ ${objectName}\n ${actorName} commented: ${commentText}`,
             link: `${getBaseUrl()}/projects/${projectId}/tasks/${taskId}/chat`,
             messageTimestamp,
@@ -323,7 +317,6 @@ class TaskCommentService {
         })
 
         await batch.commit()
-        return recipients.length
     }
 }
 

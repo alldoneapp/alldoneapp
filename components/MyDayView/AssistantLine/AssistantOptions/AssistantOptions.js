@@ -350,14 +350,8 @@ export default function AssistantOptions({
     // The hidden measuring copies use the exact same button component and margins as the visible
     // row, so font, translation, and viewport changes all feed into the collapsed count.
     const collapsedOptions = tasksLoaded
-        ? getOptionsPresentationData(
-              conversationProject,
-              assistant.uid,
-              tasks,
-              Number.MAX_SAFE_INTEGER,
-              false,
-              assistantTasksProjectId
-          ).optionsLikeButtons
+        ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, Number.MAX_SAFE_INTEGER)
+              .optionsLikeButtons
         : []
     const collapsedVisibleCount = getCollapsedQuickActionCount({
         containerWidth: quickActionsWidth,
@@ -369,8 +363,7 @@ export default function AssistantOptions({
     const optionsLikeButtons = !tasksLoaded
         ? []
         : quickActionsExpanded
-          ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, 0, true, assistantTasksProjectId)
-                .optionsLikeButtons
+          ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, 0, true).optionsLikeButtons
           : collapsedOptions.slice(0, collapsedVisibleCount)
 
     const hasQuickActions = true

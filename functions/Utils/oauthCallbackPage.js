@@ -55,15 +55,22 @@ function setPageHeaders(res, nonce) {
 /**
  * Sends a page that posts `message` to the opener and closes itself.
  * `bodyHtml` must already be escaped by the caller.
+ *
+ * The message goes only to Alldone app origins (security audit NV-23): with target '*', any page
+ * that opened the consent flow in a popup received the result. A browser delivers a message only to
+ * an opener whose origin equals the target, so posting once per app origin reaches the app wherever
+ * it runs and nothing else.
  */
-function sendOpenerMessagePage(res, message, { bodyHtml = '', closeDelayMs = 0, status = 200 } = {}) {
+function sendOpenerMessagePage(res, message, { bodyHtml = '', closeDelayMs = 0, status = 200, targetOrigins } = {}) {
     const nonce = crypto.randomBytes(16).toString('base64')
     setPageHeaders(res, nonce)
+    const origins = targetOrigins || require('./oauthBrowserBinding').getAppOrigins()
     const close = closeDelayMs > 0 ? `setTimeout(function(){window.close()},${Number(closeDelayMs)})` : 'window.close()'
     res.status(status).send(
         `<!doctype html><html><head><meta charset="utf-8"></head><body style="font-family:sans-serif;padding:24px">` +
             bodyHtml +
-            `<script nonce="${nonce}">try{window.opener&&window.opener.postMessage(${scriptJson(message)},'*')}catch(e){}` +
+            `<script nonce="${nonce}">try{var m=${scriptJson(message)};${scriptJson(origins)}.forEach(function(o){` +
+            `try{window.opener&&window.opener.postMessage(m,o)}catch(e){}})}catch(e){}` +
             `${close}</script></body></html>`
     )
 }

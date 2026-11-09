@@ -16,7 +16,6 @@ const {
     onDocumentUpdated,
     onDocumentDeleted,
     onDocumentWritten,
-    onDocumentWrittenWithAuthContext,
 } = require('firebase-functions/v2/firestore')
 
 const admin = require('firebase-admin')
@@ -1782,6 +1781,31 @@ exports.resetArtifactLink = onCall(
 
 // Undo of a wiki correction from the page history. The assistant's undo_knowledge_correction tool
 // runs the same function; see KnowledgeBase/knowledgeBaseAssistant.js.
+// NV-17: a heartbeat runs as a member only after that member confirmed the assistant's current
+// heartbeat configuration (Assistant/heartbeatOptIn.js).
+exports.assistantHeartbeatOptIn = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { handleHeartbeatOptInRequest } = require('./Assistant/heartbeatOptIn')
+        const { FieldValue } = require('firebase-admin/firestore')
+        const result = await handleHeartbeatOptInRequest({
+            db: admin.firestore(),
+            userId: auth.uid,
+            data,
+            fieldValue: FieldValue,
+        })
+        if (!result.success) throw new HttpsError('failed-precondition', result.error)
+        return result
+    }
+)
+
 exports.undoKnowledgeCorrection = onCall(
     {
         timeoutSeconds: 30,
@@ -2144,6 +2168,63 @@ exports.setDefaultVmApprovalPolicy = onCall(
     }
 )
 
+// security audit 2026-11 (NV-20): the assistant's memory about a user is private and lives in the
+// server-only `assistantMemories` collection. These two callables are the only way a browser sees
+// or changes it: the owner reads and edits their own, other project members read it only when the
+// owner chose to share it (read-only). See functions/Assistant/userMemoryHelper.js.
+const runAssistantMemoryCallable = async work => {
+    try {
+        return await work()
+    } catch (error) {
+        const { AssistantMemoryAccessError } = require('./Assistant/userMemoryHelper')
+        if (error instanceof AssistantMemoryAccessError) throw new HttpsError(error.code, error.message)
+        throw error
+    }
+}
+
+exports.getAssistantMemorySecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getAssistantMemoryForViewer } = require('./Assistant/userMemoryHelper')
+        return await runAssistantMemoryCallable(() =>
+            getAssistantMemoryForViewer({
+                projectId: data && data.projectId,
+                userId: data && data.userId,
+                viewerId: auth.uid,
+            })
+        )
+    }
+)
+
+exports.updateAssistantMemorySecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { updateOwnAssistantMemory } = require('./Assistant/userMemoryHelper')
+        return await runAssistantMemoryCallable(() =>
+            updateOwnAssistantMemory({
+                projectId: data && data.projectId,
+                userId: auth.uid,
+                content: data ? data.content : undefined,
+                shareWithProjectMembers: data ? data.shareWithProjectMembers : undefined,
+            })
+        )
+    }
+)
+
 // AT-2221: per-agent default model family. `family: null` clears the default.
 exports.setDefaultVmAgentModel = onCall(
     {
@@ -2368,7 +2449,11 @@ exports.beginMcpOAuth = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { beginMcpOAuth } = require('./MCP/mcpClientOAuth')
-        return await beginMcpOAuth({ userId: auth.uid, serverUrl: data && data.serverUrl })
+        return await beginMcpOAuth({
+            userId: auth.uid,
+            serverUrl: data && data.serverUrl,
+            browserNonceHash: data && data.browserNonceHash,
+        })
     }
 )
 
@@ -2415,11 +2500,13 @@ exports.mcpClientOAuthCallback = onRequest(
                 }
             )
         }
+        // NV-23: the browser-binding cookie has done its job either way.
+        require('./Utils/oauthBrowserBinding').clearBindingCookie(res, '/mcpClientOAuthCallback')
         if (oauthError) return renderPage(false, oauthError)
         if (!state || !code) return renderPage(false, 'Missing code or state')
         try {
             const { exchangeMcpOAuthCode } = require('./MCP/mcpClientOAuth')
-            await exchangeMcpOAuthCode({ code, state })
+            await exchangeMcpOAuthCode({ code, state, request: req })
             return renderPage(true, '')
         } catch (err) {
             return renderPage(false, (err && err.message) || 'Token exchange failed')
@@ -2667,6 +2754,42 @@ exports.resetUserFreePlanSecondGen = onSchedule(
 
 //ALGOLIA
 
+// Unlocks a locked goal in a guide: charges the 80 Gold and stores the lock key in one transaction
+// (AT-2978; Guides/unlockGuideGoal.js). The browser can no longer write the key itself.
+exports.unlockGuideGoalSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        const { unlockGuideGoal, UnlockGoalError } = require('./Guides/unlockGuideGoal')
+        const { projectId, goalId } = request.data || {}
+        let result
+        try {
+            result = await unlockGuideGoal({ db: admin.firestore(), callerId: request.auth?.uid, projectId, goalId })
+        } catch (error) {
+            if (error instanceof UnlockGoalError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+        if (result.success && !result.alreadyUnlocked) {
+            try {
+                const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
+                await proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin)
+            } catch (error) {
+                console.error('unlockGuideGoalSecondGen: search records not updated', {
+                    projectId,
+                    goalId,
+                    error: error?.message,
+                })
+            }
+        }
+        return {
+            success: !!result.success,
+            alreadyUnlocked: !!result.alreadyUnlocked,
+            message: result.message,
+            newBalance: result.newBalance,
+            unlockedFor: result.unlockedFor,
+        }
+    }
+)
+
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     {
         timeoutSeconds: 540,
@@ -2676,21 +2799,13 @@ exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     },
     async request => {
         const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        const admin = require('firebase-admin')
-        const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
-        const { reindexUnlockedGoalForUser, UnlockGoalReindexError } = require('./Goals/unlockGoalReindex')
-        try {
-            await reindexUnlockedGoalForUser({
-                db: admin.firestore(),
-                userId: auth.uid,
-                projectId: data?.projectId,
-                goalId: data?.goalId,
-                reindex: (projectId, goalId) => proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin),
-            })
-        } catch (error) {
-            if (error instanceof UnlockGoalReindexError) throw new HttpsError(error.code, error.message)
-            throw error
+        if (auth) {
+            const admin = require('firebase-admin')
+            const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
+            const { projectId, goalId } = data
+            await proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin)
+        } else {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
     }
 )
@@ -2838,34 +2953,19 @@ exports.checkIfDeletedNotesNeedBeCleanedSecondGen = onSchedule(
 
 //GOLD
 
+// Retired (AT-2978): Gold rewards are granted by the server from the task and comment triggers
+// (Gold/serverGoldRewards.js). Kept as a no-op so app versions still open in a tab get an answer
+// instead of an error until they reload; it pays nothing, so it can no longer be called in a loop.
 exports.earnGoldSecondGen = onCall(
     {
-        timeoutSeconds: 540,
+        timeoutSeconds: 10,
         memory: '256MB',
         region: 'europe-west1',
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            // The caller and the rewarded user must share the project, and one call pays at most a
-            // task reward (security audit 2026-11; clientGoldRequests.js).
-            const { resolveClientReward } = require('./Gold/clientGoldRequests')
-            const reward = await resolveClientReward(admin.firestore(), auth.uid, data)
-            if (!reward.ok) return { success: false, message: reward.message }
-            const { earnGold } = require('./Gold/goldHelper')
-            return await earnGold(
-                reward.projectId,
-                reward.userId,
-                reward.gold,
-                reward.slimDate,
-                reward.timestamp,
-                reward.dayDate,
-                reward.context
-            )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        return { success: false, message: 'Gold rewards are granted by the server' }
     }
 )
 
@@ -4793,6 +4893,26 @@ exports.onCreateCalendarProjectRoutingFeedbackSecondGen = onDocumentCreated(
 // `items/{projectId}/tasks/{taskId}` path, so every task update paid for two invocations
 // (387k and 464k in August 2026) and the second one returned immediately almost every time.
 // It now rides along inside onUpdateTaskSecondGen; the capture itself is unchanged.
+// Gold for moving a task forward is granted here, from what the server saw, never on a request from
+// the browser (AT-2978; Gold/serverGoldRewards.js). Idempotent per task step and recipient.
+async function awardTaskProgressGoldIfChanged(event) {
+    const before = event.data.before.data()
+    const after = event.data.after.data()
+    const { resolveTaskProgressReward, awardTaskProgressGold } = require('./Gold/serverGoldRewards')
+    const { projectId, taskId } = event.params
+    if (!resolveTaskProgressReward(taskId, before, after)) return
+    try {
+        const { earnGold } = require('./Gold/goldHelper')
+        await awardTaskProgressGold({ db: admin.firestore(), earnGold, projectId, taskId, before, after })
+    } catch (error) {
+        console.error('[onUpdateTask] task progress Gold reward failed', {
+            projectId,
+            taskId,
+            error: error?.message || error,
+        })
+    }
+}
+
 async function captureCalendarGoalRoutingFeedbackIfChanged(event) {
     const previousTaskData = event.data.before.data() || {}
     const taskData = event.data.after.data() || {}
@@ -4849,6 +4969,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
             captureCalendarGoalRoutingFeedbackIfChanged(event),
+            awardTaskProgressGoldIfChanged(event),
             syncVmSessionTaskDoneIfChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
             invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
@@ -4883,6 +5004,31 @@ exports.onCreateObjectCommentSecondGen = onDocumentCreated(
                     error: error.message,
                 })
             }
+        }
+        // A member's comment in a guide earns Gold, granted here rather than on a request from the
+        // browser (AT-2978; Gold/serverGoldRewards.js). Idempotent per comment, so a retry pays once.
+        try {
+            const { awardCommentGold } = require('./Gold/serverGoldRewards')
+            const { earnGold } = require('./Gold/goldHelper')
+            const { getObjectDocPath } = require('./shared/privacyAccess')
+            await awardCommentGold({
+                db: admin.firestore(),
+                earnGold,
+                getObjectDocPath,
+                projectId,
+                objectType,
+                objectId,
+                commentId,
+                comment: event.data.data() || {},
+            })
+        } catch (error) {
+            console.error('[onCreateObjectComment] comment Gold reward failed', {
+                projectId,
+                objectType,
+                objectId,
+                commentId,
+                error: error?.message || error,
+            })
         }
         const { isReplyCandidate, enqueueAssistantCommentReply } = require('./Assistant/assistantCommentReply')
         if (isReplyCandidate(event.data.data())) {
@@ -5086,61 +5232,6 @@ exports.onUpdateAssistantTaskSecondGen = onDocumentUpdated(
         const { onUpdateAssistantTask } = require('./AssistantTasks/onUpdateAssistantTaskFunctions.js')
         const { projectId, assistantId, assistantTaskId } = event.params
         await onUpdateAssistantTask(projectId, assistantId, assistantTaskId, event.data)
-    }
-)
-
-// Security audit 2026-11 (NEW-A): a scheduled assistant task runs AS each user who activated it,
-// while its content is member-editable. This records, for the user who wrote it, the content a write
-// shows them approving (activating it, or editing it while activated). It needs the writer's
-// identity, which only the auth-context event carries; see Assistant/assistantTaskContentApproval.js.
-exports.onWriteAssistantTaskApprovalSecondGen = onDocumentWrittenWithAuthContext(
-    {
-        document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { recordWriterApprovalFromEvent } = require('./Assistant/assistantTaskContentApproval')
-        const { projectId, assistantId, assistantTaskId } = event.params
-        const before = event.data?.before?.exists ? event.data.before.data() : null
-        const after = event.data?.after?.exists ? event.data.after.data() : null
-        await recordWriterApprovalFromEvent({
-            docPath: `assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`,
-            projectId,
-            before,
-            after,
-            authType: event.authType,
-            authId: event.authId,
-        })
-    }
-)
-
-// The explicit half: a user confirms a run (or saves a task) whose current content they had not
-// approved. `expectedHash` is the hash of what they were shown; a different stored content is refused.
-exports.approveAssistantTaskContentSecondGen = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('unauthenticated', 'Authentication required')
-        const { approveAssistantTaskContent, ApprovalError } = require('./Assistant/assistantTaskContentApproval')
-        try {
-            return await approveAssistantTaskContent({
-                userId: auth.uid,
-                projectId: data?.projectId,
-                assistantId: data?.assistantId,
-                taskId: data?.taskId,
-                expectedHash: data?.expectedHash,
-            })
-        } catch (error) {
-            if (error instanceof ApprovalError) throw new HttpsError(error.code, error.message)
-            throw error
-        }
     }
 )
 
@@ -6911,6 +7002,17 @@ exports.cleanupExpiredWebhookTasks = onSchedule(
 
 // GOOGLE OAUTH - Server-side OAuth for Calendar and Gmail integration
 
+// NV-23: a connect flow must be bound to the browser that starts it, and may only return to Alldone.
+function assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash }) {
+    const { normalizeBrowserNonceHash, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
+    if (!normalizeBrowserNonceHash(browserNonceHash)) {
+        throw new HttpsError('failed-precondition', 'Refresh Alldone and start the connection again.')
+    }
+    if (returnUrl && !normalizeOAuthReturnUrl(returnUrl)) {
+        throw new HttpsError('invalid-argument', 'returnUrl must point to Alldone')
+    }
+}
+
 // Initiate Google OAuth flow
 exports.googleOAuthInitiate = onCall(
     {
@@ -6926,11 +7028,12 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service, returnUrl, connectionId } = data || {}
+        const { projectId, service, returnUrl, connectionId, browserNonceHash } = data || {}
         const userId = auth.uid
         if (!projectId && !connectionId) {
             throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
         }
+        assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash })
 
         try {
             // Security audit 2026-11: the project a connection is bound to becomes the destination
@@ -6938,7 +7041,7 @@ exports.googleOAuthInitiate = onCall(
             // exactly as microsoftOAuthInitiate already required.
             if (projectId) await assertProjectAccess(userId, projectId)
             else await assertConnectionAccess(userId, connectionId)
-            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId)
+            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId, browserNonceHash)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
@@ -6974,16 +7077,22 @@ exports.googleOAuthCallback = onRequest(
             return
         }
 
-        try {
-            const result = await handleOAuthCallback(code, state)
+        // NV-23: the browser-binding cookie has done its job either way.
+        const { clearBindingCookie, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
+        clearBindingCookie(res, '/googleOAuthCallback')
 
-            if (result.returnUrl) {
-                // Return to the app
-                res.redirect(result.returnUrl)
+        try {
+            const result = await handleOAuthCallback(code, state, { request: req })
+
+            // Only ever back to an Alldone origin (checked at initiation, and again here for states
+            // stored before that check existed).
+            const returnUrl = normalizeOAuthReturnUrl(result.returnUrl)
+            if (returnUrl) {
+                res.redirect(returnUrl)
                 return
             }
 
-            sendOpenerMessagePage(res, { type: 'oauth_success', result })
+            sendOpenerMessagePage(res, { type: 'oauth_success', result: { service: result.service } })
         } catch (err) {
             console.error('Error in OAuth callback:', err)
             sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })
@@ -7129,15 +7238,16 @@ exports.microsoftOAuthInitiate = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
         const { initiateOAuth } = require('./MicrosoftOAuth/microsoftOAuthHandler')
-        const { projectId, service, returnUrl, connectionId } = data || {}
+        const { projectId, service, returnUrl, connectionId, browserNonceHash } = data || {}
         if (!projectId && !connectionId) {
             throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
         }
+        assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash })
 
         try {
             if (projectId) await assertProjectAccess(auth.uid, projectId)
             else await assertConnectionAccess(auth.uid, connectionId)
-            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl, connectionId)
+            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl, connectionId, browserNonceHash)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Microsoft OAuth:', error)
@@ -7173,14 +7283,18 @@ exports.microsoftOAuthCallback = onRequest(
             return
         }
 
+        const { clearBindingCookie, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
+        clearBindingCookie(res, '/microsoftOAuthCallback')
+
         try {
-            const result = await handleOAuthCallback(code, state)
-            if (result.returnUrl) {
-                res.redirect(result.returnUrl)
+            const result = await handleOAuthCallback(code, state, { request: req })
+            const returnUrl = normalizeOAuthReturnUrl(result.returnUrl)
+            if (returnUrl) {
+                res.redirect(returnUrl)
                 return
             }
 
-            sendOpenerMessagePage(res, { type: 'oauth_success', result })
+            sendOpenerMessagePage(res, { type: 'oauth_success', result: { service: result.service } })
         } catch (err) {
             console.error('Error in Microsoft OAuth callback:', err)
             sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })

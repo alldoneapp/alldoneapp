@@ -55,6 +55,7 @@ import { resolveAssistantForProjectObject } from '../../AdminPanel/Assistants/as
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
+import { getSafeNavigationUrl } from '../../../utils/safeUrl'
 
 class ContactProperties extends Component {
     constructor(props) {
@@ -484,10 +485,13 @@ class ContactProperties extends Component {
                                     <TouchableOpacity
                                         style={{ paddingLeft: 40, paddingRight: 8, paddingBottom: 8 }}
                                         onPress={() => {
+                                            // A member-written field: never open a script URL.
+                                            const safeUrl = getSafeNavigationUrl(user.linkedInUrl)
+                                            if (!safeUrl) return
                                             if (window) {
-                                                window.open(user.linkedInUrl, '_blank')
+                                                window.open(safeUrl, '_blank')
                                             } else {
-                                                Linking.openURL(user.linkedInUrl)
+                                                Linking.openURL(safeUrl)
                                             }
                                         }}
                                     >

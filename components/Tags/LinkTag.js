@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { getSafeNavigationUrl } from '../../utils/safeUrl'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../Icon'
@@ -764,15 +765,7 @@ export default function LinkTag({
                                     sendWhatsApp: !!task.sendWhatsApp,
                                     executionMode: task.executionMode,
                                 }
-                                if (
-                                    !confirmPreConfigTaskRunFromLink(task, loggedUser?.uid, window.confirm, {
-                                        assistantId,
-                                        taskProjectId: isGlobalAssistant(assistantId)
-                                            ? GLOBAL_PROJECT_ID
-                                            : assistantProjectId,
-                                    })
-                                )
-                                    return
+                                if (!confirmPreConfigTaskRunFromLink(task, loggedUser?.uid)) return
                                 generateTaskFromPreConfig(
                                     targetProjectId,
                                     task.name,
@@ -880,7 +873,7 @@ export default function LinkTag({
                         : { textDecoration: 'none', cursor: disabled ? 'default' : 'pointer' },
                     aTagStyle
                 )}
-                href={linkUrl}
+                href={getSafeNavigationUrl(linkUrl) || undefined}
                 target="_blank"
                 onClick={e => {
                     e.stopPropagation()

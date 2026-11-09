@@ -1,5 +1,4 @@
 'use strict'
-const { filterToProjectMembers } = require('./shared/projectMemberRecipients')
 const handlebars = require('handlebars')
 const fs = require('fs')
 const moment = require('moment')
@@ -580,13 +579,12 @@ const sendChatNotificationToUsers = async (
     objectName,
     messageTimestamp
 ) => {
-    const project = await getProject(admin, projectId)
+    const promises = []
+    promises.push(getProject(admin, projectId))
+    promises.push(getUserDocs(admin, userIds))
+    const [project, userDocs] = await Promise.all(promises)
+
     if (!project) return
-    // Security audit 2026-11 (#11): an emailNotifications document names its recipients; only
-    // current project members are mailed, whoever wrote the list.
-    const recipients = filterToProjectMembers(userIds, project)
-    if (recipients.length === 0) return
-    const userDocs = await getUserDocs(admin, recipients)
     const { color: projectColor, name: projectName } = project
 
     for (let userData of userDocs) {
@@ -668,7 +666,20 @@ const sendChatNotifications = async admin => {
     await Promise.all(promises)
 }
 
+// A plain transactional mail that the caller awaits, so a failed send is reported to the person who
+// asked for it (the Stripe link code, AT-2978) instead of only logged.
+const sendTransactionalEmail = async ({ to, subject, html }) => {
+    return SIB_API_TRANSACT.sendTransacEmail({
+        sender: { email: 'noreply@alldone.app', name: 'Alldone.app' },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        headers: { Connection: 'keep-alive' },
+    })
+}
+
 module.exports = {
+    sendTransactionalEmail,
     sendEmailInvitationToProject,
     sendMonthlyPremiumGoldNotification,
     sendFeedNotifications,

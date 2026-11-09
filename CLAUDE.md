@@ -603,9 +603,13 @@ not in the repo) found many callables that skip this. The first fixes:
   The billing fields of `subscriptions/{uid}` and `users/{uid}.customerId` are server-owned in
   `firestore.rules` (the app may edit `companyData`, `selectedUserIds`, `showSuccessfullyPayment`).
   The generic `updateMollieSubscription` callable was removed.
-- `linkStripeAccount` looks up only the caller's verified login email (`getVerifiedAccountEmail`) and
-  never returns the Stripe customer id. Linking a subscription paid under another address needs
-  support. `checkPremiumStatusById` still finds customers by `users/{uid}.email` (the token email,
+- `linkStripeAccount` links the caller's verified login email (`getVerifiedAccountEmail`) directly and
+  never returns the Stripe customer id. Any other address (or an unverified login email) needs a
+  six-digit code mailed to it (AT-2978, `functions/Premium/stripeLinkCode.js`): the first call mails it
+  and answers `codeRequired`, the second call carries `code`. Only a hash is stored, in
+  `stripeLinkCodes/{uid}` (no client rule), bound to the user and the address, 15 minutes, five wrong
+  entries, at most one request a minute and five an hour. The mail goes out only when Stripe has a
+  customer with that address, and the answer is the same either way. `checkPremiumStatusById` still finds customers by `users/{uid}.email` (the token email,
   which may be unverified); moving it to the verified email is open.
 - The guide welcome-message runs are platform-paid on purpose and therefore run once: the group
   welcome once per guide, the personal welcome once per guide and member
@@ -1085,7 +1089,11 @@ tools and the execution gate:
   messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
-  or delegated assistant is not a member saying "this is wrong".
+  or delegated assistant is not a member saying "this is wrong". Neither is an **automatic comment reply**
+  (`runAssistantCommentReply`, answering another assistant's comment such as a Gmail follow-up):
+  `askToOpenAIBot` derives `allowKnowledgeCorrections` from `!runOptions.automaticCommentReply`, and
+  `resolveKnowledgeBaseAccess` returns read-only for `automaticCommentReply` whatever the flag says
+  (security audit NV-45).
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
@@ -1556,11 +1564,12 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Five MCP-only tools in
+**MCP can set up a workspace, and nothing else configures one over MCP.** Seven MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
 `create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
-`update_assistant` (name, description, instructions, model, Tools Access) and
-`create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
+`update_assistant` (name, description, instructions, model, Tools Access), `create_assistant_task`
+(a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
+`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, pause/resume for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1584,6 +1593,14 @@ instructions alone would never reach its schedules. `update_assistant` therefore
 copy of every task of that assistant whose copy still equals the OLD instructions; a task whose copy
 somebody edited keeps it. Tool changes keep list entries that are not Tools Access keys (written by
 older app versions), and a call that changes nothing writes nothing and spends no quota.
+
+`update_assistant_task` keeps the stored start date when only `startTime` changes: the start date is
+the anchor of the rhythm (a weekly task runs on that date's weekday), and `buildSchedule` would
+otherwise default it to today. The rhythm is stored per user (`recurrenceByUser`) next to the task's
+default and follows the caller; pausing removes the caller from `activatedUserIds` and
+`recurrenceByUser`, the same fields the scheduler (`assistantRecurringTasks.js`) reads on every tick,
+so nothing else has to be recomputed. Edits carry `lastEditedVia`. Pinned by the
+`get_assistant_tasks and update_assistant_task` block of `mcpWorkspaceSetupTools.test.js`.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 
@@ -1760,38 +1777,26 @@ contact status case in `ContactRetrievalService.test.js`, the `update_artifact b
 `delete_artifact` blocks in `artifactAssistant.test.js`, and the contact and artifact cases in
 `assistantHelper.test.js`.
 
-### A scheduled assistant task runs only the content its activator approved (security audit 2026-11, NEW-A)
+### Assistant memory is private to the user (NV-20)
 
-Any project member may edit a project assistant task's prompt, system instruction, model and
-settings, while a scheduled run acts AS the user who activated it (their Gold, tools, connected
-accounts). `functions/Assistant/assistantTaskContentHash.js` (pure, imported by the web app too)
-defines the content (type, prompt, aiSystemMessage, aiModelOverride, aiReasoningEffort,
-executionMode, link, variables, taskMetadata; not name or schedule) and its SHA-256.
-`approvedContentHashByUser.{uid}` on the task is written only by the server: by
-`onWriteAssistantTaskApprovalSecondGen` (an auth-context write trigger: the writer activated the
-task, or changed its content while activated) and by the `approveAssistantTaskContentSecondGen`
-callable, which refuses unless the stored content still hashes to what the user was shown.
-firestore.rules refuse client writes to it and to `contentApprovalNoticeByUser`, so every client
-write of a task strips both (`stripServerOwnedAssistantTaskFields`). `executeAssistantTask` skips a
-run whose content differs and posts one private notice per change
-(`assistantTaskApprovalNotice.js`); saving the task in the edit modal approves it again. Manual runs
-(quick actions, links, search, board play button, chat options, the variables modal) go through
-`confirmPreConfigTaskRun` / `confirmAssistantTaskRunForCurrentUser`: approved content runs at once,
-anything else shows prompt, system instruction and model first, and confirming approves it.
-Global-catalog tasks are exempt (only the administrator edits them). A template sync that changes a
-derived task's content therefore pauses it for its activator until they review it. After deploying,
-run `node migration/approveExistingAssistantTaskContent.js --firebase-project-id=<project> --execute`
-(dry run without `--execute`), or every existing activation pauses once.
+What the assistant remembers about a user (`update_user_memory`, injected as "User memory for this
+project") lives in `assistantMemories/{uid}__{projectId}` (`functions/Assistant/userMemoryHelper.js`).
+The collection has no client rule, so only Cloud Functions read or write it. It used to be the user's
+per-project profile note (`users/{uid}.noteIdsByProject`), which every project member can read and
+edit: a teammate could plant instructions into another member's system context, and facts the
+assistant remembered from private threads were readable by the whole project. Never read that note
+as memory again, and do not write memory into it.
 
-### Server fan-outs and public endpoints trust nothing the client wrote (security audit 2026-11)
-
-Follower lists are member-writable and outlive membership, so `TaskCommentService`,
-`ObjectCommentService`, the VM completion path and the chat email sender intersect recipients with
-`projects/{id}.userIds` (`shared/projectMemberRecipients.js`); removing a member also cleans the
-project's `followers` documents. `/api/booking/book` is rate limited per IP, page and recipient
-(`Booking/bookingRateLimit.js`, server-only `bookingRateLimits`, hashed ids; give it a TTL policy on
-`expiresAt`) and its visitor mail has a fixed subject and no echoed note. Chat media are fetched only
-from this project's Storage bucket, without redirects (`shared/storageMediaUrl.js`).
+Browsers reach the memory only through `getAssistantMemorySecondGen` / `updateAssistantMemorySecondGen`.
+The owner sees and edits their memory in the "Assistant memory" panel above the profile Note tab
+(`components/UserDetailedView/AssistantMemoryPanel.js`) and can switch on "show my assistant memory
+in my profile note". Other members then see it there read-only. The text is served by the callable
+and never copied into the note, because anything in the note is editable by everyone. Members of the
+project only: a viewer of a link-shared project sees nothing. A memory write produces no feed entry.
+The stored text keeps its newest 20,000 characters, and the run sees the newest 10,000. Existing
+memory lines are moved out of profile notes by `migration/moveUserMemoryToPrivateStore.js` (dry run
+by default; its header lists the risks). Pinned by `userMemoryHelper.test.js`,
+`userMemoryMigration.test.js` and `AssistantMemoryPanel.test.js`.
 
 ### Assistant Tool Checklist
 
@@ -3513,6 +3518,46 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A PSTN phone call is the account holder only when the carrier says so (NV-35).** Twilio passes
+the STIR/SHAKEN verdict as `StirVerstat`; `handleIncomingPhoneCall` records it on the session as
+`callerVerified` / `callerAttestation`, and only `TN-Validation-Passed-A` counts. Any other value,
+or none (international calls, carriers without STIR/SHAKEN, sessions from before this change), makes
+`runLiveAssistant` run as an unverified caller (`functions/shared/callerVerification.js`): no
+`getOptimizedContextMessages` (no chat history, memory, instructions or project data) and no Anna
+context, a fixed context saying the account cannot be used, `runtime.callerIdentityUnverified`, which
+`filterAllowedToolsForRuntimeContext`, `isToolAllowedForExecution`, `interactWithChatStream` (no
+implicit `load_skill` or wiki tools) and `resolveKnowledgeBaseAccess` all honour, so only `web_search`
+remains, and no `post_voice_answer_in_chat`. WhatsApp and in-app calls are not affected. The
+transcript still lands in the account's daily topic for display, but each turn carries
+`callerUnverified: true`, and `getOptimizedContextMessages` and the WhatsApp `getConversationHistory`
+skip such comments, so a later run never reads a stranger's words as the account holder's. Residual:
+an unverified call still spends the account's voice Gold.
+
+**A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
+loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
+therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,
+the same rule `assertObjectAccess` applies to `askToBotSecondGen`. It used to accept anyone listed in
+`creatorId`, `lastEditorId`, `members` or `usersFollowing`, and `members` keeps every former commenter
+after a topic is made private.
+
+### The iOS shell answers native bridge calls from its own main frame only (NV-33)
+
+Capacitor registers its `bridge` script message handler with `WKUserContentController.add(_:name:)`,
+which WebKit exposes to every frame, and dispatches any message to a plugin without checking the
+sender. An HTML artifact framed in the app (code a model or a member wrote) could call
+`IosShareExtension.setCredential` and send every later share to its own server.
+`AlldoneBridgeViewController.capacitorDidLoad` therefore replaces that handler with
+`MainFrameBridgeMessageFilter`. The filter forwards only messages from the main frame whose origin
+is the app's own `serverURL`. `CAPBridgeViewController.loadView` is `final`, so swapping the
+handler is the only hook. A new native plugin needs nothing extra. The share endpoint is pinned in
+three places, kept in step by hand: `IosShareEndpointPolicy` (plugin `setCredential`),
+`ShareViewController.isTrustedShareEndpoint` (separate target) and `isTrustedIosShareEndpoint` in
+`utils/iosShareExtensionCredential.js`. All three require https, a `europe-west1-alldone{aleph,staging}.cloudfunctions.net`
+host and the `/iosShareTask` path. The local emulator URL is allowed in debug builds only. The JS
+side re-mints a credential whose stored endpoint fails the check even when the user id matches,
+which is what used to let a planted endpoint survive. Native changes ship only with a new iOS shell
+release (TestFlight/App Store), not over the air. Pinned by `utils/iosShareExtensionCredential.test.js`.
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
@@ -4131,11 +4176,46 @@ Until October 2026 any signed-in account could mint Gold three ways: write `user
 - **A ledger direction carries its sign** (`deltaMatchesDirection` in `goldTransactions.js`): `spend` negative, `earn` and `refund` positive, only `adjustment` either way.
 - **A client refund gives back one of the caller's own charges** (`refundClientSpend`): the refund source must be paired with a spend source in `REFUNDABLE_CLIENT_SPENDS` (`iframe_refund` ↔ `iframe_deduction`, `goal_unlock` ↔ `goal_unlock`), it is matched to the newest spend of that source in the last 24h (and the same `objectId` when given), and the spend's `refundedAmount` caps the total. A new client flow that needs to refund adds its pair there. Server code refunding its own charges keeps using `refundGold`.
 
-`earnGoldSecondGen` still accepts a `userId` other than the caller's (task workflows reward the reviewer), but since the 2026-11 audit (`functions/Gold/clientGoldRequests.js`) the caller and that user must both be members of the project, one call pays at most 5 Gold (a task reward) and the statistics date must be `DDMMYYYY`; what bounds the total is still the server-owned `dailyGold`. The reward amount and the decision that a task was completed are still the browser's, so a member can collect up to the daily cap by calling it directly: closing that means awarding from the task trigger, not from the client. `deductGoldSecondGen` accepts only the spends the app starts itself (`CLIENT_SPEND_SOURCES`): `goal_unlock` at the server's price (80, must equal `UNLOCK_GOAL_COST`) and `iframe_deduction` as a whole amount up to 10,000. Any other source is refused, so a client cannot write ledger entries under server sources and skew `goldStats`. A new client spend adds its source there. Note the goal unlock itself (`unlockedKeysByGuides`) is still written by the client after the charge, so that paywall is UI-only. An idempotency claim settles a change only if the ledger wrote it (matching `idempotencyKey` and `direction`); an empty claim at a predictable key used to count as paid.
+**Rewards are granted by the server, never on a request from the browser** (AT-2978,
+`functions/Gold/serverGoldRewards.js`). `onUpdateTaskSecondGen` pays when a top-level task moves
+forward (open → workflow step → … → done): leaving the open step pays the task's owner, leaving a
+workflow step pays that step's reviewer, both only as project members. `onCreateObjectCommentSecondGen`
+pays a member's comment in a guide (`parentTemplateId`) on an object the whole project can see, under
+the source `guide_comment`. The idempotency key names the step a task LEFT and the person paid
+(`task_progress:{taskId}:{stepIndex}:{uid}`), not the transition time, so reopening and completing a
+task again pays nothing the second time; a comment is keyed by its id. The amount comes from that key
+with the same hash the browser uses for its coin animation (`getRewardGoldAmount`, kept identical in
+`utils/backends/firestore.js` and pinned by `serverGoldRewards.test.js`), so the coins shown are the
+coins paid; the browser only plays the animation (`showGoldRewardAnimation`). The day the reward lands
+on in `statistics/` is the recipient's own local day (`calendarUserDay.js`). `dailyGold` still caps
+the total. `earnGoldSecondGen` is kept as a no-op for open tabs of older app versions and pays nothing.
 
-**Usage that already happened is settled, not deducted** (`settleUsageGold` in `goldHelper.js`). An assistant answer (`reduceGoldWhenChatWithAI` → `spentGold`) and a dictation (`processRamble`) are charged after the model and Deepgram have run. `deductGold` is all-or-nothing, so a cost above the balance used to charge nothing, and the assistant path also capped the cost at the balance read when the run started: parallel runs and long runs went largely unbilled, and a dictation could be retried for free at a balance of 1. `settleUsageGold` charges the full cost, or whatever is left of the balance read in its own transaction, logs the uncovered rest at `console.error` (`[gold] Usage was not fully covered by the balance`), and leaves the balance at 0, which every paid entry point refuses. A dictation that empties the balance now returns its text; only one that finds the balance already empty is withheld. This bounds the loss to one run per positive balance; it is not a reservation. The full fix reserves an estimated budget before the model call, settles provider-reported usage of every tool round against it, stops the tool loop when it runs out, limits concurrent paid runs per user and records an uncovered rest as debt that blocks the next run.
+`deductGoldSecondGen` accepts only the spends the app starts itself (`CLIENT_SPEND_SOURCES`), today
+only `iframe_deduction` as a whole amount up to 10,000. Any other source is refused, so a client cannot
+write ledger entries under server sources and skew `goldStats`. A new client spend adds its source
+there. **A guide goal is unlocked by `unlockGuideGoalSecondGen`** (AT-2978,
+`functions/Guides/unlockGuideGoal.js`), which charges the 80 Gold (must equal `UNLOCK_GOAL_COST`) and
+stores the lock key in one transaction, reading the key and the goal's owner from the stored goal; the
+guide creator (administrator or `realTemplateProjectIds`) unlocks for the goal's owner. `firestore.rules`
+make `unlockedKeysByGuides` server-owned for owner updates, let a project membership mutation only drop
+keys (`unlockedKeysNotAdded`), and let a new account start only without keys. The goal content stays
+readable for members in Firestore: the decision was that paying cannot be skipped, not that the content
+is hidden. An idempotency claim settles a change only if the ledger wrote it (matching `idempotencyKey`
+and `direction`); an empty claim at a predictable key used to count as paid.
 
-Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequests.test.js`, `functions/Assistant/assistantGoldSettlement.test.js`, `functions/Premium/premiumSignupGold.test.js` and the `server-owned` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
+**Usage that already happened is charged in full, even below 0** (`settleUsageGold` in
+`goldHelper.js`, AT-2978). An assistant answer (`reduceGoldWhenChatWithAI` → `spentGold`) and a
+dictation (`processRamble`) are charged after the model and Deepgram have run. `deductGold` is
+all-or-nothing, so a cost above the balance used to charge nothing, then the interim fix took only
+what was left. Now the full cost is always booked (`allowNegativeBalance` in
+`applyGoldChangeInTransaction`, which only that settlement passes), a negative result is logged at
+`console.warn` (`[gold] Usage settled into a negative balance`), and every paid entry point refuses to
+start while the balance is 0 or less, so a debt blocks the next run until the user tops up (monthly
+Gold or a purchase pays it off first). A run is never cut off half-way. Every other spend still needs
+the balance to cover it. Client gates must test `gold > 0`, never `gold === 0`, or a negative balance
+passes them.
+
+Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequests.test.js`, `functions/Gold/serverGoldRewards.test.js`, `functions/Guides/unlockGuideGoal.test.js`, `functions/Assistant/assistantGoldSettlement.test.js`, `functions/Premium/premiumSignupGold.test.js`, `functions/Premium/stripeLinkCode.test.js` and the `server-owned` and `goal lock keys` blocks of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
 #### Gold analytics & rollups (tracking earn/spend over time)
 
@@ -4405,10 +4485,17 @@ logged nothing, so the only evidence in production was the absence of an
 `annaEmailInboundAudit` document.
 
 Evidence is now **ranked**, and only a genuine tie inside one rank is refused:
-attested mailbox + verified login > attested mailbox > verified login > unattested mailbox.
+attested mailbox + verified login > Google-attested mailbox > verified login > Microsoft-attested
+mailbox > unattested mailbox.
 A connected mailbox outranks a login email because it is the deliberate per-address act — you
 OAuth-connect a mailbox INTO the workspace whose Anna should read it, while a login email is merely
-how you sign in.
+how you sign in. **A Microsoft-only attestation does not (NV-07).** It is Graph's
+`mail || userPrincipalName`, and `mail` is a directory attribute an Entra tenant administrator sets.
+Nothing checks that the tenant owns the address's domain, and sign-in uses the multi-tenant
+`/common` authority, so an attacker's own tenant can name a victim's address. It therefore ranks
+below a Firebase-verified login and above an unattested connection (`rankCandidate` in
+`emailUserRouting.js`). A tenant verified-domain check (Graph `/organization` `verifiedDomains`) was
+not added.
 
 **That ordering is only safe because the connected claim is no longer forgeable.** It used to rest
 on two pieces of client-writable Firestore data: the token document under the owner-writable
@@ -4451,6 +4538,57 @@ nothing claims a connected mailbox. Pinned by `functions/Email/emailIdentityAtte
 `functions/Email/emailUserRouting.test.js`, the AT-2483 blocks in
 `functions/Email/emailIncomingHandler.test.js` and the credential-document cases in
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
+
+### An OAuth connect is completed only by the browser that started it (NV-23)
+
+The Google, Microsoft and MCP-client connect flows used to complete from `(code, state)` alone, and
+the state was only a lookup key for the initiator's request. A consent URL that the initiator
+forwarded to someone else therefore connected that person's mailbox (or MCP server) to the
+initiator's account, with the tokens owner-readable in the initiator's user tree. Now the starting
+browser (`utils/oauthBrowserBinding.js`) keeps a random nonce in a `__session` cookie scoped to the
+callback path and sends only its SHA-256 (`browserNonceHash`). The initiate callables
+(`googleOAuthInitiate`, `microsoftOAuthInitiate`, `beginMcpOAuth`) refuse to start without it and
+store it with the state. The callback (`functions/Utils/oauthBrowserBinding.js`) exchanges the code
+only for a request that carries the matching cookie, and spends the state either way. The cookie
+must be named `__session`, because Firebase Hosting strips every other cookie before forwarding to a
+function. The binding only works when the app runs on the callback's host (`my.alldone.app`,
+`mystaging.alldone.app`; the cookie is per host). Starting a connect from `alldonestaging.web.app`
+or a preview channel fails with "started in a different browser". `returnUrl` must be an Alldone
+origin (the `openInBrowserTab` allowlist; localhost only in the emulator) at initiation and again
+before the redirect. The callback page posts its result once per app origin instead of to `'*'`,
+and the clients accept only same-origin messages. **Microsoft connect does not work in production
+at all**: `firebase.json` has no rewrite for `/microsoftOAuthCallback`, so the redirect lands on
+the SPA, and no real callback reached the function in the last 180 days. The binding is
+implemented for it anyway. Pinned by `functions/Utils/oauthBrowserBinding.test.js`,
+`functions/GoogleOAuth/googleOAuthBrowserBinding.test.js`,
+`functions/MCP/mcpClientOAuthBrowserBinding.test.js`, `functions/Utils/oauthCallbackPage.test.js`
+and `utils/oauthBrowserBinding.test.js`.
+
+### An Anna email names an account only when DKIM proves the sender (NV-06)
+
+The inbound Anna channel routes mail by its SMTP envelope sender, which the sending server can set
+to anything. Cloudflare does not give an Email Worker a dependable SPF/DKIM verdict:
+`Authentication-Results` is reported missing in Worker headers (workerd#6740), and a sender can
+write such a header itself. So the worker verifies the DKIM signatures on `message.raw` itself
+(`cloudflare/email-worker/src/senderAuthentication.mjs`: rsa-sha256 and ed25519-sha256,
+simple/relaxed, keys over DNS-over-HTTPS, an `l=` that does not cover the whole body is a fail) and
+forwards `senderAuthentication: { version, dkim: [{ domain, result }], spf }`.
+`functions/Email/emailSenderAuthentication.js` accepts the sender only for a verified signature
+whose `d=` is aligned with the envelope domain (equal or parent/subdomain), or for an SPF pass for
+exactly that domain. Anything else is answered as `unauthenticated_sender` before
+`resolveEmailSenderIdentity` runs, so it never reaches an account or an assistant. SPF needs the
+connecting IP, which a Worker does not get, so the worker forwards Cloudflare's own
+`Authentication-Results` SPF stamp only with `TRUST_CLOUDFLARE_AUTH_RESULTS=true`. Set that only
+after confirming on a live message that Cloudflare adds the header and strips a forged one.
+Consequence worth knowing: a domain that signs with another domain's key (Google Workspace or
+Microsoft 365 without custom DKIM: `d=…gappssmtp.com` / `…onmicrosoft.com`) can no longer use Anna
+email until it enables DKIM for its own domain. A payload from a worker without the field is accepted
+until `LEGACY_WORKER_GRACE_UNTIL_MS` (2026-11-23) and refused after it. Deploy the worker with
+`wrangler deploy` before that date. The guest-meeting reply path (`tryHandleGuestMeetingReply`) is
+unchanged: it needs the exact Anna Message-ID as well. Replayed genuinely signed mail still verifies;
+that is a limit of DKIM. Pinned by `cloudflare/email-worker/tests/senderAuthentication.test.mjs` (an
+independent signer), `emailSenderAuthentication.test.js` and the NV-06 cases in
+`emailIncomingHandler.test.js`.
 
 ### `users/{uid}.email` is not an identity another system may trust (AT-2908)
 
@@ -4622,6 +4760,20 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### A phone number routes WhatsApp and calls only when exactly one account claims it (NV-44)
+
+`users/{uid}.phone` is written by its owner (`setUserPhone`) with no proof of possession; no
+verification flow exists. `resolveUserByPhone` (`functions/WhatsApp/whatsAppIncomingHandler.js`)
+therefore looks the number up in both stored formats (with and without `+`) and refuses to route
+when more than one account claims it. It logs the claimant ids at ERROR, replies to a WhatsApp
+message with a neutral "linked to more than one account" note, and rejects a call as unlinked.
+`findUserByPhone` keeps its old contract (an id or null). Before this, `limit(1)` silently picked
+whichever document sorted first, so anyone could take over the owner's WhatsApp channel by saving
+the same number. The real fix is a verified claim: a server-owned `phone` set by a Cloud Function
+after a WhatsApp one-time-code challenge, a unique `phoneClaims/{e164}` document written in a
+transaction, and a rules change refusing client writes to `phone`. Until that exists, ambiguity
+refusal is the only protection.
+
 ### WhatsApp replies must finish or report failure before their worker expires
 
 `WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
@@ -4744,7 +4896,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 - **Templates and CLI versions**: the worker always starts from E2B's managed `claude` or `codex` template, queries the selected package's npm `latest` version, and validates the active CLI before every run (including resumed sandboxes). Current CLIs are reused without calling `npm install`. For an install or upgrade, the runner takes a per-agent `flock`, temporarily moves only `/home/user/.local/bin/{claude,codex}` out of npm's link path, installs the exact resolved version, validates it, and restores the prior launcher if npm or validation fails. This avoids the managed-template `EEXIST` collision without `npm --force`. Bootstrap output is retained in bounded buffers; failures include sanitized npm stdout and stderr in logs and the job result. The legacy `functions/e2b-template` builder remains in the repository for reference but is not selected by the runner.
 - Secrets `E2B_API_KEY`, `ANTHROPIC_API_KEY`, `VM_PROXY_SIGNING_SECRET` are read via `getEnvFunctions()` (so they come from the `GOOGLE_FUNCTIONS_ENV_DEV` / `_PROD` GitLab variables that build `env_functions.json` in CI — add new keys into those JSON blobs, not as standalone CI variables).
 - **LLM key never enters the sandbox (proxy)**: the real Anthropic/OpenAI key is NOT injected into the VM. The worker mints a short-lived, per-job, HMAC-signed token (`functions/Assistant/vmLlmProxy.js`, `mintProxyToken`) and points the agent at the `vmLlmProxy` `onRequest` function, passing the token in place of the key. Claude uses `ANTHROPIC_BASE_URL=<proxy>/anthropic`. Codex is configured per command with an explicit custom Responses provider whose `base_url` is `<proxy>/openai/v1` and whose `supports_websockets=false`; this is required because current Codex CLIs may otherwise open `wss://api.openai.com/v1/responses`, bypass the HTTP-only proxy, and send the proxy token to OpenAI. `OPENAI_BASE_URL` remains only as compatibility for older Codex CLIs. `vmLlmProxy` verifies the token (signature + expiry + agent-match), checks that the job can continue, swaps in the real key server-side, streams the upstream response, and accounts token usage. This means a compromised/prompt-injected agent (which runs with `--dangerously-skip-permissions` + internet) can at most leak a per-job token usable only against the proxy for its short TTL — not the permanent platform key. **`VM_PROXY_SIGNING_SECRET` is required**; if it or the upstream key/base URL is unavailable, VM execution fails closed. Rotating the secret instantly revokes all outstanding tokens. The proxy base URL defaults to the deployed function URL; override with `VM_LLM_PROXY_BASE_URL` if needed.
-- **GitLab / GitHub coding flow (clone → code → optional Merge/Pull Request)**: a `prototype` VM task can run inside a checkout of the project's connected GitLab **or** GitHub repo and open an MR/PR only when it actually changed repository files. Wiring is per-provider but symmetric: per-project repo config (`gitlabRepoUrl`/`gitlabBaseBranch`/`gitlabHost`, or `githubRepoUrl`/`githubBaseBranch`/`githubHost`/`githubApiBase`) lives on the `projects/{projectId}` doc (non-secret, member-readable); the **per-user** token lives at `users/{uid}/private/{provider}Auth_{projectId}` (`gitlabAuth_…` / `githubAuth_…`, owner+server read only — never on the project doc). The `connect{Gitlab,Github}Repo` / `disconnect{Gitlab,Github}Repo` callables (`functions/Gitlab/gitlabConnect.js`, `functions/Github/githubConnect.js`, registered in `index.js`) validate the token + repo against the provider REST API and persist it; the UI is `components/ProjectDetailedView/ProjectProperties/ConnectGitLab/` + `ConnectGitHub/` (mirror ConnectGmail, but a simple paste-token form). In `vmJobRunner.js`, `loadRepoContext()` reads the repo + the **requesting user's** token (GitHub preferred if both are connected), and `setupGitRepo()` clones (fresh) or fetches (resume) into `/home/user/repo`. The runner does **not** install repository dependencies before starting the agent; the agent installs them lazily with the repository's package manager only when the requested change or necessary validation requires them. `buildAgentPrompt()` branches on provider: **GitLab** → branch/commit/push with **push options** (`-o merge_request.create …`, no `glab`/API needed); **GitHub** → push then `gh pr create` (gh baked into the E2B template; falls back to the REST API via curl). The E2B sandbox is created/connected with internet access enabled, and Codex is invoked with `sandbox_workspace_write.network_access=true` because Codex has its own inner command sandbox; GitHub is normal outbound HTTPS traffic, not a special E2B permission, though transient DNS/network errors should be retried. The agent returns the MR/PR URL in its final message when one is opened, or explains that no MR/PR was opened because no code change was needed. For task threads, the newest VM run that returns an MR/PR becomes the canonical `vmMergeRequest`; thread-run ordering plus transactional status writes prevent delayed older runs or refreshes from restoring a previous link. **Security**: the token is injected ONLY as a per-command env var (`GIT_TOKEN`, plus `GH_TOKEN`/`GITHUB_TOKEN` for GitHub) and a git credential helper that resolves `$GIT_TOKEN` at push time (username `oauth2` for GitLab, `x-access-token` for GitHub) — never written to `.git/config`, `prompt.txt`, logs, or the paused-session snapshot. Recommend users supply a repo-scoped token (GitLab **Project Access Token** `api` + `write_repository`, Developer+; GitHub **fine-grained PAT** with Contents + Pull requests read/write) and keep the base branch protected so the agent can only open MRs/PRs, not push to it or merge.
+- **GitLab / GitHub coding flow (clone → code → optional Merge/Pull Request)**: a `prototype` VM task can run inside a checkout of the project's connected GitLab **or** GitHub repo and open an MR/PR only when it actually changed repository files. Wiring is per-provider but symmetric: per-project repo config (`gitlabRepoUrl`/`gitlabBaseBranch`/`gitlabHost`, or `githubRepoUrl`/`githubBaseBranch`/`githubHost`/`githubApiBase`) lives on the `projects/{projectId}` doc (non-secret, member-readable); the **per-user** token lives at `users/{uid}/private/{provider}Auth_{projectId}` (`gitlabAuth_…` / `githubAuth_…`, owner+server read only — never on the project doc). The `connect{Gitlab,Github}Repo` / `disconnect{Gitlab,Github}Repo` callables (`functions/Gitlab/gitlabConnect.js`, `functions/Github/githubConnect.js`, registered in `index.js`) validate the token + repo against the provider REST API and persist it; the UI is `components/ProjectDetailedView/ProjectProperties/ConnectGitLab/` + `ConnectGitHub/` (mirror ConnectGmail, but a simple paste-token form). In `vmJobRunner.js`, `loadRepoContext()` reads the repo + the **requesting user's** token (GitHub preferred if both are connected), and `setupGitRepo()` clones (fresh) or fetches (resume) into `/home/user/repo`. The runner does **not** install repository dependencies before starting the agent; the agent installs them lazily with the repository's package manager only when the requested change or necessary validation requires them. `buildAgentPrompt()` branches on provider: **GitLab** → branch/commit/push with **push options** (`-o merge_request.create …`, no `glab`/API needed); **GitHub** → push then `gh pr create` (gh baked into the E2B template; falls back to the REST API via curl). The E2B sandbox is created/connected with internet access enabled, and Codex is invoked with `sandbox_workspace_write.network_access=true` because Codex has its own inner command sandbox; GitHub is normal outbound HTTPS traffic, not a special E2B permission, though transient DNS/network errors should be retried. The agent returns the MR/PR URL in its final message when one is opened, or explains that no MR/PR was opened because no code change was needed. For task threads, the newest VM run that returns an MR/PR becomes the canonical `vmMergeRequest`; thread-run ordering plus transactional status writes prevent delayed older runs or refreshes from restoring a previous link. **Security**: the token is injected ONLY as a per-command env var (`GIT_TOKEN`, plus `GH_TOKEN`/`GITHUB_TOKEN` for GitHub) and a git credential helper that resolves `$GIT_TOKEN` at push time (username `oauth2` for GitLab, `x-access-token` for GitHub) — never written to `.git/config`, `prompt.txt`, logs, or the paused-session snapshot. Recommend users supply a repo-scoped token (GitLab **Project Access Token** `api` + `write_repository`, Developer+; GitHub **fine-grained PAT** with Contents + Pull requests read/write) and keep the base branch protected so the agent can only open MRs/PRs, not push to it or merge (in this repository `master` is protected since 2026-11-08: Maintainers only, no force push; before that it was not, whatever this note assumed).
 - **Codex Git metadata and sandboxing**: Codex's `workspace-write` mode deliberately protects `.git` recursively even when the checkout is writable, so branch/ref/index updates against a conventional checkout fail with `cannot lock ref`. This is an inner Codex policy, not an E2B mount, Unix ownership, or worktree-permission problem. `setupGitRepo()` therefore moves mutable metadata to `/home/user/git-metadata/repo`, injects `GIT_DIR` + `GIT_WORK_TREE` into setup and agent commands, and grants only `/home/user/git-metadata` as an additional Codex `writable_root`. Resumed pre-fix sessions with `/home/user/repo/.git` are migrated automatically. Do not replace this with `danger-full-access` or try to add `.git` itself as a writable root: the former broadens the sandbox unnecessarily and the latter remains blocked by Codex's protected-path policy.
 - **Google Cloud read access (clone the GitHub/GitLab connect pattern, but for GCP)**: any project member can connect **their own** Google Cloud project so their VM tasks can **read** its Firestore + Cloud Logging (e.g. inspect `goldStats`, tail Cloud Functions logs). It is per-user and self-limiting — you can only grant read access to a project you already have a service-account key for. The secret lives at `users/{uid}/private/gcpAuth_{projectId}` (owner+server read only; `serviceAccountKey` = the pasted SA JSON, plus `gcpProjectId`/`clientEmail`/`capabilities`); **nothing GCP-related is written to the project doc** (unlike git — the connection is purely per-user, so the per-user doc is self-contained). `connectGcpProject`/`disconnectGcpProject` (`functions/Gcp/gcpConnect.js`, registered in `index.js`) validate the key by minting a token from it and probing Firestore `:listCollectionIds` + Logging `entries:list`, storing which reads succeeded as `capabilities` and rejecting a key that can read neither. UI mirrors ConnectGitHub: `components/ProjectDetailedView/ProjectProperties/ConnectGCP/` (a paste-the-SA-JSON form). **The raw SA key never enters the sandbox.** In `vmJobRunner.js`, `loadGcpContext()` runs for **every** task type (not just `prototype`), reads the requesting user's key, and — because we hold the private key — mints a **short-lived OAuth access token** directly (`mintGcpAccessToken`: JWT→token exchange with scopes `datastore` + `logging.read`; no `iam.serviceAccountTokenCreator` / no Alldone-side IAM grant needed). **Scope gotcha**: the Firestore API rejects `cloud-platform.read-only` (403 "insufficient authentication scopes") and there is no read-only Firestore/Datastore scope, so the read/write `datastore` scope is used and **Firestore read-only is enforced by the SA's IAM role** (`datastore.viewer`), not the scope; Logging keeps its read-only `logging.read` scope. `buildGcpEnv()` injects it per-command as `GCP_ACCESS_TOKEN` (+ `CLOUDSDK_AUTH_ACCESS_TOKEN`, `GOOGLE_CLOUD_PROJECT`) merged into `runEnvs` alongside the git env — minted fresh each run, never written to disk or the paused snapshot. `buildAgentPrompt()` adds a "Connected Google Cloud project (read-only)" section pointing the agent at the Firestore/Logging **REST APIs via curl** (no `gcloud` in the E2B template by default; functions logs = filter `resource.type="cloud_run_revision"` for gen2). **Trust model** (chosen trade-off vs. the `vmLlmProxy` approach): the token is read-only (Firestore via the SA's viewer role, Logging via both scope and role), ~1h TTL, and only reaches the user's own project, so a prompt-injected agent can at most do read-only calls the user already authorized for the token's lifetime — accepted in exchange for far less code than a full proxy. Read-only ultimately rests on the SA's IAM roles, so users MUST connect a read-only SA (recommend `datastore.viewer` + `logging.viewer`, or `roles/viewer`). No Gold changes — GCP reads happen inside the run and are billed via the existing LLM-token metering. Optional future hardening: KMS-encrypt the stored SA key at rest (higher-value than a repo token), or Workload Identity Federation to avoid storing a long-lived key at all.
 
@@ -4786,6 +4938,7 @@ Ship both the Functions package (assistant entry points and MCP) and the rebuilt
 - Run `node migration/backfillAssistantHeartbeatSchedules.js --firebase-project-id=<project> --execute` after deploying the worker and indexes. Without `--execute` the script is a dry run.
 - Cloud Tasks IAM must be granted to the **firebase-adminsdk SA** after deploying `runAssistantHeartbeat`. Run `functions/Assistant/grant-heartbeat-task-worker.sh <projectId>`; it grants project-level enqueue, self `actAs`, and `run.invoker` on the worker.
 - Rollback requires pausing or purging the `runassistantheartbeat` task queue before restoring the legacy scanner. Legacy assistant heartbeat status maps are intentionally retained.
+- **A heartbeat runs as a member only after that member confirmed it (security audit NV-17).** A heartbeat runs unattended with the member's identity, Gold and connected accounts (`search_gmail` reads their mailbox), while its prompt, tools and instructions sit on the shared assistant document that every member may edit. `functions/Assistant/heartbeatOptIn.js` therefore requires `users/{uid}.heartbeatOptIns["<projectId>__<assistantId>"].configHash` to equal the hash of the assistant's current heartbeat prompt, `allowedTools`, `instructions` and `mcpServers`. Chance, interval, awake window, model and WhatsApp delivery are not hashed. `buildHeartbeatScheduleData`, the worker and the legacy scanner all check it, so any other member's change to one of those fields stops the heartbeat for everyone who confirmed the old version. Members confirm, re-confirm or revoke through the `assistantHeartbeatOptIn` callable (row "Run heartbeat for me" in the heartbeat settings; the client never computes the hash). The client calls `refresh` after the member's own edit to instructions, heartbeat prompt or tools, which re-confirms only for a member who had already confirmed. The server confirms for a project's **only** member at the moments nobody else can have written the configuration: assistant created, hashed field changed, project created (`confirmHeartbeatsForSoleMember`, before the schedule sync). Being alone is not trust in itself: someone who changes the prompt and then leaves must not have it run as the member left behind. MCP-server changes made through the server-side connect flow need a fresh confirmation in shared projects. A heartbeat topic (`Heartbeat<date><uid>`) is now `isPublicFor: [uid]`, and an existing project-visible one is made private on reuse. The WhatsApp daily topic stays project-visible by design. One-time migration: `node migration/confirmAssistantHeartbeats.js --firebase-project-id=<project>` (dry run; `--execute`). Run it right before and again right after the functions deploy. The default `--scope=owner` confirms the only member of a one-member project and the assistant's `creatorId` in shared projects; `--scope=all` keeps today's fan-out.
 
 ### Code Style
 
@@ -4948,14 +5101,76 @@ browser before trusting a bigger change.
   skipping: a redundant deploy is visible and cheap, a silently skipped one ships nothing.
   Note a job with an explicit `needs` list loses the default "artifacts from all earlier
   stages", so it must name `deploy_scope` or it silently falls back to deploying always.
-  **Recording a marker pushes a tag, which `CI_JOB_TOKEN` may not do** — it needs a project
-  access token with `write_repository` in the masked CI/CD variable `DEPLOY_MARKER_TOKEN`.
-  Until that exists `record` warns and no-ops, every target falls back to the old push-range
-  comparison, and behaviour is exactly what it was before (hole included); the first
-  successful deploy after the variable is added lays the marker and switches catch-up on.
-  Tag pushes cannot trigger pipelines here — the `workflow` rules only admit pipelines that
-  have `$CI_COMMIT_BRANCH`. Pinned by `__tests__/CiDeployScope.test.js`, which also fails the
-  build if `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+  Markers are pushed with `CI_JOB_TOKEN` ("Allow Git push requests to the repository" is on),
+  `DEPLOY_MARKER_TOKEN` remaining an explicit override. Tag pushes cannot trigger pipelines
+  here — the `workflow` rules only admit pipelines that have `$CI_COMMIT_BRANCH`. Pinned by
+  `__tests__/CiDeployScope.test.js`, which also fails the build if
+  `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+- **A production marker is only believed when a default-branch pipeline signed it
+  (security audit 2026-11, NV-01).** A marker can only make a deploy smaller, so a forged
+  one holds back a reviewed fix: `deployed/firestore-rules-production` pointed at any
+  commit with master's rules (the MR source commit is one) made the rules release report
+  "already deployed", and an old `deployed/github-mirror` would have replayed pre-cutoff
+  history onto the public mirror. The tags cannot be GitLab-protected, because a protected
+  tag can never be moved again and CI moves them on every deploy, and anyone with Developer
+  access (the VM-agent bot token included) or a branch job token can push them. So
+  `record` writes an annotated tag whose message (target, commit, ref, pipeline, job) is
+  HMAC-SHA256-signed with the protected, masked variable `DEPLOY_MARKER_SIGNING_KEY`, and
+  only from a protected default-branch pipeline; `verified_marker` rejects a lightweight
+  tag, a bad signature, another target's marker and a commit that is not an ancestor of the
+  one under test (deepening the shallow clone as needed). Changes are read from every commit
+  in `marker..HEAD` as well as the tree diff, so replaying an older genuine marker after a
+  revert still deploys (for Functions those files go to the selector as `rangeChanged`). A
+  rejected or missing production marker means **deploy**; the old push-range fallback is
+  gone for production, since deleting a tag would have reopened the hole. Without the key,
+  `compute` and `functions-plan` fail on master naming the variable, instead of deploying
+  everything (Functions in full) on every push. `functions-staging*` markers stay unsigned:
+  feature branches write them and staging is branch-reachable anyway. The first master
+  pipeline after this shipped found only unsigned markers and deployed every target once.
+  `ci/github-push.sh` additionally appends only when the cutoff commit is an ancestor of
+  the last mirrored one and the mirror tip carries that commit's tree; otherwise it rebuilds.
+  `fetch_marker` no longer uses `--depth=1` in a complete clone, where it grafted a shallow
+  boundary at the marker and cut off the mirror's cutoff commit. Pinned by
+  `__tests__/CiDeployMarkers.test.js` (real git: replay, forgery, copied and non-ancestor
+  markers, shallow clones, HMAC tools agreeing) and the marker case in
+  `__tests__/CiFunctionSelection.test.js`.
+- **Firebase deploys use one service account per environment, never a login token
+  (security audit 2026-11, NV-32).** Everything used to authenticate with one
+  `firebase login:ci` token (`GOOGLE_FIREBASE_DEPLOY_TOKEN`) that could deploy both projects
+  and that every feature-branch pipeline could read, because the preview, staging-live and
+  staging-functions jobs need a credential. Every job that runs firebase-tools now sources
+  `ci/useFirebaseDeployCredentials.sh production|staging`, which sets
+  `GOOGLE_APPLICATION_CREDENTIALS` and `FIREBASE_DEPLOY_PROJECT` and unsets
+  `FIREBASE_TOKEN` / `GOOGLE_FIREBASE_DEPLOY_TOKEN` (firebase-tools prefers a token over
+  ADC). `FIREBASE_DEPLOY_SA_PROD` (protected, File variable) is a key for a deploy account
+  with roles on `alldonealeph` only, and the helper also refuses it outside a protected
+  default-branch pipeline; `FIREBASE_DEPLOY_SA_STAGING` (not protected) is a key for an
+  account with roles on `alldonestaging` only. There is no fallback to the old token: a
+  missing variable fails the job with its name. The helper checks the key's `project_id`
+  and `client_email` domain, so a production key in the staging variable is refused.
+  `__tests__/CiDeployCredentials.test.js` fails the build if a job running firebase-tools
+  on a non-default branch selects production (or vice versa), if `--token` or the old
+  variable comes back, or if a job other than `deploy:cloud:runner:production` touches
+  `GOOGLE_SERVICE_ACCOUNT_MASTER`. The runner jobs still authenticate gcloud with the
+  runtime keys (`GOOGLE_SERVICE_ACCOUNT_MASTER` protected, `_DEVELOP` staging-only).
+- **No service-account key is written into `functions/` any more (NV-08).** Both functions
+  deploy jobs wrote `GOOGLE_SERVICE_ACCOUNT_DEVELOP` and `_MASTER` into
+  `functions/service_accounts/`, and firebase-tools zips the whole functions directory
+  minus `firebase.json` `functions.ignore` (it does NOT read `functions/.gcloudignore`), so
+  every deploy uploaded both keys into the target project's function source, the staging
+  one included. The deployed runtime never used them (`firebaseConfig.master.js` /
+  `.develop.js` use ADC). The jobs write no key now, and `functions.ignore` excludes
+  `service_accounts/`, key-shaped file names and `tmp_project_name` as well, so a local
+  `firebase deploy` from a machine with keys in that folder is covered too.
+- **GitLab protection state (2026-11-08).** `master` is protected: push and merge
+  Maintainers only, no force push. `GOOGLE_SERVICE_ACCOUNT_MASTER`,
+  `GOOGLE_FUNCTIONS_ENV_PROD`, `GITHUB_TOKEN`, `GITHUB_TOKEN_ALLDONEAPP` (and the new
+  `FIREBASE_DEPLOY_SA_PROD`, `DEPLOY_MARKER_SIGNING_KEY`) are protected variables, so only
+  master pipelines see them; staging variables stay unprotected because feature-branch QA
+  jobs use them. The container registry lets only Maintainers push or delete tag
+  `^latest$`. `deployed/*` tags are deliberately NOT protected (see the marker note).
+  Earlier notes in this repo that said there were no protected branches (for example in
+  `TYPESENSE_MIGRATION.md`) describe the state before that date.
 - **Functions deploy only affected exports.** `ci/selectFunctionsDeployment.js` parses
   committed `functions/index.js`, follows entrypoint helpers and transitive local imports,
   and compares both trees against `deployed/functions-production` (or `functions-staging`).
@@ -5009,9 +5224,12 @@ browser before trusting a bigger change.
   bumping a dependency compiled and tested against the _previous_ lockfile's tree and
   failed with unresolvable imports (the firebase 8 → 12 branch: `Can't resolve 'firebase/compat/app'`) while being green locally. Now a feature branch whose
   dependency manifests differ from master builds its own images tagged
-  `:$CI_COMMIT_REF_SLUG`, selected by the consuming jobs through a rules-level
+  `:branch-$CI_COMMIT_REF_SLUG`, selected by the consuming jobs through a rules-level
   `APP_IMAGE_TAG` (default `latest`); `:latest` is still only ever written from
-  develop/master, because master builds from it. Two consequences: the branch's first
+  develop/master, because master builds from it. The `branch-` prefix is a security
+  boundary (NV-31): with the bare slug, a branch named `latest` (or anything GitLab slugs to
+  it, like `LATEST`) pushed its own `node_modules` over the images master's production
+  build and gates run in. `__tests__/CiImageTags.test.js` holds it. Two consequences: the branch's first
   pipeline is slow (full `npm ci` + two image pushes), and each such branch leaves an
   image in the registry — bound that with a tag cleanup policy.
 - **`test:web:changed` runs only what a branch changed, so read the selection line
@@ -5036,7 +5254,7 @@ browser before trusting a bigger change.
   (250 → 1000 → `--unshallow`) only until `git merge-base` resolves, so the usual recent
   branch pays nothing.
 - **The registry cleanup policy must always keep `latest`.** Branch-scoped images
-  (`build_base:<ref-slug>`, `build_web_bundler:<ref-slug>`) accumulate one per
+  (`build_base:branch-<ref-slug>`, `build_web_bundler:branch-<ref-slug>`) accumulate one per
   dependency-changing branch, so a cleanup policy is needed — but the policy this project
   had was `name_regex: ".*"` with `name_regex_keep: null`, i.e. **nothing protected**,
   including `latest`. That is a live hazard rather than a theoretical one: GitLab reports
@@ -5084,6 +5302,82 @@ open on purpose (that is what "With link" means). Ids already harvested keep wor
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+### A member-written link only ever opens as a web link (security audit 2026-11)
+
+`window.open('javascript:…')` and `<a href="javascript:…">` run in the app's own origin, and the CSP
+allows inline script, so any field another member, an assistant or an email can write and that the
+app opens on click was a stored cross-member XSS: a task's `calendarData.link`, a contact's
+`linkedInUrl`, an attachment or image token in comment text, a pre-configured task's `link`
+(NV-03, NV-05, NV-36). `utils/safeUrl.js` is the one place that decides: `getSafeNavigationUrl`
+allows http(s), mailto, tel, blob and relative paths, parsed with `new URL` so case, whitespace and
+control characters cannot hide the scheme; `getSafeFrameUrl` allows https only. `installWindowOpenGuard`
+(from `AppNavigator`) wraps `window.open` for the whole app, which also covers react-native-web's
+`Linking.openURL`; the known sinks check explicitly as well. Use the helper for every new `href`,
+`window.open` or `<iframe src>` that takes data, and never assign `location` from data.
+`firestore.rules` keeps the same values out of the data: `calendarData.link` and an assistant task's
+`link` must be http(s) or empty when they change (`isWebLinkOrEmpty`; an unchanged legacy value
+stays writable around it).
+
+The MCP login page on my.alldone.app ends in `window.location.href = redirect_to`, so an OAuth
+redirect URI is the same kind of sink (NV-34): `functions/MCP/auth/redirectUriPolicy.js` allows https,
+http on loopback and private-use app schemes (`cursor://`), and refuses any scheme the browser
+evaluates, at registration, at authorization (which also stops clients registered earlier) and before
+the login redirect is built. Assistant output may carry image/video tokens, which every viewer's
+browser fetches on render; `sanitizeAssistantResponseText` turns a token whose URL is not on the
+project's own storage bucket back into its plain URL (NV-04, `assistantTextSafety.js`). Pinned by
+`utils/safeUrl.test.js`, `functions/MCP/auth/redirectUriPolicy.test.js`,
+`functions/Assistant/assistantTextSafety.test.js` and the `must be web links` block of the rules
+emulator suite.
+
+### What a Firestore trigger reads from a client document must be bound by the rules (security audit 2026-11)
+
+Several documents are written by any member (or any signed-in account) and then acted on by the
+server with the Admin SDK, which trusts what it reads. Anonymous sign-in is enabled in production, so
+"signed in" means "anyone". The rules now bind each of these at write time:
+
+- **Projects** (`newProjectBoundToCreator`, `projectMembersAddedOnlyToGuide`): a client creates a
+  project only with `userIds == [itself]` and `creatorId == itself`, and `creatorId`, `isTemplate`
+  and `parentTemplateId` never change afterwards. `creatorId` listed in `userIds` is who pays for the
+  default project wiki (`knowledgeBaseDefaults.js`), so before this any account could create a
+  project naming another user as creator and member and spend that user's Gold. The one exception is
+  a guide: it is created in the name of its template's `templateCreatorId` (the parent must really be
+  a template), and a guide member may add exactly that creator and the administrator. Members are
+  otherwise never added by a member; `templateCreatorId` may only be set to oneself on create or
+  handed to the administrator by a kick. Accepting an invitation to a plain project (the invitee
+  adding itself) was already refused by the `isProjectMember` update rule before this change and
+  still is: that flow needs a server path, not a wider rule.
+- **Global assistant catalog** (`globalAssistantTaskActivationOnly`): every field of
+  `assistantTasks/globalProject/preConfigTasks/*` outside the activation keys is copied into every
+  tenant's derived assistant. A non-administrator may change only `activatedUserIds`,
+  `recurrenceByUser`, `activatedInProjectIdByUser`, `lastExecutedByUser`, `completedOneOffUserIds`,
+  `activatorUserId` and a missing `creatorUserId`, each only in its own entry. The activation dialog
+  therefore sends only that entry for a global task (`buildGlobalTaskActivationUpdate` in
+  `assistantsFirestore.js`, a transaction without the admin-only assistant bump). The triggers ignore
+  anything under `globalProject` that is not in `preConfigTasks` (`globalCatalogTaskPath.js`), and the
+  update trigger propagates nothing when the template state (`getTaskTemplateState`) is unchanged, so
+  switching an activation no longer rewrites every tenant's copy and posts a sync activity.
+- **Invitations** (`isValidProjectInvitation`): `inviterId` must be the writer, only the four fields
+  the app writes are allowed, and no client updates one. `onCreateProjectInvitation` ignores the
+  stored `url`, builds the answer link from `app_url` + project id + address (refusing an address that
+  could break out of the path), sends nothing when the inviter is not a member, and caps mails at 50
+  per inviter per UTC day (`projectInvitationEmailQuota`, server-only).
+- **Forced reloads** (`userForceReloads/{uid}`): a teammate write must name a project that both the
+  writer and the target belong to, before or after the write (deleting a project and kicking a member
+  reload people on their way out).
+- **Sticky note markers** (`stickyNotesData`): never readable or listable by a client, writable only
+  by members of the project the marker names (old and new), and deleting a marker that does not exist
+  stays allowed because the app untracks on every unstick. `checkStickyNotes` re-reads the note's own
+  `stickyData.stickyEndDate` and re-arms the marker instead of demoting a note that is still sticky.
+- **`info/**`** is server-only; `increaseVersionSecondGen` is the only writer of `info/version`.
+- **Invitation membership mutations** (`onlyInvitationFieldsChange`): `invitation-add` and
+  `invitation-remove` may touch only `invitedProjectIds` and the proof, not the invitee's
+  `assistantId`, `lastEditorId` or assistant comment maps.
+
+Pinned by the `security audit 2026-11: rules package` block of
+`__tests__/Firestore/firestoreRules.emulator.test.js` (each case fails against the previous rules),
+`functions/AssistantTasks/globalCatalogTaskTriggers.test.js`, `functions/StickyNotesHelper.test.js`,
+`functions/Utils/projectInvitation.test.js` and `utils/backends/Assistants/globalTaskActivation.test.js`.
+
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
 **Before these files, both buckets let any signed-in account read, list and write every object**
@@ -5094,8 +5388,8 @@ across all workspaces. `storage.rules` (default bucket `<project>.appspot.com`) 
 per-project folders require `projects/{projectId}.userIds` membership via cross-service
 `firestore.get()`, a note body or note copy additionally requires that the note itself grants the
 caller access, a non-member of a public project (`isShared != 2`) may read only a note whose
-`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` is server-only, and nothing may be
-listed except one comment's `attachments/{commentId}` folder (`AttachmentsTag` lists it).
+`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` and `attachments/` are
+server-only, and nothing may be listed outside the member-scoped avatar folders.
 
 Four things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
 only decide what a browser may do through the Storage SDK (`put`, `getDownloadURL`, `listAll`,
@@ -5105,7 +5399,11 @@ exactly as `canAccessObjectWhileProjectionIsPending` does**: the projected field
 its siblings) when they exist, `isPublicFor` while none exist yet — the browser writes the empty body
 right after creating the note document, before the server trigger has projected `readerIds` — and
 membership alone while the note document does not exist at all, because `setNoteProject` writes the
-body into the new project BEFORE the note document lands there. **Cross-service rules may read at most
+body into the new project BEFORE the note document lands there. That fallback is for the live body
+in the notes bucket ONLY: the version copies (`noteVersionsData`, `noteDailyVersionsData`) outlive a
+deleted or moved note by up to a week, so they require the note document to exist and grant access
+(NV-39); every client flow on them runs on an existing note, and `onDeleteNote` deletes the daily
+copy at once. **Cross-service rules may read at most
 two Firestore documents per evaluation**; every note path reads exactly two (the project and the
 note), so a third lookup (a user doc, a role doc) on those paths would push every note access over
 the limit and deny it. **Cross-service `firestore.get()` needs the Storage service agent
@@ -5116,13 +5414,28 @@ the Rules API does not.
 
 Neither file is in `firebase.json`, so neither CI nor `firebase deploy` publishes them: publish with
 the Rules API (create a ruleset, PATCH `releases/firebase.storage/<bucket>`) and note the previous
-ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 73
+ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs ~120
 cases through the Rules API test endpoint (real compiler, mocked `firestore.get`/`exists`) and
 treats any compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths`
 is a path, not a string) evaluates to an error and therefore to "deny" for everyone, while every
-DENY case still passes. One known gap, deliberately left: `feedAttachments/` and `notesAttachments/`
-carry no project in their path, so any signed-in user who knows an object's random path may read
-it (listing is denied, so the path cannot be enumerated).
+DENY case still passes.
+
+**There is no catch-all: an unmatched folder is denied (security audit 2026-11, NV-37).** The old
+last rule let any signed-in account `get` any server-written object whose path it knew, which held
+only for random names: `Invoice/{uid}/{year} - {counter}.pdf` (Mollie invoices) is enumerable, and
+`anna-email-inbound/`, `browserEvidence/` and `whatsapp-images/` sat behind the same rule. No client
+code reads a server folder through the SDK; those objects reach people as token or signed URLs. A
+new folder the browser must touch needs its own `match`. **`feedAttachments/` and `notesAttachments/`
+are bound to their uploader (NV-38)**: their paths carry no project and appear in every shared URL,
+so a put must carry `customMetadata.uploaderId == auth.uid` (`allow create` only ever fires for an
+object that does not exist yet), and only that uploader may `get`, `update` or `delete` it. Every
+client put goes through `putAttachmentAsUploader` (`utils/backends/attachmentUploads.js`, ratcheted
+by its test). Objects uploaded before carry no `uploaderId` and are therefore frozen for clients,
+which is harmless: no client flow ever re-resolves, replaces or deletes one, and their token URLs
+keep working. Publish these rules only once the client that sets the metadata is live and old tabs
+have reloaded, or an upload from a stale tab is refused. `attachments/` (VM fallback files, written
+by the Admin SDK) has no client access at all; the client code that listed and wrote it was dead and
+is removed.
 
 ### Firestore indexes (`firestore.indexes.json`)
 

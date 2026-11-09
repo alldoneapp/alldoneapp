@@ -102,6 +102,9 @@ const CALENDAR_SCOPES = [
 ]
 
 // Scopes required for Gmail
+const BROWSER_MISMATCH_MESSAGE =
+    'This connection was started in a different browser. Start it again from Alldone in this browser.'
+
 const GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/gmail.labels',
@@ -115,7 +118,13 @@ const GMAIL_SCOPES = [
  * @param {string} projectId - The project ID
  * @param {string} service - 'calendar' or 'gmail' (optional, defaults to both for backward compatibility if needed, but we should enforce it)
  */
-async function initiateOAuth(userId, projectId, service, returnUrl, connectionId = null) {
+async function initiateOAuth(userId, projectId, service, returnUrl, connectionId = null, browserNonceHash = null) {
+    // NV-23: the browser that starts the flow must be the one that completes it (oauthBrowserBinding.js).
+    const { normalizeBrowserNonceHash, normalizeOAuthReturnUrl } = require('../Utils/oauthBrowserBinding')
+    const boundNonceHash = normalizeBrowserNonceHash(browserNonceHash)
+    if (!boundNonceHash) throw new Error('Refresh Alldone and start the connection again.')
+    if (returnUrl && !normalizeOAuthReturnUrl(returnUrl)) throw new Error('returnUrl must point to Alldone')
+
     const oauth2Client = getOAuth2Client()
 
     // Determine scopes based on service
@@ -159,6 +168,7 @@ async function initiateOAuth(userId, projectId, service, returnUrl, connectionId
         service: service || 'calendar',
         connectionId: isConnectionId(connectionId) ? connectionId : null,
         returnUrl: returnUrl || null,
+        browserNonceHash: boundNonceHash,
         createdAt: Timestamp.now(),
         expiresAt: Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)), // 10 minutes
     }
@@ -185,7 +195,8 @@ async function initiateOAuth(userId, projectId, service, returnUrl, connectionId
  * Handle OAuth callback
  * Exchange authorization code for tokens and store them
  */
-async function handleOAuthCallback(code, state) {
+async function handleOAuthCallback(code, state, { request } = {}) {
+    if (typeof state !== 'string' || !state) throw new Error('Invalid or expired state parameter')
     // Verify state
     const stateDoc = await admin.firestore().collection('googleOAuthStates').doc(state).get()
 
@@ -193,12 +204,21 @@ async function handleOAuthCallback(code, state) {
         throw new Error('Invalid or expired state parameter')
     }
 
-    const { userId, projectId, service, expiresAt, returnUrl } = stateDoc.data()
+    const { userId, projectId, service, expiresAt, returnUrl, browserNonceHash } = stateDoc.data()
 
     // Check if state is expired
     if (expiresAt.toDate() < new Date()) {
         await admin.firestore().collection('googleOAuthStates').doc(state).delete()
         throw new Error('State parameter expired')
+    }
+
+    // NV-23: only the browser that started the flow may complete it. A forwarded consent URL is
+    // completed elsewhere and must never connect that account to the initiator. Checked before the
+    // code is exchanged; the state is spent either way.
+    const { requestMatchesBrowserBinding } = require('../Utils/oauthBrowserBinding')
+    if (!requestMatchesBrowserBinding(request, browserNonceHash)) {
+        await admin.firestore().collection('googleOAuthStates').doc(state).delete()
+        throw new Error(BROWSER_MISMATCH_MESSAGE)
     }
 
     // Exchange code for tokens

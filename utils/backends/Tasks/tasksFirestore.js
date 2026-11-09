@@ -21,7 +21,7 @@ import {
     createMentionTasksAfterSetTaskPublic,
     createSubtasksCopies,
     deleteSubTaskFromParent,
-    earnGold,
+    showGoldRewardAnimation,
     feedsChainInStopObservingTask,
     generateNegativeSortIndex,
     generateNegativeSortTaskIndex,
@@ -188,10 +188,16 @@ import { captureTaskUndoStates } from './taskUndoCapture'
 import { buildFollowUpTask, resolveFollowUpGoalLink } from './followUpTaskBuilder'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
-const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
-    if (!taskId || completedAt == null || currentReviewerId == null) return ''
-    return `task_progress:${taskId}:${completedAt}:${currentReviewerId}`
+// Must stay identical to buildTaskProgressRewardKey in functions/Gold/serverGoldRewards.js: the
+// server pays for the step a task LEFT, once per step and person (AT-2978), and the coin animation
+// derives its amount from the same key.
+const buildTaskProgressRewardKey = (taskId, stepIndex, recipientId) => {
+    if (!taskId || !Number.isFinite(stepIndex) || !recipientId) return ''
+    return `task_progress:${taskId}:${stepIndex}:${recipientId}`
 }
+
+const getTaskProgressStepIndex = task =>
+    Array.isArray(task.stepHistory) && task.stepHistory.length > 0 ? task.stepHistory.length : 1
 
 const getTaskTransitionUndoLabel = (task, stepToMoveId) => {
     if (stepToMoveId === DONE_STEP) return `Completed “${task.name}”`
@@ -3062,12 +3068,12 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     if (!task.parentId && forwardDirection) {
         const reviewerId = userIds[userIds.length - 1]
-        earnGold(projectId, reviewerId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId, {
-            timestamp: updateData.completed,
-            rewardKey: buildTaskProgressRewardKey(task.id, updateData.completed, updateData.currentReviewerId),
-            objectId: task.id,
-            objectType: 'task',
-        })
+        showGoldRewardAnimation(
+            reviewerId,
+            MAX_GOLD_TO_EARN_BY_CHECK_TASKS,
+            checkBoxId,
+            buildTaskProgressRewardKey(task.id, getTaskProgressStepIndex(task), reviewerId)
+        )
     }
 
     const batch = new BatchWrapper(getDb())
@@ -3325,12 +3331,12 @@ export async function moveTasksFromOpen(
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
     if (!task.parentId && ownerIsTeamMeber) {
-        earnGold(projectId, newUserId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId, {
-            timestamp: completionDate,
-            rewardKey: buildTaskProgressRewardKey(task.id, completionDate, updateData.currentReviewerId),
-            objectId: task.id,
-            objectType: 'task',
-        })
+        showGoldRewardAnimation(
+            newUserId,
+            MAX_GOLD_TO_EARN_BY_CHECK_TASKS,
+            checkBoxId,
+            buildTaskProgressRewardKey(task.id, getTaskProgressStepIndex(task), newUserId)
+        )
     }
 
     const batch = new BatchWrapper(getDb())

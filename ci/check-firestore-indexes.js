@@ -47,10 +47,9 @@ const repoRoot = path.resolve(__dirname, '..')
 const specPath = path.join(repoRoot, 'firestore.indexes.json')
 const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'))
 
+// Authentication comes from the environment: in CI, GOOGLE_APPLICATION_CREDENTIALS set by
+// ci/useFirebaseDeployCredentials.sh; locally, your own `firebase login`.
 const firebaseArgs = ['firestore:indexes', '--project', projectId]
-if (process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN) {
-    firebaseArgs.push('--token', process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN)
-}
 
 let raw
 try {

@@ -9,6 +9,35 @@ private enum IosShareExtensionStorage {
     static let endpointUrl = "iosShare.endpointUrl"
 }
 
+// security audit 2026-11 (NV-33): the Share Extension POSTs the share token and whatever the user
+// shares to the stored endpoint, so only the Alldone `iosShareTask` function may be stored there.
+// Keep in step with ShareViewController.isTrustedShareEndpoint and utils/iosShareExtensionCredential.js.
+enum IosShareEndpointPolicy {
+    static let trustedHosts: Set<String> = [
+        "europe-west1-alldonealeph.cloudfunctions.net",
+        "europe-west1-alldonestaging.cloudfunctions.net"
+    ]
+    static let path = "/iosShareTask"
+
+    static func isTrusted(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value),
+              let host = components.host?.lowercased(),
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else { return false }
+        if components.scheme == "https", components.port == nil, trustedHosts.contains(host), components.path == path {
+            return true
+        }
+        #if DEBUG
+        // The local Functions emulator (buildTaskEndpointUrl) in debug builds only.
+        if components.scheme == "http", host == "localhost" || host == "127.0.0.1", components.port == 5001,
+           components.path.hasSuffix("/europe-west1/iosShareTask") {
+            return true
+        }
+        #endif
+        return false
+    }
+}
+
 @objc(IosShareExtensionPlugin)
 final class IosShareExtensionPlugin: CAPInstancePlugin, CAPBridgedPlugin {
     let identifier = "IosShareExtensionPlugin"
@@ -51,6 +80,10 @@ final class IosShareExtensionPlugin: CAPInstancePlugin, CAPBridgedPlugin {
               let token = call.getString("token"), !token.isEmpty,
               let endpointUrl = call.getString("endpointUrl"), !endpointUrl.isEmpty else {
             call.reject("The iOS share credential is incomplete")
+            return
+        }
+        guard IosShareEndpointPolicy.isTrusted(endpointUrl) else {
+            call.reject("The iOS share endpoint is not an Alldone endpoint")
             return
         }
 
