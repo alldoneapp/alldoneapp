@@ -44,6 +44,33 @@ async function defaultEnqueue(args) {
     return enqueueKnowledgeBaseIngest(args)
 }
 
+// An artifact as a document: the text of its current version, if the user may read the artifact.
+async function defaultReadArtifactDocument({ db, projectId, artifactId, userId }) {
+    if (artifactId.includes('/')) return null
+    const snapshot = await db.doc(`artifactItems/${projectId}/artifacts/${artifactId}`).get()
+    if (!snapshot.exists) return null
+    const artifact = snapshot.data() || {}
+    const { canAccessObject } = require('../shared/privacyAccess')
+    if (!canAccessObject(artifact, userId)) return null
+    const admin = require('firebase-admin')
+    const { readArtifactText, describeEntryFile } = require('./knowledgeArtifactText')
+    const text = await readArtifactText({
+        bucket: admin.storage().bucket(),
+        projectId,
+        artifactId,
+        artifact,
+        maxChars: KNOWLEDGE_DOCUMENT_MAX_CHARS,
+    })
+    if (!text) return null
+    const entry = describeEntryFile(artifact)
+    return {
+        text,
+        fileName: artifact.title || entry?.entryPath || artifactId,
+        mimeType: entry?.mimeType || null,
+        truncated: text.length >= KNOWLEDGE_DOCUMENT_MAX_CHARS,
+    }
+}
+
 function clip(value, maxChars) {
     const text = String(value || '')
         .replace(/\s+/g, ' ')
@@ -81,12 +108,15 @@ async function addKnowledgeDocument({
     args = {},
     toolRuntimeContext = {},
     readChatAttachment,
+    readArtifactDocument = defaultReadArtifactDocument,
     extractText = defaultExtractText,
     enqueue = defaultEnqueue,
     now = Date.now(),
 }) {
-    if (typeof readChatAttachment !== 'function') {
-        return failure('A document can only be added from the conversation it was sent in.')
+    const sourceText = typeof args.text === 'string' ? args.text.trim() : ''
+    const artifactId = typeof args.artifactId === 'string' ? args.artifactId.trim() : ''
+    if (!sourceText && !artifactId && typeof readChatAttachment !== 'function') {
+        return failure('Pass the document: a file sent in a thread, an artifactId or text.')
     }
     const knowledgeBaseRef = db.doc(getKnowledgeBasePath(projectId))
     const knowledgeBase = await knowledgeBaseRef.get()
@@ -96,27 +126,52 @@ async function addKnowledgeDocument({
         )
     }
 
+    // The document: text the user gave, an artifact they can read, or a file sent in a thread.
     let file
-    try {
-        file = await readChatAttachment({
-            messageId: typeof args.messageId === 'string' ? args.messageId.trim() : '',
-            fileName: typeof args.fileName === 'string' ? args.fileName.trim() : '',
+    let extraction
+    if (sourceText) {
+        const fileName = `${clip(args.title, 200) || 'Text'}.txt`
+        file = { fileName, mimeType: 'text/plain', fileSizeBytes: Buffer.byteLength(sourceText, 'utf8') }
+        const truncatedText = sourceText.length > KNOWLEDGE_DOCUMENT_MAX_CHARS
+        extraction = {
+            status: 'ok',
+            extractedText: sourceText.slice(0, KNOWLEDGE_DOCUMENT_MAX_CHARS),
+            truncated: truncatedText,
+        }
+    } else if (artifactId) {
+        const artifactProjectId =
+            (typeof args.artifactProjectId === 'string' && args.artifactProjectId.trim()) || projectId
+        const artifactDocument = await readArtifactDocument({ db, projectId: artifactProjectId, artifactId, userId })
+        if (!artifactDocument) return failure(`No artifact "${artifactId}" that you can read, or it has no text.`)
+        file = { fileName: artifactDocument.fileName, mimeType: artifactDocument.mimeType || null, fileSizeBytes: null }
+        extraction = {
+            status: 'ok',
+            extractedText: artifactDocument.text,
+            truncated: artifactDocument.truncated === true,
+        }
+    } else {
+        try {
+            file = await readChatAttachment({
+                messageId: typeof args.messageId === 'string' ? args.messageId.trim() : '',
+                fileName: typeof args.fileName === 'string' ? args.fileName.trim() : '',
+            })
+        } catch (error) {
+            return failure(
+                `Could not tell which file to add (${error.message}). Pass fileName as it appears in the conversation, or the messageId from list_recent_chat_media.`
+            )
+        }
+        if (file.kind === 'image') {
+            return failure(
+                `"${file.fileName}" is an image; the wiki can only take in documents: ${SUPPORTED_FILE_TYPES}.`
+            )
+        }
+        extraction = await extractText({
+            buffer: file.buffer,
+            contentType: file.mimeType,
+            fileName: file.fileName,
+            maxChars: KNOWLEDGE_DOCUMENT_MAX_CHARS,
         })
-    } catch (error) {
-        return failure(
-            `Could not tell which file to add (${error.message}). Pass fileName as it appears in the conversation, or the messageId from list_recent_chat_media.`
-        )
     }
-    if (file.kind === 'image') {
-        return failure(`"${file.fileName}" is an image; the wiki can only take in documents: ${SUPPORTED_FILE_TYPES}.`)
-    }
-
-    const extraction = await extractText({
-        buffer: file.buffer,
-        contentType: file.mimeType,
-        fileName: file.fileName,
-        maxChars: KNOWLEDGE_DOCUMENT_MAX_CHARS,
-    })
     const text = String(extraction?.extractedText || '').trim()
     if (extraction?.status !== 'ok' || !text) return failure(describeExtractionFailure(file.fileName, extraction))
 
@@ -161,10 +216,11 @@ async function addKnowledgeDocument({
             addedBy: userId,
             authorName,
             assistantId: assistantId || null,
-            // The conversation the file was sent in, which may belong to another project.
-            sourceProjectId: toolRuntimeContext?.projectId || null,
-            objectType: toolRuntimeContext?.objectType || null,
-            objectId: toolRuntimeContext?.objectId || null,
+            // Where the document came from: the thread a file was sent in (which may belong to another
+            // project), or the artifact.
+            sourceProjectId: file.sourceProjectId || toolRuntimeContext?.projectId || null,
+            objectType: artifactId ? 'artifacts' : file.objectType || toolRuntimeContext?.objectType || null,
+            objectId: artifactId || file.objectId || toolRuntimeContext?.objectId || null,
             messageId: file.messageId || null,
             createdAt: now,
             // The ingest's delta reads every source type by lastEditionDate.

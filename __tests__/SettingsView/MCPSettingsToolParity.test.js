@@ -23,6 +23,12 @@ const serverTools = [
     ...readStringArray('functions/MCP/mcpServerSimple.js', 'MCP_DELEGATED_ASSISTANT_TOOLS'),
     // MCP-only tools that set up projects and assistants; mcpServerSimple.js serves them alongside.
     ...readStringArray('functions/MCP/mcpWorkspaceSetupTools.js', 'MCP_WORKSPACE_SETUP_TOOLS'),
+    // ask_assistant, served from its own module.
+    ...[
+        ...fs
+            .readFileSync(path.join(ROOT, 'functions/MCP/mcpAskAssistant.js'), 'utf8')
+            .matchAll(/^const ASK_ASSISTANT_SCHEMA = \{\s*name: '([a-z_]+)'/gm),
+    ].map(entry => entry[1]),
 ]
 const settingsTools = readStringArray(SETTINGS_FILE, 'MCP_TOOL_KEYS')
 const mcpToolLabels = Object.fromEntries(
