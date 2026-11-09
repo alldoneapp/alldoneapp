@@ -234,13 +234,7 @@ function normalizeMicrosoftEmail(userInfo = {}) {
         .toLowerCase()
 }
 
-async function initiateOAuth(userId, projectId, service, returnUrl, connectionId = null, browserNonceHash = null) {
-    // NV-23: the browser that starts the flow must be the one that completes it (oauthBrowserBinding.js).
-    const { normalizeBrowserNonceHash, normalizeOAuthReturnUrl } = require('../Utils/oauthBrowserBinding')
-    const boundNonceHash = normalizeBrowserNonceHash(browserNonceHash)
-    if (!boundNonceHash) throw new Error('Refresh Alldone and start the connection again.')
-    if (returnUrl && !normalizeOAuthReturnUrl(returnUrl)) throw new Error('returnUrl must point to Alldone')
-
+async function initiateOAuth(userId, projectId, service, returnUrl, connectionId = null) {
     const { clientId, redirectUri } = getMicrosoftOAuthConfig()
     const scopes = getScopes(service)
 
@@ -268,7 +262,6 @@ async function initiateOAuth(userId, projectId, service, returnUrl, connectionId
             service,
             connectionId: isConnectionId(connectionId) ? connectionId : null,
             returnUrl: returnUrl || null,
-            browserNonceHash: boundNonceHash,
             createdAt: Timestamp.now(),
             expiresAt: Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)),
         })
@@ -286,24 +279,15 @@ async function initiateOAuth(userId, projectId, service, returnUrl, connectionId
     return `${MICROSOFT_AUTHORITY}/authorize?${params.toString()}`
 }
 
-async function handleOAuthCallback(code, state, { request } = {}) {
-    if (typeof state !== 'string' || !state) throw new Error('Invalid or expired Microsoft state parameter')
+async function handleOAuthCallback(code, state) {
     const stateRef = admin.firestore().collection('microsoftOAuthStates').doc(state)
     const stateDoc = await stateRef.get()
     if (!stateDoc.exists) throw new Error('Invalid or expired Microsoft state parameter')
 
-    const { userId, projectId, service, expiresAt, returnUrl, browserNonceHash } = stateDoc.data()
+    const { userId, projectId, service, expiresAt, returnUrl } = stateDoc.data()
     if (expiresAt.toDate() < new Date()) {
         await stateRef.delete()
         throw new Error('Microsoft state parameter expired')
-    }
-    // NV-23: only the browser that started the flow may complete it (Utils/oauthBrowserBinding.js).
-    const { requestMatchesBrowserBinding } = require('../Utils/oauthBrowserBinding')
-    if (!requestMatchesBrowserBinding(request, browserNonceHash)) {
-        await stateRef.delete()
-        throw new Error(
-            'This connection was started in a different browser. Start it again from Alldone in this browser.'
-        )
     }
 
     const { clientId, clientSecret, redirectUri } = getMicrosoftOAuthConfig()

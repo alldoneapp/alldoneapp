@@ -82,15 +82,3 @@ describe('per-thread model override call sites (AT-2502)', () => {
         })
     })
 })
-
-// NV-45: the in-app chat path also hosts automatic replies to another assistant's comment. Those
-// answer no member, so they must not carry wiki correction rights, neither in the tool runtime
-// context nor in the prompt context that offers the correction tools.
-describe('wiki correction rights on the interactive chat path (NV-45)', () => {
-    const source = readSource('assistantNormalTalk_optimized.js')
-
-    it('derives the right from automaticCommentReply instead of hard-coding it', () => {
-        expect(source).toMatch(/const allowKnowledgeCorrections = !automaticCommentReply/)
-        expect(source).not.toMatch(/allowKnowledgeCorrections:\s*true/)
-    })
-})

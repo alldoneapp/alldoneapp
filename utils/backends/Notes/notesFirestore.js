@@ -514,13 +514,7 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
     if (note.versionId !== CURRENT_DAY_VERSION_ID) {
         const defaultStorageRef = firebase.storage().ref()
         getDb().doc(`noteItemsDailyVersions/${currentProject.id}/notes/${noteId}`).delete()
-        // Best effort: storage.rules only lets this through while the note document still exists
-        // in the old project, which the batch below removes. onDeleteNote deletes the copy of a
-        // moved note server-side as well.
-        defaultStorageRef
-            .child(`noteDailyVersionsData/${currentProject.id}/${noteId}`)
-            .delete()
-            .catch(() => {})
+        defaultStorageRef.child(`noteDailyVersionsData/${currentProject.id}/${noteId}`).delete()
     }
 
     const newProjectUserIds = (newProjectUsers || []).map(user => user.uid)

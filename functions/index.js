@@ -1781,31 +1781,6 @@ exports.resetArtifactLink = onCall(
 
 // Undo of a wiki correction from the page history. The assistant's undo_knowledge_correction tool
 // runs the same function; see KnowledgeBase/knowledgeBaseAssistant.js.
-// NV-17: a heartbeat runs as a member only after that member confirmed the assistant's current
-// heartbeat configuration (Assistant/heartbeatOptIn.js).
-exports.assistantHeartbeatOptIn = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { handleHeartbeatOptInRequest } = require('./Assistant/heartbeatOptIn')
-        const { FieldValue } = require('firebase-admin/firestore')
-        const result = await handleHeartbeatOptInRequest({
-            db: admin.firestore(),
-            userId: auth.uid,
-            data,
-            fieldValue: FieldValue,
-        })
-        if (!result.success) throw new HttpsError('failed-precondition', result.error)
-        return result
-    }
-)
-
 exports.undoKnowledgeCorrection = onCall(
     {
         timeoutSeconds: 30,
@@ -2392,11 +2367,7 @@ exports.beginMcpOAuth = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { beginMcpOAuth } = require('./MCP/mcpClientOAuth')
-        return await beginMcpOAuth({
-            userId: auth.uid,
-            serverUrl: data && data.serverUrl,
-            browserNonceHash: data && data.browserNonceHash,
-        })
+        return await beginMcpOAuth({ userId: auth.uid, serverUrl: data && data.serverUrl })
     }
 )
 
@@ -2443,13 +2414,11 @@ exports.mcpClientOAuthCallback = onRequest(
                 }
             )
         }
-        // NV-23: the browser-binding cookie has done its job either way.
-        require('./Utils/oauthBrowserBinding').clearBindingCookie(res, '/mcpClientOAuthCallback')
         if (oauthError) return renderPage(false, oauthError)
         if (!state || !code) return renderPage(false, 'Missing code or state')
         try {
             const { exchangeMcpOAuthCode } = require('./MCP/mcpClientOAuth')
-            await exchangeMcpOAuthCode({ code, state, request: req })
+            await exchangeMcpOAuthCode({ code, state })
             return renderPage(true, '')
         } catch (err) {
             return renderPage(false, (err && err.message) || 'Token exchange failed')
@@ -6945,17 +6914,6 @@ exports.cleanupExpiredWebhookTasks = onSchedule(
 
 // GOOGLE OAUTH - Server-side OAuth for Calendar and Gmail integration
 
-// NV-23: a connect flow must be bound to the browser that starts it, and may only return to Alldone.
-function assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash }) {
-    const { normalizeBrowserNonceHash, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
-    if (!normalizeBrowserNonceHash(browserNonceHash)) {
-        throw new HttpsError('failed-precondition', 'Refresh Alldone and start the connection again.')
-    }
-    if (returnUrl && !normalizeOAuthReturnUrl(returnUrl)) {
-        throw new HttpsError('invalid-argument', 'returnUrl must point to Alldone')
-    }
-}
-
 // Initiate Google OAuth flow
 exports.googleOAuthInitiate = onCall(
     {
@@ -6971,12 +6929,11 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service, returnUrl, connectionId, browserNonceHash } = data || {}
+        const { projectId, service, returnUrl, connectionId } = data || {}
         const userId = auth.uid
         if (!projectId && !connectionId) {
             throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
         }
-        assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash })
 
         try {
             // Security audit 2026-11: the project a connection is bound to becomes the destination
@@ -6984,7 +6941,7 @@ exports.googleOAuthInitiate = onCall(
             // exactly as microsoftOAuthInitiate already required.
             if (projectId) await assertProjectAccess(userId, projectId)
             else await assertConnectionAccess(userId, connectionId)
-            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId, browserNonceHash)
+            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
@@ -7020,22 +6977,16 @@ exports.googleOAuthCallback = onRequest(
             return
         }
 
-        // NV-23: the browser-binding cookie has done its job either way.
-        const { clearBindingCookie, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
-        clearBindingCookie(res, '/googleOAuthCallback')
-
         try {
-            const result = await handleOAuthCallback(code, state, { request: req })
+            const result = await handleOAuthCallback(code, state)
 
-            // Only ever back to an Alldone origin (checked at initiation, and again here for states
-            // stored before that check existed).
-            const returnUrl = normalizeOAuthReturnUrl(result.returnUrl)
-            if (returnUrl) {
-                res.redirect(returnUrl)
+            if (result.returnUrl) {
+                // Return to the app
+                res.redirect(result.returnUrl)
                 return
             }
 
-            sendOpenerMessagePage(res, { type: 'oauth_success', result: { service: result.service } })
+            sendOpenerMessagePage(res, { type: 'oauth_success', result })
         } catch (err) {
             console.error('Error in OAuth callback:', err)
             sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })
@@ -7181,16 +7132,15 @@ exports.microsoftOAuthInitiate = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
         const { initiateOAuth } = require('./MicrosoftOAuth/microsoftOAuthHandler')
-        const { projectId, service, returnUrl, connectionId, browserNonceHash } = data || {}
+        const { projectId, service, returnUrl, connectionId } = data || {}
         if (!projectId && !connectionId) {
             throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
         }
-        assertOAuthBrowserBindingArguments({ returnUrl, browserNonceHash })
 
         try {
             if (projectId) await assertProjectAccess(auth.uid, projectId)
             else await assertConnectionAccess(auth.uid, connectionId)
-            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl, connectionId, browserNonceHash)
+            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Microsoft OAuth:', error)
@@ -7226,18 +7176,14 @@ exports.microsoftOAuthCallback = onRequest(
             return
         }
 
-        const { clearBindingCookie, normalizeOAuthReturnUrl } = require('./Utils/oauthBrowserBinding')
-        clearBindingCookie(res, '/microsoftOAuthCallback')
-
         try {
-            const result = await handleOAuthCallback(code, state, { request: req })
-            const returnUrl = normalizeOAuthReturnUrl(result.returnUrl)
-            if (returnUrl) {
-                res.redirect(returnUrl)
+            const result = await handleOAuthCallback(code, state)
+            if (result.returnUrl) {
+                res.redirect(result.returnUrl)
                 return
             }
 
-            sendOpenerMessagePage(res, { type: 'oauth_success', result: { service: result.service } })
+            sendOpenerMessagePage(res, { type: 'oauth_success', result })
         } catch (err) {
             console.error('Error in Microsoft OAuth callback:', err)
             sendOpenerMessagePage(res, { type: 'oauth_error', error: boundedMessage(err && err.message) })
