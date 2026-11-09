@@ -14,6 +14,7 @@ const {
     SELECTABLE_ASSISTANT_MODELS,
     normalizeSelectableAssistantModelKey,
 } = require('../Assistant/selectableAssistantModels')
+const { readScheduledTaskGoal } = require('../Assistant/scheduledTaskGoal')
 
 // ---------------------------------------------------------------------------
 // Workspace setup over MCP
@@ -134,6 +135,10 @@ const DEFAULT_HEARTBEAT_PROMPT =
 const TASK_TYPE_PROMPT = 'prompt'
 const TASK_EXECUTION_MODE_DIRECT = 'direct'
 
+const PROJECT_ASSISTANT_DESCRIPTION =
+    "Optional: true makes this the project's assistant, the one the project's chats and task threads use by default (the same as switching on Default in the assistant's settings in the app)."
+const SCHEDULED_TASK_GOAL_DESCRIPTION =
+    'Optional goal (from get_goals, in the same project) that every run of this task is filed under: each run creates its task with this goal as parent.'
 const RECURRENCE_VALUES = [
     'once',
     'daily',
@@ -224,7 +229,7 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
     {
         name: 'create_assistant',
         description:
-            'Create an AI assistant in a project the user is a member of. If the project already has an assistant with exactly this name, that assistant is returned instead. Returns the assistantId, which create_assistant_task needs.',
+            'Create an AI assistant in a project the user is a member of. If the project already has an assistant with exactly this name, that assistant is returned instead (unchanged; use update_assistant to make it the project assistant). Returns the assistantId, which create_assistant_task needs.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -248,6 +253,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                         ' and '
                     )}). Valid keys: ${ASSISTANT_TOOL_KEYS.join(', ')}.`,
                 },
+                projectAssistant: {
+                    type: 'boolean',
+                    description: PROJECT_ASSISTANT_DESCRIPTION,
+                },
             },
             required: ['projectId', 'name', 'instructions'],
         },
@@ -255,7 +264,7 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
     {
         name: 'update_assistant',
         description:
-            "Change an existing AI assistant in a project the user is a member of: its name, description, instructions, model or Tools Access. Only the fields you pass change. For tools, either pass allowedTools (the complete new list) or addTools/removeTools (changes to the current list), not both. Changed instructions also reach the assistant's scheduled tasks that still use an unchanged copy of the old instructions; tasks with instructions of their own keep them. Returns what changed and the resulting tool list.",
+            "Change an existing AI assistant in a project the user is a member of: its name, description, instructions, model, Tools Access, or whether it is the project assistant. Only the fields you pass change. For tools, either pass allowedTools (the complete new list) or addTools/removeTools (changes to the current list), not both. Changed instructions also reach the assistant's scheduled tasks that still use an unchanged copy of the old instructions; tasks with instructions of their own keep them. Returns what changed and the resulting tool list.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -293,6 +302,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                     items: { type: 'string' },
                     description: 'Optional Tools Access keys to switch off.',
                 },
+                projectAssistant: {
+                    type: 'boolean',
+                    description: `${PROJECT_ASSISTANT_DESCRIPTION} false removes it as the project assistant (the project then has none).`,
+                },
             },
             required: ['projectId', 'assistantId'],
         },
@@ -326,6 +339,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                     type: 'boolean',
                     description: 'Optional: also send each result to the user on WhatsApp. Default false.',
                 },
+                parentGoalId: {
+                    type: 'string',
+                    description: SCHEDULED_TASK_GOAL_DESCRIPTION,
+                },
             },
             required: ['projectId', 'assistantId', 'name', 'prompt', 'recurrence'],
         },
@@ -333,7 +350,7 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
     {
         name: 'get_assistant_tasks',
         description:
-            "List an assistant's scheduled tasks: name, the full prompt, how often and when it runs for the signed-in user, whether it is active for them, and when it last ran. Use it to find a taskId and to read the current prompt before update_assistant_task.",
+            "List an assistant's scheduled tasks: name, the full prompt, how often and when it runs for the signed-in user, whether it is active for them, the goal its runs are filed under, and when it last ran. Use it to find a taskId and to read the current prompt before update_assistant_task.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -346,7 +363,7 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
     {
         name: 'update_assistant_task',
         description:
-            "Change a scheduled assistant task: its prompt, its name, how often or when it runs, whether results also go to WhatsApp, or pause and resume it for the signed-in user. Find the task by taskId (from get_assistant_tasks) or taskName. Only the fields you pass change; a call that changes nothing writes nothing. The start date anchors the rhythm (a weekly task runs on that date's weekday), so changing only startTime keeps the existing start date.",
+            "Change a scheduled assistant task: its prompt, its name, how often or when it runs, whether results also go to WhatsApp, the goal its runs are filed under, or pause and resume it for the signed-in user. Find the task by taskId (from get_assistant_tasks) or taskName. Only the fields you pass change; a call that changes nothing writes nothing. The start date anchors the rhythm (a weekly task runs on that date's weekday), so changing only startTime keeps the existing start date.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -375,6 +392,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                 active: {
                     type: 'boolean',
                     description: 'false pauses the task for the signed-in user, true resumes it.',
+                },
+                parentGoalId: {
+                    type: ['string', 'null'],
+                    description: `${SCHEDULED_TASK_GOAL_DESCRIPTION} null or an empty string removes it.`,
                 },
             },
             required: ['projectId', 'assistantId'],
@@ -770,11 +791,52 @@ function buildAssistantDocument({ userId, name, description, instructions, model
     }
 }
 
+// The project assistant is two fields that the app keeps in step ("Default" in the assistant's
+// settings, setAssistantLikeDefault): the project's assistantId and the isDefault flag of the
+// project's assistants. Returns the writes that make `makeProjectAssistant` true or false, or [] when
+// the project is already in that state.
+async function buildProjectAssistantWrites(db, { projectId, project, assistantId, makeProjectAssistant, userId, now }) {
+    const assistantsSnapshot = await db.collection(`assistants/${projectId}/items`).get()
+    const assistants = assistantsSnapshot.docs.map(doc => ({ ref: doc.ref, id: doc.id, data: doc.data() || {} }))
+    const self = assistants.find(item => item.id === assistantId)
+    const writes = []
+    const stamp = { lastEditorId: userId, lastEditionDate: now }
+
+    if (makeProjectAssistant) {
+        if (project.assistantId !== assistantId) writes.push([db.doc(`projects/${projectId}`), { assistantId }])
+        if (!self || self.data.isDefault !== true) {
+            writes.push([db.doc(`assistants/${projectId}/items/${assistantId}`), { isDefault: true, ...stamp }])
+        }
+        assistants
+            .filter(item => item.id !== assistantId && item.data.isDefault === true)
+            .forEach(item => writes.push([item.ref, { isDefault: false, ...stamp }]))
+    } else {
+        if (project.assistantId === assistantId) writes.push([db.doc(`projects/${projectId}`), { assistantId: '' }])
+        if (self && self.data.isDefault === true) writes.push([self.ref, { isDefault: false, ...stamp }])
+    }
+    return writes
+}
+
+const validateProjectAssistantArg = value => {
+    if (value !== undefined && typeof value !== 'boolean') fail('projectAssistant must be true or false.')
+    return value
+}
+
+// The goal a scheduled task's runs are filed under: a goal of the task's project the caller can see.
+async function resolveScheduledTaskGoalArg(db, { projectId, userId, value }) {
+    const goalId = cleanString(value, 'parentGoalId')
+    if (!goalId) return null
+    const goal = await readScheduledTaskGoal(db, { projectId, goalId, userId })
+    if (!goal) fail(`No goal "${goalId}" in project "${projectId}" that you can see. get_goals lists them.`)
+    return { id: goal.id, name: goal.extendedName || goal.name || '' }
+}
+
 async function createAssistant(userId, args = {}, context = {}, deps = {}) {
     const db = getDb(deps)
     const now = getNow(deps)
-    const { id: projectId } = await getProjectForMember(db, userId, args.projectId)
+    const { id: projectId, project } = await getProjectForMember(db, userId, args.projectId)
     const name = cleanString(args.name, 'name', { required: true, maxLength: MAX_PROJECT_NAME_LENGTH })
+    const projectAssistant = validateProjectAssistantArg(args.projectAssistant)
     const description = cleanString(args.description, 'description', { maxLength: MAX_DESCRIPTION_LENGTH })
     const instructions = cleanString(args.instructions, 'instructions', {
         required: true,
@@ -799,20 +861,43 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
     await consumeDailyQuota(db, userId, 'create_assistant', now)
 
     const assistantId = newId(db)
-    await db.doc(`assistants/${projectId}/items/${assistantId}`).set(
-        buildAssistantDocument({
+    const assistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
+    const assistantDocument = buildAssistantDocument({
+        userId,
+        name,
+        description,
+        instructions,
+        model,
+        allowedTools,
+        now,
+        actor: buildMcpActorMarker(context.mcpClient),
+    })
+    const batch = db.batch()
+    if (projectAssistant === true) {
+        assistantDocument.isDefault = true
+        const writes = await buildProjectAssistantWrites(db, {
+            projectId,
+            project,
+            assistantId,
+            makeProjectAssistant: true,
             userId,
-            name,
-            description,
-            instructions,
-            model,
-            allowedTools,
             now,
-            actor: buildMcpActorMarker(context.mcpClient),
         })
-    )
+        // The new assistant's own flag is already in its document.
+        writes.filter(([ref]) => ref.path !== assistantRef.path).forEach(([ref, data]) => batch.update(ref, data))
+    }
+    batch.set(assistantRef, assistantDocument)
+    await batch.commit()
 
-    return { assistantId, projectId, name, model, allowedTools, alreadyExisted: false }
+    return {
+        assistantId,
+        projectId,
+        name,
+        model,
+        allowedTools,
+        projectAssistant: projectAssistant === true,
+        alreadyExisted: false,
+    }
 }
 
 const sameToolSet = (a, b) => a.length === b.length && a.every(key => b.includes(key))
@@ -834,9 +919,10 @@ function resolveUpdatedTools(current, { allowedTools, addTools, removeTools }) {
 async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
     const db = getDb(deps)
     const now = getNow(deps)
-    const { id: projectId } = await getProjectForMember(db, userId, args.projectId)
+    const { id: projectId, project } = await getProjectForMember(db, userId, args.projectId)
     const assistantId = cleanString(args.assistantId, 'assistantId', { required: true })
     if (assistantId.includes('/')) fail('assistantId is not valid.')
+    const projectAssistant = validateProjectAssistantArg(args.projectAssistant)
 
     const allowedTools = validateToolKeys(args.allowedTools, 'allowedTools')
     const addTools = validateToolKeys(args.addTools, 'addTools')
@@ -848,8 +934,16 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
     if (conflicting.length > 0) fail(`A key cannot be added and removed at once: ${conflicting.join(', ')}.`)
 
     const fields = ['name', 'description', 'instructions', 'model']
-    if (!fields.some(field => args[field] !== undefined) && !allowedTools && !addTools && !removeTools) {
-        fail('Pass at least one of name, description, instructions, model, allowedTools, addTools or removeTools.')
+    if (
+        !fields.some(field => args[field] !== undefined) &&
+        !allowedTools &&
+        !addTools &&
+        !removeTools &&
+        projectAssistant === undefined
+    ) {
+        fail(
+            'Pass at least one of name, description, instructions, model, allowedTools, addTools, removeTools or projectAssistant.'
+        )
     }
 
     const ref = db.doc(`assistants/${projectId}/items/${assistantId}`)
@@ -899,6 +993,19 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
             changed.push('allowedTools')
         }
     }
+    let projectAssistantWrites = []
+    if (projectAssistant !== undefined) {
+        projectAssistantWrites = await buildProjectAssistantWrites(db, {
+            projectId,
+            project,
+            assistantId,
+            makeProjectAssistant: projectAssistant,
+            userId,
+            now,
+        })
+        if (projectAssistantWrites.length > 0)
+            changed.push(projectAssistant ? 'projectAssistant' : 'projectAssistant removed')
+    }
 
     const result = {
         assistantId,
@@ -910,6 +1017,7 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
         toolsAdded: (update.allowedTools || currentTools).filter(key => !currentTools.includes(key)),
         toolsRemoved: currentTools.filter(key => !(update.allowedTools || currentTools).includes(key)),
         tasksWithUpdatedInstructions: 0,
+        projectAssistant: projectAssistant !== undefined ? projectAssistant : project.assistantId === assistantId,
     }
     if (changed.length === 0) {
         return { ...result, message: 'Nothing changed: the assistant already has these settings.' }
@@ -923,6 +1031,11 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
     update.lastEditorVia = buildLastEditorVia(actor, now)
 
     const batch = db.batch()
+    // The assistant's own isDefault rides on its main update, so the document is written once.
+    projectAssistantWrites.forEach(([writeRef, data]) => {
+        if (writeRef.path === ref.path) Object.assign(update, { isDefault: data.isDefault })
+        else batch.update(writeRef, data)
+    })
     batch.update(ref, update)
     if (update.instructions !== undefined && typeof current.instructions === 'string' && current.instructions) {
         // A scheduled task stores a copy of the instructions it was created with and runs on that
@@ -1019,6 +1132,7 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
         }
     }
 
+    const goal = await resolveScheduledTaskGoalArg(db, { projectId, userId, value: args.parentGoalId })
     const userData = await getUserData(db, userId)
     const schedule = buildSchedule({ startDate: args.startDate, startTime: args.startTime, userData, now })
 
@@ -1047,6 +1161,7 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
         assistantId,
         order: existingSnapshot.size,
         lastExecuted: null,
+        ...(goal ? { parentGoalId: goal.id } : {}),
         createdVia: buildMcpActorMarker(context.mcpClient),
     }
     // The user asked for this task through their own MCP client, so its content is approved for
@@ -1068,6 +1183,7 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
         name,
         recurrence,
         firstRun: schedule.firstRunLocal,
+        goal,
         alreadyExisted: false,
     }
 }
@@ -1091,7 +1207,7 @@ function getLocalStartDate(task, userData) {
 
 const getActiveUserIds = task => (Array.isArray(task.activatedUserIds) ? task.activatedUserIds : [])
 
-function summarizeAssistantTask(task, userId, userData) {
+function summarizeAssistantTask(task, userId, userData, goalNames = {}) {
     const activeUserIds = getActiveUserIds(task)
     return {
         taskId: task.id,
@@ -1104,6 +1220,7 @@ function summarizeAssistantTask(task, userId, userData) {
         active: activeUserIds.includes(userId),
         activeForUserCount: activeUserIds.length,
         sendWhatsApp: task.sendWhatsApp === true,
+        goal: task.parentGoalId ? { goalId: task.parentGoalId, name: goalNames[task.parentGoalId] || null } : null,
         // Not Number.isFinite(Number(x)): Number(null) is 0, which would report a task that never ran as run in 1970.
         lastRun: Number(task.lastExecuted) > 0 ? new Date(Number(task.lastExecuted)).toISOString() : null,
     }
@@ -1114,10 +1231,18 @@ async function getAssistantTasks(userId, args = {}, context = {}, deps = {}) {
     const { projectId, assistantId } = await getProjectAssistant(db, userId, args)
     const userData = await getUserData(db, userId)
     const snapshot = await db.collection(`assistantTasks/${projectId}/${assistantId}`).get()
-    const tasks = snapshot.docs
+    const rawTasks = snapshot.docs
         .map(doc => ({ ...(doc.data() || {}), id: doc.id }))
         .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
-        .map(task => summarizeAssistantTask(task, userId, userData))
+    const goalNames = {}
+    const goalIds = [...new Set(rawTasks.map(task => task.parentGoalId).filter(Boolean))]
+    await Promise.all(
+        goalIds.map(async goalId => {
+            const goal = await readScheduledTaskGoal(db, { projectId, goalId, userId })
+            if (goal) goalNames[goalId] = goal.extendedName || goal.name || ''
+        })
+    )
+    const tasks = rawTasks.map(task => summarizeAssistantTask(task, userId, userData, goalNames))
     return { projectId, assistantId, count: tasks.length, tasks }
 }
 
@@ -1161,6 +1286,16 @@ async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
         if (args.sendWhatsApp !== (task.sendWhatsApp === true)) {
             update.sendWhatsApp = args.sendWhatsApp
             changes.push(args.sendWhatsApp ? 'WhatsApp on' : 'WhatsApp off')
+        }
+    }
+    const goalNames = {}
+    if (args.parentGoalId !== undefined) {
+        const goal = await resolveScheduledTaskGoalArg(db, { projectId, userId, value: args.parentGoalId })
+        if (goal) goalNames[goal.id] = goal.name
+        const nextGoalId = goal ? goal.id : null
+        if (nextGoalId !== (task.parentGoalId || null)) {
+            update.parentGoalId = nextGoalId
+            changes.push(nextGoalId ? 'goal' : 'goal removed')
         }
     }
 
@@ -1222,7 +1357,7 @@ async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
             assistantId,
             changed: [],
             message: 'The task already had these values; nothing was written.',
-            task: summarizeAssistantTask(task, userId, userData),
+            task: summarizeAssistantTask(task, userId, userData, goalNames),
         }
     }
 
@@ -1250,7 +1385,7 @@ async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
         projectId,
         assistantId,
         changed: changes,
-        task: summarizeAssistantTask(updatedTask, userId, userData),
+        task: summarizeAssistantTask(updatedTask, userId, userData, goalNames),
         ...(changesStart && update.startDate ? { firstRun: moment(update.startDate).toISOString() } : {}),
     }
 }

@@ -1588,9 +1588,9 @@ Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttributi
 **MCP can set up a workspace, and nothing else configures one over MCP.** Seven MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
 `create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
-`update_assistant` (name, description, instructions, model, Tools Access), `create_assistant_task`
-(a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
-`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, pause/resume for the caller). Every other
+`update_assistant` (name, description, instructions, model, Tools Access, project assistant),
+`create_assistant_task` (a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
+`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, goal, pause/resume for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1622,6 +1622,27 @@ default and follows the caller; pausing removes the caller from `activatedUserId
 `recurrenceByUser`, the same fields the scheduler (`assistantRecurringTasks.js`) reads on every tick,
 so nothing else has to be recomputed. Edits carry `lastEditedVia`. Pinned by the
 `get_assistant_tasks and update_assistant_task` block of `mcpWorkspaceSetupTools.test.js`.
+
+**A scheduled assistant task can file its runs under a goal.** `parentGoalId` on the scheduled task
+(set with `create_assistant_task` / `update_assistant_task`, a goal of the same project the caller
+can see) makes every run create its task with that goal, through the same fields `create_task` uses
+(`buildTaskParentGoalFields`: id, the goal's audience, lock key) plus `skipAutomaticGoalRouting`, so
+the goal router does not refile it (`Assistant/scheduledTaskGoal.js`, called from
+`ensureTaskChatExists`). A goal that is gone or not visible to the activator is skipped and the run
+happens unfiled. It is deliberately not part of the approved content (`assistantTaskContentHash.js`):
+where a run is filed does not change what it does, so changing the goal needs no new approval. A goal
+whose milestone is done keeps receiving runs until the goal is changed. Pinned by
+`Assistant/scheduledTaskGoal.test.js`, the `scheduled task goal` block of
+`assistantRecurringTasks.test.js` and the `goals of scheduled tasks` block of
+`mcpWorkspaceSetupTools.test.js`.
+
+**`projectAssistant` on `create_assistant` / `update_assistant` makes an assistant the project
+assistant** the way the assistant's "Default" switch in the app does (`setAssistantLikeDefault`):
+`projects/{id}.assistantId` plus `isDefault: true` on it and `false` on the project's other
+assistants. `false` clears both when the assistant is the current one. Only assistants of the project
+itself, not global ones, and no "changed project assistant" Updates entry (the client writes that one;
+the setup tools write no feeds). Pinned by the `project assistant` block of
+`mcpWorkspaceSetupTools.test.js`.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 

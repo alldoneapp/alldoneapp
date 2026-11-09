@@ -548,6 +548,153 @@ describe('MCP workspace setup tools', () => {
         })
     })
 
+    describe('goals of scheduled tasks', () => {
+        const withGoals = (extra = {}) =>
+            baseDb({
+                'assistants/p-existing/items/a1': { displayName: 'Growth Lead', instructions: 'Be useful.' },
+                'goals/p-existing/items/g1': { extendedName: 'Pick the winning segment', isPublicFor: [0] },
+                'goals/p-existing/items/g-private': { extendedName: 'Someone private', isPublicFor: [OTHER] },
+                'goals/p-other/items/g-elsewhere': { extendedName: 'Other project', isPublicFor: [0] },
+                'assistantTasks/p-existing/a1/t1': {
+                    id: 't1',
+                    name: 'Daily growth discovery',
+                    type: 'prompt',
+                    prompt: 'Find prospects.',
+                    recurrence: 'everyWorkday',
+                    startDate: Date.UTC(2026, 10, 9, 6, 30, 0),
+                    startTime: '07:30',
+                    activatedUserIds: [USER],
+                    recurrenceByUser: { [USER]: 'everyWorkday' },
+                    approvedContentHashByUser: { [USER]: 'approved-hash' },
+                    order: 0,
+                    ...extra,
+                },
+            })
+        const base = { projectId: 'p-existing', assistantId: 'a1' }
+        const stored = db => db.docs.get('assistantTasks/p-existing/a1/t1')
+
+        it('creates a task whose runs are filed under a goal', async () => {
+            const db = withGoals()
+            const result = await run(db, 'create_assistant_task', {
+                ...base,
+                name: 'Weekly growth review',
+                prompt: 'Review.',
+                recurrence: 'weekly',
+                parentGoalId: 'g1',
+            })
+            expect(result.goal).toEqual({ id: 'g1', name: 'Pick the winning segment' })
+            expect(db.docs.get(`assistantTasks/p-existing/a1/${result.taskId}`).parentGoalId).toBe('g1')
+        })
+
+        it('sets, shows and removes the goal without touching the approved content', async () => {
+            const db = withGoals()
+            const set = await run(db, 'update_assistant_task', { ...base, taskId: 't1', parentGoalId: 'g1' })
+            expect(set.changed).toEqual(['goal'])
+            expect(set.task.goal).toEqual({ goalId: 'g1', name: 'Pick the winning segment' })
+            expect(stored(db).parentGoalId).toBe('g1')
+            // Where a run is filed is not what it does: the approval stays as it was.
+            expect(stored(db).approvedContentHashByUser).toEqual({ [USER]: 'approved-hash' })
+
+            const listed = await run(db, 'get_assistant_tasks', base)
+            expect(listed.tasks[0].goal).toEqual({ goalId: 'g1', name: 'Pick the winning segment' })
+
+            const again = await run(db, 'update_assistant_task', { ...base, taskId: 't1', parentGoalId: 'g1' })
+            expect(again.changed).toEqual([])
+
+            const removed = await run(db, 'update_assistant_task', { ...base, taskId: 't1', parentGoalId: null })
+            expect(removed.changed).toEqual(['goal removed'])
+            expect(stored(db).parentGoalId).toBeNull()
+            expect(removed.task.goal).toBeNull()
+        })
+
+        it('refuses a goal that is missing, private to someone else or in another project', async () => {
+            const db = withGoals()
+            for (const parentGoalId of ['nope', 'g-private', 'g-elsewhere']) {
+                await expect(run(db, 'update_assistant_task', { ...base, taskId: 't1', parentGoalId })).rejects.toThrow(
+                    /No goal/
+                )
+            }
+            expect(stored(db).parentGoalId).toBeUndefined()
+        })
+    })
+
+    describe('project assistant', () => {
+        const withAssistants = (project = {}) =>
+            baseDb({
+                'projects/p-existing': {
+                    name: 'Alldone Growth',
+                    userIds: [USER],
+                    contactStatuses: {},
+                    assistantId: 'anna',
+                    ...project,
+                },
+                'assistants/p-existing/items/a1': { displayName: 'Growth Lead', instructions: 'x', isDefault: false },
+                'assistants/p-existing/items/a2': { displayName: 'Old default', instructions: 'y', isDefault: true },
+            })
+
+        it('makes an assistant the project assistant the way the app does, once', async () => {
+            const db = withAssistants()
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                projectAssistant: true,
+            })
+            expect(result.changed).toEqual(['projectAssistant'])
+            expect(result.projectAssistant).toBe(true)
+            expect(db.docs.get('projects/p-existing').assistantId).toBe('a1')
+            expect(db.docs.get('assistants/p-existing/items/a1')).toMatchObject({
+                isDefault: true,
+                lastEditorId: USER,
+                lastEditorVia: { via: 'mcp', viaClient: 'Claude', editionDate: NOW },
+            })
+            expect(db.docs.get('assistants/p-existing/items/a2').isDefault).toBe(false)
+
+            const again = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                projectAssistant: true,
+            })
+            expect(again.changed).toEqual([])
+            expect(again.projectAssistant).toBe(true)
+        })
+
+        it('removes it again, leaving the project without one', async () => {
+            const db = withAssistants({ assistantId: 'a2' })
+            const result = await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a2',
+                projectAssistant: false,
+            })
+            expect(result.changed).toEqual(['projectAssistant removed'])
+            expect(db.docs.get('projects/p-existing').assistantId).toBe('')
+            expect(db.docs.get('assistants/p-existing/items/a2').isDefault).toBe(false)
+        })
+
+        it('creates an assistant as the project assistant', async () => {
+            const db = withAssistants()
+            const result = await run(db, 'create_assistant', {
+                projectId: 'p-existing',
+                name: 'New Lead',
+                instructions: 'Lead.',
+                projectAssistant: true,
+            })
+            expect(result.projectAssistant).toBe(true)
+            expect(db.docs.get('projects/p-existing').assistantId).toBe(result.assistantId)
+            expect(db.docs.get(`assistants/p-existing/items/${result.assistantId}`).isDefault).toBe(true)
+            expect(db.docs.get('assistants/p-existing/items/a2').isDefault).toBe(false)
+        })
+
+        it('refuses a value that is not a boolean', async () => {
+            await expect(
+                run(withAssistants(), 'update_assistant', {
+                    projectId: 'p-existing',
+                    assistantId: 'a1',
+                    projectAssistant: 'yes',
+                })
+            ).rejects.toThrow('projectAssistant must be true or false.')
+        })
+    })
+
     describe('update_assistant', () => {
         const ASSISTANT_PATH = 'assistants/p-existing/items/a1'
         const withAssistant = (assistant = {}, extra = {}) =>

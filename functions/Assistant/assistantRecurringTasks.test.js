@@ -336,3 +336,53 @@ describe('resolveActivationProjectId (security audit 2026-11)', () => {
         expect(resolveActivationProjectId({ activatedInProjectId: 'p2' }, 'global-project', 'user1')).toBe('p2')
     })
 })
+
+describe('a scheduled run files its task under the scheduled task goal', () => {
+    const P = 'p1'
+    const runGoalDocs = scheduledTask => {
+        const docs = new Map([
+            [
+                `assistantTasks/${P}/a1/t1`,
+                { id: 't1', name: 'Daily growth discovery', prompt: 'Find prospects.', ...scheduledTask },
+            ],
+            [`goals/${P}/items/g1`, { extendedName: 'Pick the winning segment', isPublicFor: [0], lockKey: '' }],
+            ['users/karsten', { name: 'Karsten' }],
+        ])
+        const ref = path => ({
+            get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
+            set: async data => docs.set(path, data),
+            update: async data => docs.set(path, { ...(docs.get(path) || {}), ...data }),
+        })
+        const batch = () => ({ set: () => {}, update: () => {}, delete: () => {}, commit: async () => {} })
+        return { doc: ref, batch, collection: name => ({ doc: id => ref(`${name}/${id}`) }) }
+    }
+
+    const createRun = async scheduledTask => {
+        const createAndPersistTask = jest.fn(async params => ({ success: true, taskId: params.taskId }))
+        mockTaskService.mockImplementationOnce(() => ({ initialize: jest.fn(), createAndPersistTask }))
+        const db = runGoalDocs(scheduledTask)
+        mockFirestore.mockImplementation(() => db)
+        try {
+            await __private__.ensureTaskChatExists(P, 't1', 'a1', 'Find prospects.', 'karsten')
+        } finally {
+            mockFirestore.mockImplementation(() => ({ doc: mockFirestoreDoc }))
+        }
+        return createAndPersistTask.mock.calls[0][0]
+    }
+
+    test('the created task carries the goal and is kept out of automatic goal routing', async () => {
+        const params = await createRun({ parentGoalId: 'g1' })
+        expect(params).toMatchObject({
+            name: 'Daily growth discovery',
+            parentGoalId: 'g1',
+            parentGoalIsPublicFor: [0],
+            skipAutomaticGoalRouting: true,
+        })
+    })
+
+    test('a task without a goal is created exactly as before', async () => {
+        const params = await createRun({})
+        expect(params).not.toHaveProperty('parentGoalId')
+        expect(params).not.toHaveProperty('skipAutomaticGoalRouting')
+    })
+})

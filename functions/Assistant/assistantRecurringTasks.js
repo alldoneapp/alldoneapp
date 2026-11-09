@@ -601,9 +601,18 @@ async function ensureTaskChatExists(
                         }
                     }
 
+                    // The goal the scheduled task files its runs under, if it has one.
+                    const { buildScheduledRunGoalFields } = require('./scheduledTaskGoal')
+                    const runGoalFields = await buildScheduledRunGoalFields(admin.firestore(), {
+                        scheduledTask: { ...task, id: taskId },
+                        projectId,
+                        userId: creatorUserId,
+                    })
+
                     try {
                         const result = await taskService.createAndPersistTask(
                             {
+                                ...runGoalFields,
                                 name: task.name,
                                 description: prompt || '',
                                 userId: assistantId,
@@ -1712,6 +1721,7 @@ module.exports = {
     shouldExecuteTask, // Exported for testing
     getNextExecutionTime, // Exported for testing
     __private__: {
+        ensureTaskChatExists,
         executeAssistantTask,
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
