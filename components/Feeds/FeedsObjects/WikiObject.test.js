@@ -261,3 +261,51 @@ describe('the wiki in the Updates feed', () => {
         expect(getKnowledgeRevisionTitle).toHaveBeenCalledTimes(2)
     })
 })
+
+describe('a source a member handed the wiki (MCP feed parity)', () => {
+    const sourceFeed = (id, extra) => ({
+        id,
+        type: 'FEED_WIKI_SOURCE_CHANGED',
+        objectId: 'wiki',
+        creatorId: 'u2',
+        lastChangeDate: Date.UTC(2026, 9, 24, 9),
+        isPublicFor: [0],
+        entryText: 'added a document to the wiki',
+        wikiSourceChange: 'document_added',
+        ...extra,
+    })
+
+    it('shows the line by itself when no page changed yet, and opens the wiki from it', async () => {
+        const component = await mount([sourceFeed('wikisource_document_added_d1', { via: 'mcp', viaClient: 'Claude' })])
+
+        const line = component.root.findByProps({ testID: 'wiki-source-feed-wikisource_document_added_d1' })
+        expect(textOf(line.children)).toContain('Maria (via Claude) added a document to the wiki')
+        expect(component.root.findAllByProps({ testID: 'wiki-digest-summary' })).toHaveLength(0)
+        expect(component.root.findAllByProps({ testID: 'wiki-digest-toggle' })).toHaveLength(0)
+
+        act(() => line.props.onPress())
+        expect(openProjectWiki).toHaveBeenCalledWith('p1')
+    })
+
+    it('lists source lines next to the page digest without counting them as pages', async () => {
+        const component = await mount([
+            ...FEEDS,
+            sourceFeed('wikisource_contribution_removed_c1', {
+                creatorId: 'u1',
+                wikiSourceChange: 'contribution_removed',
+            }),
+        ])
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-digest-summary' }).children)).toBe('2 updated')
+        expect(
+            textOf(
+                component.root.findByProps({ testID: 'wiki-source-feed-wikisource_contribution_removed_c1' }).children
+            )
+        ).toContain('A project member removed saved knowledge from the wiki')
+    })
+
+    it('renders nothing for a source line of a kind it does not know', async () => {
+        const component = await mount([sourceFeed('odd', { wikiSourceChange: 'document_renamed' })])
+        expect(component.toJSON()).toBeNull()
+    })
+})

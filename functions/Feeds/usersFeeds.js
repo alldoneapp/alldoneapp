@@ -16,8 +16,7 @@ async function createUserDescriptionChangedFeed(
     oldDescription,
     batch,
     feedUser,
-    needGenerateNotification,
-    descriptionLabel = 'description'
+    needGenerateNotification
 ) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const userFeedObject =
@@ -29,7 +28,7 @@ async function createUserDescriptionChangedFeed(
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_USER_DESCRIPTION_CHANGED,
         lastChangeDate: currentMilliseconds,
-        entryText: `changed ${descriptionLabel} • From ${parsedOldDescription} to ${parsedNewDescription}`,
+        entryText: `changed description • From ${parsedOldDescription} to ${parsedNewDescription}`,
         feedUser,
         objectId: userId,
         isPublicFor: userFeedObject.isPublicFor,
@@ -50,31 +49,6 @@ async function createUserDescriptionChangedFeed(
     )
 }
 
-// MCP feed parity: contacts and moves
-// update_user_description without a project changes users/{uid}, which belongs to no project; the
-// entry is written on the user in their default project and says which description changed.
-async function createUserGlobalDescriptionChangedFeed(
-    projectId,
-    userId,
-    newDescription,
-    oldDescription,
-    batch,
-    feedUser,
-    needGenerateNotification
-) {
-    await createUserDescriptionChangedFeed(
-        projectId,
-        userId,
-        newDescription,
-        oldDescription,
-        batch,
-        feedUser,
-        needGenerateNotification,
-        'global description'
-    )
-}
-
 module.exports = {
     createUserDescriptionChangedFeed,
-    createUserGlobalDescriptionChangedFeed,
 }

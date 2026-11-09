@@ -4,7 +4,6 @@ const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { withoutAccessProjection } = require('./objectAccessProjection')
 const { filterPrivacyForTarget } = require('./projectMovePrivacy')
-const { getActorChannelFields } = require('./mcpActor')
 
 async function persistNoteMoveFeed(database, params) {
     const { targetProjectId, noteId, movedNote, feedUser, sourceProjectName, sourceProjectColor } = params
@@ -21,8 +20,6 @@ async function persistNoteMoveFeed(database, params) {
         projectName: sourceProjectName || '',
         projectColor: sourceProjectColor || '',
         changeDirection: 'from',
-        // A move made through MCP says so ("Karsten Wysk (via Claude)"); empty for anyone else.
-        ...getActorChannelFields(feedUser),
     }
     const batch = database.batch()
     batch.set(database.doc(`projectsInnerFeeds/${targetProjectId}/notes/${noteId}/feeds/${feedId}`), feed)
@@ -122,22 +119,14 @@ async function moveNoteToDifferentProject(params) {
         console.warn('Note move: failed to copy updates feed to target project', { noteId, error: error.message })
     }
 
-    try {
-        await persistNoteMoveFeed(database, {
-            targetProjectId,
-            noteId,
-            movedNote,
-            feedUser: params.feedUser,
-            sourceProjectName: params.sourceProjectName,
-            sourceProjectColor: params.sourceProjectColor,
-        })
-    } catch (error) {
-        // The assistant/MCP tools (update_note) ask for a best-effort entry: the note is already in
-        // the target project, so a failing feed must not stop the move halfway. Every other caller
-        // keeps failing the move, as before.
-        if (!params.moveFeedBestEffort) throw error
-        console.warn('Note move: failed to write the moved-note feed', { noteId, error: error.message })
-    }
+    await persistNoteMoveFeed(database, {
+        targetProjectId,
+        noteId,
+        movedNote,
+        feedUser: params.feedUser,
+        sourceProjectName: params.sourceProjectName,
+        sourceProjectColor: params.sourceProjectColor,
+    })
 
     await sourceNoteRef.delete()
     await targetNoteRef.set(

@@ -422,6 +422,77 @@ describe('update_goal', () => {
             updateGoal({ db: privateDb, projectId: P, userId: USER, args: { goalId: 'g1', assigneeIds: [OTHER] } })
         ).rejects.toThrow(/private/)
     })
+
+    describe('dates in Updates (MCP feed parity)', () => {
+        const NOON_2026_11_29 = Date.UTC(2026, 10, 29, 11, 0, 0)
+
+        test('a new milestone date is reported in the user’s date format; a goal moved whole has one entry', async () => {
+            const db = seeded({}, { [`users/${USER}`]: { timezone: 1, dateFormat: 'MM/DD/YYYY' } })
+            const onGoalUpdated = jest.fn()
+            await updateGoal({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { goalId: 'g1', milestoneDate: '2026-12-20' },
+                createSortIndex,
+                feeds: { onGoalUpdated },
+            })
+            const [, changes] = onGoalUpdated.mock.calls[0]
+            expect(changes).toEqual({ milestoneDate: { from: '11/22/2026', to: '12/20/2026' } })
+        })
+
+        test('someday reads as Someday, and a start of its own gets its own entry', async () => {
+            const db = seeded(
+                { startingMilestoneDate: NOON_2026_11_22, completionMilestoneDate: NOON_2026_12_20 },
+                {
+                    [`goalsMilestones/${P}/milestonesItems/m2`]: openMilestone(NOON_2026_12_20),
+                    [`goalsMilestones/${P}/milestonesItems/m3`]: openMilestone(NOON_2026_11_29),
+                }
+            )
+            const onGoalUpdated = jest.fn()
+            await updateGoal({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { goalId: 'g1', startDate: '2026-11-29' },
+                createSortIndex,
+                feeds: { onGoalUpdated },
+            })
+            expect(onGoalUpdated.mock.calls[0][1]).toEqual({ startDate: { from: '22.11.2026', to: '29.11.2026' } })
+
+            const onMoved = jest.fn()
+            await updateGoal({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { goalId: 'g1', milestoneDate: 'someday' },
+                createSortIndex,
+                feeds: { onGoalUpdated: onMoved },
+            })
+            expect(onMoved.mock.calls[0][1]).toEqual({
+                milestoneDate: { from: '20.12.2026', to: 'Someday' },
+                startDate: { from: '29.11.2026', to: 'Someday' },
+            })
+        })
+
+        test('a goal on automatic milestones that gets a fixed date reports the new scheduling too', async () => {
+            const db = seeded({ scheduleMode: 'dynamic' })
+            const onGoalUpdated = jest.fn()
+            await updateGoal({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { goalId: 'g1', milestoneDate: '2026-12-20' },
+                createSortIndex,
+                feeds: { onGoalUpdated },
+            })
+            expect(onGoalUpdated.mock.calls[0][1]).toMatchObject({
+                milestoneDate: { from: '22.11.2026', to: '20.12.2026' },
+                scheduleMode: { from: 'dynamic', to: 'fixed' },
+            })
+            expect(db.docs.get(`goals/${P}/items/g1`).scheduleMode).toBe('fixed')
+        })
+    })
 })
 
 describe('update_milestone', () => {
@@ -508,6 +579,74 @@ describe('update_milestone', () => {
                 args: { milestoneId: 'm1', newDate: '2026-12-20' },
             })
         ).rejects.toThrow(/done milestone cannot be moved/)
+    })
+
+    describe('Updates entries on the project (MCP feed parity)', () => {
+        test('each change is reported with the milestone as it was at that moment', async () => {
+            const db = seeded()
+            const onMilestoneUpdated = jest.fn()
+            const setMilestoneDone = jest.fn(async () => ({ success: true, updatedGoalCount: 1 }))
+            const result = await updateMilestone({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { milestoneId: 'm1', name: 'Discovery', newDate: '2026-12-20', done: true },
+                createSortIndex,
+                setMilestoneDone,
+                feeds: { onMilestoneUpdated },
+            })
+            expect(result.warnings).toBeUndefined()
+            expect(onMilestoneUpdated).toHaveBeenCalledTimes(1)
+            const [milestone, changes, project] = onMilestoneUpdated.mock.calls[0]
+            expect(milestone).toEqual({ id: 'm1', ownerId: 'ALL_USERS' })
+            expect(project).toMatchObject({ id: P, userIds: [USER, OTHER] })
+            expect(changes).toEqual([
+                { kind: 'renamed', from: '', to: 'Discovery', day: '22.11.2026' },
+                { kind: 'moved', name: 'Discovery', from: '22.11.2026', to: '20.12.2026', merged: false },
+                { kind: 'done', name: 'Discovery', day: '20.12.2026' },
+            ])
+        })
+
+        test('a transition that changed nothing, or a call that changed nothing, reports nothing', async () => {
+            const db = seeded()
+            const onMilestoneUpdated = jest.fn()
+            await updateMilestone({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { milestoneId: 'm1', done: true },
+                setMilestoneDone: async () => ({ success: true, duplicate: true, updatedGoalCount: 0 }),
+                feeds: { onMilestoneUpdated },
+            })
+            await updateMilestone({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { milestoneId: 'm1', name: '' },
+                feeds: { onMilestoneUpdated },
+            })
+            expect(onMilestoneUpdated).not.toHaveBeenCalled()
+        })
+
+        test('a failing entry leaves the milestone changed and says so', async () => {
+            const db = seeded()
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+            const result = await updateMilestone({
+                db,
+                projectId: P,
+                userId: USER,
+                args: { milestoneId: 'm1', name: 'Discovery' },
+                feeds: {
+                    onMilestoneUpdated: async () => {
+                        throw new Error('feeds down')
+                    },
+                },
+            })
+            warn.mockRestore()
+            expect(result.success).toBe(true)
+            expect(result.warnings).toEqual([expect.stringContaining('feeds down')])
+            expect(db.docs.get(`goalsMilestones/${P}/milestonesItems/m1`).extendedName).toBe('Discovery')
+        })
     })
 
     test('an automatic milestone keeps its date, and an unknown day lists the open milestones', async () => {
