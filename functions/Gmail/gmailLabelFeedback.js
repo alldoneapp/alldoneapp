@@ -434,6 +434,7 @@ async function submitEmailLabelFeedback({
         archived: relabel?.archived || false,
         postLabelActionStatus: postLabelPromptResult?.postLabelAction?.status || null,
         followUpType: normalizedCorrectFollowUpType || auditEntry.followUpType || 'informational',
+        subject: typeof auditEntry.subject === 'string' ? auditEntry.subject : '',
     }
 }
 

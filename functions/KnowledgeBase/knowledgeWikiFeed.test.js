@@ -4,12 +4,17 @@ const {
     buildWikiRevisionFeed,
     onKnowledgePageRevisionCreated,
     publishWikiRevisionFeed,
+    publishWikiSourceFeed,
 } = require('./knowledgeWikiFeed')
 const {
     FEED_WIKI_PAGE_CHANGED,
+    FEED_WIKI_SOURCE_CHANGED,
     WIKI_FEED_AUTHOR_ID,
     buildWikiFeedId,
+    buildWikiSourceFeedId,
     getWikiFeedTarget,
+    getWikiSourceChange,
+    isWikiFeed,
 } = require('./knowledgeWikiFeedModel')
 
 const PROJECT_ID = 'project-a'
@@ -410,5 +415,94 @@ describe('getWikiFeedTarget', () => {
         expect(getWikiFeedTarget({ ...feed, wikiSlug: '../../users/x' })).toBeNull()
         expect(getWikiFeedTarget({ ...feed, wikiRevision: '3; drop' })).toBeNull()
         expect(getWikiFeedTarget({ ...feed, type: 'FEED_NOTE_UPDATED' })).toBeNull()
+    })
+})
+
+describe('a source handed to the wiki or taken back (MCP feed parity)', () => {
+    const DOCUMENT_ID = '0123456789abcdef0123'
+
+    it('lists who asked, carrying nothing of the source, and follows it for them and the owner', async () => {
+        const db = createDb()
+        const result = await publishWikiSourceFeed({
+            db,
+            projectId: PROJECT_ID,
+            kind: 'document_added',
+            sourceId: DOCUMENT_ID,
+            feedUser: { uid: MEMBER, displayName: 'Maria Muster', via: 'mcp', viaClient: 'Claude' },
+            now: NOW,
+        })
+
+        const feedId = buildWikiSourceFeedId('document_added', DOCUMENT_ID)
+        expect(feedId).toBe(`wikisource_document_added_${DOCUMENT_ID}`)
+        expect(result).toMatchObject({ published: true, feedId })
+        expect(result.followerIds.sort()).toEqual([MEMBER, OWNER].sort())
+        // Over MCP the member's own change is news to them too.
+        expect(result.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        expect(db.read(`feedsStore/${PROJECT_ID}/all/${feedId}`)).toEqual({
+            type: FEED_WIKI_SOURCE_CHANGED,
+            lastChangeDate: NOW,
+            creatorId: MEMBER,
+            objectId: 'wiki',
+            isPublicFor: [0],
+            entryText: 'added a document to the wiki',
+            wikiSourceChange: 'document_added',
+            via: 'mcp',
+            viaClient: 'Claude',
+        })
+        expect(db.read(`feedsStore/${PROJECT_ID}/${MEMBER}/feeds/followed/${feedId}`)).toBeDefined()
+        expect(db.read(`projectsFeeds/${PROJECT_ID}/24102026/wiki`)).toMatchObject({ type: 'wiki' })
+        expect(db.read(`feedsCount/${PROJECT_ID}/${OTHER}/all`).wiki.wiki[feedId]).toMatchObject({
+            dateFormated: '24102026',
+        })
+        // A line the wiki client can tell apart from a page revision.
+        const stored = db.read(`feedsStore/${PROJECT_ID}/all/${feedId}`)
+        expect(isWikiFeed(stored)).toBe(true)
+        expect(getWikiSourceChange(stored)).toBe('document_added')
+        expect(getWikiFeedTarget(stored)).toBeNull()
+    })
+
+    it("badges every member for an assistant's change, and the member's own change badges only the others", async () => {
+        const db = createDb()
+        const byAssistant = await publishWikiSourceFeed({
+            db,
+            projectId: PROJECT_ID,
+            kind: 'contribution_saved',
+            sourceId: 'abc123',
+            feedUser: { uid: 'assistant-anna', displayName: 'Anna' },
+            now: NOW,
+        })
+        expect(byAssistant.notifiedIds.sort()).toEqual([MEMBER, OTHER, OWNER].sort())
+        expect(byAssistant.followerIds).toEqual([OWNER])
+        expect(db.read(`feedsStore/${PROJECT_ID}/all/${byAssistant.feedId}`)).toMatchObject({
+            creatorId: 'assistant-anna',
+            entryText: 'saved knowledge to the wiki',
+        })
+
+        const byMember = await publishWikiSourceFeed({
+            db,
+            projectId: PROJECT_ID,
+            kind: 'contribution_removed',
+            sourceId: 'abc123',
+            feedUser: { uid: MEMBER },
+            now: NOW,
+        })
+        expect(byMember.notifiedIds.sort()).toEqual([OTHER, OWNER].sort())
+        expect(db.read(`feedsStore/${PROJECT_ID}/all/${byMember.feedId}`)).not.toHaveProperty('via')
+    })
+
+    it('publishes nothing for an unknown kind, a malformed id or no actor', async () => {
+        const db = createDb()
+        const invalid = [
+            { kind: 'document_renamed', sourceId: DOCUMENT_ID, feedUser: { uid: MEMBER } },
+            { kind: 'document_removed', sourceId: '../x', feedUser: { uid: MEMBER } },
+            { kind: 'document_removed', sourceId: DOCUMENT_ID, feedUser: {} },
+        ]
+        for (const args of invalid) {
+            await expect(publishWikiSourceFeed({ db, projectId: PROJECT_ID, now: NOW, ...args })).resolves.toEqual({
+                published: false,
+                reason: 'invalid',
+            })
+        }
+        expect(feedPaths(db).filter(path => !path.startsWith('projects/'))).toEqual([])
     })
 })

@@ -67,6 +67,22 @@ export const FEED_PROJECT_GUIDE_CHANGED = 'FEED_PROJECT_GUIDE_CHANGED'
 export const FEED_PROJECT_ESTIMATION_TYPE_CHANGED = 'FEED_PROJECT_ESTIMATION_TYPE_CHANGED'
 export const FEED_PROJECT_ASSISTANT_CHANGED = 'FEED_PROJECT_ASSISTANT_CHANGED'
 export const FEED_PROJECT_HAPPINESS = 'FEED_PROJECT_HAPPINESS'
+// MCP feed parity: assistants and projects (written by functions/Feeds/workspaceChangeFeeds.js)
+export const FEED_PROJECT_CONTACT_STATUSES_ADDED = 'FEED_PROJECT_CONTACT_STATUSES_ADDED'
+// MCP feed parity: Gmail and Calendar
+// What an MCP client or an assistant did in the user's mailbox or calendar through a tool call,
+// written by Cloud Functions on the project the connection belongs to and rendered by RegularFeed.
+// Same values on the server (functions/Feeds/FeedsConstants.js).
+export const FEED_PROJECT_EMAIL_ACTIVITY = 'FEED_PROJECT_EMAIL_ACTIVITY'
+export const FEED_PROJECT_CALENDAR_ACTIVITY = 'FEED_PROJECT_CALENDAR_ACTIVITY'
+export const FEED_PROJECT_INTEGRATION_ACTIVITY_TYPES = [FEED_PROJECT_EMAIL_ACTIVITY, FEED_PROJECT_CALENDAR_ACTIVITY]
+
+// MCP feed parity: goals, OKRs, wiki
+// A milestone and an OKR have no feed object of their own, so their entries go on the project.
+// Goal date changes use FEED_GOAL_MILESTONE_CHANGED below.
+export const FEED_PROJECT_MILESTONE_CHANGED = 'FEED_PROJECT_MILESTONE_CHANGED'
+export const FEED_PROJECT_OKR_CREATED = 'FEED_PROJECT_OKR_CREATED'
+export const FEED_PROJECT_OKR_CHANGED = 'FEED_PROJECT_OKR_CHANGED'
 
 export const FEED_CONTACT_ADDED = 41
 export const FEED_CONTACT_PICTURE_CHANGED = 42
@@ -84,6 +100,10 @@ export const FEED_CONTACT_DESCRIPTION_CHANGED = 531
 export const FEED_CONTACT_BACKLINK = 568
 export const FEED_CONTACT_HIGHLIGHT_CHANGED = 573
 export const FEED_CONTACT_ASSISTANT_CHANGED = 573
+// MCP feed parity: contacts and moves
+// Written by the update_contact tool (assistants and MCP clients); they render through RegularFeed.
+export const FEED_CONTACT_LINKEDIN_CHANGED = 'FEED_CONTACT_LINKEDIN_CHANGED'
+export const FEED_CONTACT_STATUS_CHANGED = 'FEED_CONTACT_STATUS_CHANGED'
 
 export const FEED_USER_JOINED = 54
 export const FEED_USER_ROLE_CHANGED = 55
@@ -163,6 +183,13 @@ export const FEED_ASSISTANT_INSTRUCTIONS_CHANGED = 'FEED_ASSISTANT_INSTRUCTIONS_
 export const FEED_ASSISTANT_MODEL_CHANGED = 'FEED_ASSISTANT_MODEL_CHANGED'
 export const FEED_ASSISTANT_TEMPERATURE_CHANGED = 'FEED_ASSISTANT_TEMPERATURE_CHANGED'
 export const FEED_ASSISTANT_TEMPLATE_SYNCED = 'FEED_ASSISTANT_TEMPLATE_SYNCED'
+// MCP feed parity: assistants and projects (written by functions/Feeds/workspaceChangeFeeds.js)
+export const FEED_ASSISTANT_VOICE_CHANGED = 'FEED_ASSISTANT_VOICE_CHANGED'
+export const FEED_ASSISTANT_DELEGATION_DESCRIPTION_CHANGED = 'FEED_ASSISTANT_DELEGATION_DESCRIPTION_CHANGED'
+export const FEED_ASSISTANT_TOOLS_CHANGED = 'FEED_ASSISTANT_TOOLS_CHANGED'
+export const FEED_ASSISTANT_HEARTBEAT_CHANGED = 'FEED_ASSISTANT_HEARTBEAT_CHANGED'
+export const FEED_ASSISTANT_TASK_CREATED = 'FEED_ASSISTANT_TASK_CREATED'
+export const FEED_ASSISTANT_TASK_CHANGED = 'FEED_ASSISTANT_TASK_CHANGED'
 
 // MCP feed parity: artifacts
 // Written by the server for every artifact change (functions/Artifacts/artifactFeeds.js), with the
@@ -203,6 +230,13 @@ export const FEED_ASSISTANT_TYPES = [
     FEED_ASSISTANT_MODEL_CHANGED,
     FEED_ASSISTANT_TEMPERATURE_CHANGED,
     FEED_ASSISTANT_TEMPLATE_SYNCED,
+    // MCP feed parity: assistants and projects
+    FEED_ASSISTANT_VOICE_CHANGED,
+    FEED_ASSISTANT_DELEGATION_DESCRIPTION_CHANGED,
+    FEED_ASSISTANT_TOOLS_CHANGED,
+    FEED_ASSISTANT_HEARTBEAT_CHANGED,
+    FEED_ASSISTANT_TASK_CREATED,
+    FEED_ASSISTANT_TASK_CHANGED,
 ]
 
 export const FEED_SKILL_TYPES = [
@@ -305,6 +339,13 @@ export const FEED_PROJECT_TYPES = [
     FEED_PROJECT_ESTIMATION_TYPE_CHANGED,
     FEED_PROJECT_ASSISTANT_CHANGED,
     FEED_PROJECT_HAPPINESS,
+    // MCP feed parity: assistants and projects
+    FEED_PROJECT_CONTACT_STATUSES_ADDED,
+    ...FEED_PROJECT_INTEGRATION_ACTIVITY_TYPES, // MCP feed parity: Gmail and Calendar
+    // MCP feed parity: goals, OKRs, wiki
+    FEED_PROJECT_MILESTONE_CHANGED,
+    FEED_PROJECT_OKR_CREATED,
+    FEED_PROJECT_OKR_CHANGED,
 ]
 
 export const FEED_CONTACT_TYPES = [
@@ -324,6 +365,9 @@ export const FEED_CONTACT_TYPES = [
     FEED_CONTACT_BACKLINK,
     FEED_CONTACT_ASSISTANT_CHANGED,
     FEED_CONTACT_HIGHLIGHT_CHANGED,
+    // MCP feed parity: contacts and moves
+    FEED_CONTACT_LINKEDIN_CHANGED,
+    FEED_CONTACT_STATUS_CHANGED,
 ]
 
 export const FEED_USER_TYPES = [

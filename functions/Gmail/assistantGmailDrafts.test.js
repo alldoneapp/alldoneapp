@@ -364,6 +364,28 @@ describe('assistantGmailDrafts updates', () => {
         expect(mimeMessage).toContain(Buffer.from('New file', 'utf8').toString('base64'))
     })
 
+    test('says whether the rewrite changed the draft', async () => {
+        getConnectedGmailAccounts.mockResolvedValue([
+            { projectId: 'project-1', gmailEmail: 'person@example.com', gmailDefault: true },
+        ])
+        getGmailClient.mockResolvedValue(buildGmailClient())
+
+        const same = await updateGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            draftId: 'draft-123',
+            subject: 'Project update',
+            body: 'Original body',
+        })
+        const edited = await updateGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            draftId: 'draft-123',
+            body: 'Updated body',
+        })
+
+        expect(same).toMatchObject({ success: true, changed: false })
+        expect(edited).toMatchObject({ success: true, changed: true })
+    })
+
     test('can replace existing draft attachments', async () => {
         const gmail = buildGmailClient()
         getConnectedGmailAccounts.mockResolvedValue([

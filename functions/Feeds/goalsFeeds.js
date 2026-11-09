@@ -24,6 +24,7 @@ const {
     FEED_GOAL_DESCRIPTION_CHANGED,
     FEED_GOAL_PRIVACY_CHANGED,
     FEED_GOAL_CAPACITY_CHANGED,
+    FEED_GOAL_MILESTONE_CHANGED,
 } = require('./FeedsConstants')
 
 async function createGoalCreatedFeed(projectId, goal, goalId, batch, feedUser, needGenerateNotification) {
@@ -345,7 +346,55 @@ async function createGoalProgressChangedFeed(projectId, progress, goalId, batch,
     )
 }
 
+// A goal's dates as the goal tools of assistants and MCP clients change them (the app writes no entry
+// for these). `change` is { field, from, to } with the days already formatted for the reader:
+// field 'milestoneDate' and 'startDate' carry days, 'scheduleMode' the old and new mode.
+const GOAL_SCHEDULE_MODE_LABELS = { dynamic: 'automatic milestones', fixed: 'a fixed milestone date' }
+
+function describeGoalDateChange({ field, from, to } = {}) {
+    if (field === 'milestoneDate') return `changed milestone date • From ${from} to ${to}`
+    if (field === 'startDate') return `changed start date • From ${from} to ${to}`
+    if (field === 'scheduleMode') {
+        const label = mode => GOAL_SCHEDULE_MODE_LABELS[mode] || GOAL_SCHEDULE_MODE_LABELS.fixed
+        return `changed scheduling • From ${label(from)} to ${label(to)}`
+    }
+    return null
+}
+
+async function createGoalMilestoneChangedFeed(projectId, change, goalId, batch, feedUser, needGenerateNotification) {
+    const entryText = describeGoalDateChange(change)
+    if (!entryText) return
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const goalFeedObject = await loadFeedObject(projectId, goalId, 'goals', currentMilliseconds, batch)
+    if (!goalFeedObject) return
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_GOAL_MILESTONE_CHANGED,
+        lastChangeDate: currentMilliseconds,
+        entryText,
+        feedUser,
+        objectId: goalId,
+        isPublicFor: goalFeedObject.isPublicFor,
+    })
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        goalId,
+        'goals',
+        goalFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+}
+
 module.exports = {
+    describeGoalDateChange,
+    createGoalMilestoneChangedFeed,
     createGoalCreatedFeed,
     createGoalTitleChangedFeed,
     createGoalProgressChangedFeed,

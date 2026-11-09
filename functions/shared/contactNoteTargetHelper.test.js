@@ -27,6 +27,11 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'public',
 }))
 
+const mockWriteContactCreatedFeeds = jest.fn(async () => true)
+jest.mock('./contactUpdateHelper', () => ({
+    writeContactCreatedFeeds: (...args) => mockWriteContactCreatedFeeds(...args),
+}))
+
 const {
     findMatchingContacts,
     resolveContactNoteTarget,
@@ -413,5 +418,79 @@ describe('contactNoteTargetHelper resolution', () => {
             followersIds: { __op: 'arrayUnion', values: ['user-1'] },
             isVisibleInFollowedFor: { __op: 'arrayUnion', values: ['user-1'] },
         })
+    })
+})
+
+// MCP feed parity: contacts and moves
+describe('a contact the tools create gets its "added" entry', () => {
+    const actor = { uid: 'user-1', displayName: 'User', via: 'mcp', viaClient: 'Codex' }
+
+    beforeEach(() => {
+        mockWriteContactCreatedFeeds.mockClear()
+    })
+
+    test('update_contact with createIfMissing writes it with the actor', async () => {
+        const db = createDb()
+
+        const result = await resolveContactTarget({
+            db,
+            projectId: 'project-1',
+            userId: 'user-1',
+            contactName: 'New Person',
+            contactEmail: 'new@example.com',
+            createIfMissing: true,
+            feedUser: actor,
+        })
+
+        expect(result.contactCreated).toBe(true)
+        expect(mockWriteContactCreatedFeeds).toHaveBeenCalledTimes(1)
+        expect(mockWriteContactCreatedFeeds).toHaveBeenCalledWith({
+            db,
+            projectId: 'project-1',
+            contact: result.contact,
+            feedUser: actor,
+            userId: 'user-1',
+        })
+    })
+
+    test('update_note creating a contact for its note writes it too', async () => {
+        const db = createDb()
+        const noteService = {
+            createAndPersistNote: jest.fn(async () => ({
+                noteId: 'note-3',
+                note: { id: 'note-3', title: 'New Person', isPublicFor: ['public', 'user-1'] },
+            })),
+        }
+
+        const result = await resolveContactNoteTarget({
+            db,
+            noteService,
+            feedUser: actor,
+            userId: 'user-1',
+            projectId: 'project-1',
+            contactName: 'New Person',
+            createIfMissing: true,
+        })
+
+        expect(result.contactCreated).toBe(true)
+        expect(mockWriteContactCreatedFeeds).toHaveBeenCalledWith(
+            expect.objectContaining({ feedUser: actor, projectId: 'project-1' })
+        )
+    })
+
+    test('a matched contact writes no "added" entry', async () => {
+        const db = createDb({
+            'projectsContacts/project-1/contacts/existing': { displayName: 'Existing Person' },
+        })
+
+        await resolveContactTarget({
+            db,
+            projectId: 'project-1',
+            userId: 'user-1',
+            contactId: 'existing',
+            feedUser: actor,
+        })
+
+        expect(mockWriteContactCreatedFeeds).not.toHaveBeenCalled()
     })
 })

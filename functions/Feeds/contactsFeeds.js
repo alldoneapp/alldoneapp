@@ -18,6 +18,10 @@ const {
     FEED_CONTACT_PHONE_NUMBER_CHANGED,
     FEED_CONTACT_EMAIL_CHANGED,
     FEED_CONTACT_DELETED,
+    FEED_CONTACT_PICTURE_CHANGED,
+    FEED_CONTACT_NAME_CHANGED,
+    FEED_CONTACT_LINKEDIN_CHANGED,
+    FEED_CONTACT_STATUS_CHANGED,
 } = require('./FeedsConstants')
 
 async function createContactAddedFeed(
@@ -408,6 +412,143 @@ async function createContactDeletedFeed(projectId, contactId, batch, feedUser, n
     )
 }
 
+// MCP feed parity: contacts and moves
+// The fields only the app could change before update_contact existed. Name and picture are the
+// server copies of the app's own entries (utils/backends/Contacts/contactUpdates.js); LinkedIn and
+// contact status never had an entry, so they are new types that render through RegularFeed.
+async function writeContactChangeFeed({
+    projectId,
+    contactId,
+    feedType,
+    entryText,
+    batch,
+    feedUser,
+    needGenerateNotification,
+    decorate,
+}) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const contactFeedObject = await loadFeedObject(projectId, contactId, 'contacts', currentMilliseconds, batch)
+    if (!contactFeedObject) return
+
+    const { feed, feedId } = generateFeedModel({
+        feedType,
+        lastChangeDate: currentMilliseconds,
+        entryText,
+        feedUser,
+        objectId: contactId,
+        isPublicFor: contactFeedObject.isPublicFor,
+    })
+    if (decorate) decorate(feed, contactFeedObject)
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        contactId,
+        'contacts',
+        contactFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+}
+
+async function createContactNameChangedFeed(
+    projectId,
+    contactId,
+    newName,
+    oldName,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    // The app's text: the object's header already shows the new name.
+    await writeContactChangeFeed({
+        projectId,
+        contactId,
+        feedType: FEED_CONTACT_NAME_CHANGED,
+        entryText: `changed name • From ${oldName ? oldName : 'Unknown'}`,
+        batch,
+        feedUser,
+        needGenerateNotification,
+        decorate: (feed, contactFeedObject) => {
+            contactFeedObject.name = newName
+        },
+    })
+}
+
+async function createContactPictureChangedFeed(
+    projectId,
+    contactId,
+    newPhotoURL,
+    oldPhotoURL,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    // ContactPictureChangedFeed draws both pictures itself, so the entry carries no text.
+    await writeContactChangeFeed({
+        projectId,
+        contactId,
+        feedType: FEED_CONTACT_PICTURE_CHANGED,
+        entryText: '',
+        batch,
+        feedUser,
+        needGenerateNotification,
+        decorate: (feed, contactFeedObject) => {
+            feed.newContactPhotoURL = newPhotoURL || ''
+            feed.oldContactPhotoURL = contactFeedObject.avatarUrl || oldPhotoURL || ''
+            contactFeedObject.avatarUrl = newPhotoURL || ''
+        },
+    })
+}
+
+async function createContactLinkedInChangedFeed(
+    projectId,
+    contactId,
+    newLinkedInUrl,
+    oldLinkedInUrl,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    const from = oldLinkedInUrl ? oldLinkedInUrl : 'Unknown'
+    const to = newLinkedInUrl ? newLinkedInUrl : 'Unknown'
+    await writeContactChangeFeed({
+        projectId,
+        contactId,
+        feedType: FEED_CONTACT_LINKEDIN_CHANGED,
+        entryText: `changed LinkedIn profile • From ${from} to ${to}`,
+        batch,
+        feedUser,
+        needGenerateNotification,
+    })
+}
+
+async function createContactStatusChangedFeed(
+    projectId,
+    contactId,
+    newStatusName,
+    oldStatusName,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    const from = oldStatusName ? oldStatusName : 'None'
+    const to = newStatusName ? newStatusName : 'None'
+    await writeContactChangeFeed({
+        projectId,
+        contactId,
+        feedType: FEED_CONTACT_STATUS_CHANGED,
+        entryText: `changed contact status • From ${from} to ${to}`,
+        batch,
+        feedUser,
+        needGenerateNotification,
+    })
+}
+
 module.exports = {
     createContactAddedFeed,
     createContactDeletedFeed,
@@ -419,4 +560,9 @@ module.exports = {
     createContactHighlightChangedFeed,
     createContactPhoneNumberChangedFeed,
     createContactEmailChangedFeed,
+    // MCP feed parity: contacts and moves
+    createContactNameChangedFeed,
+    createContactPictureChangedFeed,
+    createContactLinkedInChangedFeed,
+    createContactStatusChangedFeed,
 }

@@ -6,6 +6,7 @@ const admin = require('firebase-admin')
 const { DONE_STEP, DEFAULT_WORKSTREAM_ID, OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { withoutAccessProjection } = require('./objectAccessProjection')
 const { canAccessObject } = require('./privacyAccess')
+const { getActorChannelFields } = require('./mcpActor')
 
 const TASK_PROJECT_CHANGED_TO = 17
 const TASK_PROJECT_CHANGED_FROM = 18
@@ -165,7 +166,19 @@ function prepareManualTaskMove({
 }
 
 async function persistManualTaskMoveFeeds(database, params) {
-    const { sourceProject, targetProject, taskId, movedTask, actorId, followerIds = [], requestId, timestamp } = params
+    const {
+        sourceProject,
+        targetProject,
+        taskId,
+        movedTask,
+        actorId,
+        followerIds = [],
+        requestId,
+        timestamp,
+        feedUser = null,
+    } = params
+    // A move made through MCP says so ("Karsten Wysk (via Claude)"); empty for anyone else.
+    const actorChannelFields = getActorChannelFields(feedUser)
     const feeds = [
         {
             projectId: sourceProject.id,
@@ -193,6 +206,7 @@ async function persistManualTaskMoveFeeds(database, params) {
             projectName: project.name || '',
             projectColor: project.color || '',
             changeDirection: direction,
+            ...actorChannelFields,
         }
         batch.set(database.doc(`projectsInnerFeeds/${projectId}/tasks/${taskId}/feeds/${feedId}`), feed)
         batch.set(database.doc(`feedsStore/${projectId}/all/${feedId}`), feed, { merge: true })
@@ -216,6 +230,50 @@ async function persistManualTaskMoveFeeds(database, params) {
         { merge: true }
     )
     await batch.commit()
+}
+
+// MCP feed parity: contacts and moves
+// A task an assistant or an MCP client moves (update_task with moveToProjectId) gets the same two
+// "changed project" entries as a move in the app, with the tool's actor. The move itself keeps the
+// assistant semantics of moveTaskToDifferentProject (no owner or privacy reset); only the entries
+// are added, and a failure to write them is logged, never thrown into the move.
+async function loadProjectForMoveFeed(database, project, projectId) {
+    if (project && project.name) return { ...project, id: projectId }
+    const snapshot = await database.doc(`projects/${projectId}`).get()
+    return { ...(snapshot.exists ? snapshot.data() || {} : {}), id: projectId }
+}
+
+async function persistToolTaskMoveFeeds(database, params) {
+    const { sourceProjectId, targetProjectId, taskId, movedTask, feedUser, requestId, timestamp } = params
+    try {
+        const [sourceProject, targetProject] = await Promise.all([
+            loadProjectForMoveFeed(database, params.sourceProject, sourceProjectId),
+            loadProjectForMoveFeed(database, params.targetProject, targetProjectId),
+        ])
+        const followersSnapshot = await database.doc(`followers/${sourceProjectId}/tasks/${taskId}`).get()
+        const followerIds = followersSnapshot.exists ? [...(followersSnapshot.data()?.usersFollowing || [])] : []
+        if (!followerIds.includes(feedUser.uid)) followerIds.push(feedUser.uid)
+        await persistManualTaskMoveFeeds(database, {
+            sourceProject,
+            targetProject,
+            taskId,
+            movedTask,
+            actorId: feedUser.uid,
+            followerIds,
+            requestId,
+            timestamp,
+            feedUser,
+        })
+        return true
+    } catch (error) {
+        console.warn('Task move: failed to write the moved-task feeds', {
+            taskId,
+            sourceProjectId,
+            targetProjectId,
+            error: error.message,
+        })
+        return false
+    }
 }
 
 async function moveTaskToDifferentProject(params) {
@@ -424,6 +482,19 @@ async function moveTaskToDifferentProject(params) {
             requestId,
             timestamp,
         })
+    } else if (params.feedUser?.uid) {
+        // Only the assistant/MCP tools pass a feedUser to a non-manual move; nothing else does.
+        await persistToolTaskMoveFeeds(database, {
+            sourceProjectId,
+            targetProjectId,
+            taskId,
+            movedTask: movedRootTask,
+            feedUser: params.feedUser,
+            sourceProject: params.sourceProject,
+            targetProject: params.targetProject,
+            requestId,
+            timestamp,
+        })
     }
 
     await sourceRootRef.delete()
@@ -450,5 +521,6 @@ module.exports = {
     collectTaskTreeForMove,
     moveTaskToDifferentProject,
     persistManualTaskMoveFeeds,
+    persistToolTaskMoveFeeds,
     prepareManualTaskMove,
 }

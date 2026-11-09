@@ -931,6 +931,9 @@ describe('assistantCalendarTools', () => {
 
         const client = setCalendarClient('p1')
         client.events.delete.mockResolvedValue({})
+        client.events.get.mockResolvedValue({
+            data: { id: 'evt-1', summary: 'Team sync', start: { dateTime: '2026-11-12T10:00:00+01:00' } },
+        })
 
         const result = await assistantCalendarTools.deleteCalendarEventForAssistantRequest({
             userId: 'user-1',
@@ -941,6 +944,11 @@ describe('assistantCalendarTools', () => {
         expect(client.events.delete).toHaveBeenCalledWith({
             calendarId: 'primary',
             eventId: 'evt-1',
+        })
+        // Title and start of what was deleted, for the Updates entry (MCP feed parity).
+        expect(result).toMatchObject({
+            summary: 'Team sync',
+            start: { dateTime: '2026-11-12T10:00:00+01:00' },
         })
     })
 

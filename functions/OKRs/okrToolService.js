@@ -80,6 +80,18 @@ function readType(value) {
     return type
 }
 
+// Updates entries are best effort: the OKR is written either way (see okrToolFeeds.js).
+async function runFeedsSafely(label, fn) {
+    if (typeof fn !== 'function') return null
+    try {
+        await fn()
+        return null
+    } catch (error) {
+        console.warn(`[okrToolService] ${label} feed failed`, { error: error.message })
+        return `The change is saved, but its entry in Updates could not be written (${error.message}).`
+    }
+}
+
 const normalizeLabel = label =>
     String(label || '')
         .trim()
@@ -130,8 +142,8 @@ async function getActiveOwnedOkrs(db, projectId, userId) {
 // create_okr
 // ---------------------------------------------------------------------------------------------
 
-async function createOkr({ db, projectId, userId, args = {}, now = Date.now() }) {
-    const { userData } = await loadProjectAndUser(db, projectId, userId)
+async function createOkr({ db, projectId, userId, args = {}, now = Date.now(), feeds = {} }) {
+    const { project, userData } = await loadProjectAndUser(db, projectId, userId)
 
     const label = cleanText(args.label, 'label', MAX_LABEL_LENGTH)
     if (!label) fail('label is required.')
@@ -186,10 +198,13 @@ async function createOkr({ db, projectId, userId, args = {}, now = Date.now() })
     }
     await ref.set(okr)
 
+    const warning = await runFeedsSafely('create_okr', feeds.onOkrCreated && (() => feeds.onOkrCreated(okr, project)))
+
     return {
         success: true,
         message: `OKR "${label}" created for the current ${cadence} period.`,
         okr: summarizeOkr(okr),
+        ...(warning ? { warnings: [warning] } : {}),
     }
 }
 
@@ -222,8 +237,8 @@ async function findOwnedOkr(db, projectId, userId, args) {
     })
 }
 
-async function updateOkr({ db, projectId, userId, args = {}, now = Date.now() }) {
-    const { userData } = await loadProjectAndUser(db, projectId, userId)
+async function updateOkr({ db, projectId, userId, args = {}, now = Date.now(), feeds = {} }) {
+    const { project, userData } = await loadProjectAndUser(db, projectId, userId)
     const okr = await findOwnedOkr(db, projectId, userId, args)
     const isRevenue = normalizeOkrType(okr.type) === OKR_TYPE_TIME_LOGGED_REVENUE
 
@@ -302,6 +317,10 @@ async function updateOkr({ db, projectId, userId, args = {}, now = Date.now() })
     await db.doc(`${okrsPath(projectId)}/${okr.id}`).update(updates)
 
     const stored = { ...okr, ...updates }
+    const warning = await runFeedsSafely(
+        'update_okr',
+        feeds.onOkrUpdated && (() => feeds.onOkrUpdated(okr, stored, project))
+    )
     const progress = isRevenue ? null : calculateOkrProgress(stored.currentValue, stored.targetValue)
     return {
         success: true,
@@ -310,6 +329,7 @@ async function updateOkr({ db, projectId, userId, args = {}, now = Date.now() })
             (progress === null ? '.' : `; now at ${progress}%.`),
         changes,
         okr: summarizeOkr(stored),
+        ...(warning ? { warnings: [warning] } : {}),
     }
 }
 
