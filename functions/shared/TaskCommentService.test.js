@@ -119,7 +119,7 @@ describe('TaskCommentService', () => {
                 return { exists: true, data: () => taskData }
             }
             if (path === 'projects/project-1') {
-                return { exists: true, data: () => ({ name: 'Product' }) }
+                return { exists: true, data: () => ({ name: 'Product', userIds: ['user-1', 'user-2'] }) }
             }
             if (path === 'followers/project-1/tasks/task-1') {
                 return { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
@@ -208,7 +208,8 @@ describe('TaskCommentService', () => {
         }
         const getSnapshot = path => {
             if (path === 'items/project-1/tasks/task-1') return { exists: true, data: () => taskData }
-            if (path === 'projects/project-1') return { exists: true, data: () => ({ name: 'Product' }) }
+            if (path === 'projects/project-1')
+                return { exists: true, data: () => ({ name: 'Product', userIds: ['user-1', 'user-2'] }) }
             if (path === 'followers/project-1/tasks/task-1') {
                 return { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
             }
@@ -279,7 +280,7 @@ describe('TaskCommentService', () => {
                             path === 'items/project-1/tasks/task-1'
                                 ? { exists: true, data: () => taskData }
                                 : path === 'projects/project-1'
-                                  ? { exists: true, data: () => ({ name: 'Product' }) }
+                                  ? { exists: true, data: () => ({ name: 'Product', userIds: ['user-1', 'user-2'] }) }
                                   : { exists: false, data: () => ({}) }
                         ),
                 })
@@ -333,7 +334,7 @@ describe('TaskCommentService', () => {
                             path === 'items/project-1/tasks/task-1'
                                 ? { exists: true, data: () => taskData }
                                 : path === 'projects/project-1'
-                                  ? { exists: true, data: () => ({ name: 'Product' }) }
+                                  ? { exists: true, data: () => ({ name: 'Product', userIds: ['user-1', 'user-2'] }) }
                                   : path === 'followers/project-1/tasks/task-1'
                                     ? { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
                                     : { exists: false, data: () => ({}) }
@@ -397,9 +398,11 @@ describe('TaskCommentService', () => {
                         .mockResolvedValue(
                             path === 'items/project-1/tasks/task-1'
                                 ? { exists: true, data: () => taskData }
-                                : path === 'followers/project-1/tasks/task-1'
-                                  ? { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
-                                  : { exists: false, data: () => ({}) }
+                                : path === 'projects/project-1'
+                                  ? { exists: true, data: () => ({ name: 'Product', userIds: ['user-1', 'user-2'] }) }
+                                  : path === 'followers/project-1/tasks/task-1'
+                                    ? { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
+                                    : { exists: false, data: () => ({}) }
                         ),
                 })
             }
@@ -430,5 +433,48 @@ describe('TaskCommentService', () => {
         const push = batch.set.mock.calls.find(([ref]) => ref.path === 'pushNotifications/comment-1')[1]
         expect(push).not.toHaveProperty('initiatorVia')
         expect(push.body).toContain('Karsten Wysk commented: Done.')
+    })
+
+    // Security audit 2026-11 (#11): follower lists are member-writable and outlive membership.
+    test('notifies only current project members, whatever the follower lists say', async () => {
+        const taskData = { name: 'Launch', userId: 'user-1', creatorId: 'user-1', isPublicFor: [0] }
+        const snapshots = {
+            'items/project-1/tasks/task-1': taskData,
+            'projects/project-1': { name: 'Product', userIds: ['user-1', 'user-2'] },
+            'followers/project-1/tasks/task-1': { usersFollowing: ['user-2', 'removed-member', 'stranger'] },
+            'chatObjects/project-1/chats/task-1': { followerIds: ['removed-member'] },
+        }
+        const doc = path => ({
+            path,
+            get: async () => ({ exists: !!snapshots[path], data: () => snapshots[path] }),
+        })
+        const transaction = { get: ref => ref.get(), set: jest.fn(), update: jest.fn() }
+        const batch = { set: jest.fn(), commit: jest.fn().mockResolvedValue() }
+        const service = new TaskCommentService({
+            database: { doc, runTransaction: callback => callback(transaction), batch: () => batch },
+        })
+
+        const result = await service.addComment({
+            projectId: 'project-1',
+            taskId: 'task-1',
+            task: taskData,
+            comment: 'Confidential update',
+            actor: { uid: 'assistant-1', displayName: 'Anna' },
+            fromAssistant: true,
+        })
+
+        const notified = batch.set.mock.calls
+            .map(([ref]) => ref.path)
+            .filter(path => path.startsWith('chatNotifications/'))
+            .sort()
+        expect(notified).toEqual([
+            'chatNotifications/project-1/user-1/comment-1',
+            'chatNotifications/project-1/user-2/comment-1',
+        ])
+        const push = batch.set.mock.calls.find(([ref]) => ref.path === 'pushNotifications/comment-1')[1]
+        const email = batch.set.mock.calls.find(([ref]) => ref.path === 'emailNotifications/task-1')[1]
+        expect(push.userIds.sort()).toEqual(['user-1', 'user-2'])
+        expect(email.userIds.sort()).toEqual(['user-1', 'user-2'])
+        expect(result.notifiedFollowers).toBe(2)
     })
 })

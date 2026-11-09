@@ -224,9 +224,13 @@ describe('UrlWrapper never acts on a stored `open` attribute', () => {
         )
     })
 
-    it('a press on the viewer’s own prompt runs it without asking', async () => {
+    it('a press on a prompt the viewer approved runs it without asking', async () => {
+        const {
+            computeAssistantTaskContentHash,
+        } = require('../../../../../functions/Assistant/assistantTaskContentHash')
+        const mine = { type: 'prompt', name: 'Mine', prompt: 'MY PROMPT', creatorUserId: VIEWER }
         mockResolvePreConfigTaskLink.mockResolvedValue({
-            task: { type: 'prompt', name: 'Mine', prompt: 'MY PROMPT', creatorUserId: VIEWER },
+            task: { ...mine, approvedContentHashByUser: { [VIEWER]: computeAssistantTaskContentHash(mine) } },
             assistantId: 'ASST',
             assistantProjectId: 'P',
             targetProjectId: 'P',
