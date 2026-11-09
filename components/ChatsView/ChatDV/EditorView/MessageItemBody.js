@@ -68,6 +68,8 @@ export default function MessageItemBody({
     assistantRun,
     linkedEmail,
     linkedEmailGmailData,
+    // The mailbox owner's own reply in an email conversation: a link to Gmail, nothing to act on.
+    linkedEmailSentByOwner,
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
@@ -445,6 +447,16 @@ export default function MessageItemBody({
                             return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
+                    {canArchiveLinkedEmail && !linkedEmail && linkedEmailSentByOwner && (
+                        <View style={localStyles.linkedEmailActions}>
+                            <GmailTag
+                                gmailData={linkedEmailGmailData}
+                                showLabel={true}
+                                label="Sent email"
+                                propStyles={localStyles.linkedEmailTag}
+                            />
+                        </View>
+                    )}
                     {canArchiveLinkedEmail && linkedEmail && (
                         <View style={localStyles.linkedEmailActions}>
                             <GmailTag

@@ -1057,6 +1057,7 @@ function buildPostLabelGmailContext({
     followUpType = 'informational',
     taskSuggestionComment = '',
     archivedByLabeling = false,
+    threadTopic = null,
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1088,6 +1089,11 @@ function buildPostLabelGmailContext({
         targetContactEmail: resolvedTargetContactEmail,
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
         topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
+        // The conversation's own topic (Email/emailThreadTopicStore.js). When set, add_chat_comment
+        // writes there instead of the daily digest named by topicChatTitle.
+        ...(threadTopic?.chatId && threadTopic?.projectId
+            ? { topicChatId: threadTopic.chatId, topicProjectId: threadTopic.projectId }
+            : {}),
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
         taskSuggestionComment: typeof taskSuggestionComment === 'string' ? taskSuggestionComment.trim() : '',
         ...(unsubscribe ? { unsubscribe } : {}),
@@ -1165,6 +1171,76 @@ async function addRoutingCommentsToCreatedGmailTasks({
     return commentResults
 }
 
+async function resolvePostLabelThreadTopic({
+    userId,
+    userData,
+    normalizedMessage,
+    gmailEmail,
+    connectionId,
+    connectionProjectId,
+    selectedProjectId,
+    outgoing,
+    allowIncomingPromotion,
+}) {
+    if (!normalizedMessage?.threadId) return null
+    try {
+        const { getEmailIdentity } = require('../Email/emailThreadIdentity')
+        const { resolveEmailThreadTopicForMessage } = require('../Email/emailThreadTopicStore')
+        const identity = getEmailIdentity(userId, {
+            provider: 'google',
+            gmailEmail,
+            messageId: normalizedMessage.messageId,
+            threadId: normalizedMessage.threadId,
+        })
+        if (!identity) return null
+        return await resolveEmailThreadTopicForMessage({
+            database: admin.firestore(),
+            identity,
+            auditCollectionRef: getMessagesAuditCollectionRef(userId, connectionId),
+            normalizedMessage,
+            outgoing,
+            allowIncomingPromotion,
+            selectedProjectId,
+            connectionProjectId,
+            resolveAssistantId: async () => (await resolvePostLabelAssistantContext(userId, userData))?.assistantId,
+        })
+    } catch (error) {
+        console.warn('[gmailLabeling] Email thread topic unavailable, keeping the daily digest', {
+            userId,
+            messageId: normalizedMessage.messageId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+// An actionable email in a conversation creates its task as before; the topic says so, since later
+// mail of the thread continues on that task (Email/emailThreadContinuation.js).
+async function linkCreatedTaskInThreadTopic({ threadTopic, createdTaskResults, assistantId, userId, messageId }) {
+    const createdTask = (createdTaskResults || []).find(result => result?.taskId && !result.existing)
+    if (!threadTopic || !createdTask) return null
+    try {
+        const { postTaskLinkInThreadTopic } = require('../Email/emailThreadTopicStore')
+        const result = await postTaskLinkInThreadTopic({
+            database: admin.firestore(),
+            projectId: threadTopic.projectId,
+            chatId: threadTopic.chatId,
+            authorId: assistantId || userId,
+            fromAssistant: !!assistantId,
+            task: createdTask,
+            messageId,
+        })
+        return result?.written ? result : null
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not link the new task in its thread topic', {
+            userId,
+            taskId: createdTask.taskId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
 async function executePostLabelPrompt({
     userId,
     userData,
@@ -1193,13 +1269,14 @@ async function executePostLabelPrompt({
             ? selectedDefinition.postLabelPromptDirectionScope.trim().toLowerCase()
             : ''
 
-    if (
+    // Checked after thread continuation, not before: the owner's sent mail joins an existing task or
+    // thread topic even where the label's prompt only runs for incoming mail.
+    const promptRunsForDirection = !(
         postLabelPromptDirectionScope &&
         postLabelPromptDirectionScope !== GMAIL_DIRECTION_SCOPE_BOTH &&
         postLabelPromptDirectionScope !== direction
-    ) {
-        return buildPostLabelActionSkipped({ prompt, promptHash, status: 'skipped' })
-    }
+    )
+    const isOutgoing = direction === GMAIL_DIRECTION_SCOPE_OUTGOING
 
     if (
         !forceExecute &&
@@ -1214,6 +1291,18 @@ async function executePostLabelPrompt({
     }
 
     let ambiguousThread = false
+    const threadGmailData = {
+        provider: 'google',
+        accountUserId: userId,
+        gmailEmail,
+        connectionId,
+        projectId: connectionProjectId,
+        messageId: normalizedMessage.messageId,
+        threadId: normalizedMessage.threadId,
+        webUrl: buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId),
+        archiveOnComplete: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING,
+        archivedByLabeling,
+    }
     // Reuse precedes classification-based task/topic actions, including informational
     // mail and labels pointing at another project. Do not expose this selection to AI.
     try {
@@ -1222,18 +1311,8 @@ async function executePostLabelPrompt({
             database: admin.firestore(),
             userId,
             userData,
-            gmailData: {
-                provider: 'google',
-                accountUserId: userId,
-                gmailEmail,
-                connectionId,
-                projectId: connectionProjectId,
-                messageId: normalizedMessage.messageId,
-                threadId: normalizedMessage.threadId,
-                webUrl: buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId),
-                archiveOnComplete: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING,
-                archivedByLabeling,
-            },
+            gmailData: threadGmailData,
+            sentByOwner: isOutgoing,
             context: normalizedMessage,
             actor: async () => {
                 const author = await resolvePostLabelAssistantContext(userId, userData)
@@ -1244,7 +1323,10 @@ async function executePostLabelPrompt({
                 }
             },
         })
-        if (continued?.ambiguous) {
+        // The owner's own reply never creates a task, not even to resolve an ambiguous thread.
+        if (continued?.ambiguous && isOutgoing) {
+            // fall through to the thread topic
+        } else if (continued?.ambiguous) {
             ambiguousThread = true
             followUpType = 'actionable'
             prompt =
@@ -1273,7 +1355,70 @@ async function executePostLabelPrompt({
             threadContinuationPending: true,
         }
     }
-    if (!prompt) return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
+
+    // A conversation gets a private topic of its own (Email/emailThreadTopicStore.js). Incoming mail
+    // only moves out of the daily digest where the prompt writes to that digest; a failure here never
+    // loses the email, it simply stays a digest line.
+    const threadTopic = await resolvePostLabelThreadTopic({
+        userId,
+        userData,
+        normalizedMessage,
+        gmailEmail,
+        connectionId,
+        connectionProjectId,
+        selectedProjectId,
+        outgoing: isOutgoing,
+        allowIncomingPromotion: !!topicChatTitle && promptRunsForDirection,
+    })
+    let sentThreadComment = null
+    if (isOutgoing && threadTopic) {
+        try {
+            const { appendSentMessageToThreadTopic } = require('../Email/emailThreadTopicStore')
+            sentThreadComment = await appendSentMessageToThreadTopic({
+                database: admin.firestore(),
+                projectId: threadTopic.projectId,
+                chatId: threadTopic.chatId,
+                userId,
+                normalizedMessage,
+                gmailData: {
+                    ...threadGmailData,
+                    origin: 'gmail_label_follow_up',
+                    connectionProjectId,
+                    archiveOnComplete: false,
+                },
+            })
+        } catch (error) {
+            console.warn('[gmailLabeling] Could not add sent email to its thread topic', {
+                userId,
+                messageId: normalizedMessage.messageId,
+                error: error.message,
+            })
+        }
+    }
+    const threadTopicSummary = threadTopic
+        ? {
+              projectId: threadTopic.projectId,
+              chatId: threadTopic.chatId,
+              promoted: !!threadTopic.promoted,
+              seededCount: threadTopic.seededCount || 0,
+              ...(sentThreadComment?.commentId ? { sentCommentId: sentThreadComment.commentId } : {}),
+          }
+        : null
+
+    if (!promptRunsForDirection || !prompt) {
+        return {
+            ...buildPostLabelActionSkipped({
+                prompt,
+                promptHash,
+                status: sentThreadComment ? 'completed' : 'skipped',
+            }),
+            ...(threadTopicSummary ? { threadTopic: threadTopicSummary } : {}),
+        }
+    }
+    // Lines of a conversation go to its topic, never to the daily digest. A custom prompt that also
+    // runs for sent mail writes the same deterministic comment id as the sent line above, so the
+    // two never duplicate.
+    const routedThreadTopic = topicChatTitle ? threadTopic : null
 
     const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
     if (!assistantProjectId || !assistantId || !assistant) {
@@ -1336,6 +1481,7 @@ async function executePostLabelPrompt({
                 ? 'This email needs a separate review because its thread matches several existing tasks and the correct task is unclear.'
                 : buildPostLabelTaskSuggestionComment(normalizedMessage),
             archivedByLabeling,
+            threadTopic: routedThreadTopic,
         })
         gmailContext.emailContext = normalizedMessage
         const toolRuntimeContext = {
@@ -1380,6 +1526,13 @@ async function executePostLabelPrompt({
             selectedProjectId,
             consistencyCheck,
         })
+        const taskLinkResult = await linkCreatedTaskInThreadTopic({
+            threadTopic: routedThreadTopic,
+            createdTaskResults: result?.createdTaskResults || [],
+            assistantId,
+            userId,
+            messageId: normalizedMessage?.messageId || '',
+        })
         const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, executionModel)
         let goldSpent = 0
         if (estimatedNormalGoldCost > 0) {
@@ -1420,6 +1573,9 @@ async function executePostLabelPrompt({
                 ? result.createdChatCommentResults
                 : [],
             routingCommentResults,
+            ...(threadTopicSummary
+                ? { threadTopic: { ...threadTopicSummary, ...(taskLinkResult ? { taskLinked: true } : {}) } }
+                : {}),
             assistantResponse: result?.assistantResponse || '',
             status: 'completed',
             error: '',

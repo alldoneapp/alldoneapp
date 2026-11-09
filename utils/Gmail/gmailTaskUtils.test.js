@@ -1,4 +1,9 @@
-import { getEmailTaskArchiveData, getGmailTaskWebUrl, isEmailLinkedTask } from './gmailTaskUtils'
+import {
+    getEmailTaskArchiveData,
+    getGmailTaskWebUrl,
+    getGmailThreadLinkData,
+    isEmailLinkedTask,
+} from './gmailTaskUtils'
 
 describe('email task archive data', () => {
     test('resolves the connection and all linked message ids from an email task', () => {
@@ -79,5 +84,19 @@ describe('Gmail task links', () => {
                 { platform: 'ios' }
             )
         ).toBe('https://mail.google.com/mail/u/0/?authuser=person%40example.com#inbox')
+    })
+})
+
+describe('email conversation topics', () => {
+    test('link to the whole Gmail thread', () => {
+        const data = getGmailThreadLinkData({ threadId: 'thread-1', gmailEmail: 'me@example.com', provider: 'google' })
+        expect(data).toEqual({ gmailEmail: 'me@example.com', messageId: 'thread-1' })
+        expect(getGmailTaskWebUrl(data, { platform: 'web' })).toMatch(/all(\/|%2F)thread-1/)
+    })
+
+    test('need a thread and a Google mailbox', () => {
+        expect(getGmailThreadLinkData(undefined)).toBeNull()
+        expect(getGmailThreadLinkData({ gmailEmail: 'me@example.com' })).toBeNull()
+        expect(getGmailThreadLinkData({ threadId: 't', gmailEmail: 'me@x.com', provider: 'microsoft' })).toBeNull()
     })
 })

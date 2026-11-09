@@ -76,6 +76,7 @@ import {
     resetContactLastCommentData,
 } from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
+import { isOwnSentEmailComment } from '../../../components/ChatsView/ChatDV/linkedEmailActions'
 import { selectAssistantEnabledFor } from '../../../components/ChatsView/Utils/assistantEnabledScope'
 import { endBotSpinnerWait } from '../../../components/ChatsView/Utils/botSpinnerTrigger'
 import { PROJECT_TYPE_GUIDE } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
@@ -150,7 +151,10 @@ export const watchComments = (projectId, chatType, chatId, watcherKey, amountCom
 export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatId) {
     if (!projectId || !chatType || !chatId) return []
     const snapshot = await getDb().collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`).get()
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(comment => comment?.gmailData?.messageId)
+    // The owner's own sent mail is never archived by "Archive all emails".
+    return snapshot.docs
+        .map(doc => ({ ...doc.data(), id: doc.id }))
+        .filter(comment => comment?.gmailData?.messageId && !isOwnSentEmailComment(comment))
 }
 
 export function watchChatNotifications(projectId, userId, watcherKey, callback) {

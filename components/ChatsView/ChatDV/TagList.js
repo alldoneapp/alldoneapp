@@ -8,6 +8,8 @@ import PrivacyTag from '../../Tags/PrivacyTag'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import { DV_TAB_CHAT_BOARD } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
+import GmailTag from '../../Tags/GmailTag'
+import { getGmailThreadLinkData } from '../../../utils/Gmail/gmailTaskUtils'
 
 export default function TagList({ projectId, chat }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -16,6 +18,8 @@ export default function TagList({ projectId, chat }) {
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
+    // An email conversation topic (Gmail labeling) opens its whole thread in Gmail.
+    const gmailThread = getGmailThreadLinkData(chat?.emailThread)
     return (
         <DetailViewHeaderTags
             privacyTag={
@@ -29,6 +33,14 @@ export default function TagList({ projectId, chat }) {
             }
             actions={
                 <>
+                    {!!gmailThread && (
+                        <GmailTag
+                            gmailData={gmailThread}
+                            showLabel={!isMobile}
+                            label="Open in Gmail"
+                            propStyles={{ top: -5, marginRight: 8 }}
+                        />
+                    )}
                     <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                     <DvBotButton
                         style={{ top: -5 }}

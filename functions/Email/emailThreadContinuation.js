@@ -5,7 +5,51 @@ const { resolveEmailThreadTask } = require('./emailThreadTaskStore')
 const { getAccessibleProjectIdsFromUserData } = require('../shared/privacyAccess')
 const { TaskCommentService } = require('../shared/TaskCommentService')
 
-async function continueEmailThread({ database, userId, userData, gmailData, context, actor, fromAssistant = false }) {
+// Mail the owner sent is their own message on the task: no summary model, no Gold, and never a
+// content update or reopening, which only the other side's mail may cause.
+async function appendSentMessageToTask({ database, userId, userData, identity, selected, gmailData, context }) {
+    const { buildSentMessageText } = require('./emailThreadTopicStore')
+    const service = new TaskCommentService({ database })
+    const comment = await service.addComment({
+        projectId: selected.projectId,
+        taskId: selected.taskId,
+        commentId: `email_${identity.messageKey}`,
+        comment: buildSentMessageText(context),
+        actor: { uid: userId, displayName: userData?.displayName || 'Email', fromAssistant: false },
+        fromAssistant: false,
+        gmailData: {
+            ...gmailData,
+            accountUserId: userId,
+            taskProjectId: selected.projectId,
+            direction: 'outgoing',
+            receivedAt: Number(context.internalDate) || Date.parse(context.date) || 0,
+        },
+        linkEmail: false,
+        // The owner's own reply: nothing for anybody to read as new.
+        silent: true,
+    })
+    return {
+        taskId: selected.taskId,
+        projectId: selected.projectId,
+        taskName: comment.taskName || selected.task.name,
+        existing: true,
+        goldCost: 0,
+        updated: !comment.existing,
+        commentId: comment.commentId,
+        sentByOwner: true,
+    }
+}
+
+async function continueEmailThread({
+    database,
+    userId,
+    userData,
+    gmailData,
+    context,
+    actor,
+    fromAssistant = false,
+    sentByOwner = false,
+}) {
     const identity = getEmailIdentity(userId, gmailData)
     if (!identity) return null
     const projectIds = getAccessibleProjectIdsFromUserData(userData)
@@ -23,6 +67,9 @@ async function continueEmailThread({ database, userId, userData, gmailData, cont
         [selected.task.gmailData.messageId, ...(selected.task.gmailData.messageIds || [])].includes(identity.messageId)
     ) {
         return result
+    }
+    if (sentByOwner) {
+        return appendSentMessageToTask({ database, userId, userData, identity, selected, gmailData, context })
     }
 
     const resolvedActor = typeof actor === 'function' ? await actor(selected) : actor

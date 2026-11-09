@@ -34,6 +34,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
+import { isOwnSentEmailComment } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
@@ -450,6 +451,16 @@ export default function Comment({
                             return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
+                {!linkedEmail && isOwnSentEmailComment(comment) && (
+                    <View style={localStyles.linkedEmailActions} testID="sent-email-link">
+                        <GmailTag
+                            gmailData={comment.gmailData}
+                            showLabel={true}
+                            label="Sent email"
+                            propStyles={localStyles.linkedEmailTag}
+                        />
+                    </View>
+                )}
                 {linkedEmail && (
                     <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
                         <GmailTag

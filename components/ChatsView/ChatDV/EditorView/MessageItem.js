@@ -13,6 +13,7 @@ import { getTimestampInMilliseconds } from '../../Utils/ChatHelper'
 import SharedHelper from '../../../../utils/SharedHelper'
 import { resolveEffectiveMessageLoading } from './messageLoadingState'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
+import { isOwnSentEmailComment } from '../linkedEmailActions'
 
 export const QUEUED_CONTENT_STYLE = { opacity: 0.6 }
 
@@ -189,6 +190,7 @@ export default function MessageItem({
                             assistantRun={message.assistantRun}
                             linkedEmail={linkedEmail}
                             linkedEmailGmailData={message.gmailData}
+                            linkedEmailSentByOwner={isOwnSentEmailComment(message)}
                             linkedEmailArchiving={linkedEmailArchiving}
                             linkedEmailArchived={linkedEmailArchived}
                             onArchiveLinkedEmail={onArchiveLinkedEmail}
