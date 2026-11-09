@@ -971,6 +971,31 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
     }
 }
 
+// A reply task: the labeling run found that this email asks the user for an answer. The task is
+// private to the mailbox owner (decided 2026-11-09, like email thread topics) and carries
+// messageData, which puts it in the Messages section of the task list (UNIFIED_INBOX_PLAN.md).
+// Server-written only: firestore.rules refuses client changes to messageData.
+function buildReplyTaskMessageData(toolRuntimeContext = null, gmailTaskData = null) {
+    const gmailContext = toolRuntimeContext?.gmailContext
+    if (!gmailTaskData || gmailContext?.needsReply !== true) return null
+    const emailContext = gmailContext.emailContext || {}
+    const from = String(emailContext.from || '')
+    const senderName = (from.split('<')[0] || '').replace(/["']/g, '').trim() || from.trim()
+    return {
+        provider: 'gmail',
+        kind: 'email',
+        connectionKey: gmailTaskData.gmailEmail || '',
+        conversationKey: gmailTaskData.threadId || gmailTaskData.messageId,
+        senderName: senderName.slice(0, 120),
+        senderEmail: String(gmailContext.targetContactEmail || '')
+            .trim()
+            .toLowerCase(),
+        lastMessageAt: gmailTaskData.receivedAt || 0,
+        needsReply: true,
+        webUrl: gmailTaskData.webUrl || '',
+    }
+}
+
 function getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext = null) {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return ''
@@ -5998,6 +6023,7 @@ async function executeToolNativelyImpl(
 
             try {
                 const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
+                const replyMessageData = buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
                 const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
                 const trackAssistantWork =
                     toolRuntimeContext?.annaConversation === true &&
@@ -6020,10 +6046,11 @@ async function executeToolNativelyImpl(
                         userId: trackAssistantWork ? assistantId : creatorId,
                         assigneeType: trackAssistantWork ? 'assistant' : 'USER',
                         projectId: targetProjectId,
-                        isPrivate: false,
+                        isPrivate: !!replyMessageData,
                         ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
+                        messageData: replyMessageData,
                         // A suggestion is credited to the assistant that made it; with no
                         // assistant (MCP) the requesting user stays the creator.
                         creatorId: isAssistantSuggestion && assistantId ? assistantId : creatorId,

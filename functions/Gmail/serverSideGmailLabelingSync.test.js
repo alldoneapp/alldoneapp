@@ -406,11 +406,24 @@ describe('serverSideGmailLabelingSync helpers', () => {
             archivedByLabeling: false,
             direction: 'incoming',
             followUpType: 'informational',
+            needsReply: false,
             taskSuggestionComment: '',
             targetContactEmail: '',
             targetContactName: '',
             topicChatTitle: '',
         })
+    })
+
+    // UNIFIED_INBOX_PLAN.md: create_task reads this to make a private reply task.
+    test('marks a context whose email needs a reply, never for sent mail', () => {
+        const base = {
+            normalizedMessage: { messageId: 'message-1', threadId: 'thread-1' },
+            gmailEmail: 'person@example.com',
+            assistantProjectId: 'project-1',
+        }
+        expect(buildPostLabelGmailContext({ ...base, needsReply: true }).needsReply).toBe(true)
+        expect(buildPostLabelGmailContext({ ...base, needsReply: 'yes' }).needsReply).toBe(false)
+        expect(buildPostLabelGmailContext({ ...base, needsReply: true, direction: 'outgoing' }).needsReply).toBe(false)
     })
 
     test('flags a context whose email the labeling sync archived itself (AT-2376)', () => {
@@ -788,6 +801,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         archivedByLabeling: false,
                         direction: 'incoming',
                         followUpType: 'informational',
+                        needsReply: false,
                         taskSuggestionComment:
                             'The automatically processed email “Urgent request” appears to require follow-up.',
                         targetContactEmail: 'sender@example.com',

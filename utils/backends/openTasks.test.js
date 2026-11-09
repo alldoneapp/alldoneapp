@@ -42,8 +42,10 @@ import {
     getTaskTypeIndex,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
+    MESSAGE_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     reconcileInitialSnapshotChanges,
+    sortTasksByLastMessage,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
     taskBelongsInOpenBoard,
@@ -166,6 +168,48 @@ describe('calendar tasks in their own section', () => {
 
         expect(getTaskTypeIndex(calendarTask, true, false)).toBe(OBSERVED_TASKS_INDEX)
         expect(getTaskTypeIndex(calendarTask, false, true)).toBe(STREAM_AND_USER_TASKS_INDEX)
+    })
+})
+
+// UNIFIED_INBOX_PLAN.md - a conversation that needs the user's reply gets its own Messages section.
+describe('reply tasks in the Messages section', () => {
+    const baseTask = { genericData: null, suggestedBy: null, userIds: ['user-1'] }
+    const replyTask = { ...baseTask, gmailData: { messageId: 'm1' }, messageData: { needsReply: true } }
+
+    it('routes a task that needs a reply into the messages bucket', () => {
+        expect(getTaskTypeIndex(replyTask, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('keeps an assistant-suggested reply task in Messages', () => {
+        expect(getTaskTypeIndex({ ...replyTask, suggestedBy: 'assistant-1' }, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('returns an answered reply task to the main list', () => {
+        expect(getTaskTypeIndex({ ...replyTask, messageData: { needsReply: false } }, false, false)).toBe(
+            MAIN_TASK_INDEX
+        )
+    })
+
+    it('leaves workflow, observed, stream and assistant-board tasks where they were', () => {
+        expect(getTaskTypeIndex({ ...replyTask, userIds: ['user-1', 'user-2'] }, false, false)).toBe(
+            WORKFLOW_TASK_INDEX
+        )
+        expect(getTaskTypeIndex(replyTask, true, false)).toBe(OBSERVED_TASKS_INDEX)
+        expect(getTaskTypeIndex(replyTask, false, true)).toBe(STREAM_AND_USER_TASKS_INDEX)
+        expect(getTaskTypeIndex(replyTask, false, false, true)).toBe(MAIN_TASK_INDEX)
+    })
+
+    it('uses a slot no other section uses', () => {
+        expect([CALENDAR_TASK_INDEX, EMPTY_SECTION_INDEX, MAIN_TASK_INDEX]).not.toContain(MESSAGE_TASK_INDEX)
+    })
+
+    it('sorts the newest message first and keeps undated tasks last', () => {
+        const sorted = sortTasksByLastMessage([
+            { id: 'a', messageData: { lastMessageAt: 100 } },
+            { id: 'b' },
+            { id: 'c', messageData: { lastMessageAt: 300 } },
+        ])
+        expect(sorted.map(task => task.id)).toEqual(['c', 'a', 'b'])
     })
 })
 

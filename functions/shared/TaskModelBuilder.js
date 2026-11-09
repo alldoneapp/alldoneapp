@@ -84,6 +84,7 @@ function buildTaskObject({
     lockKey = '',
     calendarData = null,
     gmailData = null,
+    messageData = null,
     genericData = null,
     suggestedBy = null,
     autoEstimation = null,
@@ -238,6 +239,9 @@ function buildTaskObject({
         // External integrations
         calendarData: calendarData,
         gmailData: gmailData,
+        // A conversation that needs the user's reply (UNIFIED_INBOX_PLAN.md). Only set on reply
+        // tasks, so no other task document gains the field.
+        ...(messageData ? { messageData } : {}),
 
         // AI and assistance
         assistantId: assistantId,

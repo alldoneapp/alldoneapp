@@ -35,7 +35,10 @@ function buildEmailTaskUpdate(task, plan, gmailData, actorId, now) {
         task.userId === task.suggestedBy &&
         (task.assistantId === task.suggestedBy ||
             task.taskMetadata?.assistantSuggestion?.assistantId === task.suggestedBy)
-    if ((task.inDone || task.done) && !rejectedSuggestion) {
+    // plan.reopen === false: the email asks nothing of the user (decided 2026-11-09), so it is
+    // added as a comment and the done task stays done. Older callers send no flag and reopen.
+    const mayReopen = plan.reopen !== false
+    if ((task.inDone || task.done) && !rejectedSuggestion && mayReopen) {
         Object.assign(update, {
             done: false,
             inDone: false,
@@ -44,6 +47,15 @@ function buildEmailTaskUpdate(task, plan, gmailData, actorId, now) {
             completedTime: null,
             currentReviewerId: task.userId || 'Open',
         })
+    }
+    // A reply task (UNIFIED_INBOX_PLAN.md) tracks its conversation: every newer message moves
+    // lastMessageAt, and a message that asks something again puts it back in the Messages section.
+    if (task.messageData && newer) {
+        update.messageData = {
+            ...task.messageData,
+            lastMessageAt: Math.max(task.messageData.lastMessageAt || 0, gmailData.receivedAt || 0),
+            ...(plan.needsReply === true ? { needsReply: true } : {}),
+        }
     }
     return {
         ...update,
