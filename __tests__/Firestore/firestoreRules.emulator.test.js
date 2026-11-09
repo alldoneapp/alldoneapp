@@ -1882,6 +1882,29 @@ describe('server-only data', () => {
     })
 })
 
+describe('deleted project ids are never registered again (security audit NV-26)', () => {
+    it('refuses to create a project whose id carries a deletion tombstone', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), 'deletedProjects/deleted-project'), { deletedAt: 1 })
+        })
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertFails(
+            setDoc(doc(outsiderDb, 'projects/deleted-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
+        )
+        await assertSucceeds(
+            setDoc(doc(outsiderDb, 'projects/brand-new-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
+        )
+    })
+
+    it('keeps the tombstones server-only', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(getDoc(doc(memberDb, 'deletedProjects/deleted-project')))
+        await assertFails(deleteDoc(doc(memberDb, 'deletedProjects/deleted-project')))
+    })
+})
+
 describe('task transition side-effect ownership', () => {
     it('lets a member update a readable task and their undo record without writing another user statistics', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
