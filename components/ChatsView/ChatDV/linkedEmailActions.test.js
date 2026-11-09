@@ -4,6 +4,7 @@ import {
     getLinkedEmailsFromMessages,
     getNewEmailCommentIds,
     groupLinkedEmailsByConnection,
+    isOwnSentEmailComment,
 } from './linkedEmailActions'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { clearChatCommentsForLinkedEmails } from '../../../utils/backends/Chats/markChatCommentsAsRead'
@@ -234,5 +235,40 @@ describe('archiveAndMarkReadLinkedEmails', () => {
         await archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1' }])
         expect(performEmailLineAction).not.toHaveBeenCalled()
         expect(clearChatCommentsForLinkedEmails).not.toHaveBeenCalled()
+    })
+
+    describe('mail the owner sent in an email conversation', () => {
+        const sentInTopic = {
+            id: 'sent-1',
+            source: 'gmail_thread_sent',
+            creatorId: 'owner',
+            fromAssistant: false,
+            gmailData: { connectionProjectId: 'connection-1', messageId: 'sent-1', direction: 'outgoing' },
+        }
+        const sentOnTask = {
+            id: 'email_x',
+            fromAssistant: false,
+            gmailData: { connectionProjectId: 'connection-1', messageId: 'sent-2', direction: 'outgoing' },
+        }
+        const assistantLineAboutSentMail = {
+            id: 'line-1',
+            fromAssistant: true,
+            gmailData: { connectionProjectId: 'connection-1', messageId: 'sent-3', direction: 'outgoing' },
+        }
+
+        test('is recognised in a topic and on a task, but an assistant line about sent mail is not', () => {
+            expect(isOwnSentEmailComment(sentInTopic)).toBe(true)
+            expect(isOwnSentEmailComment(sentOnTask)).toBe(true)
+            expect(isOwnSentEmailComment(assistantLineAboutSentMail)).toBe(false)
+            expect(isOwnSentEmailComment({ fromAssistant: false, gmailData: { direction: 'outgoing' } })).toBe(false)
+        })
+
+        test('is never a linked email, so it gets no archive, task or unsubscribe action and is never counted', () => {
+            expect(getLinkedEmailFromMessage(sentInTopic, { projectId: 'p', chatId: 'c' })).toBeNull()
+            expect(getLinkedEmailFromMessage(sentOnTask)).toBeNull()
+            expect(getLinkedEmailsFromMessages([sentInTopic, sentOnTask, assistantLineAboutSentMail])).toEqual([
+                expect.objectContaining({ messageId: 'sent-3', direction: 'outgoing' }),
+            ])
+        })
     })
 })

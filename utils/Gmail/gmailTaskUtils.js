@@ -127,3 +127,12 @@ export function getGmailTaskWebUrl(taskOrGmailData, runtime = {}) {
         gmailEmail
     )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
 }
+
+// The Gmail data a chip needs to open an email conversation topic's whole thread. Gmail's
+// `#all/<id>` route accepts a thread id as well as a message id, so the regular message URL works.
+export function getGmailThreadLinkData(emailThread) {
+    const threadId = typeof emailThread?.threadId === 'string' ? emailThread.threadId.trim() : ''
+    const gmailEmail = typeof emailThread?.gmailEmail === 'string' ? emailThread.gmailEmail.trim() : ''
+    if (!threadId || !gmailEmail || (emailThread.provider && emailThread.provider !== 'google')) return null
+    return { gmailEmail, messageId: threadId }
+}

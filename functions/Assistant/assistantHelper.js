@@ -2605,6 +2605,9 @@ async function collectAssistantTextWithToolCalls({
                         projectId: toolResult.projectId,
                         projectName: toolResult.projectName || '',
                         task: toolResult.task || null,
+                        // create_task continued an existing email task instead of creating one: no
+                        // routing comment and no "created task" line belong to it.
+                        ...(toolResult.existing ? { existing: true } : {}),
                     })
                 }
                 if (toolName === 'create_note' && toolResult?.success !== false) {
@@ -6764,17 +6767,32 @@ async function executeToolNativelyImpl(
                 typeof toolRuntimeContext.gmailContext.topicChatTitle === 'string'
                     ? toolRuntimeContext.gmailContext.topicChatTitle.trim()
                     : ''
+            // A Gmail conversation's own topic (Email/emailThreadTopicStore.js), decided by the sync:
+            // the model's chat, title and project are ignored, like the daily digest's title.
+            const gmailThreadTopic =
+                toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN &&
+                typeof toolRuntimeContext.gmailContext.topicChatId === 'string' &&
+                toolRuntimeContext.gmailContext.topicChatId.trim() &&
+                typeof toolRuntimeContext.gmailContext.topicProjectId === 'string' &&
+                toolRuntimeContext.gmailContext.topicProjectId.trim()
+                    ? {
+                          chatId: toolRuntimeContext.gmailContext.topicChatId.trim(),
+                          projectId: toolRuntimeContext.gmailContext.topicProjectId.trim(),
+                      }
+                    : null
             if (chatType !== 'topics') {
                 throw new Error('add_chat_comment currently supports topic chats only.')
             }
 
-            const targetProject = await resolveProjectTargetForDescriptionUpdate(
-                db,
-                creatorId,
-                projectId,
-                toolArgs.projectId,
-                toolArgs.projectName
-            )
+            const targetProject = gmailThreadTopic
+                ? { id: gmailThreadTopic.projectId, name: '' }
+                : await resolveProjectTargetForDescriptionUpdate(
+                      db,
+                      creatorId,
+                      projectId,
+                      toolArgs.projectId,
+                      toolArgs.projectName
+                  )
 
             console.log('💬 ADD_CHAT_COMMENT TOOL: Request params', {
                 userId: creatorId,
@@ -6804,12 +6822,12 @@ async function executeToolNativelyImpl(
                 authorChannelFields,
                 projectId: targetProject.id,
                 projectName: targetProject.name || '',
-                chatId: gmailTopicChatTitle ? '' : toolArgs.chatId || '',
-                chatTitle: gmailTopicChatTitle || toolArgs.chatTitle || '',
+                chatId: gmailThreadTopic ? gmailThreadTopic.chatId : gmailTopicChatTitle ? '' : toolArgs.chatId || '',
+                chatTitle: gmailThreadTopic ? '' : gmailTopicChatTitle || toolArgs.chatTitle || '',
                 comment: toolArgs.comment || '',
                 assistantId,
                 userId: creatorId,
-                createIfMissing: !!gmailTopicChatTitle || toolArgs.createIfMissing === true,
+                createIfMissing: gmailThreadTopic ? false : !!gmailTopicChatTitle || toolArgs.createIfMissing === true,
                 gmailContext: toolRuntimeContext?.gmailContext || null,
                 suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
             })

@@ -98,6 +98,11 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
 }))
 
 jest.mock('../Email/emailThreadContinuation', () => ({ continueEmailThread: jest.fn(async () => null) }))
+jest.mock('../Email/emailThreadTopicStore', () => ({
+    resolveEmailThreadTopicForMessage: jest.fn(async () => null),
+    appendSentMessageToThreadTopic: jest.fn(async () => ({ written: 1, commentId: 'sent-comment' })),
+    postTaskLinkInThreadTopic: jest.fn(async () => ({ written: 1 })),
+}))
 
 const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
@@ -150,6 +155,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         require('../Email/emailThreadContinuation').continueEmailThread.mockReset().mockResolvedValue(null)
+        require('../Email/emailThreadTopicStore').resolveEmailThreadTopicForMessage.mockReset().mockResolvedValue(null)
         deductGold.mockResolvedValue({ success: true, newBalance: 99 })
         admin.firestore.mockImplementation(() => ({
             getAll: admin.__mock.getAll,
@@ -1497,5 +1503,195 @@ describe('reconcileEmailCommentReadStateOnPollTick (AT-2376 follow-up)', () => {
 
         await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')).resolves.toBeNull()
         expect(console.warn).toHaveBeenCalled()
+    })
+})
+
+describe('email conversations get their own topic', () => {
+    const topicStore = require('../Email/emailThreadTopicStore')
+    const { continueEmailThread } = require('../Email/emailThreadContinuation')
+    const DEFAULT_PROMPT = buildDefaultProjectFollowUpPrompt('Project A')
+    const projectLabel = {
+        key: 'project_a',
+        gmailLabelName: 'Project A',
+        postLabelPrompt: DEFAULT_PROMPT,
+        postLabelPromptDirectionScope: 'incoming',
+        sourceProjectId: 'project-a',
+    }
+    const threadTopic = {
+        projectId: 'project-a',
+        chatId: 'EmailThread_abc',
+        created: true,
+        promoted: true,
+        seededCount: 1,
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        continueEmailThread.mockReset().mockResolvedValue(null)
+        topicStore.resolveEmailThreadTopicForMessage.mockReset().mockResolvedValue(null)
+        deductGold.mockResolvedValue({ success: true, newBalance: 99 })
+        admin.__mock.doc.mockImplementation(() => ({
+            get: async () => ({ exists: true, data: () => ({ assistantId: 'assistant' }) }),
+        }))
+        admin.__mock.getAll.mockResolvedValue([{ exists: true }])
+        // users/{uid}/private/{labeling state}/messages: the audit collection the resolver is handed.
+        const auditCollection = { where: () => ({ get: async () => ({ docs: [] }) }) }
+        admin.__mock.collection.mockImplementation(path =>
+            path === 'users'
+                ? {
+                      doc: () => ({
+                          get: async () => ({ data: () => ({ gold: 99 }) }),
+                          collection: () => ({ doc: () => ({ collection: () => auditCollection }) }),
+                      }),
+                  }
+                : buildDefaultCollectionMock(path)
+        )
+        admin.firestore.mockImplementation(() => ({
+            getAll: admin.__mock.getAll,
+            doc: admin.__mock.doc,
+            collection: admin.__mock.collection,
+        }))
+        assistantHelper.getAssistantForChat.mockResolvedValue({
+            displayName: 'Assistant',
+            allowedTools: ['create_task', 'add_chat_comment'],
+            instructions: 'Help',
+        })
+        assistantHelper.interactWithChatStream.mockResolvedValue({})
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Done',
+            createdTaskResults: [],
+            createdChatCommentResults: [{ projectId: 'project-a', chatId: 'EmailThread_abc', commentId: 'c2' }],
+        })
+    })
+
+    const run = overrides =>
+        executePostLabelPrompt({
+            userId: 'u',
+            userData: { defaultProjectId: 'default', timezone: 'Europe/Berlin' },
+            selectedDefinition: projectLabel,
+            normalizedMessage: { messageId: 'm2', threadId: 'thread', subject: 'Re: Offer', inReplyTo: '<m1>' },
+            gmailEmail: 'me@example.com',
+            connectionId: 'conn',
+            connectionProjectId: 'project-a',
+            selectedProjectId: 'project-a',
+            followUpType: 'informational',
+            ...overrides,
+        })
+
+    test('a reply routes the assistant line to the conversation topic instead of the daily digest', async () => {
+        topicStore.resolveEmailThreadTopicForMessage.mockResolvedValue(threadTopic)
+        const action = await run()
+        expect(topicStore.resolveEmailThreadTopicForMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ outgoing: false, allowIncomingPromotion: true, selectedProjectId: 'project-a' })
+        )
+        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toolRuntimeContext: expect.objectContaining({
+                    gmailContext: expect.objectContaining({
+                        topicChatId: 'EmailThread_abc',
+                        topicProjectId: 'project-a',
+                        topicChatTitle: expect.stringContaining('Daily emails Project A'),
+                    }),
+                }),
+            })
+        )
+        expect(action).toMatchObject({
+            status: 'completed',
+            threadTopic: { chatId: 'EmailThread_abc', promoted: true, seededCount: 1 },
+            createdChatCommentResults: [{ chatId: 'EmailThread_abc' }],
+        })
+    })
+
+    test('a first email keeps the daily digest', async () => {
+        await run({ normalizedMessage: { messageId: 'm1', threadId: 'thread', subject: 'Offer' } })
+        const { gmailContext } = assistantHelper.collectAssistantTextWithToolCalls.mock.calls[0][0].toolRuntimeContext
+        expect(gmailContext.topicChatId).toBeUndefined()
+        expect(gmailContext.topicChatTitle).toContain('Daily emails Project A')
+    })
+
+    test('a custom prompt that does not write the digest never promotes incoming mail', async () => {
+        await run({ selectedDefinition: { key: 'custom', postLabelPrompt: 'Update the contact note' } })
+        expect(topicStore.resolveEmailThreadTopicForMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ allowIncomingPromotion: false })
+        )
+    })
+
+    test('an actionable email in a conversation creates its task and links it in the topic', async () => {
+        topicStore.resolveEmailThreadTopicForMessage.mockResolvedValue(threadTopic)
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Created',
+            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', task: { name: 'Send contract' } }],
+            createdChatCommentResults: [],
+        })
+        const action = await run({ followUpType: 'actionable' })
+        expect(topicStore.postTaskLinkInThreadTopic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-a',
+                chatId: 'EmailThread_abc',
+                task: expect.objectContaining({ taskId: 't1' }),
+                messageId: 'm2',
+            })
+        )
+        expect(action.threadTopic).toMatchObject({ taskLinked: true })
+    })
+
+    test('a task that was only continued gets no "created task" line', async () => {
+        topicStore.resolveEmailThreadTopicForMessage.mockResolvedValue(threadTopic)
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Continued',
+            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', existing: true }],
+            createdChatCommentResults: [],
+        })
+        await run({ followUpType: 'actionable' })
+        expect(topicStore.postTaskLinkInThreadTopic).not.toHaveBeenCalled()
+    })
+
+    describe('mail the owner sent', () => {
+        const outgoing = {
+            direction: 'outgoing',
+            normalizedMessage: { messageId: 's1', threadId: 'thread', snippet: 'OK' },
+        }
+
+        test('joins its conversation topic as the owner own message, with no model run', async () => {
+            topicStore.resolveEmailThreadTopicForMessage.mockResolvedValue(threadTopic)
+            const action = await run(outgoing)
+            expect(continueEmailThread).toHaveBeenCalledWith(expect.objectContaining({ sentByOwner: true }))
+            expect(topicStore.appendSentMessageToThreadTopic).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'project-a',
+                    chatId: 'EmailThread_abc',
+                    userId: 'u',
+                    gmailData: expect.objectContaining({ messageId: 's1', origin: 'gmail_label_follow_up' }),
+                })
+            )
+            expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+            expect(action).toMatchObject({ status: 'completed', threadTopic: { sentCommentId: 'sent-comment' } })
+        })
+
+        test('with no conversation in Alldone does nothing', async () => {
+            const action = await run(outgoing)
+            expect(topicStore.appendSentMessageToThreadTopic).not.toHaveBeenCalled()
+            expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+            expect(action.status).toBe('skipped')
+            expect(action.threadTopic).toBeUndefined()
+        })
+
+        test('continues an existing task and stops there', async () => {
+            continueEmailThread.mockResolvedValue({
+                taskId: 't1',
+                projectId: 'project-a',
+                sentByOwner: true,
+                goldCost: 0,
+            })
+            const action = await run(outgoing)
+            expect(action).toMatchObject({ status: 'completed', continuedTask: { taskId: 't1' }, goldSpent: 0 })
+            expect(topicStore.resolveEmailThreadTopicForMessage).not.toHaveBeenCalled()
+        })
+
+        test('never creates a task for an ambiguous thread', async () => {
+            continueEmailThread.mockResolvedValue({ ambiguous: true })
+            await run(outgoing)
+            expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+        })
     })
 })

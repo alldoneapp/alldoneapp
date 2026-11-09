@@ -1,6 +1,17 @@
 import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
 
+// A message the mailbox owner sent, shown as their own comment in an email conversation topic (or
+// on its task). There is nothing to archive, unsubscribe from or turn into a task, and it is never
+// unread, so it is not a linked email for any of those actions; it only links to Gmail.
+export function isOwnSentEmailComment(message = {}) {
+    const gmailData = message?.gmailData
+    if (!gmailData?.messageId) return false
+    if (message.source === 'gmail_thread_sent') return true
+    return gmailData.direction === 'outgoing' && message.fromAssistant === false
+}
+
 export function getLinkedEmailFromMessage(message = {}, context = {}) {
+    if (isOwnSentEmailComment(message)) return null
     const gmailData = message?.gmailData
     const messageId = typeof gmailData?.messageId === 'string' ? gmailData.messageId.trim() : ''
     const gmailEmail = typeof gmailData?.gmailEmail === 'string' ? gmailData.gmailEmail.trim().toLowerCase() : ''
