@@ -421,6 +421,8 @@ async function getConversationHistory(
     })
     for (const doc of eligibleDocs.reverse()) {
         const data = doc.data()
+        // An unverified phone caller's words are not the account holder's (NV-35).
+        if (data.callerUnverified === true) continue
         const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
         if (
             trimHistoryBeforeMs &&

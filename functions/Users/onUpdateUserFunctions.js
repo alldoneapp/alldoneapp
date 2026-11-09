@@ -28,6 +28,8 @@ function userBecameActive(oldUser, newUser, now = Date.now()) {
 
 function heartbeatUserScheduleChanged(oldUser, newUser, now = Date.now()) {
     if (HEARTBEAT_USER_SCHEDULE_FIELDS.some(field => oldUser?.[field] !== newUser?.[field])) return true
+    // A confirmed or revoked heartbeat (Assistant/heartbeatOptIn.js, NV-17).
+    if (!isEqual(oldUser?.heartbeatOptIns || null, newUser?.heartbeatOptIns || null)) return true
     return userBecameActive(oldUser, newUser, now)
 }
 

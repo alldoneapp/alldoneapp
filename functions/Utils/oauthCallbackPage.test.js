@@ -46,7 +46,7 @@ describe('oauthCallbackPage', () => {
         const script = res.body.slice(res.body.indexOf('<script'))
         expect(script).not.toContain('\u2028')
         // The value still round-trips intact to the opener.
-        const json = res.body.slice(res.body.indexOf('postMessage(') + 'postMessage('.length, res.body.indexOf(",'*')"))
+        const json = res.body.slice(res.body.indexOf('var m=') + 'var m='.length, res.body.indexOf(';["https://'))
         expect(JSON.parse(json).error).toBe(payload)
     })
 
@@ -56,6 +56,37 @@ describe('oauthCallbackPage', () => {
         const nonce = /'nonce-([^']+)'/.exec(res.headers['content-security-policy'])[1]
         expect(res.body).toContain(`<script nonce="${nonce}">`)
         expect(res.headers['content-type']).toBe('text/html; charset=utf-8')
+    })
+
+    // NV-23: '*' handed the result to whatever page opened the popup.
+    test('posts only to Alldone app origins, never to any origin', () => {
+        const res = capture()
+        sendOpenerMessagePage(res, { type: 'oauth_success' })
+        expect(res.body).not.toContain("'*'")
+        expect(res.body).not.toContain('"*"')
+        expect(res.body).toContain('"https://my.alldone.app"')
+        expect(res.body).toContain('postMessage(m,o)')
+
+        const custom = capture()
+        sendOpenerMessagePage(custom, { type: 'oauth_success' }, { targetOrigins: ['https://example.test'] })
+        expect(custom.body).toContain('["https://example.test"].forEach')
+    })
+
+    test('the opener script delivers the message once per app origin and nowhere else', () => {
+        const res = capture()
+        sendOpenerMessagePage(res, { type: 'oauth_success', ok: true })
+        const script = res.body.slice(
+            res.body.indexOf('>', res.body.indexOf('<script')) + 1,
+            res.body.indexOf('</script>')
+        )
+        const posted = []
+        const window = { opener: { postMessage: (message, origin) => posted.push([message, origin]) }, close: () => {} }
+        new Function('window', 'setTimeout', script)(window, fn => fn())
+        expect(posted.length).toBeGreaterThan(1)
+        posted.forEach(([message, origin]) => {
+            expect(message).toEqual({ type: 'oauth_success', ok: true })
+            expect(origin).toMatch(/^https:\/\//)
+        })
     })
 
     test('provider error codes are kept only when they are plain codes', () => {

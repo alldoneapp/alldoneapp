@@ -133,6 +133,8 @@ async function askToOpenAIBotOptimized(
         // Extract user timezone
         const userTimezoneOffset = resolveUserTimezoneOffset(user)
         const runtimeAssistantId = assistant.uid || assistantId
+        const automaticCommentReply = runOptions.automaticCommentReply === true
+        const allowKnowledgeCorrections = !automaticCommentReply
         const baseToolRuntimeContext = {
             projectId,
             assistantId: runtimeAssistantId,
@@ -144,9 +146,11 @@ async function askToOpenAIBotOptimized(
             userTimezoneOffset,
             language,
             maxRunWallClockMs: runOptions.maxRunWallClockMs || INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
-            automaticCommentReply: runOptions.automaticCommentReply === true,
-            // A member is talking to the assistant, so it may correct the project wiki for them.
-            allowKnowledgeCorrections: true,
+            automaticCommentReply,
+            // A member is talking to the assistant, so it may correct the project wiki for them. An
+            // automatic reply answers another assistant's comment (a Gmail follow-up, a delegate),
+            // not a member, so it only reads the wiki (NV-45).
+            allowKnowledgeCorrections,
         }
         const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })
@@ -191,7 +195,7 @@ async function askToOpenAIBotOptimized(
                 userTimezoneOffset,
                 userId,
                 runtimeAssistantId,
-                { allowKnowledgeCorrections: true }
+                { allowKnowledgeCorrections }
             ),
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),

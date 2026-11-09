@@ -3840,5 +3840,8 @@
     "mcp_app_reconnect_failed": "The app could not be connected again.",
     "mcp_app_reconnect_in_settings": "Connect it again in the MCP server settings of {{assistant}}; this view then opens again.",
     "mcp_app_reconnect_ask_owner": "Ask an administrator to connect it to {{assistant}} again.",
-    "mcp_app_the_assistant": "the assistant"
+    "mcp_app_the_assistant": "the assistant",
+    "Run heartbeat for me": "Run heartbeat for me",
+    "heartbeatOptInExplanation": "The heartbeat runs as you, with your Gold and your connected accounts. It only runs for you after you confirm its current prompt, tools and instructions.",
+    "heartbeatOptInStale": "Someone changed this heartbeat since you confirmed it, so it no longer runs for you. Review the prompt, tools and instructions, then confirm again."
 }
