@@ -5502,6 +5502,21 @@ async function executeToolNatively(
         await toolRuntimeContext.onVmResult?.(result)
     }
     if (toolName === VM_JOB_TOOL_NAME && result?.success === false) await toolRuntimeContext?.onVmLaunchFailed?.()
+    // MCP feed parity: Gmail and Calendar. A change in the user's mailbox or calendar made through a
+    // tool call (MCP or assistant) writes an Updates entry on the connection's project. Best effort.
+    const integrationFeeds = require('../Feeds/integrationToolFeeds')
+    if (integrationFeeds.INTEGRATION_ACTIVITY_TOOL_NAMES.has(toolName) && result?.success === true) {
+        const db = admin.firestore()
+        await integrationFeeds.recordIntegrationToolActivity({
+            db,
+            toolName,
+            toolArgs,
+            result,
+            userId: requestUserId || assistantId,
+            getFeedUser: () =>
+                getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId, toolRuntimeContext),
+        })
+    }
     if (toolRuntimeContext?.annaConversation) {
         try {
             const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
@@ -5587,20 +5602,6 @@ async function executeToolNativelyImpl(
                     explicitMessageIdProvided: !!messageId,
                     userMessageText: userContext?.message || '',
                 })
-            },
-            // The Updates line for a source handed to the wiki or taken back: the assistant, or over
-            // MCP the user with the client marker, as for every other tool change.
-            recordWikiSourceChange: async ({ projectId: wikiProjectId, kind, sourceId }) => {
-                const db = admin.firestore()
-                const { publishWikiSourceFeed } = require('../KnowledgeBase/knowledgeWikiFeed')
-                const feedUser = await getAssistantFeedUserForTool(
-                    db,
-                    wikiProjectId,
-                    assistantId,
-                    requestUserId,
-                    toolRuntimeContext
-                )
-                await publishWikiSourceFeed({ db, projectId: wikiProjectId, kind, sourceId, feedUser })
             },
         })
     }
@@ -6813,6 +6814,7 @@ async function executeToolNativelyImpl(
                 success: true,
                 messageId: toolArgs.messageId,
                 projectId: toolArgs.projectId,
+                subject: result.subject || '',
                 correctLabel: correctLabel || null,
                 followUpType: result.followUpType,
                 learnedRules: result.learnedRules,
@@ -7503,6 +7505,8 @@ async function executeToolNativelyImpl(
                                 taskId,
                                 editorId: feedUser?.uid || creatorId,
                                 editorName,
+                                // Writes the "changed project" entries with the tool's actor.
+                                feedUser,
                             })
 
                             moveSummary.moved.push({
@@ -7596,6 +7600,8 @@ async function executeToolNativelyImpl(
                         taskId: result.taskId,
                         editorId: feedUser?.uid || creatorId,
                         editorName,
+                        // Writes the "changed project" entries with the tool's actor.
+                        feedUser,
                     })
 
                     console.log('📝 UPDATE_TASK TOOL: Move completed', {
@@ -7935,6 +7941,23 @@ async function executeToolNativelyImpl(
                         }
 
                         const editorName = feedUser && (feedUser.displayName || feedUser.name)
+                        // The "changed project • Moved from" entry names the source project in its
+                        // colour; a failed read only costs the colour.
+                        let sourceProjectColor = ''
+                        let sourceProjectName = currentProjectName || ''
+                        try {
+                            const sourceProjectDoc = await db.doc(`projects/${currentProjectId}`).get()
+                            if (sourceProjectDoc.exists) {
+                                const sourceProjectData = sourceProjectDoc.data() || {}
+                                sourceProjectColor = sourceProjectData.color || ''
+                                sourceProjectName = sourceProjectData.name || sourceProjectName
+                            }
+                        } catch (projectReadError) {
+                            console.warn('Internal Assistant: Failed to read the source project for the move feed', {
+                                projectId: currentProjectId,
+                                error: projectReadError.message,
+                            })
+                        }
                         moveResult = await moveNoteToDifferentProject({
                             database: db,
                             sourceProjectId: currentProjectId,
@@ -7943,6 +7966,11 @@ async function executeToolNativelyImpl(
                             editorId: feedUser?.uid || creatorId,
                             editorName: editorName || null,
                             notesBucketName,
+                            // Writes the "moved from" entry with the tool's actor, best effort.
+                            feedUser,
+                            sourceProjectName,
+                            sourceProjectColor,
+                            moveFeedBestEffort: true,
                         })
                         finalProjectId = targetProject.id
                         finalProjectName = targetProject.name
@@ -8084,6 +8112,15 @@ async function executeToolNativelyImpl(
             const statusUpdate = resolveContactStatusUpdate(toolArgs, statusProject?.data() || {})
             if (!statusUpdate.success) return statusUpdate
 
+            // The actor of every entry this call writes, including the "added" one of a contact
+            // createIfMissing creates.
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                targetProjectId || projectId,
+                assistantId,
+                creatorId,
+                toolRuntimeContext
+            )
             const contactResolution = await resolveContactTarget({
                 db,
                 projectId: targetProjectId,
@@ -8092,6 +8129,7 @@ async function executeToolNativelyImpl(
                 contactName,
                 contactEmail,
                 createIfMissing: toolArgs.createIfMissing === true,
+                feedUser,
             })
 
             if (!contactResolution.success) {
@@ -8134,13 +8172,6 @@ async function executeToolNativelyImpl(
                 updates.photoURL300 = ''
             }
 
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                targetProjectId || projectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
             const updateResult = await updateContactFields({
                 db,
                 projectId: targetProjectId,
@@ -8250,15 +8281,6 @@ async function executeToolNativelyImpl(
 
             try {
                 let result
-                const { buildGoalToolFeeds } = require('../Goals/goalToolFeeds')
-                const feedUser = await getAssistantFeedUserForTool(
-                    db,
-                    project.id,
-                    assistantId,
-                    creatorId,
-                    toolRuntimeContext
-                )
-                const feeds = buildGoalToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                 if (toolName === 'update_milestone') {
                     const { executeMilestoneDoneTransition } = require('../Goals/milestoneDoneService')
                     result = await updateMilestone({
@@ -8271,9 +8293,17 @@ async function executeToolNativelyImpl(
                                 actorUserId: creatorId,
                                 data: { projectId: milestoneProjectId, milestoneId, targetDone },
                             }),
-                        feeds,
                     })
                 } else {
+                    const { buildGoalToolFeeds } = require('../Goals/goalToolFeeds')
+                    const feedUser = await getAssistantFeedUserForTool(
+                        db,
+                        project.id,
+                        assistantId,
+                        creatorId,
+                        toolRuntimeContext
+                    )
+                    const feeds = buildGoalToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                     // Same notification rule as update_task: an assistant's comment is in the thread
                     // but marks nothing unread; an MCP client's notifies like any comment.
                     const postComment = ({ goal, comment }) => {
@@ -8364,17 +8394,8 @@ async function executeToolNativelyImpl(
             )
             const project = { id: targetProject.id, name: targetProject.name || targetProject.id }
             try {
-                const { buildOkrToolFeeds } = require('../OKRs/okrToolFeeds')
-                const feedUser = await getAssistantFeedUserForTool(
-                    db,
-                    project.id,
-                    assistantId,
-                    creatorId,
-                    toolRuntimeContext
-                )
-                const feeds = buildOkrToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                 const run = toolName === 'create_okr' ? createOkr : updateOkr
-                const result = await run({ db, projectId: project.id, userId: creatorId, args: toolArgs, feeds })
+                const result = await run({ db, projectId: project.id, userId: creatorId, args: toolArgs })
                 return { ...result, project }
             } catch (error) {
                 if (error instanceof OkrToolError) {
@@ -8669,6 +8690,33 @@ async function executeToolNativelyImpl(
                 await resolvedAssistant.assistantRef.update(patch)
             }
 
+            // Updates entry on the assistant (Feeds/workspaceChangeFeeds.js), best-effort.
+            if (updatedFields.length > 0) {
+                try {
+                    const feedDb = admin.firestore()
+                    const assistantPath = String(resolvedAssistant.assistantRef?.path || '').split('/')
+                    const { writeAssistantHeartbeatFeed } = require('../Feeds/workspaceChangeFeeds')
+                    await writeAssistantHeartbeatFeed({
+                        db: feedDb,
+                        projectId: assistantPath[1] || projectId,
+                        assistantId: currentAssistant.uid || assistantPath[3] || assistantId,
+                        assistant: { ...currentAssistant, ...patch },
+                        changes: updatedFields,
+                        userId: requestUserId,
+                        getFeedUser: () =>
+                            getAssistantFeedUserForTool(
+                                feedDb,
+                                projectId,
+                                assistantId,
+                                requestUserId,
+                                toolRuntimeContext
+                            ),
+                    })
+                } catch (error) {
+                    console.warn('[heartbeat settings] Updates entry was not written', { error: error.message })
+                }
+            }
+
             let userData = null
             if (requestUserId) {
                 const userDoc = await admin
@@ -8830,6 +8878,50 @@ async function executeToolNativelyImpl(
                 otherWrites.forEach(([writeRef, data]) => batch.update(writeRef, data))
                 await batch.commit()
             }
+            // Updates entries for every change (Feeds/workspaceChangeFeeds.js), the same ones MCP's
+            // update_assistant writes; best-effort.
+            try {
+                const {
+                    writeAssistantChangeFeeds,
+                    writeProjectAssistantChangedFeed,
+                } = require('../Feeds/workspaceChangeFeeds')
+                let feedUser = null
+                const getFeedUser = async () => {
+                    if (!feedUser) {
+                        feedUser = await getAssistantFeedUserForTool(
+                            db,
+                            projectId,
+                            assistantId,
+                            requestUserId,
+                            toolRuntimeContext
+                        )
+                    }
+                    return feedUser
+                }
+                const afterAssistant = { ...targetAssistant, ...patch, ...extraUpdate }
+                await writeAssistantChangeFeeds({
+                    db,
+                    projectId: target.projectId,
+                    assistantId: targetAssistantId,
+                    before: targetAssistant,
+                    after: afterAssistant,
+                    userId: requestUserId,
+                    getFeedUser,
+                })
+                if (projectAssistantWrites.length > 0) {
+                    await writeProjectAssistantChangedFeed({
+                        db,
+                        projectId: target.projectId,
+                        assistantName: afterAssistant.displayName,
+                        removed: toolArgs.projectAssistant === false,
+                        userId: requestUserId,
+                        getFeedUser,
+                    })
+                }
+            } catch (error) {
+                console.warn('[assistant settings] Updates entries were not written', { error: error.message })
+            }
+
             const tasksWithUpdatedInstructions = updatedFields.includes('instructions')
                 ? await propagateInstructionsToScheduledTasks({
                       db,

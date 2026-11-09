@@ -457,6 +457,7 @@ async function resolveContactTarget({
     contactName = '',
     contactEmail = '',
     createIfMissing = true,
+    feedUser = null,
 }) {
     const contacts = await loadProjectContacts(db, projectId)
     const resolution = findMatchingContacts(contacts, { contactId, contactName, contactEmail })
@@ -489,6 +490,13 @@ async function resolveContactTarget({
         matchType = 'created'
         matchScore = null
         autoPicked = false
+
+        // MCP feed parity: contacts and moves. The contact a tool creates gets the app's "added"
+        // entry, with the tool's actor; best effort, the contact exists either way.
+        if (feedUser?.uid) {
+            const { writeContactCreatedFeeds } = require('./contactUpdateHelper')
+            await writeContactCreatedFeeds({ db, projectId, contact, feedUser, userId })
+        }
     }
 
     return {
@@ -529,6 +537,7 @@ async function resolveContactNoteTarget({
         contactName,
         contactEmail,
         createIfMissing,
+        feedUser,
     })
     if (!contactResolution.success) return contactResolution
 

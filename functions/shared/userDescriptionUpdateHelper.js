@@ -1,7 +1,7 @@
 'use strict'
 
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
-const { createUserDescriptionChangedFeed } = require('../Feeds/usersFeeds')
+const { createUserDescriptionChangedFeed, createUserGlobalDescriptionChangedFeed } = require('../Feeds/usersFeeds')
 const { UserHelper } = require('./UserHelper')
 const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 
@@ -105,6 +105,61 @@ async function updateUserDescriptionInProject({
     }
 }
 
+// MCP feed parity: contacts and moves
+// The global description lives on users/{uid} and belongs to no project, so its Updates entry is
+// written on the user in their default project, where it shows unless that project has a
+// description of its own. No default project (or one the user left): no entry. Best effort: the
+// description is already saved, so a failing feed is logged and the tool call goes on.
+const GLOBAL_DESCRIPTION_FEED_LIMIT = 50
+
+async function writeGlobalUserDescriptionFeed({
+    db,
+    userData = {},
+    targetUserId,
+    actorUserId,
+    newDescription,
+    oldDescription,
+    feedUser,
+}) {
+    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    if (!defaultProjectId) return false
+    try {
+        const projectDoc = await db.collection('projects').doc(defaultProjectId).get()
+        const projectData = projectDoc.exists ? projectDoc.data() || {} : null
+        const projectUserIds = Array.isArray(projectData?.userIds) ? projectData.userIds : []
+        if (!projectData || !projectUserIds.includes(targetUserId)) return false
+
+        const { shrinkTagText } = require('../Utils/parseTextUtils')
+        const shorten = value =>
+            value
+                ? shrinkTagText(
+                      getTaskNameWithoutMeta(value, true).replace(/\s+/g, ' ').trim(),
+                      GLOBAL_DESCRIPTION_FEED_LIMIT
+                  )
+                : ''
+        const actor = feedUser || (await UserHelper.getFeedUserData(db, actorUserId || targetUserId))
+        const batch = new BatchWrapper(db)
+        await createUserGlobalDescriptionChangedFeed(
+            defaultProjectId,
+            targetUserId,
+            shorten(newDescription),
+            shorten(oldDescription),
+            batch,
+            actor,
+            false
+        )
+        await batch.commit()
+        return true
+    } catch (error) {
+        console.warn('[userDescriptionUpdateHelper] Could not write the global description feed', {
+            userId: targetUserId,
+            projectId: defaultProjectId,
+            error: error.message,
+        })
+        return false
+    }
+}
+
 async function updateUserDescription({ db, projectId, targetUserId, actorUserId, description, feedUser = null }) {
     if (!db) {
         throw new Error('Database instance is required')
@@ -162,6 +217,16 @@ async function updateUserDescription({ db, projectId, targetUserId, actorUserId,
     })
 
     await batch.commit()
+
+    await writeGlobalUserDescriptionFeed({
+        db,
+        userData,
+        targetUserId,
+        actorUserId,
+        newDescription: normalizedDescription,
+        oldDescription: currentGlobalDescription,
+        feedUser,
+    })
 
     return {
         success: true,

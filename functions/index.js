@@ -5452,29 +5452,9 @@ exports.onUpdateOkrAccessProjectionSecondGen = onDocumentUpdated(
     },
     async event => {
         if (accessProjectionOnly(event)) return
-        await Promise.all([synchronizeAccessProjection(event), reconcileOkrFeedPrivacy(event)])
+        await synchronizeAccessProjection(event)
     }
 )
-
-// An OKR has no feed object of its own: the entries the OKR tools write are lines on the project,
-// each carrying the OKR's audience (OKRs/okrToolFeeds.js). When the OKR turns private (or public)
-// they follow. Never fails the trigger, like reconcileFeedPrivacy above.
-function reconcileOkrFeedPrivacy(event) {
-    const { reconcileOkrFeedPrivacyOnUpdate } = require('./OKRs/okrToolFeeds')
-    const { projectId, okrId } = event.params
-    return reconcileOkrFeedPrivacyOnUpdate({
-        projectId,
-        okrId,
-        before: event.data.before.data() || {},
-        after: event.data.after.data() || {},
-    }).catch(error =>
-        console.error('[feeds privacy] Could not reconcile the Updates entries of an OKR', {
-            projectId,
-            okrId,
-            error: error.message,
-        })
-    )
-}
 
 exports.onCreateProjectFeedAccessProjectionSecondGen = onDocumentCreated(
     {

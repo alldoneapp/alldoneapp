@@ -363,12 +363,14 @@ describe('microsoftCalendarProvider automatic Teams conferencing', () => {
         await updateMicrosoftCalendarEventForAssistantRequest({ ...args, scope: 'series' })
         expect(request.mock.calls[2][0]).toBe('/me/events/master')
         expect(request.mock.calls[2][1].method).toBe('PATCH')
-        await deleteMicrosoftCalendarEventForAssistantRequest({
+        const deleted = await deleteMicrosoftCalendarEventForAssistantRequest({
             userId: 'user-1',
             eventId: 'instance',
             scope: 'occurrence',
         })
         expect(request.mock.calls[4][0]).toBe('/me/events/instance')
+        // Start of what was deleted, for the Updates entry (MCP feed parity).
+        expect(deleted.start).toEqual({ dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' })
         await deleteMicrosoftCalendarEventForAssistantRequest({
             userId: 'user-1',
             eventId: 'instance',

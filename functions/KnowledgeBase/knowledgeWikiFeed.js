@@ -6,10 +6,6 @@
 // covered without any of them knowing about feeds, and a page write is never slowed down or failed
 // by the fan-out.
 //
-// It also writes the line for a source a member hands the wiki or takes back (publishWikiSourceFeed:
-// a document added or removed, knowledge saved or removed), at the moment they ask for it; the page
-// revisions that follow come from an ingest run and are credited to the wiki.
-//
 // What a change does in the feed:
 //   - it is listed in the project's "All" tab, and in "Followed" for the wiki's owner (who switched
 //     it on and pays for it), for the member who made it and for anyone following the wiki;
@@ -37,16 +33,13 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getKnowledgeBasePath } = require('./knowledgeBaseModel')
 const {
     FEED_WIKI_PAGE_CHANGED,
-    FEED_WIKI_SOURCE_CHANGED,
     WIKI_CHANGE_ENTRY_TEXTS,
-    WIKI_SOURCE_CHANGE_ENTRY_TEXTS,
     WIKI_AUTOMATIC_CHANGES_COUNTER_ID,
     WIKI_FEED_AUTHOR_ID,
     WIKI_FEED_OBJECT_ID,
     WIKI_FEED_OBJECTS_TYPE,
     WIKI_SLUG_PATTERN,
     buildWikiFeedId,
-    buildWikiSourceFeedId,
     generateWikiFeedObjectModel,
     getWikiChangeAuthorId,
     getWikiChangeKind,
@@ -123,15 +116,17 @@ async function readMembersBadgedOnDay({ db, projectId, userIds, getTab, dateForm
     }
 }
 
-// Who sees a wiki line: the members; in "Followed" the wiki's owner (who switched it on and pays for
-// it), the member who made the change and anyone following the wiki.
-async function loadWikiFeedAudience(db, projectId, authorId) {
+async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
+    const built = buildWikiRevisionFeed({ slug, revision })
+    if (!projectId || !built) return { published: false, reason: 'invalid' }
+    const { feedId, feed, authorId } = built
+
     const [project, knowledgeBase, followers] = await Promise.all([
         readData(db, `projects/${projectId}`),
         readData(db, getKnowledgeBasePath(projectId)),
         readData(db, `followers/${projectId}/${WIKI_FEED_OBJECTS_TYPE}/${WIKI_FEED_OBJECT_ID}`),
     ])
-    if (!project) return null
+    if (!project) return { published: false, reason: 'no-project' }
 
     const memberIds = uniq((Array.isArray(project.userIds) ? project.userIds : []).filter(isRealUserId))
     const isMember = userId => memberIds.includes(userId)
@@ -141,57 +136,11 @@ async function loadWikiFeedAudience(db, projectId, authorId) {
         authorId,
     ]).filter(isMember)
     const getCounterTab = userId => (followerIds.includes(userId) ? 'followed' : 'all')
-    return { memberIds, followerIds, getCounterTab }
-}
 
-// Cloud Functions run in UTC, and that is the day the client falls back to when it looks the object
-// up (utils/backends/Feeds/feedObjectDate.js). The counters record it explicitly.
-const getWikiFeedDay = lastChangeDate => moment.utc(lastChangeDate).format('DDMMYYYY')
-
-async function commitWikiFeed({
-    db,
-    projectId,
-    feedId,
-    feed,
-    followerIds,
-    notifiedIds,
-    counterId,
-    getCounterTab,
-    dateFormated,
-}) {
+    // Cloud Functions run in UTC, and that is the day the client falls back to when it looks the
+    // object up (utils/backends/Feeds/feedObjectDate.js). The counters record it explicitly.
+    const dateFormated = moment.utc(feed.lastChangeDate).format('DDMMYYYY')
     const feedObject = generateWikiFeedObjectModel(feed.lastChangeDate)
-    const batch = new BatchWrapper(db)
-    batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${WIKI_FEED_OBJECT_ID}`), feedObject, {
-        merge: true,
-    })
-    batch.set(
-        db.doc(`feedsObjectsLastStates/${projectId}/${WIKI_FEED_OBJECTS_TYPE}/${WIKI_FEED_OBJECT_ID}`),
-        feedObject,
-        { merge: true }
-    )
-    batch.set(db.doc(`feedsStore/${projectId}/all/${feedId}`), feed, { merge: true })
-    followerIds.forEach(userId => {
-        batch.set(db.doc(`feedsStore/${projectId}/${userId}/feeds/followed/${feedId}`), feed, { merge: true })
-    })
-    const counterEntry = {
-        [WIKI_FEED_OBJECTS_TYPE]: { [WIKI_FEED_OBJECT_ID]: { [counterId]: { dateFormated, feed } } },
-    }
-    notifiedIds.forEach(userId => {
-        batch.set(db.doc(getCounterPath(projectId, userId, getCounterTab(userId))), counterEntry, { merge: true })
-    })
-    await batch.commit()
-}
-
-async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
-    const built = buildWikiRevisionFeed({ slug, revision })
-    if (!projectId || !built) return { published: false, reason: 'invalid' }
-    const { feedId, feed, authorId } = built
-
-    const audience = await loadWikiFeedAudience(db, projectId, authorId)
-    if (!audience) return { published: false, reason: 'no-project' }
-    const { memberIds, followerIds, getCounterTab } = audience
-
-    const dateFormated = getWikiFeedDay(feed.lastChangeDate)
 
     // A member's change badges the others with its own line; one their MCP client made badges them
     // as well. The wiki's own changes share one slot per member and day (see the header).
@@ -212,69 +161,27 @@ async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
         counterId = WIKI_AUTOMATIC_CHANGES_COUNTER_ID
     }
 
-    await commitWikiFeed({
-        db,
-        projectId,
-        feedId,
-        feed,
-        followerIds,
-        notifiedIds,
-        counterId,
-        getCounterTab,
-        dateFormated,
+    const batch = new BatchWrapper(db)
+    batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${WIKI_FEED_OBJECT_ID}`), feedObject, {
+        merge: true,
     })
-
-    return { published: true, feedId, followerIds, notifiedIds }
-}
-
-function buildWikiSourceFeed({ kind, sourceId, feedUser, now }) {
-    const feedId = buildWikiSourceFeedId(kind, sourceId)
-    const actorId = typeof feedUser?.uid === 'string' ? feedUser.uid : ''
-    if (!feedId || !actorId) return null
-    return {
-        feedId,
-        actorId,
-        feed: {
-            type: FEED_WIKI_SOURCE_CHANGED,
-            lastChangeDate: Number(now) || Date.now(),
-            creatorId: actorId,
-            objectId: WIKI_FEED_OBJECT_ID,
-            isPublicFor: [FEED_PUBLIC_FOR_ALL],
-            entryText: WIKI_SOURCE_CHANGE_ENTRY_TEXTS[kind],
-            wikiSourceChange: kind,
-            ...getActorChannelFields(feedUser),
-        },
+    batch.set(
+        db.doc(`feedsObjectsLastStates/${projectId}/${WIKI_FEED_OBJECTS_TYPE}/${WIKI_FEED_OBJECT_ID}`),
+        feedObject,
+        { merge: true }
+    )
+    batch.set(db.doc(`feedsStore/${projectId}/all/${feedId}`), feed, { merge: true })
+    followerIds.forEach(userId => {
+        batch.set(db.doc(`feedsStore/${projectId}/${userId}/feeds/followed/${feedId}`), feed, { merge: true })
+    })
+    const counterEntry = {
+        [WIKI_FEED_OBJECTS_TYPE]: { [WIKI_FEED_OBJECT_ID]: { [counterId]: { dateFormated, feed } } },
     }
-}
-
-/**
- * A line for a source a member handed the wiki or took back (a document, saved knowledge), written
- * when they asked - the pages it changes follow in an ingest run credited to the wiki. `feedUser` is
- * the actor: the member, with the MCP marker over MCP, or the assistant. Like any member's change it
- * badges every other member, and the member themselves when their MCP client made it; an
- * assistant is not a member, so everybody is badged.
- */
-async function publishWikiSourceFeed({ db, projectId, kind, sourceId, feedUser, now = Date.now() }) {
-    const built = buildWikiSourceFeed({ kind, sourceId, feedUser, now })
-    if (!projectId || !built) return { published: false, reason: 'invalid' }
-    const { feedId, feed, actorId } = built
-
-    const audience = await loadWikiFeedAudience(db, projectId, actorId)
-    if (!audience) return { published: false, reason: 'no-project' }
-    const { memberIds, followerIds, getCounterTab } = audience
-    const notifiedIds = memberIds.filter(userId => userId !== actorId || isMcpActor(feed))
-
-    await commitWikiFeed({
-        db,
-        projectId,
-        feedId,
-        feed,
-        followerIds,
-        notifiedIds,
-        counterId: feedId,
-        getCounterTab,
-        dateFormated: getWikiFeedDay(feed.lastChangeDate),
+    notifiedIds.forEach(userId => {
+        batch.set(db.doc(getCounterPath(projectId, userId, getCounterTab(userId))), counterEntry, { merge: true })
     })
+    await batch.commit()
+
     return { published: true, feedId, followerIds, notifiedIds }
 }
 
@@ -297,8 +204,6 @@ async function onKnowledgePageRevisionCreated({ db, projectId, slug, revision })
 
 module.exports = {
     buildWikiRevisionFeed,
-    buildWikiSourceFeed,
     publishWikiRevisionFeed,
-    publishWikiSourceFeed,
     onKnowledgePageRevisionCreated,
 }
