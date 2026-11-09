@@ -2926,6 +2926,8 @@
     "Create assistant": "Assistenten anlegen",
     "Update assistant": "Assistenten ändern",
     "Create scheduled assistant task": "Geplanten Assistenten-Task anlegen",
+    "List scheduled assistant tasks": "Geplante Assistenten-Tasks anzeigen",
+    "Update scheduled assistant task": "Geplanten Assistenten-Task ändern",
     "Open a web page": "Webseite öffnen",
     "Look at a web page": "Webseite ansehen",
     "Click on a web page": "Auf einer Webseite klicken",

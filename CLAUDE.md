@@ -1560,11 +1560,12 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Five MCP-only tools in
+**MCP can set up a workspace, and nothing else configures one over MCP.** Seven MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
 `create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
-`update_assistant` (name, description, instructions, model, Tools Access) and
-`create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
+`update_assistant` (name, description, instructions, model, Tools Access), `create_assistant_task`
+(a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
+`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, pause/resume for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1588,6 +1589,14 @@ instructions alone would never reach its schedules. `update_assistant` therefore
 copy of every task of that assistant whose copy still equals the OLD instructions; a task whose copy
 somebody edited keeps it. Tool changes keep list entries that are not Tools Access keys (written by
 older app versions), and a call that changes nothing writes nothing and spends no quota.
+
+`update_assistant_task` keeps the stored start date when only `startTime` changes: the start date is
+the anchor of the rhythm (a weekly task runs on that date's weekday), and `buildSchedule` would
+otherwise default it to today. The rhythm is stored per user (`recurrenceByUser`) next to the task's
+default and follows the caller; pausing removes the caller from `activatedUserIds` and
+`recurrenceByUser`, the same fields the scheduler (`assistantRecurringTasks.js`) reads on every tick,
+so nothing else has to be recomputed. Edits carry `lastEditedVia`. Pinned by the
+`get_assistant_tasks and update_assistant_task` block of `mcpWorkspaceSetupTools.test.js`.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 
