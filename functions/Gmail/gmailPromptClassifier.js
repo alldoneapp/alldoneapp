@@ -19,7 +19,6 @@ const { resolveClassifierClient } = require('../Assistant/classifierModelClient'
 const {
     GMAIL_ACTIONABILITY_GUIDANCE,
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
-    GMAIL_NEEDS_REPLY_GUIDANCE,
     buildClassifierLabelDefinitions,
     buildClassifierMessage,
     buildDecisionGuidance,
@@ -33,8 +32,7 @@ const {
 const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
     'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. ' +
     GMAIL_ACTIONABILITY_GUIDANCE +
-    GMAIL_NEEDS_REPLY_GUIDANCE +
-    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, needsReply, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
+    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT6_SOL',
@@ -138,8 +136,6 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
     const reasoning = typeof result?.reasoning === 'string' ? result.reasoning.trim() : ''
     const matched = rawMatched && !!labelKey
     const followUpType = result?.followUpType === 'actionable' ? 'actionable' : 'informational'
-    // Only an explicit true counts: a model that omits the field answered "no reply needed".
-    const needsReply = result?.needsReply === true
     const usage = result?.usage || null
 
     // rawLabelKey/rawMatched preserve the model's pre-coercion decision so demotions are
@@ -153,7 +149,6 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
             confidence,
             reasoning: reasoning || 'No configured label clearly matched.',
             followUpType,
-            needsReply,
             usage,
         }
     }
@@ -166,7 +161,6 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
         confidence,
         reasoning,
         followUpType,
-        needsReply,
         usage,
     }
 }
@@ -354,7 +348,6 @@ async function verifyClassificationConsistency(
                 confidence: firstResult.confidence,
                 reasoning: firstResult.reasoning,
                 followUpType: firstResult.followUpType,
-                needsReply: !!firstResult.needsReply,
             },
             null,
             2
@@ -363,7 +356,7 @@ async function verifyClassificationConsistency(
         `${buildNoMatchResponseGuidance(
             config
         )} The reasoning must be consistent with the final labelKey you choose. ` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","needsReply":false,"confidence":0.92,"reasoning":"..."}.'
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}.'
 
     const { parsed, usage } = await runClassifierCompletion(openai, {
         selectedModel,
@@ -385,13 +378,7 @@ async function verifyClassificationConsistency(
         isOpenRouter,
     })
 
-    // The auditor exists to fix the LABEL. When it leaves needsReply out, keep the first pass's
-    // answer instead of letting the omission read as "no reply needed".
-    const auditParsed =
-        parsed && typeof parsed === 'object' && typeof parsed.needsReply !== 'boolean'
-            ? { ...parsed, needsReply: !!firstResult.needsReply }
-            : parsed
-    const verified = coerceClassifierResult({ ...auditParsed }, labelDefinitions, confidenceThreshold)
+    const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
     return { verified, usage, parsed }
 }
 
@@ -409,7 +396,6 @@ async function classifyGmailMessage({ config, message }) {
             confidence: 0,
             reasoning: 'Classifier unavailable or no labels configured.',
             followUpType: 'informational',
-            needsReply: false,
         }
     }
 

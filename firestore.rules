@@ -839,18 +839,9 @@ service cloud.firestore {
         canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) &&
         accessProjectionUnchanged() &&
-        taskIdentityFieldsBoundToWriter(resource.data, request.resource.data) &&
-        replyTaskMessageDataUnchanged();
+        taskIdentityFieldsBoundToWriter(resource.data, request.resource.data);
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-    }
-
-    // A reply task's messageData (UNIFIED_INBOX_PLAN.md) says which conversation the task answers
-    // and whether it still needs a reply. Only Cloud Functions change it. A create may carry it,
-    // because moving a task to another project re-creates the document in the browser; the send
-    // path therefore only ever replies from the caller's own connected account.
-    function replyTaskMessageDataUnchanged() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageData']);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {

@@ -995,9 +995,6 @@ function getTargetContactEmail(
     return incomingSender?.email || ''
 }
 
-const NEEDS_REPLY_TASK_INSTRUCTION =
-    'Needs reply: yes. The user owes the sender a written answer. Create exactly one task for it, titled "Reply to [sender first name]: [what they ask, in a few words]", in the language of the email. The server makes it a private reply task; do not draft the reply here.'
-
 function buildPostLabelAssistantMessages({
     prompt,
     normalizedMessage,
@@ -1008,7 +1005,6 @@ function buildPostLabelAssistantMessages({
     targetContactName = '',
     followUpType = 'informational',
     classificationReasoning = '',
-    needsReply = false,
 }) {
     const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
     const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
@@ -1026,7 +1022,6 @@ function buildPostLabelAssistantMessages({
                     `Matched Gmail label: ${selectedDefinition.gmailLabelName}`,
                     `Matched Gmail direction scope: ${getDefinitionDirectionScope(selectedDefinition)}`,
                     `Follow-up type: ${followUpType === 'actionable' ? 'actionable' : 'informational'}`,
-                    ...(needsReply ? [NEEDS_REPLY_TASK_INSTRUCTION] : []),
                     `Classification reasoning: ${classificationReasoning || ''}`,
                     `Gmail messageId: ${normalizedMessage.messageId || ''}`,
                     `Gmail threadId: ${normalizedMessage.threadId || ''}`,
@@ -1062,7 +1057,6 @@ function buildPostLabelGmailContext({
     followUpType = 'informational',
     taskSuggestionComment = '',
     archivedByLabeling = false,
-    needsReply = false,
     threadTopic = null,
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
@@ -1102,9 +1096,6 @@ function buildPostLabelGmailContext({
             : {}),
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
         taskSuggestionComment: typeof taskSuggestionComment === 'string' ? taskSuggestionComment.trim() : '',
-        // Read by create_task: a task created from this run is a private reply task carrying
-        // messageData, which puts it in the Messages section (UNIFIED_INBOX_PLAN.md).
-        needsReply: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && needsReply === true,
         ...(unsubscribe ? { unsubscribe } : {}),
     }
 }
@@ -1268,16 +1259,7 @@ async function executePostLabelPrompt({
     selectedProjectId = null,
     consistencyCheck = null,
     archivedByLabeling = false,
-    needsReply = false,
 }) {
-    // A later email in a thread that already has a task reopens a done task only when it asks
-    // something of the user (decided 2026-11-09, changes the AT-2709 rule): a plain "thanks" is
-    // added as a comment and the task stays done. Decided from the classification before
-    // needsReply forces the run below to treat the email as actionable.
-    const reopenOnNewEmail = followUpType === 'actionable' || needsReply === true
-    // Owing someone an answer is work: the run creates a (reply) task for it like for any
-    // actionable email, and create_task stamps it as a reply task from gmailContext.needsReply.
-    if (needsReply) followUpType = 'actionable'
     const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
     let { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
@@ -1332,8 +1314,6 @@ async function executePostLabelPrompt({
             gmailData: threadGmailData,
             sentByOwner: isOutgoing,
             context: normalizedMessage,
-            reopenOnNewEmail,
-            needsReply,
             actor: async () => {
                 const author = await resolvePostLabelAssistantContext(userId, userData)
                 return {
@@ -1481,7 +1461,6 @@ async function executePostLabelPrompt({
             targetContactName,
             followUpType,
             classificationReasoning: reasoning,
-            needsReply,
         })
     )
 
@@ -1502,7 +1481,6 @@ async function executePostLabelPrompt({
                 ? 'This email needs a separate review because its thread matches several existing tasks and the correct task is unclear.'
                 : buildPostLabelTaskSuggestionComment(normalizedMessage),
             archivedByLabeling,
-            needsReply: needsReply && !ambiguousThread,
             threadTopic: routedThreadTopic,
         })
         gmailContext.emailContext = normalizedMessage
@@ -1773,8 +1751,6 @@ async function processSingleMessage({
             connectionProjectId: goldProjectId,
             selectedProjectId: existingAuditEntry.selectedProjectId,
             archivedByLabeling: existingAuditEntry.archived,
-            followUpType: existingAuditEntry.followUpType === 'actionable' ? 'actionable' : 'informational',
-            needsReply: existingAuditEntry.needsReply === true,
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             postLabelAction: action,
@@ -1874,9 +1850,6 @@ async function processSingleMessage({
         : 0
 
     const followUpType = classifierResult.followUpType === 'actionable' ? 'actionable' : 'informational'
-    // Mail the user sent never needs the user's own reply. The email line's "needs reply" count
-    // reads this flag from the audit record (loadNeedsReplyFlagsFromAudit).
-    const needsReply = direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && classifierResult.needsReply === true
 
     // Charge the real token-based cost in a single ledger entry. If tokens round
     // to 0 Gold we still charge a minimum of 1 so usage is reflected somewhere.
@@ -1939,7 +1912,6 @@ async function processSingleMessage({
             connectionId: projectId,
             connectionProjectId: goldProjectId,
             followUpType,
-            needsReply,
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
@@ -1950,7 +1922,6 @@ async function processSingleMessage({
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
             followUpType,
-            needsReply,
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
@@ -2043,7 +2014,6 @@ async function processSingleMessage({
             selectedProjectId,
             consistencyCheck: classifierResult.consistencyCheck || null,
             archivedByLabeling: modifyResult.archived,
-            needsReply,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0
@@ -2063,7 +2033,6 @@ async function processSingleMessage({
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
         followUpType,
-        needsReply,
         consistencyCheck: classifierResult.consistencyCheck || null,
         applied: modifyResult.applied,
         archived: modifyResult.archived,

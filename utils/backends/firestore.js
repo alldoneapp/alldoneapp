@@ -3869,10 +3869,6 @@ export function mapTaskData(taskId, task) {
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
         gmailData: task.gmailData ? task.gmailData : null,
-        // Reply tasks only (UNIFIED_INBOX_PLAN.md). Kept off every other task on purpose: the
-        // rules refuse any client update that changes messageData, and turning "absent" into
-        // null through a full-document write would count as a change.
-        ...(task.messageData ? { messageData: task.messageData } : {}),
         timesPostponed: task.timesPostponed ?? 0,
         timesFollowed: task.timesFollowed ?? 0,
         timesDoneInExpectedDay: task.timesDoneInExpectedDay ?? 0,

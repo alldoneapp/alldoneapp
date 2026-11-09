@@ -40,10 +40,6 @@ async function appendSentMessageToTask({ database, userId, userData, identity, s
     }
 }
 
-// `reopenOnNewEmail`: whether this email may reopen a done task. Callers that know the email's
-// classification pass it (the labeling sync: actionable or needs a reply); the explicit
-// "Create task" action leaves the default, since the user asked for the task themselves.
-// `needsReply`: the email asks the user for an answer, which turns a reply task back on.
 async function continueEmailThread({
     database,
     userId,
@@ -53,8 +49,6 @@ async function continueEmailThread({
     actor,
     fromAssistant = false,
     sentByOwner = false,
-    reopenOnNewEmail = true,
-    needsReply = false,
 }) {
     const identity = getEmailIdentity(userId, gmailData)
     if (!identity) return null
@@ -117,8 +111,6 @@ async function continueEmailThread({
             projectIds,
             plan: {
                 ...summary.plan,
-                reopen: reopenOnNewEmail !== false,
-                needsReply: needsReply === true,
                 expected: {
                     name: selected.task.name,
                     dueDate: selected.task.dueDate,

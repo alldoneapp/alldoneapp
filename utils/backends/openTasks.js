@@ -72,10 +72,6 @@ export const ACTIVE_GOALS_INDEX = 9
 // They stay in MAIN_TASK_INDEX.
 export const CALENDAR_TASK_INDEX = 10
 export const EMPTY_SECTION_INDEX = 11
-// Conversations that need the user's reply (UNIFIED_INBOX_PLAN.md): a task carrying
-// `messageData.needsReply` gets its own "Messages" section, like meetings get the Calendar one.
-// Newest message first, never priority-sorted.
-export const MESSAGE_TASK_INDEX = 12
 
 export const NOT_PARENT_GOAL_INDEX = '0'
 
@@ -915,7 +911,7 @@ const watchUserOpenTasks = (
                 callback(openTasksArray, !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]], !areObservedTasks)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]], !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
                 batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
@@ -1079,16 +1075,13 @@ const watchUserOpenTasks = (
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
-    const { genericData, suggestedBy, userIds, calendarData, messageData } = task
+    const { genericData, suggestedBy, userIds, calendarData } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
     // The assistant page intentionally has one timeline. A workflow task that is currently being
     // handled by this assistant must therefore render like a regular task even when its workflow
     // history already contains multiple reviewers.
     if (assistantProfileMode && task.workflowTask === true) return MAIN_TASK_INDEX
-    // A reply task stays in Messages even when the assistant suggested it: owing someone an answer
-    // is what the user needs to see, and the row keeps its suggestion controls.
-    if (!assistantProfileMode && messageData?.needsReply === true && userIds.length <= 1) return MESSAGE_TASK_INDEX
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
@@ -1412,24 +1405,16 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
             // AT-2377: the Calendar section orders its own tasks chronologically by event start, so
             // priority must not reshuffle them here.
             storedTasks[date][taskTypeIndex][taskParentGoalId] =
-                taskTypeIndex === CALENDAR_TASK_INDEX
-                    ? taskList
-                    : taskTypeIndex === MESSAGE_TASK_INDEX
-                      ? sortTasksByLastMessage(taskList)
-                      : sortTasksByPriority(taskList)
+                taskTypeIndex === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         }
     }
 }
-
-// Newest conversation first; a task without a timestamp keeps its place at the end.
-export const sortTasksByLastMessage = taskList =>
-    [...taskList].sort((a, b) => (b?.messageData?.lastMessageAt || 0) - (a?.messageData?.lastMessageAt || 0))
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
     const openTasksArray = storedTasks[dayDateFormated]
         ? []
-        : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]]
+        : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]]
 
     for (let i = 0; i < tasksByDateAndStep.length; i++) {
         const dateElement = tasksByDateAndStep[i]
@@ -1480,12 +1465,11 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
         }
 
         const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
-        const messageTasks = taskByType[MESSAGE_TASK_INDEX] ? Object.entries(taskByType[MESSAGE_TASK_INDEX]) : []
 
         // A goal counts as empty only when NOTHING renders under it. Calendar tasks are grouped by
         // goal inside the Calendar section, so a goal holding only meetings has visible content and
         // must not also be listed as an empty goal - it would render its header twice.
-        const goalIdsWithTasks = new Set([...mainTasks, ...calendarTasks, ...messageTasks].map(data => data[0]))
+        const goalIdsWithTasks = new Set([...mainTasks, ...calendarTasks].map(data => data[0]))
         const emptyGoals = activeGoals.filter(goal => !goalIdsWithTasks.has(goal.id))
 
         openTasksArray.push([
@@ -1501,7 +1485,6 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             activeGoals,
             calendarTasks,
             emptyGoals,
-            messageTasks,
         ])
     }
 
@@ -1923,7 +1906,7 @@ const watchStreamAndUserOpenTasks = (
                         })
                     )
                 } else if (Object.keys(storedTasks).length === 0) {
-                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]])
+                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
                     batchDispatch(setOpenTasksMap(projectId, {}))
                 }
 
@@ -2083,7 +2066,7 @@ function watchEmptyGoals(
                     if (progress === DYNAMIC_PERCENT && dynamicProgress === 100) return
                 })
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]])
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
             }
             cacheChanges = []
         }
@@ -2426,21 +2409,11 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             })
         }
 
-        let currentMessageTasksCount = 0
-        if (originalTasksByDate[MESSAGE_TASK_INDEX]) {
-            originalTasksByDate[MESSAGE_TASK_INDEX].forEach(tasksByGoal => {
-                if (tasksByGoal && Array.isArray(tasksByGoal[1])) {
-                    currentMessageTasksCount += tasksByGoal[1].length
-                }
-            })
-        }
-
         // Check if this date should be included in the output
         const shouldInclude =
             currentMainTasksCount > 0 ||
             currentSuggestedTasksCount > 0 ||
             currentCalendarTasksCount > 0 ||
-            currentMessageTasksCount > 0 ||
             currentWorkflowTasksCount > 0 ||
             currentEmptyGoalsCount > 0
 
@@ -2454,20 +2427,17 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
                 currentMainTasksCount +
                 currentSuggestedTasksCount +
                 currentCalendarTasksCount +
-                currentMessageTasksCount +
                 currentWorkflowTasksCount
 
             // AT-2377: the show-more arrow must not appear on a day that hides nothing but meetings,
             // which always render in full inside the Calendar section.
-            // Messages render in full in their own section too, so they count here like meetings.
-            newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount + currentMessageTasksCount > 0
+            newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount > 0
             newTasksByDateEntry.nonCalendarTasksCount =
                 currentMainTasksCount + currentSuggestedTasksCount + currentWorkflowTasksCount
 
             // Preserve task types that should be VISIBLE in "All Projects" view
             newTasksByDateEntry[MAIN_TASK_INDEX] = originalTasksByDate[MAIN_TASK_INDEX] || []
             newTasksByDateEntry[CALENDAR_TASK_INDEX] = originalTasksByDate[CALENDAR_TASK_INDEX] || []
-            newTasksByDateEntry[MESSAGE_TASK_INDEX] = originalTasksByDate[MESSAGE_TASK_INDEX] || []
             newTasksByDateEntry[SUGGESTED_TASK_INDEX] = originalTasksByDate[SUGGESTED_TASK_INDEX] || [] // Display suggested tasks
             newTasksByDateEntry[WORKFLOW_TASK_INDEX] = originalTasksByDate[WORKFLOW_TASK_INDEX] || [] // Display workflow tasks
 

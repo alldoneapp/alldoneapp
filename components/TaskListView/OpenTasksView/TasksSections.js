@@ -9,7 +9,6 @@ import store from '../../../redux/store'
 import {
     CALENDAR_TASK_INDEX,
     MENTION_TASK_INDEX,
-    MESSAGE_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
@@ -20,7 +19,6 @@ import OriginallyFromSectionList from './OriginallyFromSectionList'
 import ObservedFromSectionList from './ObservedFromSectionList'
 import StreamAndUserTasksSectionList from './StreamAndUserTasksSectionList'
 import CalendarSectionContainer from './CalendarSectionContainer'
-import MessagesSection from './MessagesSection'
 
 export default function TasksSections({
     projectId,
@@ -49,9 +47,6 @@ export default function TasksSections({
     )
     const calendarTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length
-    )
-    const messageTasksAmount = useSelector(
-        state => (state.filteredOpenTasksStore[instanceKey][dateIndex][MESSAGE_TASK_INDEX] || []).length
     )
 
     const beforeCapture = dragData => {
@@ -99,15 +94,6 @@ export default function TasksSections({
 
             {receivedFromTasksSectionsAmount > 0 && (
                 <OriginallyFromSectionList
-                    projectId={projectId}
-                    dateIndex={dateIndex}
-                    instanceKey={instanceKey}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                />
-            )}
-
-            {!assistantProfileMode && messageTasksAmount > 0 && (
-                <MessagesSection
                     projectId={projectId}
                     dateIndex={dateIndex}
                     instanceKey={instanceKey}

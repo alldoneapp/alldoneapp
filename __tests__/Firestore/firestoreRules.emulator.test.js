@@ -3068,23 +3068,6 @@ describe('task identity fields', () => {
         await assertSucceeds(updateDoc(taskRef(memberDb(), 'calendar-3'), { name: 'Renamed' }))
     })
 
-    // UNIFIED_INBOX_PLAN.md: only Cloud Functions change a reply task's messageData.
-    it('refuses client changes to a reply task messageData', async () => {
-        const messageData = { provider: 'gmail', needsReply: true, lastMessageAt: 100 }
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await setDoc(taskRef(context.firestore(), 'reply-1'), baseTask({ messageData }))
-        })
-        await assertFails(updateDoc(taskRef(memberDb(), 'reply-1'), { 'messageData.needsReply': false }))
-        await assertFails(updateDoc(taskRef(memberDb(), 'reply-1'), { messageData: null }))
-        // Every other edit, completing the task included, still works.
-        await assertSucceeds(updateDoc(taskRef(memberDb(), 'reply-1'), { name: 'Renamed', done: true }))
-        // A project move re-creates the document in the browser, so a create may carry it.
-        await assertSucceeds(setDoc(taskRef(memberDb(), 'reply-2'), baseTask({ messageData })))
-        // An ordinary task cannot gain it later.
-        await assertSucceeds(setDoc(taskRef(memberDb(), 'plain-1'), baseTask()))
-        await assertFails(updateDoc(taskRef(memberDb(), 'plain-1'), { messageData }))
-    })
-
     it('binds the workflow payer and the prompt override author to the writer', async () => {
         await assertFails(setDoc(taskRef(memberDb(), 'workflow-1'), baseTask({ workflowPayerUserId: TEAMMATE_ID })))
         await assertSucceeds(setDoc(taskRef(memberDb(), 'workflow-2'), baseTask({ workflowPayerUserId: MEMBER_ID })))
