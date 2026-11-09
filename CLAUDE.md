@@ -1524,6 +1524,20 @@ edits a member makes straight in Firestore are derived by the update trigger und
 trigger event, so a redelivery overwrites instead of duplicating; an update that moved the current
 version records nothing there, because the commit already wrote its entry.
 
+**Every history event a person decided is also an Updates entry, from every source** (app upload,
+assistant tool, MCP client, VM job; `Artifacts/artifactFeeds.js`, card `FeedsObjects/ArtifactObject.js`,
+object type `artifact` / `artifacts`). The entry is written where its history event is (after the
+commit, restore, public-link and live-data transactions; metadata edits from the update trigger)
+under an id derived from the history entry's id, so retries overwrite. Rotated or withdrawn links
+get none. The actor is the user, with the MCP marker, or the assistant: assistant metadata edits
+stamp `lastEditorAssistant` bound to the edition, like `lastEditorVia`. A deleted document names no
+deleter, so the app and `delete_artifact` first write `deletedBy` in a separate write; the update
+trigger ignores that stamp-only update, and the delete trigger names the stamp (no stamp, no entry).
+Entries carry the artifact's `isPublicFor`; a change of audience re-privatises them
+(`reconcileFeedPrivacy(event, 'artifacts')`) and the earlier day cards. No
+`feedsObjectsLastStates` copy is written, because every member can read it; the client rebuilds a
+missing card from the artifact, and `get_updates` takes the title from the artifact.
+
 **Live project data hands viewer data to model-written code, and four rules keep that safe**
 (`Artifacts/artifactDataBridge.js`, host in `useArtifactDataBridge.js`, queries in
 `artifactBridgeData.js`). (1) The locked-down CSP follows the **address** (`?alldone-bridge=1`), not the
@@ -1604,9 +1618,8 @@ for an assistant. Three rules keep agents from making a mess:
 
 The documents are built field for field like the app's own forms (`getNewDefaultProject`,
 `getNewDefaultAssistant`, `PreConfigTaskModal`). An assistant task stores its start the same way the
-form does: the UTC instant of the local start, the local `HH:mm` and the offset. Every change writes
-its Updates entry (see "Every change made over MCP shows in Updates" below); `onCreateProject` still
-runs. Assistant tasks are `direct` mode only. Each tool
+form does: the UTC instant of the local start, the local `HH:mm` and the offset. A project gets no
+project-created feed; `onCreateProject` still runs. Assistant tasks are `direct` mode only. Each tool
 is its own switch under Settings → MCP. Pinned by `functions/MCP/mcpWorkspaceSetupTools.test.js`.
 
 A scheduled assistant task runs on its own copy of the instructions (`aiSystemMessage`, copied at
@@ -1643,52 +1656,6 @@ assistants. `false` clears both when the assistant is the current one. Only assi
 itself, not global ones, and no "changed project assistant" Updates entry (the client writes that one;
 the setup tools write no feeds). Pinned by the `project assistant` block of
 `mcpWorkspaceSetupTools.test.js`.
-
-### Every change made over MCP shows in Updates (decision 2026-11-09)
-
-**Rule:** a change an MCP client makes to Alldone data writes an Updates (activity feed) entry, and
-because MCP and assistant tools run the same code, so does the same change made by an assistant (the
-actor is then the assistant). Over MCP the actor is the user with the MCP marker, so the line reads
-"Karsten Wysk (via Claude)". **Not entries:** private user memory, comments (they show as comments
-already) and sign-in data. **Gmail and Calendar actions are entries**, visible to the members of the
-project the connection belongs to (Karsten's choice over "only me"): subject or title, recipients or
-attendees, labels and times, never a body, an event description or Bcc. A new tool that writes must
-write its entry too; leaving one out needs a reason in this section.
-
-Where the entries are written, all best-effort after the change (a failed entry is logged and never
-fails the change), each loading the feed state first like `Goals/goalToolFeeds.js`:
-
-- **Assistants and projects** (`Feeds/workspaceChangeFeeds.js`): project created, contact statuses
-  added, project assistant switched, assistant created (the person who asked follows it), one entry
-  per changed assistant field (name, description, picture, instructions, model, temperature, voice,
-  delegation description, Tools Access) from `update_assistant` and `update_assistant_settings`
-  alike, heartbeat settings, scheduled assistant tasks created or changed (on the assistant). A
-  global assistant gets none, as in the app. Callers in `assistantHelper.js` pass `getFeedUser`, so
-  the actor is looked up only when an entry is written.
-- **Contacts and moves**: every field `update_contact` changes (`contactUpdateHelper.js`), a contact
-  created on the fly ("added", `resolveContactTarget` takes `feedUser`), task and note project moves
-  over a tool (their existing "moved" entries, now with the tool's actor), and the global user
-  description (on the user in the default project).
-- **Goals, milestones, OKRs, wiki**: goal date and scheduling changes (`FEED_GOAL_MILESTONE_CHANGED`),
-  milestones and OKRs on the project (`Feeds/projectEntryFeeds.js`, which narrows a private entry to
-  its audience; an OKR's later privacy change rewrites its entries in
-  `onUpdateOkrAccessProjectionSecondGen`), and wiki sources (documents, saved knowledge) as
-  `FEED_WIKI_SOURCE_CHANGED` lines on the wiki that carry **no** title or text, for the same reason
-  wiki revision lines carry none.
-- **Gmail and Calendar** (`Feeds/integrationToolFeeds.js`, one hook in `executeToolNatively` after a
-  successful tool result, so the email line, booking and labeling sync, which call the helpers
-  directly, write nothing): `FEED_PROJECT_EMAIL_ACTIVITY` / `FEED_PROJECT_CALENDAR_ACTIVITY` on the
-  connection's project. Only the mailbox owner gets the unread badge. Repeated single-email changes
-  within 10 minutes are merged into one entry with a count (state at
-  `users/{uid}/private/integrationActivityFeed`).
-- **Artifacts**: see the artifacts section.
-
-Feed types are the same value on the server (`functions/Feeds/FeedsConstants.js`) and the web
-(`components/Feeds/Utils/FeedsConstants.js`), where a new type joins its kind's `FEED_<KIND>_TYPES`
-list so it is routed and rendered (`RegularFeed`, "<actor> <entryText>"). `get_updates` keeps its own
-map (`EVENT_TYPE_TO_OBJECT_TYPE` in `shared/UpdateRetrievalService.js`);
-`UpdateRetrievalServiceFeedTypes.test.js` fails when a web type is missing there, which is how
-`FEED_PROJECT_HAPPINESS` and `FEED_ASSISTANT_TEMPLATE_SYNCED` were found unmapped.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 

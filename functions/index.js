@@ -5452,29 +5452,9 @@ exports.onUpdateOkrAccessProjectionSecondGen = onDocumentUpdated(
     },
     async event => {
         if (accessProjectionOnly(event)) return
-        await Promise.all([synchronizeAccessProjection(event), reconcileOkrFeedPrivacy(event)])
+        await synchronizeAccessProjection(event)
     }
 )
-
-// An OKR has no feed object of its own: the entries the OKR tools write are lines on the project,
-// each carrying the OKR's audience (OKRs/okrToolFeeds.js). When the OKR turns private (or public)
-// they follow. Never fails the trigger, like reconcileFeedPrivacy above.
-function reconcileOkrFeedPrivacy(event) {
-    const { reconcileOkrFeedPrivacyOnUpdate } = require('./OKRs/okrToolFeeds')
-    const { projectId, okrId } = event.params
-    return reconcileOkrFeedPrivacyOnUpdate({
-        projectId,
-        okrId,
-        before: event.data.before.data() || {},
-        after: event.data.after.data() || {},
-    }).catch(error =>
-        console.error('[feeds privacy] Could not reconcile the Updates entries of an OKR', {
-            projectId,
-            okrId,
-            error: error.message,
-        })
-    )
-}
 
 exports.onCreateProjectFeedAccessProjectionSecondGen = onDocumentCreated(
     {
@@ -5692,9 +5672,20 @@ exports.onUpdateArtifactSecondGen = onDocumentUpdated(
         } = require('./Artifacts/artifactStore')
         const { artifactSearchUpdateNeeded, indexArtifactForSearch } = require('./Artifacts/artifactSearch')
         const { recordMetadataHistory } = require('./Artifacts/artifactHistory')
+        const { isArtifactDeletionStampOnly } = require('./Artifacts/artifactFeedModel')
+        const {
+            reconcileArtifactFeedObjectsPrivacy,
+            recordArtifactMetadataFeeds,
+        } = require('./Artifacts/artifactFeeds')
         const { projectId, artifactId } = event.params
         const before = event.data.before.data() || {}
         const after = event.data.after.data() || {}
+        // Whoever deletes an artifact stamps it first (artifactFeedModel.js); the delete follows at
+        // once, and nothing here may write to a document that is going (a projection write would
+        // bring a stub of it back).
+        if (isArtifactDeletionStampOnly(before, after)) return
+        // The entries keep the event's own time, so a redelivery writes the same documents.
+        const eventTime = Date.parse(event.time) || Date.now()
         await Promise.all([
             synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
             recordMetadataHistory({
@@ -5710,6 +5701,32 @@ exports.onUpdateArtifactSecondGen = onDocumentUpdated(
                     artifactId,
                     error: error.message,
                 })
+            ),
+            // Renamed, described, made private or shared: the Updates entry next to the history entry.
+            recordArtifactMetadataFeeds({
+                db: admin.firestore(),
+                projectId,
+                artifactId,
+                before,
+                after,
+                eventId: event.id,
+                now: eventTime,
+            }).catch(error =>
+                console.warn('[artifacts] Could not write the Updates entry of a metadata edit', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
+            // A change of audience reaches the stored activity: the entries, then the day cards.
+            reconcileFeedPrivacy(event, 'artifacts'),
+            reconcileArtifactFeedObjectsPrivacy({ db: admin.firestore(), projectId, artifactId, before, after }).catch(
+                error =>
+                    console.error('[artifacts] Could not re-privatise the Updates cards', {
+                        projectId,
+                        artifactId,
+                        error: error.message,
+                    })
             ),
             artifactSearchUpdateNeeded(before, after)
                 ? indexArtifactForSearch({ projectId, artifactId, artifact: after }).catch(error =>
@@ -5763,10 +5780,25 @@ exports.onDeleteArtifactSecondGen = onDocumentDeleted(
         const { removeArtifactFromSearch } = require('./Artifacts/artifactSearch')
         const { removeObjectFromBacklinks } = require('./Backlinks/backlinksHelper')
         const { deleteChat } = require('./Chats/chatsFirestoreCloud')
+        const { recordArtifactDeletedFeed } = require('./Artifacts/artifactFeeds')
         const { projectId, artifactId } = event.params
         const deleted = (event.data && event.data.data()) || {}
         await Promise.all([
             deleteArtifactData({ projectId, artifactId, publicLink: deleted.publicLink }),
+            // "deleted artifact" in Updates, named after whoever stamped the deletion.
+            recordArtifactDeletedFeed({
+                db: admin.firestore(),
+                projectId,
+                artifactId,
+                artifact: deleted,
+                now: Date.parse(event.time) || Date.now(),
+            }).catch(error =>
+                console.warn('[artifacts] Could not write the Updates entry of a deletion', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
             removeArtifactFromSearch({ projectId, artifactId }),
             // Tasks and notes that linked to it stop listing it as a backlink.
             removeObjectFromBacklinks(projectId, 'linkedParentArtifactsIds', artifactId, admin),

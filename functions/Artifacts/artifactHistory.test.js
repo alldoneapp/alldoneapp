@@ -1,7 +1,9 @@
 const { KnowledgeFirestoreDouble } = require('../KnowledgeBase/__fixtures__/knowledgeFirestoreDouble')
 const {
     MAX_HISTORY_TEXT_CHARS,
+    buildLastEditorAssistant,
     buildMetadataHistoryEvents,
+    getLastEditorAssistantId,
     mapArtifactHistoryEvent,
     recordMetadataHistory,
 } = require('./artifactHistory')
@@ -120,5 +122,41 @@ describe('artifact history of what an MCP client did', () => {
             mapArtifactHistoryEvent('e2', { type: 'version', via: 'mcp', viaClient: '<b>x</b>' })
         ).not.toHaveProperty('viaClient')
         expect(mapArtifactHistoryEvent('e3', { type: 'version', actorId: 'owner' })).not.toHaveProperty('via')
+    })
+})
+
+describe('artifact history of what an assistant tool did in the user name', () => {
+    const ASSISTANT_STAMP = { assistantId: 'anna', editionDate: 4000 }
+
+    it('names the assistant of an edit stamped with that very edition', () => {
+        const events = buildMetadataHistoryEvents(
+            BEFORE,
+            { ...BEFORE, title: 'Q3 sales', lastEditionDate: 4000, lastEditorAssistant: ASSISTANT_STAMP },
+            4000
+        )
+        expect(events).toEqual([
+            { type: 'renamed', date: 4000, actorId: 'owner', assistantId: 'anna', from: 'Sales', to: 'Q3 sales' },
+        ])
+    })
+
+    it('does not name it for a later edit the app made', () => {
+        const [event] = buildMetadataHistoryEvents(
+            BEFORE,
+            { ...BEFORE, title: 'Q4 sales', lastEditionDate: 5000, lastEditorAssistant: ASSISTANT_STAMP },
+            5000
+        )
+        expect(event).not.toHaveProperty('assistantId')
+    })
+
+    it('stamps an assistant, never an MCP client', () => {
+        expect(buildLastEditorAssistant('anna', null, 7)).toEqual({ assistantId: 'anna', editionDate: 7 })
+        expect(buildLastEditorAssistant('anna', { via: 'mcp' }, 7)).toBeNull()
+        expect(buildLastEditorAssistant(null, null, 7)).toBeNull()
+        expect(
+            getLastEditorAssistantId({
+                lastEditionDate: 7,
+                lastEditorAssistant: { assistantId: 'anna', editionDate: 7 },
+            })
+        ).toBe('anna')
     })
 })

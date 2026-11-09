@@ -8,7 +8,18 @@ const { TaskRetrievalService } = require('./TaskRetrievalService')
 const FEED_PUBLIC_FOR_ALL = 0
 const DEFAULT_UPDATE_LIMIT = 100
 const MAX_UPDATE_LIMIT = 500
-const VALID_OBJECT_TYPES = ['tasks', 'notes', 'goals', 'contacts', 'projects', 'users', 'skills', 'assistants']
+const { FEED_ARTIFACT_TYPES: ARTIFACT_FEED_TYPES } = require('../Feeds/FeedsConstants')
+const VALID_OBJECT_TYPES = [
+    'tasks',
+    'notes',
+    'goals',
+    'contacts',
+    'projects',
+    'users',
+    'skills',
+    'assistants',
+    'artifacts',
+]
 
 const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     [9, 'tasks'],
@@ -59,21 +70,8 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_PROJECT_GUIDE_CHANGED', 'projects'],
     ['FEED_PROJECT_ESTIMATION_TYPE_CHANGED', 'projects'],
     ['FEED_PROJECT_ASSISTANT_CHANGED', 'projects'],
-    ['FEED_PROJECT_HAPPINESS', 'projects'],
-    // MCP feed parity: Gmail and Calendar
-    ['FEED_PROJECT_EMAIL_ACTIVITY', 'projects'],
-    ['FEED_PROJECT_CALENDAR_ACTIVITY', 'projects'],
-    // MCP feed parity: assistants and projects
-    ['FEED_PROJECT_CONTACT_STATUSES_ADDED', 'projects'],
-    // MCP feed parity: goals, OKRs, wiki
-    ['FEED_PROJECT_MILESTONE_CHANGED', 'projects'],
-    ['FEED_PROJECT_OKR_CREATED', 'projects'],
-    ['FEED_PROJECT_OKR_CHANGED', 'projects'],
 
     [41, 'contacts'],
-    // MCP feed parity: contacts and moves
-    ['FEED_CONTACT_LINKEDIN_CHANGED', 'contacts'],
-    ['FEED_CONTACT_STATUS_CHANGED', 'contacts'],
     [42, 'contacts'],
     [43, 'contacts'],
     [44, 'contacts'],
@@ -165,16 +163,18 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_ASSISTANT_TYPE_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_INSTRUCTIONS_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_MODEL_CHANGED', 'assistants'],
-    // MCP feed parity: assistants and projects
-    ['FEED_ASSISTANT_VOICE_CHANGED', 'assistants'],
-    ['FEED_ASSISTANT_DELEGATION_DESCRIPTION_CHANGED', 'assistants'],
-    ['FEED_ASSISTANT_TOOLS_CHANGED', 'assistants'],
-    ['FEED_ASSISTANT_HEARTBEAT_CHANGED', 'assistants'],
-    ['FEED_ASSISTANT_TASK_CREATED', 'assistants'],
-    ['FEED_ASSISTANT_TASK_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_TEMPERATURE_CHANGED', 'assistants'],
-    ['FEED_ASSISTANT_TEMPLATE_SYNCED', 'assistants'],
+    // MCP feed parity: artifacts
+    ...ARTIFACT_FEED_TYPES.map(type => [type, 'artifacts']),
 ])
+
+// An artifact keeps no feedsObjectsLastStates copy (Artifacts/artifactFeeds.js), so its title is read
+// from the artifact itself. The update was already filtered by the reader's access to its entry.
+function getObjectTitleDocPath(update) {
+    return update.objectType === 'artifacts'
+        ? `artifactItems/${update.projectId}/artifacts/${update.objectId}`
+        : `feedsObjectsLastStates/${update.projectId}/${update.objectType}/${update.objectId}`
+}
 
 class UpdateRetrievalService {
     constructor(options = {}) {
@@ -406,9 +406,7 @@ class UpdateRetrievalService {
 
         updates.forEach(update => {
             if (update.objectType && update.objectId) {
-                objectRefs.push(
-                    db.doc(`feedsObjectsLastStates/${update.projectId}/${update.objectType}/${update.objectId}`)
-                )
+                objectRefs.push(db.doc(getObjectTitleDocPath(update)))
                 objectKeys.push(`${update.projectId}/${update.objectType}/${update.objectId}`)
             }
 

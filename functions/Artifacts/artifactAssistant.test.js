@@ -396,6 +396,82 @@ describe('delete_artifact', () => {
         expect(result).toMatchObject({ success: true, deleted: true, artifactId, title: 'Sales dashboard' })
         expect(db.read(`artifactItems/${PROJECT_ID}/artifacts/${artifactId}`)).toBeUndefined()
     })
+
+    // The delete trigger only sees the document as it was before the delete; the stamp in it names
+    // the deleter of the "deleted artifact" line in Updates (artifactFeeds.recordArtifactDeletedFeed).
+    it('stamps who deletes it, in a write of its own before the delete', async () => {
+        const path = artifactId => `artifactItems/${PROJECT_ID}/artifacts/${artifactId}`
+        const { artifactId } = await run('create_artifact', dashboard)
+        const { artifactId: mcpId } = await run('create_artifact', dashboard)
+        const updates = jest.spyOn(db, 'update')
+
+        await run('delete_artifact', { artifactId }, { userId: 'teammate' })
+        await run(
+            'delete_artifact',
+            { artifactId: mcpId },
+            { assistantId: null, runtime: { sourceChannel: 'mcp', mcpClient: 'Codex' } }
+        )
+
+        expect(updates.mock.calls.map(([updatedPath, data]) => [updatedPath, data.deletedBy])).toEqual([
+            [path(artifactId), { userId: 'teammate', date: expect.any(Number), assistantId: 'assistant-1' }],
+            [path(mcpId), { userId: 'owner', date: expect.any(Number), via: 'mcp', viaClient: 'Codex' }],
+        ])
+        expect(db.read(path(artifactId))).toBeUndefined()
+        expect(db.read(path(mcpId))).toBeUndefined()
+    })
+})
+
+describe('an edit an assistant makes in the user name', () => {
+    const artifactPath = artifactId => `artifactItems/${PROJECT_ID}/artifacts/${artifactId}`
+
+    it('names the assistant for that very edition, so the trigger can tell who renamed or shared it', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+
+        await run('update_artifact', { artifactId, title: 'Q3 sales' })
+        const renamed = db.read(artifactPath(artifactId))
+        expect(renamed).toMatchObject({ lastEditorId: 'owner' })
+        expect(renamed.lastEditorAssistant).toEqual({
+            assistantId: 'assistant-1',
+            editionDate: renamed.lastEditionDate,
+        })
+
+        await run('update_artifact', { artifactId, isPrivate: true })
+        const madePrivate = db.read(artifactPath(artifactId))
+        expect(madePrivate.lastEditorAssistant).toEqual({
+            assistantId: 'assistant-1',
+            editionDate: madePrivate.lastEditionDate,
+        })
+    })
+
+    it('names nobody but the user over MCP', async () => {
+        const mcp = { assistantId: null, runtime: { sourceChannel: 'mcp', mcpClient: 'Claude' } }
+        const { artifactId } = await run('create_artifact', dashboard, mcp)
+        await run('update_artifact', { artifactId, title: 'Q3 sales' }, { ...mcp, assistantId: 'assistant-1' })
+        expect(db.read(artifactPath(artifactId)).lastEditorAssistant).toBeNull()
+    })
+
+    it('records the assistant in the history of a restore, the public link and live data', async () => {
+        const { artifactId } = await run('create_artifact', dashboard)
+        await run('update_artifact', {
+            artifactId,
+            edits: [{ path: 'index.html', find: 'Sales: 10', replace: 'Sales: 12' }],
+        })
+        await run('update_artifact', { artifactId, restoreVersion: 1, publicLink: 'off' })
+        await run('update_artifact', { artifactId, liveData: true })
+
+        const events = [...db.documents.keys()]
+            .filter(path => path.startsWith(`${artifactPath(artifactId)}/history/`))
+            .map(path => db.read(path))
+            .filter(event => ['restored', 'public_link_off', 'data_access_on'].includes(event.type))
+        expect(events.map(({ type, actorId, assistantId }) => ({ type, actorId, assistantId }))).toEqual(
+            expect.arrayContaining([
+                { type: 'restored', actorId: 'owner', assistantId: 'assistant-1' },
+                { type: 'public_link_off', actorId: 'owner', assistantId: 'assistant-1' },
+                { type: 'data_access_on', actorId: 'owner', assistantId: 'assistant-1' },
+            ])
+        )
+        expect(events).toHaveLength(3)
+    })
 })
 
 describe('over MCP', () => {

@@ -10,6 +10,8 @@ const {
     setArtifactPublicLink,
 } = require('./artifactStore')
 const { MCP_CHANNEL, buildLastEditorVia, buildMcpActorMarker } = require('../shared/mcpActor')
+const { LAST_EDITOR_ASSISTANT_FIELD, buildLastEditorAssistant } = require('./artifactHistory')
+const { ARTIFACT_DELETION_STAMP_FIELD, buildArtifactDeletionStamp } = require('./artifactFeedModel')
 const {
     ARTIFACT_SOURCES,
     ArtifactInputError,
@@ -346,15 +348,28 @@ async function createArtifactTool({ db, bucket, projectId, userId, assistantId, 
     }
 }
 
-async function updateMetadata({ db, projectId, artifactId, userId, title, description, actorChannel = null }) {
-    const lastEditionDate = Date.now()
-    // The update trigger derives the history event from this edit; the stamp is how it knows the edit
-    // came through an MCP client (artifactHistory.buildMetadataHistoryEvents).
-    const patch = {
+// Who made an edit the update trigger derives the history event and the Updates entry from: the
+// stamps say it came through an MCP client or an assistant's tool (artifactHistory.buildMetadataHistoryEvents).
+function buildEditorStamps(userId, actorChannel, assistantId, lastEditionDate) {
+    return {
         lastEditorId: userId,
         lastEditionDate,
         lastEditorVia: buildLastEditorVia(actorChannel, lastEditionDate),
+        [LAST_EDITOR_ASSISTANT_FIELD]: buildLastEditorAssistant(assistantId, actorChannel, lastEditionDate),
     }
+}
+
+async function updateMetadata({
+    db,
+    projectId,
+    artifactId,
+    userId,
+    title,
+    description,
+    actorChannel = null,
+    assistantId = null,
+}) {
+    const patch = buildEditorStamps(userId, actorChannel, assistantId, Date.now())
     if (title) patch.title = title
     if (description !== undefined) patch.description = description
     await db.doc(getArtifactDocPath(projectId, artifactId)).update(patch)
@@ -397,15 +412,12 @@ function readUpdateOptions(args, artifact, userId) {
 
 // The artifact's chat follows its privacy, like a note's (utils setArtifactPrivacy). The public link
 // of an artifact made private is withdrawn by the update trigger (withdrawPublicLinkWhenMadePrivate).
-async function setPrivacy({ db, projectId, artifact, userId, isPrivate, actorChannel }) {
+async function setPrivacy({ db, projectId, artifact, userId, isPrivate, actorChannel, assistantId = null }) {
     const isPublicFor = buildArtifactIsPublicFor(isPrivate, artifact.userId || userId)
-    const lastEditionDate = Date.now()
     await db.doc(getArtifactDocPath(projectId, artifact.id)).update({
         isPrivate,
         isPublicFor,
-        lastEditorId: userId,
-        lastEditionDate,
-        lastEditorVia: buildLastEditorVia(actorChannel, lastEditionDate),
+        ...buildEditorStamps(userId, actorChannel, assistantId, Date.now()),
     })
     const chatRef = db.doc(`chatObjects/${projectId}/chats/${artifact.id}`)
     const chat = await chatRef.get()
@@ -500,11 +512,21 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
                 userId,
                 enabled: args.liveData,
                 actorChannel,
+                assistantId: assistantId || null,
             })
             changes.push(args.liveData ? 'live data on' : 'live data off')
         }
         if (title || description !== undefined) {
-            await updateMetadata({ db, projectId, artifactId: artifact.id, userId, title, description, actorChannel })
+            await updateMetadata({
+                db,
+                projectId,
+                artifactId: artifact.id,
+                userId,
+                title,
+                description,
+                actorChannel,
+                assistantId: assistantId || null,
+            })
             changes.push('details updated')
         }
     }
@@ -514,13 +536,29 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
         if (version.id === artifact.currentVersionId) {
             changes.push(`version ${version.versionNumber} is already the current one`)
         } else {
-            await restoreArtifactVersion({ userId, projectId, artifactId: artifact.id, versionId: version.id, db })
+            await restoreArtifactVersion({
+                userId,
+                projectId,
+                artifactId: artifact.id,
+                versionId: version.id,
+                assistantId: assistantId || null,
+                actorChannel,
+                db,
+            })
             changes.push(`version ${version.versionNumber} restored`)
         }
     }
 
     if (options.changesPrivacy) {
-        await setPrivacy({ db, projectId, artifact, userId, isPrivate: options.isPrivate, actorChannel })
+        await setPrivacy({
+            db,
+            projectId,
+            artifact,
+            userId,
+            isPrivate: options.isPrivate,
+            actorChannel,
+            assistantId: assistantId || null,
+        })
         changes.push(options.isPrivate ? 'made private' : 'shared with the project')
     }
 
@@ -532,6 +570,7 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
             artifactId: artifact.id,
             action: options.publicLinkAction,
             actorChannel,
+            assistantId: assistantId || null,
             db,
         })
         if (publicLinkResult.changed) {
@@ -584,11 +623,20 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
 
 // Deleting is the document delete the app does; onDeleteArtifactSecondGen removes the versions, the
 // stored files, the history, the public link, the thread and the backlinks. Any member who can see
-// the artifact may delete it in the app, so the tool asks for nothing more.
-async function deleteArtifactTool({ db, projectId, userId, args }) {
+// the artifact may delete it in the app, so the tool asks for nothing more. Like the app, it first
+// stamps who deletes it, in a write of its own, for the Updates entry the delete trigger writes.
+async function deleteArtifactTool({ db, projectId, userId, assistantId, args, runtime }) {
     await assertMember(db, projectId, userId)
     const artifact = await readArtifact(db, projectId, args.artifactId, userId)
-    await db.doc(getArtifactDocPath(projectId, artifact.id)).delete()
+    const artifactRef = db.doc(getArtifactDocPath(projectId, artifact.id))
+    await artifactRef.update({
+        [ARTIFACT_DELETION_STAMP_FIELD]: buildArtifactDeletionStamp({
+            userId,
+            assistantId: assistantId || null,
+            actorChannel: getMcpActorChannel(runtime),
+        }),
+    })
+    await artifactRef.delete()
     return {
         success: true,
         deleted: true,

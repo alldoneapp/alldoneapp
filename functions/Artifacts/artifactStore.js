@@ -37,6 +37,9 @@ const {
     buildVersionHistoryEvent,
     getArtifactHistoryCollectionPath,
 } = require('./artifactHistory')
+// Each history event below also becomes an Updates entry, written right after its own transaction
+// and keyed by the history entry's id (artifactFeeds.js). Never fails the write it describes.
+const artifactFeeds = require('./artifactFeeds')
 
 // Writes of artifacts: every version and every byte goes through here, so whatever serveArtifact
 // later serves was validated and stored by the server. Clients only edit an artifact's metadata
@@ -45,8 +48,16 @@ const {
 const FOLLOWER_FIELD = 'isVisibleInFollowedFor'
 
 // History entries carry their time in the id, so the collection also reads in order by id.
+function newHistoryId(now) {
+    return `${now}-${crypto.randomBytes(6).toString('hex')}`
+}
+
 function newHistoryPath(projectId, artifactId, now) {
-    return `${getArtifactHistoryCollectionPath(projectId, artifactId)}/${now}-${crypto.randomBytes(6).toString('hex')}`
+    return `${getArtifactHistoryCollectionPath(projectId, artifactId)}/${newHistoryId(now)}`
+}
+
+function historyDoc(db, projectId, artifactId, historyId) {
+    return db.doc(`${getArtifactHistoryCollectionPath(projectId, artifactId)}/${historyId}`)
 }
 
 function generateServeSecret() {
@@ -341,10 +352,14 @@ async function commitArtifactVersion({
     const artifactRef = db.doc(getArtifactDocPath(projectId, targetArtifactId))
     const versionRef = db.doc(`${getArtifactVersionsCollectionPath(projectId, targetArtifactId)}/${versionId}`)
     // Keyed by the version, so a retried transaction writes the same history entry again.
-    const historyRef = db.doc(`${getArtifactHistoryCollectionPath(projectId, targetArtifactId)}/version-${versionId}`)
+    const historyId = `version-${versionId}`
+    const historyRef = historyDoc(db, projectId, targetArtifactId, historyId)
+    // What the Updates entry needs, as the transaction that succeeded saw it.
+    let feed = null
 
+    let result
     try {
-        return await db.runTransaction(async transaction => {
+        result = await db.runTransaction(async transaction => {
             if (artifactId) {
                 const latest = await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
                 if (current && latest.currentVersionId !== current.baseVersionId) throw artifactChangedError()
@@ -362,9 +377,11 @@ async function commitArtifactVersion({
                     if (latest.userId !== userId) throw onlyOwnerSwitchesDataAccessError()
                     patch.dataAccess = dataAccess
                 }
+                const event = buildVersionHistoryEvent({ created: false, version, userId, now })
                 transaction.set(versionRef, version)
                 transaction.update(artifactRef, patch)
-                transaction.set(historyRef, buildVersionHistoryEvent({ created: false, version, userId, now }))
+                transaction.set(historyRef, event)
+                feed = { artifact: { ...latest, ...patch }, event }
                 return { artifactId, versionId, versionNumber: version.versionNumber, created: false }
             }
 
@@ -411,15 +428,28 @@ async function commitArtifactVersion({
             // Written together with the artifact, so it is in the creator's list the moment the call
             // returns instead of after a projection trigger has run.
             Object.assign(artifact, buildObjectAccessProjection(artifact, project.userIds, null, FOLLOWER_FIELD))
+            const event = buildVersionHistoryEvent({ created: true, version, userId, now })
             transaction.set(versionRef, version)
             transaction.set(artifactRef, artifact)
-            transaction.set(historyRef, buildVersionHistoryEvent({ created: true, version, userId, now }))
+            transaction.set(historyRef, event)
+            feed = { artifact, event }
             return { artifactId: targetArtifactId, versionId, versionNumber: 1, created: true }
         })
     } catch (error) {
         await removeStoredVersion(bucket, projectId, targetArtifactId, versionId)
         throw error
     }
+
+    await artifactFeeds.recordArtifactHistoryFeed({
+        db,
+        projectId,
+        artifactId: result.artifactId,
+        artifact: feed.artifact,
+        historyId,
+        event: feed.event,
+        projectUserIds: project.userIds,
+    })
+    return result
 }
 
 async function restoreArtifactVersion({
@@ -427,37 +457,55 @@ async function restoreArtifactVersion({
     projectId,
     artifactId,
     versionId,
+    // An assistant's tool restoring in the user's name, or an MCP client (shared/mcpActor.js).
+    assistantId = null,
+    actorChannel = null,
     db = admin.firestore(),
     now = Date.now(),
 }) {
     validateCaller(userId, projectId)
     if (!versionId || typeof versionId !== 'string')
         throw new HttpsError('invalid-argument', 'A versionId is required.')
-    await assertProjectMember(db, projectId, userId)
+    const project = await assertProjectMember(db, projectId, userId)
+    const historyId = newHistoryId(now)
+    let feed = null
 
-    return db.runTransaction(async transaction => {
-        await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
+    const result = await db.runTransaction(async transaction => {
+        const latest = await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
         const versionSnapshot = await transaction.get(
             db.doc(`${getArtifactVersionsCollectionPath(projectId, artifactId)}/${versionId}`)
         )
         if (!versionSnapshot.exists) throw new HttpsError('not-found', 'Version not found.')
         const version = { ...versionSnapshot.data(), id: versionId }
-        transaction.update(db.doc(getArtifactDocPath(projectId, artifactId)), {
+        const patch = {
             ...describeVersion({ ...version, files: Array.isArray(version.files) ? version.files : [] }),
             lastEditorId: userId,
             lastEditionDate: now,
+        }
+        const event = buildHistoryEvent(ARTIFACT_HISTORY_TYPES.RESTORED, {
+            date: now,
+            actorId: userId,
+            assistantId,
+            versionId,
+            versionNumber: version.versionNumber,
+            ...getActorChannelFields(actorChannel),
         })
-        transaction.set(
-            db.doc(newHistoryPath(projectId, artifactId, now)),
-            buildHistoryEvent(ARTIFACT_HISTORY_TYPES.RESTORED, {
-                date: now,
-                actorId: userId,
-                versionId,
-                versionNumber: version.versionNumber,
-            })
-        )
+        transaction.update(db.doc(getArtifactDocPath(projectId, artifactId)), patch)
+        transaction.set(historyDoc(db, projectId, artifactId, historyId), event)
+        feed = { artifact: { ...latest, ...patch }, event }
         return { artifactId, versionId }
     })
+
+    await artifactFeeds.recordArtifactHistoryFeed({
+        db,
+        projectId,
+        artifactId,
+        artifact: feed.artifact,
+        historyId,
+        event: feed.event,
+        projectUserIds: project.userIds,
+    })
+    return result
 }
 
 function onlyOwnerSwitchesDataAccessError() {
@@ -472,30 +520,45 @@ async function setArtifactDataAccess({
     artifactId,
     enabled,
     actorChannel = null,
+    assistantId = null,
     db = admin.firestore(),
     now = Date.now(),
 }) {
     validateCaller(userId, projectId)
     if (typeof enabled !== 'boolean') throw new HttpsError('invalid-argument', 'enabled must be true or false.')
-    await assertProjectMember(db, projectId, userId)
-    return db.runTransaction(async transaction => {
+    const project = await assertProjectMember(db, projectId, userId)
+    const historyId = newHistoryId(now)
+    let feed = null
+    const result = await db.runTransaction(async transaction => {
         const artifact = await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
         if (artifact.userId !== userId) throw onlyOwnerSwitchesDataAccessError()
         if ((artifact.dataAccess === true) === enabled) return { artifactId, dataAccess: enabled, changed: false }
-        transaction.update(db.doc(getArtifactDocPath(projectId, artifactId)), { dataAccess: enabled })
-        transaction.set(
-            db.doc(newHistoryPath(projectId, artifactId, now)),
-            buildHistoryEvent(
-                enabled ? ARTIFACT_HISTORY_TYPES.DATA_ACCESS_ON : ARTIFACT_HISTORY_TYPES.DATA_ACCESS_OFF,
-                {
-                    date: now,
-                    actorId: userId,
-                    ...getActorChannelFields(actorChannel),
-                }
-            )
+        const event = buildHistoryEvent(
+            enabled ? ARTIFACT_HISTORY_TYPES.DATA_ACCESS_ON : ARTIFACT_HISTORY_TYPES.DATA_ACCESS_OFF,
+            {
+                date: now,
+                actorId: userId,
+                assistantId,
+                ...getActorChannelFields(actorChannel),
+            }
         )
+        transaction.update(db.doc(getArtifactDocPath(projectId, artifactId)), { dataAccess: enabled })
+        transaction.set(historyDoc(db, projectId, artifactId, historyId), event)
+        feed = { artifact: { ...artifact, dataAccess: enabled }, event }
         return { artifactId, dataAccess: enabled, changed: true }
     })
+    if (result.changed) {
+        await artifactFeeds.recordArtifactHistoryFeed({
+            db,
+            projectId,
+            artifactId,
+            artifact: feed.artifact,
+            historyId,
+            event: feed.event,
+            projectUserIds: project.userIds,
+        })
+    }
+    return result
 }
 
 const PUBLIC_LINK_ACTIONS = Object.freeze({ ENABLE: 'enable', DISABLE: 'disable', CHANGE: 'change' })
@@ -510,6 +573,7 @@ async function setArtifactPublicLink({
     artifactId,
     action,
     actorChannel = null,
+    assistantId = null,
     db = admin.firestore(),
     now = Date.now(),
     newToken = generatePublicLinkToken,
@@ -518,8 +582,10 @@ async function setArtifactPublicLink({
     if (!Object.values(PUBLIC_LINK_ACTIONS).includes(action)) {
         throw new HttpsError('invalid-argument', 'action must be enable, disable or change.')
     }
-    await assertProjectMember(db, projectId, userId)
-    return db.runTransaction(async transaction => {
+    const project = await assertProjectMember(db, projectId, userId)
+    const historyId = newHistoryId(now)
+    let feed = null
+    const result = await db.runTransaction(async transaction => {
         const artifact = await readAccessibleArtifact(transaction, db, projectId, artifactId, userId)
         const current = mapArtifactPublicLink(artifact.publicLink)
         if (action === PUBLIC_LINK_ACTIONS.ENABLE && current) return { artifactId, publicLink: current, changed: false }
@@ -536,12 +602,28 @@ async function setArtifactPublicLink({
             : current
               ? ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_CHANGED
               : ARTIFACT_HISTORY_TYPES.PUBLIC_LINK_ON
-        transaction.set(
-            db.doc(newHistoryPath(projectId, artifactId, now)),
-            buildHistoryEvent(type, { date: now, actorId: userId, ...getActorChannelFields(actorChannel) })
-        )
+        const event = buildHistoryEvent(type, {
+            date: now,
+            actorId: userId,
+            assistantId,
+            ...getActorChannelFields(actorChannel),
+        })
+        transaction.set(historyDoc(db, projectId, artifactId, historyId), event)
+        feed = { artifact: { ...artifact, publicLink }, event }
         return { artifactId, publicLink, changed: true }
     })
+    if (result.changed) {
+        await artifactFeeds.recordArtifactHistoryFeed({
+            db,
+            projectId,
+            artifactId,
+            artifact: feed.artifact,
+            historyId,
+            event: feed.event,
+            projectUserIds: project.userIds,
+        })
+    }
+    return result
 }
 
 // Runs on every artifact update. An artifact made private loses its public link: "only visible to

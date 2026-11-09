@@ -9,6 +9,8 @@ import HelperFunctions from '../../../utils/HelperFunctions'
 import { colors } from '../../styles/global'
 import {
     ALL_TAB,
+    FEED_ARTIFACT_CREATED,
+    FEED_ARTIFACT_TYPES,
     FEED_ASSISTANT_CREATED,
     FEED_ASSISTANT_FOLLOWED,
     FEED_ASSISTANT_TYPES,
@@ -99,6 +101,7 @@ export const CREATION_TYPES = [
     FEED_GOAL_CREATED,
     FEED_SKILL_CREATED,
     FEED_ASSISTANT_CREATED,
+    FEED_ARTIFACT_CREATED,
 ]
 
 export const FOLLOWED_TYPES = [
@@ -486,6 +489,10 @@ export const getFeedObjectTypes = feedType => {
     }
     if (FEED_WIKI_TYPES.includes(feedType)) {
         return WIKI_FEED_OBJECTS_TYPE
+    }
+    // MCP feed parity: artifacts
+    if (FEED_ARTIFACT_TYPES.includes(feedType)) {
+        return 'artifacts'
     }
 }
 

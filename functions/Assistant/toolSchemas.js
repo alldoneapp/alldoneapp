@@ -871,7 +871,17 @@ const toolSchemas = {
                         type: 'array',
                         items: {
                             type: 'string',
-                            enum: ['tasks', 'notes', 'goals', 'contacts', 'projects', 'users', 'skills', 'assistants'],
+                            enum: [
+                                'tasks',
+                                'notes',
+                                'goals',
+                                'contacts',
+                                'projects',
+                                'users',
+                                'skills',
+                                'assistants',
+                                'artifacts',
+                            ],
                         },
                         description:
                             'Optional: object types to include in the update feed. Unknown event types are still returned without object title enrichment.',

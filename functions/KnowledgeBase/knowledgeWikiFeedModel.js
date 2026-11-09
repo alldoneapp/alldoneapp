@@ -23,34 +23,7 @@ const WIKI_FEED_OBJECTS_TYPE = 'wiki'
 const WIKI_FEED_OBJECT_ID = 'wiki'
 
 const FEED_WIKI_PAGE_CHANGED = 'FEED_WIKI_PAGE_CHANGED'
-
-// MCP feed parity: goals, OKRs, wiki
-// A member (or their assistant, or their MCP client) handing the wiki a source or taking one back:
-// a document added or removed, knowledge saved or removed. The pages change later, in an ingest
-// run credited to the wiki; this line says who asked for it, when they asked. Like a revision line
-// it carries nothing of the source - no title, no text, no file name - because a removed source must
-// leave every stored copy, and a feed line has five of them. Only `wikiSourceChange` says what kind
-// of change it was.
-const FEED_WIKI_SOURCE_CHANGED = 'FEED_WIKI_SOURCE_CHANGED'
-const WIKI_SOURCE_DOCUMENT_ADDED = 'document_added'
-const WIKI_SOURCE_DOCUMENT_REMOVED = 'document_removed'
-const WIKI_SOURCE_CONTRIBUTION_SAVED = 'contribution_saved'
-const WIKI_SOURCE_CONTRIBUTION_REMOVED = 'contribution_removed'
-const WIKI_SOURCE_CHANGE_KINDS = [
-    WIKI_SOURCE_DOCUMENT_ADDED,
-    WIKI_SOURCE_DOCUMENT_REMOVED,
-    WIKI_SOURCE_CONTRIBUTION_SAVED,
-    WIKI_SOURCE_CONTRIBUTION_REMOVED,
-]
-// English, like every stored entryText; the Updates list renders its own translated line.
-const WIKI_SOURCE_CHANGE_ENTRY_TEXTS = {
-    [WIKI_SOURCE_DOCUMENT_ADDED]: 'added a document to the wiki',
-    [WIKI_SOURCE_DOCUMENT_REMOVED]: 'removed a document from the wiki',
-    [WIKI_SOURCE_CONTRIBUTION_SAVED]: 'saved knowledge to the wiki',
-    [WIKI_SOURCE_CONTRIBUTION_REMOVED]: 'removed saved knowledge from the wiki',
-}
-
-const FEED_WIKI_TYPES = [FEED_WIKI_PAGE_CHANGED, FEED_WIKI_SOURCE_CHANGED]
+const FEED_WIKI_TYPES = [FEED_WIKI_PAGE_CHANGED]
 
 // The author of a change nobody in the project made (an ingest run or a rebuild). Not a user id, so
 // it can never match a member and suppress that member's unread counter as "their own" change.
@@ -123,25 +96,9 @@ function isWikiFeed(feed) {
     return !!feed && FEED_WIKI_TYPES.includes(feed.type)
 }
 
-// One entry per source change, under an id derived from it, so a retried write rewrites the same
-// documents. Source ids are random hex (knowledgeDocuments.js, knowledgeContributions.js); the
-// `wikisource_` prefix can never be a revision id, which always starts with `wiki_`.
-function buildWikiSourceFeedId(kind, sourceId) {
-    if (!WIKI_SOURCE_CHANGE_KINDS.includes(kind) || !/^[A-Za-z0-9_-]{1,64}$/.test(String(sourceId || ''))) {
-        return null
-    }
-    return `wikisource_${kind}_${sourceId}`
-}
-
-// The kind of source change a wiki feed entry records, or null for anything else.
-function getWikiSourceChange(feed) {
-    if (!feed || feed.type !== FEED_WIKI_SOURCE_CHANGED) return null
-    return WIKI_SOURCE_CHANGE_KINDS.includes(feed.wikiSourceChange) ? feed.wikiSourceChange : null
-}
-
 // What a wiki feed entry points at, validated, because it ends up in a URL.
 function getWikiFeedTarget(feed) {
-    if (!feed || feed.type !== FEED_WIKI_PAGE_CHANGED) return null
+    if (!isWikiFeed(feed)) return null
     const slug = typeof feed.wikiSlug === 'string' ? feed.wikiSlug : ''
     const revision = Number(feed.wikiRevision)
     if (!WIKI_SLUG_PATTERN.test(slug) || !Number.isInteger(revision) || revision < 1) return null
@@ -171,16 +128,7 @@ module.exports = {
     WIKI_FEED_AUTHOR_ID,
     WIKI_AUTOMATIC_CHANGES_COUNTER_ID,
     FEED_WIKI_PAGE_CHANGED,
-    FEED_WIKI_SOURCE_CHANGED,
     FEED_WIKI_TYPES,
-    WIKI_SOURCE_DOCUMENT_ADDED,
-    WIKI_SOURCE_DOCUMENT_REMOVED,
-    WIKI_SOURCE_CONTRIBUTION_SAVED,
-    WIKI_SOURCE_CONTRIBUTION_REMOVED,
-    WIKI_SOURCE_CHANGE_KINDS,
-    WIKI_SOURCE_CHANGE_ENTRY_TEXTS,
-    buildWikiSourceFeedId,
-    getWikiSourceChange,
     WIKI_CHANGE_CREATED,
     WIKI_CHANGE_UPDATED,
     WIKI_CHANGE_REBUILT,

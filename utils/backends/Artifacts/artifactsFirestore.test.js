@@ -1,4 +1,5 @@
 import {
+    deleteArtifact,
     getArtifactContextTitle,
     resetArtifactLastCommentData,
     setArtifactAssistant,
@@ -64,6 +65,27 @@ beforeEach(() => {
             }
         },
     })
+})
+
+it('stamps who deletes an artifact before deleting it, in two writes issued in that order', async () => {
+    const operations = []
+    getDb.mockReturnValue({
+        doc: path => ({
+            path,
+            update: data => {
+                operations.push(['update', path, data])
+                return new Promise(() => {}) // offline: the stamp's ack never arrives
+            },
+            delete: async () => operations.push(['delete', path]),
+        }),
+    })
+
+    await deleteArtifact('p', 'a')
+
+    expect(operations).toEqual([
+        ['update', 'artifactItems/p/artifacts/a', { deletedBy: { userId: 'owner', date: expect.any(Number) } }],
+        ['delete', 'artifactItems/p/artifacts/a'],
+    ])
 })
 
 it('takes the artifact chat along when the artifact turns private', async () => {

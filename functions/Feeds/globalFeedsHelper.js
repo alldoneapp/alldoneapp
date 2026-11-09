@@ -654,7 +654,15 @@ async function proccessFeed(
     needGenerateNotification,
     contextOverrides = {}
 ) {
-    updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch)
+    updateFeedObject(
+        projectId,
+        currentDateFormated,
+        objectId,
+        feedObject,
+        objectsType,
+        batch,
+        contextOverrides.skipObjectLastState === true
+    )
 
     const promises = []
     promises.push(storeOldFeeds(projectId, currentDateFormated, objectId, feedObject, feedId, feed, batch))
@@ -685,10 +693,21 @@ async function proccessFeed(
     )
 }
 
-function updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch) {
+// `skipObjectLastState`: for an object whose feed object is always rebuilt from the object itself
+// (artifacts). `feedsObjectsLastStates` is readable by every project member, so it must not hold the
+// title of an object only some of them may see.
+function updateFeedObject(
+    projectId,
+    currentDateFormated,
+    objectId,
+    feedObject,
+    objectsType,
+    batch,
+    skipObjectLastState
+) {
     const feedObjectRef = admin.firestore().doc(`/projectsFeeds/${projectId}/${currentDateFormated}/${objectId}`)
     batch.set(feedObjectRef, feedObject, { merge: true })
-    setFeedObjectLastState(projectId, objectsType, objectId, feedObject, batch)
+    if (!skipObjectLastState) setFeedObjectLastState(projectId, objectsType, objectId, feedObject, batch)
 }
 
 async function cleanGlobalFeeds(projectId) {

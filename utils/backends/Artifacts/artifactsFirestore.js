@@ -30,6 +30,10 @@ import {
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
 import { firstArtifactTimestamp } from '../../../functions/Artifacts/artifactDates'
+import {
+    ARTIFACT_DELETION_STAMP_FIELD,
+    buildArtifactDeletionStamp,
+} from '../../../functions/Artifacts/artifactFeedModel'
 import { UPLOAD_SOURCES, sourceTitle } from './linkedUploads'
 import { ARTIFACT_BRIDGE_QUERY_PARAM } from '../../../functions/Artifacts/artifactDataBridge'
 
@@ -402,8 +406,17 @@ export async function resetArtifactLastCommentData(projectId, artifactId) {
     )
 }
 
+// The deleted document is what the server's delete trigger sees, and it names no deleter, so the
+// deleter is stamped first (the "deleted artifact" line in Updates, functions/Artifacts/artifactFeeds.js).
+// Two writes, issued in order and neither awaited before the other, so a delete made offline is
+// queued like before; one batch would not do, because the trigger sees the document as it was before
+// the batch.
 export function deleteArtifact(projectId, artifactId) {
-    return awaitWriteAck(getDb().doc(getArtifactDocPath(projectId, artifactId)).delete(), 'artifact delete')
+    const ref = getDb().doc(getArtifactDocPath(projectId, artifactId))
+    ref.update({
+        [ARTIFACT_DELETION_STAMP_FIELD]: buildArtifactDeletionStamp({ userId: store.getState().loggedUser.uid }),
+    }).catch(error => console.warn('[artifacts] could not stamp the deletion', { projectId, error }))
+    return awaitWriteAck(ref.delete(), 'artifact delete')
 }
 
 export function restoreArtifactVersion(projectId, artifactId, versionId) {

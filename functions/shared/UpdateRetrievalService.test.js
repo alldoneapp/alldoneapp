@@ -390,6 +390,43 @@ describe('UpdateRetrievalService', () => {
         })
     })
 
+    // An artifact keeps no last-state copy (Artifacts/artifactFeeds.js): its title comes from itself.
+    test('returns artifact changes, titled from the artifact, and filters by them', async () => {
+        const service = createService({
+            feedsByProject: {
+                'project-1': [
+                    {
+                        id: 'artifact_a1_version-v2',
+                        data: {
+                            type: 'FEED_ARTIFACT_VERSION_SAVED',
+                            entryText: 'saved version 2 • Adds Q3',
+                            objectId: 'a1',
+                            creatorId: 'creator-1',
+                            lastChangeDate: Date.UTC(2026, 3, 14, 11, 0, 0),
+                            isPublicFor: [0, 'creator-1'],
+                            via: 'mcp',
+                            viaClient: 'Claude',
+                        },
+                    },
+                    ...baseFeedsByProject['project-1'],
+                ],
+            },
+            states: { 'artifactItems/project-1/artifacts/a1': { title: 'Sales dashboard' } },
+        })
+
+        const result = await service.getUpdates({ userId: 'user-1', objectTypes: ['artifacts'], limit: 10 })
+
+        expect(result.updates).toEqual([
+            expect.objectContaining({
+                id: 'artifact_a1_version-v2',
+                objectType: 'artifacts',
+                objectId: 'a1',
+                objectTitle: 'Sales dashboard',
+                eventText: 'saved version 2 • Adds Q3',
+            }),
+        ])
+    })
+
     test('filters by recent hours and applies global limit', async () => {
         const service = createService()
 

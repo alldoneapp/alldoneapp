@@ -140,6 +140,7 @@ import {
     WIKI_FEED_OBJECTS_TYPE,
     generateWikiFeedObjectModel,
 } from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
+import { ARTIFACT_FEED_OBJECTS_TYPE, generateArtifactObjectModel } from '../../functions/Artifacts/artifactFeedModel'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
@@ -6504,11 +6505,21 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         feedObject = generateAssistantObjectModel(lastChangeDate, assistant, objectId)
     } else if (objectType === WIKI_FEED_OBJECTS_TYPE) {
         feedObject = generateWikiFeedObjectModel(lastChangeDate)
+    } else if (objectType === ARTIFACT_FEED_OBJECTS_TYPE) {
+        // Required on use: the artifacts backend imports this file.
+        const { getArtifactData } = require('./Artifacts/artifactsFirestore')
+        const artifact = await getArtifactData(projectId, objectId)
+        if (!artifact) return null
+        feedObject = generateArtifactObjectModel(lastChangeDate, artifact, objectId)
     }
     if (!feedObject) return null
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${objectId}`), feedObject)
-    setFeedObjectLastState(projectId, objectType, objectId, feedObject, batch)
+    // Every member may read feedsObjectsLastStates, so an artifact's title is never copied there
+    // (functions/Artifacts/artifactFeeds.js).
+    if (objectType !== ARTIFACT_FEED_OBJECTS_TYPE) {
+        setFeedObjectLastState(projectId, objectType, objectId, feedObject, batch)
+    }
     // Best effort: the rebuilt object is displayed either way, and a refused write must not surface
     // as an unhandled rejection from the Updates list.
     batch.commit().catch(error => {

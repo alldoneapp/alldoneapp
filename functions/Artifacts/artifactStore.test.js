@@ -1,5 +1,9 @@
+// Which Updates entries the writes ask for; artifactFeeds.test.js covers how they are written.
+jest.mock('./artifactFeeds', () => ({ recordArtifactHistoryFeed: jest.fn(() => Promise.resolve(1)) }))
+
 const { KnowledgeFirestoreDouble } = require('../KnowledgeBase/__fixtures__/knowledgeFirestoreDouble')
 const { ArtifactBucketDouble } = require('./__fixtures__/artifactBucketDouble')
+const { recordArtifactHistoryFeed } = require('./artifactFeeds')
 const {
     commitArtifactVersion,
     deleteArtifactData,
@@ -63,6 +67,7 @@ function commit(overrides = {}) {
 }
 
 beforeEach(() => {
+    recordArtifactHistoryFeed.mockClear()
     ids = ['artifact1', 'version1', 'version2', 'version3']
     secrets = ['secret-one-aaaaaaaaaaaaaaaaaaaaaa', 'secret-two-bbbbbbbbbbbbbbbbbbbbbb']
     tokens = ['token-one-aaaaaaaaaaaa', 'token-two-bbbbbbbbbbbb', 'token-three-cccccccccc']
@@ -626,5 +631,126 @@ describe('live project data', () => {
         ).rejects.toMatchObject({ code: 'permission-denied' })
         await commit({ artifactId: 'artifact1', dataAccess: true, files: [{ path: 'x.html', base64: base64('x') }] })
         expect(db.read(artifactPath('artifact1')).dataAccess).toBe(true)
+    })
+})
+
+describe('Updates entries', () => {
+    const feedCalls = () => recordArtifactHistoryFeed.mock.calls.map(([args]) => args)
+    const historyIds = artifactId => {
+        const prefix = `${artifactPath(artifactId)}/history/`
+        return [...db.documents.keys()].filter(path => path.startsWith(prefix)).map(path => path.slice(prefix.length))
+    }
+
+    it('are asked for once per new artifact and per version, under the history entry of each', async () => {
+        await commit({ source: 'assistant', assistantId: 'assistant-1' })
+        await commit({
+            artifactId: 'artifact1',
+            now: NOW + 1,
+            changeSummary: 'Adds Q3',
+            title: 'Sales 2026',
+            files: [{ path: 'report.pdf', base64: base64('%PDF') }],
+            actorChannel: { via: 'mcp', viaClient: 'Claude' },
+        })
+
+        expect(feedCalls()).toEqual([
+            expect.objectContaining({
+                projectId: PROJECT_ID,
+                artifactId: 'artifact1',
+                historyId: 'version-version1',
+                projectUserIds: ['owner', 'teammate'],
+                artifact: expect.objectContaining({ title: 'sales dashboard', isPublicFor: [0, 'owner'] }),
+                event: expect.objectContaining({ type: 'created', actorId: 'owner', assistantId: 'assistant-1' }),
+            }),
+            expect.objectContaining({
+                historyId: 'version-version2',
+                artifact: expect.objectContaining({ title: 'Sales 2026', currentVersionId: 'version2' }),
+                event: expect.objectContaining({
+                    type: 'version',
+                    versionNumber: 2,
+                    changeSummary: 'Adds Q3',
+                    via: 'mcp',
+                    viaClient: 'Claude',
+                }),
+            }),
+        ])
+        expect(historyIds('artifact1').sort()).toEqual(
+            feedCalls()
+                .map(call => call.historyId)
+                .sort()
+        )
+    })
+
+    it('are not asked for when the version could not be saved', async () => {
+        await commit()
+        recordArtifactHistoryFeed.mockClear()
+        await expect(
+            commit({ artifactId: 'artifact1', userId: 'stranger', files: [{ path: 'x.html', base64: base64('x') }] })
+        ).rejects.toMatchObject({ code: 'permission-denied' })
+        expect(feedCalls()).toEqual([])
+    })
+
+    it('name a restore, under the id its history entry got, and who restored it', async () => {
+        await commit()
+        await commit({ artifactId: 'artifact1', files: [{ path: 'report.pdf', base64: base64('%PDF') }] })
+        recordArtifactHistoryFeed.mockClear()
+        await restoreArtifactVersion({
+            db,
+            now: NOW + 5,
+            userId: 'teammate',
+            projectId: PROJECT_ID,
+            artifactId: 'artifact1',
+            versionId: 'version1',
+            assistantId: 'assistant-1',
+        })
+
+        const [call] = feedCalls()
+        expect(call).toMatchObject({
+            artifact: expect.objectContaining({ currentVersionId: 'version1', entryPath: 'sales_dashboard.html' }),
+            event: expect.objectContaining({
+                type: 'restored',
+                actorId: 'teammate',
+                assistantId: 'assistant-1',
+                versionNumber: 1,
+            }),
+        })
+        expect(historyIds('artifact1')).toContain(call.historyId)
+        expect(history('artifact1').pop()).toMatchObject({ type: 'restored', assistantId: 'assistant-1' })
+    })
+
+    it('name the public link and live data when they change, and nothing when they do not', async () => {
+        await commit()
+        recordArtifactHistoryFeed.mockClear()
+        const link = action =>
+            setArtifactPublicLink({
+                db,
+                now: NOW + 1000,
+                newToken,
+                userId: 'owner',
+                projectId: PROJECT_ID,
+                artifactId: 'artifact1',
+                action,
+                actorChannel: { via: 'mcp', viaClient: 'Codex' },
+            })
+        const data = enabled =>
+            setArtifactDataAccess({
+                db,
+                now: NOW + 2000,
+                userId: 'owner',
+                projectId: PROJECT_ID,
+                artifactId: 'artifact1',
+                enabled,
+            })
+
+        await link('enable')
+        await data(false)
+        expect(feedCalls()).toEqual([])
+
+        await link('disable')
+        await data(true)
+        expect(feedCalls().map(call => [call.event.type, call.event.via || null, call.artifact.publicLink])).toEqual([
+            ['public_link_off', 'mcp', null],
+            ['data_access_on', null, null],
+        ])
+        feedCalls().forEach(call => expect(historyIds('artifact1')).toContain(call.historyId))
     })
 })

@@ -7,7 +7,6 @@ import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
 import {
     getWikiFeedTarget,
-    getWikiSourceChange,
     WIKI_CHANGE_ARCHIVED,
     WIKI_CHANGE_CORRECTED,
     WIKI_CHANGE_CREATED,
@@ -17,7 +16,6 @@ import {
 import { watchWikiDayFeeds } from '../../../utils/backends/Feeds/wikiDayFeeds'
 import { openProjectWiki, openProjectWikiChange, openProjectWikiSettings } from '../../WikiView/wikiLinks'
 import WikiPageChangedFeed from '../FeedsTypes/WikiPageChangedFeed'
-import WikiSourceChangedFeed from '../FeedsTypes/WikiSourceChangedFeed'
 import useWikiFeedPageTitle from '../FeedsTypes/useWikiFeedPageTitle'
 import useWikiDayCost from './wikiDayCost'
 import { FOLLOWED_TAB } from '../Utils/FeedsConstants'
@@ -115,13 +113,8 @@ export default function WikiObject({ feedObjectData, projectId, day, feedActiveT
     const byId = new Map((snapshot?.entries || []).map(feed => [feed.id, feed]))
     for (const feed of feeds) byId.set(feed.id, feed)
     const pages = groupChanges(byId.values())
-    // Sources members handed the wiki or took back today: listed by themselves, newest first, because
-    // they are not page revisions and the pages they change come later, from the wiki's own run.
-    const sourceChanges = [...byId.values()]
-        .filter(feed => getWikiSourceChange(feed))
-        .sort((a, b) => (b.lastChangeDate || 0) - (a.lastChangeDate || 0))
     const hasUnreadChanges = feeds.some(feed => feed.showLikeNew)
-    if (!pages.length && !sourceChanges.length) return null
+    if (!pages.length) return null
 
     const counts = {}
     for (const { status } of pages) counts[status] = (counts[status] || 0) + 1
@@ -150,20 +143,9 @@ export default function WikiObject({ feedObjectData, projectId, day, feedActiveT
                 </Text>
             </TouchableOpacity>
             <View style={localStyles.digest}>
-                {!!summary && (
-                    <Text testID="wiki-digest-summary" style={localStyles.summary}>
-                        {summary}
-                    </Text>
-                )}
-                {sourceChanges.map(feed => (
-                    <WikiSourceChangedFeed
-                        key={feed.id}
-                        feed={feed}
-                        projectId={projectId}
-                        showNewFeedDot={feed.showLikeNew}
-                        feedActiveTab={feedActiveTab}
-                    />
-                ))}
+                <Text testID="wiki-digest-summary" style={localStyles.summary}>
+                    {summary}
+                </Text>
                 {!snapshot?.complete && (
                     <Text style={localStyles.meta}>{translate('Wiki digest showing available changes')}</Text>
                 )}
@@ -202,19 +184,17 @@ export default function WikiObject({ feedObjectData, projectId, day, feedActiveT
                             ))}
                     </View>
                 ))}
-                {pages.length > 0 && (
-                    <TouchableOpacity
-                        testID="wiki-digest-toggle"
-                        style={localStyles.toggle}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded }}
-                        disabled={activeModalInFeed}
-                        onPress={() => setExpanded(value => !value)}
-                    >
-                        <Text style={localStyles.toggleText}>{toggleLabel}</Text>
-                        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.Primary100} />
-                    </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                    testID="wiki-digest-toggle"
+                    style={localStyles.toggle}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded }}
+                    disabled={activeModalInFeed}
+                    onPress={() => setExpanded(value => !value)}
+                >
+                    <Text style={localStyles.toggleText}>{toggleLabel}</Text>
+                    <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.Primary100} />
+                </TouchableOpacity>
             </View>
         </View>
     )

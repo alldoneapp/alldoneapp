@@ -1,7 +1,7 @@
 'use strict'
 
 const { getArtifactDocPath } = require('./artifactModel')
-const { getActorChannelFields, getLastEditorChannelFields } = require('../shared/mcpActor')
+const { getActorChannelFields, getLastEditorChannelFields, isMcpActor } = require('../shared/mcpActor')
 
 // What happened to an artifact, in order: who created it, who saved which version and how, who
 // renamed it, shared it or switched its public link (the artifact's "Updates", ARTIFACTS_PLAN.md §8). One
@@ -37,6 +37,23 @@ const ARTIFACT_HISTORY_TYPES = Object.freeze({
 })
 
 const MAX_HISTORY_TEXT_CHARS = 200
+
+// The assistant behind a metadata edit an assistant tool made in the user's name (artifactAssistant.js):
+// `lastEditorId` stays the user, as for a version it saves, and this stamp names the assistant.
+// Bound to the edition like `lastEditorVia`, so once the app edits the artifact it no longer applies.
+const LAST_EDITOR_ASSISTANT_FIELD = 'lastEditorAssistant'
+
+function buildLastEditorAssistant(assistantId, actorChannel, editionDate) {
+    if (!assistantId || isMcpActor(actorChannel)) return null
+    return { assistantId, editionDate }
+}
+
+function getLastEditorAssistantId(object) {
+    const stamp = object && object[LAST_EDITOR_ASSISTANT_FIELD]
+    if (!stamp || !stamp.assistantId || typeof stamp.assistantId !== 'string') return null
+    if (!object.lastEditionDate || stamp.editionDate !== object.lastEditionDate) return null
+    return stamp.assistantId
+}
 
 function getArtifactHistoryCollectionPath(projectId, artifactId) {
     return `${getArtifactDocPath(projectId, artifactId)}/history`
@@ -79,6 +96,9 @@ function buildMetadataHistoryEvents(before = {}, after = {}, now = Date.now()) {
     const actorId = after.lastEditorId || ''
     // Whether that edit came through an MCP client: only a stamp written with this very edition counts.
     const actorChannel = getLastEditorChannelFields(after)
+    // ...or through an assistant's tool, in the user's name.
+    const assistantId = getLastEditorAssistantId(after)
+    if (assistantId) actorChannel.assistantId = assistantId
     const events = []
     if ((before.title || '') !== (after.title || '')) {
         events.push(
@@ -139,11 +159,14 @@ function mapArtifactHistoryEvent(eventId, data = {}) {
 
 module.exports = {
     ARTIFACT_HISTORY_TYPES,
+    LAST_EDITOR_ASSISTANT_FIELD,
     MAX_HISTORY_TEXT_CHARS,
     buildHistoryEvent,
+    buildLastEditorAssistant,
     buildMetadataHistoryEvents,
     buildVersionHistoryEvent,
     getArtifactHistoryCollectionPath,
+    getLastEditorAssistantId,
     mapArtifactHistoryEvent,
     recordMetadataHistory,
 }

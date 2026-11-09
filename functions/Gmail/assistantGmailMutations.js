@@ -73,45 +73,11 @@ function resolveRequestedLabelIds(requestedLabels = [], labelNameToId = new Map(
     })
 }
 
-// The message as it was before the change: its subject, and its labels so the result can say what
-// the call really changed (a label it already had is not a change). Best effort: when this read fails
-// the requested changes are reported, and `modify` below still decides whether the message exists.
-async function readMessageBeforeChange(gmail, messageId) {
-    try {
-        const response = await gmail.users.messages.get({
-            userId: 'me',
-            id: messageId,
-            format: 'metadata',
-            metadataHeaders: ['Subject'],
-        })
-        const data = response?.data || {}
-        const headers = Array.isArray(data.payload?.headers) ? data.payload.headers : []
-        const subjectHeader = headers.find(header => String(header?.name || '').toLowerCase() === 'subject')
-        return {
-            labelIds: Array.isArray(data.labelIds) ? data.labelIds : null,
-            subject: typeof subjectHeader?.value === 'string' ? subjectHeader.value : '',
-        }
-    } catch (_) {
-        return null
-    }
-}
-
-function computeChangedLabelIds(beforeLabelIds, addLabelIds, removeLabelIds) {
-    if (!Array.isArray(beforeLabelIds)) return { added: addLabelIds, removed: removeLabelIds }
-    const before = new Set(beforeLabelIds)
-    return {
-        added: addLabelIds.filter(labelId => !before.has(labelId)),
-        removed: removeLabelIds.filter(labelId => before.has(labelId)),
-    }
-}
-
 async function updateConnectedAccountMessage({ userId, account, messageId, addLabelIds, removeLabelIds }) {
     const gmail = await getGmailClient(userId, account.projectId)
     const { byId, byName } = await loadLabelMaps(gmail)
     const resolvedAddLabelIds = resolveRequestedLabelIds(addLabelIds, byName)
     const resolvedRemoveLabelIds = resolveRequestedLabelIds(removeLabelIds, byName)
-    const beforeChange = await readMessageBeforeChange(gmail, messageId)
-    const changedLabelIds = computeChangedLabelIds(beforeChange?.labelIds, resolvedAddLabelIds, resolvedRemoveLabelIds)
 
     const response = await gmail.users.messages.modify({
         userId: 'me',
@@ -137,12 +103,6 @@ async function updateConnectedAccountMessage({ userId, account, messageId, addLa
         },
         labelIds: updatedLabelIds,
         labelNames: updatedLabelIds.map(labelId => byId.get(labelId) || labelId),
-        subject: beforeChange?.subject || '',
-        // What really changed, by label name (system labels keep their id: INBOX, UNREAD, ...).
-        changedLabels: {
-            added: changedLabelIds.added.map(labelId => byId.get(labelId) || labelId),
-            removed: changedLabelIds.removed.map(labelId => byId.get(labelId) || labelId),
-        },
         archived: !updatedLabelIds.includes('INBOX'),
         message: `Updated Gmail message ${updatedMessage.id || messageId} in ${
             account.gmailEmail || 'the connected Gmail account'
@@ -261,7 +221,6 @@ async function updateGmailEmailForAssistantRequest({
 
 module.exports = {
     buildLabelMutationState,
-    computeChangedLabelIds,
     normalizeStringList,
     resolveRequestedLabelIds,
     updateConnectedAccountMessage,

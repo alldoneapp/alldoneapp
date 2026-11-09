@@ -1472,9 +1472,6 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
         eventId: target.eventId,
-        // Title and start of what was deleted, for the Updates entry (Feeds/integrationToolFeeds.js).
-        summary: currentEvent.summary || '',
-        start: currentEvent.start || null,
         message: 'Calendar event deleted successfully.',
     }
 }
