@@ -39,7 +39,7 @@ For delegated VM browsing, the assistant uses the shared Alldone browser tools t
 
 ## Deployment
 
-Deploy the updated Functions (including `annaBrowserWorkspaceSecondGen` and `getAnnaConversationSecondGen`) before the web bundle. Production uses the master pipeline. For staging QA, bring the branch to `develop`; its pipeline deploys functions, runner and web to staging (feature branches cannot deploy staging since 2026-11-09). Functions jobs validate the CI environment JSON before deployment.
+Deploy the updated Functions (including `annaBrowserWorkspaceSecondGen` and `getAnnaConversationSecondGen`) before the web bundle. Production uses the master pipeline. For staging QA from a current feature branch, run the manual `deploy:cloud:functions:staging` and `deploy:cloud:runner:staging` jobs, then `deploy:web-staging-live`. The old develop branch does not need to advance. Functions jobs validate the CI environment JSON before deployment.
 
 Both environments have a separate IAM-private `browser-worker` Cloud Run service in europe-west1. Build or update it with `functions/Assistant/browser-worker/deploy.sh`; the ordinary Functions pipeline does not deploy this service. Keep the worker signing secret equal to the corresponding GitLab `GOOGLE_FUNCTIONS_ENV_DEV` or `GOOGLE_FUNCTIONS_ENV_PROD` value and grant only the existing Firebase Admin SDK caller `roles/run.invoker` on the worker. Runtime configuration must be persisted in the CI variable so the next deploy preserves it.
 

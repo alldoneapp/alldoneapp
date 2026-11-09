@@ -36,7 +36,12 @@ function sniffImageType(buffer) {
 // turns the tool into a reachability probe.
 const DOWNLOAD_FAILED = 'The image could not be downloaded.'
 
-async function downloadImage(photoUrl, { fetchImpl = globalThis.fetch, timeoutMs = DOWNLOAD_TIMEOUT_MS, lookup } = {}) {
+const formatMegabytes = bytes => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`
+
+async function downloadImage(
+    photoUrl,
+    { fetchImpl = globalThis.fetch, timeoutMs = DOWNLOAD_TIMEOUT_MS, lookup, maxBytes = MAX_PHOTO_BYTES } = {}
+) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -60,7 +65,7 @@ async function downloadImage(photoUrl, { fetchImpl = globalThis.fetch, timeoutMs
         if (!response.ok) throw new Error(DOWNLOAD_FAILED)
         const buffer = Buffer.from(await response.arrayBuffer())
         if (buffer.length === 0) throw new Error('The image is empty.')
-        if (buffer.length > MAX_PHOTO_BYTES) throw new Error('The image is larger than 10 MB.')
+        if (buffer.length > maxBytes) throw new Error(`The image is larger than ${formatMegabytes(maxBytes)}.`)
         const contentType = sniffImageType(buffer)
         if (!contentType) {
             throw new Error('The URL does not point to a JPEG, PNG, GIF or WebP image.')
@@ -72,23 +77,35 @@ async function downloadImage(photoUrl, { fetchImpl = globalThis.fetch, timeoutMs
 }
 
 /**
- * @returns {Promise<string>} the public URL of the stored copy
+ * Stores image bytes (already checked with sniffImageType) at `filePath` in the default bucket and
+ * makes them public. Also used for assistant pictures (Assistant/assistantPhoto.js).
+ * @returns {Promise<string>} the public URL
  */
-async function uploadContactPhotoFromUrl(photoUrl, projectId, contactId, options = {}) {
-    if (!projectId || !contactId) throw new Error('projectId and contactId are required to store a contact photo.')
-    const { buffer, contentType } = await downloadImage(photoUrl, options)
-
-    const bucket = options.bucket || admin.storage().bucket()
-    const filePath = `projectsContacts/${projectId}/${contactId}/${contactId}@${options.now || Date.now()}`
+async function storePublicImage({ buffer, contentType, filePath, bucket = admin.storage().bucket() }) {
     const file = bucket.file(filePath)
     await file.save(buffer, { metadata: { contentType } })
     await file.makePublic()
     return `https://storage.googleapis.com/${bucket.name}/${filePath}`
 }
 
+/**
+ * @returns {Promise<string>} the public URL of the stored copy
+ */
+async function uploadContactPhotoFromUrl(photoUrl, projectId, contactId, options = {}) {
+    if (!projectId || !contactId) throw new Error('projectId and contactId are required to store a contact photo.')
+    const { buffer, contentType } = await downloadImage(photoUrl, options)
+    return storePublicImage({
+        buffer,
+        contentType,
+        filePath: `projectsContacts/${projectId}/${contactId}/${contactId}@${options.now || Date.now()}`,
+        bucket: options.bucket || admin.storage().bucket(),
+    })
+}
+
 module.exports = {
     MAX_PHOTO_BYTES,
     downloadImage,
     sniffImageType,
+    storePublicImage,
     uploadContactPhotoFromUrl,
 }

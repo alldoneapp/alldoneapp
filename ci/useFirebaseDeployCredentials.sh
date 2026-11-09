@@ -7,14 +7,14 @@
 #
 # Every Firebase deploy used to authenticate with one `firebase login:ci` token,
 # GOOGLE_FIREBASE_DEPLOY_TOKEN: a person's refresh token that could deploy both projects,
-# readable by develop and by every feature-branch pipeline. Any branch could therefore
-# deploy production. Now there are two credentials:
+# readable by develop and by every feature-branch pipeline (the manual preview, staging-live
+# and staging-functions jobs need it, so it could not be protected). Any branch could
+# therefore deploy production. Now there are two credentials:
 #
 #   FIREBASE_DEPLOY_SA_PROD     protected (default-branch pipelines only); a key for a deploy
 #                               service account with roles on alldonealeph only
-#   FIREBASE_DEPLOY_SA_STAGING  protected too since 2026-11-09 (develop is a protected
-#                               branch, and staging deploys only from there); a key for a
-#                               deploy service account with roles on alldonestaging only
+#   FIREBASE_DEPLOY_SA_STAGING  not protected; a key for a deploy service account with roles
+#                               on alldonestaging only
 #
 # Either may be a GitLab "File" variable (the value is a path) or hold the JSON itself.
 # There is deliberately no fallback to the old token: a missing variable fails the job
@@ -55,7 +55,7 @@ fi
 eval "_fdc_value=\${$_fdc_var:-}"
 if [ -z "$_fdc_value" ]; then
     _fdc_fail "$_fdc_var is not set for this pipeline. Create it under Settings > CI/CD > Variables
-       (type File, protected) holding the JSON key of the
+       (type File; protected for production, unprotected for staging) holding the JSON key of the
        $_fdc_env deploy service account. See 'Firebase deploy credentials' in CLAUDE.md."
 fi
 

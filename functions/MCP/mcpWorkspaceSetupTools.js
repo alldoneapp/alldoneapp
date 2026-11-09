@@ -19,6 +19,12 @@ const {
     propagateInstructionsToScheduledTasks,
 } = require('../Assistant/assistantSettingsService')
 const { ASSISTANT_TASK_MCP_SCHEMAS, RECURRENCE_VALUES } = require('../Assistant/assistantTaskTools')
+const {
+    ASSISTANT_PHOTO_SCHEMA_PROPERTIES,
+    hasAssistantPhotoInput,
+    prepareAssistantPhoto,
+    storeAssistantPhoto,
+} = require('../Assistant/assistantPhoto')
 
 // ---------------------------------------------------------------------------
 // Workspace setup over MCP
@@ -249,6 +255,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                     type: 'boolean',
                     description: PROJECT_ASSISTANT_DESCRIPTION,
                 },
+                photoUrl: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoUrl,
+                photoArtifactId: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactId,
+                photoArtifactProjectId: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactProjectId,
+                photoArtifactPath: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactPath,
             },
             required: ['projectId', 'name', 'instructions'],
         },
@@ -256,7 +266,7 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
     {
         name: 'update_assistant',
         description:
-            "Change an existing AI assistant in a project the user is a member of: its name, description, instructions (the previous text is kept in its history), model, temperature, voice, delegation description, Tools Access, or whether it is the project assistant. Only the fields you pass change. For tools, either pass allowedTools (the complete new list) or addTools/removeTools (changes to the current list), not both. Changed instructions also reach the assistant's scheduled tasks that still use an unchanged copy of the old instructions; tasks with instructions of their own keep them. Returns what changed and the resulting tool list.",
+            "Change an existing AI assistant in a project the user is a member of: its name, description, picture, instructions (the previous text is kept in its history), model, temperature, voice, delegation description, Tools Access, or whether it is the project assistant. Only the fields you pass change. For tools, either pass allowedTools (the complete new list) or addTools/removeTools (changes to the current list), not both. Changed instructions also reach the assistant's scheduled tasks that still use an unchanged copy of the old instructions; tasks with instructions of their own keep them. Returns what changed and the resulting tool list.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -313,6 +323,10 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                     type: 'boolean',
                     description: `${PROJECT_ASSISTANT_DESCRIPTION} false removes it as the project assistant (the project then has none).`,
                 },
+                photoUrl: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoUrl,
+                photoArtifactId: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactId,
+                photoArtifactProjectId: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactProjectId,
+                photoArtifactPath: ASSISTANT_PHOTO_SCHEMA_PROPERTIES.photoArtifactPath,
             },
             required: ['projectId', 'assistantId'],
         },
@@ -767,6 +781,14 @@ async function resolveScheduledTaskGoalArg(db, { projectId, userId, value }) {
     return { id: goal.id, name: goal.extendedName || goal.name || '' }
 }
 
+async function preparePhotoOrFail({ db, args, projectId, userId, current, deps }) {
+    try {
+        return await prepareAssistantPhoto({ input: args, projectId, userId, current, deps: { db, ...deps.photo } })
+    } catch (error) {
+        fail(error.message)
+    }
+}
+
 async function createAssistant(userId, args = {}, context = {}, deps = {}) {
     const db = getDb(deps)
     const now = getNow(deps)
@@ -795,10 +817,14 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
         }
     }
 
+    // The picture is checked (downloaded) before any quota is spent and stored once the id exists.
+    const preparedPhoto = await preparePhotoOrFail({ db, args, projectId, userId, current: {}, deps })
+
     await consumeDailyQuota(db, userId, 'create_assistant', now)
 
     const assistantId = newId(db)
     const assistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
+    const photo = await storeAssistantPhoto({ prepared: preparedPhoto, projectId, assistantId, now, deps: deps.photo })
     const assistantDocument = buildAssistantDocument({
         userId,
         name,
@@ -809,6 +835,7 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
         now,
         actor: buildActorMarker(context),
     })
+    if (photo) Object.assign(assistantDocument, photo.fields)
     const batch = db.batch()
     if (projectAssistant === true) {
         assistantDocument.isDefault = true
@@ -833,6 +860,7 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
         model,
         allowedTools,
         projectAssistant: projectAssistant === true,
+        ...(photo ? { photoUrl: photo.photoUrl } : {}),
         alreadyExisted: false,
     }
 }
@@ -885,10 +913,11 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
         !allowedTools &&
         !addTools &&
         !removeTools &&
-        projectAssistant === undefined
+        projectAssistant === undefined &&
+        !hasAssistantPhotoInput(args)
     ) {
         fail(
-            'Pass at least one of name, description, instructions, model, temperature, realtimeVoice, delegationToolDescriptionManual, allowedTools, addTools, removeTools or projectAssistant.'
+            'Pass at least one of name, description, instructions, model, temperature, realtimeVoice, delegationToolDescriptionManual, photoUrl, photoArtifactId, allowedTools, addTools, removeTools or projectAssistant.'
         )
     }
 
@@ -940,6 +969,9 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
             changed.push('allowedTools')
         }
     }
+    // The picture is checked (downloaded) before any quota is spent and stored after.
+    const preparedPhoto = await preparePhotoOrFail({ db, args, projectId, userId, current, deps })
+    if (preparedPhoto && !preparedPhoto.unchanged) changed.push(preparedPhoto.remove ? 'photo removed' : 'photo')
     let projectAssistantWrites = []
     if (projectAssistant !== undefined) {
         projectAssistantWrites = await buildProjectAssistantWrites(db, {
@@ -971,6 +1003,12 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
     }
 
     await consumeDailyQuota(db, userId, 'update_assistant', now)
+
+    const photo = await storeAssistantPhoto({ prepared: preparedPhoto, projectId, assistantId, now, deps: deps.photo })
+    if (photo) {
+        Object.assign(update, photo.fields)
+        result.photoUrl = photo.photoUrl
+    }
 
     const actor = buildActorMarker(context)
     update.lastEditorId = userId

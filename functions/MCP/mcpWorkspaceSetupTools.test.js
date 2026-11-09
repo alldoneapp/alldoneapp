@@ -674,6 +674,177 @@ describe('MCP workspace setup tools', () => {
         })
     })
 
+    describe('assistant pictures', () => {
+        const ASSISTANT_PATH = 'assistants/p-existing/items/a1'
+        const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)])
+        const STORED = path => `https://storage.googleapis.com/bucket/${path}`
+
+        const photoDeps = (overrides = {}) => ({
+            downloadImage: jest.fn(async () => ({ buffer: PNG, contentType: 'image/png' })),
+            storePublicImage: jest.fn(async ({ filePath }) => STORED(filePath)),
+            ...overrides,
+        })
+        const runWithPhoto = (db, tool, args, photo) =>
+            executeWorkspaceSetupTool(
+                tool,
+                USER,
+                args,
+                { mcpClient: 'Claude', baseUrl: 'https://my.alldone.app' },
+                { db, now: () => NOW, photo }
+            )
+        const withAssistant = (assistant = {}, extra = {}) =>
+            baseDb({
+                [ASSISTANT_PATH]: { displayName: 'Growth Lead', instructions: 'Old', allowedTools: [], ...assistant },
+                ...extra,
+            })
+
+        it('stores a picture from a URL and writes all three avatar sizes', async () => {
+            const db = withAssistant()
+            const photo = photoDeps()
+            const result = await runWithPhoto(
+                db,
+                'update_assistant',
+                { projectId: 'p-existing', assistantId: 'a1', photoUrl: 'https://cdn.example.com/lead.png' },
+                photo
+            )
+            const url = STORED(`assistants/p-existing/a1/a1@${NOW}`)
+            expect(result.changed).toEqual(['photo'])
+            expect(result.photoUrl).toBe(url)
+            const stored = db.docs.get(ASSISTANT_PATH)
+            expect(stored).toMatchObject({ photoURL: url, photoURL50: url, photoURL300: url, instructions: 'Old' })
+            expect(stored.lastEditorVia).toEqual({ via: 'mcp', viaClient: 'Claude', editionDate: NOW })
+            expect(photo.downloadImage).toHaveBeenCalledWith('https://cdn.example.com/lead.png', {
+                maxBytes: 5 * 1024 * 1024,
+            })
+        })
+
+        it('reads the image from an artifact version the user can read', async () => {
+            const artifactPath = 'artifactItems/p-existing/artifacts/art1'
+            const db = withAssistant(
+                {},
+                {
+                    [artifactPath]: { title: 'Avatar', isPublicFor: [0, USER], currentVersionId: 'v2' },
+                    [`${artifactPath}/versions/v2`]: {
+                        versionNumber: 2,
+                        entryPath: 'lead.png',
+                        files: [{ path: 'lead.png', mimeType: 'image/png' }],
+                    },
+                }
+            )
+            const download = jest.fn(async () => [PNG])
+            const bucket = {
+                file: jest.fn(() => ({ getMetadata: async () => [{ size: PNG.length }], download })),
+            }
+            const photo = photoDeps({ bucket })
+            const result = await runWithPhoto(
+                db,
+                'update_assistant',
+                { projectId: 'p-existing', assistantId: 'a1', photoArtifactId: 'art1' },
+                photo
+            )
+            expect(bucket.file).toHaveBeenCalledWith('artifacts/p-existing/art1/v2/lead.png')
+            expect(photo.downloadImage).not.toHaveBeenCalled()
+            expect(result.changed).toEqual(['photo'])
+            expect(db.docs.get(ASSISTANT_PATH).photoURL).toBe(STORED(`assistants/p-existing/a1/a1@${NOW}`))
+        })
+
+        it('does not read an artifact the user cannot see', async () => {
+            const db = withAssistant(
+                {},
+                {
+                    'artifactItems/p-existing/artifacts/secret': {
+                        isPublicFor: [OTHER],
+                        currentVersionId: 'v1',
+                    },
+                }
+            )
+            const bucket = { file: jest.fn() }
+            await expect(
+                runWithPhoto(
+                    db,
+                    'update_assistant',
+                    { projectId: 'p-existing', assistantId: 'a1', photoArtifactId: 'secret' },
+                    photoDeps({ bucket })
+                )
+            ).rejects.toThrow('Artifact not found.')
+            expect(bucket.file).not.toHaveBeenCalled()
+            expect(db.docs.get(ASSISTANT_PATH).photoURL).toBeUndefined()
+        })
+
+        it('removes the picture with an empty photoUrl, and an assistant without one is left alone', async () => {
+            const db = withAssistant({ photoURL: 'old', photoURL50: 'old', photoURL300: 'old' })
+            const result = await runWithPhoto(
+                db,
+                'update_assistant',
+                { projectId: 'p-existing', assistantId: 'a1', photoUrl: '' },
+                photoDeps()
+            )
+            expect(result.changed).toEqual(['photo removed'])
+            expect(db.docs.get(ASSISTANT_PATH)).toMatchObject({ photoURL: '', photoURL50: '', photoURL300: '' })
+
+            const again = await runWithPhoto(
+                db,
+                'update_assistant',
+                { projectId: 'p-existing', assistantId: 'a1', photoUrl: '' },
+                photoDeps()
+            )
+            expect(again.changed).toEqual([])
+            expect(again.message).toMatch('Nothing changed')
+        })
+
+        it('stores nothing and spends no quota when the image is refused', async () => {
+            const db = withAssistant()
+            const photo = photoDeps({
+                downloadImage: jest.fn(async () => {
+                    throw new Error('The image is larger than 5 MB.')
+                }),
+            })
+            await expect(
+                runWithPhoto(
+                    db,
+                    'update_assistant',
+                    { projectId: 'p-existing', assistantId: 'a1', photoUrl: 'https://cdn.example.com/huge.png' },
+                    photo
+                )
+            ).rejects.toThrow('larger than 5 MB')
+            expect(photo.storePublicImage).not.toHaveBeenCalled()
+            expect(db.docs.has(`users/${USER}/private/mcpWorkspaceSetupQuota`)).toBe(false)
+        })
+
+        it('gives a new assistant its picture when it is created', async () => {
+            const db = baseDb()
+            const photo = photoDeps()
+            const result = await runWithPhoto(
+                db,
+                'create_assistant',
+                {
+                    projectId: 'p-existing',
+                    name: 'Growth Lead',
+                    instructions: 'Find customers',
+                    photoUrl: 'https://cdn.example.com/lead.png',
+                },
+                photo
+            )
+            const url = STORED(`assistants/p-existing/${result.assistantId}/${result.assistantId}@${NOW}`)
+            expect(result.photoUrl).toBe(url)
+            expect(db.docs.get(`assistants/p-existing/items/${result.assistantId}`)).toMatchObject({
+                photoURL: url,
+                photoURL50: url,
+                photoURL300: url,
+            })
+        })
+
+        it('offers the same picture inputs on update_assistant and create_assistant', () => {
+            const properties = name =>
+                Object.keys(
+                    MCP_WORKSPACE_SETUP_TOOL_SCHEMAS.find(schema => schema.name === name).inputSchema.properties
+                )
+            const pictureInputs = ['photoUrl', 'photoArtifactId', 'photoArtifactProjectId', 'photoArtifactPath']
+            expect(properties('update_assistant')).toEqual(expect.arrayContaining(pictureInputs))
+            expect(properties('create_assistant')).toEqual(expect.arrayContaining(pictureInputs))
+        })
+    })
+
     describe('update_assistant', () => {
         const ASSISTANT_PATH = 'assistants/p-existing/items/a1'
         const withAssistant = (assistant = {}, extra = {}) =>

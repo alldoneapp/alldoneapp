@@ -7211,6 +7211,56 @@ describe('assistant settings prompt history', () => {
         })
     })
 
+    test('sets its own picture through the same picture code as MCP update_assistant', async () => {
+        const contactPhotoUpload = require('../shared/contactPhotoUpload')
+        const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)])
+        const download = jest
+            .spyOn(contactPhotoUpload, 'downloadImage')
+            .mockResolvedValue({ buffer: PNG, contentType: 'image/png' })
+        const store = jest
+            .spyOn(contactPhotoUpload, 'storePublicImage')
+            .mockImplementation(async ({ filePath }) => `https://storage.googleapis.com/bucket/${filePath}`)
+        try {
+            const assistant = { uid: 'assistant-1', allowedTools: ['update_assistant_settings'], instructions: 'Same' }
+            const missingDoc = { exists: false, data: () => ({}) }
+            const userDoc = { exists: true, data: () => ({ defaultProjectId: 'default-project' }) }
+            const assistantDoc = { exists: true, data: () => assistant }
+            mockDocGet
+                .mockResolvedValueOnce(missingDoc)
+                .mockResolvedValueOnce(missingDoc)
+                .mockResolvedValueOnce(userDoc)
+                .mockResolvedValueOnce(assistantDoc)
+                .mockResolvedValueOnce(missingDoc)
+                .mockResolvedValueOnce(missingDoc)
+                .mockResolvedValueOnce(userDoc)
+                .mockResolvedValueOnce(assistantDoc)
+                .mockResolvedValueOnce(assistantDoc)
+
+            const result = await executeToolNatively(
+                'update_assistant_settings',
+                { photoUrl: 'https://chat.example.com/upload.png' },
+                'chat-project',
+                'assistant-1',
+                'user-1',
+                null
+            )
+
+            expect(download).toHaveBeenCalledWith('https://chat.example.com/upload.png', { maxBytes: 5 * 1024 * 1024 })
+            const filePath = store.mock.calls[0][0].filePath
+            expect(filePath).toMatch(/^assistants\/default-project\/assistant-1\/assistant-1@\d+$/)
+            const url = `https://storage.googleapis.com/bucket/${filePath}`
+            expect(mockTransactionUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({ path: 'assistants/default-project/items/assistant-1' }),
+                expect.objectContaining({ photoURL: url, photoURL50: url, photoURL300: url })
+            )
+            expect(mockTransactionUpdate.mock.calls[0][1]).not.toHaveProperty('instructions')
+            expect(result).toMatchObject({ success: true, updatedFields: ['photo'], photoUrl: url })
+        } finally {
+            download.mockRestore()
+            store.mockRestore()
+        }
+    })
+
     test('finds an explicitly targeted assistant in another accessible project', async () => {
         const callerAssistant = {
             uid: 'assistant-1',

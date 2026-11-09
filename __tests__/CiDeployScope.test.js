@@ -203,6 +203,27 @@ describe('the GitHub mirror is its own job', () => {
     })
 })
 
+describe('the webpack preview is feature-branch QA, not a production deploy', () => {
+    const previewJob = () => job('deploy:web-webpack-preview')
+
+    it('never creates a redundant manual action on master or develop', () => {
+        const conditions = previewJob().rules.map(rule => String(rule.if || ''))
+
+        expect(conditions).toHaveLength(1)
+        expect(conditions[0]).toContain('CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH')
+        expect(conditions[0]).toContain('CI_COMMIT_BRANCH != "develop"')
+    })
+
+    it('stays manual on feature branches and requires the artifact-producing build', () => {
+        expect(previewJob().needs).toEqual(['build_web_webpack_check'])
+        expect(previewJob().rules).toHaveLength(1)
+        expect(previewJob().rules[0]).toMatchObject({
+            when: 'manual',
+            allow_failure: true,
+        })
+    })
+})
+
 describe('the web path list has exactly one meaning', () => {
     // ci/deploy-scope/web-production.paths drives the marker comparison; the
     // *web-relevant-paths anchor still drives the feature-branch jobs. If they drift, a

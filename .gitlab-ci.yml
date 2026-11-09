@@ -478,8 +478,7 @@ build_web_staging:
 # Feature-branch web build on the webpack pipeline (web-bundler/, Node 22).
 # develop and master run the real build_web_staging / build_web_production jobs
 # (same pipeline, env-specific injection); this job gives branches compile
-# signal only. Feature branches cannot deploy anywhere: the staging secrets are
-# protected like production's, so staging QA goes through develop.
+# signal and feeds the manual preview-channel deploy.
 build_web_webpack_check:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_web_bundler:$APP_IMAGE_TAG
@@ -494,6 +493,13 @@ build_web_webpack_check:
         - cp -R -f replacement_node_modules/* node_modules/
         - ln -s /bundler/node_modules web-bundler/node_modules
         - cd web-bundler && npm run build
+    artifacts:
+        expire_in: 1 days
+        when: on_success
+        name: 'web-build-webpack'
+        paths:
+            - web-build/
+            - firebase.json
     rules:
         # Must precede the generic web-relevant rule: first match wins, and a
         # dependency-changing branch has to build against its own image.
@@ -536,6 +542,64 @@ build_web_production:
             - firebase.json
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Manual feature-branch QA gate: publish the branch build's artifact to a Firebase
+# Hosting preview channel on the staging project (.firebaserc default; the build injects
+# the _DEV env values, so the artifact talks to staging). Master and develop already have
+# their real environment-specific build/deploy jobs, and build_web_webpack_check does not
+# run there, so offering this preview job on those branches was both redundant and capable
+# of running without the artifact it expects.
+deploy:web-webpack-preview:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_webpack_check'
+    script:
+        # Staging-only deploy account; see ci/useFirebaseDeployCredentials.sh.
+        - . ci/useFirebaseDeployCredentials.sh staging
+        - firebase --version
+        - firebase hosting:channel:deploy webpack-$CI_COMMIT_REF_SLUG --project "$FIREBASE_DEPLOY_PROJECT"
+    interruptible: false
+    rules:
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *web-relevant-paths
+          when: manual
+          allow_failure: true
+
+# Staging's live site is normally published by deploy:web-dev from `develop`, but
+# that branch has drifted far behind master, so a feature branch has no way to
+# reach it. The preview channel above covers most QA, but NOT Google sign-in:
+# Google Identity Services enforces an authorized-JavaScript-origin allowlist on
+# the OAuth client, and a generated preview origin is not on it (that list lives
+# in Google Cloud Console, so no deploy can add it). This job publishes a branch
+# build to the staging site's live channel, on the registered origin, so auth
+# flows can actually be tested before a stage merges.
+# Manual and never automatic — it replaces whatever staging currently serves. It runs with
+# the staging-only deploy account, which has no role on production, and names that project
+# explicitly rather than relying on the .firebaserc default.
+deploy:web-staging-live:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - job: 'build_web_webpack_check'
+          optional: true
+    script:
+        - . ci/useFirebaseDeployCredentials.sh staging
+        - firebase --version
+        - firebase use "$FIREBASE_DEPLOY_PROJECT"
+        - firebase deploy --only hosting --project "$FIREBASE_DEPLOY_PROJECT"
+    environment:
+        name: staging
+    interruptible: false
+    rules:
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *web-relevant-paths
+          when: manual
+          allow_failure: true
 
 deploy:web:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
@@ -684,6 +748,11 @@ deploy:cloud:functions:staging:
         exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
+        # Manual feature-branch QA uses the current backend on staging, matching
+        # deploy:web-staging-live, without advancing the old develop branch.
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          when: manual
+          allow_failure: true
 
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
@@ -799,6 +868,11 @@ deploy:cloud:runner:staging:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes:
               - functions/**/*
+        # Manual feature-branch QA uses the current backend on staging, matching
+        # deploy:web-staging-live, without advancing the old develop branch.
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          when: manual
+          allow_failure: true
 
 deploy:cloud:runner:production:
     image: google/cloud-sdk:slim

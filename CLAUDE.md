@@ -63,7 +63,8 @@ reproducing the exact `web-build/` output contract. Env injection stays sed-base
 the bundler; the `replacement_node_modules` swap still applies before building. **Since
 2026-08-04 this IS the deployed pipeline**: `build_web_production` (master) and `build_web_staging` (develop)
 build through web-bundler on the Node 22 tooling image; `build_web_webpack_check` gives
-feature branches compile signal (no deploy: see "Staging deploys only from `develop`"). The expo
+feature branches compile signal + a manual preview-channel deploy
+(`deploy:web-webpack-preview`, channel `webpack-<ref>` on the staging project). The expo
 build jobs are deleted; `npm run build-web` (expo) remains only as a local legacy script.
 See `web-bundler/README.md`. **Strict-mode gotcha**: the
 RN-era sloppy idiom `export default Name = (...)` (assignment to an undeclared identifier)
@@ -1913,6 +1914,17 @@ themselves), one handler (`mcpWorkspaceSetupTools.js`), one Tools Access key for
   for itself or another** (`assertNoToolAccessFromAssistant`; `create_assistant` offers an assistant
   no `allowedTools`), so instructions hidden in an email or a web page cannot make an assistant grant
   itself new powers. `update_heartbeat_settings` is served over MCP for an assistant the client names.
+- **Assistant pictures** (`Assistant/assistantPhoto.js`): `update_assistant`, `create_assistant` and
+  `update_assistant_settings` take `photoUrl` (a public image URL; `""` removes the picture) or
+  `photoArtifactId` (an image artifact the user can read, read through `readArtifactFileForUser`, the
+  same reader as artifact mail attachments; the artifact tools themselves write text only, so an image
+  artifact comes from an upload or a VM job). The server downloads the bytes, accepts only what its
+  magic bytes say is JPEG, PNG, GIF or WebP (no SVG: it can carry script), at most 5 MB, and stores its
+  own public copy at `assistants/{projectId}/{assistantId}/`, where the app's avatar upload puts it.
+  Without an image library all three sizes (`photoURL`, `photoURL50`, `photoURL300`) get that one copy,
+  as for contact photos, which is why the limit is half the contact one. The image is checked before
+  any quota is spent and stored only once the write happens. Unlike the app's upload, no "changed
+  picture" feed is written, the same as for every other `update_assistant` change.
 - **VM jobs over MCP**: `execute_task_in_vm` and `get_vm_job` run as the **project assistant**
   (`MCP_TOOLS_RUN_BY_THE_PROJECT_ASSISTANT`), in a new task of that project; a project without an
   assistant gets an error that says how to set one.
@@ -5247,24 +5259,20 @@ browser before trusting a bigger change.
 
 - **GitLab CI/CD**: All deployments are handled via GitLab pipelines (`.gitlab-ci.yml`)
 - **Environment secrets**: Stored in GitLab CI/CD variables, not in the repository
-- **Branches**: `develop` deploys to staging, `master` deploys to production.
-- **Staging deploys only from `develop` (2026-11-09).** `develop` is a protected branch
-  (push and merge Maintainers only, no force push), and the staging secrets
-  (`GOOGLE_FUNCTIONS_ENV_DEV`, `GOOGLE_SERVICE_ACCOUNT_DEVELOP`,
-  `FIREBASE_DEPLOY_SA_STAGING`) are protected variables like their production
-  counterparts, so feature-branch pipelines cannot read them. They were readable by every
-  branch pipeline before, including those of the VM agents' project token, and the staging
-  functions blob shares many values with production (among them the Typesense admin key
-  for the search collections both environments use). The manual feature-branch staging
-  jobs (`deploy:web-webpack-preview`, `deploy:web-staging-live` and the manual variants of
-  `deploy:cloud:functions:staging` / `deploy:cloud:runner:staging`) are gone with it.
-  To QA a branch on https://alldonestaging.web.app, a Maintainer brings it to `develop`
-  (fast-forward `develop` to master first if it has fallen behind); the develop pipeline
-  deploys web, functions and runner. Staging live is last-writer-wins, so say so if others
-  are testing. Preview channels are gone too; they never supported Google sign-in anyway
-  (their random origin is not an authorized JavaScript origin of the OAuth client).
-  `__tests__/CiDeployCredentials.test.js` fails the build if a job reading a staging secret
-  can run anywhere but `develop`.
+- **Branches**: `develop` deploys to staging, `master` deploys to production. Note
+  `develop` has drifted far behind (~1660 commits as of 2026-08-05), so the practical
+  pre-merge QA surface for a feature branch is the **manual `deploy:web-webpack-preview`
+  job**, which publishes a Firebase hosting preview channel `webpack-<ref-slug>` on the
+  staging project.
+- **Manual QA that involves signing in must run on staging live
+  (`deploy:web-staging-live` → https://alldonestaging.web.app), NOT on a preview
+  channel.** Preview channels get a fresh random origin
+  (`alldonestaging--webpack-<ref>-<hash>.web.app`) that is not in the Google OAuth
+  client's authorized JavaScript origins, so Google sign-in fails there and the app is
+  untestable past the login screen (hit 2026-08-17 QA-ing the offline-support branch).
+  Preview channels remain useful only for compile/render smoke checks of the
+  logged-out surface. Deploying a feature branch to staging live is last-writer-wins
+  over whatever was there — fine for QA, just say so if others are testing.
 - **Build process**: `ci/replace-envs.sh` injects environment variables during build
 - **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
 - **`resource_group` serializes deploys but does NOT order them — production deploy jobs
@@ -5351,14 +5359,15 @@ browser before trusting a bigger change.
 - **Firebase deploys use one service account per environment, never a login token
   (security audit 2026-11, NV-32).** Everything used to authenticate with one
   `firebase login:ci` token (`GOOGLE_FIREBASE_DEPLOY_TOKEN`) that could deploy both projects
-  and that every feature-branch pipeline could read. Every job that runs firebase-tools now sources
+  and that every feature-branch pipeline could read, because the preview, staging-live and
+  staging-functions jobs need a credential. Every job that runs firebase-tools now sources
   `ci/useFirebaseDeployCredentials.sh production|staging`, which sets
   `GOOGLE_APPLICATION_CREDENTIALS` and `FIREBASE_DEPLOY_PROJECT` and unsets
   `FIREBASE_TOKEN` / `GOOGLE_FIREBASE_DEPLOY_TOKEN` (firebase-tools prefers a token over
   ADC). `FIREBASE_DEPLOY_SA_PROD` (protected, File variable) is a key for a deploy account
   with roles on `alldonealeph` only, and the helper also refuses it outside a protected
-  default-branch pipeline; `FIREBASE_DEPLOY_SA_STAGING` (protected since 2026-11-09, see above) is a key
-  for an account with roles on `alldonestaging` only. There is no fallback to the old token: a
+  default-branch pipeline; `FIREBASE_DEPLOY_SA_STAGING` (not protected) is a key for an
+  account with roles on `alldonestaging` only. There is no fallback to the old token: a
   missing variable fails the job with its name. The helper checks the key's `project_id`
   and `client_email` domain, so a production key in the staging variable is refused.
   `__tests__/CiDeployCredentials.test.js` fails the build if a job running firebase-tools
