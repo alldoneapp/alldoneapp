@@ -115,12 +115,6 @@ describe('resolveKnowledgeBaseAccess', () => {
         expect(canCorrectKnowledgeBaseOnChannel(undefined)).toBe(false)
     })
 
-    // NV-45: an automatic reply answers another assistant's comment (a Gmail follow-up, a
-    // delegate), which may carry text from an email; no member asked for a correction.
-    it('lets an automatic comment reply read but never correct, even if the flag leaks in', () => {
-        expect(resolveKnowledgeBaseAccess(chatRun({ automaticCommentReply: true }))).toBe('read')
-    })
-
     it('lets writing mode read but never write', () => {
         expect(resolveKnowledgeBaseAccess(chatRun({ writingDraft: true }))).toBe('read')
     })

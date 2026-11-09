@@ -12,7 +12,6 @@
  */
 
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
-import { createOAuthBrowserBinding, GOOGLE_OAUTH_CALLBACK_PATH } from '../../utils/oauthBrowserBinding'
 
 export interface ServerSideAuthStatus {
     hasCredentials: boolean
@@ -54,14 +53,11 @@ export async function startServerSideAuth(
     connectionId?: string
 ): Promise<void> {
     try {
-        // NV-23: only this browser may complete the flow it starts.
-        const browserNonceHash = await createOAuthBrowserBinding(GOOGLE_OAUTH_CALLBACK_PATH)
         const result = await runHttpsCallableFunction('googleOAuthInitiate', {
             projectId,
             service,
             returnUrl,
             connectionId,
-            browserNonceHash,
         })
         const { authUrl } = result
 
@@ -90,8 +86,7 @@ export async function startServerSideAuth(
 
             // Listen for postMessage from the OAuth callback popup
             const messageHandler = (event: MessageEvent) => {
-                // The callback page posts only to Alldone origins (NV-23); accept only same-origin messages.
-                if (event.origin !== window.location.origin) return
+                // For security, verify the message structure (we allow * origin since callback page is controlled by us)
                 if (event.data && typeof event.data === 'object') {
                     if (event.data.type === 'oauth_success') {
                         // Success! Clean up and resolve

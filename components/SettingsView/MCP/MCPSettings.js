@@ -77,6 +77,8 @@ const MCP_TOOL_KEYS = [
     'create_assistant',
     'update_assistant',
     'create_assistant_task',
+    'get_assistant_tasks',
+    'update_assistant_task',
 ]
 
 // MCP lists the artifact and browser tools one by one; in an assistant's Tools Access each family is
@@ -106,6 +108,8 @@ const MCP_TOOL_LABELS = {
     create_assistant: 'Create assistant',
     update_assistant: 'Update assistant',
     create_assistant_task: 'Create scheduled assistant task',
+    get_assistant_tasks: 'List scheduled assistant tasks',
+    update_assistant_task: 'Update scheduled assistant task',
 }
 
 // What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.

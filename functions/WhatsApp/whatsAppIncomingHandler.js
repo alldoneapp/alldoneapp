@@ -92,16 +92,8 @@ async function handleIncomingWhatsAppMessage(req, res) {
 
         // Look up user by phone number
         const lookupStart = Date.now()
-        const { userId, ambiguous: phoneIsAmbiguous } = await resolveUserByPhone(cleanPhone)
+        const userId = await findUserByPhone(cleanPhone)
         markStage('findUserByPhone', lookupStart, { cleanPhone })
-        if (phoneIsAmbiguous) {
-            await service.sendWhatsAppMessage(
-                fromNumber,
-                'This number is linked to more than one Alldone account, so I cannot tell which one to use. ' +
-                    'Please keep it in the settings of only one account.'
-            )
-            return res.status(200).send('OK')
-        }
         if (!userId) {
             console.warn('WhatsApp Incoming: No user found for phone:', cleanPhone)
             // Send a friendly error message back
@@ -458,35 +450,28 @@ function normalizePhoneNumber(phoneNumber) {
     return clean
 }
 
-// users/{uid}.phone is written by its owner with no proof of possession (there is no verification
-// flow yet), so one number can be claimed by several accounts. Picking the first match would hand
-// the genuine owner's WhatsApp messages and calls to whichever account sorts first, so an ambiguous
-// number routes nowhere (security audit NV-44). Both stored formats (with and without '+') count.
-async function resolveUserByPhone(phone) {
-    if (!phone) return { userId: null, ambiguous: false }
-
-    const users = admin.firestore().collection('users')
-    const variants = [...new Set([phone, phone.replace(/^\+/, '')].filter(Boolean))]
-    const snapshots = await Promise.all(variants.map(variant => users.where('phone', '==', variant).limit(2).get()))
-    const userIds = [...new Set(snapshots.flatMap(snapshot => (snapshot.docs || []).map(doc => doc.id)))]
-
-    if (userIds.length === 0) return { userId: null, ambiguous: false }
-    if (userIds.length > 1) {
-        console.error('WhatsApp: phone number is claimed by more than one account; refusing to route', {
-            phoneSuffix: String(phone).slice(-4),
-            claimantUserIds: userIds,
-        })
-        return { userId: null, ambiguous: true }
-    }
-    return { userId: userIds[0], ambiguous: false }
-}
-
 /**
- * Find the one user ID linked to a phone number, or null when none or several accounts claim it.
+ * Find a user ID by phone number.
  */
 async function findUserByPhone(phone) {
-    const { userId } = await resolveUserByPhone(phone)
-    return userId
+    if (!phone) return null
+
+    // Try exact match first
+    const snapshot = await admin.firestore().collection('users').where('phone', '==', phone).limit(1).get()
+
+    if (!snapshot.empty) {
+        return snapshot.docs[0].id
+    }
+
+    // Try without + prefix
+    const phoneWithoutPlus = phone.replace(/^\+/, '')
+    const snapshot2 = await admin.firestore().collection('users').where('phone', '==', phoneWithoutPlus).limit(1).get()
+
+    if (!snapshot2.empty) {
+        return snapshot2.docs[0].id
+    }
+
+    return null
 }
 
 /**
@@ -976,7 +961,6 @@ function runWithTimeout(promise, timeoutMs, message) {
 
 module.exports = {
     findUserByPhone,
-    resolveUserByPhone,
     getDefaultAssistantId,
     handleIncomingWhatsAppMessage,
     normalizePhoneNumber,

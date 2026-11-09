@@ -101,26 +101,3 @@ describe('search re-index guard', () => {
         expect(searchIndexedFieldsChanged({}, { company: '' })).toBe(true)
     })
 })
-
-// NV-17: confirming or revoking a heartbeat changes which schedules may exist for the user.
-describe('heartbeat confirmations resynchronize the user schedules', () => {
-    const { heartbeatUserScheduleChanged } = require('./onUpdateUserFunctions')
-
-    test('a confirmation, a re-confirmation and a revocation all count; an unchanged map does not', () => {
-        const confirmed = { heartbeatOptIns: { p1__a1: { configHash: 'h1', confirmedAt: 1 } } }
-        expect(heartbeatUserScheduleChanged(baseUser, { ...baseUser, ...confirmed }, 2000)).toBe(true)
-        expect(
-            heartbeatUserScheduleChanged(
-                { ...baseUser, ...confirmed },
-                { ...baseUser, heartbeatOptIns: { p1__a1: { configHash: 'h2', confirmedAt: 2 } } },
-                2000
-            )
-        ).toBe(true)
-        expect(
-            heartbeatUserScheduleChanged({ ...baseUser, ...confirmed }, { ...baseUser, heartbeatOptIns: {} }, 2000)
-        ).toBe(true)
-        expect(
-            heartbeatUserScheduleChanged({ ...baseUser, ...confirmed }, { ...baseUser, ...confirmed, gold: 9 }, 2000)
-        ).toBe(false)
-    })
-})

@@ -2920,6 +2920,8 @@
     "Create assistant": "Assistenten anlegen",
     "Update assistant": "Assistenten ändern",
     "Create scheduled assistant task": "Geplanten Assistenten-Task anlegen",
+    "List scheduled assistant tasks": "Geplante Assistenten-Tasks anzeigen",
+    "Update scheduled assistant task": "Geplanten Assistenten-Task ändern",
     "Open a web page": "Webseite öffnen",
     "Look at a web page": "Webseite ansehen",
     "Click on a web page": "Auf einer Webseite klicken",
@@ -3391,8 +3393,5 @@
     "mcp_app_reconnect_failed": "Die App konnte nicht wieder verbunden werden.",
     "mcp_app_reconnect_in_settings": "Verbinde sie in den MCP-Server-Einstellungen von {{assistant}} wieder; danach öffnet sich diese Ansicht wieder.",
     "mcp_app_reconnect_ask_owner": "Bitte eine Administratorin oder einen Administrator, sie wieder mit {{assistant}} zu verbinden.",
-    "mcp_app_the_assistant": "dem Assistenten",
-    "Run heartbeat for me": "Heartbeat für mich ausführen",
-    "heartbeatOptInExplanation": "Der Heartbeat läuft als du, mit deinem Gold und deinen verbundenen Konten. Er läuft für dich erst, wenn du seinen aktuellen Prompt, seine Tools und Anweisungen bestätigst.",
-    "heartbeatOptInStale": "Jemand hat diesen Heartbeat geändert, seit du ihn bestätigt hast. Deshalb läuft er nicht mehr für dich. Prüfe Prompt, Tools und Anweisungen und bestätige ihn erneut."
+    "mcp_app_the_assistant": "dem Assistenten"
 }

@@ -377,6 +377,136 @@ describe('MCP workspace setup tools', () => {
         })
     })
 
+    describe('get_assistant_tasks and update_assistant_task', () => {
+        // Weekly on Monday 16.11.2026 at 08:30 Berlin, as create_assistant_task stores it.
+        const MONDAY_0830 = Date.UTC(2026, 10, 16, 7, 30, 0)
+        const scheduled = (extra = {}) =>
+            baseDb({
+                'assistants/p-existing/items/a1': { displayName: 'Growth Lead', instructions: 'Be useful.' },
+                'assistantTasks/p-existing/a1/t1': {
+                    id: 't1',
+                    name: 'Weekly growth review',
+                    type: 'prompt',
+                    prompt: 'Old prompt.',
+                    recurrence: 'weekly',
+                    startDate: MONDAY_0830,
+                    startTime: '08:30',
+                    userTimezone: 1,
+                    activatorUserId: USER,
+                    activatedUserIds: [USER],
+                    recurrenceByUser: { [USER]: 'weekly' },
+                    sendWhatsApp: false,
+                    order: 1,
+                    lastExecuted: null,
+                },
+                'assistantTasks/p-existing/a1/t0': {
+                    id: 't0',
+                    name: 'Daily growth discovery',
+                    prompt: 'Find prospects.',
+                    recurrence: 'everyWorkday',
+                    startDate: Date.UTC(2026, 10, 9, 6, 30, 0),
+                    startTime: '07:30',
+                    activatedUserIds: [USER],
+                    recurrenceByUser: { [USER]: 'everyWorkday' },
+                    order: 0,
+                    lastExecuted: Date.UTC(2026, 10, 9, 6, 31, 0),
+                    ...extra,
+                },
+            })
+        const base = { projectId: 'p-existing', assistantId: 'a1' }
+        const stored = (db, id) => db.docs.get(`assistantTasks/p-existing/a1/${id}`)
+
+        it('lists the tasks in their order with the prompt, the local schedule and the state for the caller', async () => {
+            const result = await run(scheduled(), 'get_assistant_tasks', base)
+            expect(result.tasks).toEqual([
+                expect.objectContaining({
+                    taskId: 't0',
+                    name: 'Daily growth discovery',
+                    prompt: 'Find prospects.',
+                    recurrence: 'everyWorkday',
+                    startDate: '2026-11-09',
+                    startTime: '07:30',
+                    active: true,
+                    lastRun: '2026-11-09T06:31:00.000Z',
+                }),
+                expect.objectContaining({ taskId: 't1', startDate: '2026-11-16', startTime: '08:30', lastRun: null }),
+            ])
+        })
+
+        it('replaces the prompt of a task found by name, and labels the edit with the client', async () => {
+            const db = scheduled()
+            const result = await run(db, 'update_assistant_task', {
+                ...base,
+                taskName: 'weekly growth review',
+                prompt: '  Read the Growth Scoreboard artifact first.  ',
+            })
+            expect(result).toMatchObject({ changed: ['prompt'], task: { taskId: 't1', recurrence: 'weekly' } })
+            expect(stored(db, 't1')).toMatchObject({
+                prompt: 'Read the Growth Scoreboard artifact first.',
+                startDate: MONDAY_0830,
+                lastEditorId: USER,
+                lastEditedVia: { via: 'mcp', viaClient: 'Claude' },
+            })
+        })
+
+        it('changing only the time keeps the start date, so a weekly task keeps its weekday', async () => {
+            const db = scheduled()
+            const result = await run(db, 'update_assistant_task', { ...base, taskId: 't1', startTime: '09:00' })
+            expect(result.changed).toEqual(['schedule'])
+            // 09:00 Berlin on Monday 16.11. (CET) is 08:00 UTC, not "today" (Sunday 08.11.).
+            expect(stored(db, 't1')).toMatchObject({ startDate: Date.UTC(2026, 10, 16, 8, 0, 0), startTime: '09:00' })
+            expect(result.task).toMatchObject({ startDate: '2026-11-16', startTime: '09:00' })
+        })
+
+        it('changes the rhythm for the caller, pauses and resumes', async () => {
+            const db = scheduled()
+            await run(db, 'update_assistant_task', { ...base, taskId: 't1', recurrence: 'every2Weeks' })
+            expect(stored(db, 't1')).toMatchObject({
+                recurrence: 'every2Weeks',
+                recurrenceByUser: { [USER]: 'every2Weeks' },
+            })
+
+            const paused = await run(db, 'update_assistant_task', { ...base, taskId: 't1', active: false })
+            expect(paused).toMatchObject({ changed: ['paused'], task: { active: false } })
+            expect(stored(db, 't1')).toMatchObject({ activatedUserIds: [], recurrenceByUser: {} })
+
+            const resumed = await run(db, 'update_assistant_task', { ...base, taskId: 't1', active: true })
+            expect(resumed).toMatchObject({ changed: ['resumed'], task: { active: true, recurrence: 'every2Weeks' } })
+            expect(stored(db, 't1')).toMatchObject({
+                activatedUserIds: [USER],
+                activatorUserId: USER,
+                recurrenceByUser: { [USER]: 'every2Weeks' },
+            })
+        })
+
+        it('writes nothing for an unchanged call and refuses unknown tasks, taken names and bad values', async () => {
+            const db = scheduled()
+            const before = JSON.stringify(stored(db, 't1'))
+            const unchanged = await run(db, 'update_assistant_task', { ...base, taskId: 't1', prompt: 'Old prompt.' })
+            expect(unchanged.changed).toEqual([])
+            expect(JSON.stringify(stored(db, 't1'))).toBe(before)
+
+            await expect(run(db, 'update_assistant_task', { ...base, prompt: 'x' })).rejects.toThrow(
+                'taskId or taskName'
+            )
+            await expect(run(db, 'update_assistant_task', { ...base, taskId: 'nope', prompt: 'x' })).rejects.toThrow(
+                'No scheduled task'
+            )
+            await expect(
+                run(db, 'update_assistant_task', { ...base, taskId: 't1', name: 'Daily growth discovery' })
+            ).rejects.toThrow('already has a task named')
+            await expect(
+                run(db, 'update_assistant_task', { ...base, taskId: 't1', recurrence: 'hourly' })
+            ).rejects.toThrow('recurrence must be one of')
+            await expect(run(db, 'update_assistant_task', { ...base, taskId: 't1', startTime: '9am' })).rejects.toThrow(
+                'startTime'
+            )
+            await expect(run(db, 'get_assistant_tasks', { projectId: 'p-other', assistantId: 'a1' })).rejects.toThrow(
+                'not accessible'
+            )
+        })
+    })
+
     describe('buildSchedule', () => {
         it('falls back to a numeric hour offset when the user has no IANA timezone', () => {
             const schedule = buildSchedule({

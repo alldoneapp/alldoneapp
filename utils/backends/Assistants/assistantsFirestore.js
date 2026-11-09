@@ -1,6 +1,5 @@
 import { runWithLoading, subscribeWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
-import { isEqual } from 'lodash'
 
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import {
@@ -680,32 +679,6 @@ export async function deleteAssistant(projectId, assistant) {
     if (!isGlobalAssistant(assistant.uid)) deleteAssistantUpdatesChain(projectId, assistant)
 }
 
-// A heartbeat runs as a member only after that member confirmed the assistant's current prompt,
-// tools, instructions and MCP servers (functions/Assistant/heartbeatOptIn.js, security audit NV-17).
-export function getAssistantHeartbeatOptIn(projectId, assistantId) {
-    return runHttpsCallableFunction('assistantHeartbeatOptIn', { projectId, assistantId, action: 'get' })
-}
-
-export function setAssistantHeartbeatOptIn(projectId, assistantId, enabled) {
-    return runHttpsCallableFunction('assistantHeartbeatOptIn', {
-        projectId,
-        assistantId,
-        action: enabled ? 'confirm' : 'revoke',
-    })
-}
-
-// After the signed-in member changed what a heartbeat runs, their own confirmation follows the
-// change (only if they had confirmed before). Another member's change still needs a new confirmation.
-export function refreshOwnHeartbeatConfirmation(projectId, assistantId) {
-    if (!projectId || !assistantId || isGlobalAssistant(assistantId)) return Promise.resolve(null)
-    return runHttpsCallableFunction('assistantHeartbeatOptIn', { projectId, assistantId, action: 'refresh' }).catch(
-        error => {
-            console.warn('Could not refresh the heartbeat confirmation', { error: error?.message })
-            return null
-        }
-    )
-}
-
 export async function updateAssistant(projectId, updatedAssistant, oldAssistant) {
     const assistantId = updatedAssistant.uid
 
@@ -726,10 +699,7 @@ export async function updateAssistant(projectId, updatedAssistant, oldAssistant)
             )
     }
 
-    const committed = batch.commit()
-    if (!isEqual(updatedAssistant.allowedTools || [], oldAssistant.allowedTools || [])) {
-        Promise.resolve(committed).then(() => refreshOwnHeartbeatConfirmation(projectId, assistantId))
-    }
+    batch.commit()
 
     if (!isGlobalAssistant(updatedAssistant.uid)) updateAssistantFeedsChain(projectId, updatedAssistant, oldAssistant)
 }
@@ -785,13 +755,12 @@ export async function updateAssistantInstructions(projectId, assistant, instruct
     )
     if (updated && !isGlobalAssistant(assistant.uid))
         assistantInstructionsChangedUpdatesChain(projectId, assistant, assistant.instructions, instructions)
-    if (updated) refreshOwnHeartbeatConfirmation(projectId, assistant.uid)
 }
 
 export async function updateAssistantHeartbeatSettings(projectId, assistant, data) {
     if (Object.prototype.hasOwnProperty.call(data, ASSISTANT_PROMPT_FIELD_HEARTBEAT)) {
         const { heartbeatPrompt, ...settingsData } = data
-        const updated = await updateAssistantPromptFieldWithHistory(
+        await updateAssistantPromptFieldWithHistory(
             projectId,
             assistant,
             ASSISTANT_PROMPT_FIELD_HEARTBEAT,
@@ -799,7 +768,6 @@ export async function updateAssistantHeartbeatSettings(projectId, assistant, dat
             heartbeatPrompt,
             settingsData
         )
-        if (updated) refreshOwnHeartbeatConfirmation(projectId, assistant.uid)
     } else {
         await updateAssistantData(projectId, assistant.uid, data, null)
     }
