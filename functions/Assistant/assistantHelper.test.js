@@ -3935,24 +3935,54 @@ describe('assistant create_task image helpers', () => {
 })
 
 describe('assistant chat media helpers', () => {
+    const previousProject = process.env.GCLOUD_PROJECT
+    beforeAll(() => {
+        process.env.GCLOUD_PROJECT = 'demo-project'
+    })
+    afterAll(() => {
+        if (previousProject === undefined) delete process.env.GCLOUD_PROJECT
+        else process.env.GCLOUD_PROJECT = previousProject
+    })
+
     beforeEach(() => {
         jest.clearAllMocks()
         global.fetch = jest.fn()
     })
 
+    // Security audit 2026-11 (#20): a comment is member-written, so its media URL is attacker-chosen.
+    test("fetches chat media only from this project's Storage bucket, and never follows a redirect", async () => {
+        const { fetchStorageMedia } = require('../shared/storageMediaUrl')
+        for (const url of [
+            'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
+            'https://cdn.example.com/file.pdf',
+            'https://firebasestorage.googleapis.com/v0/b/another-project.appspot.com/o/x.pdf?alt=media',
+            'https://storage.googleapis.com/another-bucket/x.pdf',
+        ]) {
+            await expect(fetchStorageMedia(url)).rejects.toThrow('cannot be read')
+        }
+        expect(global.fetch).not.toHaveBeenCalled()
+
+        global.fetch.mockResolvedValue({ ok: true })
+        const allowed =
+            'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/attachments%2Fa.pdf?alt=media&token=t'
+        await fetchStorageMedia(allowed)
+        await fetchStorageMedia('https://storage.googleapis.com/demo-project.firebasestorage.app/attachments/a.pdf')
+        expect(global.fetch).toHaveBeenCalledWith(allowed, expect.objectContaining({ redirect: 'error' }))
+    })
+
     test('extracts normalized media context from chat comment tokens', () => {
         const text =
             'Please review ' +
-            'EbDsQTD14ahtSR5https://cdn.example.com/file.pdfEbDsQTD14ahtSR5invoice.pdfEbDsQTD14ahtSR5false ' +
+            'EbDsQTD14ahtSR5https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdfEbDsQTD14ahtSR5invoice.pdfEbDsQTD14ahtSR5false ' +
             'and ' +
-            'O2TI5plHBf1QfdYhttps://cdn.example.com/image.pngO2TI5plHBf1QfdYhttps://cdn.example.com/image-small.pngO2TI5plHBf1QfdYreceipt.pngO2TI5plHBf1QfdYfalse'
+            'O2TI5plHBf1QfdYhttps://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image.pngO2TI5plHBf1QfdYhttps://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image-small.pngO2TI5plHBf1QfdYreceipt.pngO2TI5plHBf1QfdYfalse'
 
         expect(extractMediaContextFromText(text)).toEqual([
             {
                 kind: 'file',
                 fileName: 'invoice.pdf',
                 mimeType: 'application/pdf',
-                storageUrl: 'https://cdn.example.com/file.pdf',
+                storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdf',
                 previewUrl: '',
                 extractedText: '',
                 extractionStatus: '',
@@ -3961,8 +3991,8 @@ describe('assistant chat media helpers', () => {
                 kind: 'image',
                 fileName: 'receipt.png',
                 mimeType: 'image/png',
-                storageUrl: 'https://cdn.example.com/image.png',
-                previewUrl: 'https://cdn.example.com/image-small.png',
+                storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image.png',
+                previewUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image-small.png',
                 extractedText: '',
                 extractionStatus: '',
             },
@@ -3977,7 +4007,7 @@ describe('assistant chat media helpers', () => {
                         kind: 'file',
                         fileName: 'notes.txt',
                         contentType: 'text/plain',
-                        storageUrl: 'https://cdn.example.com/notes.txt',
+                        storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/notes.txt',
                         extractedText: 'hello',
                         extractionStatus: 'extracted',
                     },
@@ -3988,7 +4018,7 @@ describe('assistant chat media helpers', () => {
                 kind: 'file',
                 fileName: 'notes.txt',
                 mimeType: 'text/plain',
-                storageUrl: 'https://cdn.example.com/notes.txt',
+                storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/notes.txt',
                 previewUrl: '',
                 extractedText: 'hello',
                 extractionStatus: 'extracted',
@@ -4003,7 +4033,7 @@ describe('assistant chat media helpers', () => {
                     kind: 'file',
                     fileName: 'invoice.pdf',
                     mimeType: 'application/pdf',
-                    storageUrl: 'https://cdn.example.com/file.pdf',
+                    storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdf',
                     previewUrl: '',
                     extractedText: 'Invoice total is 120 EUR.',
                     extractionStatus: 'extracted',
@@ -4012,8 +4042,9 @@ describe('assistant chat media helpers', () => {
                     kind: 'image',
                     fileName: 'receipt.png',
                     mimeType: 'image/png',
-                    storageUrl: 'https://cdn.example.com/image.png',
-                    previewUrl: 'https://cdn.example.com/image-small.png',
+                    storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image.png',
+                    previewUrl:
+                        'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image-small.png',
                     extractedText: '',
                     extractionStatus: '',
                 },
@@ -4025,7 +4056,7 @@ describe('assistant chat media helpers', () => {
             },
             {
                 type: 'image_url',
-                image_url: { url: 'https://cdn.example.com/image.png' },
+                image_url: { url: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image.png' },
             },
         ])
     })
@@ -4041,7 +4072,7 @@ describe('assistant chat media helpers', () => {
                         kind: 'file',
                         fileName: 'invoice.pdf',
                         mimeType: 'application/pdf',
-                        storageUrl: 'https://cdn.example.com/file.pdf',
+                        storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdf',
                     },
                 ],
             }),
@@ -4084,7 +4115,7 @@ describe('assistant chat media helpers', () => {
                         kind: 'file',
                         fileName: 'invoice.pdf',
                         mimeType: 'application/pdf',
-                        storageUrl: 'https://cdn.example.com/file.pdf',
+                        storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdf',
                     },
                 ],
             }),
@@ -4132,7 +4163,8 @@ describe('assistant chat media helpers', () => {
                                 kind: 'file',
                                 fileName: 'Tagesticket.pdf',
                                 mimeType: 'application/pdf',
-                                storageUrl: 'https://cdn.example.com/tagesticket.pdf',
+                                storageUrl:
+                                    'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/tagesticket.pdf',
                             },
                         ],
                     }),
@@ -4175,7 +4207,13 @@ describe('assistant chat media helpers', () => {
                 data: () => ({
                     created: index,
                     fromAssistant: false,
-                    mediaContext: [{ kind: 'file', fileName, storageUrl: `https://cdn.example.com/${fileName}` }],
+                    mediaContext: [
+                        {
+                            kind: 'file',
+                            fileName,
+                            storageUrl: `https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/${fileName}`,
+                        },
+                    ],
                 }),
             })),
         })
@@ -4208,7 +4246,7 @@ describe('assistant chat media helpers', () => {
                     kind: 'file',
                     fileName: 'deck.pptx',
                     mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                    storageUrl: 'https://cdn.example.com/deck.pptx',
+                    storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/deck.pptx',
                     extractedText: 'Slide 1',
                     extractionStatus: 'ok',
                     extractionTruncated: true,
@@ -4221,6 +4259,36 @@ describe('assistant chat media helpers', () => {
         )
     })
 
+    test("never reads a comment attachment whose URL points outside this project's bucket", async () => {
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'Put this into the wiki',
+                mediaContext: [
+                    {
+                        kind: 'file',
+                        fileName: 'deck.pptx',
+                        storageUrl:
+                            'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
+                    },
+                ],
+            }),
+        })
+        await executeToolNatively(
+            'add_knowledge_document',
+            { projectId: 'p1' },
+            'p1',
+            'anna',
+            'u1',
+            { message: 'Put this into the wiki' },
+            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1', messageId: 'm1' }
+        )
+        const [{ readChatAttachment }] = mockKnowledgeBase.executeKnowledgeBaseTool.mock.calls.at(-1)
+        await expect(readChatAttachment({ messageId: '', fileName: '' })).rejects.toThrow('cannot be read')
+        expect(global.fetch).not.toHaveBeenCalled()
+    })
+
     test('hands the wiki the bytes of a file from the conversation, never from the target project', async () => {
         mockDocGet.mockResolvedValue({
             exists: true,
@@ -4231,7 +4299,7 @@ describe('assistant chat media helpers', () => {
                     {
                         kind: 'file',
                         fileName: 'deck.pptx',
-                        storageUrl: 'https://cdn.example.com/deck.pptx',
+                        storageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/deck.pptx',
                         extractedText: 'Slide 1',
                     },
                 ],
@@ -4283,7 +4351,8 @@ describe('assistant chat media helpers', () => {
                                 kind: 'file',
                                 fileName: 'invoice.pdf',
                                 mimeType: 'application/pdf',
-                                storageUrl: 'https://cdn.example.com/file.pdf',
+                                storageUrl:
+                                    'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/file.pdf',
                                 extractedText: 'Invoice total is 120 EUR.',
                             },
                         ],
@@ -4300,7 +4369,8 @@ describe('assistant chat media helpers', () => {
                                 kind: 'image',
                                 fileName: 'receipt.png',
                                 mimeType: 'image/png',
-                                storageUrl: 'https://cdn.example.com/image.png',
+                                storageUrl:
+                                    'https://firebasestorage.googleapis.com/v0/b/demo-project.appspot.com/o/image.png',
                             },
                         ],
                     }),

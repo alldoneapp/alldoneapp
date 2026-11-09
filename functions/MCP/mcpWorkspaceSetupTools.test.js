@@ -353,6 +353,9 @@ describe('MCP workspace setup tools', () => {
             expect(task.startDate).toBe(Date.UTC(2026, 10, 9, 7, 0, 0))
             expect(result.firstRun).toBe('2026-11-09 08:00 +01:00')
             expect(db.docs.get('assistants/p-existing/items/a1').lastEditorId).toBe(USER)
+            // NEW-A: the scheduler runs only approved content; the requesting user approved it.
+            const { isAssistantTaskContentApprovedByUser } = require('../Assistant/assistantTaskContentHash')
+            expect(isAssistantTaskContentApprovedByUser(task, USER, 'p-existing')).toBe(true)
         })
 
         it('reuses a task of the same name and rejects a bad recurrence or an unknown assistant', async () => {
@@ -505,6 +508,21 @@ describe('MCP workspace setup tools', () => {
                 'not accessible'
             )
         })
+
+        it('keeps a changed task approved for the caller who runs it, and only for them (NEW-A)', async () => {
+            const { isAssistantTaskContentApprovedByUser } = require('../Assistant/assistantTaskContentHash')
+            const db = scheduled()
+            await run(db, 'update_assistant_task', { ...base, taskId: 't0', prompt: 'Find better prospects.' })
+            expect(isAssistantTaskContentApprovedByUser(stored(db, 't0'), USER)).toBe(true)
+            expect(isAssistantTaskContentApprovedByUser(stored(db, 't0'), OTHER)).toBe(false)
+
+            // A pause approves nothing; a later resume by the caller approves what they resume.
+            const other = scheduled({ approvedContentHashByUser: { [USER]: 'stale' } })
+            await run(other, 'update_assistant_task', { ...base, taskId: 't0', active: false })
+            expect(stored(other, 't0').approvedContentHashByUser[USER]).toBe('stale')
+            await run(other, 'update_assistant_task', { ...base, taskId: 't0', active: true })
+            expect(isAssistantTaskContentApprovedByUser(stored(other, 't0'), USER)).toBe(true)
+        })
     })
 
     describe('buildSchedule', () => {
@@ -610,6 +628,35 @@ describe('MCP workspace setup tools', () => {
             expect(stored.description).toBe('')
             expect(db.docs.get('assistantTasks/p-existing/a1/t-copy').aiSystemMessage).toBe('New instructions')
             expect(db.docs.get('assistantTasks/p-existing/a1/t-own').aiSystemMessage).toBe('Edited by hand')
+        })
+
+        it('keeps the carried instructions approved for the caller on the tasks they run (NEW-A)', async () => {
+            const { isAssistantTaskContentApprovedByUser } = require('../Assistant/assistantTaskContentHash')
+            const db = withAssistant(
+                {},
+                {
+                    'assistantTasks/p-existing/a1/t-mine': {
+                        name: 'Mine',
+                        prompt: 'Go.',
+                        aiSystemMessage: 'Old instructions',
+                        activatedUserIds: [USER],
+                    },
+                    'assistantTasks/p-existing/a1/t-theirs': {
+                        name: 'Theirs',
+                        prompt: 'Go.',
+                        aiSystemMessage: 'Old instructions',
+                        activatedUserIds: [OTHER],
+                    },
+                }
+            )
+            await run(db, 'update_assistant', { projectId: 'p-existing', assistantId: 'a1', instructions: 'New' })
+            expect(isAssistantTaskContentApprovedByUser(db.docs.get('assistantTasks/p-existing/a1/t-mine'), USER)).toBe(
+                true
+            )
+            const theirs = db.docs.get('assistantTasks/p-existing/a1/t-theirs')
+            expect(theirs.aiSystemMessage).toBe('New')
+            expect(isAssistantTaskContentApprovedByUser(theirs, OTHER)).toBe(false)
+            expect(theirs.approvedContentHashByUser).toBeUndefined()
         })
 
         it('writes nothing and spends no quota when nothing changes', async () => {

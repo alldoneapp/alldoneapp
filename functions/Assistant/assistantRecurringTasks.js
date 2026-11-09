@@ -38,6 +38,8 @@ const {
 } = require('../shared/taskExecutionMode')
 const { completeGeneratedAssistantTask, finalizeGeneratedAssistantTask } = require('./generatedAssistantTaskCompletion')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
+const { evaluateScheduledRunApproval } = require('./assistantTaskContentApproval')
+const { notifyAssistantTaskNeedsApproval } = require('./assistantTaskApprovalNotice')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
 const RECURRENCE_NEVER = 'never'
@@ -833,6 +835,29 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     // Use the activatedInProjectId if available, otherwise use the provided projectId
     // This ensures we target the project where the task was activated by the user
     const executionProjectId = resolveActivationProjectId(task, projectId, activatorUserId)
+
+    // Security audit 2026-11 (NEW-A): the task's content is member-editable, the run acts as the
+    // activator. Run only the content the activator approved; otherwise tell them once and wait.
+    const approval = evaluateScheduledRunApproval(task, activatorUserId, projectId)
+    if (!approval.approved) {
+        console.warn('Skipping scheduled assistant task: content changed since the activator approved it', {
+            projectId,
+            assistantId,
+            taskId: task.id,
+            activatorUserId,
+        })
+        await notifyAssistantTaskNeedsApproval({
+            taskRef: taskDocRef,
+            task,
+            taskProjectId: projectId,
+            assistantId,
+            userId: activatorUserId,
+            userData: activatorData,
+            noticeProjectId: executionProjectId,
+            hash: approval.hash,
+        })
+        return
+    }
 
     let executionMode = requestedExecutionMode
     if (requestedExecutionMode === TASK_EXECUTION_MODE_WORKFLOW) {

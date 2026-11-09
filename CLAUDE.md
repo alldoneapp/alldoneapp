@@ -1819,6 +1819,43 @@ memory lines are moved out of profile notes by `migration/moveUserMemoryToPrivat
 by default; its header lists the risks). Pinned by `userMemoryHelper.test.js`,
 `userMemoryMigration.test.js` and `AssistantMemoryPanel.test.js`.
 
+### A scheduled assistant task runs only the content its activator approved (security audit 2026-11, NEW-A)
+
+Any project member may edit a project assistant task's prompt, system instruction, model and
+settings, while a scheduled run acts AS the user who activated it (their Gold, tools, connected
+accounts). `functions/Assistant/assistantTaskContentHash.js` (pure, imported by the web app too)
+defines the content (type, prompt, aiSystemMessage, aiModelOverride, aiReasoningEffort,
+executionMode, link, variables, taskMetadata; not name or schedule) and its SHA-256.
+`approvedContentHashByUser.{uid}` on the task is written only by the server: by
+`onWriteAssistantTaskApprovalSecondGen` (an auth-context write trigger: the writer activated the
+task, or changed its content while activated) and by the `approveAssistantTaskContentSecondGen`
+callable, which refuses unless the stored content still hashes to what the user was shown.
+firestore.rules refuse client writes to it and to `contentApprovalNoticeByUser`, so every client
+write of a task strips both (`stripServerOwnedAssistantTaskFields`). `executeAssistantTask` skips a
+run whose content differs and posts one private notice per change
+(`assistantTaskApprovalNotice.js`); saving the task in the edit modal approves it again. Manual runs
+(quick actions, links, search, board play button, chat options, the variables modal) go through
+`confirmPreConfigTaskRun` / `confirmAssistantTaskRunForCurrentUser`: approved content runs at once,
+anything else shows prompt, system instruction and model first, and confirming approves it.
+Global-catalog tasks are exempt (only the administrator edits them). A template sync that changes a
+derived task's content therefore pauses it for its activator until they review it. Server writes
+carry no auth context, so the MCP tools record the caller's approval themselves:
+`create_assistant_task`, `update_assistant_task` (a content change or a resume by an activated
+caller) and `update_assistant` (the instructions it carries into the caller's tasks); everyone else
+reviews the change first. A new server path that writes task content must do the same. After deploying,
+run `node migration/approveExistingAssistantTaskContent.js --firebase-project-id=<project> --execute`
+(dry run without `--execute`), or every existing activation pauses once.
+
+### Server fan-outs and public endpoints trust nothing the client wrote (security audit 2026-11)
+
+Follower lists are member-writable and outlive membership, so `TaskCommentService`,
+`ObjectCommentService`, the VM completion path and the chat email sender intersect recipients with
+`projects/{id}.userIds` (`shared/projectMemberRecipients.js`); removing a member also cleans the
+project's `followers` documents. `/api/booking/book` is rate limited per IP, page and recipient
+(`Booking/bookingRateLimit.js`, server-only `bookingRateLimits`, hashed ids; give it a TTL policy on
+`expiresAt`) and its visitor mail has a fixed subject and no echoed note. Chat media are fetched only
+from this project's Storage bucket, without redirects (`shared/storageMediaUrl.js`).
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

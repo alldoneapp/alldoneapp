@@ -13,10 +13,11 @@ import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskIcon'
 import { getSafeNavigationUrl } from '../../../../utils/safeUrl'
+import { confirmPreConfigTaskRun } from '../../../../utils/preConfigTaskRunConfirmation'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
+const getOptions = (project, assistantId, tasks, showFullLabels = false, tasksProjectId = null) => {
     const quickLinkTasks = tasks.filter(task => !isScheduledAssistantTask(task))
 
     return quickLinkTasks.map(task => {
@@ -39,6 +40,12 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
                     const safeLink = getSafeNavigationUrl(task.link)
                     if (safeLink) window.open(safeLink, '_blank')
                 } else if (task.variables.length === 0) {
+                    // Security audit 2026-11: the task is member-editable and a click runs it with the
+                    // clicking user's Gold and tools, so content they have not approved is shown first.
+                    const viewerId = store.getState().loggedUser?.uid
+                    if (!confirmPreConfigTaskRun(task, viewerId, { taskProjectId: tasksProjectId, assistantId })) {
+                        return
+                    }
                     store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration
                     const aiSettings =
@@ -105,9 +112,10 @@ export const getOptionsPresentationData = (
     defaultAssistantId,
     tasks,
     amountOfButtonOptions,
-    showAllOptions = false
+    showAllOptions = false,
+    tasksProjectId = null
 ) => {
-    const options = getOptions(project, defaultAssistantId, tasks, showAllOptions)
+    const options = getOptions(project, defaultAssistantId, tasks, showAllOptions, tasksProjectId)
     const hasAdditionalOptions = options.length > amountOfButtonOptions
 
     if (showAllOptions) {
