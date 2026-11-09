@@ -12,6 +12,7 @@ const {
     getEffectiveHeartbeatChanceNoReplyPercent,
 } = require('./heartbeatSettingsHelper')
 const { resolveUserTimezoneOffset, resolveUserTimezoneName } = require('./contextTimestampHelper')
+const { isHeartbeatAuthorizedForMember } = require('./heartbeatOptIn')
 
 const HEARTBEAT_SCHEDULES_COLLECTION = 'assistantHeartbeatSchedules'
 const ACTIVE_USER_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
@@ -182,10 +183,20 @@ function isAssistantHeartbeatEligible(assistant = {}, projectId, userData) {
     return repliedChance > 0 || noReplyChance > 0
 }
 
-function buildHeartbeatScheduleData({ projectId, assistant, userId, userData, existingData = null, now = Date.now() }) {
+function buildHeartbeatScheduleData({
+    project,
+    projectId,
+    assistant,
+    userId,
+    userData,
+    existingData = null,
+    now = Date.now(),
+}) {
     if (!assistant?.uid || !userId) return null
     if (!isUserHeartbeatEligible(userData, now)) return null
     if (!isAssistantHeartbeatEligible(assistant, projectId, userData)) return null
+    // A heartbeat runs as the member, so the member must have confirmed it (heartbeatOptIn.js, NV-17).
+    if (!isHeartbeatAuthorizedForMember({ project, projectId, assistant, userId, userData })) return null
 
     const scheduleId = getHeartbeatScheduleId(projectId, assistant.uid, userId)
     const timing = getHeartbeatScheduleTiming(assistant, userData)
@@ -293,6 +304,7 @@ async function syncHeartbeatSchedulesForProject(
             const scheduleId = getHeartbeatScheduleId(projectId, assistant.uid, userId)
             const existingData = existingById.get(scheduleId)?.data() || null
             const data = buildHeartbeatScheduleData({
+                project,
                 projectId,
                 assistant,
                 userId,
@@ -362,6 +374,7 @@ async function syncHeartbeatSchedulesForAssistant(
             const userId = userDoc.id
             const scheduleId = getHeartbeatScheduleId(projectId, assistantId, userId)
             const data = buildHeartbeatScheduleData({
+                project,
                 projectId,
                 assistant,
                 userId,
@@ -408,6 +421,7 @@ async function syncHeartbeatSchedulesForUser(userId, { db = admin.firestore(), n
                 const assistant = { ...assistantDoc.data(), uid: assistantDoc.id }
                 const scheduleId = getHeartbeatScheduleId(projectId, assistant.uid, userId)
                 const data = buildHeartbeatScheduleData({
+                    project,
                     projectId,
                     assistant,
                     userId,

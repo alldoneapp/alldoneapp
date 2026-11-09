@@ -23,10 +23,19 @@ const HEARTBEAT_SCHEDULE_FIELDS = [
     'heartbeatChancePercent',
     'heartbeatChanceNoReplyPercent',
     'isDefault',
+    // What a heartbeat runs as a member; a change makes earlier confirmations stale (NV-17).
+    'allowedTools',
+    'instructions',
+    'mcpServers',
 ]
 
 function heartbeatScheduleSettingsChanged(oldAssistant, newAssistant) {
     return HEARTBEAT_SCHEDULE_FIELDS.some(field => !isEqual(oldAssistant?.[field], newAssistant?.[field]))
+}
+
+function heartbeatConfigChanged(oldAssistant, newAssistant) {
+    const { HEARTBEAT_CONFIG_FIELDS } = require('../Assistant/heartbeatOptIn')
+    return HEARTBEAT_CONFIG_FIELDS.some(field => !isEqual(oldAssistant?.[field], newAssistant?.[field]))
 }
 
 const tryUpdateAssitantInGuides = async (oldAssistant, newAssistant, projectId) => {
@@ -98,12 +107,23 @@ const onUpdateAssistant = async (projectId, assistantId, change) => {
     } else {
         promises.push(tryUpdateAssitantInGuides({ ...oldAssistant }, { ...newAssistant }, projectId))
         if (heartbeatScheduleSettingsChanged(oldAssistant, newAssistant)) {
+            // While a project has one member, only that member can have changed what the heartbeat
+            // runs, so their confirmation follows the change; in a shared project it goes stale (NV-17).
+            const confirm = heartbeatConfigChanged(oldAssistant, newAssistant)
+                ? require('../Assistant/heartbeatOptIn').confirmHeartbeatsForSoleMember({
+                      db: admin.firestore(),
+                      projectId,
+                      assistantId,
+                  })
+                : Promise.resolve()
             promises.push(
-                safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistantId), {
-                    source: 'assistant_updated',
-                    projectId,
-                    assistantId,
-                })
+                confirm.then(() =>
+                    safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistantId), {
+                        source: 'assistant_updated',
+                        projectId,
+                        assistantId,
+                    })
+                )
             )
         }
     }
@@ -111,4 +131,4 @@ const onUpdateAssistant = async (projectId, assistantId, change) => {
     await Promise.all(promises)
 }
 
-module.exports = { onUpdateAssistant, heartbeatScheduleSettingsChanged }
+module.exports = { onUpdateAssistant, heartbeatScheduleSettingsChanged, heartbeatConfigChanged }

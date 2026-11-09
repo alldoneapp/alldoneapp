@@ -22,6 +22,7 @@ const admin = require('firebase-admin')
 const { HttpsError } = require('firebase-functions/v2/https')
 const { v4: uuidv4 } = require('uuid')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
+const { normalizeBrowserNonceHash, requestMatchesBrowserBinding } = require('../Utils/oauthBrowserBinding')
 
 const SESSION_TTL_MS = 10 * 60 * 1000 // 10 minutes to complete the dance
 const CLIENT_NAME = 'Alldone Assistant'
@@ -62,8 +63,11 @@ function expiresAtFromTokens(tokens) {
  *                      Leave blank for a public client (PKCE only).
  * @param scope         Optional space-separated scopes to request.
  */
-async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope }) {
+async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope, browserNonceHash }) {
     if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
+    // NV-23: the browser that starts the flow must be the one that completes it (Utils/oauthBrowserBinding.js).
+    const boundNonceHash = normalizeBrowserNonceHash(browserNonceHash)
+    if (!boundNonceHash) throw new HttpsError('failed-precondition', 'Refresh Alldone and start the connection again.')
     const url = String(serverUrl || '').trim()
     if (!url) throw new HttpsError('invalid-argument', 'A server URL is required.')
     const requestedScope = String(scope || '').trim() || undefined
@@ -133,6 +137,7 @@ async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope 
         codeVerifier,
         redirectUri,
         resource: resource ? resource.toString() : null,
+        browserNonceHash: boundNonceHash,
         status: 'pending',
         createdAt: Date.now(),
         expiresAt: Date.now() + SESSION_TTL_MS,
@@ -145,13 +150,21 @@ async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope 
  * Step 3 — exchange the authorization code for tokens (called from the onRequest
  * callback handler). Persists tokens on the session and marks it complete.
  */
-async function exchangeMcpOAuthCode({ code, state }) {
-    if (!code || !state) throw new Error('Missing code or state')
+async function exchangeMcpOAuthCode({ code, state, request }) {
+    if (!code || !state || typeof state !== 'string') throw new Error('Missing code or state')
     const snap = await sessionRef(state).get()
     if (!snap.exists) throw new Error('Unknown or expired OAuth session')
     const session = snap.data() || {}
     if (session.status === 'complete') return // idempotent
     if (Date.now() > (session.expiresAt || 0)) throw new Error('OAuth session expired')
+    // NV-23: a forwarded authorization URL completed in another browser must not hand that
+    // person's tokens to the initiator. Checked before the code is exchanged; the session is spent.
+    if (!requestMatchesBrowserBinding(request, session.browserNonceHash)) {
+        await sessionRef(state)
+            .delete()
+            .catch(() => {})
+        throw new Error('This authorization was started in a different browser. Start it again from Alldone.')
+    }
 
     const auth = await loadAuth()
     const tokens = await auth.exchangeAuthorization(session.authorizationServerUrl, {

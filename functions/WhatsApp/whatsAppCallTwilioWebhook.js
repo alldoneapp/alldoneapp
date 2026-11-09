@@ -4,6 +4,7 @@ const { PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { getOrCreateWhatsAppDailyTopic } = require('./whatsAppDailyTopic')
 const { findUserByPhone, getDefaultAssistantId, normalizePhoneNumber } = require('./whatsAppIncomingHandler')
+const { isFullyAttestedStirVerstat } = require('../shared/callerVerification')
 const { createRoutingToken } = require('./whatsAppCallSecurity')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { createCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
@@ -189,6 +190,13 @@ async function handleIncomingPhoneCall(req, res) {
     const twilioCallSid = String(req.body?.CallSid || '').trim()
     if (!twilioCallSid || !fromNumber) return res.status(400).send('Missing call data')
 
+    // Caller ID alone does not prove who is calling; only full STIR/SHAKEN attestation does. An
+    // unattested call still reaches the assistant, but as an unverified caller (NV-35).
+    const callerAttestation = String(req.body?.StirVerstat || '').trim() || null
+    const callerVerification = {
+        verified: isFullyAttestedStirVerstat(callerAttestation),
+        attestation: callerAttestation,
+    }
     const userId = await findUserByPhone(normalizePhoneNumber(fromNumber))
     const userDoc = userId ? await admin.firestore().doc(`users/${userId}`).get() : null
     const user = userDoc?.exists ? { ...userDoc.data(), uid: userDoc.id } : null
@@ -228,11 +236,14 @@ async function handleIncomingPhoneCall(req, res) {
         twilioCallSid,
         language: user.language,
         channel: 'phone_call',
+        callerVerification,
     })
     if (!leaseResult.success) return rejectVoiceCall(res, leaseResult.reason || 'active_call')
 
     console.log('Phone Call: Routed eligible call', {
         sessionId: twilioCallSid,
+        callerVerified: callerVerification.verified,
+        callerAttestation,
         userId,
         projectId,
         assistantId,

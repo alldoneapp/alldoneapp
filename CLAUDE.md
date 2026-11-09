@@ -1089,7 +1089,11 @@ tools and the execution gate:
   messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
-  or delegated assistant is not a member saying "this is wrong".
+  or delegated assistant is not a member saying "this is wrong". Neither is an **automatic comment reply**
+  (`runAssistantCommentReply`, answering another assistant's comment such as a Gmail follow-up):
+  `askToOpenAIBot` derives `allowKnowledgeCorrections` from `!runOptions.automaticCommentReply`, and
+  `resolveKnowledgeBaseAccess` returns read-only for `automaticCommentReply` whatever the flag says
+  (security audit NV-45).
 - **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
   server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
   answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
@@ -3493,6 +3497,28 @@ subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for se
 interruption, rollout and verification details. Keep the shared chat execution path and
 model-specific pricing; do not introduce a separate voice backend model.
 
+**A PSTN phone call is the account holder only when the carrier says so (NV-35).** Twilio passes
+the STIR/SHAKEN verdict as `StirVerstat`; `handleIncomingPhoneCall` records it on the session as
+`callerVerified` / `callerAttestation`, and only `TN-Validation-Passed-A` counts. Any other value,
+or none (international calls, carriers without STIR/SHAKEN, sessions from before this change), makes
+`runLiveAssistant` run as an unverified caller (`functions/shared/callerVerification.js`): no
+`getOptimizedContextMessages` (no chat history, memory, instructions or project data) and no Anna
+context, a fixed context saying the account cannot be used, `runtime.callerIdentityUnverified`, which
+`filterAllowedToolsForRuntimeContext`, `isToolAllowedForExecution`, `interactWithChatStream` (no
+implicit `load_skill` or wiki tools) and `resolveKnowledgeBaseAccess` all honour, so only `web_search`
+remains, and no `post_voice_answer_in_chat`. WhatsApp and in-app calls are not affected. The
+transcript still lands in the account's daily topic for display, but each turn carries
+`callerUnverified: true`, and `getOptimizedContextMessages` and the WhatsApp `getConversationHistory`
+skip such comments, so a later run never reads a stranger's words as the account holder's. Residual:
+an unverified call still spends the account's voice Gold.
+
+**A voice call is a read of its topic, so it is gated like one (NV-28).** `startAssistantBrowserCall`
+loads the topic's recent comments into a live session the caller controls. `resolveBrowserCallTopic`
+therefore requires `projects/{projectId}.userIds` membership and a place in the topic's `isPublicFor`,
+the same rule `assertObjectAccess` applies to `askToBotSecondGen`. It used to accept anyone listed in
+`creatorId`, `lastEditorId`, `members` or `usersFollowing`, and `members` keeps every former commenter
+after a topic is made private.
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
@@ -4467,6 +4493,31 @@ nothing claims a connected mailbox. Pinned by `functions/Email/emailIdentityAtte
 `functions/Email/emailIncomingHandler.test.js` and the credential-document cases in
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+### An OAuth connect is completed only by the browser that started it (NV-23)
+
+The Google, Microsoft and MCP-client connect flows used to complete from `(code, state)` alone, and
+the state was only a lookup key for the initiator's request. A consent URL that the initiator
+forwarded to someone else therefore connected that person's mailbox (or MCP server) to the
+initiator's account, with the tokens owner-readable in the initiator's user tree. Now the starting
+browser (`utils/oauthBrowserBinding.js`) keeps a random nonce in a `__session` cookie scoped to the
+callback path and sends only its SHA-256 (`browserNonceHash`). The initiate callables
+(`googleOAuthInitiate`, `microsoftOAuthInitiate`, `beginMcpOAuth`) refuse to start without it and
+store it with the state. The callback (`functions/Utils/oauthBrowserBinding.js`) exchanges the code
+only for a request that carries the matching cookie, and spends the state either way. The cookie
+must be named `__session`, because Firebase Hosting strips every other cookie before forwarding to a
+function. The binding only works when the app runs on the callback's host (`my.alldone.app`,
+`mystaging.alldone.app`; the cookie is per host). Starting a connect from `alldonestaging.web.app`
+or a preview channel fails with "started in a different browser". `returnUrl` must be an Alldone
+origin (the `openInBrowserTab` allowlist; localhost only in the emulator) at initiation and again
+before the redirect. The callback page posts its result once per app origin instead of to `'*'`,
+and the clients accept only same-origin messages. **Microsoft connect does not work in production
+at all**: `firebase.json` has no rewrite for `/microsoftOAuthCallback`, so the redirect lands on
+the SPA, and no real callback reached the function in the last 180 days. The binding is
+implemented for it anyway. Pinned by `functions/Utils/oauthBrowserBinding.test.js`,
+`functions/GoogleOAuth/googleOAuthBrowserBinding.test.js`,
+`functions/MCP/mcpClientOAuthBrowserBinding.test.js`, `functions/Utils/oauthCallbackPage.test.js`
+and `utils/oauthBrowserBinding.test.js`.
+
 ### `users/{uid}.email` is not an identity another system may trust (AT-2908)
 
 alldone.team identifies an alldone.app account by the email address we hand it: embedded tools
@@ -4637,6 +4688,20 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### A phone number routes WhatsApp and calls only when exactly one account claims it (NV-44)
+
+`users/{uid}.phone` is written by its owner (`setUserPhone`) with no proof of possession; no
+verification flow exists. `resolveUserByPhone` (`functions/WhatsApp/whatsAppIncomingHandler.js`)
+therefore looks the number up in both stored formats (with and without `+`) and refuses to route
+when more than one account claims it. It logs the claimant ids at ERROR, replies to a WhatsApp
+message with a neutral "linked to more than one account" note, and rejects a call as unlinked.
+`findUserByPhone` keeps its old contract (an id or null). Before this, `limit(1)` silently picked
+whichever document sorted first, so anyone could take over the owner's WhatsApp channel by saving
+the same number. The real fix is a verified claim: a server-owned `phone` set by a Cloud Function
+after a WhatsApp one-time-code challenge, a unique `phoneClaims/{e164}` document written in a
+transaction, and a rules change refusing client writes to `phone`. Until that exists, ambiguity
+refusal is the only protection.
+
 ### WhatsApp replies must finish or report failure before their worker expires
 
 `WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
@@ -4801,6 +4866,7 @@ Ship both the Functions package (assistant entry points and MCP) and the rebuilt
 - Run `node migration/backfillAssistantHeartbeatSchedules.js --firebase-project-id=<project> --execute` after deploying the worker and indexes. Without `--execute` the script is a dry run.
 - Cloud Tasks IAM must be granted to the **firebase-adminsdk SA** after deploying `runAssistantHeartbeat`. Run `functions/Assistant/grant-heartbeat-task-worker.sh <projectId>`; it grants project-level enqueue, self `actAs`, and `run.invoker` on the worker.
 - Rollback requires pausing or purging the `runassistantheartbeat` task queue before restoring the legacy scanner. Legacy assistant heartbeat status maps are intentionally retained.
+- **A heartbeat runs as a member only after that member confirmed it (security audit NV-17).** A heartbeat runs unattended with the member's identity, Gold and connected accounts (`search_gmail` reads their mailbox), while its prompt, tools and instructions sit on the shared assistant document that every member may edit. `functions/Assistant/heartbeatOptIn.js` therefore requires `users/{uid}.heartbeatOptIns["<projectId>__<assistantId>"].configHash` to equal the hash of the assistant's current heartbeat prompt, `allowedTools`, `instructions` and `mcpServers`. Chance, interval, awake window, model and WhatsApp delivery are not hashed. `buildHeartbeatScheduleData`, the worker and the legacy scanner all check it, so any other member's change to one of those fields stops the heartbeat for everyone who confirmed the old version. Members confirm, re-confirm or revoke through the `assistantHeartbeatOptIn` callable (row "Run heartbeat for me" in the heartbeat settings; the client never computes the hash). The client calls `refresh` after the member's own edit to instructions, heartbeat prompt or tools, which re-confirms only for a member who had already confirmed. The server confirms for a project's **only** member at the moments nobody else can have written the configuration: assistant created, hashed field changed, project created (`confirmHeartbeatsForSoleMember`, before the schedule sync). Being alone is not trust in itself: someone who changes the prompt and then leaves must not have it run as the member left behind. MCP-server changes made through the server-side connect flow need a fresh confirmation in shared projects. A heartbeat topic (`Heartbeat<date><uid>`) is now `isPublicFor: [uid]`, and an existing project-visible one is made private on reuse. The WhatsApp daily topic stays project-visible by design. One-time migration: `node migration/confirmAssistantHeartbeats.js --firebase-project-id=<project>` (dry run; `--execute`). Run it right before and again right after the functions deploy. The default `--scope=owner` confirms the only member of a one-member project and the assistant's `creatorId` in shared projects; `--scope=all` keeps today's fan-out.
 
 ### Code Style
 

@@ -3788,5 +3788,8 @@
     "mcp_app_reconnect_failed": "No se pudo volver a conectar la app.",
     "mcp_app_reconnect_in_settings": "Vuelve a conectarla en los ajustes de servidores MCP de {{assistant}}; después esta vista se abrirá de nuevo.",
     "mcp_app_reconnect_ask_owner": "Pide a un administrador que la vuelva a conectar a {{assistant}}.",
-    "mcp_app_the_assistant": "el asistente"
+    "mcp_app_the_assistant": "el asistente",
+    "Run heartbeat for me": "Ejecutar el heartbeat para mí",
+    "heartbeatOptInExplanation": "El heartbeat se ejecuta como tú, con tu Gold y tus cuentas conectadas. Solo se ejecuta para ti después de que confirmes su prompt, herramientas e instrucciones actuales.",
+    "heartbeatOptInStale": "Alguien cambió este heartbeat desde que lo confirmaste, por lo que ya no se ejecuta para ti. Revisa el prompt, las herramientas y las instrucciones y vuelve a confirmarlo."
 }

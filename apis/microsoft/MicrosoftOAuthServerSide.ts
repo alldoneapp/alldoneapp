@@ -1,4 +1,5 @@
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
+import { createOAuthBrowserBinding, MICROSOFT_OAUTH_CALLBACK_PATH } from '../../utils/oauthBrowserBinding'
 
 export interface MicrosoftAuthStatus {
     hasCredentials: boolean
@@ -21,11 +22,14 @@ export async function startMicrosoftServerSideAuth(
     returnUrl?: string,
     connectionId?: string
 ): Promise<void> {
+    // NV-23: only this browser may complete the flow it starts.
+    const browserNonceHash = await createOAuthBrowserBinding(MICROSOFT_OAUTH_CALLBACK_PATH)
     const result = await runHttpsCallableFunction('microsoftOAuthInitiate', {
         projectId,
         service,
         returnUrl,
         connectionId,
+        browserNonceHash,
     })
     const { authUrl } = result
 
@@ -46,6 +50,8 @@ export async function startMicrosoftServerSideAuth(
         let timeout: NodeJS.Timeout
 
         const messageHandler = (event: MessageEvent) => {
+            // The callback page posts only to Alldone origins (NV-23); accept only same-origin messages.
+            if (event.origin !== window.location.origin) return
             if (event.data && typeof event.data === 'object') {
                 if (event.data.type === 'oauth_success') {
                     window.removeEventListener('message', messageHandler)
