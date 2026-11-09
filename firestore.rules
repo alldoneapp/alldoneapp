@@ -701,10 +701,7 @@ service cloud.firestore {
       // project and harvest the ids of their projects and notes. No client query lists projects
       // without a userIds filter, so only the single-document read stays open.
       allow get: if resource.data.get('isShared', privateProject()) != privateProject();
-      // security audit 2026-11 (NV-26): a deleted project's id is tombstoned by onDeleteProject
-      // (server-only deletedProjects/{projectId}) and can never be registered again.
-      allow create: if signedIn() && newProjectBoundToCreator(request.resource.data)
-        && !exists(/databases/$(database)/documents/deletedProjects/$(projectId));
+      allow create: if signedIn() && newProjectBoundToCreator(request.resource.data);
       // security audit 2026-11: the repository connection and the golden VM environment feed
       // other members' credentialed VM coding jobs, so only Cloud Functions write them
       // (connect/disconnect{Github,Gitlab}Repo, the golden build). `vmGolden` here is a display
@@ -1135,16 +1132,8 @@ service cloud.firestore {
             (isCreate || after.get('activatorUserId', null) == request.auth.uid)));
     }
 
-    // NEW-A: a scheduled run executes only content its activator approved; the approved hashes and
-    // the notice bookkeeping are written by Cloud Functions alone (Assistant/assistantTaskContentApproval.js).
-    function assistantTaskServerFieldsUnchanged(before, after) {
-      return after.get('approvedContentHashByUser', null) == before.get('approvedContentHashByUser', null) &&
-        after.get('contentApprovalNoticeByUser', null) == before.get('contentApprovalNoticeByUser', null);
-    }
-
     function assistantTaskActivationBoundToWriter(before, after, isCreate) {
-      return assistantTaskServerFieldsUnchanged(before, after) &&
-        listOrEmpty(after.get('activatedUserIds', [])).toSet()
+      return listOrEmpty(after.get('activatedUserIds', [])).toSet()
           .difference(listOrEmpty(before.get('activatedUserIds', [])).toSet())
           .hasOnly(legacyActivationIds(before)) &&
         addedOnlyOwnMapKeys(before, after, 'recurrenceByUser') &&

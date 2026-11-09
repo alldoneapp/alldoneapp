@@ -6,7 +6,6 @@ import PreConfigTaskButton from './PreConfigTaskButton'
 import PreConfigTaskGeneratorModal from '../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import { confirmAssistantTaskRunForCurrentUser } from '../../../../utils/assistantTaskRunGate'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import {
     TASK_TYPE_PROMPT,
@@ -103,7 +102,7 @@ export default function PreConfigTaskGeneratorWrapper({
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
                 if ((variables || []).length > 0) {
                     openModal()
-                } else if (confirmAssistantTaskRunForCurrentUser(task, assistant?.uid, projectId)) {
+                } else {
                     addTask()
                 }
             } else if (type === TASK_TYPE_IFRAME) {

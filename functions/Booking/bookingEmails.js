@@ -190,24 +190,17 @@ function buildAlldonePitchFooter() {
     )
 }
 
-// Security audit 2026-11 (#10): this mail goes to an address the (unauthenticated) booker typed, so
-// it carries as little caller-chosen text as possible: no note echo, and names cut short.
-const VISITOR_EMAIL_NAME_MAX = 60
-const VISITOR_EMAIL_SUBJECT = 'Your meeting is confirmed'
-const shortName = value => {
-    const text = String(value || '').trim()
-    return text.length > VISITOR_EMAIL_NAME_MAX ? `${text.slice(0, VISITOR_EMAIL_NAME_MAX)}…` : text
-}
-
-function buildVisitorEmailHtml({ visitorName: rawVisitorName, hostName, meetingTimeText, durationMinutes, joinUrl }) {
-    const safeHostName = escapeHtml(shortName(hostName)) || 'your host'
-    const visitorName = shortName(rawVisitorName)
+function buildVisitorEmailHtml({ visitorName, hostName, note, meetingTimeText, durationMinutes, joinUrl }) {
+    const safeHostName = escapeHtml(hostName) || 'your host'
     const rows = []
     rows.push(buildDetailRow('With', safeHostName))
     if (meetingTimeText) rows.push(buildDetailRow('When', escapeHtml(meetingTimeText)))
     if (Number.isFinite(durationMinutes)) rows.push(buildDetailRow('Duration', `${durationMinutes} minutes`))
     const joinRow = buildJoinRow(joinUrl)
     if (joinRow) rows.push(joinRow)
+    if (note) {
+        rows.push(buildDetailRow('Your note', escapeHtml(note).replace(/\n/g, '<br />')))
+    }
 
     // This email is the visitor's only reliable channel: the calendar insert
     // does not send Google/Graph invitations, so if the link is not here the
@@ -262,16 +255,17 @@ async function sendBookingConfirmationToVisitor({
         const htmlContent = buildVisitorEmailHtml({
             visitorName,
             hostName,
+            note,
             meetingTimeText,
             durationMinutes,
             joinUrl,
         })
 
-        // A fixed subject: the host's display name is chosen by whoever made the booking page.
+        const subject = hostName ? `Meeting confirmed with ${hostName}` : 'Your meeting is confirmed'
         const sendSmtpEmail = {
             sender: NO_REPLY_SENDER,
             to: [{ email: visitorEmail }],
-            subject: VISITOR_EMAIL_SUBJECT,
+            subject,
             htmlContent,
             headers: { Connection: 'keep-alive' },
         }
@@ -289,5 +283,4 @@ module.exports = {
     formatMeetingTime,
     buildHostEmailHtml,
     buildVisitorEmailHtml,
-    VISITOR_EMAIL_SUBJECT,
 }

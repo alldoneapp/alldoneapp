@@ -572,9 +572,7 @@ class SharedHelper {
     }
 
     static redirectToPrivateResource = () => {
-        // The page keeps running on /private-resource, so Firestore must stay usable (no local-data
-        // clear); the push token is still released.
-        Backend.logout(() => SettingsHelper.onLogOut(false), { clearLocalData: false })
+        Backend.logout(() => SettingsHelper.onLogOut(false))
         URLTrigger.directProcessUrl(NavigationService, '/private-resource')
     }
 

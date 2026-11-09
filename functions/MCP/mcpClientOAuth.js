@@ -23,7 +23,6 @@ const { HttpsError } = require('firebase-functions/v2/https')
 const { v4: uuidv4 } = require('uuid')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { normalizeBrowserNonceHash, requestMatchesBrowserBinding } = require('../Utils/oauthBrowserBinding')
-const { assertPublicUrl, fetchPublicUrl, OutboundUrlError } = require('../shared/outboundUrlGuard')
 
 const SESSION_TTL_MS = 10 * 60 * 1000 // 10 minutes to complete the dance
 const CLIENT_NAME = 'Alldone Assistant'
@@ -42,58 +41,6 @@ function loadAuth() {
 function getRedirectUri() {
     return `${getBaseUrl()}/mcpClientOAuthCallback`
 }
-
-/**
- * Every request this flow makes goes to a URL a member typed or a document that URL served, from
- * inside the Functions network (NV-25). So: https only, public addresses only (checked against the
- * DNS answer), redirects followed by hand with every hop re-checked. Handed to the MCP SDK as its
- * `fetchFn`, which it uses for discovery, registration, token exchange and refresh alike.
- */
-function createGuardedFetch(deps = {}) {
-    return async (url, init = {}) => {
-        const { response } = await fetchPublicUrl(url, init, {
-            httpsOnly: true,
-            ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-            ...(deps.lookup ? { lookup: deps.lookup } : {}),
-        })
-        return response
-    }
-}
-
-function originOf(value) {
-    try {
-        return new URL(String(value)).origin
-    } catch (error) {
-        return null
-    }
-}
-
-/**
- * The SDK takes `registration_endpoint` and `token_endpoint` from metadata the remote server
- * serves, so the server could aim our POSTs anywhere. Both must live on the authorization server's
- * own origin; the authorization endpoint (opened by the user's browser, not by us) must be https.
- */
-function assertDiscoveredEndpointsBound(authorizationServerUrl, metadata) {
-    const asOrigin = originOf(authorizationServerUrl)
-    if (!asOrigin || !asOrigin.startsWith('https://')) throw new OutboundUrlError('insecure authorization server')
-    if (!metadata) return
-    for (const key of ['token_endpoint', 'registration_endpoint']) {
-        if (metadata[key] && originOf(metadata[key]) !== asOrigin) {
-            throw new OutboundUrlError(`${key} is not on the authorization server's origin`)
-        }
-    }
-    for (const key of ['authorization_endpoint', 'issuer']) {
-        if (metadata[key] && !String(originOf(metadata[key]) || '').startsWith('https://')) {
-            throw new OutboundUrlError(`${key} is not an https URL`)
-        }
-    }
-}
-
-// Returned instead of the SDK's error text, which embeds the remote response body.
-const DISCOVERY_FAILED =
-    'OAuth discovery failed. Check that the URL is the https address of an MCP server that supports OAuth.'
-const REGISTRATION_FAILED =
-    'OAuth dynamic client registration failed. This server may require a pre-registered client — enter a Client ID in the OAuth options and try again.'
 
 function sessionRef(state) {
     return admin.firestore().doc(`mcpOAuthSessions/${state}`)
@@ -116,7 +63,7 @@ function expiresAtFromTokens(tokens) {
  *                      Leave blank for a public client (PKCE only).
  * @param scope         Optional space-separated scopes to request.
  */
-async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope, browserNonceHash }, deps = {}) {
+async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope, browserNonceHash }) {
     if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
     // NV-23: the browser that starts the flow must be the one that completes it (Utils/oauthBrowserBinding.js).
     const boundNonceHash = normalizeBrowserNonceHash(browserNonceHash)
@@ -125,31 +72,19 @@ async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope,
     if (!url) throw new HttpsError('invalid-argument', 'A server URL is required.')
     const requestedScope = String(scope || '').trim() || undefined
 
-    try {
-        await assertPublicUrl(url, { httpsOnly: true, ...(deps.lookup ? { lookup: deps.lookup } : {}) })
-    } catch (error) {
-        throw new HttpsError('invalid-argument', 'The server URL must be a public https address.')
-    }
-
-    const auth = deps.auth || (await loadAuth())
-    const fetchFn = createGuardedFetch(deps)
+    const auth = await loadAuth()
     const redirectUri = getRedirectUri()
 
     let serverInfo
-    let authorizationServerUrl
-    let metadata
-    let resource
     try {
-        serverInfo = await auth.discoverOAuthServerInfo(url, { fetchFn })
-        authorizationServerUrl = serverInfo.authorizationServerUrl
-        metadata = serverInfo.authorizationServerMetadata
-        assertDiscoveredEndpointsBound(authorizationServerUrl, metadata)
-        const resourceMetadata = serverInfo.resourceMetadata
-        resource = resourceMetadata && resourceMetadata.resource ? new URL(resourceMetadata.resource) : undefined
+        serverInfo = await auth.discoverOAuthServerInfo(url)
     } catch (err) {
-        console.warn('beginMcpOAuth: discovery failed', { userId, error: String(err && err.message).slice(0, 300) })
-        throw new HttpsError('failed-precondition', DISCOVERY_FAILED)
+        throw new HttpsError('failed-precondition', `OAuth discovery failed: ${String(err && err.message)}`)
     }
+    const authorizationServerUrl = serverInfo.authorizationServerUrl
+    const metadata = serverInfo.authorizationServerMetadata
+    const resourceMetadata = serverInfo.resourceMetadata
+    const resource = resourceMetadata && resourceMetadata.resource ? new URL(resourceMetadata.resource) : undefined
 
     let clientInformation
     const presetClientId = String(clientId || '').trim()
@@ -173,14 +108,13 @@ async function beginMcpOAuth({ userId, serverUrl, clientId, clientSecret, scope,
                     token_endpoint_auth_method: 'none',
                 },
                 scope: requestedScope,
-                fetchFn,
             })
         } catch (err) {
-            console.warn('beginMcpOAuth: registration failed', {
-                userId,
-                error: String(err && err.message).slice(0, 300),
-            })
-            throw new HttpsError('failed-precondition', REGISTRATION_FAILED)
+            throw new HttpsError(
+                'failed-precondition',
+                `OAuth dynamic client registration failed. This server may require a pre-registered client — ` +
+                    `enter a Client ID in the OAuth options and try again. (${String(err && err.message)})`
+            )
         }
     }
 
@@ -233,23 +167,14 @@ async function exchangeMcpOAuthCode({ code, state, request }) {
     }
 
     const auth = await loadAuth()
-    let tokens
-    try {
-        tokens = await auth.exchangeAuthorization(session.authorizationServerUrl, {
-            metadata: session.metadata || undefined,
-            clientInformation: session.clientInformation,
-            authorizationCode: code,
-            codeVerifier: session.codeVerifier,
-            redirectUri: session.redirectUri,
-            resource: session.resource ? new URL(session.resource) : undefined,
-            fetchFn: createGuardedFetch(),
-        })
-    } catch (err) {
-        // The SDK's message carries the token endpoint's response body; the callback page shows
-        // whatever this throws, so log the detail and show a fixed sentence.
-        console.warn('exchangeMcpOAuthCode: token exchange failed', { error: String(err && err.message).slice(0, 300) })
-        throw new Error('Token exchange failed.')
-    }
+    const tokens = await auth.exchangeAuthorization(session.authorizationServerUrl, {
+        metadata: session.metadata || undefined,
+        clientInformation: session.clientInformation,
+        authorizationCode: code,
+        codeVerifier: session.codeVerifier,
+        redirectUri: session.redirectUri,
+        resource: session.resource ? new URL(session.resource) : undefined,
+    })
 
     await sessionRef(state).set(
         {
@@ -367,7 +292,6 @@ async function refreshMcpOAuthTokens(secret) {
         clientInformation: ctx.clientInformation,
         refreshToken: secret.refreshToken,
         resource: ctx.resource ? new URL(ctx.resource) : undefined,
-        fetchFn: createGuardedFetch(),
     })
 
     return {
@@ -385,6 +309,4 @@ module.exports = {
     consumeMcpOAuthSession,
     cleanupExpiredMcpOAuthSessions,
     refreshMcpOAuthTokens,
-    assertDiscoveredEndpointsBound,
-    createGuardedFetch,
 }

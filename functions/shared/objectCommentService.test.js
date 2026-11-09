@@ -226,25 +226,3 @@ describe('ObjectCommentService on contacts and artifacts', () => {
         )
     })
 })
-
-// Security audit 2026-11 (#11): follower lists are member-writable and outlive membership.
-describe('ObjectCommentService notification audience', () => {
-    test('notifies only current project members, whatever the follower list says', async () => {
-        const db = createFakeFirestore({
-            ...project,
-            [`goals/${P}/items/g1`]: goal(),
-            [`followers/${P}/goals/g1`]: { usersFollowing: [MEMBER, 'removed-member'] },
-        })
-        const result = await service(db).addComment({
-            objectType: 'goals',
-            projectId: P,
-            objectId: 'g1',
-            comment: 'Confidential update',
-            actor: { uid: 'assistant-1', displayName: 'Growth Lead' },
-            fromAssistant: true,
-        })
-        expect(notificationsFor(db).sort()).toEqual([MEMBER, OWNER].sort())
-        expect(db.docs.get(`pushNotifications/${result.commentId}`).userIds.sort()).toEqual([MEMBER, OWNER].sort())
-        expect(result.notifiedFollowers).toBe(2)
-    })
-})

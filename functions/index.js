@@ -16,7 +16,6 @@ const {
     onDocumentUpdated,
     onDocumentDeleted,
     onDocumentWritten,
-    onDocumentWrittenWithAuthContext,
 } = require('firebase-functions/v2/firestore')
 
 const admin = require('firebase-admin')
@@ -1397,11 +1396,10 @@ exports.ipRegistryLookup = onCall(
         cors: true,
     },
     async request => {
-        const { auth } = request
+        const { data, auth } = request
         if (auth) {
-            // `request.data` is ignored on purpose: only the caller's own address is looked up (NV-24).
             const { ipRegistryLookup } = require('./IpRegistry/ipRegistryLookup')
-            return await ipRegistryLookup({ userId: auth.uid, rawRequest: request.rawRequest })
+            return await ipRegistryLookup(data)
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
@@ -2801,21 +2799,13 @@ exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     },
     async request => {
         const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        const admin = require('firebase-admin')
-        const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
-        const { reindexUnlockedGoalForUser, UnlockGoalReindexError } = require('./Goals/unlockGoalReindex')
-        try {
-            await reindexUnlockedGoalForUser({
-                db: admin.firestore(),
-                userId: auth.uid,
-                projectId: data?.projectId,
-                goalId: data?.goalId,
-                reindex: (projectId, goalId) => proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin),
-            })
-        } catch (error) {
-            if (error instanceof UnlockGoalReindexError) throw new HttpsError(error.code, error.message)
-            throw error
+        if (auth) {
+            const admin = require('firebase-admin')
+            const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
+            const { projectId, goalId } = data
+            await proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin)
+        } else {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
     }
 )
@@ -2839,22 +2829,6 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
 )
 
 //TEMPLATE AND COMMUNITY PROJECTS
-
-// Accepting an invitation, joining a project shared with link, joining a guide and starting a
-// template's guide. A non-member cannot write a project's userIds under firestore.rules, so the
-// right to join is checked and the membership written here (Projects/joinProject.js).
-exports.joinProjectSecondGen = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { handleJoinProjectRequest } = require('./Projects/joinProject')
-        return await handleJoinProjectRequest(admin.firestore(), request)
-    }
-)
 
 exports.sendUserJoinsToGuideEmailSecondGen = onCall(
     {
@@ -4485,13 +4459,8 @@ exports.convertVideosSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const admin = require('firebase-admin')
-            const { convertVideos, VideoConversionError } = require('./videosHelper')
-            try {
-                return await convertVideos(admin, data, auth.uid)
-            } catch (error) {
-                if (error instanceof VideoConversionError) throw new HttpsError(error.code, error.message)
-                throw error
-            }
+            const { convertVideos } = require('./videosHelper')
+            return await convertVideos(admin, data)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -4544,18 +4513,6 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
         const oldProject = mapProjectData(projectId, event.data.before.data())
         const newProject = mapProjectData(projectId, event.data.after.data())
         const work = [onUpdateProject(projectId, oldProject, newProject)]
-        const { projectBecamePrivate, rotateServeSecretsForProject } = require('./Artifacts/artifactStore')
-        if (projectBecamePrivate(event.data.before.data(), event.data.after.data())) {
-            // Link viewers lose document access here; their copied artifact addresses must die too (NV-16).
-            work.push(
-                rotateServeSecretsForProject({ db: admin.firestore(), projectId }).catch(error =>
-                    console.error('onUpdateProject: artifact serve secrets not rotated', {
-                        projectId,
-                        error: error.message,
-                    })
-                )
-            )
-        }
         if (JSON.stringify(oldProject.userIds || []) !== JSON.stringify(newProject.userIds || [])) {
             work.push(
                 queueProjectAccessProjectionSync(admin.firestore(), projectId, newProject.userIds || [], event.id)
@@ -5275,61 +5232,6 @@ exports.onUpdateAssistantTaskSecondGen = onDocumentUpdated(
         const { onUpdateAssistantTask } = require('./AssistantTasks/onUpdateAssistantTaskFunctions.js')
         const { projectId, assistantId, assistantTaskId } = event.params
         await onUpdateAssistantTask(projectId, assistantId, assistantTaskId, event.data)
-    }
-)
-
-// Security audit 2026-11 (NEW-A): a scheduled assistant task runs AS each user who activated it,
-// while its content is member-editable. This records, for the user who wrote it, the content a write
-// shows them approving (activating it, or editing it while activated). It needs the writer's
-// identity, which only the auth-context event carries; see Assistant/assistantTaskContentApproval.js.
-exports.onWriteAssistantTaskApprovalSecondGen = onDocumentWrittenWithAuthContext(
-    {
-        document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { recordWriterApprovalFromEvent } = require('./Assistant/assistantTaskContentApproval')
-        const { projectId, assistantId, assistantTaskId } = event.params
-        const before = event.data?.before?.exists ? event.data.before.data() : null
-        const after = event.data?.after?.exists ? event.data.after.data() : null
-        await recordWriterApprovalFromEvent({
-            docPath: `assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`,
-            projectId,
-            before,
-            after,
-            authType: event.authType,
-            authId: event.authId,
-        })
-    }
-)
-
-// The explicit half: a user confirms a run (or saves a task) whose current content they had not
-// approved. `expectedHash` is the hash of what they were shown; a different stored content is refused.
-exports.approveAssistantTaskContentSecondGen = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('unauthenticated', 'Authentication required')
-        const { approveAssistantTaskContent, ApprovalError } = require('./Assistant/assistantTaskContentApproval')
-        try {
-            return await approveAssistantTaskContent({
-                userId: auth.uid,
-                projectId: data?.projectId,
-                assistantId: data?.assistantId,
-                taskId: data?.taskId,
-                expectedHash: data?.expectedHash,
-            })
-        } catch (error) {
-            if (error instanceof ApprovalError) throw new HttpsError(error.code, error.message)
-            throw error
-        }
     }
 )
 

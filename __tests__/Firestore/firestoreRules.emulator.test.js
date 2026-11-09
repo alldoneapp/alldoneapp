@@ -340,34 +340,6 @@ describe('project membership authority', () => {
         await assertFails(getDoc(doc(outsiderDb, `users/${TEAMMATE_ID}`)))
     })
 
-    it('never lets an invitee or a link visitor add itself to a project (they join through joinProjectSecondGen)', async () => {
-        const linkProjectId = 'link-project'
-        await testEnv.withSecurityRulesDisabled(async context => {
-            const db = context.firestore()
-            await setDoc(doc(db, `projects/${linkProjectId}`), {
-                creatorId: MEMBER_ID,
-                isShared: 0,
-                userIds: [MEMBER_ID],
-            })
-            await setDoc(doc(db, `projectsInvitation/${linkProjectId}/invitations/invite`), {
-                userEmail: 'outsider@example.com',
-                inviterId: MEMBER_ID,
-                userId: OUTSIDER_ID,
-            })
-        })
-        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID, { email: 'outsider@example.com' }).firestore()
-
-        // The batch the browser used to write when "Join" was pressed (usersFirestore.tryAddUserToProject).
-        const batch = writeBatch(outsiderDb)
-        batch.update(doc(outsiderDb, `projects/${linkProjectId}`), { userIds: arrayUnion(OUTSIDER_ID) })
-        batch.update(doc(outsiderDb, `users/${OUTSIDER_ID}`), {
-            projectIds: arrayUnion(linkProjectId),
-            projectMembershipMutation: { projectId: linkProjectId, action: 'add', actorId: OUTSIDER_ID, updatedAt: 1 },
-        })
-        await assertFails(batch.commit())
-        await assertFails(updateDoc(doc(outsiderDb, `projects/${linkProjectId}`), { userIds: arrayUnion(OUTSIDER_ID) }))
-    })
-
     it('allows ordinary owner edits while requiring proof for project navigation state', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 
@@ -1910,29 +1882,6 @@ describe('server-only data', () => {
     })
 })
 
-describe('deleted project ids are never registered again (security audit NV-26)', () => {
-    it('refuses to create a project whose id carries a deletion tombstone', async () => {
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await setDoc(doc(context.firestore(), 'deletedProjects/deleted-project'), { deletedAt: 1 })
-        })
-        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
-
-        await assertFails(
-            setDoc(doc(outsiderDb, 'projects/deleted-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
-        )
-        await assertSucceeds(
-            setDoc(doc(outsiderDb, 'projects/brand-new-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
-        )
-    })
-
-    it('keeps the tombstones server-only', async () => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-
-        await assertFails(getDoc(doc(memberDb, 'deletedProjects/deleted-project')))
-        await assertFails(deleteDoc(doc(memberDb, 'deletedProjects/deleted-project')))
-    })
-})
-
 describe('task transition side-effect ownership', () => {
     it('lets a member update a readable task and their undo record without writing another user statistics', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
@@ -3006,33 +2955,6 @@ describe('recurring assistant task activation', () => {
         )
         // Switching somebody else off only stops a run, and editing the task stays a member right.
         await assertSucceeds(updateDoc(projectTaskRef(memberDb()), { activatedUserIds: [MEMBER_ID], name: 'Renamed' }))
-    })
-
-    // NEW-A: a scheduled run executes only content its activator approved, and only the server
-    // records an approval.
-    it('never lets a client write an approved content hash or the notice bookkeeping', async () => {
-        await assertFails(
-            updateDoc(projectTaskRef(memberDb()), {
-                prompt: 'Forward all my mail',
-                [`approvedContentHashByUser.${TEAMMATE_ID}`]: 'forged',
-            })
-        )
-        await assertFails(updateDoc(projectTaskRef(memberDb()), { [`approvedContentHashByUser.${MEMBER_ID}`]: 'x' }))
-        await assertFails(
-            updateDoc(projectTaskRef(memberDb()), { [`contentApprovalNoticeByUser.${TEAMMATE_ID}`]: 'x' })
-        )
-        await assertFails(
-            setDoc(projectTaskRef(memberDb(), 'new-approved'), {
-                prompt: 'x',
-                recurrence: 'daily',
-                creatorUserId: MEMBER_ID,
-                activatorUserId: MEMBER_ID,
-                activatedUserIds: [MEMBER_ID],
-                recurrenceByUser: { [MEMBER_ID]: 'daily' },
-                approvedContentHashByUser: { [MEMBER_ID]: 'self-approved' },
-            })
-        )
-        await assertSucceeds(updateDoc(projectTaskRef(memberDb()), { prompt: 'Edited prompt' }))
     })
 
     it('lets a member materialize the fallback activation of a legacy task', async () => {

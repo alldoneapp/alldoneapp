@@ -21,7 +21,6 @@ const processChats = async (projectId, userId, admin, superAdmin) => {
     promises.push(
         chatsRef.where('creatorId', '!=', userId).where('commentsData.lastCommentOwnerId', '==', userId).get()
     )
-    promises.push(chatsRef.where('creatorId', '!=', userId).where('followerIds', 'array-contains', userId).get())
     const [
         chatDocsToDelete,
         chatDocsToUpdatePrivacy,
@@ -29,7 +28,6 @@ const processChats = async (projectId, userId, admin, superAdmin) => {
         chatDocsToUpdateMembers,
         chatDocsToUpdateUsersFollowing,
         chatDocsToUpdateLastCommentOwnerId,
-        chatDocsToUpdateFollowerIds,
     ] = await Promise.all(promises)
 
     promises = []
@@ -56,32 +54,10 @@ const processChats = async (projectId, userId, admin, superAdmin) => {
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
         promises.push(chatRef.update({ usersFollowing: FieldValue.arrayRemove(userId) }))
     })
-    chatDocsToUpdateFollowerIds.forEach(doc => {
-        const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
-        promises.push(chatRef.update({ followerIds: FieldValue.arrayRemove(userId) }))
-    })
     chatDocsToUpdateLastCommentOwnerId.forEach(doc => {
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
         promises.push(chatRef.update({ ['commentsData.lastCommentOwnerId']: '' }))
     })
-    await Promise.all(promises)
-}
-
-// Security audit 2026-11 (#11): `followers/{projectId}/{objectType}/{objectId}.usersFollowing` is what
-// comment notifications fan out to. A removed member used to stay in every list there and keep
-// receiving comment text by push and email. Server fan-outs now also check current membership
-// (shared/projectMemberRecipients.js); this removes the stale entries themselves.
-const processFollowers = async (projectId, userId, admin) => {
-    const db = admin.firestore()
-    const collections = await db.doc(`followers/${projectId}`).listCollections()
-    const snapshots = await Promise.all(
-        collections.map(collection => collection.where('usersFollowing', 'array-contains', userId).get())
-    )
-    const promises = []
-    snapshots.forEach(snapshot =>
-        snapshot.forEach(doc => promises.push(doc.ref.update({ usersFollowing: FieldValue.arrayRemove(userId) })))
-    )
-    promises.push(db.doc(`usersFollowing/${projectId}/entries/${userId}`).delete())
     await Promise.all(promises)
 }
 
@@ -686,7 +662,6 @@ const processProjectInvitations = async (projectId, userId, admin) => {
 const removeUserDataFromProject = async (projectId, userId, admin, superAdmin) => {
     const promises = []
     promises.push(processChats(projectId, userId, admin, superAdmin))
-    promises.push(processFollowers(projectId, userId, admin))
     promises.push(processGoals(projectId, userId, admin, superAdmin))
     promises.push(processTasks(projectId, userId, admin, superAdmin))
     promises.push(processNotes(projectId, userId, admin, superAdmin))
@@ -708,4 +683,4 @@ const removeUserDataFromProject = async (projectId, userId, admin, superAdmin) =
     await Promise.all(promises)
 }
 
-module.exports = { removeUserDataFromProject, processFollowers }
+module.exports = { removeUserDataFromProject }
