@@ -58,54 +58,6 @@ const documentsOf = db =>
 
 beforeEach(() => deckAttachment.mockClear())
 
-describe('addKnowledgeDocument: sources other than this conversation (MCP and assistants alike)', () => {
-    it('adds text the user gave, titled, without reading a file', async () => {
-        const db = createDb()
-        const readChatAttachment = jest.fn()
-        const result = await add(db, {
-            args: { text: 'Pricing: Pro costs 12 EUR a month.', title: 'Pricing note' },
-            readChatAttachment,
-            toolRuntimeContext: {},
-        })
-        expect(result).toMatchObject({ success: true, title: 'Pricing note', fileName: 'Pricing note.txt' })
-        expect(readChatAttachment).not.toHaveBeenCalled()
-        expect(db.read(`${KB_PATH}/documents/${result.documentId}`)).toMatchObject({
-            text: 'Pricing: Pro costs 12 EUR a month.',
-            mimeType: 'text/plain',
-        })
-    })
-
-    it('adds an artifact the user can read, recording where it came from', async () => {
-        const db = createDb()
-        const readArtifactDocument = jest.fn(async ({ artifactId }) =>
-            artifactId === 'art-1' ? { text: 'Scoreboard: 5 paying users.', fileName: 'Growth Scoreboard' } : null
-        )
-        const result = await add(db, { args: { artifactId: 'art-1' }, readArtifactDocument, toolRuntimeContext: {} })
-        expect(result).toMatchObject({ success: true, title: 'Growth Scoreboard' })
-        expect(readArtifactDocument).toHaveBeenCalledWith(
-            expect.objectContaining({ projectId: PROJECT_ID, artifactId: 'art-1', userId: 'member' })
-        )
-        expect(db.read(`${KB_PATH}/documents/${result.documentId}`)).toMatchObject({
-            objectType: 'artifacts',
-            objectId: 'art-1',
-        })
-
-        const unreadable = await add(db, {
-            args: { artifactId: 'secret' },
-            readArtifactDocument,
-            toolRuntimeContext: {},
-        })
-        expect(unreadable).toMatchObject({ success: false })
-        expect(unreadable.error).toMatch(/No artifact/)
-    })
-
-    it('without a conversation, a file needs its thread named', async () => {
-        const result = await add(createDb(), { readChatAttachment: undefined, toolRuntimeContext: {} })
-        expect(result).toMatchObject({ success: false })
-        expect(result.error).toMatch(/artifactId or text/)
-    })
-})
-
 describe('addKnowledgeDocument', () => {
     it('stores the text of a deck sent in the conversation and asks the wiki to run now', async () => {
         const db = createDb()

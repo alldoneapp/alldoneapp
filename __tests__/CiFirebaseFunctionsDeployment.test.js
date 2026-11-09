@@ -144,6 +144,67 @@ exports.runManualTaskProjectMove = onTaskDispatched({}, worker)
         }
     })
 
+    it.each(['production', 'staging'])(
+        'redeploys a group Firebase dropped with exit 0 and then passes verification in %s',
+        environment => {
+            // firebase-tools 13.29.3 lost whole memory groups on 2026-11-09 and still exited 0.
+            // A real child process, the real CI deploy line (pipefail + tee) and the real
+            // verification line: the first deploy reports only one of the two functions.
+            const config = yaml.load(fs.readFileSync(path.resolve(__dirname, '../.gitlab-ci.yml'), 'utf8'))
+            const job = config[`deploy:cloud:functions:${environment}`]
+            const deploy = job.script.find(line => line.includes('runFunctionsDeployment.js'))
+            const verify = job.script.find(line => line.includes('assertFirebaseFunctionsDeployed.js'))
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firebase-retry-'))
+            try {
+                fs.mkdirSync(path.join(dir, 'ci'))
+                fs.mkdirSync(path.join(dir, 'functions'))
+                fs.writeFileSync(path.join(dir, 'functions/index.js'), source)
+                for (const file of [
+                    'runFunctionsDeployment.js',
+                    'functionsDeploymentPlan.js',
+                    'assertFirebaseFunctionsDeployed.js',
+                ])
+                    fs.copyFileSync(path.resolve(__dirname, '../ci', file), path.join(dir, 'ci', file))
+                const fakeFirebase = [
+                    '#!/bin/sh',
+                    'if [ "$1" = "functions:list" ]; then',
+                    '  echo \'{"status":"success","result":[{"id":"moveTaskToProjectSecondGen"},{"id":"runManualTaskProjectMove"}]}\'',
+                    '  exit 0',
+                    'fi',
+                    `count=$(cat "${dir}/calls" 2>/dev/null || echo 0); count=$((count + 1)); echo $count > "${dir}/calls"`,
+                    'if [ "$count" = 1 ]; then',
+                    '  echo "✔  functions[moveTaskToProjectSecondGen(europe-west1)] Successful update operation."',
+                    'else',
+                    '  echo "✔  functions[moveTaskToProjectSecondGen(europe-west1)] Skipped (No changes detected)"',
+                    '  echo "✔  functions[runManualTaskProjectMove(europe-west1)] Successful update operation."',
+                    '  echo "✔  Deploy complete!"',
+                    'fi',
+                    'exit 0',
+                    '',
+                ].join('\n')
+                fs.writeFileSync(path.join(dir, 'firebase'), fakeFirebase, { mode: 0o755 })
+                const env = {
+                    ...process.env,
+                    PATH: `${dir}:${process.env.PATH}`,
+                    CI_PROJECT_DIR: dir,
+                    CI_COMMIT_SHA: 'fixture-head',
+                    FIREBASE_DEPLOY_PROJECT: 'fixture-project',
+                }
+                const deployed = spawnSync('/bin/sh', ['-c', deploy], { encoding: 'utf8', env })
+                expect(deployed.error).toBeUndefined()
+                expect(deployed.status).toBe(0)
+                expect(fs.readFileSync(path.join(dir, 'calls'), 'utf8').trim()).toBe('2')
+                const log = fs.readFileSync(path.join(dir, 'functions-deploy.log'), 'utf8')
+                expect(log).toContain('redeploying them once: runManualTaskProjectMove')
+                const verified = spawnSync('/bin/sh', ['-c', verify], { encoding: 'utf8', env })
+                expect(verified.stderr).toBe('')
+                expect(verified.status).toBe(0)
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true })
+            }
+        }
+    )
+
     it('reruns Functions deployment when the completion guard changes', () => {
         const patterns = fs
             .readFileSync(path.resolve(__dirname, '../ci/deploy-scope/functions-production.paths'), 'utf8')

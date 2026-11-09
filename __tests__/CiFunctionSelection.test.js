@@ -5,7 +5,7 @@ const path = require('path')
 const { execFileSync, spawnSync } = require('child_process')
 const { selectDeployment, makePlan } = require('../ci/selectFunctionsDeployment')
 const { validatePlan } = require('../ci/functionsDeploymentPlan')
-const { deploymentFilters, run } = require('../ci/runFunctionsDeployment')
+const { MAX_REDEPLOY_NAMES, deploymentFilters, run } = require('../ci/runFunctionsDeployment')
 const { assertCompletedDeployment, findMissingFunctions } = require('../ci/assertFirebaseFunctionsDeployed')
 
 const tree = files => ({ files: new Set(Object.keys(files)), read: file => files[file] ?? null })
@@ -492,7 +492,7 @@ describe('function deployment execution and completion', () => {
         expect(() => validatePlan({ ...plan, names: ['fn1', 'fn1'] }, names, 'abc')).toThrow('duplicate')
         expect(() => deploymentFilters({ ...plan, mode: 'none', names: [] })).toThrow('No Functions selected')
     })
-    it('stops at a failed batch and stamps runtime-only changes into uploaded source', () => {
+    const withRoot = async (fn, writePlan = plan) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'function-run-'))
         try {
             fs.mkdirSync(path.join(root, 'functions'))
@@ -500,23 +500,126 @@ describe('function deployment execution and completion', () => {
                 path.join(root, 'functions/index.js'),
                 names.map(name => `exports.${name} = () => {}`).join('\n')
             )
-            fs.writeFileSync(path.join(root, 'functions-deploy-scope.json'), JSON.stringify(plan))
-            const spawn = jest.fn().mockReturnValueOnce({ status: 0 }).mockReturnValueOnce({ status: 17 })
-            expect(run({ root, head: 'abc', args: ['--non-interactive'], spawn })).toBe(17)
-            expect(spawn).toHaveBeenCalledTimes(2)
-            expect(spawn.mock.calls[0][1]).toContain('--non-interactive')
+            if (writePlan) fs.writeFileSync(path.join(root, 'functions-deploy-scope.json'), JSON.stringify(writePlan))
+            return await fn(root)
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true })
+        }
+    }
+    const done = list => list.map(name => `functions[${name}(europe-west1)] Successful update operation.`).join('\n')
+    const filterOf = call => call[0][2]
+
+    it('stops at a failed batch and stamps runtime-only changes into uploaded source', async () => {
+        await withRoot(async root => {
+            const exec = jest
+                .fn()
+                .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                .mockResolvedValueOnce({ status: 17, output: 'failed' })
+            await expect(run({ root, head: 'abc', args: ['--non-interactive'], exec })).resolves.toBe(17)
+            expect(exec).toHaveBeenCalledTimes(2)
+            expect(exec.mock.calls[0][0]).toContain('--non-interactive')
             expect(JSON.parse(fs.readFileSync(path.join(root, 'functions/ci-deployment.json'), 'utf8'))).toEqual({
                 head: 'abc',
                 names,
             })
             fs.unlinkSync(path.join(root, 'functions-deploy-scope.json'))
-            const fallbackSpawn = jest.fn().mockReturnValue({ status: 0 })
-            expect(run({ root, head: 'def', args: [], spawn: fallbackSpawn })).toBe(0)
-            expect(fallbackSpawn.mock.calls[0][1]).toEqual(['deploy', '--only', 'functions'])
-        } finally {
-            fs.rmSync(root, { recursive: true, force: true })
-        }
+            const fallbackExec = jest.fn().mockResolvedValue({ status: 0, output: done(names) })
+            await expect(run({ root, head: 'def', args: [], exec: fallbackExec })).resolves.toBe(0)
+            expect(fallbackExec.mock.calls[0][0]).toEqual(['deploy', '--only', 'functions'])
+            expect(fallbackExec).toHaveBeenCalledTimes(1)
+        })
     })
+
+    describe('one automatic redeploy of functions Firebase left without a result', () => {
+        it('reruns a full deploy once when a whole group went missing with exit 0 (2026-11-09)', async () => {
+            const full = { version: 1, mode: 'full', head: 'abc', names }
+            await withRoot(async root => {
+                const lost = names.slice(18)
+                const exec = jest
+                    .fn()
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 18)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(lost) + '\nDeploy complete!' })
+                const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+                try {
+                    await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
+                } finally {
+                    log.mockRestore()
+                }
+                expect(exec.mock.calls.map(filterOf)).toEqual(['functions', 'functions'])
+            }, full)
+        })
+
+        it('reruns only the batches that hold a missing function', async () => {
+            await withRoot(async root => {
+                const exec = jest
+                    .fn()
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(10, 17)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(20)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(17, 20)) })
+                const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+                try {
+                    await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
+                } finally {
+                    log.mockRestore()
+                }
+                expect(exec).toHaveBeenCalledTimes(4)
+                expect(filterOf(exec.mock.calls[3])).toBe(filterOf(exec.mock.calls[1]))
+            })
+        })
+
+        it('does not redeploy when every function reported a result, skipped ones included', async () => {
+            await withRoot(async root => {
+                const output =
+                    done(names.slice(0, 22)) + `\nfunctions[${names[22]}(europe-west1)] Skipped (No changes detected)`
+                const exec = jest.fn().mockResolvedValue({ status: 0, output })
+                await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
+                expect(exec).toHaveBeenCalledTimes(3)
+            })
+        })
+
+        it('redeploys only once and reports a failed redeploy', async () => {
+            const full = { version: 1, mode: 'full', head: 'abc', names }
+            await withRoot(async root => {
+                const exec = jest
+                    .fn()
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 5)) })
+                    .mockResolvedValueOnce({ status: 2, output: 'There was an error deploying functions' })
+                const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+                try {
+                    await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(2)
+                } finally {
+                    log.mockRestore()
+                }
+                expect(exec).toHaveBeenCalledTimes(2)
+            }, full)
+        })
+
+        it('leaves a near-total loss to the verification step instead of redeploying everything', async () => {
+            const many = Array.from({ length: MAX_REDEPLOY_NAMES + 1 }, (_, i) => `big${i}`)
+            const full = { version: 1, mode: 'full', head: 'abc', names: many }
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'function-run-'))
+            try {
+                fs.mkdirSync(path.join(root, 'functions'))
+                fs.writeFileSync(
+                    path.join(root, 'functions/index.js'),
+                    many.map(name => `exports.${name} = () => {}`).join('\n')
+                )
+                fs.writeFileSync(path.join(root, 'functions-deploy-scope.json'), JSON.stringify(full))
+                const exec = jest.fn().mockResolvedValue({ status: 0, output: '' })
+                const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+                try {
+                    await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
+                } finally {
+                    log.mockRestore()
+                }
+                expect(exec).toHaveBeenCalledTimes(1)
+            } finally {
+                fs.rmSync(root, { recursive: true, force: true })
+            }
+        })
+    })
+
     it('requires completion only for selected functions while retaining the full inventory guard', () => {
         const source = 'exports.alpha = () => 1\nexports.beta = () => 2'
         const log = 'functions[alpha(europe-west1)] Successful update operation.\nDeploy complete!'

@@ -47,9 +47,6 @@ class TaskCommentService {
         gmailData = null,
         linkEmail = false,
         emailContinuation = null,
-        // A user's message that asks the thread's assistant to answer (MCP ask_assistant): the server
-        // runs the assistant for it (Assistant/assistantMissedRunCatchUp.js).
-        assistantRunRequest = null,
     }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
         if (emailContinuation && !gmailData) throw new Error('Email continuation requires email metadata')
@@ -147,7 +144,6 @@ class TaskCommentService {
                 ...(fromAssistant && requestUserId ? { requestUserId } : {}),
                 ...(fromAssistant && suppressAssistantReply ? { suppressAssistantReply: true } : {}),
                 ...(gmailData ? { gmailData } : {}),
-                ...(!fromAssistant && assistantRunRequest ? { assistantRunRequest } : {}),
                 ...actorChannelFields,
             }
 
@@ -253,7 +249,6 @@ class TaskCommentService {
         return {
             success: true,
             commentId,
-            created: now,
             commentText,
             creatorId: actorId,
             fromAssistant: !!fromAssistant,

@@ -24,18 +24,25 @@ function findMissingFunctions(source, functionsList) {
     return exportedFunctionNames(source).filter(name => !deployed.has(name))
 }
 
-function assertCompletedDeployment(source, log, selectedNames = exportedFunctionNames(source)) {
-    // firebase-tools 13.29.3 can exit zero with work still missing after quota
-    // retries. An existing function is not evidence that this deploy updated it.
-    // Require a terminal result for every selected export, including hash-verified no-ops.
-    const plainLog = log.replace(/\x1b\[[0-9;]*m/g, '')
-    const completed = new Set(
+// Every function a deploy log reports a terminal result for, including hash-verified no-ops.
+// runFunctionsDeployment.js uses the same parser to redeploy what is missing.
+function completedFunctionNames(log) {
+    const plainLog = String(log || '').replace(/\x1b\[[0-9;]*m/g, '')
+    return new Set(
         [
             ...plainLog.matchAll(
                 /functions\[([\w$-]+)\([^)]+\)\]\s+(?:Successful (?:create|update) operation\.|Skipped \(No changes detected\))/g
             ),
         ].map(match => match[1])
     )
+}
+
+function assertCompletedDeployment(source, log, selectedNames = exportedFunctionNames(source)) {
+    // firebase-tools 13.29.3 can exit zero with work still missing after quota
+    // retries. An existing function is not evidence that this deploy updated it.
+    // Require a terminal result for every selected export, including hash-verified no-ops.
+    const plainLog = log.replace(/\x1b\[[0-9;]*m/g, '')
+    const completed = completedFunctionNames(plainLog)
     const missing = selectedNames.filter(name => !completed.has(name))
     if (missing.length) {
         throw new Error(`No completed deployment result for: ${missing.join(', ')}`)
@@ -84,4 +91,10 @@ if (require.main === module) {
     })
 }
 
-module.exports = { assertCompletedDeployment, deployedFunctionNames, exportedFunctionNames, findMissingFunctions }
+module.exports = {
+    assertCompletedDeployment,
+    completedFunctionNames,
+    deployedFunctionNames,
+    exportedFunctionNames,
+    findMissingFunctions,
+}

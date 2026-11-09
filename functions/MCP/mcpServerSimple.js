@@ -18,12 +18,15 @@ const { Timestamp } = require('firebase-admin/firestore')
 // assistant), so we pass assistantId = null and executeToolNatively attributes
 // any tool-generated feeds to the user directly (see getAssistantFeedUserForTool).
 //
-// MCP and assistant tools are kept at feature parity on the same code (see
-// "MCP and assistant tools offer the same features" in CLAUDE.md). The tools that
-// exist on one side only are listed there, each with its reason. The workspace
-// setup tools in ./mcpWorkspaceSetupTools.js write as the signed-in user,
-// idempotent by name and capped per day; the scheduled-task tools among them are
-// shared with assistants through ../Assistant/assistantTaskTools.js.
+// Tools that require an assistant/thread context (talk_to_assistant,
+// external_tool_*, mcp_*, execute_task_in_vm, compact_thread_context,
+// load_skill) or that mutate assistant/project/user configuration
+// (update_assistant_settings, update_heartbeat_settings,
+// update_project_description, update_user_description) are deliberately NOT
+// exposed over MCP. The one exception is the small set of workspace setup tools
+// in ./mcpWorkspaceSetupTools.js (create a project with contact statuses, an
+// assistant, and the recurring tasks it runs): MCP-only, idempotent by name,
+// capped per day, and each its own switch under Settings → MCP.
 // ---------------------------------------------------------------------------
 const MCP_DELEGATED_ASSISTANT_TOOLS = [
     // Tasks
@@ -50,11 +53,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'undo_knowledge_correction',
     'save_knowledge_contribution',
     'remove_knowledge_contribution',
-    // A document (a file sent in a named thread, an artifact or text) into the wiki, and out again.
-    'add_knowledge_document',
-    'remove_knowledge_document',
-    // Skills of a project assistant: list them, load one.
-    'load_skill',
     // Contacts
     'update_contact',
     'delete_contact',
@@ -64,14 +62,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'get_chats',
     'get_user_projects',
     'get_updates',
-    // Topic chats: a comment in a topic, written in the user's name over MCP
-    'add_chat_comment',
-    // Profiles that every chat and routing read
-    'update_project_description',
-    'update_user_description',
-    // Assistant settings. update_assistant (workspace setup) changes the assistant itself on the same
-    // service as update_assistant_settings; the heartbeat has its own tool, acting on a named assistant.
-    'update_heartbeat_settings',
     // Goals, milestones, OKRs / project insights
     'get_goals',
     'create_goal',
@@ -85,11 +75,8 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'update_user_memory',
     // Web / maps
     'web_search',
-    'fetch_url',
-    'find_profile_photo',
     'get_route_info',
     'get_local_recommendations',
-    'get_weather',
     // Browsing. The six names are listed individually rather than through the `browser_automation`
     // Tools Access key: an MCP caller has no assistant document, so the per-assistant toggle does
     // not apply here — the per-user MCP config (Settings → MCP) is the switch, and the allowlist,
@@ -100,9 +87,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'browser_type',
     'browser_wait',
     'browser_screenshot',
-    // VM jobs. A VM job runs as an assistant: over MCP, the project's assistant (decision 2026-11-09).
-    'execute_task_in_vm',
-    'get_vm_job',
     // Chat attachments
     'get_chat_attachment',
     'list_recent_chat_media',
@@ -113,7 +97,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'create_gmail_reply_draft',
     'update_gmail_draft',
     'update_gmail_email',
-    'correct_email_classification',
     // Calendar
     'find_calendar_availability',
     'search_calendar_events',
@@ -125,8 +108,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
 const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
 
 const { MCP_WORKSPACE_SETUP_TOOLS, MCP_WORKSPACE_SETUP_TOOL_SCHEMAS } = require('./mcpWorkspaceSetupTools')
-// ask_assistant: the MCP side of an assistant's talk_to_assistant (./mcpAskAssistant.js).
-const { ASK_ASSISTANT_SCHEMA } = require('./mcpAskAssistant')
 const MCP_WORKSPACE_SETUP_TOOL_SET = new Set(MCP_WORKSPACE_SETUP_TOOLS)
 
 const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
@@ -136,8 +117,6 @@ const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
     'undo_knowledge_correction',
     'save_knowledge_contribution',
     'remove_knowledge_contribution',
-    'add_knowledge_document',
-    'remove_knowledge_document',
 ])
 
 // The wiki schemas are written for an assistant, which has the page index in its prompt and a
@@ -154,71 +133,8 @@ const MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS = {
 const MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION =
     "The ID of the project whose wiki to use (see get_user_projects). Defaults to the user's default project."
 
-// Tools that always run as an assistant: over MCP, as the assistant of the project. load_skill may
-// name another assistant of the project instead (its skills).
-const MCP_TOOLS_RUN_BY_THE_PROJECT_ASSISTANT = new Set(['execute_task_in_vm', 'get_vm_job', 'load_skill'])
-const MCP_TOOLS_WITH_AN_OPTIONAL_ASSISTANT = new Set(['load_skill'])
-
-// Assistant tools that act on "the current assistant": over MCP the client names it.
-const MCP_TOOLS_ACTING_ON_A_NAMED_ASSISTANT = new Set(['update_heartbeat_settings'])
-const MCP_NAMED_ASSISTANT_PROPERTIES = {
-    projectId: { type: 'string', description: 'The project the assistant belongs to (see get_user_projects).' },
-    assistantId: { type: 'string', description: 'The assistant whose settings to change.' },
-}
-
-// Assistant tool descriptions that speak of "the current project" or "the current assistant" say
-// what that means for an MCP client, which has neither.
-const MCP_DESCRIPTION_NOTES = {
-    update_project_description:
-        ' Over MCP there is no current project: pass projectId or projectName (see get_user_projects).',
-    add_chat_comment:
-        ' Over MCP the comment is written in your name, marked as coming from your MCP client; projectId defaults to your default project.',
-    execute_task_in_vm:
-        " Over MCP the job runs as the project's assistant (pass projectId; default: your default project), in a new task of that project, and you are notified there when it settles; check it with get_vm_job.",
-    get_vm_job: ' Over MCP pass the projectId of the job.',
-    load_skill:
-        " Over MCP pass projectId (and optionally assistantId; default: the project's assistant); without a name it lists the skills.",
-}
-
 function adaptToolSchemaForMcp(schema) {
     const { name, description, parameters } = schema.function
-    if (MCP_TOOLS_ACTING_ON_A_NAMED_ASSISTANT.has(name)) {
-        return {
-            name,
-            description: `${description.replace('for the current assistant only', 'for the assistant you name')} Over MCP pass projectId and assistantId.`,
-            inputSchema: {
-                ...parameters,
-                properties: { ...MCP_NAMED_ASSISTANT_PROPERTIES, ...(parameters.properties || {}) },
-                required: [
-                    'projectId',
-                    'assistantId',
-                    ...(parameters.required || []).filter(key => key !== 'projectId' && key !== 'assistantId'),
-                ],
-            },
-        }
-    }
-    if (name === 'load_skill') {
-        return {
-            name,
-            description: `${description}${MCP_DESCRIPTION_NOTES[name]}`,
-            inputSchema: {
-                ...parameters,
-                properties: {
-                    projectId: MCP_NAMED_ASSISTANT_PROPERTIES.projectId,
-                    assistantId: {
-                        type: 'string',
-                        description:
-                            "Optional: the assistant whose skills to use. Defaults to the project's assistant.",
-                    },
-                    ...(parameters.properties || {}),
-                },
-                required: ['projectId'],
-            },
-        }
-    }
-    if (MCP_DESCRIPTION_NOTES[name]) {
-        return { name, description: `${description}${MCP_DESCRIPTION_NOTES[name]}`, inputSchema: parameters }
-    }
     if (!MCP_KNOWLEDGE_BASE_TOOL_SET.has(name)) return { name, description, inputSchema: parameters }
     const properties = { ...(parameters.properties || {}) }
     if (properties.projectId) {
@@ -1168,19 +1084,6 @@ class AlldoneSimpleMCPServer {
             toolArgs.projectId = contextProjectId
         }
 
-        // An assistant's "current project" is the project of its thread. An MCP client has none, and
-        // the default project it would otherwise fall back to is a guess: a project's description is
-        // shared context for everybody in it, so it is changed only for a project the client named.
-        if (
-            name === 'update_project_description' &&
-            !this.hasNonEmptyString(toolArgs.projectId) &&
-            !this.hasNonEmptyString(toolArgs.projectName)
-        ) {
-            throw new Error(
-                'Pass the projectId (or projectName) of the project whose description to change; get_user_projects lists your projects.'
-            )
-        }
-
         if (MCP_KNOWLEDGE_BASE_TOOL_SET.has(name) && !contextProjectId) {
             throw new Error(
                 'Pass the projectId of the project whose wiki you want to use; get_user_projects lists your projects.'
@@ -1189,65 +1092,7 @@ class AlldoneSimpleMCPServer {
 
         const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId, request)
 
-        // A VM job runs as an assistant (its name on the status comment, its run rules). Over MCP that is
-        // the assistant of the project the job belongs to; it is hosted in a new task there.
-        if (MCP_TOOLS_RUN_BY_THE_PROJECT_ASSISTANT.has(name)) {
-            if (!contextProjectId) {
-                throw new Error(`${name} needs a projectId (see get_user_projects).`)
-            }
-            await this.assertProjectMembership(userId, contextProjectId)
-            const projectAssistantId =
-                MCP_TOOLS_WITH_AN_OPTIONAL_ASSISTANT.has(name) && this.hasNonEmptyString(toolArgs.assistantId)
-                    ? toolArgs.assistantId.trim()
-                    : await this.getProjectAssistantId(contextProjectId)
-            if (!projectAssistantId) {
-                throw new Error(
-                    `This project has no project assistant to run the VM job. Make one with update_assistant (projectAssistant: true) or in the project settings.`
-                )
-            }
-            return await executeToolNatively(
-                name,
-                toolArgs,
-                contextProjectId,
-                projectAssistantId,
-                userId,
-                {},
-                runtimeContext
-            )
-        }
-
-        // A tool that acts on "the current assistant" acts on the one the client names.
-        if (MCP_TOOLS_ACTING_ON_A_NAMED_ASSISTANT.has(name)) {
-            if (!this.hasNonEmptyString(toolArgs.assistantId) || !this.hasNonEmptyString(toolArgs.projectId)) {
-                throw new Error(
-                    `${name} needs projectId and assistantId: the assistant whose settings to change (see get_user_projects and the assistant's settings in the app).`
-                )
-            }
-            await this.assertProjectMembership(userId, contextProjectId)
-            return await executeToolNatively(
-                name,
-                toolArgs,
-                contextProjectId,
-                toolArgs.assistantId.trim(),
-                userId,
-                {},
-                runtimeContext
-            )
-        }
-
         return await executeToolNatively(name, toolArgs, contextProjectId, null, userId, {}, runtimeContext)
-    }
-
-    async assertProjectMembership(userId, projectId) {
-        const snapshot = await admin.firestore().doc(`projects/${projectId}`).get()
-        const userIds = snapshot.exists ? (snapshot.data() || {}).userIds || [] : []
-        if (!userIds.includes(userId)) throw new Error(`Project not found or not accessible: "${projectId}".`)
-    }
-
-    async getProjectAssistantId(projectId) {
-        const snapshot = await admin.firestore().doc(`projects/${projectId}`).get()
-        const assistantId = snapshot.exists ? (snapshot.data() || {}).assistantId : ''
-        return typeof assistantId === 'string' && assistantId.trim() ? assistantId.trim() : null
     }
 
     // Workspace setup tools (./mcpWorkspaceSetupTools.js) check project membership themselves and
@@ -1259,12 +1104,6 @@ class AlldoneSimpleMCPServer {
             mcpClient: this.getMcpClientLabel(request),
             baseUrl: getBaseUrl(),
         })
-    }
-
-    async askAssistant(args, request) {
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const { askAssistant } = require('./mcpAskAssistant')
-        return await askAssistant(userId, args, { mcpClient: this.getMcpClientLabel(request), baseUrl: getBaseUrl() })
     }
 
     hasNonEmptyString(value) {
@@ -2342,15 +2181,8 @@ class AlldoneSimpleMCPServer {
                     schema => !disabled.has(schema.name)
                 )
 
-                const askAssistantTools = disabled.has(ASK_ASSISTANT_SCHEMA.name) ? [] : [ASK_ASSISTANT_SCHEMA]
-
                 const tools = {
-                    tools: [
-                        ...delegatedTools,
-                        ...workspaceSetupTools,
-                        ...askAssistantTools,
-                        ...MCP_NATIVE_ONLY_TOOL_SCHEMAS,
-                    ],
+                    tools: [...delegatedTools, ...workspaceSetupTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
                 }
                 return {
                     jsonrpc: '2.0',
@@ -2425,8 +2257,6 @@ class AlldoneSimpleMCPServer {
                         result = await this.executeDelegatedAssistantTool(toolName, args, httpReq)
                     } else if (MCP_WORKSPACE_SETUP_TOOL_SET.has(toolName)) {
                         result = await this.executeWorkspaceSetupTool(toolName, args, httpReq)
-                    } else if (toolName === ASK_ASSISTANT_SCHEMA.name) {
-                        result = await this.askAssistant(args, httpReq)
                     } else {
                         switch (toolName) {
                             case 'delete_authentication_data':

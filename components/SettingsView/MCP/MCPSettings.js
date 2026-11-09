@@ -34,9 +34,6 @@ const MCP_TOOL_KEYS = [
     'undo_knowledge_correction',
     'save_knowledge_contribution',
     'remove_knowledge_contribution',
-    'add_knowledge_document',
-    'remove_knowledge_document',
-    'load_skill',
     'update_contact',
     'delete_contact',
     'get_contacts',
@@ -44,10 +41,6 @@ const MCP_TOOL_KEYS = [
     'get_chats',
     'get_user_projects',
     'get_updates',
-    'add_chat_comment',
-    'update_project_description',
-    'update_user_description',
-    'update_heartbeat_settings',
     'get_goals',
     'create_goal',
     'update_goal',
@@ -58,20 +51,14 @@ const MCP_TOOL_KEYS = [
     'get_project_happiness',
     'update_user_memory',
     'web_search',
-    'fetch_url',
-    'find_profile_photo',
     'get_route_info',
     'get_local_recommendations',
-    'get_weather',
     'browser_navigate',
     'browser_inspect',
     'browser_click',
     'browser_type',
     'browser_wait',
     'browser_screenshot',
-    'execute_task_in_vm',
-    'get_vm_job',
-    'ask_assistant',
     'get_chat_attachment',
     'list_recent_chat_media',
     'search_gmail',
@@ -80,7 +67,6 @@ const MCP_TOOL_KEYS = [
     'create_gmail_reply_draft',
     'update_gmail_draft',
     'update_gmail_email',
-    'correct_email_classification',
     'find_calendar_availability',
     'search_calendar_events',
     'create_calendar_event',
@@ -96,10 +82,9 @@ const MCP_TOOL_KEYS = [
 ]
 
 // MCP lists the artifact and browser tools one by one; in an assistant's Tools Access each family is
-// a single permission, so they have no label of their own there, and so is the scheduled-task family
-// (`assistant_tasks`). The wiki tools have no Tools Access entry at all (an assistant gets them with
-// the wiki), and neither do the remaining workspace setup tools (create_project, add_contact_statuses,
-// create_assistant, update_assistant), which only MCP clients get so far
+// a single permission, so they have no label of their own there. The wiki tools have no Tools Access
+// entry at all (an assistant gets them with the wiki), and neither do the workspace setup tools
+// (create_project … create_assistant_task), which only MCP clients get
 // (functions/MCP/mcpWorkspaceSetupTools.js).
 const MCP_TOOL_LABELS = {
     browser_navigate: 'Open a web page',
@@ -125,11 +110,6 @@ const MCP_TOOL_LABELS = {
     create_assistant_task: 'Create scheduled assistant task',
     get_assistant_tasks: 'List scheduled assistant tasks',
     update_assistant_task: 'Update scheduled assistant task',
-    get_vm_job: 'Check a VM job',
-    ask_assistant: 'Ask an assistant',
-    add_knowledge_document: 'Add a document to the wiki',
-    remove_knowledge_document: 'Remove a document from the wiki',
-    load_skill: 'Load an assistant skill',
 }
 
 // What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.

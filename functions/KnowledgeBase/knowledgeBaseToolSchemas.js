@@ -134,7 +134,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
         type: 'function',
         function: {
             name: ADD_KNOWLEDGE_DOCUMENT_TOOL,
-            description: `Add a document to the project wiki, when the user asks you to put it, or what it says, into the wiki. The document is one of: a file the user uploaded in this conversation (the default), a file sent in another task or topic thread (threadObjectType + threadObjectId), an artifact (artifactId), or text the user gave you (text). Files work for PowerPoint (.pptx), Excel (.xlsx), Word (.docx), PDF and text; the server reads the whole file, you do not pass its content. Within minutes the wiki integrates what the document says into its pages, updating what it supersedes, and cites it. Everyone in the project can then read what the wiki takes from it, so only add a document when the user asked for it.`,
+            description: `Add a file the user uploaded in this conversation to the project wiki, when they ask you to put it, or what it says, into the wiki. Works for PowerPoint (.pptx), Excel (.xlsx), Word (.docx), PDF and text files. The server reads the whole file; you do not pass its content. Within minutes the wiki integrates what the document says into its pages, updating what it supersedes, and cites it. Everyone in the project can then read what the wiki takes from it, so only add a file when the user asked for it.`,
             parameters: {
                 type: 'object',
                 properties: {
@@ -148,36 +148,9 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
                         description:
                             'Optional: the file name as shown in the conversation, to pick one file when several were sent.',
                     },
-                    threadObjectType: {
-                        type: 'string',
-                        enum: ['tasks', 'topics', 'notes', 'goals', 'contacts', 'artifacts'],
-                        description:
-                            'Optional: the kind of thread the file was sent in, when it is not this conversation (with threadObjectId).',
-                    },
-                    threadObjectId: {
-                        type: 'string',
-                        description: 'Optional: the task, topic or other object whose thread the file was sent in.',
-                    },
-                    threadProjectId: {
-                        type: 'string',
-                        description: "Optional: that thread's project, when it is not the wiki's project.",
-                    },
-                    artifactId: {
-                        type: 'string',
-                        description:
-                            "Optional: add this artifact's current version (its text) instead of a file. A project-visible artifact is already a wiki source; this is for one that is private to the user.",
-                    },
-                    artifactProjectId: {
-                        type: 'string',
-                        description: "Optional: the artifact's project, when it is not the wiki's project.",
-                    },
-                    text: {
-                        type: 'string',
-                        description: 'Optional: add this text (from the user) instead of a file. Give it a title.',
-                    },
                     title: {
                         type: 'string',
-                        description: `Optional: a short title for the document (at most ${KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS} characters). Defaults to the file or artifact name.`,
+                        description: `Optional: a short title for the document (at most ${KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS} characters). Defaults to the file name.`,
                     },
                     instructions: {
                         type: 'string',

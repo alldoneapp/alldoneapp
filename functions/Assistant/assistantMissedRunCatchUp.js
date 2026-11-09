@@ -61,13 +61,7 @@ function isMissedRunCandidate(comment, { projectId, objectType, objectId }) {
 
 const isMissedAssistantRunTask = data => data?.kind === MISSED_RUN_TASK_KIND
 
-// `delaySeconds: 0` starts the run at once, for a message whose sender asked the server to answer it
-// (MCP ask_assistant); the trigger's later check of the same message then finds the task already exists.
-async function enqueueMissedAssistantRunCheck(
-    params,
-    comment,
-    { queue, now = Date.now, delaySeconds = MISSED_RUN_GRACE_SECONDS } = {}
-) {
+async function enqueueMissedAssistantRunCheck(params, comment, { queue, now = Date.now } = {}) {
     const { projectId, objectType, objectId, commentId } = params
     if (!projectId || !objectId || !commentId || !COMMENT_OBJECT_TYPES.has(objectType)) return { skipped: true }
     if (!isMissedRunCandidate(comment, params) || !isFreshComment(comment, now())) return { skipped: true }
@@ -80,7 +74,7 @@ async function enqueueMissedAssistantRunCheck(
     try {
         await workerQueue.enqueue(
             { kind: MISSED_RUN_TASK_KIND, projectId, objectType, objectId, commentId },
-            { id, scheduleDelaySeconds: delaySeconds, dispatchDeadlineSeconds: 1800 }
+            { id, scheduleDelaySeconds: MISSED_RUN_GRACE_SECONDS, dispatchDeadlineSeconds: 1800 }
         )
         return { enqueued: true }
     } catch (error) {

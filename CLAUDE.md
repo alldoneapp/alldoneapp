@@ -1590,10 +1590,9 @@ Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttributi
 `create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
 `update_assistant` (name, description, instructions, model, Tools Access, project assistant),
 `create_assistant_task` (a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
-`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, goal, pause/resume for the caller). The
-tools are shared with assistants (see "MCP and assistant tools offer the same features" below):
-`update_assistant` is MCP's side of `update_assistant_settings`, the other six run the same handlers
-for an assistant. Three rules keep agents from making a mess:
+`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, goal, pause/resume for the caller). Every other
+config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
+rules keep agents from making a mess:
 
 - **Idempotent by name.** A second call with an existing project, assistant or task name returns
   the existing object (`alreadyExisted: true`) instead of creating a duplicate.
@@ -1871,68 +1870,6 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 - Add local strings for the tool label in `i18n/translations/en.json`, `de.json`, and `es.json`.
 - Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up only gets `GMAIL_POST_LABEL_SAFE_TOOLS` (`functions/Gmail/gmailPostLabelTools.js`); email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
 - If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
-- Offer it over MCP too (next section): add the name to `MCP_DELEGATED_ASSISTANT_TOOLS` in `functions/MCP/mcpServerSimple.js` and to `MCP_TOOL_KEYS` in `components/SettingsView/MCP/MCPSettings.js`, and make it work without an assistant. Leave it off MCP only with a reason in the list below.
-
-### MCP and assistant tools offer the same features, on the same code
-
-**Rule:** every capability an MCP client has, an assistant has, and the other way round, and both
-run the same implementation. A tool that exists on one side only needs a written reason in the list
-below; "nobody asked for it yet" is not one. Before adding or changing a tool on either side, check
-the other side and do both in one change.
-
-**How the code is shared.** An assistant tool runs in `executeToolNatively`
-(`functions/Assistant/assistantHelper.js`), and MCP serves it through the same function with
-`assistantId = null` (`MCP_DELEGATED_ASSISTANT_TOOLS`). A tool that started on MCP keeps its handler in
-a module both sides call; `functions/Assistant/assistantTaskTools.js` is the pattern: one schema
-definition (MCP gets it as is, assistants with `projectId`/`assistantId` optional and defaulting to
-themselves), one handler (`mcpWorkspaceSetupTools.js`), one Tools Access key for assistants
-(`assistant_tasks`), and an actor marker that says who acted (`via: 'mcp'` with the client, or
-`via: 'assistant'` with the assistant). Three things to get right when a tool reaches the other side:
-
-- **A check of the assistant's own Tools Access inside a tool** must let an assistant-less MCP call
-  through, because the per-user switch under Settings → MCP already gated it
-  (`assertAssistantOwnToolPermitted`).
-- **"The current project" or "the current assistant"** means the thread's for an assistant; MCP falls
-  back to the user's default project, which is a guess. Where a guess would write to the wrong place
-  (`update_project_description`), MCP requires the project explicitly; the schema note is in
-  `MCP_DESCRIPTION_NOTES`.
-- **Authorship:** over MCP a write is the user's own, marked with the client (`getActorChannelFields`),
-  never the assistant's. `add_chat_comment` shows the shape: user as author, no
-  `lastAssistantCommentData` pointers.
-
-**Where each capability lives (2026-11-09).** Shared modules, both surfaces:
-
-- **Workspace setup and scheduled tasks** (`Assistant/workspaceToolsForAssistants.js`): MCP's
-  `create_project`, `add_contact_statuses`, `create_assistant` (Tools Access key `workspace_setup`)
-  and `create/get/update_assistant_task` (`assistant_tasks`) run the handlers in
-  `mcpWorkspaceSetupTools.js` for an assistant too, defaulting to its own project and itself.
-- **Assistant settings** (`Assistant/assistantSettingsService.js`): the assistant tool
-  `update_assistant_settings` and MCP's `update_assistant` validate and save the same fields
-  (name, description, instructions with history, model, temperature, voice, delegation description,
-  project assistant) and pass changed instructions on to the scheduled tasks still on the old copy.
-  **Tools Access is the one exception: only the user changes it (app or MCP), never an assistant,
-  for itself or another** (`assertNoToolAccessFromAssistant`; `create_assistant` offers an assistant
-  no `allowedTools`), so instructions hidden in an email or a web page cannot make an assistant grant
-  itself new powers. `update_heartbeat_settings` is served over MCP for an assistant the client names.
-- **VM jobs over MCP**: `execute_task_in_vm` and `get_vm_job` run as the **project assistant**
-  (`MCP_TOOLS_RUN_BY_THE_PROJECT_ASSISTANT`), in a new task of that project; a project without an
-  assistant gets an error that says how to set one.
-- **Asking an assistant**: assistants have `talk_to_assistant`; MCP has `ask_assistant`
-  (`MCP/mcpAskAssistant.js`). It posts the question as the user's comment in a task or topic thread
-  with `assistantRunRequest` and starts the server-side run at once through the missed-run path
-  (`enqueueMissedAssistantRunCheck` with `delaySeconds: 0`), so the run is the ordinary one: the
-  assistant's model and tools, the user's Gold, the per-message run lock. It waits for that lock to
-  settle (at most 120s) and returns the answer, or the thread and `waitForCommentId` to keep waiting.
-- **Wiki documents**: `add_knowledge_document` takes a file of this conversation, a file of a thread
-  the caller names (`threadObjectType`/`threadObjectId`, access-checked), an artifact (`artifactId`,
-  its current version's text, if the user can read it) or `text`. The same tool on both surfaces.
-- **Skills**: `load_skill` over MCP works on the project assistant (or a named one); without a name
-  it lists the skills.
-
-**One-sided on purpose:** `compact_thread_context` (an assistant's own thread context),
-`external_tools` and `mcp_servers` (integrations configured on an assistant), `get_current_user_info`
-and `delete_authentication_data` (MCP sign-in; an assistant already knows its user). `talk_to_assistant`
-and `ask_assistant` are one capability with a different shape per surface.
 
 ### Browsing (`browser_*`) — the classification runs on the PAGE, not on the tool call
 
@@ -5405,6 +5342,19 @@ browser before trusting a bigger change.
   changes cannot be skipped by Firebase's source hash. This file and the scope manifest
   are generated and ignored by git. Environment changes outside git require
   `FUNCTIONS_DEPLOY_ALL=1`; repository analysis cannot detect changed CI secret values.
+  **A deploy that exits 0 can still have skipped a whole group of functions, so
+  `ci/runFunctionsDeployment.js` redeploys once.** firebase-tools 13.29.3 deploys in
+  parallel groups keyed by region and memory, and an exception escaping one group is only
+  written to its debug log (`fabricator.applyPlan`, "This should never happen"). On
+  2026-11-09 a full deploy lost the 1, 2 and 4 GiB groups (the same 67 functions on
+  production and staging) and reported success. The script streams Firebase's output live
+  and keeps a copy. It then reads the completed results with the verification's own parser
+  (`completedFunctionNames`) and reruns, once, only the batches that hold a function without
+  a result. On a full deploy that is a second `--only functions`, which skips every function
+  already current by its source hash. More than `MAX_REDEPLOY_NAMES` missing is not this
+  failure and is left to the verification step, which still fails the job for anything
+  missing after the retry. Pinned by `__tests__/CiFunctionSelection.test.js` and a
+  real-process case in `__tests__/CiFirebaseFunctionsDeployment.test.js`.
 - **`resource_group` process mode is an API-only setting and defaults to `unordered`.** With
   the guard and the markers in place the default is safe (an out-of-order job skips and the
   next pipeline catches up), but `newest_first` gets the current commit live sooner and wastes
