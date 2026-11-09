@@ -115,6 +115,13 @@
                 "function": "googleOAuthCallback"
             },
             {
+                "source": "/microsoftOAuthCallback**",
+                "function": {
+                    "functionId": "microsoftOAuthCallback",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/menubar/session",
                 "function": {
                     "functionId": "menubarSession",

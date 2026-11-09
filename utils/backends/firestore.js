@@ -217,10 +217,8 @@ import {
     createBacklinkProjectFeed,
     createChangeProjectStatusFeed,
     createProjectCreatedFeed,
-    createProjectDeclinedInvitationFeed,
     createProjectDescriptionChangedFeed,
     createProjectFollowedFeed,
-    createProjectGuideIdChangedFeed,
     createProjectHappinessFeed,
     createProjectInvitationSentFeed,
     createProjectUnfollowedFeed,
@@ -323,7 +321,6 @@ import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
 import { createBotDailyTopic } from '../assistantHelper'
 import {
     addProjectInvitationToUser,
-    addUserToProject,
     fetchUserDataResult,
     getUserData,
     getUsersByEmail,
@@ -1010,11 +1007,6 @@ export function getIsMessagingSupported() {
     )
 }
 
-export async function tryAddUserToProjectByUidOrEmail(uidOrEmail, projectId) {
-    const project = await getProjectData(projectId)
-    await addUserToProject(uidOrEmail, project, projectId, true, null, null)
-}
-
 export async function selectAndSetNewDefaultProject(user) {
     const { uid, projectIds, archivedProjectIds, defaultProjectId } = user
     const projectDocs = (
@@ -1136,8 +1128,11 @@ export async function getUserDataByUidOrEmail(uidOrEmail, options) {
 }
 
 export async function declineProjectInvitation(user, project) {
-    createProjectDeclinedInvitationFeed(project.id, project)
-    removeInvitedUserFromProject(user, project.id)
+    // The invitee is not a member: only the server may delete the invitation, and the project's
+    // feed is not writable either (functions/Projects/joinProject.js).
+    await runHttpsCallableFunction('joinProjectSecondGen', { projectId: project.id, decline: true }).catch(error =>
+        console.warn('[Join project] Could not decline the invitation:', error)
+    )
 }
 
 export async function addContactFeedsChain(projectId, contact, photoURL, contactId) {
@@ -3010,30 +3005,21 @@ export async function uploadNewSubTaskFeedsChain(projectId, task, subTask, inFol
     batch.commit()
 }
 
-export async function uploadNewGuideProject(project, templateAssistantId, projectUsersIdsForSpecialFeeds) {
+/**
+ * The "project created" activity of a guide joinProjectSecondGen has just created for the logged user
+ * (functions/Projects/joinProject.js), in the administrator's name as before.
+ */
+export async function createGuideCreatedFeedChain(guide, projectUsersIdsForSpecialFeeds) {
     const { administratorUser } = store.getState()
 
-    const projectId = getId()
-    const creator = administratorUser
-
-    const isGlobalAssistant = !templateAssistantId || project.globalAssistantIds.includes(templateAssistantId)
-    project.assistantId = isGlobalAssistant ? templateAssistantId : projectId + templateAssistantId
-
-    await db.doc(`projects/${projectId}`).set(project)
-
-    project.id = projectId
-
-    store.dispatch(setProjectInitialData(project, [], [], [], []))
-    watchProjectData(projectId, true, true)
-
-    createUploadNewProjectFeedChain(project, null, projectUsersIdsForSpecialFeeds, creator)
-
     logEvent('new_project', {
-        id: projectId,
-        name: project.name,
+        id: guide.id,
+        name: guide.name,
     })
 
-    return projectId
+    await createUploadNewProjectFeedChain(guide, null, projectUsersIdsForSpecialFeeds, administratorUser).catch(error =>
+        console.warn('[Guides] Could not write the guide created activity:', error)
+    )
 }
 
 export async function uploadNewProject(project, user, userIdsToNotifyByFeed, setLikeDefaultProject, addingTemplate) {
@@ -3124,20 +3110,6 @@ async function createUploadNewProjectFeedChain(project, user, projectUsersIdsFor
     }
 
     await batch.commit()
-}
-
-export const addGuideToTemplateFeedsChain = async (template, guideId) => {
-    const batch = new BatchWrapper(db)
-    const creator = await getUserData(template.templateCreatorId, false)
-    await createProjectGuideIdChangedFeed(template.id, guideId, batch, creator)
-    const followProjectData = {
-        followObjectsType: FOLLOWER_PROJECTS_TYPE,
-        followObjectId: template.id,
-        followObject: template,
-        feedCreator: creator,
-    }
-    await tryAddFollower(template.id, followProjectData, batch)
-    batch.commit()
 }
 
 export const getAdministratorUser = async () => {
