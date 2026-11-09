@@ -1629,8 +1629,7 @@ can see) makes every run create its task with that goal, through the same fields
 (`buildTaskParentGoalFields`: id, the goal's audience, lock key) plus `skipAutomaticGoalRouting`, so
 the goal router does not refile it (`Assistant/scheduledTaskGoal.js`, called from
 `ensureTaskChatExists`). A goal that is gone or not visible to the activator is skipped and the run
-happens unfiled. It is deliberately not part of the approved content (`assistantTaskContentHash.js`):
-where a run is filed does not change what it does, so changing the goal needs no new approval. A goal
+happens unfiled. A goal
 whose milestone is done keeps receiving runs until the goal is changed. Pinned by
 `Assistant/scheduledTaskGoal.test.js`, the `scheduled task goal` block of
 `assistantRecurringTasks.test.js` and the `goals of scheduled tasks` block of
@@ -1840,32 +1839,16 @@ memory lines are moved out of profile notes by `migration/moveUserMemoryToPrivat
 by default; its header lists the risks). Pinned by `userMemoryHelper.test.js`,
 `userMemoryMigration.test.js` and `AssistantMemoryPanel.test.js`.
 
-### A scheduled assistant task runs only the content its activator approved (security audit 2026-11, NEW-A)
+### A scheduled assistant task needs no approval of its content (decision 2026-11-09)
 
-Any project member may edit a project assistant task's prompt, system instruction, model and
-settings, while a scheduled run acts AS the user who activated it (their Gold, tools, connected
-accounts). `functions/Assistant/assistantTaskContentHash.js` (pure, imported by the web app too)
-defines the content (type, prompt, aiSystemMessage, aiModelOverride, aiReasoningEffort,
-executionMode, link, variables, taskMetadata; not name or schedule) and its SHA-256.
-`approvedContentHashByUser.{uid}` on the task is written only by the server: by
-`onWriteAssistantTaskApprovalSecondGen` (an auth-context write trigger: the writer activated the
-task, or changed its content while activated) and by the `approveAssistantTaskContentSecondGen`
-callable, which refuses unless the stored content still hashes to what the user was shown.
-firestore.rules refuse client writes to it and to `contentApprovalNoticeByUser`, so every client
-write of a task strips both (`stripServerOwnedAssistantTaskFields`). `executeAssistantTask` skips a
-run whose content differs and posts one private notice per change
-(`assistantTaskApprovalNotice.js`); saving the task in the edit modal approves it again. Manual runs
-(quick actions, links, search, board play button, chat options, the variables modal) go through
-`confirmPreConfigTaskRun` / `confirmAssistantTaskRunForCurrentUser`: approved content runs at once,
-anything else shows prompt, system instruction and model first, and confirming approves it.
-Global-catalog tasks are exempt (only the administrator edits them). A template sync that changes a
-derived task's content therefore pauses it for its activator until they review it. Server writes
-carry no auth context, so the MCP tools record the caller's approval themselves:
-`create_assistant_task`, `update_assistant_task` (a content change or a resume by an activated
-caller) and `update_assistant` (the instructions it carries into the caller's tasks); everyone else
-reviews the change first. A new server path that writes task content must do the same. After deploying,
-run `node migration/approveExistingAssistantTaskContent.js --firebase-project-id=<project> --execute`
-(dry run without `--execute`), or every existing activation pauses once.
+Any project member, and the user's own assistants, may change a project assistant task's prompt,
+system instruction, model and settings, and a scheduled run then acts as the user who activated it
+(their Gold, tools and connected accounts). That is deliberate: a user trusts the members of their
+projects and their own assistants. The security audit's NEW-A binding (an approved content hash per
+user, a paused run plus a notice after somebody else's edit, and a confirmation before a manual run
+of unapproved content) was removed on 2026-11-09 for that reason; do not reintroduce it without asking.
+Documents written while it was live may still carry `approvedContentHashByUser` and
+`contentApprovalNoticeByUser`; nothing reads them.
 
 ### Server fan-outs and public endpoints trust nothing the client wrote (security audit 2026-11)
 

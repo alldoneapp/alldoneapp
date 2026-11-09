@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import { getPreConfigTasksForAllProjects } from '../../../../../utils/backends/Assistants/assistantsFirestore'
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
-import { confirmAssistantTaskRunForCurrentUser } from '../../../../../utils/assistantTaskRunGate'
 import { setIframeModalData, setPreConfigTaskExecuting } from '../../../../../redux/actions'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
@@ -77,7 +76,6 @@ export default function AssistantTaskSearchModal({ closeModal }) {
             if ((task.variables || []).length > 0) {
                 setSelectedTask(task)
             } else {
-                if (!confirmAssistantTaskRunForCurrentUser(task, task.assistantId, task.projectId)) return
                 executingTaskRef.current = true
                 closeModal()
                 dispatch(setPreConfigTaskExecuting(task.name))
@@ -92,7 +90,6 @@ export default function AssistantTaskSearchModal({ closeModal }) {
                 )
             }
         } else if (task.type === TASK_TYPE_WEBHOOK) {
-            if (!confirmAssistantTaskRunForCurrentUser(task, task.assistantId, task.projectId)) return
             executingTaskRef.current = true
             closeModal()
             dispatch(setPreConfigTaskExecuting(task.name))

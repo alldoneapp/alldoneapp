@@ -10,9 +10,7 @@
  *
  * The goal has to be in the project the run lands in, and the user the run acts for has to be able
  * to see it. A goal that is gone or not visible to them is skipped, so the run still happens and the
- * goal router decides as before. It is not part of the approved content
- * (assistantTaskContentHash.js): where a task is filed does not change what the assistant does with
- * the user's authority.
+ * goal router decides as before.
  */
 
 const { canAccessObject } = require('../shared/privacyAccess')

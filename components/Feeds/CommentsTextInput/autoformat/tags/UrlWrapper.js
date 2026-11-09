@@ -210,15 +210,7 @@ export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
                                 sendWhatsApp: !!task.sendWhatsApp,
                                 executionMode: task.executionMode,
                             }
-                            if (
-                                !confirmPreConfigTaskRunFromLink(task, loggedUser?.uid, window.confirm, {
-                                    assistantId,
-                                    taskProjectId: isGlobalAssistant(assistantId)
-                                        ? GLOBAL_PROJECT_ID
-                                        : assistantProjectId,
-                                })
-                            )
-                                return
+                            if (!confirmPreConfigTaskRunFromLink(task, loggedUser?.uid)) return
                             generateTaskFromPreConfig(
                                 targetProjectId,
                                 task.name,

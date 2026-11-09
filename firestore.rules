@@ -1135,16 +1135,8 @@ service cloud.firestore {
             (isCreate || after.get('activatorUserId', null) == request.auth.uid)));
     }
 
-    // NEW-A: a scheduled run executes only content its activator approved; the approved hashes and
-    // the notice bookkeeping are written by Cloud Functions alone (Assistant/assistantTaskContentApproval.js).
-    function assistantTaskServerFieldsUnchanged(before, after) {
-      return after.get('approvedContentHashByUser', null) == before.get('approvedContentHashByUser', null) &&
-        after.get('contentApprovalNoticeByUser', null) == before.get('contentApprovalNoticeByUser', null);
-    }
-
     function assistantTaskActivationBoundToWriter(before, after, isCreate) {
-      return assistantTaskServerFieldsUnchanged(before, after) &&
-        listOrEmpty(after.get('activatedUserIds', [])).toSet()
+      return listOrEmpty(after.get('activatedUserIds', [])).toSet()
           .difference(listOrEmpty(before.get('activatedUserIds', [])).toSet())
           .hasOnly(legacyActivationIds(before)) &&
         addedOnlyOwnMapKeys(before, after, 'recurrenceByUser') &&
