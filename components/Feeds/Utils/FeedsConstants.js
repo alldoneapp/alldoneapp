@@ -77,6 +77,13 @@ export const FEED_PROJECT_EMAIL_ACTIVITY = 'FEED_PROJECT_EMAIL_ACTIVITY'
 export const FEED_PROJECT_CALENDAR_ACTIVITY = 'FEED_PROJECT_CALENDAR_ACTIVITY'
 export const FEED_PROJECT_INTEGRATION_ACTIVITY_TYPES = [FEED_PROJECT_EMAIL_ACTIVITY, FEED_PROJECT_CALENDAR_ACTIVITY]
 
+// MCP feed parity: goals, OKRs, wiki
+// A milestone and an OKR have no feed object of their own, so their entries go on the project.
+// Goal date changes use FEED_GOAL_MILESTONE_CHANGED below.
+export const FEED_PROJECT_MILESTONE_CHANGED = 'FEED_PROJECT_MILESTONE_CHANGED'
+export const FEED_PROJECT_OKR_CREATED = 'FEED_PROJECT_OKR_CREATED'
+export const FEED_PROJECT_OKR_CHANGED = 'FEED_PROJECT_OKR_CHANGED'
+
 export const FEED_CONTACT_ADDED = 41
 export const FEED_CONTACT_PICTURE_CHANGED = 42
 export const FEED_CONTACT_EMAIL_CHANGED = 43
@@ -310,6 +317,10 @@ export const FEED_PROJECT_TYPES = [
     // MCP feed parity: assistants and projects
     FEED_PROJECT_CONTACT_STATUSES_ADDED,
     ...FEED_PROJECT_INTEGRATION_ACTIVITY_TYPES, // MCP feed parity: Gmail and Calendar
+    // MCP feed parity: goals, OKRs, wiki
+    FEED_PROJECT_MILESTONE_CHANGED,
+    FEED_PROJECT_OKR_CREATED,
+    FEED_PROJECT_OKR_CHANGED,
 ]
 
 export const FEED_CONTACT_TYPES = [

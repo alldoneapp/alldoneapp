@@ -5603,6 +5603,20 @@ async function executeToolNativelyImpl(
                     userMessageText: userContext?.message || '',
                 })
             },
+            // The Updates line for a source handed to the wiki or taken back: the assistant, or over
+            // MCP the user with the client marker, as for every other tool change.
+            recordWikiSourceChange: async ({ projectId: wikiProjectId, kind, sourceId }) => {
+                const db = admin.firestore()
+                const { publishWikiSourceFeed } = require('../KnowledgeBase/knowledgeWikiFeed')
+                const feedUser = await getAssistantFeedUserForTool(
+                    db,
+                    wikiProjectId,
+                    assistantId,
+                    requestUserId,
+                    toolRuntimeContext
+                )
+                await publishWikiSourceFeed({ db, projectId: wikiProjectId, kind, sourceId, feedUser })
+            },
         })
     }
 
@@ -8281,6 +8295,15 @@ async function executeToolNativelyImpl(
 
             try {
                 let result
+                const { buildGoalToolFeeds } = require('../Goals/goalToolFeeds')
+                const feedUser = await getAssistantFeedUserForTool(
+                    db,
+                    project.id,
+                    assistantId,
+                    creatorId,
+                    toolRuntimeContext
+                )
+                const feeds = buildGoalToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                 if (toolName === 'update_milestone') {
                     const { executeMilestoneDoneTransition } = require('../Goals/milestoneDoneService')
                     result = await updateMilestone({
@@ -8293,17 +8316,9 @@ async function executeToolNativelyImpl(
                                 actorUserId: creatorId,
                                 data: { projectId: milestoneProjectId, milestoneId, targetDone },
                             }),
+                        feeds,
                     })
                 } else {
-                    const { buildGoalToolFeeds } = require('../Goals/goalToolFeeds')
-                    const feedUser = await getAssistantFeedUserForTool(
-                        db,
-                        project.id,
-                        assistantId,
-                        creatorId,
-                        toolRuntimeContext
-                    )
-                    const feeds = buildGoalToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                     // Same notification rule as update_task: an assistant's comment is in the thread
                     // but marks nothing unread; an MCP client's notifies like any comment.
                     const postComment = ({ goal, comment }) => {
@@ -8394,8 +8409,17 @@ async function executeToolNativelyImpl(
             )
             const project = { id: targetProject.id, name: targetProject.name || targetProject.id }
             try {
+                const { buildOkrToolFeeds } = require('../OKRs/okrToolFeeds')
+                const feedUser = await getAssistantFeedUserForTool(
+                    db,
+                    project.id,
+                    assistantId,
+                    creatorId,
+                    toolRuntimeContext
+                )
+                const feeds = buildOkrToolFeeds({ db, projectId: project.id, feedUser, userId: creatorId })
                 const run = toolName === 'create_okr' ? createOkr : updateOkr
-                const result = await run({ db, projectId: project.id, userId: creatorId, args: toolArgs })
+                const result = await run({ db, projectId: project.id, userId: creatorId, args: toolArgs, feeds })
                 return { ...result, project }
             } catch (error) {
                 if (error instanceof OkrToolError) {

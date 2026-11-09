@@ -90,6 +90,14 @@ const FEED_PROJECT_EMAIL_ACTIVITY = 'FEED_PROJECT_EMAIL_ACTIVITY'
 const FEED_PROJECT_CALENDAR_ACTIVITY = 'FEED_PROJECT_CALENDAR_ACTIVITY'
 const FEED_SKILL_CHANGES_POINTS = 'FEED_SKILL_CHANGES_POINTS'
 
+// MCP feed parity: goals, OKRs, wiki
+// A goal's dates (milestone date, start date, scheduling); same value as the web constant. A
+// milestone and an OKR have no feed object of their own, so their entries go on the project.
+const FEED_GOAL_MILESTONE_CHANGED = 83
+const FEED_PROJECT_MILESTONE_CHANGED = 'FEED_PROJECT_MILESTONE_CHANGED'
+const FEED_PROJECT_OKR_CREATED = 'FEED_PROJECT_OKR_CREATED'
+const FEED_PROJECT_OKR_CHANGED = 'FEED_PROJECT_OKR_CHANGED'
+
 module.exports = {
     MAX_AMOUNT_OF_FEEDS_STORED,
     FOLLOWED_TAB,
@@ -169,4 +177,9 @@ module.exports = {
     // MCP feed parity: Gmail and Calendar
     FEED_PROJECT_EMAIL_ACTIVITY,
     FEED_PROJECT_CALENDAR_ACTIVITY,
+    // MCP feed parity: goals, OKRs, wiki
+    FEED_GOAL_MILESTONE_CHANGED,
+    FEED_PROJECT_MILESTONE_CHANGED,
+    FEED_PROJECT_OKR_CREATED,
+    FEED_PROJECT_OKR_CHANGED,
 }

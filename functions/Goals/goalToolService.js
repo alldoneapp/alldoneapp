@@ -26,6 +26,7 @@ const {
     BACKLOG_DATE_NUMERIC,
     BACKLOG_MILESTONE_ID,
     CAPACITY_NONE,
+    DATE_FORMAT_EUROPE,
     DYNAMIC_PERCENT,
     FEED_PUBLIC_FOR_ALL,
     generateSortIndex,
@@ -121,6 +122,18 @@ function formatDay(timestamp, userData = {}) {
         return moment.tz(Number(timestamp), timezone).format('YYYY-MM-DD')
     }
     return moment.utc(Number(timestamp)).add(resolveTimezoneOffsetMinutes(timezone), 'minutes').format('YYYY-MM-DD')
+}
+
+// A day as an Updates entry shows it: in the user's own date format, like a task's reminder change.
+function formatFeedDay(timestamp, userData = {}) {
+    if (!Number.isFinite(Number(timestamp)) || Number(timestamp) === BACKLOG_DATE_NUMERIC) return 'Someday'
+    const format =
+        typeof userData.dateFormat === 'string' && userData.dateFormat ? userData.dateFormat : DATE_FORMAT_EUROPE
+    const timezone = resolveUserTimezone(userData)
+    if (typeof timezone === 'string' && moment.tz.zone(timezone)) {
+        return moment.tz(Number(timestamp), timezone).format(format)
+    }
+    return moment.utc(Number(timestamp)).add(resolveTimezoneOffsetMinutes(timezone), 'minutes').format(format)
 }
 
 const isSameDay = (milestoneDate, localNoon) =>
@@ -630,14 +643,28 @@ async function updateGoal({
         updates.completionMilestoneDate = completion
         updates.assigneesReminderDate = assigneeMapForDate(updates.assigneesIds || currentAssignees, completion)
         changes.push('milestone date')
+        feedChanges.milestoneDate = {
+            from: formatFeedDay(oldCompletion, userData),
+            to: formatFeedDay(completion, userData),
+        }
     } else if (updates.assigneesIds) {
         updates.assigneesReminderDate = assigneeMapForDate(updates.assigneesIds, completion)
     }
     if (start !== oldStart) {
         updates.startingMilestoneDate = start
         if (!changes.includes('milestone date')) changes.push('start date')
+        // A goal in one milestone that moves to another stays in one milestone: its milestone date
+        // entry says everything. A start of its own gets its own entry.
+        if (!(oldStart === oldCompletion && start === completion)) {
+            feedChanges.startDate = { from: formatFeedDay(oldStart, userData), to: formatFeedDay(start, userData) }
+        }
     }
-    if (scheduleMode !== normalizeGoalScheduleMode(goal.scheduleMode)) updates.scheduleMode = scheduleMode
+    const oldScheduleMode = normalizeGoalScheduleMode(goal.scheduleMode)
+    if (scheduleMode !== oldScheduleMode) {
+        updates.scheduleMode = scheduleMode
+        if (!changes.includes('milestone date') && !changes.includes('start date')) changes.push('scheduling')
+        feedChanges.scheduleMode = { from: oldScheduleMode, to: scheduleMode }
+    }
 
     if (changes.length === 0) {
         if (comment) {
@@ -795,11 +822,13 @@ async function updateMilestone({
     now = Date.now(),
     createSortIndex = generateSortIndex,
     setMilestoneDone,
+    feeds = {},
 }) {
     const project = await loadProjectForUser(db, projectId, userId)
     const userData = await loadUserData(db, userId)
     const ownerId = milestoneOwnerIdForProject(project, userId)
     let milestone = await findMilestone(db, projectId, ownerId, userData, args)
+    const originalMilestone = milestone
 
     const name = cleanText(args.name, 'name', MAX_MILESTONE_NAME_LENGTH)
     const targetNoon = resolveDayInput(args.newDate, userData, 'newDate')
@@ -810,10 +839,17 @@ async function updateMilestone({
     }
 
     const changes = []
+    const feedChanges = []
     const result = {}
 
     if (name !== undefined && name !== (milestone.extendedName || '')) {
         await db.doc(`${milestonesPath(projectId)}/${milestone.id}`).update({ extendedName: name })
+        feedChanges.push({
+            kind: 'renamed',
+            from: milestone.extendedName || '',
+            to: name,
+            day: formatFeedDay(milestone.date, userData),
+        })
         milestone = { ...milestone, extendedName: name }
         changes.push('name')
     }
@@ -828,6 +864,13 @@ async function updateMilestone({
         }
         if (!isSameDay(milestone.date, targetNoon)) {
             const move = await moveOpenMilestone({ db, projectId, milestone, targetNoon, now, createSortIndex })
+            feedChanges.push({
+                kind: 'moved',
+                name: milestone.extendedName || '',
+                from: formatFeedDay(milestone.date, userData),
+                to: formatFeedDay(move.newDate, userData),
+                merged: !!move.mergedInto,
+            })
             milestone = { ...milestone, date: move.newDate, ...(move.mergedInto ? { id: move.mergedInto } : {}) }
             result.movedGoals = move.movedGoals
             if (move.mergedInto) result.mergedIntoMilestoneId = move.mergedInto
@@ -841,6 +884,13 @@ async function updateMilestone({
         milestone = { ...milestone, done: args.done }
         result.updatedGoalCount = transition?.updatedGoalCount
         changes.push(args.done ? 'marked done' : 'reopened')
+        if (!transition?.duplicate) {
+            feedChanges.push({
+                kind: args.done ? 'done' : 'reopened',
+                name: milestone.extendedName || '',
+                day: formatFeedDay(milestone.date, userData),
+            })
+        }
     }
 
     if (changes.length === 0) {
@@ -852,12 +902,29 @@ async function updateMilestone({
         }
     }
 
+    // A milestone has no feed object of its own: its entries go on the project. Who may read them
+    // follows the milestone's owner (everybody, or one member in a guide project).
+    const warning =
+        feedChanges.length > 0
+            ? await runFeedsSafely(
+                  'update_milestone',
+                  feeds.onMilestoneUpdated &&
+                      (() =>
+                          feeds.onMilestoneUpdated(
+                              { id: milestone.id, ownerId: originalMilestone.ownerId },
+                              feedChanges,
+                              project
+                          ))
+              )
+            : null
+
     return {
         success: true,
         message: `Milestone of ${formatDay(milestone.date, userData)} updated (${changes.join(', ')}).`,
         changes,
         milestone: summarizeMilestone(milestone, userData),
         ...result,
+        ...(warning ? { warnings: [warning] } : {}),
     }
 }
 
@@ -869,6 +936,7 @@ module.exports = {
     // exported for tests
     getLocalNoon,
     formatDay,
+    formatFeedDay,
     normalizeProgressInput,
     resolveDayInput,
 }

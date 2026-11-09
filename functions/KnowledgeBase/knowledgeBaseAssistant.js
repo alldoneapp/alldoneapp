@@ -59,6 +59,12 @@ const {
 } = require('./knowledgeContributions')
 const { searchKnowledgeBase } = require('./knowledgeSearch')
 const {
+    WIKI_SOURCE_CONTRIBUTION_REMOVED,
+    WIKI_SOURCE_CONTRIBUTION_SAVED,
+    WIKI_SOURCE_DOCUMENT_ADDED,
+    WIKI_SOURCE_DOCUMENT_REMOVED,
+} = require('./knowledgeWikiFeedModel')
+const {
     ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     KNOWLEDGE_CORRECTION_MAX_CHARS,
@@ -534,9 +540,42 @@ async function undoKnowledgeCorrection({
     return result.success ? { ...result, projectId, correctionId } : result
 }
 
+// The wiki tools that hand the wiki a source or take one back. The pages change later, in an ingest
+// run credited to the wiki, so the Updates line saying who asked is written when they ask
+// (knowledgeWikiFeed.publishWikiSourceFeed). A call that changed nothing writes none: a repeat
+// (`already…`), and a contribution draft that still waits for the member's confirmation.
+const WIKI_SOURCE_TOOL_CHANGES = {
+    [ADD_KNOWLEDGE_DOCUMENT_TOOL]: { kind: WIKI_SOURCE_DOCUMENT_ADDED, idField: 'documentId', repeat: 'alreadyAdded' },
+    [REMOVE_KNOWLEDGE_DOCUMENT_TOOL]: {
+        kind: WIKI_SOURCE_DOCUMENT_REMOVED,
+        idField: 'documentId',
+        repeat: 'alreadyRemoved',
+    },
+    [SAVE_KNOWLEDGE_CONTRIBUTION_TOOL]: {
+        kind: WIKI_SOURCE_CONTRIBUTION_SAVED,
+        idField: 'contributionId',
+        repeat: 'alreadySaved',
+    },
+    [REMOVE_KNOWLEDGE_CONTRIBUTION_TOOL]: {
+        kind: WIKI_SOURCE_CONTRIBUTION_REMOVED,
+        idField: 'contributionId',
+        repeat: 'alreadyRemoved',
+    },
+}
+
+function describeWikiSourceChange(toolName, result) {
+    const spec = WIKI_SOURCE_TOOL_CHANGES[toolName]
+    if (!spec || result?.success !== true || result[spec.repeat] === true) return null
+    if (result.needsConfirmation === true || result.saved === false) return null
+    const sourceId = result[spec.idField]
+    return typeof sourceId === 'string' && sourceId ? { kind: spec.kind, sourceId } : null
+}
+
 /**
  * Runs one wiki tool call. The access decision is taken again here rather than trusted from the
  * caller, and a `projectId` the model passes is checked for membership like the run's own.
+ * `recordWikiSourceChange({ projectId, kind, sourceId })` writes the Updates line of a source change;
+ * it is best effort, so the wiki change stands even when the line cannot be written.
  */
 async function executeKnowledgeBaseTool({
     db,
@@ -548,8 +587,50 @@ async function executeKnowledgeBaseTool({
     extractText,
     enqueue,
     loadTypesense,
+    recordWikiSourceChange,
     now = Date.now(),
     fieldValue = FieldValue,
+}) {
+    const result = await runKnowledgeBaseTool({
+        db,
+        toolName,
+        args,
+        assistantId,
+        toolRuntimeContext,
+        readChatAttachment,
+        extractText,
+        enqueue,
+        loadTypesense,
+        now,
+        fieldValue,
+    })
+    const change = describeWikiSourceChange(toolName, result)
+    if (change && typeof recordWikiSourceChange === 'function') {
+        try {
+            await recordWikiSourceChange({ projectId: result.projectId, ...change })
+        } catch (error) {
+            console.warn('[knowledge base] Could not add a wiki source change to the Updates feed', {
+                projectId: result.projectId,
+                toolName,
+                error: error.message,
+            })
+        }
+    }
+    return result
+}
+
+async function runKnowledgeBaseTool({
+    db,
+    toolName,
+    args,
+    assistantId,
+    toolRuntimeContext,
+    readChatAttachment,
+    extractText,
+    enqueue,
+    loadTypesense,
+    now,
+    fieldValue,
 }) {
     const access = resolveKnowledgeBaseAccess(toolRuntimeContext)
     if (!toolNamesForAccess(access).includes(toolName)) return failure(`Tool not permitted here: ${toolName}`)
@@ -649,6 +730,7 @@ module.exports = {
     getKnowledgeBaseToolNamesForRun,
     isKnowledgeBaseToolAllowed,
     executeKnowledgeBaseTool,
+    describeWikiSourceChange,
     undoKnowledgeCorrection,
     _resetKnowledgeBaseAvailabilityCacheForTests: () => availabilityCache.clear(),
 }
