@@ -1492,8 +1492,73 @@ service cloud.firestore {
       allow read, write: if isProjectMember(projectId);
     }
 
+    // feedsObjectsLastStates holds the last feed object of every object that had activity: its
+    // title among others. It used to be readable by every member, so the title of a private task,
+    // note, goal, contact, skill or artifact was readable by members who cannot see it. A last state
+    // is now exactly as readable as the object it describes: the object's own document decides
+    // while it exists, the last state's stored isPublicFor once it is deleted (the deletion feed
+    // wrote it from the object). Users, projects, assistants and the wiki are member-wide objects.
+    function isMemberWideFeedObjectType(objectType) {
+      return objectType in ['users', 'projects', 'assistants', 'wiki'];
+    }
+
+    function isPrivateCapableFeedObjectType(objectType) {
+      return objectType in ['tasks', 'notes', 'goals', 'contacts', 'skills', 'artifacts'];
+    }
+
+    function feedObjectSourcePath(projectId, objectType, objectId) {
+      return objectType == 'tasks' ? /databases/$(database)/documents/items/$(projectId)/tasks/$(objectId) :
+        objectType == 'notes' ? /databases/$(database)/documents/noteItems/$(projectId)/notes/$(objectId) :
+        objectType == 'goals' ? /databases/$(database)/documents/goals/$(projectId)/items/$(objectId) :
+        objectType == 'contacts' ? /databases/$(database)/documents/projectsContacts/$(projectId)/contacts/$(objectId) :
+        objectType == 'skills' ? /databases/$(database)/documents/skills/$(projectId)/items/$(objectId) :
+        /databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(objectId);
+    }
+
+    function feedObjectSourceExists(projectId, objectType, objectId) {
+      return isPrivateCapableFeedObjectType(objectType) &&
+        exists(feedObjectSourcePath(projectId, objectType, objectId));
+    }
+
+    function canReadFeedObjectSource(projectId, objectType, objectId) {
+      return feedObjectSourceExists(projectId, objectType, objectId) &&
+        canAccessObjectWhileProjectionIsPending(
+          projectId,
+          get(feedObjectSourcePath(projectId, objectType, objectId)).data
+        );
+    }
+
+    // A last state written before isPublicFor existed carries none: it stays member-readable.
+    function storedFeedObjectPrivacyAllows(data) {
+      return !(data.get('isPublicFor', null) is list) ||
+        data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
+    }
+
+    function canReadFeedObjectLastState(projectId, objectType, objectId, data) {
+      return isProjectMember(projectId) && (
+        isMemberWideFeedObjectType(objectType) ||
+        (feedObjectSourceExists(projectId, objectType, objectId)
+          ? canReadFeedObjectSource(projectId, objectType, objectId)
+          : storedFeedObjectPrivacyAllows(data))
+      );
+    }
+
     match /feedsObjectsLastStates/{projectId}/{objectType}/{objectId} {
-      allow read, write: if isProjectMember(projectId);
+      // The feed helpers read the last state before they write it; a missing one is rebuilt.
+      allow get: if canProbeMissingObject(projectId);
+      allow read: if canReadFeedObjectLastState(projectId, objectType, objectId, resource.data);
+      // Writes ride in the same batch as the object change itself (a task completion, a bulk
+      // move), so they stay open to members and look at no other document in the common case:
+      // a batch may make at most 20 document lookups. The one thing a member may not do is widen
+      // the stored privacy of a last state they could not read, which is what decides once the
+      // object is deleted. Only a stale stored isPublicFor reaches the object's own document.
+      allow create, delete: if isProjectMember(projectId);
+      allow update: if isProjectMember(projectId) && (
+        isMemberWideFeedObjectType(objectType) ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublicFor']) ||
+        storedFeedObjectPrivacyAllows(resource.data) ||
+        canReadFeedObjectSource(projectId, objectType, objectId)
+      );
     }
 
     match /notesCollab/{projectId}/notes/{noteId} {

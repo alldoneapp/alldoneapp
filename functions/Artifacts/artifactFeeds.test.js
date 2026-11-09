@@ -229,9 +229,12 @@ describe('an entry in Updates', () => {
         )
     })
 
-    it('never copies the title into the member-readable last states', async () => {
-        await recordVersion({})
-        expect(paths().filter(path => path.startsWith('feedsObjectsLastStates/'))).toEqual([])
+    it('keeps the last state as private as the artifact it names', async () => {
+        await recordVersion({}, PRIVATE_ARTIFACT)
+        expect(read(`feedsObjectsLastStates/${PROJECT_ID}/artifacts/${ARTIFACT_ID}`)).toMatchObject({
+            name: 'Sales dashboard',
+            isPublicFor: ['owner'],
+        })
     })
 
     it('does not notify the user of their own change in the app', async () => {

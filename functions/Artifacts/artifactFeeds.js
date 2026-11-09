@@ -40,8 +40,8 @@ const { getActorChannelFields, isMcpActor } = require('../shared/mcpActor')
  * An entry is readable exactly as the artifact is: it carries the artifact's `isPublicFor`, the
  * projection triggers derive `readerIds` from it, and a change of audience re-privatises the
  * existing entries (Feeds/objectFeedPrivacy.js) and the day cards (reconcileArtifactFeedObjectsPrivacy).
- * No `feedsObjectsLastStates` copy is kept: every member may read that collection, and the client
- * rebuilds a missing card from the artifact, which only its readers can read.
+ * The `feedsObjectsLastStates` copy is as private as the artifact: firestore.rules let only the
+ * artifact's readers read it.
  *
  * Best effort: a feed failure is logged and never fails the artifact write it describes.
  */
@@ -215,7 +215,7 @@ async function writeArtifactFeedEntries({
                 batch,
                 true,
                 // Explicit context instead of the per-instance feed state: nothing here reads it.
-                { feedCreator: entry.actor, project: { userIds }, skipObjectLastState: true }
+                { feedCreator: entry.actor, project: { userIds } }
             )
         }
         await batch.commit()

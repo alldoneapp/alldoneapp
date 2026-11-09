@@ -4411,18 +4411,6 @@ export async function setFeedObjectLastState(projectId, objectType, objectId, ob
     batch.set(stateRef, objectLastState, { merge: true })
 }
 
-export async function getFeedObjectsLastStateList(projectId, objectType) {
-    return (
-        await db
-            .collection(`/feedsObjectsLastStates/${projectId}/${objectType}`)
-            .orderBy('lastChangeDate', 'desc')
-            .limit(100)
-            .get()
-    ).docs.map(update => {
-        return { id: update.id, ...update.data() }
-    })
-}
-
 /////  UTILS FUNCTIONS
 
 export const updateTasksFeedsAmountOfSubtasks = async (
@@ -5518,11 +5506,16 @@ export async function unwatchObjectLTag(objectType, path, watchId) {
 }
 
 export function watchFeedObjectLastState(watchId, projectId, objectType, objectId, callback) {
+    // A last state is exactly as readable as the object it names (firestore.rules), so a viewer
+    // who may not read the object is answered like a missing one instead of an uncaught error.
     feedObjectsLastStates[watchId] = db
         .doc(`/feedsObjectsLastStates/${projectId}/${objectType}/${objectId}`)
-        .onSnapshot(feedObject => {
-            callback(feedObject.data())
-        })
+        .onSnapshot(
+            feedObject => {
+                callback(feedObject.data())
+            },
+            () => callback(undefined)
+        )
 }
 
 export function unwatchFeedObjectLastState(watchId) {

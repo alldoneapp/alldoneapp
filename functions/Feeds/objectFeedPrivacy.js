@@ -119,6 +119,19 @@ async function reconcileObjectFeedPrivacy({ database, projectId, objectType, obj
         )
     })
 
+    // The object's last feed state carries its title. While the object exists firestore.rules
+    // decide who reads it from the object itself; once the object is deleted they fall back to
+    // this stored isPublicFor, so it has to follow the object's privacy. Never created here: a
+    // last state is written by the first feed of the object.
+    const lastStateRef = database.doc(`feedsObjectsLastStates/${projectId}/${objectType}/${objectId}`)
+    work.push(
+        lastStateRef.get().then(snapshot => {
+            if (!snapshot.exists) return
+            batch.set(lastStateRef, { isPublicFor: readers }, { merge: true })
+            totals.updated++
+        })
+    )
+
     await Promise.all(work)
     await batch.commit()
     return totals

@@ -654,15 +654,7 @@ async function proccessFeed(
     needGenerateNotification,
     contextOverrides = {}
 ) {
-    updateFeedObject(
-        projectId,
-        currentDateFormated,
-        objectId,
-        feedObject,
-        objectsType,
-        batch,
-        contextOverrides.skipObjectLastState === true
-    )
+    updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch)
 
     const promises = []
     promises.push(storeOldFeeds(projectId, currentDateFormated, objectId, feedObject, feedId, feed, batch))
@@ -693,21 +685,12 @@ async function proccessFeed(
     )
 }
 
-// `skipObjectLastState`: for an object whose feed object is always rebuilt from the object itself
-// (artifacts). `feedsObjectsLastStates` is readable by every project member, so it must not hold the
-// title of an object only some of them may see.
-function updateFeedObject(
-    projectId,
-    currentDateFormated,
-    objectId,
-    feedObject,
-    objectsType,
-    batch,
-    skipObjectLastState
-) {
+// The last state carries the object's title; firestore.rules let only the members who may read
+// the object itself read it (see feedsObjectsLastStates there).
+function updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch) {
     const feedObjectRef = admin.firestore().doc(`/projectsFeeds/${projectId}/${currentDateFormated}/${objectId}`)
     batch.set(feedObjectRef, feedObject, { merge: true })
-    if (!skipObjectLastState) setFeedObjectLastState(projectId, objectsType, objectId, feedObject, batch)
+    setFeedObjectLastState(projectId, objectsType, objectId, feedObject, batch)
 }
 
 async function cleanGlobalFeeds(projectId) {

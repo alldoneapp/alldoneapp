@@ -600,10 +600,6 @@ export default class Backend {
         return await bridge.getFeedObjectLastState(projectId, objectType, objectId)
     }
 
-    static async getFeedObjectsLastStateList(projectId, objectType) {
-        return await bridge.getFeedObjectsLastStateList(projectId, objectType)
-    }
-
     static getObjectFromUrl(objectType, url, callback) {
         return bridge.getObjectFromUrl(objectType, url, callback)
     }

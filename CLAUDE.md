@@ -1537,9 +1537,9 @@ a stamp older than 10 minutes is a leftover of a delete that never happened and 
 `firestore.rules` lets a browser stamp only itself and without a channel marker
 (`artifactDeletionStampIsOwn`); MCP and assistant deletions stamp on the server.
 Entries carry the artifact's `isPublicFor`; a change of audience re-privatises them
-(`reconcileFeedPrivacy(event, 'artifacts')`) and the earlier day cards. No
-`feedsObjectsLastStates` copy is written, because every member can read it; the client rebuilds a
-missing card from the artifact, and `get_updates` takes the title from the artifact.
+(`reconcileFeedPrivacy(event, 'artifacts')`) and the earlier day cards. Their
+`feedsObjectsLastStates` copy is as private as the artifact (see "An object's last feed state is
+as private as the object"), and `get_updates` takes the title from the artifact.
 
 **Live project data hands viewer data to model-written code, and four rules keep that safe**
 (`Artifacts/artifactDataBridge.js`, host in `useArtifactDataBridge.js`, queries in
@@ -4371,6 +4371,28 @@ freely. Neither half may reject into a caller: the client wraps its commit and w
 catches and logs, because the object update itself has already happened. Pinned by
 `utils/backends/Feeds/feedPrivacy.test.js`, `functions/Feeds/objectFeedPrivacy.test.js` and the
 `re-privatise only the activity it can see` case in `__tests__/Firestore/firestoreRules.emulator.test.js`.
+
+### An object's last feed state is as private as the object (2026-11-09)
+
+`feedsObjectsLastStates/{projectId}/{objectType}/{objectId}` caches the last feed object of every
+object with activity, title included, and every member could read it, so the title of a private
+task, note, goal, contact, skill or artifact was readable by members who cannot see the object.
+`firestore.rules` now decide a read from the object's own document while it exists
+(`canAccessObjectWhileProjectionIsPending` on it, so a stale stored value never matters), from the
+last state's stored `isPublicFor` once the object is deleted (the deletion feed wrote it from the
+object), and keep users, projects, assistants and the wiki member-wide. A last state without
+`isPublicFor` (written before the field existed) stays member-readable. A missing last state still
+answers a member (`canProbeMissingObject`), because every feed helper reads it before writing and
+rebuilds a missing one. Writes stay open to members and read no other document, since they ride in
+the batch of the object change and a batch may make at most 20 document lookups; the one write
+refused is widening the stored `isPublicFor` of a last state the writer could not read, which is
+what would expose a deleted object. A reader of the live object may still correct a stale value
+(that branch alone reads the object). The privacy reconciler (`objectFeedPrivacy.js`) moves the
+stored `isPublicFor` with the object. Never list this collection: the rule needs the object id, so
+a collection query is refused (the unused `getFeedObjectsLastStateList` was removed). Artifacts no
+longer skip their last state (the `skipObjectLastState` flag of AT-3002 is gone). Pinned by the
+`feed object last states are as private as their object` block of the rules emulator suite (11 of
+its cases fail against the old member-wide rule) and `functions/Feeds/objectFeedPrivacy.test.js`.
 
 ### Gold Transactions
 

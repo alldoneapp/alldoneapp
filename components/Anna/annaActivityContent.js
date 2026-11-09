@@ -96,7 +96,10 @@ async function readAnnaActivityContent(notice, userId) {
         } catch (_) {}
         if (object) break
     }
-    if (!object) object = await read(`feedsObjectsLastStates/${projectId}/${objectOrChatId}/${lastId}`)
+    // The last state is as private as its object: a reader who may not see the object gets no name.
+    if (!object) {
+        object = await read(`feedsObjectsLastStates/${projectId}/${objectOrChatId}/${lastId}`).catch(() => undefined)
+    }
     content.objectName = nameOf(object)
     content.actorName = await author(feed.creatorId)
 

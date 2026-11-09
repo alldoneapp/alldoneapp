@@ -21,7 +21,7 @@ const OUTSIDER_IN_LIST = 'former-member'
 const feedDoc = (id, data = {}) => ({ id, data: () => data })
 
 // A Firestore double: queries answer per collection path, writes are recorded per batch.
-const makeDatabase = ({ docsByPath = {}, project = { userIds: [OWNER, TEAMMATE] } } = {}) => {
+const makeDatabase = ({ docsByPath = {}, project = { userIds: [OWNER, TEAMMATE] }, existingDocs = {} } = {}) => {
     const queries = []
     const writes = { set: [], delete: [] }
     const batch = () => ({
@@ -42,7 +42,9 @@ const makeDatabase = ({ docsByPath = {}, project = { userIds: [OWNER, TEAMMATE] 
         path,
         get: jest.fn(() =>
             Promise.resolve(
-                path === `projects/${PROJECT}` ? { exists: Boolean(project), data: () => project } : { exists: false }
+                path === `projects/${PROJECT}`
+                    ? { exists: Boolean(project), data: () => project }
+                    : { exists: path in existingDocs, data: () => existingDocs[path] }
             )
         ),
     }))
@@ -152,6 +154,38 @@ describe('reconcileObjectFeedPrivacy', () => {
         expect(writes.set).toEqual([
             { path: `${teammateStore}/t-1`, data: { isPublicFor: [0] }, options: { merge: true } },
         ])
+    })
+
+    it("moves the object's last feed state to the new privacy, and never creates one", async () => {
+        const lastState = `feedsObjectsLastStates/${PROJECT}/tasks/${TASK}`
+        const existing = makeDatabase({ existingDocs: { [lastState]: { name: 'Private plan', isPublicFor: [0] } } })
+
+        await expect(
+            reconcileObjectFeedPrivacy({
+                database: existing.database,
+                projectId: PROJECT,
+                objectType: 'tasks',
+                objectId: TASK,
+                isPublicFor: [OWNER],
+                projectUserIds: [OWNER, TEAMMATE],
+            })
+        ).resolves.toEqual({ deleted: 0, updated: 1, counters: 1 })
+        expect(existing.writes.set).toContainEqual({
+            path: lastState,
+            data: { isPublicFor: [OWNER] },
+            options: { merge: true },
+        })
+
+        const missing = makeDatabase()
+        await reconcileObjectFeedPrivacy({
+            database: missing.database,
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            isPublicFor: [OWNER],
+            projectUserIds: [OWNER, TEAMMATE],
+        })
+        expect(missing.writes.set.some(write => write.path === lastState)).toBe(false)
     })
 
     it('refuses to act on an object without a readable privacy', async () => {

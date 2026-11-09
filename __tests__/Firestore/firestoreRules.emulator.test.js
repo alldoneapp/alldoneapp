@@ -2394,6 +2394,178 @@ describe('chat notification ownership', () => {
     })
 })
 
+describe('feed object last states are as private as their object', () => {
+    const lastState = (objectType, objectId) => `feedsObjectsLastStates/${PROJECT_ID}/${objectType}/${objectId}`
+    const PRIVATE_SOURCES = [
+        ['tasks', `items/${PROJECT_ID}/tasks/private-task`, { projectId: PROJECT_ID }],
+        ['notes', `noteItems/${PROJECT_ID}/notes/private-note`, {}],
+        ['goals', `goals/${PROJECT_ID}/items/private-goal`, {}],
+        ['contacts', `projectsContacts/${PROJECT_ID}/contacts/private-contact`, {}],
+        ['skills', `skills/${PROJECT_ID}/items/private-skill`, {}],
+        ['artifacts', `artifactItems/${PROJECT_ID}/artifacts/private-artifact`, {}],
+    ]
+
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            for (const [objectType, sourcePath, extra] of PRIVATE_SOURCES) {
+                const objectId = sourcePath.split('/').pop()
+                await setDoc(doc(db, sourcePath), {
+                    ...extra,
+                    isPublicFor: [MEMBER_ID],
+                    readerIds: [MEMBER_ID],
+                    roleIdsVisibleTo: { [MEMBER_ID]: [] },
+                })
+                // A stale stored privacy must not matter while the object exists: it decides.
+                await setDoc(doc(db, lastState(objectType, objectId)), {
+                    name: 'Private plan',
+                    isPublicFor: [0],
+                    lastChangeDate: 1,
+                })
+            }
+            await setDoc(doc(db, lastState('tasks', 'focus-task')), {
+                name: 'Project-wide task',
+                isPublicFor: [0],
+                lastChangeDate: 1,
+            })
+            await setDoc(doc(db, lastState('tasks', 'deleted-private-task')), {
+                name: 'Deleted private plan',
+                isPublicFor: [MEMBER_ID],
+                isDeleted: true,
+                lastChangeDate: 1,
+            })
+            await setDoc(doc(db, lastState('tasks', 'deleted-public-task')), {
+                name: 'Deleted public task',
+                isPublicFor: [0],
+                isDeleted: true,
+                lastChangeDate: 1,
+            })
+            for (const objectType of ['users', 'projects', 'assistants', 'wiki']) {
+                await setDoc(doc(db, lastState(objectType, 'member-wide')), {
+                    name: 'Member-wide object',
+                    isPublicFor: [MEMBER_ID],
+                })
+            }
+        })
+    })
+
+    it.each(PRIVATE_SOURCES)(
+        'lets only the readers of a private %s read its last state',
+        async (objectType, sourcePath) => {
+            const objectId = sourcePath.split('/').pop()
+            const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+            const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+            const snapshot = await assertSucceeds(getDoc(doc(memberDb, lastState(objectType, objectId))))
+            expect(snapshot.data().name).toBe('Private plan')
+            await assertFails(getDoc(doc(teammateDb, lastState(objectType, objectId))))
+        }
+    )
+
+    it('keeps the last state of a project-wide object readable by every member', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertSucceeds(getDoc(doc(teammateDb, lastState('tasks', 'focus-task'))))
+        await assertFails(getDoc(doc(outsiderDb, lastState('tasks', 'focus-task'))))
+    })
+
+    it('hides a private object while its access projection is still pending', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `items/${PROJECT_ID}/tasks/new-private-task`), {
+                projectId: PROJECT_ID,
+                isPublicFor: [MEMBER_ID],
+            })
+            await setDoc(doc(db, lastState('tasks', 'new-private-task')), { name: 'Brand new plan' })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(memberDb, lastState('tasks', 'new-private-task'))))
+        await assertFails(getDoc(doc(teammateDb, lastState('tasks', 'new-private-task'))))
+    })
+
+    it('falls back to the stored privacy once the object is deleted', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(memberDb, lastState('tasks', 'deleted-private-task'))))
+        await assertFails(getDoc(doc(teammateDb, lastState('tasks', 'deleted-private-task'))))
+        await assertSucceeds(getDoc(doc(teammateDb, lastState('tasks', 'deleted-public-task'))))
+    })
+
+    it('never lets a member who cannot read a last state widen its stored privacy', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const ref = doc(teammateDb, lastState('tasks', 'deleted-private-task'))
+
+        await assertFails(setDoc(ref, { isPublicFor: [0] }, { merge: true }))
+        await assertFails(setDoc(ref, { isPublicFor: [MEMBER_ID, TEAMMATE_ID] }, { merge: true }))
+        await assertFails(getDoc(ref))
+        // Ordinary feed writes stay open to members: they ride in the batch of the object change.
+        await assertSucceeds(setDoc(ref, { lastChangeDate: 2 }, { merge: true }))
+    })
+
+    it('lets a reader of the live object correct a stale stored privacy', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), lastState('tasks', 'private-task')), {
+                name: 'Private plan',
+                isPublicFor: [TEAMMATE_ID],
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        // The stale entry names the teammate, but the live task decides who reads it.
+        await assertFails(getDoc(doc(teammateDb, lastState('tasks', 'private-task'))))
+        await assertSucceeds(
+            setDoc(doc(memberDb, lastState('tasks', 'private-task')), { isPublicFor: [MEMBER_ID] }, { merge: true })
+        )
+    })
+
+    it('answers a missing last state to members only, so the feed helpers can rebuild it', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        const snapshot = await assertSucceeds(getDoc(doc(memberDb, lastState('tasks', 'never-written'))))
+        expect(snapshot.exists()).toBe(false)
+        await assertFails(getDoc(doc(outsiderDb, lastState('tasks', 'never-written'))))
+    })
+
+    it.each(['users', 'projects', 'assistants', 'wiki'])(
+        'keeps the last state of %s readable by every member',
+        async objectType => {
+            const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+            const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+            await assertSucceeds(getDoc(doc(teammateDb, lastState(objectType, 'member-wide'))))
+            await assertFails(getDoc(doc(outsiderDb, lastState(objectType, 'member-wide'))))
+        }
+    )
+
+    it('never lists the last states of a project', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(getDocs(collection(memberDb, `feedsObjectsLastStates/${PROJECT_ID}/tasks`)))
+    })
+
+    it('keeps a bulk feed batch of many objects within the lookup limit', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+        for (let index = 0; index < 30; index++) {
+            batch.set(
+                doc(memberDb, lastState('tasks', `bulk-task-${index}`)),
+                { name: `Task ${index}`, isPublicFor: [0, MEMBER_ID], lastChangeDate: 5 },
+                { merge: true }
+            )
+        }
+        batch.set(doc(memberDb, lastState('tasks', 'focus-task')), { lastChangeDate: 6 }, { merge: true })
+        batch.set(
+            doc(memberDb, lastState('tasks', 'private-task')),
+            { lastChangeDate: 6, isPublicFor: [MEMBER_ID] },
+            { merge: true }
+        )
+        await assertSucceeds(batch.commit())
+    })
+})
+
 describe('explicit client collection coverage', () => {
     it.each([
         `projectsWorkstreams/${PROJECT_ID}/workstreams/default`,
