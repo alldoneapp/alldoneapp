@@ -83,6 +83,9 @@ function applyGoldChangeInTransaction({
     source,
     context = {},
     requireSufficientBalance = false,
+    // Only for settling usage that has already happened (settleUsageGold, AT-2978): the balance may
+    // go below 0, and every paid entry point refuses to start while it is 0 or less.
+    allowNegativeBalance = false,
     additionalUserFields = {},
 }) {
     const normalizedDelta = Number(delta)
@@ -103,7 +106,7 @@ function applyGoldChangeInTransaction({
         return { success: false, message: 'Insufficient gold', currentGold }
     }
 
-    if (newBalance < 0) {
+    if (newBalance < 0 && !(allowNegativeBalance && direction === 'spend')) {
         return { success: false, message: 'Insufficient gold', currentGold }
     }
 

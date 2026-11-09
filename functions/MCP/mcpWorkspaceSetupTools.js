@@ -36,8 +36,6 @@ const MCP_WORKSPACE_SETUP_TOOLS = [
     'create_assistant',
     'update_assistant',
     'create_assistant_task',
-    'get_assistant_tasks',
-    'update_assistant_task',
 ]
 
 // Mirrors TOOL_OPTIONS / OPT_IN_ONLY_TOOLS in
@@ -157,7 +155,6 @@ const DAILY_LIMITS = {
     create_assistant: 10,
     update_assistant: 50,
     create_assistant_task: 30,
-    update_assistant_task: 50,
 }
 const QUOTA_DOC = 'mcpWorkspaceSetupQuota'
 
@@ -324,56 +321,6 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
                 },
             },
             required: ['projectId', 'assistantId', 'name', 'prompt', 'recurrence'],
-        },
-    },
-    {
-        name: 'get_assistant_tasks',
-        description:
-            "List an assistant's scheduled tasks: name, the full prompt, how often and when it runs for the signed-in user, whether it is active for them, and when it last ran. Use it to find a taskId and to read the current prompt before update_assistant_task.",
-        inputSchema: {
-            type: 'object',
-            properties: {
-                projectId: { type: 'string', description: 'The project the assistant belongs to.' },
-                assistantId: { type: 'string', description: 'The assistant.' },
-            },
-            required: ['projectId', 'assistantId'],
-        },
-    },
-    {
-        name: 'update_assistant_task',
-        description:
-            "Change a scheduled assistant task: its prompt, its name, how often or when it runs, whether results also go to WhatsApp, or pause and resume it for the signed-in user. Find the task by taskId (from get_assistant_tasks) or taskName. Only the fields you pass change; a call that changes nothing writes nothing. The start date anchors the rhythm (a weekly task runs on that date's weekday), so changing only startTime keeps the existing start date.",
-        inputSchema: {
-            type: 'object',
-            properties: {
-                projectId: { type: 'string', description: 'The project the assistant belongs to.' },
-                assistantId: { type: 'string', description: 'The assistant.' },
-                taskId: { type: 'string', description: 'The task (from get_assistant_tasks).' },
-                taskName: { type: 'string', description: 'Alternative to taskId: the exact task name.' },
-                name: { type: 'string', description: 'New task name.' },
-                prompt: { type: 'string', description: 'New complete prompt; replaces the old one.' },
-                recurrence: {
-                    type: 'string',
-                    description: `New rhythm: ${RECURRENCE_VALUES.join(', ')}, or custom:<days>.`,
-                },
-                startDate: {
-                    type: 'string',
-                    description: "New start date as YYYY-MM-DD in the user's timezone.",
-                },
-                startTime: {
-                    type: 'string',
-                    description: "New run time as HH:mm (24h) in the user's timezone.",
-                },
-                sendWhatsApp: {
-                    type: 'boolean',
-                    description: 'Also send each result to the user on WhatsApp.',
-                },
-                active: {
-                    type: 'boolean',
-                    description: 'false pauses the task for the signed-in user, true resumes it.',
-                },
-            },
-            required: ['projectId', 'assistantId'],
         },
     },
 ]
@@ -1055,188 +1002,12 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
     }
 }
 
-async function getProjectAssistant(db, userId, args) {
-    const { id: projectId } = await getProjectForMember(db, userId, args.projectId)
-    const assistantId = cleanString(args.assistantId, 'assistantId', { required: true })
-    const assistantSnapshot = await db.doc(`assistants/${projectId}/items/${assistantId}`).get()
-    if (!assistantSnapshot.exists) fail(`Assistant "${assistantId}" was not found in project "${projectId}".`)
-    return { projectId, assistantId }
-}
-
-// The local date a stored schedule starts on, in the user's timezone: what the app's form shows.
-function getLocalStartDate(task, userData) {
-    if (!(Number(task.startDate) > 0)) return undefined
-    const { iana, offsetMinutes } = resolveUserTimezone(userData)
-    return iana
-        ? moment.tz(Number(task.startDate), iana).format('YYYY-MM-DD')
-        : moment.utc(Number(task.startDate)).utcOffset(offsetMinutes).format('YYYY-MM-DD')
-}
-
-const getActiveUserIds = task => (Array.isArray(task.activatedUserIds) ? task.activatedUserIds : [])
-
-function summarizeAssistantTask(task, userId, userData) {
-    const activeUserIds = getActiveUserIds(task)
-    return {
-        taskId: task.id,
-        name: task.name || '',
-        type: task.type || TASK_TYPE_PROMPT,
-        prompt: task.prompt || '',
-        recurrence: (task.recurrenceByUser && task.recurrenceByUser[userId]) || task.recurrence || 'never',
-        startDate: getLocalStartDate(task, userData) || null,
-        startTime: task.startTime || null,
-        active: activeUserIds.includes(userId),
-        activeForUserCount: activeUserIds.length,
-        sendWhatsApp: task.sendWhatsApp === true,
-        // Not Number.isFinite(Number(x)): Number(null) is 0, which would report a task that never ran as run in 1970.
-        lastRun: Number(task.lastExecuted) > 0 ? new Date(Number(task.lastExecuted)).toISOString() : null,
-    }
-}
-
-async function getAssistantTasks(userId, args = {}, context = {}, deps = {}) {
-    const db = getDb(deps)
-    const { projectId, assistantId } = await getProjectAssistant(db, userId, args)
-    const userData = await getUserData(db, userId)
-    const snapshot = await db.collection(`assistantTasks/${projectId}/${assistantId}`).get()
-    const tasks = snapshot.docs
-        .map(doc => ({ ...(doc.data() || {}), id: doc.id }))
-        .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
-        .map(task => summarizeAssistantTask(task, userId, userData))
-    return { projectId, assistantId, count: tasks.length, tasks }
-}
-
-async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
-    const db = getDb(deps)
-    const now = getNow(deps)
-    const { projectId, assistantId } = await getProjectAssistant(db, userId, args)
-    const collection = db.collection(`assistantTasks/${projectId}/${assistantId}`)
-    const snapshot = await collection.get()
-    const tasks = snapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id }))
-
-    const taskId = cleanString(args.taskId, 'taskId')
-    const taskName = cleanString(args.taskName, 'taskName')
-    if (!taskId && !taskName) fail('taskId or taskName is required. Use get_assistant_tasks to find it.')
-    const task = taskId ? tasks.find(item => item.id === taskId) : tasks.find(item => sameName(item.name, taskName))
-    if (!task) fail(`No scheduled task ${taskId ? `"${taskId}"` : `named "${taskName}"`} for this assistant.`)
-
-    const userData = await getUserData(db, userId)
-    const update = {}
-    const changes = []
-
-    if (args.name !== undefined) {
-        const name = cleanString(args.name, 'name', { required: true, maxLength: MAX_PROJECT_NAME_LENGTH })
-        if (name !== task.name) {
-            if (tasks.some(item => item.id !== task.id && sameName(item.name, name))) {
-                fail(`This assistant already has a task named "${name}".`)
-            }
-            update.name = name
-            changes.push('name')
-        }
-    }
-    if (args.prompt !== undefined) {
-        const prompt = cleanString(args.prompt, 'prompt', { required: true, maxLength: MAX_PROMPT_LENGTH })
-        if (prompt !== task.prompt) {
-            update.prompt = prompt
-            changes.push('prompt')
-        }
-    }
-    if (args.sendWhatsApp !== undefined) {
-        if (typeof args.sendWhatsApp !== 'boolean') fail('sendWhatsApp must be true or false.')
-        if (args.sendWhatsApp !== (task.sendWhatsApp === true)) {
-            update.sendWhatsApp = args.sendWhatsApp
-            changes.push(args.sendWhatsApp ? 'WhatsApp on' : 'WhatsApp off')
-        }
-    }
-
-    // The rhythm is stored per user (recurrenceByUser) next to the task's default; both follow the
-    // caller, as when the app's form is saved.
-    const currentRecurrence = (task.recurrenceByUser && task.recurrenceByUser[userId]) || task.recurrence
-    let recurrence = currentRecurrence
-    if (args.recurrence !== undefined) {
-        recurrence = normalizeRecurrence(args.recurrence)
-        if (recurrence !== currentRecurrence) changes.push('recurrence')
-    }
-
-    const changesStart =
-        (args.startDate !== undefined && args.startDate !== null && args.startDate !== '') ||
-        (args.startTime !== undefined && args.startTime !== null && args.startTime !== '')
-    if (changesStart) {
-        const schedule = buildSchedule({
-            startDate: args.startDate || getLocalStartDate(task, userData),
-            startTime: args.startTime || task.startTime,
-            userData,
-            now,
-        })
-        if (schedule.startDate !== Number(task.startDate) || schedule.startTime !== task.startTime) {
-            update.startDate = schedule.startDate
-            update.startTime = schedule.startTime
-            update.userTimezone = schedule.userTimezone
-            changes.push('schedule')
-        }
-    }
-
-    const activeUserIds = getActiveUserIds(task)
-    let active = activeUserIds.includes(userId)
-    if (args.active !== undefined) {
-        if (typeof args.active !== 'boolean') fail('active must be true or false.')
-        if (args.active !== active) {
-            active = args.active
-            changes.push(active ? 'resumed' : 'paused')
-        }
-    }
-
-    if (changes.includes('recurrence') || changes.includes('resumed') || changes.includes('paused')) {
-        const recurrenceByUser = { ...(task.recurrenceByUser || {}) }
-        if (active) {
-            recurrenceByUser[userId] = recurrence
-            update.activatedUserIds = activeUserIds.includes(userId) ? activeUserIds : [...activeUserIds, userId]
-            if (!task.activatorUserId || changes.includes('resumed')) update.activatorUserId = userId
-            if (!task.activatedInProjectId) update.activatedInProjectId = projectId
-        } else {
-            delete recurrenceByUser[userId]
-            update.activatedUserIds = activeUserIds.filter(id => id !== userId)
-        }
-        update.recurrenceByUser = recurrenceByUser
-        if (changes.includes('recurrence')) update.recurrence = recurrence
-    }
-
-    if (changes.length === 0) {
-        return {
-            projectId,
-            assistantId,
-            changed: [],
-            message: 'The task already had these values; nothing was written.',
-            task: summarizeAssistantTask(task, userId, userData),
-        }
-    }
-
-    await consumeDailyQuota(db, userId, 'update_assistant_task', now)
-    update.lastEditionDate = now
-    update.lastEditorId = userId
-    update.lastEditedVia = buildMcpActorMarker(context.mcpClient)
-
-    const batch = db.batch()
-    batch.update(collection.doc(task.id), update)
-    batch.update(db.doc(`assistants/${projectId}/items/${assistantId}`), { lastEditionDate: now, lastEditorId: userId })
-    await batch.commit()
-
-    const updatedTask = { ...task, ...update }
-    return {
-        projectId,
-        assistantId,
-        changed: changes,
-        task: summarizeAssistantTask(updatedTask, userId, userData),
-        ...(changesStart && update.startDate ? { firstRun: moment(update.startDate).toISOString() } : {}),
-    }
-}
-
 const HANDLERS = {
     create_project: createProject,
     add_contact_statuses: addContactStatuses,
     create_assistant: createAssistant,
     update_assistant: updateAssistant,
     create_assistant_task: createAssistantTask,
-    get_assistant_tasks: getAssistantTasks,
-    update_assistant_task: updateAssistantTask,
 }
 
 async function executeWorkspaceSetupTool(toolName, userId, args, context = {}, deps = {}) {

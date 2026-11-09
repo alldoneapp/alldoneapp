@@ -603,9 +603,13 @@ not in the repo) found many callables that skip this. The first fixes:
   The billing fields of `subscriptions/{uid}` and `users/{uid}.customerId` are server-owned in
   `firestore.rules` (the app may edit `companyData`, `selectedUserIds`, `showSuccessfullyPayment`).
   The generic `updateMollieSubscription` callable was removed.
-- `linkStripeAccount` looks up only the caller's verified login email (`getVerifiedAccountEmail`) and
-  never returns the Stripe customer id. Linking a subscription paid under another address needs
-  support. `checkPremiumStatusById` still finds customers by `users/{uid}.email` (the token email,
+- `linkStripeAccount` links the caller's verified login email (`getVerifiedAccountEmail`) directly and
+  never returns the Stripe customer id. Any other address (or an unverified login email) needs a
+  six-digit code mailed to it (AT-2978, `functions/Premium/stripeLinkCode.js`): the first call mails it
+  and answers `codeRequired`, the second call carries `code`. Only a hash is stored, in
+  `stripeLinkCodes/{uid}` (no client rule), bound to the user and the address, 15 minutes, five wrong
+  entries, at most one request a minute and five an hour. The mail goes out only when Stripe has a
+  customer with that address, and the answer is the same either way. `checkPremiumStatusById` still finds customers by `users/{uid}.email` (the token email,
   which may be unverified); moving it to the verified email is open.
 - The guide welcome-message runs are platform-paid on purpose and therefore run once: the group
   welcome once per guide, the personal welcome once per guide and member
@@ -1556,12 +1560,11 @@ marker for free if it builds its actor with `getAssistantFeedUserForTool(..., to
 Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
 `functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
-**MCP can set up a workspace, and nothing else configures one over MCP.** Seven MCP-only tools in
+**MCP can set up a workspace, and nothing else configures one over MCP.** Five MCP-only tools in
 `functions/MCP/mcpWorkspaceSetupTools.js` let a client set up a working structure for the user:
 `create_project` (optionally with contact statuses), `add_contact_statuses`, `create_assistant`,
-`update_assistant` (name, description, instructions, model, Tools Access), `create_assistant_task`
-(a recurring prompt the assistant runs for the caller), `get_assistant_tasks` and
-`update_assistant_task` (prompt, name, rhythm, start, WhatsApp, pause/resume for the caller). Every other
+`update_assistant` (name, description, instructions, model, Tools Access) and
+`create_assistant_task` (a recurring prompt the assistant runs for the caller). Every other
 config tool (`update_assistant_settings`, `update_project_description`, …) stays off MCP. Three
 rules keep agents from making a mess:
 
@@ -1585,14 +1588,6 @@ instructions alone would never reach its schedules. `update_assistant` therefore
 copy of every task of that assistant whose copy still equals the OLD instructions; a task whose copy
 somebody edited keeps it. Tool changes keep list entries that are not Tools Access keys (written by
 older app versions), and a call that changes nothing writes nothing and spends no quota.
-
-`update_assistant_task` keeps the stored start date when only `startTime` changes: the start date is
-the anchor of the rhythm (a weekly task runs on that date's weekday), and `buildSchedule` would
-otherwise default it to today. The rhythm is stored per user (`recurrenceByUser`) next to the task's
-default and follows the caller; pausing removes the caller from `activatedUserIds` and
-`recurrenceByUser`, the same fields the scheduler (`assistantRecurringTasks.js`) reads on every tick,
-so nothing else has to be recomputed. Edits carry `lastEditedVia`. Pinned by the
-`get_assistant_tasks and update_assistant_task` block of `mcpWorkspaceSetupTools.test.js`.
 
 ### Browser agents use the MCP tools through the signed-in page (AT-2871)
 
@@ -4107,11 +4102,46 @@ Until October 2026 any signed-in account could mint Gold three ways: write `user
 - **A ledger direction carries its sign** (`deltaMatchesDirection` in `goldTransactions.js`): `spend` negative, `earn` and `refund` positive, only `adjustment` either way.
 - **A client refund gives back one of the caller's own charges** (`refundClientSpend`): the refund source must be paired with a spend source in `REFUNDABLE_CLIENT_SPENDS` (`iframe_refund` ↔ `iframe_deduction`, `goal_unlock` ↔ `goal_unlock`), it is matched to the newest spend of that source in the last 24h (and the same `objectId` when given), and the spend's `refundedAmount` caps the total. A new client flow that needs to refund adds its pair there. Server code refunding its own charges keeps using `refundGold`.
 
-`earnGoldSecondGen` still accepts a `userId` other than the caller's (task workflows reward the reviewer), but since the 2026-11 audit (`functions/Gold/clientGoldRequests.js`) the caller and that user must both be members of the project, one call pays at most 5 Gold (a task reward) and the statistics date must be `DDMMYYYY`; what bounds the total is still the server-owned `dailyGold`. The reward amount and the decision that a task was completed are still the browser's, so a member can collect up to the daily cap by calling it directly: closing that means awarding from the task trigger, not from the client. `deductGoldSecondGen` accepts only the spends the app starts itself (`CLIENT_SPEND_SOURCES`): `goal_unlock` at the server's price (80, must equal `UNLOCK_GOAL_COST`) and `iframe_deduction` as a whole amount up to 10,000. Any other source is refused, so a client cannot write ledger entries under server sources and skew `goldStats`. A new client spend adds its source there. Note the goal unlock itself (`unlockedKeysByGuides`) is still written by the client after the charge, so that paywall is UI-only. An idempotency claim settles a change only if the ledger wrote it (matching `idempotencyKey` and `direction`); an empty claim at a predictable key used to count as paid.
+**Rewards are granted by the server, never on a request from the browser** (AT-2978,
+`functions/Gold/serverGoldRewards.js`). `onUpdateTaskSecondGen` pays when a top-level task moves
+forward (open → workflow step → … → done): leaving the open step pays the task's owner, leaving a
+workflow step pays that step's reviewer, both only as project members. `onCreateObjectCommentSecondGen`
+pays a member's comment in a guide (`parentTemplateId`) on an object the whole project can see, under
+the source `guide_comment`. The idempotency key names the step a task LEFT and the person paid
+(`task_progress:{taskId}:{stepIndex}:{uid}`), not the transition time, so reopening and completing a
+task again pays nothing the second time; a comment is keyed by its id. The amount comes from that key
+with the same hash the browser uses for its coin animation (`getRewardGoldAmount`, kept identical in
+`utils/backends/firestore.js` and pinned by `serverGoldRewards.test.js`), so the coins shown are the
+coins paid; the browser only plays the animation (`showGoldRewardAnimation`). The day the reward lands
+on in `statistics/` is the recipient's own local day (`calendarUserDay.js`). `dailyGold` still caps
+the total. `earnGoldSecondGen` is kept as a no-op for open tabs of older app versions and pays nothing.
 
-**Usage that already happened is settled, not deducted** (`settleUsageGold` in `goldHelper.js`). An assistant answer (`reduceGoldWhenChatWithAI` → `spentGold`) and a dictation (`processRamble`) are charged after the model and Deepgram have run. `deductGold` is all-or-nothing, so a cost above the balance used to charge nothing, and the assistant path also capped the cost at the balance read when the run started: parallel runs and long runs went largely unbilled, and a dictation could be retried for free at a balance of 1. `settleUsageGold` charges the full cost, or whatever is left of the balance read in its own transaction, logs the uncovered rest at `console.error` (`[gold] Usage was not fully covered by the balance`), and leaves the balance at 0, which every paid entry point refuses. A dictation that empties the balance now returns its text; only one that finds the balance already empty is withheld. This bounds the loss to one run per positive balance; it is not a reservation. The full fix reserves an estimated budget before the model call, settles provider-reported usage of every tool round against it, stops the tool loop when it runs out, limits concurrent paid runs per user and records an uncovered rest as debt that blocks the next run.
+`deductGoldSecondGen` accepts only the spends the app starts itself (`CLIENT_SPEND_SOURCES`), today
+only `iframe_deduction` as a whole amount up to 10,000. Any other source is refused, so a client cannot
+write ledger entries under server sources and skew `goldStats`. A new client spend adds its source
+there. **A guide goal is unlocked by `unlockGuideGoalSecondGen`** (AT-2978,
+`functions/Guides/unlockGuideGoal.js`), which charges the 80 Gold (must equal `UNLOCK_GOAL_COST`) and
+stores the lock key in one transaction, reading the key and the goal's owner from the stored goal; the
+guide creator (administrator or `realTemplateProjectIds`) unlocks for the goal's owner. `firestore.rules`
+make `unlockedKeysByGuides` server-owned for owner updates, let a project membership mutation only drop
+keys (`unlockedKeysNotAdded`), and let a new account start only without keys. The goal content stays
+readable for members in Firestore: the decision was that paying cannot be skipped, not that the content
+is hidden. An idempotency claim settles a change only if the ledger wrote it (matching `idempotencyKey`
+and `direction`); an empty claim at a predictable key used to count as paid.
 
-Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequests.test.js`, `functions/Assistant/assistantGoldSettlement.test.js`, `functions/Premium/premiumSignupGold.test.js` and the `server-owned` block of `__tests__/Firestore/firestoreRules.emulator.test.js`.
+**Usage that already happened is charged in full, even below 0** (`settleUsageGold` in
+`goldHelper.js`, AT-2978). An assistant answer (`reduceGoldWhenChatWithAI` → `spentGold`) and a
+dictation (`processRamble`) are charged after the model and Deepgram have run. `deductGold` is
+all-or-nothing, so a cost above the balance used to charge nothing, then the interim fix took only
+what was left. Now the full cost is always booked (`allowNegativeBalance` in
+`applyGoldChangeInTransaction`, which only that settlement passes), a negative result is logged at
+`console.warn` (`[gold] Usage settled into a negative balance`), and every paid entry point refuses to
+start while the balance is 0 or less, so a debt blocks the next run until the user tops up (monthly
+Gold or a purchase pays it off first). A run is never cut off half-way. Every other spend still needs
+the balance to cover it. Client gates must test `gold > 0`, never `gold === 0`, or a negative balance
+passes them.
+
+Pinned by `functions/Gold/goldIntegrity.test.js`, `functions/Gold/clientGoldRequests.test.js`, `functions/Gold/serverGoldRewards.test.js`, `functions/Guides/unlockGuideGoal.test.js`, `functions/Assistant/assistantGoldSettlement.test.js`, `functions/Premium/premiumSignupGold.test.js`, `functions/Premium/stripeLinkCode.test.js` and the `server-owned` and `goal lock keys` blocks of `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
 #### Gold analytics & rollups (tracking earn/spend over time)
 

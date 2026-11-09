@@ -2710,9 +2710,9 @@ async function collectAssistantTextWithToolCalls({
 // an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
 async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
     console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
-    // The answer has already been produced, so this settles rather than gates: it takes the full
-    // cost, or whatever is left of the balance, and reports the rest (settleUsageGold). A plain
-    // deductGold charged nothing when the balance fell short (security audit 2026-11).
+    // The answer has already been produced, so this settles rather than gates: it always takes the
+    // full cost, even below 0, and the next run is refused until the balance is positive again
+    // (settleUsageGold, AT-2978).
     const { settleUsageGold } = require('../Gold/goldHelper')
 
     return await settleUsageGold(userId, goldToReduce, {
@@ -2772,8 +2772,8 @@ const reduceGoldWhenChatWithAI = async (
 
     // The full cost, never capped at `userCurrentGold`: that balance was read when the run
     // started, so capping at it billed a long run (or the second of two parallel runs) for a
-    // fraction of its cost. settleUsageGold caps at the balance as it is NOW, in the charge's own
-    // transaction. `userCurrentGold` is kept in the signature for the callers' sake.
+    // fraction of its cost. settleUsageGold charges it in full, even below 0 (AT-2978).
+    // `userCurrentGold` is kept in the signature for the callers' sake.
     const goldToReduce = calculateGoldCostFromTokens(tokens, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold calculation complete:', {
         goldToReduce,
@@ -2786,7 +2786,7 @@ const reduceGoldWhenChatWithAI = async (
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed', {
         success: !!result?.success,
         charged: result?.amount || 0,
-        uncovered: result?.uncovered || 0,
+        newBalance: result?.newBalance,
     })
     return result
 }

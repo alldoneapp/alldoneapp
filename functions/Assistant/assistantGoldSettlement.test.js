@@ -2,10 +2,10 @@
 
 // Security audit 2026-11 (reduceGoldWhenChatWithAI:stale-capped-posthoc-charge): an assistant run
 // was billed min(cost, balance read when the run STARTED) through an all-or-nothing deduct whose
-// failure was ignored. It is now billed its full cost through settleUsageGold, which caps at the
-// balance at charge time and reports what it could not cover.
+// failure was ignored. It is now billed its full cost through settleUsageGold, which since AT-2978
+// charges it in full even when that takes the balance below 0.
 
-const mockSettleUsageGold = jest.fn(async (userId, cost) => ({ success: true, amount: cost, uncovered: 0 }))
+const mockSettleUsageGold = jest.fn(async (userId, cost) => ({ success: true, amount: cost, newBalance: 0 }))
 jest.mock('../Gold/goldHelper', () => ({
     settleUsageGold: (...args) => mockSettleUsageGold(...args),
     deductGold: jest.fn(async () => {
@@ -39,10 +39,10 @@ test('bills the full cost even when the balance read at run start was smaller', 
     })
 })
 
-test('returns the settlement, so a shortfall is visible to the caller', async () => {
-    mockSettleUsageGold.mockResolvedValueOnce({ success: true, amount: 1, uncovered: 40 })
+test('returns the settlement, so a negative balance is visible to the caller', async () => {
+    mockSettleUsageGold.mockResolvedValueOnce({ success: true, amount: 41, newBalance: -40 })
 
     const result = await reduceGoldWhenChatWithAI('user-1', 1, 'MODEL_GPT5_6_SOL', 'hello '.repeat(2000), [])
 
-    expect(result).toMatchObject({ amount: 1, uncovered: 40 })
+    expect(result).toMatchObject({ amount: 41, newBalance: -40 })
 })

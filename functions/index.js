@@ -2666,6 +2666,42 @@ exports.resetUserFreePlanSecondGen = onSchedule(
 
 //ALGOLIA
 
+// Unlocks a locked goal in a guide: charges the 80 Gold and stores the lock key in one transaction
+// (AT-2978; Guides/unlockGuideGoal.js). The browser can no longer write the key itself.
+exports.unlockGuideGoalSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        const { unlockGuideGoal, UnlockGoalError } = require('./Guides/unlockGuideGoal')
+        const { projectId, goalId } = request.data || {}
+        let result
+        try {
+            result = await unlockGuideGoal({ db: admin.firestore(), callerId: request.auth?.uid, projectId, goalId })
+        } catch (error) {
+            if (error instanceof UnlockGoalError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+        if (result.success && !result.alreadyUnlocked) {
+            try {
+                const { proccessAlgoliaRecordsWhenUnlockGoal } = require('./AlgoliaGlobalSearchHelper')
+                await proccessAlgoliaRecordsWhenUnlockGoal(projectId, goalId, admin)
+            } catch (error) {
+                console.error('unlockGuideGoalSecondGen: search records not updated', {
+                    projectId,
+                    goalId,
+                    error: error?.message,
+                })
+            }
+        }
+        return {
+            success: !!result.success,
+            alreadyUnlocked: !!result.alreadyUnlocked,
+            message: result.message,
+            newBalance: result.newBalance,
+            unlockedFor: result.unlockedFor,
+        }
+    }
+)
+
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     {
         timeoutSeconds: 540,
@@ -2829,34 +2865,19 @@ exports.checkIfDeletedNotesNeedBeCleanedSecondGen = onSchedule(
 
 //GOLD
 
+// Retired (AT-2978): Gold rewards are granted by the server from the task and comment triggers
+// (Gold/serverGoldRewards.js). Kept as a no-op so app versions still open in a tab get an answer
+// instead of an error until they reload; it pays nothing, so it can no longer be called in a loop.
 exports.earnGoldSecondGen = onCall(
     {
-        timeoutSeconds: 540,
+        timeoutSeconds: 10,
         memory: '256MB',
         region: 'europe-west1',
         cors: true,
     },
     async request => {
-        const { data, auth } = request
-        if (auth) {
-            // The caller and the rewarded user must share the project, and one call pays at most a
-            // task reward (security audit 2026-11; clientGoldRequests.js).
-            const { resolveClientReward } = require('./Gold/clientGoldRequests')
-            const reward = await resolveClientReward(admin.firestore(), auth.uid, data)
-            if (!reward.ok) return { success: false, message: reward.message }
-            const { earnGold } = require('./Gold/goldHelper')
-            return await earnGold(
-                reward.projectId,
-                reward.userId,
-                reward.gold,
-                reward.slimDate,
-                reward.timestamp,
-                reward.dayDate,
-                reward.context
-            )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
+        if (!request.auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        return { success: false, message: 'Gold rewards are granted by the server' }
     }
 )
 
@@ -4784,6 +4805,26 @@ exports.onCreateCalendarProjectRoutingFeedbackSecondGen = onDocumentCreated(
 // `items/{projectId}/tasks/{taskId}` path, so every task update paid for two invocations
 // (387k and 464k in August 2026) and the second one returned immediately almost every time.
 // It now rides along inside onUpdateTaskSecondGen; the capture itself is unchanged.
+// Gold for moving a task forward is granted here, from what the server saw, never on a request from
+// the browser (AT-2978; Gold/serverGoldRewards.js). Idempotent per task step and recipient.
+async function awardTaskProgressGoldIfChanged(event) {
+    const before = event.data.before.data()
+    const after = event.data.after.data()
+    const { resolveTaskProgressReward, awardTaskProgressGold } = require('./Gold/serverGoldRewards')
+    const { projectId, taskId } = event.params
+    if (!resolveTaskProgressReward(taskId, before, after)) return
+    try {
+        const { earnGold } = require('./Gold/goldHelper')
+        await awardTaskProgressGold({ db: admin.firestore(), earnGold, projectId, taskId, before, after })
+    } catch (error) {
+        console.error('[onUpdateTask] task progress Gold reward failed', {
+            projectId,
+            taskId,
+            error: error?.message || error,
+        })
+    }
+}
+
 async function captureCalendarGoalRoutingFeedbackIfChanged(event) {
     const previousTaskData = event.data.before.data() || {}
     const taskData = event.data.after.data() || {}
@@ -4840,6 +4881,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
             captureCalendarGoalRoutingFeedbackIfChanged(event),
+            awardTaskProgressGoldIfChanged(event),
             syncVmSessionTaskDoneIfChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
             invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
@@ -4874,6 +4916,31 @@ exports.onCreateObjectCommentSecondGen = onDocumentCreated(
                     error: error.message,
                 })
             }
+        }
+        // A member's comment in a guide earns Gold, granted here rather than on a request from the
+        // browser (AT-2978; Gold/serverGoldRewards.js). Idempotent per comment, so a retry pays once.
+        try {
+            const { awardCommentGold } = require('./Gold/serverGoldRewards')
+            const { earnGold } = require('./Gold/goldHelper')
+            const { getObjectDocPath } = require('./shared/privacyAccess')
+            await awardCommentGold({
+                db: admin.firestore(),
+                earnGold,
+                getObjectDocPath,
+                projectId,
+                objectType,
+                objectId,
+                commentId,
+                comment: event.data.data() || {},
+            })
+        } catch (error) {
+            console.error('[onCreateObjectComment] comment Gold reward failed', {
+                projectId,
+                objectType,
+                objectId,
+                commentId,
+                error: error?.message || error,
+            })
         }
         const { isReplyCandidate, enqueueAssistantCommentReply } = require('./Assistant/assistantCommentReply')
         if (isReplyCandidate(event.data.data())) {
