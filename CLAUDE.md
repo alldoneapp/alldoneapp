@@ -5126,6 +5126,55 @@ project's own storage bucket back into its plain URL (NV-04, `assistantTextSafet
 `functions/Assistant/assistantTextSafety.test.js` and the `must be web links` block of the rules
 emulator suite.
 
+### What a Firestore trigger reads from a client document must be bound by the rules (security audit 2026-11)
+
+Several documents are written by any member (or any signed-in account) and then acted on by the
+server with the Admin SDK, which trusts what it reads. Anonymous sign-in is enabled in production, so
+"signed in" means "anyone". The rules now bind each of these at write time:
+
+- **Projects** (`newProjectBoundToCreator`, `projectMembersAddedOnlyToGuide`): a client creates a
+  project only with `userIds == [itself]` and `creatorId == itself`, and `creatorId`, `isTemplate`
+  and `parentTemplateId` never change afterwards. `creatorId` listed in `userIds` is who pays for the
+  default project wiki (`knowledgeBaseDefaults.js`), so before this any account could create a
+  project naming another user as creator and member and spend that user's Gold. The one exception is
+  a guide: it is created in the name of its template's `templateCreatorId` (the parent must really be
+  a template), and a guide member may add exactly that creator and the administrator. Members are
+  otherwise never added by a member; `templateCreatorId` may only be set to oneself on create or
+  handed to the administrator by a kick. Accepting an invitation to a plain project (the invitee
+  adding itself) was already refused by the `isProjectMember` update rule before this change and
+  still is: that flow needs a server path, not a wider rule.
+- **Global assistant catalog** (`globalAssistantTaskActivationOnly`): every field of
+  `assistantTasks/globalProject/preConfigTasks/*` outside the activation keys is copied into every
+  tenant's derived assistant. A non-administrator may change only `activatedUserIds`,
+  `recurrenceByUser`, `activatedInProjectIdByUser`, `lastExecutedByUser`, `completedOneOffUserIds`,
+  `activatorUserId` and a missing `creatorUserId`, each only in its own entry. The activation dialog
+  therefore sends only that entry for a global task (`buildGlobalTaskActivationUpdate` in
+  `assistantsFirestore.js`, a transaction without the admin-only assistant bump). The triggers ignore
+  anything under `globalProject` that is not in `preConfigTasks` (`globalCatalogTaskPath.js`), and the
+  update trigger propagates nothing when the template state (`getTaskTemplateState`) is unchanged, so
+  switching an activation no longer rewrites every tenant's copy and posts a sync activity.
+- **Invitations** (`isValidProjectInvitation`): `inviterId` must be the writer, only the four fields
+  the app writes are allowed, and no client updates one. `onCreateProjectInvitation` ignores the
+  stored `url`, builds the answer link from `app_url` + project id + address (refusing an address that
+  could break out of the path), sends nothing when the inviter is not a member, and caps mails at 50
+  per inviter per UTC day (`projectInvitationEmailQuota`, server-only).
+- **Forced reloads** (`userForceReloads/{uid}`): a teammate write must name a project that both the
+  writer and the target belong to, before or after the write (deleting a project and kicking a member
+  reload people on their way out).
+- **Sticky note markers** (`stickyNotesData`): never readable or listable by a client, writable only
+  by members of the project the marker names (old and new), and deleting a marker that does not exist
+  stays allowed because the app untracks on every unstick. `checkStickyNotes` re-reads the note's own
+  `stickyData.stickyEndDate` and re-arms the marker instead of demoting a note that is still sticky.
+- **`info/**`** is server-only; `increaseVersionSecondGen` is the only writer of `info/version`.
+- **Invitation membership mutations** (`onlyInvitationFieldsChange`): `invitation-add` and
+  `invitation-remove` may touch only `invitedProjectIds` and the proof, not the invitee's
+  `assistantId`, `lastEditorId` or assistant comment maps.
+
+Pinned by the `security audit 2026-11: rules package` block of
+`__tests__/Firestore/firestoreRules.emulator.test.js` (each case fails against the previous rules),
+`functions/AssistantTasks/globalCatalogTaskTriggers.test.js`, `functions/StickyNotesHelper.test.js`,
+`functions/Utils/projectInvitation.test.js` and `utils/backends/Assistants/globalTaskActivation.test.js`.
+
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
 **Before these files, both buckets let any signed-in account read, list and write every object**

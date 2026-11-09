@@ -1059,9 +1059,11 @@ export async function inviteUserToProject(userEmail, projectId, inviterUserId) {
     ).docs
 
     if (invitations.length === 0) {
+        // firestore.rules binds the inviter to the writer (security audit 2026-11): the invitation mail
+        // names this person, so it is always the signed-in user, whatever the caller passed.
         let invitedUserData = {
             userEmail: userEmail,
-            inviterId: inviterUserId,
+            inviterId: store.getState().loggedUser?.uid || inviterUserId,
             userId: null,
             url: `${window.location.origin}/projects/${projectId}/contacts/${userEmail}/add`,
         }
