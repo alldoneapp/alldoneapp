@@ -59,9 +59,12 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_PROJECT_GUIDE_CHANGED', 'projects'],
     ['FEED_PROJECT_ESTIMATION_TYPE_CHANGED', 'projects'],
     ['FEED_PROJECT_ASSISTANT_CHANGED', 'projects'],
+    ['FEED_PROJECT_HAPPINESS', 'projects'],
     // MCP feed parity: Gmail and Calendar
     ['FEED_PROJECT_EMAIL_ACTIVITY', 'projects'],
     ['FEED_PROJECT_CALENDAR_ACTIVITY', 'projects'],
+    // MCP feed parity: assistants and projects
+    ['FEED_PROJECT_CONTACT_STATUSES_ADDED', 'projects'],
 
     [41, 'contacts'],
     [42, 'contacts'],
@@ -155,7 +158,15 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_ASSISTANT_TYPE_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_INSTRUCTIONS_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_MODEL_CHANGED', 'assistants'],
+    // MCP feed parity: assistants and projects
+    ['FEED_ASSISTANT_VOICE_CHANGED', 'assistants'],
+    ['FEED_ASSISTANT_DELEGATION_DESCRIPTION_CHANGED', 'assistants'],
+    ['FEED_ASSISTANT_TOOLS_CHANGED', 'assistants'],
+    ['FEED_ASSISTANT_HEARTBEAT_CHANGED', 'assistants'],
+    ['FEED_ASSISTANT_TASK_CREATED', 'assistants'],
+    ['FEED_ASSISTANT_TASK_CHANGED', 'assistants'],
     ['FEED_ASSISTANT_TEMPERATURE_CHANGED', 'assistants'],
+    ['FEED_ASSISTANT_TEMPLATE_SYNCED', 'assistants'],
 ])
 
 class UpdateRetrievalService {
