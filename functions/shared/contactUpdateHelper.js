@@ -169,7 +169,9 @@ async function writeContactChangeFeeds({ db, projectId, contact, updates, feedUs
             normalizeEmailAddress(contact.email),
             batch,
             feedUser,
-            notify
+            // Unchanged from before: an email entry badges nobody. The update_note email backfill that
+            // Gmail-labeling follow-ups run would otherwise badge every member per labeled email.
+            false
         )
     }
     if (changed(updates, 'linkedInUrl')) {

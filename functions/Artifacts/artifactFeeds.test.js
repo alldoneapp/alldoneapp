@@ -409,12 +409,19 @@ describe('a deletion', () => {
         })
     })
 
+    it('ignores a stamp left behind by a delete that never happened', async () => {
+        const stale = buildArtifactDeletionStamp({ userId: 'teammate', now: NOW - 24 * 60 * 60 * 1000 })
+        await expect(remove({ ...PUBLIC_ARTIFACT, deletedBy: stale })).resolves.toBe(0)
+        expect(read(`feedsStore/${PROJECT_ID}/all/${feedId('deleted')}`)).toBeUndefined()
+    })
+
     it('by an MCP client or an assistant names them', async () => {
         await remove({
             ...PUBLIC_ARTIFACT,
             deletedBy: buildArtifactDeletionStamp({
                 userId: 'owner',
                 actorChannel: { via: 'mcp', viaClient: 'Codex' },
+                now: NOW - 5,
             }),
         })
         expect(read(`feedsStore/${PROJECT_ID}/all/${feedId('deleted')}`)).toMatchObject({
@@ -426,7 +433,7 @@ describe('a deletion', () => {
         mockFeedDb.seed(`projects/${PROJECT_ID}`, { userIds: MEMBERS })
         await remove({
             ...PUBLIC_ARTIFACT,
-            deletedBy: buildArtifactDeletionStamp({ userId: 'owner', assistantId: 'anna' }),
+            deletedBy: buildArtifactDeletionStamp({ userId: 'owner', assistantId: 'anna', now: NOW - 5 }),
         })
         expect(read(`feedsStore/${PROJECT_ID}/all/${feedId('deleted')}`).creatorId).toBe('anna')
     })

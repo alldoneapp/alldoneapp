@@ -868,6 +868,16 @@ service cloud.firestore {
       ]);
     }
 
+    // The deleter stamp (functions/Artifacts/artifactFeedModel.js) names who the "deleted artifact"
+    // line in Updates is written for. A browser may only stamp itself, and never with a channel
+    // marker ("via Claude"): MCP and assistant deletions stamp on the server.
+    function artifactDeletionStampIsOwn() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedBy']) ||
+        (request.resource.data.deletedBy is map &&
+          request.resource.data.deletedBy.keys().hasOnly(['userId', 'date']) &&
+          request.resource.data.deletedBy.userId == request.auth.uid);
+    }
+
     match /artifactItems/{projectId}/artifacts/{artifactId} {
       allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
@@ -875,7 +885,7 @@ service cloud.firestore {
       allow create: if false;
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged() &&
-        artifactServerFieldsUnchanged();
+        artifactServerFieldsUnchanged() && artifactDeletionStampIsOwn();
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
 

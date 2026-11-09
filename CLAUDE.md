@@ -1532,7 +1532,10 @@ under an id derived from the history entry's id, so retries overwrite. Rotated o
 get none. The actor is the user, with the MCP marker, or the assistant: assistant metadata edits
 stamp `lastEditorAssistant` bound to the edition, like `lastEditorVia`. A deleted document names no
 deleter, so the app and `delete_artifact` first write `deletedBy` in a separate write; the update
-trigger ignores that stamp-only update, and the delete trigger names the stamp (no stamp, no entry).
+trigger ignores that stamp-only update, and the delete trigger names the stamp (no stamp, no entry;
+a stamp older than 10 minutes is a leftover of a delete that never happened and names nobody).
+`firestore.rules` lets a browser stamp only itself and without a channel marker
+(`artifactDeletionStampIsOwn`); MCP and assistant deletions stamp on the server.
 Entries carry the artifact's `isPublicFor`; a change of audience re-privatises them
 (`reconcileFeedPrivacy(event, 'artifacts')`) and the earlier day cards. No
 `feedsObjectsLastStates` copy is written, because every member can read it; the client rebuilds a

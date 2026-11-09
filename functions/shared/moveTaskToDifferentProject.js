@@ -238,7 +238,7 @@ async function persistManualTaskMoveFeeds(database, params) {
 // assistant semantics of moveTaskToDifferentProject (no owner or privacy reset); only the entries
 // are added, and a failure to write them is logged, never thrown into the move.
 async function loadProjectForMoveFeed(database, project, projectId) {
-    if (project && project.name) return { ...project, id: projectId }
+    if (project && project.name && Array.isArray(project.userIds)) return { ...project, id: projectId }
     const snapshot = await database.doc(`projects/${projectId}`).get()
     return { ...(snapshot.exists ? snapshot.data() || {} : {}), id: projectId }
 }
@@ -252,7 +252,10 @@ async function persistToolTaskMoveFeeds(database, params) {
         ])
         const followersSnapshot = await database.doc(`followers/${sourceProjectId}/tasks/${taskId}`).get()
         const followerIds = followersSnapshot.exists ? [...(followersSnapshot.data()?.usersFollowing || [])] : []
-        if (!followerIds.includes(feedUser.uid)) followerIds.push(feedUser.uid)
+        // The actor follows the moved task like after a move in the app, unless it is an assistant
+        // (only project members are followers).
+        const memberIds = Array.isArray(targetProject.userIds) ? targetProject.userIds : []
+        if (!followerIds.includes(feedUser.uid) && memberIds.includes(feedUser.uid)) followerIds.push(feedUser.uid)
         await persistManualTaskMoveFeeds(database, {
             sourceProject,
             targetProject,

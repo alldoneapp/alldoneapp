@@ -2696,6 +2696,19 @@ describe('project artifacts', () => {
         await assertFails(updateDoc(doc(memberDb, PUBLIC_ARTIFACT), { [field]: value }))
     })
 
+    it('lets a client stamp only itself as the deleter, without a channel marker', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        await assertFails(updateDoc(doc(teammateDb, PUBLIC_ARTIFACT), { deletedBy: { userId: MEMBER_ID, date: 1 } }))
+        await assertFails(
+            updateDoc(doc(teammateDb, PUBLIC_ARTIFACT), {
+                deletedBy: { userId: TEAMMATE_ID, date: 1, via: 'mcp', viaClient: 'Claude' },
+            })
+        )
+        await assertSucceeds(
+            updateDoc(doc(teammateDb, PUBLIC_ARTIFACT), { deletedBy: { userId: TEAMMATE_ID, date: 1 } })
+        )
+    })
+
     describe('comments on an artifact', () => {
         const commentPath = (artifactId, commentId) =>
             `chatComments/${PROJECT_ID}/artifacts/${artifactId}/comments/${commentId}`

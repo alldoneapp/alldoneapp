@@ -47,6 +47,7 @@ const { getActorChannelFields, isMcpActor } = require('../shared/mcpActor')
  */
 
 const SHORT_TEXT_CHARS = 50
+const DELETION_STAMP_MAX_AGE_MS = 10 * 60 * 1000
 
 function shorten(text) {
     const { shrinkTagText } = require('../Utils/parseTextUtils')
@@ -271,6 +272,14 @@ function recordArtifactMetadataFeeds({ db, projectId, artifactId, before, after,
 function recordArtifactDeletedFeed({ db, projectId, artifactId, artifact, now = Date.now() }) {
     const stamp = artifact && artifact[ARTIFACT_DELETION_STAMP_FIELD]
     if (!stamp || typeof stamp.userId !== 'string' || !stamp.userId) return Promise.resolve(0)
+    // The stamp is written right before the delete. One left behind by a delete that never happened
+    // says nothing about a later deletion, which then gets no entry rather than the wrong name.
+    if (
+        !(Number(stamp.date) > 0) ||
+        Math.abs((Number(now) || Date.now()) - Number(stamp.date)) > DELETION_STAMP_MAX_AGE_MS
+    ) {
+        return Promise.resolve(0)
+    }
     const actor = resolveArtifactFeedActor({ ...stamp, actorId: stamp.userId })
     return writeArtifactFeedEntries({
         db,

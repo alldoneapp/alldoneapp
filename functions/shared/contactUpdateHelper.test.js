@@ -112,7 +112,7 @@ describe('contactUpdateHelper', () => {
             '',
             expect.any(Object),
             { uid: 'user-1', displayName: 'User 1' },
-            true
+            false
         )
         expect(tryAddFollower).toHaveBeenCalled()
     })
