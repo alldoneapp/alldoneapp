@@ -5251,8 +5251,8 @@ across all workspaces. `storage.rules` (default bucket `<project>.appspot.com`) 
 per-project folders require `projects/{projectId}.userIds` membership via cross-service
 `firestore.get()`, a note body or note copy additionally requires that the note itself grants the
 caller access, a non-member of a public project (`isShared != 2`) may read only a note whose
-`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` is server-only, and nothing may be
-listed except one comment's `attachments/{commentId}` folder (`AttachmentsTag` lists it).
+`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` and `attachments/` are
+server-only, and nothing may be listed outside the member-scoped avatar folders.
 
 Four things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
 only decide what a browser may do through the Storage SDK (`put`, `getDownloadURL`, `listAll`,
@@ -5262,7 +5262,11 @@ exactly as `canAccessObjectWhileProjectionIsPending` does**: the projected field
 its siblings) when they exist, `isPublicFor` while none exist yet — the browser writes the empty body
 right after creating the note document, before the server trigger has projected `readerIds` — and
 membership alone while the note document does not exist at all, because `setNoteProject` writes the
-body into the new project BEFORE the note document lands there. **Cross-service rules may read at most
+body into the new project BEFORE the note document lands there. That fallback is for the live body
+in the notes bucket ONLY: the version copies (`noteVersionsData`, `noteDailyVersionsData`) outlive a
+deleted or moved note by up to a week, so they require the note document to exist and grant access
+(NV-39); every client flow on them runs on an existing note, and `onDeleteNote` deletes the daily
+copy at once. **Cross-service rules may read at most
 two Firestore documents per evaluation**; every note path reads exactly two (the project and the
 note), so a third lookup (a user doc, a role doc) on those paths would push every note access over
 the limit and deny it. **Cross-service `firestore.get()` needs the Storage service agent
@@ -5273,13 +5277,28 @@ the Rules API does not.
 
 Neither file is in `firebase.json`, so neither CI nor `firebase deploy` publishes them: publish with
 the Rules API (create a ruleset, PATCH `releases/firebase.storage/<bucket>`) and note the previous
-ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 73
+ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs ~120
 cases through the Rules API test endpoint (real compiler, mocked `firestore.get`/`exists`) and
 treats any compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths`
 is a path, not a string) evaluates to an error and therefore to "deny" for everyone, while every
-DENY case still passes. One known gap, deliberately left: `feedAttachments/` and `notesAttachments/`
-carry no project in their path, so any signed-in user who knows an object's random path may read
-it (listing is denied, so the path cannot be enumerated).
+DENY case still passes.
+
+**There is no catch-all: an unmatched folder is denied (security audit 2026-11, NV-37).** The old
+last rule let any signed-in account `get` any server-written object whose path it knew, which held
+only for random names: `Invoice/{uid}/{year} - {counter}.pdf` (Mollie invoices) is enumerable, and
+`anna-email-inbound/`, `browserEvidence/` and `whatsapp-images/` sat behind the same rule. No client
+code reads a server folder through the SDK; those objects reach people as token or signed URLs. A
+new folder the browser must touch needs its own `match`. **`feedAttachments/` and `notesAttachments/`
+are bound to their uploader (NV-38)**: their paths carry no project and appear in every shared URL,
+so a put must carry `customMetadata.uploaderId == auth.uid` (`allow create` only ever fires for an
+object that does not exist yet), and only that uploader may `get`, `update` or `delete` it. Every
+client put goes through `putAttachmentAsUploader` (`utils/backends/attachmentUploads.js`, ratcheted
+by its test). Objects uploaded before carry no `uploaderId` and are therefore frozen for clients,
+which is harmless: no client flow ever re-resolves, replaces or deletes one, and their token URLs
+keep working. Publish these rules only once the client that sets the metadata is live and old tabs
+have reloaded, or an upload from a stale tab is refused. `attachments/` (VM fallback files, written
+by the Admin SDK) has no client access at all; the client code that listed and wrote it was dead and
+is removed.
 
 ### Firestore indexes (`firestore.indexes.json`)
 

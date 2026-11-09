@@ -7,8 +7,10 @@ rules_version = '2';
 // that carries its own token. These rules decide only what a BROWSER may do through the Storage
 // SDK: put, getDownloadURL/getMetadata (get), listAll (list) and delete.
 //
-// Rules combine with OR, so every top-level folder is matched exactly once below; the catch-all
-// at the end excludes the folders that have their own match.
+// Rules combine with OR, so every top-level folder is matched exactly once below. Anything not
+// matched is denied: the folders Cloud Functions write (Invoice, anna-email-inbound,
+// browserEvidence, whatsapp-images, assistantSkills, communit*...) are reached only through the
+// Admin SDK or a token download URL, never through the client SDK.
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() {
@@ -66,10 +68,32 @@ service firebase.storage {
       return isPublicSharedProject(projectId) && 0 in note(projectId, noteId).get('readerIds', []);
     }
 
-    // Membership alone while the note document does not exist (canProbeMissingObject).
-    function canUseNoteBody(projectId, noteId) {
-      return (isProjectMember(projectId) && !noteExists(projectId, noteId)) ||
-        (noteExists(projectId, noteId) && canAccessNote(projectId, noteId));
+    // A version copy follows its note and nothing else. Unlike the live body in the notes bucket
+    // there is no missing-document fallback: copies outlive a deleted or moved note (the server
+    // removes them a week later), and once the note document is gone so is its privacy decision.
+    // Every client use of these paths (save a version, restore, daily copy) runs while the note
+    // exists.
+    function canUseNoteCopy(projectId, noteId) {
+      return noteExists(projectId, noteId) && canAccessNote(projectId, noteId);
+    }
+
+    function canReadNoteCopy(projectId, noteId) {
+      return noteExists(projectId, noteId) &&
+        (canAccessNote(projectId, noteId) || canReadSharedNote(projectId, noteId));
+    }
+
+    // Uploads into the project-less attachment folders are bound to their uploader through custom
+    // metadata that storeAttachment / storeConvertedVideos set on the put. A path alone (it is in
+    // every shared download URL) must not let anybody else overwrite, delete or re-resolve the
+    // object; everyone else reads it through the token URL the uploader shared. Only used under
+    // `allow create`, which Storage evaluates exclusively for an object that does not exist yet (a
+    // put over an existing one is an `update`), so a planted file can never replace somebody's.
+    function isNewUploadByCaller() {
+      return signedIn() && request.resource.metadata.get('uploaderId', null) == request.auth.uid;
+    }
+
+    function isCallersUpload() {
+      return signedIn() && resource.metadata.get('uploaderId', null) == request.auth.uid;
     }
 
     // Same as isAdministrator in firestore.rules.
@@ -86,15 +110,13 @@ service firebase.storage {
 
     // Copies of note bodies (the live body is in the notes bucket, storage.notes.rules).
     match /noteVersionsData/{projectId}/{noteId}/{versionId} {
-      allow get: if canUseNoteBody(projectId, noteId) ||
-        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
-      allow write: if canUseNoteBody(projectId, noteId);
+      allow get: if canReadNoteCopy(projectId, noteId);
+      allow write: if canUseNoteCopy(projectId, noteId);
     }
 
     match /noteDailyVersionsData/{projectId}/{noteId} {
-      allow get: if canUseNoteBody(projectId, noteId) ||
-        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
-      allow write: if canUseNoteBody(projectId, noteId);
+      allow get: if canReadNoteCopy(projectId, noteId);
+      allow write: if canUseNoteCopy(projectId, noteId);
     }
 
     // Contact, assistant and feed avatars, uploaded under the project they belong to.
@@ -115,31 +137,35 @@ service firebase.storage {
       allow read, write: if request.auth.uid == userId && isProjectMember(projectId);
     }
 
-    // Comment attachments carry no project in their path. AttachmentsTag lists one comment's
-    // folder for everyone who can see the comment, so a signed-in user may list and read inside
-    // a comment folder whose id they know, but cannot list the folder of all comments.
-    match /attachments/{commentId}/{rest=**} {
-      allow read, write: if signedIn();
+    // Comment attachments: only the VM runner writes them (Admin SDK) and the chat links them by
+    // token URL. No client code reads, lists or writes this folder, and a path carries no project,
+    // so the client gets nothing here.
+    match /attachments/{rest=**} {
+      allow read, write: if false;
     }
 
-    // Uploads into feeds and notes: date / random hash / file name, no project in the path. The
-    // uploader resolves its download URL right after the put; everyone else uses that URL. No
-    // listing, so the random hash cannot be enumerated.
+    // Uploads into feeds and notes: date / random hash / file name, no project in the path. Only
+    // the uploader may create (never over an existing object), resolve, replace or delete one.
+    // No listing, so the random hash cannot be enumerated.
     match /feedAttachments/{rest=**} {
-      allow get, write: if signedIn();
+      allow create: if isNewUploadByCaller();
+      allow get, delete: if isCallersUpload();
+      allow update: if isCallersUpload() &&
+        request.resource.metadata.get('uploaderId', null) == request.auth.uid;
     }
 
     match /notesAttachments/{rest=**} {
-      allow get, write: if signedIn();
+      allow create: if isNewUploadByCaller();
+      allow get, delete: if isCallersUpload();
+      allow update: if isCallersUpload() &&
+        request.resource.metadata.get('uploaderId', null) == request.auth.uid;
     }
 
-    // Anything else is written by Cloud Functions only. A signed-in client may still resolve a
-    // single object it already knows the path of, but may not list, upload, overwrite or delete.
-    match /{topLevel}/{rest=**} {
-      allow get: if signedIn() && !(topLevel in [
-        'artifacts', 'noteVersionsData', 'noteDailyVersionsData', 'projectsContacts', 'assistants',
-        'feeds', 'invoiceLogos', 'attachments', 'feedAttachments', 'notesAttachments'
-      ]);
+    // Customer invoices (Invoices.createPdf, Invoice/{uid}/{year} - {counter}.pdf): enumerable
+    // names, mailed as signed URLs. Never a client path. Spelled out because it is the reason the
+    // old "any signed-in user may get a server path" catch-all is gone.
+    match /Invoice/{rest=**} {
+      allow read, write: if false;
     }
   }
 }
