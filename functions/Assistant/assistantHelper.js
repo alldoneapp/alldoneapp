@@ -5502,6 +5502,21 @@ async function executeToolNatively(
         await toolRuntimeContext.onVmResult?.(result)
     }
     if (toolName === VM_JOB_TOOL_NAME && result?.success === false) await toolRuntimeContext?.onVmLaunchFailed?.()
+    // MCP feed parity: Gmail and Calendar. A change in the user's mailbox or calendar made through a
+    // tool call (MCP or assistant) writes an Updates entry on the connection's project. Best effort.
+    const integrationFeeds = require('../Feeds/integrationToolFeeds')
+    if (integrationFeeds.INTEGRATION_ACTIVITY_TOOL_NAMES.has(toolName) && result?.success === true) {
+        const db = admin.firestore()
+        await integrationFeeds.recordIntegrationToolActivity({
+            db,
+            toolName,
+            toolArgs,
+            result,
+            userId: requestUserId || assistantId,
+            getFeedUser: () =>
+                getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId, toolRuntimeContext),
+        })
+    }
     if (toolRuntimeContext?.annaConversation) {
         try {
             const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
@@ -6799,6 +6814,7 @@ async function executeToolNativelyImpl(
                 success: true,
                 messageId: toolArgs.messageId,
                 projectId: toolArgs.projectId,
+                subject: result.subject || '',
                 correctLabel: correctLabel || null,
                 followUpType: result.followUpType,
                 learnedRules: result.learnedRules,
@@ -8645,33 +8661,6 @@ async function executeToolNativelyImpl(
                 await resolvedAssistant.assistantRef.update(patch)
             }
 
-            // Updates entry on the assistant (Feeds/workspaceChangeFeeds.js), best-effort.
-            if (updatedFields.length > 0) {
-                try {
-                    const feedDb = admin.firestore()
-                    const assistantPath = String(resolvedAssistant.assistantRef?.path || '').split('/')
-                    const { writeAssistantHeartbeatFeed } = require('../Feeds/workspaceChangeFeeds')
-                    await writeAssistantHeartbeatFeed({
-                        db: feedDb,
-                        projectId: assistantPath[1] || projectId,
-                        assistantId: currentAssistant.uid || assistantPath[3] || assistantId,
-                        assistant: { ...currentAssistant, ...patch },
-                        changes: updatedFields,
-                        userId: requestUserId,
-                        getFeedUser: () =>
-                            getAssistantFeedUserForTool(
-                                feedDb,
-                                projectId,
-                                assistantId,
-                                requestUserId,
-                                toolRuntimeContext
-                            ),
-                    })
-                } catch (error) {
-                    console.warn('[heartbeat settings] Updates entry was not written', { error: error.message })
-                }
-            }
-
             let userData = null
             if (requestUserId) {
                 const userDoc = await admin
@@ -8833,50 +8822,6 @@ async function executeToolNativelyImpl(
                 otherWrites.forEach(([writeRef, data]) => batch.update(writeRef, data))
                 await batch.commit()
             }
-            // Updates entries for every change (Feeds/workspaceChangeFeeds.js), the same ones MCP's
-            // update_assistant writes; best-effort.
-            try {
-                const {
-                    writeAssistantChangeFeeds,
-                    writeProjectAssistantChangedFeed,
-                } = require('../Feeds/workspaceChangeFeeds')
-                let feedUser = null
-                const getFeedUser = async () => {
-                    if (!feedUser) {
-                        feedUser = await getAssistantFeedUserForTool(
-                            db,
-                            projectId,
-                            assistantId,
-                            requestUserId,
-                            toolRuntimeContext
-                        )
-                    }
-                    return feedUser
-                }
-                const afterAssistant = { ...targetAssistant, ...patch, ...extraUpdate }
-                await writeAssistantChangeFeeds({
-                    db,
-                    projectId: target.projectId,
-                    assistantId: targetAssistantId,
-                    before: targetAssistant,
-                    after: afterAssistant,
-                    userId: requestUserId,
-                    getFeedUser,
-                })
-                if (projectAssistantWrites.length > 0) {
-                    await writeProjectAssistantChangedFeed({
-                        db,
-                        projectId: target.projectId,
-                        assistantName: afterAssistant.displayName,
-                        removed: toolArgs.projectAssistant === false,
-                        userId: requestUserId,
-                        getFeedUser,
-                    })
-                }
-            } catch (error) {
-                console.warn('[assistant settings] Updates entries were not written', { error: error.message })
-            }
-
             const tasksWithUpdatedInstructions = updatedFields.includes('instructions')
                 ? await propagateInstructionsToScheduledTasks({
                       db,

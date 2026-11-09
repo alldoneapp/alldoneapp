@@ -14,7 +14,11 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'FEED_PUBLIC_FOR_ALL',
 }))
 
-const { createProjectAutoArchivedFeed, createProjectDescriptionChangedFeed } = require('./projectsFeeds')
+const {
+    createProjectAutoArchivedFeed,
+    createProjectDescriptionChangedFeed,
+    createProjectIntegrationActivityFeed,
+} = require('./projectsFeeds')
 
 describe('projectsFeeds', () => {
     beforeEach(() => {
@@ -91,6 +95,65 @@ describe('projectsFeeds', () => {
             description: 'New description',
             projectId: 'project-1',
         })
+    })
+
+    test('writes a mailbox/calendar entry that badges only the named owner', async () => {
+        const batch = { feedObjects: {} }
+        const project = { name: 'Operations', color: '#fff', userIds: ['user-1', 'user-2'] }
+        const feedUser = { uid: 'user-1', via: 'mcp', viaClient: 'Claude' }
+        mockLoadFeedObject.mockResolvedValue(null)
+
+        const written = await createProjectIntegrationActivityFeed(
+            'project-1',
+            project,
+            'FEED_PROJECT_EMAIL_ACTIVITY',
+            "archived the email 'Invoice 42'",
+            batch,
+            feedUser,
+            { notifyUserIds: ['user-1'] }
+        )
+
+        expect(written).toEqual({ feedId: 'feed-1' })
+        expect(mockGenerateFeedModel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                feedType: 'FEED_PROJECT_EMAIL_ACTIVITY',
+                entryText: "archived the email 'Invoice 42'",
+                feedUser,
+                objectId: 'project-1',
+            })
+        )
+        expect(mockProccessFeed).toHaveBeenCalledWith(
+            'project-1',
+            '14042026',
+            ['user-1'],
+            'project-1',
+            'projects',
+            batch.feedObjects['project-1'],
+            'feed-1',
+            expect.any(Object),
+            feedUser,
+            batch,
+            true,
+            { project, feedCreator: feedUser }
+        )
+    })
+
+    test('rewrites an earlier entry in place when its id is passed', async () => {
+        const batch = { feedObjects: {} }
+        mockLoadFeedObject.mockResolvedValue({ type: 'project', isPublicFor: ['FEED_PUBLIC_FOR_ALL'] })
+
+        const written = await createProjectIntegrationActivityFeed(
+            'project-1',
+            { name: 'Operations' },
+            'FEED_PROJECT_EMAIL_ACTIVITY',
+            'archived 3 emails',
+            batch,
+            { uid: 'assistant-1' },
+            { feedId: 'burst-feed', notifyUserIds: ['user-1'] }
+        )
+
+        expect(written).toEqual({ feedId: 'burst-feed' })
+        expect(mockProccessFeed.mock.calls[0][6]).toBe('burst-feed')
     })
 
     test('creates an automatic archive entry without resetting project activity', async () => {

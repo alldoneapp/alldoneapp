@@ -59,6 +59,9 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_PROJECT_GUIDE_CHANGED', 'projects'],
     ['FEED_PROJECT_ESTIMATION_TYPE_CHANGED', 'projects'],
     ['FEED_PROJECT_ASSISTANT_CHANGED', 'projects'],
+    // MCP feed parity: Gmail and Calendar
+    ['FEED_PROJECT_EMAIL_ACTIVITY', 'projects'],
+    ['FEED_PROJECT_CALENDAR_ACTIVITY', 'projects'],
 
     [41, 'contacts'],
     [42, 'contacts'],
