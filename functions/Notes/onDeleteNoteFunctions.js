@@ -19,6 +19,23 @@ const removeNoteContent = async (projectId, noteId) => {
     if (exist) await noteContentFile.delete()
 }
 
+// The daily copy (noteDailyVersionsData, default bucket) holds the body as it was before a revision
+// restore. Once the note document is gone, storage.rules gives no client access to it any more,
+// so nothing can use it; delete it now instead of at the next 00:00 Europe/Berlin run. A moved
+// note gets this too: setNoteProject's own client-side delete races the document delete. The
+// noteVersionsData snapshots keep their one-week retention (processRevisionHistoryForDeletedNotes).
+const removeNoteDailyCopy = async (projectId, noteId) => {
+    try {
+        await admin
+            .storage()
+            .bucket()
+            .file(`noteDailyVersionsData/${projectId}/${noteId}`)
+            .delete({ ignoreNotFound: true })
+    } catch (error) {
+        console.warn('[onDeleteNote] could not delete the daily note copy', { projectId, noteId, error })
+    }
+}
+
 const getNoteInnerTasks = async (projectId, noteId) => {
     const tasksDocs = (
         await admin
@@ -85,6 +102,7 @@ const onDeleteNote = async (projectId, note) => {
     const promises = []
     promises.push(deleteChat(admin, projectId, noteId))
     promises.push(removeNoteContent(projectId, noteId))
+    promises.push(removeNoteDailyCopy(projectId, noteId))
     promises.push(removeNotesFromInnerTasks(projectId, noteId))
     promises.push(deleteLinkedGuidesNotesIfProjectIsTemplate(projectId, note))
     promises.push(processDeletedNoteForRevisionHistory(admin, projectId, noteId))
@@ -97,4 +115,5 @@ const onDeleteNote = async (projectId, note) => {
 
 module.exports = {
     onDeleteNote,
+    removeNoteDailyCopy,
 }
