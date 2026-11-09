@@ -722,8 +722,29 @@ service cloud.firestore {
         (override is map && override.get('requestedByUserId', request.auth.uid) == request.auth.uid);
     }
 
+    // Links that the app hands to window.open / <a href> / <iframe src> must be web links: a
+    // javascript: URL in any of them runs script in a colleague's session when clicked (security
+    // audit 2026-11, NV-03/NV-36; the client also refuses them in utils/safeUrl.js). An existing
+    // value may stay as it is, so documents written before this rule are not locked.
+    function isWebLinkOrEmpty(value) {
+      return value == null || value == '' || (value is string && value.matches('https?://.+'));
+    }
+
+    function calendarLink(data) {
+      return data.get('calendarData', null) is map ? data.calendarData.get('link', null) : null;
+    }
+
+    function calendarLinkSafe(before, after) {
+      return calendarLink(after) == calendarLink(before) || isWebLinkOrEmpty(calendarLink(after));
+    }
+
+    function linkFieldSafe(before, after, field) {
+      return after.get(field, null) == before.get(field, null) || isWebLinkOrEmpty(after.get(field, null));
+    }
+
     function taskIdentityFieldsBoundToWriter(before, after) {
-      return calendarRoutingMarkerBoundToWriter(before, after, 'projectRoutingFeedback') &&
+      return calendarLinkSafe(before, after) &&
+        calendarRoutingMarkerBoundToWriter(before, after, 'projectRoutingFeedback') &&
         calendarRoutingMarkerBoundToWriter(before, after, 'goalRoutingFeedback') &&
         workflowPayerBoundToWriter(before, after) &&
         workflowTransitionPaidByWriter(before, after) &&
@@ -1073,13 +1094,15 @@ service cloud.firestore {
     function assistantTaskCreateAllowed(projectId) {
       return projectId == 'globalProject'
         ? isAdministrator()
-        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter({}, request.resource.data, true);
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter({}, request.resource.data, true) &&
+          linkFieldSafe({}, request.resource.data, 'link');
     }
 
     function assistantTaskUpdateAllowed(projectId) {
       return projectId == 'globalProject'
         ? globalAssistantTaskUpdateAllowed()
-        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false);
+        : isProjectMember(projectId) && assistantTaskActivationBoundToWriter(resource.data, request.resource.data, false) &&
+          linkFieldSafe(resource.data, request.resource.data, 'link');
     }
 
     function assistantTaskDeleteAllowed(projectId) {

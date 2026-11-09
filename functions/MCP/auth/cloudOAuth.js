@@ -344,6 +344,11 @@ class CloudOAuthHandler {
             }
             if (!decodedToken.email) throw new Error('An email address is required to connect Alldone.')
 
+            // The login page navigates to this URL on the app's origin (security audit 2026-11).
+            const { isAllowedOAuthRedirectUri } = require('./redirectUriPolicy')
+            if (!isAllowedOAuthRedirectUri(auth.redirectUri)) {
+                throw new Error('This client uses a redirect address Alldone does not allow.')
+            }
             const redirectUrl = new URL(auth.redirectUri)
             redirectUrl.searchParams.set('code', authCode)
             if (auth.state) redirectUrl.searchParams.set('state', auth.state)
@@ -631,6 +636,10 @@ class CloudOAuthHandler {
                         showStatus('✅ Authentication successful! Redirecting ...', false);
                         
                         // Redirect browser to Claude's callback URL with authorization code
+                        if (/^\\s*(javascript|data|vbscript|file|blob):/i.test(String(data.redirect_to))) {
+                            showStatus('This client uses a redirect address Alldone does not allow.', true);
+                            return;
+                        }
                         setTimeout(() => {
                             window.location.href = data.redirect_to;
                         }, 1000); // Small delay to show success message

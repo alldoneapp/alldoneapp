@@ -2952,3 +2952,58 @@ describe('recurring assistant task activation', () => {
         await assertSucceeds(updateDoc(globalTaskRef(adminDb), { prompt: 'Curated prompt' }))
     })
 })
+
+describe('links that the app opens must be web links (security audit 2026-11)', () => {
+    // A javascript: URL in a task's calendar link or an assistant task's link ran script in a
+    // colleague's session when clicked (NV-03, NV-36). utils/safeUrl.js refuses them on click;
+    // the rules keep them out of the data.
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `assistantTasks/${PROJECT_ID}/assistant-1/link-task`), {
+                name: 'Link task',
+                type: 'link',
+                link: 'https://example.com',
+            })
+        })
+    })
+
+    it('refuses a script URL as a task calendar link and accepts a web link', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const task = doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`)
+        await assertFails(updateDoc(task, { calendarData: { link: 'javascript:alert(document.domain)//' } }))
+        await assertFails(updateDoc(task, { calendarData: { link: 'data:text/html,x' } }))
+        await assertSucceeds(updateDoc(task, { calendarData: { link: 'https://calendar.google.com/event?eid=1' } }))
+    })
+
+    it('leaves an existing calendar link alone when other fields change', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await updateDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/public-task`), {
+                calendarData: { link: 'legacy-value' },
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(updateDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), { name: 'Renamed' }))
+    })
+
+    it('refuses a script URL as a project assistant task link', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const task = doc(memberDb, `assistantTasks/${PROJECT_ID}/assistant-1/link-task`)
+        await assertFails(updateDoc(task, { link: 'javascript:alert(1)' }))
+        await assertSucceeds(updateDoc(task, { link: 'https://alldone.team/tool' }))
+        await assertFails(
+            setDoc(doc(memberDb, `assistantTasks/${PROJECT_ID}/assistant-1/new-link-task`), {
+                name: 'Bad',
+                type: 'link',
+                link: 'JavaScript:alert(1)',
+            })
+        )
+        await assertSucceeds(
+            setDoc(doc(memberDb, `assistantTasks/${PROJECT_ID}/assistant-1/new-link-task`), {
+                name: 'Good',
+                type: 'link',
+                link: '',
+            })
+        )
+    })
+})

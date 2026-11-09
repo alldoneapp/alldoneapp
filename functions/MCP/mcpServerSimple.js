@@ -246,6 +246,7 @@ function getBaseUrl() {
 
 const { CloudOAuthHandler, CloudSessionManager, UserSessionManager } = require('./auth/cloudOAuth.js')
 const { describeOAuthClientForConsent, sanitizeClientName } = require('./auth/oauthClientConsent')
+const { isAllowedOAuthRedirectUri } = require('./auth/redirectUriPolicy')
 
 // Import Alldone constants (still needed for other operations)
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
@@ -2520,6 +2521,22 @@ class AlldoneSimpleMCPServer {
                     return
                 }
 
+                // A redirect URI ends up in window.location on the app's own origin (cloudOAuth login
+                // page), so a script scheme there was an account takeover (security audit 2026-11).
+                const requestedRedirectUris = req.body?.redirect_uris
+                if (
+                    requestedRedirectUris !== undefined &&
+                    (!Array.isArray(requestedRedirectUris) ||
+                        requestedRedirectUris.length === 0 ||
+                        !requestedRedirectUris.every(isAllowedOAuthRedirectUri))
+                ) {
+                    res.status(400).set('Content-Type', 'application/json; charset=utf-8').json({
+                        error: 'invalid_redirect_uri',
+                        error_description: 'redirect_uris must be https, http on localhost, or an app scheme',
+                    })
+                    return
+                }
+
                 try {
                     // Generate unique client credentials and store them
                     const clientId = `alldone-mcp-${uuidv4()}`
@@ -2914,6 +2931,8 @@ class AlldoneSimpleMCPServer {
                 }
                 const redirectAllowed = (() => {
                     if (!redirect_uri) return false
+                    // Also refuses clients registered before the redirect URI policy existed.
+                    if (!isAllowedOAuthRedirectUri(redirect_uri)) return false
                     if (registeredRedirectUris.includes(redirect_uri)) return true
                     // Allow loopback with any port if base (host+path) matches any registered loopback
                     if (isLoopback(redirect_uri)) {

@@ -5090,6 +5090,33 @@ open on purpose (that is what "With link" means). Ids already harvested keep wor
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+### A member-written link only ever opens as a web link (security audit 2026-11)
+
+`window.open('javascript:…')` and `<a href="javascript:…">` run in the app's own origin, and the CSP
+allows inline script, so any field another member, an assistant or an email can write and that the
+app opens on click was a stored cross-member XSS: a task's `calendarData.link`, a contact's
+`linkedInUrl`, an attachment or image token in comment text, a pre-configured task's `link`
+(NV-03, NV-05, NV-36). `utils/safeUrl.js` is the one place that decides: `getSafeNavigationUrl`
+allows http(s), mailto, tel, blob and relative paths, parsed with `new URL` so case, whitespace and
+control characters cannot hide the scheme; `getSafeFrameUrl` allows https only. `installWindowOpenGuard`
+(from `AppNavigator`) wraps `window.open` for the whole app, which also covers react-native-web's
+`Linking.openURL`; the known sinks check explicitly as well. Use the helper for every new `href`,
+`window.open` or `<iframe src>` that takes data, and never assign `location` from data.
+`firestore.rules` keeps the same values out of the data: `calendarData.link` and an assistant task's
+`link` must be http(s) or empty when they change (`isWebLinkOrEmpty`; an unchanged legacy value
+stays writable around it).
+
+The MCP login page on my.alldone.app ends in `window.location.href = redirect_to`, so an OAuth
+redirect URI is the same kind of sink (NV-34): `functions/MCP/auth/redirectUriPolicy.js` allows https,
+http on loopback and private-use app schemes (`cursor://`), and refuses any scheme the browser
+evaluates, at registration, at authorization (which also stops clients registered earlier) and before
+the login redirect is built. Assistant output may carry image/video tokens, which every viewer's
+browser fetches on render; `sanitizeAssistantResponseText` turns a token whose URL is not on the
+project's own storage bucket back into its plain URL (NV-04, `assistantTextSafety.js`). Pinned by
+`utils/safeUrl.test.js`, `functions/MCP/auth/redirectUriPolicy.test.js`,
+`functions/Assistant/assistantTextSafety.test.js` and the `must be web links` block of the rules
+emulator suite.
+
 ### Storage rules (`storage.rules`, `storage.notes.rules`)
 
 **Before these files, both buckets let any signed-in account read, list and write every object**
