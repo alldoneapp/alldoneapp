@@ -19,6 +19,7 @@ const KINDS = {
     GOAL: 'goals',
     SKILL: 'skills',
     ASSISTANT: 'assistants',
+    ARTIFACT: 'artifacts',
 }
 
 function readWebFeedTypes() {
