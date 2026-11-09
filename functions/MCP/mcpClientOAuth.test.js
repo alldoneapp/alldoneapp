@@ -7,6 +7,9 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({ getBaseUrl: () => 'https://m
 
 const { beginMcpOAuth, assertDiscoveredEndpointsBound, createGuardedFetch } = require('./mcpClientOAuth')
 
+// NV-23 requires a browser binding before anything else; these cases test the NV-25 policy behind it.
+const BOUND = { browserNonceHash: 'a'.repeat(64) }
+
 const publicLookup = jest.fn(async () => [{ address: '93.184.216.34', family: 4 }])
 
 function fakeAuth({ metadata, registerError } = {}) {
@@ -41,7 +44,9 @@ describe('beginMcpOAuth outbound policy (NV-25)', () => {
         'https://localhost./mcp',
     ])('refuses %s before any request', async serverUrl => {
         const auth = fakeAuth()
-        await expect(beginMcpOAuth({ userId: 'u1', serverUrl }, { auth, lookup: publicLookup })).rejects.toMatchObject({
+        await expect(
+            beginMcpOAuth({ userId: 'u1', serverUrl, ...BOUND }, { auth, lookup: publicLookup })
+        ).rejects.toMatchObject({
             code: 'invalid-argument',
         })
         expect(auth.discoverOAuthServerInfo).not.toHaveBeenCalled()
@@ -51,14 +56,14 @@ describe('beginMcpOAuth outbound policy (NV-25)', () => {
         const auth = fakeAuth()
         const lookup = jest.fn(async () => [{ address: '10.0.0.7', family: 4 }])
         await expect(
-            beginMcpOAuth({ userId: 'u1', serverUrl: 'https://mcp.example.com/mcp' }, { auth, lookup })
+            beginMcpOAuth({ userId: 'u1', serverUrl: 'https://mcp.example.com/mcp', ...BOUND }, { auth, lookup })
         ).rejects.toMatchObject({ code: 'invalid-argument' })
     })
 
     test('hands the SDK a guarded fetch and completes for a well-formed server', async () => {
         const auth = fakeAuth()
         const result = await beginMcpOAuth(
-            { userId: 'u1', serverUrl: 'https://mcp.example.com/mcp' },
+            { userId: 'u1', serverUrl: 'https://mcp.example.com/mcp', ...BOUND },
             { auth, lookup: publicLookup }
         )
         expect(result.authorizationUrl).toBe('https://auth.example.com/authorize?x=1')
@@ -76,7 +81,10 @@ describe('beginMcpOAuth outbound policy (NV-25)', () => {
             },
         })
         await expect(
-            beginMcpOAuth({ userId: 'u1', serverUrl: 'https://mcp.example.com/mcp' }, { auth, lookup: publicLookup })
+            beginMcpOAuth(
+                { userId: 'u1', serverUrl: 'https://mcp.example.com/mcp', ...BOUND },
+                { auth, lookup: publicLookup }
+            )
         ).rejects.toMatchObject({ code: 'failed-precondition' })
         expect(auth.registerClient).not.toHaveBeenCalled()
     })
@@ -84,7 +92,7 @@ describe('beginMcpOAuth outbound policy (NV-25)', () => {
     test('does not return the remote response body in the error', async () => {
         const auth = fakeAuth({ registerError: new Error('HTTP 500: SECRET-INTERNAL-BODY') })
         const error = await beginMcpOAuth(
-            { userId: 'u1', serverUrl: 'https://mcp.example.com/mcp' },
+            { userId: 'u1', serverUrl: 'https://mcp.example.com/mcp', ...BOUND },
             { auth, lookup: publicLookup }
         ).catch(e => e)
         expect(error.code).toBe('failed-precondition')

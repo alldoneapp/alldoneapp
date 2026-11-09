@@ -1889,8 +1889,12 @@ describe('deleted project ids are never registered again (security audit NV-26)'
         })
         const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
 
-        await assertFails(setDoc(doc(outsiderDb, 'projects/deleted-project'), { userIds: [OUTSIDER_ID] }))
-        await assertSucceeds(setDoc(doc(outsiderDb, 'projects/brand-new-project'), { userIds: [OUTSIDER_ID] }))
+        await assertFails(
+            setDoc(doc(outsiderDb, 'projects/deleted-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
+        )
+        await assertSucceeds(
+            setDoc(doc(outsiderDb, 'projects/brand-new-project'), { userIds: [OUTSIDER_ID], creatorId: OUTSIDER_ID })
+        )
     })
 
     it('keeps the tombstones server-only', async () => {
