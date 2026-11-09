@@ -5,7 +5,9 @@ const {
     deleteArtifactData,
     resetArtifactLink,
     restoreArtifactVersion,
+    projectBecamePrivate,
     rotateServeSecretOnLostReaders,
+    rotateServeSecretsForProject,
     setArtifactDataAccess,
     setArtifactPublicLink,
     withdrawPublicLinkWhenMadePrivate,
@@ -347,6 +349,25 @@ describe('serve secret', () => {
         ).resolves.toBe(false)
         await expect(rotate({ ...before, readerIds: ['owner'] })).resolves.toBe(true)
         expect(db.read(artifactPath('artifact1')).serveSecret).toBe('secret-two-bbbbbbbbbbbbbbbbbbbbbb')
+    })
+
+    it('rotates every artifact of a project that becomes private, keeping the public link (NV-16)', async () => {
+        await commit()
+        const before = db.read(artifactPath('artifact1'))
+        await expect(rotateServeSecretsForProject({ db, newSecret, projectId: PROJECT_ID })).resolves.toBe(1)
+        const after = db.read(artifactPath('artifact1'))
+        expect(after.serveSecret).toBe('secret-two-bbbbbbbbbbbbbbbbbbbbbb')
+        expect(after.serveSecret).not.toBe(before.serveSecret)
+        expect(after.publicLink).toEqual(before.publicLink)
+    })
+
+    it('treats only the transition into private as a privacy loss', () => {
+        expect(projectBecamePrivate({ isShared: 0 }, { isShared: 2 })).toBe(true)
+        expect(projectBecamePrivate({ isShared: 1 }, { isShared: 2 })).toBe(true)
+        expect(projectBecamePrivate({}, { isShared: 2 })).toBe(true)
+        expect(projectBecamePrivate({ isShared: 2 }, { isShared: 2 })).toBe(false)
+        expect(projectBecamePrivate({ isShared: 2 }, { isShared: 0 })).toBe(false)
+        expect(projectBecamePrivate({ isShared: 0 }, { isShared: 1 })).toBe(false)
     })
 })
 

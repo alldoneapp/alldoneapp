@@ -701,7 +701,10 @@ service cloud.firestore {
       // project and harvest the ids of their projects and notes. No client query lists projects
       // without a userIds filter, so only the single-document read stays open.
       allow get: if resource.data.get('isShared', privateProject()) != privateProject();
-      allow create: if signedIn() && newProjectBoundToCreator(request.resource.data);
+      // security audit 2026-11 (NV-26): a deleted project's id is tombstoned by onDeleteProject
+      // (server-only deletedProjects/{projectId}) and can never be registered again.
+      allow create: if signedIn() && newProjectBoundToCreator(request.resource.data)
+        && !exists(/databases/$(database)/documents/deletedProjects/$(projectId));
       // security audit 2026-11: the repository connection and the golden VM environment feed
       // other members' credentialed VM coding jobs, so only Cloud Functions write them
       // (connect/disconnect{Github,Gitlab}Repo, the golden build). `vmGolden` here is a display

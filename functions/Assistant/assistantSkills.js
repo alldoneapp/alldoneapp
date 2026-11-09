@@ -70,19 +70,14 @@ async function requireSkillAdministrator(userId) {
     }
 }
 
-// Mirrors `isProjectMember()` in firestore.rules — the same four membership
-// lists, so a write the rules would allow from the client is also allowed
-// through the callables, and nothing else is.
-const PROJECT_MEMBERSHIP_FIELDS = ['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds']
-
+// security audit 2026-11 (NV-18): membership is `projects/{projectId}.userIds`, the same authority
+// firestore.rules and the callables' `assertProjectAccess` use. The membership arrays on
+// `users/{uid}` are navigation state the owner can write, so they can never admit a write here.
 async function isProjectMember(userId, projectId) {
     if (!userId || !projectId) return false
-    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-    if (!userDoc.exists) return false
-    const userData = userDoc.data() || {}
-    return PROJECT_MEMBERSHIP_FIELDS.some(
-        field => Array.isArray(userData[field]) && userData[field].includes(projectId)
-    )
+    const { isProjectMemberData } = require('../shared/privacyAccess')
+    const projectDoc = await admin.firestore().doc(`projects/${projectId}`).get()
+    return projectDoc.exists && isProjectMemberData(projectDoc.data(), userId)
 }
 
 /**

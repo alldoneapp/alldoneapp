@@ -69,21 +69,68 @@ function isPrivateIPv4(octets) {
     return false
 }
 
-function isPrivateIPv6(hostname) {
-    const value = String(hostname || '')
+/**
+ * Expands an IPv6 literal into its eight 16-bit groups, or null. Written by hand rather than with
+ * `net` so the worker image, which copies this file alone, needs nothing else. An embedded dotted
+ * IPv4 tail (`::ffff:127.0.0.1`) is folded into the last two groups — WHATWG URL parsing already
+ * rewrites it to hex (`[::ffff:7f00:1]`), which is the form a dotted-only match used to miss.
+ */
+function expandIPv6(value) {
+    let text = String(value || '')
         .replace(/^\[|\]$/g, '')
         .toLowerCase()
-    if (!value.includes(':')) return false
-    if (value === '::1' || value === '::') return true
-    if (/^f[cd][0-9a-f]{2}:/.test(value)) return true // unique local fc00::/7
-    if (/^fe[89ab][0-9a-f]:/.test(value)) return true // link-local fe80::/10
-    // An IPv4-mapped address hides a v4 literal inside a v6 one.
-    const mapped = /::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(value)
-    if (mapped) {
-        const octets = parseIPv4(mapped[1])
-        return octets ? isPrivateIPv4(octets) : true
+    const zone = text.indexOf('%')
+    if (zone !== -1) text = text.slice(0, zone)
+    if (!text.includes(':') || !/^[0-9a-f:.]+$/.test(text)) return null
+    const v4Tail = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(text)
+    if (v4Tail) {
+        const octets = parseIPv4(v4Tail[1])
+        if (!octets) return null
+        const hi = ((octets[0] << 8) | octets[1]).toString(16)
+        const lo = ((octets[2] << 8) | octets[3]).toString(16)
+        text = `${text.slice(0, -v4Tail[1].length)}${hi}:${lo}`
     }
+    const halves = text.split('::')
+    if (halves.length > 2) return null
+    const head = halves[0] ? halves[0].split(':') : []
+    const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+    const missing = 8 - head.length - tail.length
+    if (halves.length === 1 ? missing !== 0 : missing < 1) return null
+    const groups = [...head, ...Array(halves.length === 2 ? missing : 0).fill('0'), ...tail]
+    if (groups.length !== 8 || groups.some(group => !/^[0-9a-f]{1,4}$/.test(group))) return null
+    return groups.map(group => parseInt(group, 16))
+}
+
+function isPrivateIPv6(hostname) {
+    const groups = expandIPv6(hostname)
+    if (!groups) return false
+    const embeddedV4 = (hi, lo) => isPrivateIPv4([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff])
+    if (groups.every(group => group === 0)) return true // ::
+    if (groups.slice(0, 7).every(group => group === 0) && groups[7] === 1) return true // ::1
+    if ((groups[0] & 0xfe00) === 0xfc00) return true // unique local fc00::/7
+    if ((groups[0] & 0xffc0) === 0xfe80) return true // link-local fe80::/10
+    if ((groups[0] & 0xffc0) === 0xfec0) return true // deprecated site-local fec0::/10
+    if ((groups[0] & 0xff00) === 0xff00) return true // multicast
+    // An IPv4-mapped or IPv4-compatible address hides a v4 literal inside a v6 one.
+    if (groups.slice(0, 5).every(group => group === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
+        return embeddedV4(groups[6], groups[7])
+    }
+    if (groups[0] === 0x64 && groups[1] === 0xff9b) return true // NAT64 can reach private v4 space
+    if (groups[0] === 0x2002) return embeddedV4(groups[1], groups[2]) // 6to4
     return false
+}
+
+/**
+ * The comparable form of a URL host: lower case, without IPv6 brackets and without the trailing
+ * root dot. `metadata.google.internal.` is the same name as `metadata.google.internal` to every
+ * resolver, so a check that compares the raw WHATWG hostname (which keeps the dot) is a check that
+ * one character defeats.
+ */
+function normalizeHostname(hostname) {
+    return String(hostname || '')
+        .toLowerCase()
+        .replace(/^\[|\]$/g, '')
+        .replace(/\.+$/, '')
 }
 
 /**
@@ -92,12 +139,22 @@ function isPrivateIPv6(hostname) {
  * legitimate "visit this public page" use for it.
  */
 function isIpLiteralHostname(hostname) {
-    const value = String(hostname || '')
-    return !!parseIPv4(value) || value.includes(':') || /^\[/.test(value)
+    const raw = String(hostname || '')
+    const value = normalizeHostname(raw)
+    return !!parseIPv4(value) || value.includes(':') || /^\[/.test(raw)
+}
+
+/** True for any IPv4 or IPv6 address (a resolver's answer, or a literal) that is not public. */
+function isPrivateIpAddress(address) {
+    const value = normalizeHostname(address)
+    const octets = parseIPv4(value)
+    if (octets) return isPrivateIPv4(octets)
+    if (expandIPv6(value)) return isPrivateIPv6(value)
+    return true // not an address at all: never treat it as public
 }
 
 function isPrivateHostname(hostname) {
-    const value = String(hostname || '').toLowerCase()
+    const value = normalizeHostname(hostname)
     if (!value) return true
     if (PRIVATE_HOST_PATTERNS.some(pattern => pattern.test(value))) return true
     const octets = parseIPv4(value)
@@ -108,7 +165,8 @@ function isPrivateHostname(hostname) {
 }
 
 function isBlockedHostname(hostname) {
-    return BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(String(hostname || '')))
+    const value = normalizeHostname(hostname)
+    return BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(value))
 }
 
 const ACCESS_MODE_SELECTED = 'selected'
@@ -332,11 +390,14 @@ module.exports = {
     findMatchingEntry,
     normalizeAccessMode,
     toBrowsingPolicy,
+    expandIPv6,
     hostMatchesEntry,
     isBlockedHostname,
     isIpLiteralHostname,
     isPrivateHostname,
+    isPrivateIpAddress,
     normalizeAllowlist,
+    normalizeHostname,
     normalizeAllowlistEntry,
     pathMatchesEntry,
 }
