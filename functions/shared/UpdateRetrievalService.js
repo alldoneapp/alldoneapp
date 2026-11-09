@@ -67,6 +67,9 @@ const EVENT_TYPE_TO_OBJECT_TYPE = new Map([
     ['FEED_PROJECT_CONTACT_STATUSES_ADDED', 'projects'],
 
     [41, 'contacts'],
+    // MCP feed parity: contacts and moves
+    ['FEED_CONTACT_LINKEDIN_CHANGED', 'contacts'],
+    ['FEED_CONTACT_STATUS_CHANGED', 'contacts'],
     [42, 'contacts'],
     [43, 'contacts'],
     [44, 'contacts'],
