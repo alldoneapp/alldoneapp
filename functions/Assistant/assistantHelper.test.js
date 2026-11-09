@@ -2939,50 +2939,6 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
-    test('a Gmail conversation line goes to its own topic, whatever chat or project the model names', async () => {
-        mockDocGet
-            .mockResolvedValueOnce({ exists: true, data: () => ({ type: 'topics', title: 'Offer for Q4' }) })
-            .mockResolvedValueOnce({ exists: false })
-
-        const result = await executeToolNatively(
-            'add_chat_comment',
-            {
-                chatId: 'wrong-chat-id',
-                chatTitle: 'Daily emails Inbox 07.10.2026',
-                projectId: 'model-picked-project',
-                comment: 'Email from Peter (peter@web.de): agrees to the offer.',
-                createIfMissing: true,
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null,
-            {
-                gmailContext: {
-                    origin: 'gmail_label_follow_up',
-                    topicChatTitle: 'Daily emails Inbox 10.07.2026',
-                    topicChatId: 'EmailThread_abc',
-                    topicProjectId: 'project-thread',
-                    messageId: 'message-2',
-                    threadId: 'thread-1',
-                    followUpType: 'informational',
-                },
-            }
-        )
-
-        expect(result).toMatchObject({
-            success: true,
-            projectId: 'project-thread',
-            chatId: 'EmailThread_abc',
-            chatTitle: 'Offer for Q4',
-            chatCreated: false,
-        })
-        expect(mockDocSet).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Daily emails Inbox 10.07.2026' }))
-        expect(mockDocSet).toHaveBeenCalledWith(
-            expect.objectContaining({ gmailData: expect.objectContaining({ messageId: 'message-2' }) })
-        )
-    })
-
     test('keeps actionable Gmail chat notifications followed', async () => {
         ProjectService.mockImplementationOnce(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),

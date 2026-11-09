@@ -22,7 +22,6 @@ export default function MessageItemContent({
     assistantRun,
     linkedEmail,
     linkedEmailGmailData,
-    linkedEmailSentByOwner,
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
@@ -58,7 +57,6 @@ export default function MessageItemContent({
                     assistantRun={assistantRun}
                     linkedEmail={linkedEmail}
                     linkedEmailGmailData={linkedEmailGmailData}
-                    linkedEmailSentByOwner={linkedEmailSentByOwner}
                     linkedEmailArchiving={linkedEmailArchiving}
                     linkedEmailArchived={linkedEmailArchived}
                     onArchiveLinkedEmail={onArchiveLinkedEmail}

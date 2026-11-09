@@ -283,37 +283,3 @@ test('model failure leaves task unchanged and allows retry', async () => {
     expect(database.docs.get('items/original/tasks/t1')).toBe(initialTask)
     expect((await continueEmailThread(args)).updated).toBe(true)
 })
-
-describe('mail the owner sent', () => {
-    test('is a silent comment by the owner that never reopens or rewrites the task', async () => {
-        const notify = TaskCommentService.prototype.notifyFollowers
-        const result = await continueEmailThread({
-            ...args,
-            userData: { ...args.userData, displayName: 'Owner' },
-            context: { ...args.context, snippet: 'Sounds good, I will send it Friday', internalDate: 400 },
-            sentByOwner: true,
-        })
-        expect(result).toMatchObject({ taskId: 't1', projectId: 'original', sentByOwner: true, goldCost: 0 })
-        expect(summarizeEmailContinuation).not.toHaveBeenCalled()
-        expect(deductGold).not.toHaveBeenCalled()
-        expect(notify).not.toHaveBeenCalled()
-        const task = database.docs.get('items/original/tasks/t1')
-        expect(task).toMatchObject({
-            name: initialTask.name,
-            description: initialTask.description,
-            done: true,
-            inDone: true,
-            completed: 123,
-        })
-        expect(task.gmailData.messageIds).toBeUndefined()
-        const comment = database.docs.get(`chatComments/original/tasks/t1/comments/${result.commentId}`)
-        expect(comment).toMatchObject({
-            commentText: 'Sounds good, I will send it Friday',
-            creatorId: 'u',
-            fromAssistant: false,
-            gmailData: { messageId: 'second', direction: 'outgoing' },
-        })
-        const again = await continueEmailThread({ ...args, context: { snippet: 'x' }, sentByOwner: true })
-        expect(again.updated).toBe(false)
-    })
-})

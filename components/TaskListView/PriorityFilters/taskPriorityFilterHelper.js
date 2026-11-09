@@ -10,6 +10,7 @@ import {
     ESTIMATION_TASKS_INDEX,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
+    MESSAGE_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
@@ -28,7 +29,7 @@ import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/Proj
 // AT-2377: the Calendar section is grouped by goal exactly like the main list, so it belongs here.
 // This drives the priority/VM filters AND the per-day amount + estimation in the date header, so
 // leaving it out would make the header disagree with what the day actually renders.
-const getTasksByGoalIndexes = () => [MAIN_TASK_INDEX, MENTION_TASK_INDEX, CALENDAR_TASK_INDEX]
+const getTasksByGoalIndexes = () => [MAIN_TASK_INDEX, MENTION_TASK_INDEX, CALENDAR_TASK_INDEX, MESSAGE_TASK_INDEX]
 const getTasksByUserIndexes = () => [
     SUGGESTED_TASK_INDEX,
     WORKFLOW_TASK_INDEX,

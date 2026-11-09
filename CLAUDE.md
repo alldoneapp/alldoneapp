@@ -4702,35 +4702,6 @@ marked read the moment it appeared. The client half learns the same two facts fr
 two rules match; `isEmailHandledInMailbox` exists once per side because Cloud Functions cannot import
 app code — keep them in step.
 
-### An email conversation gets its own private topic (decision 2026-11-09)
-
-A first informational email nobody has answered stays one line in `Daily emails <project> <date>`.
-Once a Gmail thread is a conversation, `functions/Email/emailThreadTopicStore.js` gives it a topic of
-its own (`EmailThread_<key>`, `isPublicFor: [owner]`, so never a wiki source). It copies the earlier
-digest lines into the topic, found through the audit records' `gmailThreadId` + `emailComments`. Later
-incoming lines go there: the sync sets `gmailContext.topicChatId`/`topicProjectId`, and the
-`add_chat_comment` override ignores the model's chat, title and project. The default prompt text is
-unchanged on purpose, so the server copy and the client copy cannot drift.
-
-Precedence in `executePostLabelPrompt`: a task for the thread (AT-2709 continuation), then the thread
-topic, then the digest. Mail the owner sent is the owner's own silent comment in an existing topic, or
-on the thread's task (`continueEmailThread({ sentByOwner })`: no summary model, no Gold, never reopens
-or rewrites the task). Sent mail on its own never creates a topic or task. Replying to a digest email
-does create one. The label's incoming-only prompt scope is therefore checked after continuation, not
-before.
-
-**"Conversation" is deliberately strict** (`isIncomingConversationMessage`): Gmail threads unrelated
-mail by subject (order confirmations, digests), and notifications carry `In-Reply-To` (GitHub). So it
-needs either an earlier outgoing message in the thread, or reply headers without `List-Unsubscribe`.
-
-The topic is sticky to the project where the conversation started, like thread tasks. Comment ids
-reuse `buildDeterministicGmailChatCommentId`'s formula, so a copy, a routed line and a sent line of
-one email never duplicate. Client: `isOwnSentEmailComment` keeps sent mail out of archive, unsubscribe,
-create-task and unread counts, and shows it as a "Sent email" Gmail chip. The topic header links the
-whole thread (`getGmailThreadLinkData`). Pinned by `emailThreadTopicStore.test.js`, the "email
-conversations get their own topic" block of `serverSideGmailLabelingSync.test.js`, the sent-mail case
-in `emailThreadContinuation.test.js` and `linkedEmailActions.test.js`.
-
 ### One email address can belong to several accounts, and a connected mailbox has to prove itself (AT-2483)
 
 **The inbound Anna email channel weighs two different kinds of ownership proof, and merging them
