@@ -579,9 +579,6 @@ async function deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
         eventId: target.eventId,
-        // Title and start of what was deleted, for the Updates entry (Feeds/integrationToolFeeds.js).
-        summary: resolution.event?.subject || '',
-        start: toGoogleDateTime(resolution.event?.start),
         message: 'Calendar event deleted successfully.',
     }
 }

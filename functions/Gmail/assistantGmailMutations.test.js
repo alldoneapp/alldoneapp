@@ -115,18 +115,10 @@ describe('updateGmailEmailForAssistantRequest', () => {
             },
         })
 
-        const get = jest.fn().mockResolvedValue({
-            data: {
-                id: 'message-1',
-                labelIds: ['INBOX', 'UNREAD'],
-                payload: { headers: [{ name: 'Subject', value: 'Invoice 42' }] },
-            },
-        })
-
         getGmailClient.mockResolvedValue({
             users: {
                 labels: { list: listLabels },
-                messages: { modify, get },
+                messages: { modify },
             },
         })
 
@@ -157,47 +149,9 @@ describe('updateGmailEmailForAssistantRequest', () => {
             },
             labelIds: ['UNREAD', 'Label_123'],
             labelNames: ['UNREAD', 'Alldone/Urgent'],
-            subject: 'Invoice 42',
-            changedLabels: { added: ['Alldone/Urgent'], removed: ['INBOX'] },
             archived: true,
             message: 'Updated Gmail message message-1 in person@example.com.',
         })
-        expect(get).toHaveBeenCalledWith({
-            userId: 'me',
-            id: 'message-1',
-            format: 'metadata',
-            metadataHeaders: ['Subject'],
-        })
-    })
-
-    test('reports only what really changed, and the request when the message could not be read first', async () => {
-        getConnectedGmailAccounts.mockResolvedValue([{ projectId: 'project-1', gmailEmail: 'person@example.com' }])
-        const modify = jest.fn().mockResolvedValue({ data: { id: 'message-1', labelIds: ['UNREAD'] } })
-        const listLabels = jest.fn().mockResolvedValue({ data: { labels: [] } })
-        const get = jest
-            .fn()
-            .mockResolvedValueOnce({ data: { id: 'message-1', labelIds: ['UNREAD'] } })
-            .mockRejectedValueOnce(new Error('rate limited'))
-        getGmailClient.mockResolvedValue({ users: { labels: { list: listLabels }, messages: { modify, get } } })
-
-        // Already archived: archiving again changes nothing, so no Updates entry follows.
-        const unchanged = await updateGmailEmailForAssistantRequest({
-            userId: 'user-1',
-            messageId: 'message-1',
-            removeLabelIds: ['INBOX'],
-        })
-        expect(unchanged.success).toBe(true)
-        expect(unchanged.changedLabels).toEqual({ added: [], removed: [] })
-        expect(unchanged.subject).toBe('')
-
-        const unknown = await updateGmailEmailForAssistantRequest({
-            userId: 'user-1',
-            messageId: 'message-1',
-            removeLabelIds: ['INBOX'],
-        })
-        expect(unknown.success).toBe(true)
-        expect(unknown.changedLabels).toEqual({ added: [], removed: ['INBOX'] })
-        expect(modify).toHaveBeenCalledTimes(2)
     })
 
     test('prefers the requested project account before falling back to other accounts', async () => {

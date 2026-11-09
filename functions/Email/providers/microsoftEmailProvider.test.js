@@ -11,12 +11,8 @@ jest.mock('../../MicrosoftGraph/graphClient', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
 const { buildConnectionId } = require('../../Integrations/providerConnections')
-const {
-    getConnectedMicrosoftEmailAccounts,
-    updateMicrosoftEmailForAssistantRequest,
-} = require('./microsoftEmailProvider')
+const { getConnectedMicrosoftEmailAccounts } = require('./microsoftEmailProvider')
 
 describe('microsoftEmailProvider account resolution', () => {
     beforeEach(() => {
@@ -64,61 +60,5 @@ describe('microsoftEmailProvider account resolution', () => {
                 emailDefault: true,
             },
         ])
-    })
-})
-
-describe('updateMicrosoftEmailForAssistantRequest', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-    })
-
-    test('reports the subject and only what really changed, in the Gmail tool vocabulary', async () => {
-        const connectionId = buildConnectionId('email', 'microsoft', 'owner@example.com')
-        admin.firestore.mockReturnValue({
-            collection: jest.fn(() => ({
-                doc: jest.fn(() => ({
-                    get: jest.fn().mockResolvedValue({
-                        exists: true,
-                        data: () => ({
-                            emailConnections: {
-                                [connectionId]: {
-                                    provider: 'microsoft',
-                                    emailAddress: 'owner@example.com',
-                                    defaultProjectId: 'project-1',
-                                    isDefaultAccount: true,
-                                },
-                            },
-                        }),
-                    }),
-                })),
-            })),
-        })
-        const request = jest.fn((path, options) => {
-            if (options?.method === 'PATCH') return Promise.resolve({ id: 'message-1', subject: 'Invoice 42' })
-            return Promise.resolve({
-                id: 'message-1',
-                subject: 'Invoice 42',
-                categories: ['Clients'],
-                isRead: false,
-                importance: 'high',
-            })
-        })
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        const result = await updateMicrosoftEmailForAssistantRequest({
-            userId: 'user-1',
-            messageId: 'message-1',
-            addLabelIds: ['Finance', 'Clients'],
-            markUnread: false,
-            important: true,
-        })
-
-        expect(result).toMatchObject({
-            success: true,
-            projectId: connectionId,
-            subject: 'Invoice 42',
-            // Clients and IMPORTANT were already set; marking read is a real change.
-            changedLabels: { added: ['Finance'], removed: ['UNREAD'] },
-        })
     })
 })

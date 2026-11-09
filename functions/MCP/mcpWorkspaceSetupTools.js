@@ -336,10 +336,6 @@ const MCP_WORKSPACE_SETUP_TOOL_SCHEMAS = [
 
 class WorkspaceSetupError extends Error {}
 
-// Every change these tools make shows in Updates (decision 2026-11-09), written after the change by
-// Feeds/workspaceChangeFeeds.js; a failed entry never fails the change. Tests pass `deps.feeds`.
-const getFeeds = (deps = {}) => deps.feeds || require('../Feeds/workspaceChangeFeeds')
-
 const fail = message => {
     throw new WorkspaceSetupError(message)
 }
@@ -589,13 +585,6 @@ async function createProject(userId, args = {}, context = {}, deps = {}) {
                 update[`contactStatuses.${entry.id}`] = entry
             })
             await db.doc(`projects/${existing.id}`).update(update)
-            await getFeeds(deps).writeContactStatusesAddedFeed({
-                db,
-                projectId: existing.id,
-                statusNames: entries.map(entry => entry.name),
-                userId,
-                context,
-            })
         }
         const merged = { ...(existing.project.contactStatuses || {}) }
         entries.forEach(entry => {
@@ -640,13 +629,6 @@ async function createProject(userId, args = {}, context = {}, deps = {}) {
         buildMainWorkstream(projectId, userId, now)
     )
     await batch.commit()
-    await getFeeds(deps).writeProjectCreatedFeed({
-        db,
-        projectId,
-        project: { ...project, id: projectId },
-        userId,
-        context,
-    })
 
     return {
         projectId,
@@ -663,7 +645,7 @@ async function addContactStatuses(userId, args = {}, context = {}, deps = {}) {
     if (!Array.isArray(args.statuses) || args.statuses.length === 0) fail('statuses must be a non-empty array.')
 
     const ref = db.doc(`projects/${projectId}`)
-    const result = await db.runTransaction(async transaction => {
+    return await db.runTransaction(async transaction => {
         const snapshot = await transaction.get(ref)
         const project = snapshot.data() || {}
         const statuses = normalizeContactStatuses(args.statuses, project.contactStatuses)
@@ -683,8 +665,6 @@ async function addContactStatuses(userId, args = {}, context = {}, deps = {}) {
             contactStatuses: listStatuses(merged),
         }
     })
-    await getFeeds(deps).writeContactStatusesAddedFeed({ db, projectId, statusNames: result.added, userId, context })
-    return result
 }
 
 function normalizeModel(value) {
@@ -872,19 +852,6 @@ async function createAssistant(userId, args = {}, context = {}, deps = {}) {
     }
     batch.set(assistantRef, assistantDocument)
     await batch.commit()
-
-    const feeds = getFeeds(deps)
-    await feeds.writeAssistantCreatedFeeds({
-        db,
-        projectId,
-        assistantId,
-        assistant: { ...assistantDocument, uid: assistantId },
-        userId,
-        context,
-    })
-    if (projectAssistant === true) {
-        await feeds.writeProjectAssistantChangedFeed({ db, projectId, assistantName: name, userId, context })
-    }
 
     return {
         assistantId,
@@ -1083,28 +1050,6 @@ async function updateAssistant(userId, args = {}, context = {}, deps = {}) {
         })
     }
 
-    const feeds = getFeeds(deps)
-    await feeds.writeAssistantChangeFeeds({
-        db,
-        projectId,
-        assistantId,
-        // An assistant without its own list runs on the defaults; compare against those.
-        before: { ...current, allowedTools: currentTools },
-        after: { ...current, allowedTools: currentTools, ...update },
-        userId,
-        context,
-    })
-    if (projectAssistantWrites.length > 0) {
-        await feeds.writeProjectAssistantChangedFeed({
-            db,
-            projectId,
-            assistantName: result.name,
-            removed: projectAssistant === false,
-            userId,
-            context,
-        })
-    }
-
     return result
 }
 
@@ -1217,15 +1162,6 @@ async function createAssistantTask(userId, args = {}, context = {}, deps = {}) {
         lastEditorId: userId,
     })
     await batch.commit()
-    await getFeeds(deps).writeAssistantTaskFeed({
-        db,
-        projectId,
-        assistantId,
-        kind: 'created',
-        taskName: name,
-        userId,
-        context,
-    })
 
     return {
         taskId,
@@ -1421,16 +1357,6 @@ async function updateAssistantTask(userId, args = {}, context = {}, deps = {}) {
     batch.update(collection.doc(task.id), update)
     batch.update(db.doc(`assistants/${projectId}/items/${assistantId}`), { lastEditionDate: now, lastEditorId: userId })
     await batch.commit()
-    await getFeeds(deps).writeAssistantTaskFeed({
-        db,
-        projectId,
-        assistantId,
-        kind: 'changed',
-        taskName: update.name || task.name,
-        changes,
-        userId,
-        context,
-    })
 
     const updatedTask = { ...task, ...update }
     return {

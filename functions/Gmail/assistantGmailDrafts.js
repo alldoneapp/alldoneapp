@@ -755,17 +755,6 @@ async function updateGmailDraftForAssistantRequest({
                   attachment => !namesToRemove.has(attachment.fileName) && !replacementNames.has(attachment.fileName)
               )
     const nextAttachments = [...preservedAttachments, ...normalizedAttachments]
-    const sameList = (left, right) => JSON.stringify(left || []) === JSON.stringify(right || [])
-    // Whether the rewrite changes anything; an unchanged draft writes no Updates entry
-    // (Feeds/integrationToolFeeds.js). A new attachment always counts, even under an existing name.
-    const changed =
-        !sameList(nextTo, target.normalizedDraft.to) ||
-        !sameList(nextCc, target.normalizedDraft.cc) ||
-        !sameList(nextBcc, target.normalizedDraft.bcc) ||
-        nextSubject !== target.normalizedDraft.subject ||
-        String(nextBody || '').trim() !== String(target.normalizedDraft.body || '').trim() ||
-        normalizedAttachments.length > 0 ||
-        preservedAttachments.length !== existingAttachments.length
 
     const mimeMessage = buildMimeMessage({
         to: nextTo,
@@ -795,7 +784,6 @@ async function updateGmailDraftForAssistantRequest({
         cc: nextCc,
         bcc: nextBcc,
         attachments: nextAttachments.map(({ base64, ...attachment }) => attachment),
-        changed,
         webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.message?.id || ''),
         message: `Updated the Gmail draft in ${target.account.gmailEmail || 'the connected Gmail account'}.`,
     }

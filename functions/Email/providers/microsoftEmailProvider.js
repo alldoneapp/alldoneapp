@@ -533,11 +533,10 @@ async function updateMicrosoftEmailForAssistantRequest({
             const client = await getMicrosoftGraphClient(userId, account.projectId, 'email')
             const message = await client.request(
                 `/me/messages/${encodePath(messageId)}${buildQuery({
-                    $select: 'id,conversationId,subject,categories,isRead,importance,webLink',
+                    $select: 'id,conversationId,categories,isRead,importance,webLink',
                 })}`
             )
-            const categoriesBefore = new Set(Array.isArray(message.categories) ? message.categories : [])
-            const categories = new Set(categoriesBefore)
+            const categories = new Set(Array.isArray(message.categories) ? message.categories : [])
             addCategories
                 .map(item => String(item || '').trim())
                 .filter(Boolean)
@@ -549,18 +548,6 @@ async function updateMicrosoftEmailForAssistantRequest({
             const payload = { categories: Array.from(categories) }
             if (typeof markUnread === 'boolean') payload.isRead = !markUnread
             if (typeof important === 'boolean') payload.importance = important ? 'high' : 'normal'
-            // What really changed, in the Gmail tool's vocabulary (categories by name, UNREAD and
-            // IMPORTANT for the two flags), so the Updates entry reads the same for both providers.
-            const changedLabels = {
-                added: payload.categories.filter(category => !categoriesBefore.has(category)),
-                removed: Array.from(categoriesBefore).filter(category => !categories.has(category)),
-            }
-            if (typeof markUnread === 'boolean' && markUnread === (message.isRead !== false)) {
-                changedLabels[markUnread ? 'added' : 'removed'].push('UNREAD')
-            }
-            if (typeof important === 'boolean' && important !== (message.importance === 'high')) {
-                changedLabels[important ? 'added' : 'removed'].push('IMPORTANT')
-            }
             const updated = await client.request(`/me/messages/${encodePath(messageId)}`, {
                 method: 'PATCH',
                 body: JSON.stringify(payload),
@@ -576,8 +563,6 @@ async function updateMicrosoftEmailForAssistantRequest({
                 appliedChanges: payload,
                 labelIds: payload.categories,
                 labelNames: payload.categories,
-                subject: updated?.subject || message.subject || '',
-                changedLabels,
                 archived: false,
                 message: `Updated email message ${messageId} in ${
                     account.emailAddress || 'the connected Microsoft email account'

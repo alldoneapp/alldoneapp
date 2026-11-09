@@ -38,13 +38,6 @@ jest.mock('../Goals/goalToolService', () => {
     }
 })
 jest.mock('../Goals/goalToolFeeds', () => ({ buildGoalToolFeeds: jest.fn(() => ({ marker: 'feeds' })) }))
-// Updates entries for assistant and project changes (Feeds/workspaceChangeFeeds.js) have their own
-// suite; here they are recorded so the doc-read sequences the settings tests set up stay intact.
-jest.mock('../Feeds/workspaceChangeFeeds', () => ({
-    writeAssistantChangeFeeds: jest.fn(async () => true),
-    writeAssistantHeartbeatFeed: jest.fn(async () => true),
-    writeProjectAssistantChangedFeed: jest.fn(async () => true),
-}))
 const mockAddObjectComment = jest.fn()
 jest.mock('../shared/objectCommentService', () => ({
     ObjectCommentService: jest
@@ -318,6 +311,31 @@ jest.mock('firebase-admin', () => ({
         }
     ),
 }))
+
+// MCP feed parity: contacts and moves. The project-move helpers stay real unless a test gives them
+// an implementation, so only the wiring tests below see the doubles.
+const mockMoveTaskToDifferentProject = jest.fn()
+jest.mock('../shared/moveTaskToDifferentProject', () => {
+    const actual = jest.requireActual('../shared/moveTaskToDifferentProject')
+    return {
+        ...actual,
+        moveTaskToDifferentProject: (...args) =>
+            mockMoveTaskToDifferentProject.getMockImplementation()
+                ? mockMoveTaskToDifferentProject(...args)
+                : actual.moveTaskToDifferentProject(...args),
+    }
+})
+const mockMoveNoteToDifferentProject = jest.fn()
+jest.mock('../shared/moveNoteToDifferentProject', () => {
+    const actual = jest.requireActual('../shared/moveNoteToDifferentProject')
+    return {
+        ...actual,
+        moveNoteToDifferentProject: (...args) =>
+            mockMoveNoteToDifferentProject.getMockImplementation()
+                ? mockMoveNoteToDifferentProject(...args)
+                : actual.moveNoteToDifferentProject(...args),
+    }
+})
 
 jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     extractTextFromWhatsAppFile: jest.fn(async ({ fileName }) => ({
@@ -7064,15 +7082,6 @@ describe('assistant heartbeat settings tool', () => {
             heartbeatPrompt: 'New prompt for heartbeat',
             heartbeatPromptHistoryLength: 10,
         })
-        const { writeAssistantHeartbeatFeed } = require('../Feeds/workspaceChangeFeeds')
-        expect(writeAssistantHeartbeatFeed).toHaveBeenCalledWith(
-            expect.objectContaining({
-                assistantId: 'assistant-1',
-                changes: result.updatedFields,
-                userId: 'user-1',
-                getFeedUser: expect.any(Function),
-            })
-        )
         expect(result.heartbeatSettings).toMatchObject({
             intervalMinutes: 15,
             chancePercent: 100,
@@ -7271,18 +7280,6 @@ describe('assistant settings prompt history', () => {
             )
             expect(mockTransactionUpdate.mock.calls[0][1]).not.toHaveProperty('instructions')
             expect(result).toMatchObject({ success: true, updatedFields: ['photo'], photoUrl: url })
-            // The same Updates entries MCP's update_assistant writes, computed from before and after.
-            const { writeAssistantChangeFeeds } = require('../Feeds/workspaceChangeFeeds')
-            expect(writeAssistantChangeFeeds).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    projectId: 'default-project',
-                    assistantId: 'assistant-1',
-                    before: expect.objectContaining({ instructions: 'Same' }),
-                    after: expect.objectContaining({ photoURL: url, photoURL50: url }),
-                    userId: 'user-1',
-                    getFeedUser: expect.any(Function),
-                })
-            )
         } finally {
             download.mockRestore()
             store.mockRestore()
@@ -10631,6 +10628,139 @@ describe('assistant transcript artifact recovery', () => {
                 assistantRun: expect.objectContaining({ status: 'failed' }),
             })
         )
+    })
+})
+
+// MCP feed parity: contacts and moves. What the tools hand to the helpers that write the entries;
+// the entries themselves are pinned next to those helpers.
+describe('MCP and assistant tools pass their actor to the entry writers', () => {
+    const TaskUpdateService = require('../shared/TaskUpdateService')
+    const mcpContext = { sourceChannel: 'mcp', mcpClient: 'Codex' }
+    const mcpActor = expect.objectContaining({ uid: 'user-1', via: 'mcp', viaClient: 'Codex' })
+    const projectsOfUser = projects =>
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue(projects),
+        }))
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockDocGet.mockResolvedValue({ exists: false, data: () => undefined })
+    })
+
+    afterEach(() => {
+        mockMoveTaskToDifferentProject.mockReset()
+        mockMoveNoteToDifferentProject.mockReset()
+        projectsOfUser([])
+        jest.restoreAllMocks()
+    })
+
+    test('update_task moving a task writes its "changed project" entries with the actor', async () => {
+        jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
+        jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask').mockResolvedValue({
+            success: true,
+            taskId: 'task-1',
+            project: { id: 'project-a', name: 'Inbox' },
+            changes: [],
+            message: 'Task updated',
+        })
+        projectsOfUser([{ id: 'project-b', name: 'Product' }])
+        mockMoveTaskToDifferentProject.mockImplementation(async () => ({ moved: true, movedTaskCount: 1 }))
+
+        await executeToolNatively(
+            'update_task',
+            { taskId: 'task-1', moveToProjectId: 'project-b' },
+            'project-a',
+            null,
+            'user-1',
+            null,
+            mcpContext
+        )
+
+        expect(mockMoveTaskToDifferentProject).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sourceProjectId: 'project-a',
+                targetProjectId: 'project-b',
+                taskId: 'task-1',
+                feedUser: mcpActor,
+            })
+        )
+        expect(mockMoveTaskToDifferentProject.mock.calls[0][0]).not.toHaveProperty('manual')
+    })
+
+    test('update_note moving a note writes its "moved from" entry with the actor, best effort', async () => {
+        const { SearchService } = require('../shared/SearchService')
+        jest.spyOn(SearchService.prototype, 'initialize').mockResolvedValue(undefined)
+        jest.spyOn(SearchService.prototype, 'findNoteForUpdateWithResults').mockResolvedValue({
+            success: true,
+            selectedNote: { id: 'note-1', title: 'Plan' },
+            projectId: 'project-a',
+            projectName: 'Inbox',
+        })
+        projectsOfUser([{ id: 'project-b', name: 'Product' }])
+        mockDocGet.mockImplementation(async () => ({
+            exists: true,
+            data: () => ({ name: 'Inbox', color: '#111111' }),
+        }))
+        mockMoveNoteToDifferentProject.mockImplementation(async () => ({ moved: true }))
+
+        await executeToolNatively(
+            'update_note',
+            { noteId: 'note-1', moveToProjectId: 'project-b' },
+            'project-a',
+            null,
+            'user-1',
+            null,
+            mcpContext
+        )
+
+        expect(mockMoveNoteToDifferentProject).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sourceProjectId: 'project-a',
+                targetProjectId: 'project-b',
+                noteId: 'note-1',
+                feedUser: mcpActor,
+                sourceProjectName: 'Inbox',
+                sourceProjectColor: '#111111',
+                moveFeedBestEffort: true,
+            })
+        )
+    })
+
+    test('update_contact creating a contact hands the actor to the "added" entry and to the field entries', async () => {
+        const targets = require('../shared/contactNoteTargetHelper')
+        jest.spyOn(targets, 'resolveProjectForContactNote').mockResolvedValue({ id: 'sales', name: 'Sales' })
+        const resolveTarget = jest.spyOn(targets, 'resolveContactTarget').mockResolvedValue({
+            success: true,
+            contactCreated: true,
+            contact: { uid: 'contact-1', displayName: 'New Person' },
+        })
+        const updateFields = jest
+            .spyOn(require('../shared/contactUpdateHelper'), 'updateContactFields')
+            .mockImplementation(async ({ contact, updates }) => ({
+                contact: { ...contact, ...updates },
+                updated: true,
+                changes: ['company updated'],
+            }))
+
+        await executeToolNatively(
+            'update_contact',
+            { contactName: 'New Person', createIfMissing: true, company: 'Acme' },
+            'sales',
+            null,
+            'user-1',
+            null,
+            mcpContext
+        )
+
+        expect(resolveTarget).toHaveBeenCalledWith(
+            expect.objectContaining({ createIfMissing: true, feedUser: mcpActor })
+        )
+        expect(updateFields).toHaveBeenCalledWith(
+            expect.objectContaining({ updates: { company: 'Acme' }, feedUser: mcpActor })
+        )
+        expect(updateFields.mock.calls[0][0].feedUser).toBe(resolveTarget.mock.calls[0][0].feedUser)
     })
 })
 
