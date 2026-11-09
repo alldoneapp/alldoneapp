@@ -219,47 +219,22 @@ const UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY = 'update_heartbeat_settings'
 const UPDATE_PROJECT_DESCRIPTION_TOOL_KEY = 'update_project_description'
 const UPDATE_USER_DESCRIPTION_TOOL_KEY = 'update_user_description'
 const UPDATE_ASSISTANT_SETTINGS_TOOL_KEY = 'update_assistant_settings'
-const MAX_ASSISTANT_PROMPT_HISTORY = 10
 const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
 const ASSISTANT_PROMPT_FIELD_HEARTBEAT = 'heartbeatPrompt'
 const ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS = 'instructionsHistory'
 const ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT = 'heartbeatPromptHistory'
-// What an assistant may set *itself* to via `update_assistant_settings`. Every model a user can
-// already pick in the UI belongs here, so the list is derived from the shared selector rather than
-// hand-copied — the hand-copied version had silently missed Terra and Luna since they shipped,
-// which made the tool refuse settings the user could set by hand two clicks away. Legacy keys stay
-// listed explicitly because assistants configured on them must still be able to keep them.
-const ALLOWED_ASSISTANT_SETTINGS_MODELS = [
-    ...SELECTABLE_ASSISTANT_MODELS.map(option => option.model),
-    'MODEL_GPT5_5',
-    'MODEL_GPT5_1',
-    'MODEL_GPT5_2',
-    'MODEL_GPT5_4_MINI',
-    'MODEL_GPT5_4_NANO',
-    'MODEL_SONAR',
-    'MODEL_SONAR_PRO',
-    'MODEL_SONAR_REASONING',
-    'MODEL_SONAR_REASONING_PRO',
-]
-const ALLOWED_ASSISTANT_SETTINGS_TEMPERATURES = [
-    'TEMPERATURE_VERY_LOW',
-    'TEMPERATURE_LOW',
-    'TEMPERATURE_NORMAL',
-    'TEMPERATURE_HIGH',
-    'TEMPERATURE_VERY_HIGH',
-]
-const ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES = [
-    'alloy',
-    'ash',
-    'ballad',
-    'coral',
-    'echo',
-    'sage',
-    'shimmer',
-    'verse',
-    'marin',
-    'cedar',
-]
+// The settings fields, their allowed values and the instructions history are shared with MCP's
+// update_assistant (assistantSettingsService.js).
+const {
+    ASSISTANT_SETTINGS_MODELS: ALLOWED_ASSISTANT_SETTINGS_MODELS,
+    ASSISTANT_SETTINGS_TEMPERATURES: ALLOWED_ASSISTANT_SETTINGS_TEMPERATURES,
+    ASSISTANT_SETTINGS_REALTIME_VOICES: ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES,
+    buildAssistantSettingsPatch,
+    buildPromptHistory,
+    commitAssistantSettings,
+    hasAnyAssistantSettingsField,
+    propagateInstructionsToScheduledTasks,
+} = require('./assistantSettingsService')
 const COMPACT_THREAD_CONTEXT_TOOL_KEY = 'compact_thread_context'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 // MCP (Model Context Protocol) client tools. When `mcp_servers` is enabled, the
@@ -275,6 +250,7 @@ const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToo
 const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 // Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
 const { ARTIFACT_TOOL_KEY, DELETE_ARTIFACT_TOOL_NAME, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
+const { getWorkspaceToolKey, isWorkspaceToolForAssistantsName } = require('./workspaceToolsForAssistants')
 const {
     MAX_MCP_TOOLS,
     OPEN_MCP_APP_TOOL_NAME,
@@ -316,19 +292,6 @@ const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY_SHORT =
     'Based on the tool results above, provide your response. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
 const COMPACT_THREAD_CONTEXT_HEADER = 'Compacted thread state for this ongoing workflow:'
 
-function getPromptHistoryValue(entry, promptField) {
-    if (!entry) return ''
-    if (typeof entry[promptField] === 'string') return entry[promptField]
-    if (typeof entry.prompt === 'string') return entry.prompt
-    if (promptField === ASSISTANT_PROMPT_FIELD_INSTRUCTIONS && typeof entry.instructions === 'string') {
-        return entry.instructions
-    }
-    if (promptField === ASSISTANT_PROMPT_FIELD_HEARTBEAT && typeof entry.heartbeatPrompt === 'string') {
-        return entry.heartbeatPrompt
-    }
-    return ''
-}
-
 function getCurrentAssistantPromptValue(data, promptField) {
     const currentValue = data?.[promptField]
     if (typeof currentValue === 'string') return currentValue
@@ -336,29 +299,16 @@ function getCurrentAssistantPromptValue(data, promptField) {
     return ''
 }
 
-function buildAssistantPromptHistoryEntry(promptField, prompt, replacedAt, replacedByUserId, replacedByAssistantId) {
-    return {
-        prompt,
-        [promptField]: prompt,
-        replacedAt,
-        replacedByUserId: replacedByUserId || null,
-        replacedByAssistantId: replacedByAssistantId || null,
-    }
-}
-
 function buildAssistantPromptHistory(currentData, promptField, historyField, nextPrompt, now, userId, assistantId) {
-    const currentPrompt = getCurrentAssistantPromptValue(currentData, promptField)
-    if (currentPrompt === nextPrompt) {
-        return { changed: false, history: currentData?.[historyField] || [] }
-    }
-
-    const existingHistory = Array.isArray(currentData?.[historyField]) ? currentData[historyField] : []
-    const historyEntry = buildAssistantPromptHistoryEntry(promptField, currentPrompt, now, userId, assistantId)
-    const history = [historyEntry, ...existingHistory]
-        .filter(entry => getPromptHistoryValue(entry, promptField) !== nextPrompt)
-        .slice(0, MAX_ASSISTANT_PROMPT_HISTORY)
-
-    return { changed: true, history }
+    return buildPromptHistory({
+        currentPrompt: getCurrentAssistantPromptValue(currentData, promptField),
+        existingHistory: currentData?.[historyField],
+        nextPrompt,
+        promptField,
+        now,
+        userId,
+        assistantId,
+    })
 }
 
 function getToolResultFollowUpPrompt(options = {}) {
@@ -2473,6 +2423,9 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (isArtifactToolName(toolName)) {
         return assistantAllowedTools.includes(ARTIFACT_TOOL_KEY)
     }
+    if (isWorkspaceToolForAssistantsName(toolName)) {
+        return assistantAllowedTools.includes(getWorkspaceToolKey(toolName))
+    }
 
     const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
     if (hasDelegationToggle && isTalkToAssistantToolName(toolName)) {
@@ -4133,6 +4086,25 @@ async function resolveMoveTargetProject(
     throw new Error(`No project found matching "${requestedProjectName}".`)
 }
 
+// Tools that re-check the assistant's own Tools Access inside their execution. An MCP call has no
+// assistant: there the per-user switch under Settings -> MCP is the gate (mcpDisabledTools), checked
+// before the call reaches this dispatcher, so only an assistant-less MCP call skips this check.
+async function assertAssistantOwnToolPermitted({
+    toolKey,
+    projectId,
+    assistantId,
+    requestUserId,
+    toolRuntimeContext,
+    missingAssistantMessage,
+}) {
+    if (!assistantId && toolRuntimeContext?.sourceChannel === 'mcp') return
+    const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
+    if (!resolvedAssistant) throw new Error(missingAssistantMessage)
+    const currentAssistant = resolvedAssistant.assistant || {}
+    const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+    if (!allowedTools.includes(toolKey)) throw new Error(`Tool not permitted: ${toolKey}`)
+}
+
 async function resolveProjectTargetForDescriptionUpdate(
     database,
     userId,
@@ -4373,13 +4345,21 @@ async function addChatCommentFromAssistantTool({
     createIfMissing = false,
     gmailContext = null,
     suppressAssistantReply = false,
+    authorChannelFields = {},
+    // A user's message that asks a named assistant to answer (MCP ask_assistant): the assistant a new
+    // topic gets, and the run request the server answers (assistantMissedRunCatchUp.js).
+    topicAssistantId = null,
+    assistantRunRequest = null,
 }) {
     const db = admin.firestore()
+    // Without an assistant (an MCP client) the comment is the user's own, marked with the client.
+    const fromAssistant = !!assistantId
+    const authorId = assistantId || userId
     const resolvedComment = normalizeChatCommentToolText(comment, 'comment')
     const resolved = await resolveTopicChatForCommentTool({
         db,
         projectId,
-        assistantId,
+        assistantId: assistantId || topicAssistantId,
         userId,
         chatId,
         chatTitle,
@@ -4415,11 +4395,15 @@ async function addChatCommentFromAssistantTool({
         commentType: STAYWARD_COMMENT,
         lastChangeDate: Timestamp.now(),
         created: now,
-        creatorId: assistantId,
-        fromAssistant: true,
+        creatorId: authorId,
+        fromAssistant,
         source: gmailContext?.origin === 'gmail_label_follow_up' ? 'gmail_label_follow_up' : 'assistant_tool',
-        requestUserId: userId,
+        ...(fromAssistant ? { requestUserId: userId } : {}),
         ...(suppressAssistantReply ? { suppressAssistantReply: true } : {}),
+        ...(!fromAssistant && assistantRunRequest
+            ? { assistantRunRequest: { ...assistantRunRequest, objectId: resolved.chatId } }
+            : {}),
+        ...authorChannelFields,
     }
 
     if (gmailContext?.origin === 'gmail_label_follow_up') {
@@ -4451,14 +4435,15 @@ async function addChatCommentFromAssistantTool({
             chatType: 'topics',
             followed: isFollowedNotification,
             date: now,
-            creatorId: assistantId,
-            creatorType: 'assistant',
+            creatorId: authorId,
+            creatorType: fromAssistant ? 'assistant' : 'user',
+            ...authorChannelFields,
         }),
         db.doc(`chatObjects/${projectId}/chats/${resolved.chatId}`).set(
             {
                 lastEditionDate: now,
-                lastEditorId: assistantId,
-                members: FieldValue.arrayUnion(userId, assistantId),
+                lastEditorId: authorId,
+                members: fromAssistant ? FieldValue.arrayUnion(userId, assistantId) : FieldValue.arrayUnion(userId),
                 usersFollowing: FieldValue.arrayUnion(userId),
                 // For a freshly-created chat the commentsData (owner, text, type, amount) was
                 // already seeded at creation, so only update these fields for existing chats —
@@ -4467,7 +4452,7 @@ async function addChatCommentFromAssistantTool({
                     ? {}
                     : {
                           'commentsData.lastComment': resolvedComment.substring(0, 200),
-                          'commentsData.lastCommentOwnerId': assistantId,
+                          'commentsData.lastCommentOwnerId': authorId,
                           'commentsData.lastCommentType': STAYWARD_COMMENT,
                           'commentsData.amount': FieldValue.increment(1),
                       }),
@@ -4485,38 +4470,40 @@ async function addChatCommentFromAssistantTool({
             },
             { merge: true }
         ),
-        db.doc(`users/${userId}`).update({
-            [`lastAssistantCommentData.${projectId}`]: {
-                objectType: 'topics',
-                objectId: resolved.chatId,
-                creatorId: assistantId,
-                creatorType: 'assistant',
-                date: now,
-            },
-            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                objectType: 'topics',
-                objectId: resolved.chatId,
-                creatorId: assistantId,
-                creatorType: 'assistant',
-                date: now,
-                projectId,
-            },
-            [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: {
-                objectType: 'topics',
-                objectId: resolved.chatId,
-                creatorId: assistantId,
-                creatorType: 'assistant',
-                date: now,
-            },
-            [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                objectType: 'topics',
-                objectId: resolved.chatId,
-                creatorId: assistantId,
-                creatorType: 'assistant',
-                date: now,
-                projectId,
-            },
-        }),
+        // The "last assistant comment" pointers (MyDay assistant line) only follow an assistant's comment.
+        fromAssistant &&
+            db.doc(`users/${userId}`).update({
+                [`lastAssistantCommentData.${projectId}`]: {
+                    objectType: 'topics',
+                    objectId: resolved.chatId,
+                    creatorId: assistantId,
+                    creatorType: 'assistant',
+                    date: now,
+                },
+                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                    objectType: 'topics',
+                    objectId: resolved.chatId,
+                    creatorId: assistantId,
+                    creatorType: 'assistant',
+                    date: now,
+                    projectId,
+                },
+                [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: {
+                    objectType: 'topics',
+                    objectId: resolved.chatId,
+                    creatorId: assistantId,
+                    creatorType: 'assistant',
+                    date: now,
+                },
+                [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                    objectType: 'topics',
+                    objectId: resolved.chatId,
+                    creatorId: assistantId,
+                    creatorType: 'assistant',
+                    date: now,
+                    projectId,
+                },
+            }),
     ])
 
     return {
@@ -4527,6 +4514,7 @@ async function addChatCommentFromAssistantTool({
         chatId: resolved.chatId,
         chatTitle: resolved.chatTitle,
         commentId,
+        created: now,
         chatCreated: resolved.created,
         chatUrl: `${getBaseUrl()}/projects/${projectId}/chats/${resolved.chatId}/chat`,
         message: `Comment added to topic "${resolved.chatTitle}".`,
@@ -5560,10 +5548,37 @@ async function executeToolNativelyImpl(
             args: toolArgs,
             assistantId,
             toolRuntimeContext: { projectId, requestUserId, assistantId, ...(toolRuntimeContext || {}) },
-            // A document added to the wiki is always a file of THIS conversation, whichever project's
-            // wiki it goes to.
-            readChatAttachment: ({ messageId, fileName }) =>
-                readChatAttachmentFile({
+            // A file added to the wiki comes from THIS conversation, whichever project's wiki it goes
+            // to, unless the caller names another thread (an MCP client has no conversation): then the
+            // user must be able to read that thread.
+            readChatAttachment: async ({ messageId, fileName }) => {
+                const namedType = typeof toolArgs.threadObjectType === 'string' ? toolArgs.threadObjectType.trim() : ''
+                const namedId = typeof toolArgs.threadObjectId === 'string' ? toolArgs.threadObjectId.trim() : ''
+                if (namedType && namedId) {
+                    const namedProjectId =
+                        (typeof toolArgs.threadProjectId === 'string' && toolArgs.threadProjectId.trim()) ||
+                        (typeof toolArgs.projectId === 'string' && toolArgs.projectId.trim()) ||
+                        projectId ||
+                        ''
+                    const { assertObjectAccess } = require('../shared/privacyAccess')
+                    await assertObjectAccess(admin.firestore(), requestUserId, namedProjectId, namedType, namedId)
+                    const file = await readChatAttachmentFile({
+                        projectId: namedProjectId,
+                        objectType: namedType,
+                        objectId: namedId,
+                        messageId: messageId || '',
+                        expectedFileName: fileName,
+                        explicitMessageIdProvided: !!messageId,
+                        userMessageText: '',
+                    })
+                    return { ...file, sourceProjectId: namedProjectId, objectType: namedType, objectId: namedId }
+                }
+                if (!toolRuntimeContext?.objectId) {
+                    throw new Error(
+                        'there is no conversation here; name the thread with threadObjectType and threadObjectId'
+                    )
+                }
+                return readChatAttachmentFile({
                     projectId: toolRuntimeContext?.projectId || projectId || '',
                     objectType: toolRuntimeContext?.objectType || '',
                     objectId: toolRuntimeContext?.objectId || '',
@@ -5571,7 +5586,8 @@ async function executeToolNativelyImpl(
                     expectedFileName: fileName,
                     explicitMessageIdProvided: !!messageId,
                     userMessageText: userContext?.message || '',
-                }),
+                })
+            },
         })
     }
 
@@ -5727,6 +5743,13 @@ async function executeToolNativelyImpl(
             requestUserId,
             toolRuntimeContext,
         })
+    }
+
+    // MCP's workspace tools (projects, contact statuses, assistants, scheduled tasks): the MCP handlers,
+    // acting for the requesting user, defaulting to this assistant and its project.
+    if (isWorkspaceToolForAssistantsName(toolName)) {
+        const { executeWorkspaceToolForAssistant } = require('./workspaceToolsForAssistants')
+        return executeWorkspaceToolForAssistant({ toolName, args: toolArgs, projectId, assistantId, requestUserId })
     }
 
     // Every artifact write goes through commitArtifactVersion like an upload from the app, and acts
@@ -6708,7 +6731,21 @@ async function executeToolNativelyImpl(
                 hasGmailContext: toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
             })
 
+            let authorChannelFields = {}
+            if (!assistantId) {
+                const { getActorChannelFields } = require('../shared/mcpActor')
+                const actor = await getAssistantFeedUserForTool(
+                    db,
+                    targetProject.id,
+                    null,
+                    creatorId,
+                    toolRuntimeContext
+                )
+                authorChannelFields = getActorChannelFields(actor)
+            }
+
             const result = await addChatCommentFromAssistantTool({
+                authorChannelFields,
                 projectId: targetProject.id,
                 projectName: targetProject.name || '',
                 chatId: gmailTopicChatTitle ? '' : toolArgs.chatId || '',
@@ -8337,21 +8374,14 @@ async function executeToolNativelyImpl(
         }
 
         case UPDATE_PROJECT_DESCRIPTION_TOOL_KEY: {
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+            await assertAssistantOwnToolPermitted({
+                toolKey: UPDATE_PROJECT_DESCRIPTION_TOOL_KEY,
                 projectId,
                 assistantId,
-                requestUserId
-            )
-
-            if (!resolvedAssistant) {
-                throw new Error('Assistant not found for project description update.')
-            }
-
-            const currentAssistant = resolvedAssistant.assistant || {}
-            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
-            if (!allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
-                throw new Error(`Tool not permitted: ${UPDATE_PROJECT_DESCRIPTION_TOOL_KEY}`)
-            }
+                requestUserId,
+                toolRuntimeContext,
+                missingAssistantMessage: 'Assistant not found for project description update.',
+            })
 
             if (typeof toolArgs.description !== 'string' || !toolArgs.description.trim()) {
                 throw new Error('description is required for update_project_description.')
@@ -8396,21 +8426,14 @@ async function executeToolNativelyImpl(
         }
 
         case UPDATE_USER_DESCRIPTION_TOOL_KEY: {
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+            await assertAssistantOwnToolPermitted({
+                toolKey: UPDATE_USER_DESCRIPTION_TOOL_KEY,
                 projectId,
                 assistantId,
-                requestUserId
-            )
-
-            if (!resolvedAssistant) {
-                throw new Error('Assistant not found for user description update.')
-            }
-
-            const currentAssistant = resolvedAssistant.assistant || {}
-            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
-            if (!allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
-                throw new Error(`Tool not permitted: ${UPDATE_USER_DESCRIPTION_TOOL_KEY}`)
-            }
+                requestUserId,
+                toolRuntimeContext,
+                missingAssistantMessage: 'Assistant not found for user description update.',
+            })
 
             if (typeof toolArgs.description !== 'string' || !toolArgs.description.trim()) {
                 throw new Error('description is required for update_user_description.')
@@ -8467,9 +8490,15 @@ async function executeToolNativelyImpl(
             }
 
             const currentAssistant = resolvedAssistant.assistant || {}
-            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
-            if (!allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {
-                throw new Error(`Tool not permitted: ${UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY}`)
+            if (toolRuntimeContext?.sourceChannel === 'mcp') {
+                // An MCP client names the assistant (mcpServerSimple.js); Settings -> MCP is its switch,
+                // and it may change only an assistant of a project the user belongs to.
+                await assertCanWriteAssistantInProject(resolvedAssistant.projectId || projectId, requestUserId)
+            } else {
+                const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+                if (!allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {
+                    throw new Error(`Tool not permitted: ${UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY}`)
+                }
             }
 
             const patch = {}
@@ -8681,116 +8710,86 @@ async function executeToolNativelyImpl(
             // The self-path can resolve to a global assistant the caller is merely using.
             await assertCanWriteAssistantInProject(target.projectId, requestUserId)
 
-            const patch = {}
-            const updatedFields = []
-
-            if (hasOwn('instructions')) {
-                if (typeof toolArgs.instructions !== 'string' || !toolArgs.instructions.trim()) {
-                    throw new Error('instructions must be a non-empty string.')
-                }
-                if (toolArgs.instructions !== (targetAssistant.instructions || '')) {
-                    patch.instructions = toolArgs.instructions
-                    updatedFields.push('instructions')
-                }
+            // Same fields and rules as MCP's update_assistant (assistantSettingsService.js). Tools Access
+            // is not among them: only the user changes it, never an assistant.
+            if (!hasAnyAssistantSettingsField(toolArgs) && !hasOwn('projectAssistant')) {
+                throw new Error(
+                    'update_assistant_settings requires at least one of instructions, displayName, description, model, temperature, realtimeVoice, delegationToolDescriptionManual or projectAssistant.'
+                )
             }
+            const { patch, updatedFields } = buildAssistantSettingsPatch(targetAssistant, toolArgs, {
+                normalizeModel: normalizeModelKey,
+            })
 
-            if (hasOwn('displayName')) {
-                if (typeof toolArgs.displayName !== 'string' || !toolArgs.displayName.trim()) {
-                    throw new Error('displayName must be a non-empty string.')
+            const db = admin.firestore()
+            const now = Date.now()
+            let projectAssistantWrites = []
+            if (hasOwn('projectAssistant')) {
+                if (typeof toolArgs.projectAssistant !== 'boolean') {
+                    throw new Error('projectAssistant must be true or false.')
                 }
-                patch.displayName = toolArgs.displayName.trim()
-                updatedFields.push('displayName')
-            }
-
-            if (hasOwn('description')) {
-                if (typeof toolArgs.description !== 'string') {
-                    throw new Error('description must be a string.')
+                if (target.projectId === GLOBAL_PROJECT_ID) {
+                    throw new Error('A global assistant is made a project assistant in the project settings.')
                 }
-                patch.description = toolArgs.description
-                updatedFields.push('description')
-            }
-
-            if (hasOwn('model')) {
-                const modelValue = typeof toolArgs.model === 'string' ? normalizeModelKey(toolArgs.model.trim()) : ''
-                if (!ALLOWED_ASSISTANT_SETTINGS_MODELS.includes(modelValue)) {
-                    throw new Error(`model must be one of: ${ALLOWED_ASSISTANT_SETTINGS_MODELS.join(', ')}`)
+                const { buildProjectAssistantWrites } = require('../MCP/mcpWorkspaceSetupTools')
+                const projectSnapshot = await db.doc(`projects/${target.projectId}`).get()
+                projectAssistantWrites = await buildProjectAssistantWrites(db, {
+                    projectId: target.projectId,
+                    project: projectSnapshot.exists ? projectSnapshot.data() || {} : {},
+                    assistantId: targetAssistant.uid || targetAssistantRef.id,
+                    makeProjectAssistant: toolArgs.projectAssistant,
+                    userId: requestUserId,
+                    now,
+                })
+                if (projectAssistantWrites.length > 0) {
+                    updatedFields.push(toolArgs.projectAssistant ? 'projectAssistant' : 'projectAssistant removed')
                 }
-                patch.model = modelValue
-                updatedFields.push('model')
-            }
-
-            if (hasOwn('temperature')) {
-                const temperatureValue = typeof toolArgs.temperature === 'string' ? toolArgs.temperature.trim() : ''
-                if (!ALLOWED_ASSISTANT_SETTINGS_TEMPERATURES.includes(temperatureValue)) {
-                    throw new Error(`temperature must be one of: ${ALLOWED_ASSISTANT_SETTINGS_TEMPERATURES.join(', ')}`)
-                }
-                patch.temperature = temperatureValue
-                updatedFields.push('temperature')
-            }
-
-            if (hasOwn('realtimeVoice')) {
-                const realtimeVoice = typeof toolArgs.realtimeVoice === 'string' ? toolArgs.realtimeVoice.trim() : ''
-                if (!ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES.includes(realtimeVoice)) {
-                    throw new Error(
-                        `realtimeVoice must be one of: ${ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES.join(', ')}`
-                    )
-                }
-                patch.realtimeVoice = realtimeVoice
-                updatedFields.push('realtimeVoice')
-            }
-
-            if (hasOwn('delegationToolDescriptionManual')) {
-                if (typeof toolArgs.delegationToolDescriptionManual !== 'string') {
-                    throw new Error('delegationToolDescriptionManual must be a string.')
-                }
-                patch.delegationToolDescriptionManual = toolArgs.delegationToolDescriptionManual
-                updatedFields.push('delegationToolDescriptionManual')
             }
 
             if (updatedFields.length === 0) {
-                throw new Error(
-                    'update_assistant_settings requires at least one of instructions, displayName, description, model, temperature, realtimeVoice, or delegationToolDescriptionManual.'
-                )
+                return {
+                    success: true,
+                    assistantId: targetAssistant.uid,
+                    targetProjectId: target.projectId,
+                    isSelf: target.isSelf,
+                    updatedFields: [],
+                    message: 'Nothing changed: the assistant already has these settings.',
+                }
             }
 
-            const now = Date.now()
-            patch.lastEditorId = requestUserId || callerAssistant.uid || assistantId
-            patch.lastEditionDate = now
-
-            const includesInstructionsChange = updatedFields.includes('instructions')
-
-            const db = admin.firestore()
-            let resultingHistoryLength = Array.isArray(targetAssistant.instructionsHistory)
-                ? targetAssistant.instructionsHistory.length
-                : 0
-
-            await db.runTransaction(async tx => {
-                const snap = await tx.get(targetAssistantRef)
-                if (!snap.exists) {
-                    throw new Error('Target assistant no longer exists.')
-                }
-                const currentData = snap.data() || {}
-                const finalPatch = { ...patch }
-
-                if (includesInstructionsChange) {
-                    const historyResult = buildAssistantPromptHistory(
-                        currentData,
-                        ASSISTANT_PROMPT_FIELD_INSTRUCTIONS,
-                        ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS,
-                        patch.instructions,
-                        now,
-                        requestUserId || null,
-                        callerAssistant.uid || assistantId || null
-                    )
-
-                    if (historyResult.changed) {
-                        finalPatch.instructionsHistory = historyResult.history
-                        resultingHistoryLength = historyResult.history.length
-                    }
-                }
-
-                tx.update(targetAssistantRef, finalPatch)
+            // The assistant's own isDefault rides on its main update, so its document is written once.
+            const extraUpdate = {
+                lastEditorId: requestUserId || callerAssistant.uid || assistantId,
+                lastEditionDate: now,
+            }
+            const otherWrites = []
+            projectAssistantWrites.forEach(([writeRef, data]) => {
+                if (writeRef.path === targetAssistantRef.path) extraUpdate.isDefault = data.isDefault
+                else otherWrites.push([writeRef, data])
             })
+            const committed = await commitAssistantSettings({
+                db,
+                ref: targetAssistantRef,
+                patch,
+                extraUpdate,
+                requestUserId: requestUserId || null,
+                actorAssistantId: callerAssistant.uid || assistantId || null,
+                now,
+            })
+            if (otherWrites.length > 0) {
+                const batch = db.batch()
+                otherWrites.forEach(([writeRef, data]) => batch.update(writeRef, data))
+                await batch.commit()
+            }
+            const tasksWithUpdatedInstructions = updatedFields.includes('instructions')
+                ? await propagateInstructionsToScheduledTasks({
+                      db,
+                      projectId: target.projectId,
+                      assistantId: targetAssistant.uid || targetAssistantRef.id,
+                      previousInstructions: committed.previousInstructions,
+                      nextInstructions: patch.instructions,
+                  })
+                : 0
 
             console.log('🛠️ UPDATE_ASSISTANT_SETTINGS:', {
                 callerProjectId: projectId,
@@ -8802,6 +8801,8 @@ async function executeToolNativelyImpl(
                 requestUserId: requestUserId || null,
             })
 
+            const includesInstructionsChange = updatedFields.includes('instructions')
+            const resultingHistoryLength = committed.historyLength
             return {
                 success: true,
                 assistantId: targetAssistant.uid,
@@ -8809,6 +8810,7 @@ async function executeToolNativelyImpl(
                 isSelf: target.isSelf,
                 updatedFields,
                 instructionsHistoryLength: resultingHistoryLength,
+                tasksWithUpdatedInstructions,
                 message: `Updated ${updatedFields.length === 1 ? 'setting' : 'settings'}: ${updatedFields.join(', ')}${
                     target.isSelf ? '' : ` (assistant ${targetAssistant.displayName || targetAssistant.uid})`
                 }${
@@ -9111,6 +9113,16 @@ async function executeToolNativelyImpl(
                 appendTaskPriorityLearningToInstructions,
                 getTaskPriorityLearningContextMessage,
             } = require('./taskPriorityLearning')
+            // Without a name: the skills there are (an MCP client has no skills index in its prompt).
+            if (typeof toolArgs.name !== 'string' || !toolArgs.name.trim()) {
+                const { loadChatSkillsForAssistant } = require('./assistantSkills')
+                const skills = await loadChatSkillsForAssistant(projectId, assistantId)
+                return {
+                    success: true,
+                    skills: skills.map(entry => ({ name: entry.name, whenToUse: entry.description || '' })),
+                    note: 'Load one with load_skill and its name.',
+                }
+            }
             const { skill, availableSkillNames } = await loadChatSkillByName(projectId, assistantId, toolArgs.name)
             if (!skill) {
                 return {
@@ -15256,6 +15268,7 @@ function validateToolCallConsistency(commentText) {
 // processToolResultWithLLM function removed - native tool calling only
 
 module.exports = {
+    addChatCommentFromAssistantTool,
     COMPLETION_MAX_TOKENS,
     storeBotAnswerStream,
     replaceUserNameByMention,

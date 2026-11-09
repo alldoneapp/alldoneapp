@@ -2729,6 +2729,42 @@ describe('assistant attachment handoff helpers', () => {
         }
     )
 
+    test("writes an MCP client's topic comment in the user's name, marked with the client", async () => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+        }))
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+
+        await executeToolNatively(
+            'add_chat_comment',
+            { chatTitle: 'Growth log', comment: 'Discovery run checked.', createIfMissing: true },
+            'project-1',
+            null,
+            'user-1',
+            null,
+            { sourceChannel: 'mcp', mcpClient: 'Claude' }
+        )
+
+        const writes = mockDocSet.mock.calls.map(([data]) => data)
+        expect(writes.find(data => data.commentText === 'Discovery run checked.')).toMatchObject({
+            creatorId: 'user-1',
+            fromAssistant: false,
+            via: 'mcp',
+            viaClient: 'Claude',
+        })
+        expect(writes.find(data => data.chatType === 'topics')).toMatchObject({
+            creatorId: 'user-1',
+            creatorType: 'user',
+            via: 'mcp',
+        })
+        // No assistant wrote it, so the MyDay "last assistant comment" pointers stay where they are.
+        const pointerUpdates = mockDocUpdate.mock.calls.filter(([data]) =>
+            Object.keys(data || {}).some(key => key.startsWith('lastAssistantCommentData'))
+        )
+        expect(pointerUpdates).toHaveLength(0)
+    })
+
     test('adds a comment to a newly created topic chat', async () => {
         ProjectService.mockImplementationOnce(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),

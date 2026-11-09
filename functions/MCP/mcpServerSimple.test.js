@@ -298,14 +298,42 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         expect(tool.inputSchema.properties.radius.type).toBe('number')
     })
 
-    test('does not expose assistant/thread-only tools over MCP', async () => {
+    test('keeps the one-sided tools listed in CLAUDE.md off MCP', async () => {
         const names = (await listTools()).map(tool => tool.name)
-        expect(names).not.toContain('execute_task_in_vm')
+        // One-sided on purpose, or not at parity yet (CLAUDE.md, "MCP and assistant tools offer the
+        // same features"). Remove a name here when it reaches MCP.
         expect(names).not.toContain('talk_to_assistant')
         expect(names).not.toContain('compact_thread_context')
-        expect(names).not.toContain('load_skill')
         expect(names).not.toContain('update_assistant_settings')
-        expect(names).not.toContain('update_project_description')
+    })
+
+    test('serves the assistant tools that work without an assistant, on the same schemas', async () => {
+        const tools = await listTools()
+        const byName = Object.fromEntries(tools.map(tool => [tool.name, tool]))
+        for (const name of [
+            'fetch_url',
+            'find_profile_photo',
+            'get_weather',
+            'add_chat_comment',
+            'correct_email_classification',
+            'update_project_description',
+            'update_user_description',
+            'update_heartbeat_settings',
+            'execute_task_in_vm',
+            'get_vm_job',
+            'load_skill',
+            'add_knowledge_document',
+            'remove_knowledge_document',
+            'ask_assistant',
+            'create_assistant_task',
+            'get_assistant_tasks',
+            'update_assistant_task',
+        ]) {
+            expect(byName[name]).toBeDefined()
+        }
+        // An MCP client has no current project or assistant: the descriptions say so.
+        expect(byName.update_project_description.description).toMatch(/Over MCP there is no current project/)
+        expect(byName.add_chat_comment.description).toMatch(/written in your name/)
     })
 })
 
@@ -328,6 +356,7 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
         server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue('user-1')
         server.checkRateLimits = jest.fn().mockResolvedValue({ allowed: true })
         server.getUserProjectList = jest.fn().mockResolvedValue([{ id: 'project-2', name: 'Project 2' }])
+        server.assertProjectMembership = jest.fn().mockResolvedValue()
         // Stub the runtime-context builder so the routing test does not need the
         // full user-doc / timezone plumbing.
         server.buildDelegatedToolRuntimeContext = jest.fn().mockResolvedValue({
@@ -474,6 +503,180 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
         expect(response.result.isError).toBe(true)
         expect(JSON.parse(response.result.content[0].text).error).toMatch(/projectId/)
         expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+    })
+
+    test('changes a project description only for a project the client named', async () => {
+        const server = buildServer()
+        server.getUserDefaultProject = jest.fn().mockResolvedValue({ id: 'default-project' })
+
+        const refused = await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 8,
+                method: 'tools/call',
+                params: { name: 'update_project_description', arguments: { description: 'New profile.' } },
+            },
+            {}
+        )
+        expect(refused.result.isError).toBe(true)
+        expect(JSON.parse(refused.result.content[0].text).error).toMatch(/projectId/)
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+
+        mockExecuteToolNatively.mockResolvedValue({ success: true })
+        await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 9,
+                method: 'tools/call',
+                params: {
+                    name: 'update_project_description',
+                    arguments: { projectId: 'project-2', description: 'New profile.' },
+                },
+            },
+            {}
+        )
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'update_project_description',
+            expect.objectContaining({ projectId: 'project-2' }),
+            'project-2',
+            null,
+            'user-1',
+            {},
+            expect.objectContaining({ sourceChannel: 'mcp' })
+        )
+    })
+
+    test("runs a VM job as the project's assistant, and refuses without one", async () => {
+        const server = buildServer()
+        server.getProjectAssistantId = jest.fn().mockResolvedValueOnce('growth-lead').mockResolvedValueOnce(null)
+        mockExecuteToolNatively.mockResolvedValue({ success: true, correlationId: 'job-1' })
+
+        await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 10,
+                method: 'tools/call',
+                params: {
+                    name: 'execute_task_in_vm',
+                    arguments: { projectId: 'project-2', objective: 'Check the deploy', task_type: 'research' },
+                },
+            },
+            {}
+        )
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'execute_task_in_vm',
+            expect.objectContaining({ objective: 'Check the deploy' }),
+            'project-2',
+            'growth-lead',
+            'user-1',
+            {},
+            expect.objectContaining({ sourceChannel: 'mcp' })
+        )
+
+        mockExecuteToolNatively.mockClear()
+        const refused = await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 11,
+                method: 'tools/call',
+                params: {
+                    name: 'execute_task_in_vm',
+                    arguments: { projectId: 'project-2', objective: 'x', task_type: 'research' },
+                },
+            },
+            {}
+        )
+        expect(refused.result.isError).toBe(true)
+        expect(JSON.parse(refused.result.content[0].text).error).toMatch(/no project assistant/)
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+    })
+
+    test("loads a skill of the project's assistant, or of the assistant the client names", async () => {
+        const server = buildServer()
+        server.getProjectAssistantId = jest.fn().mockResolvedValue('growth-lead')
+        mockExecuteToolNatively.mockResolvedValue({ success: true, skills: [] })
+
+        await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 14,
+                method: 'tools/call',
+                params: { name: 'load_skill', arguments: { projectId: 'project-2' } },
+            },
+            {}
+        )
+        expect(mockExecuteToolNatively).toHaveBeenLastCalledWith(
+            'load_skill',
+            expect.anything(),
+            'project-2',
+            'growth-lead',
+            'user-1',
+            {},
+            expect.anything()
+        )
+        await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 15,
+                method: 'tools/call',
+                params: {
+                    name: 'load_skill',
+                    arguments: { projectId: 'project-2', assistantId: 'researcher', name: 'x' },
+                },
+            },
+            {}
+        )
+        expect(mockExecuteToolNatively).toHaveBeenLastCalledWith(
+            'load_skill',
+            expect.objectContaining({ name: 'x' }),
+            'project-2',
+            'researcher',
+            'user-1',
+            {},
+            expect.anything()
+        )
+        expect(server.assertProjectMembership).toHaveBeenCalledWith('user-1', 'project-2')
+    })
+
+    test('changes heartbeat settings only for an assistant the client names', async () => {
+        const server = buildServer()
+        const refused = await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 12,
+                method: 'tools/call',
+                params: {
+                    name: 'update_heartbeat_settings',
+                    arguments: { projectId: 'project-2', intervalMinutes: 60 },
+                },
+            },
+            {}
+        )
+        expect(refused.result.isError).toBe(true)
+        expect(JSON.parse(refused.result.content[0].text).error).toMatch(/assistantId/)
+
+        mockExecuteToolNatively.mockResolvedValue({ success: true })
+        await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 13,
+                method: 'tools/call',
+                params: {
+                    name: 'update_heartbeat_settings',
+                    arguments: { projectId: 'project-2', assistantId: 'growth-lead', intervalMinutes: 60 },
+                },
+            },
+            {}
+        )
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'update_heartbeat_settings',
+            expect.objectContaining({ intervalMinutes: 60 }),
+            'project-2',
+            'growth-lead',
+            'user-1',
+            {},
+            expect.objectContaining({ sourceChannel: 'mcp' })
+        )
     })
 
     test('routes an MCP-only tool to its dedicated handler', async () => {
