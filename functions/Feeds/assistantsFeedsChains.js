@@ -17,11 +17,13 @@ async function createAssistantUpdatesChain(projectId, assistant, needCleanGlobal
     await createAssistantCreatedFeed(projectId, assistant, assistant.uid, batch, feedCreator, needGenerateNotification)
 
     if (assistant.description.trim() !== '') {
+        // Server argument order: (projectId, assistantId, oldDescription, newDescription, ...). This
+        // call used the web helper's order and wrote under an empty assistant id.
         await createAssistantDescriptionChangedFeed(
             projectId,
+            assistant.uid,
             '',
             assistant.description,
-            assistant.uid,
             batch,
             feedCreator,
             needGenerateNotification

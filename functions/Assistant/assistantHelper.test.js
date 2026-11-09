@@ -38,6 +38,13 @@ jest.mock('../Goals/goalToolService', () => {
     }
 })
 jest.mock('../Goals/goalToolFeeds', () => ({ buildGoalToolFeeds: jest.fn(() => ({ marker: 'feeds' })) }))
+// Updates entries for assistant and project changes (Feeds/workspaceChangeFeeds.js) have their own
+// suite; here they are recorded so the doc-read sequences the settings tests set up stay intact.
+jest.mock('../Feeds/workspaceChangeFeeds', () => ({
+    writeAssistantChangeFeeds: jest.fn(async () => true),
+    writeAssistantHeartbeatFeed: jest.fn(async () => true),
+    writeProjectAssistantChangedFeed: jest.fn(async () => true),
+}))
 const mockAddObjectComment = jest.fn()
 jest.mock('../shared/objectCommentService', () => ({
     ObjectCommentService: jest
@@ -7057,6 +7064,15 @@ describe('assistant heartbeat settings tool', () => {
             heartbeatPrompt: 'New prompt for heartbeat',
             heartbeatPromptHistoryLength: 10,
         })
+        const { writeAssistantHeartbeatFeed } = require('../Feeds/workspaceChangeFeeds')
+        expect(writeAssistantHeartbeatFeed).toHaveBeenCalledWith(
+            expect.objectContaining({
+                assistantId: 'assistant-1',
+                changes: result.updatedFields,
+                userId: 'user-1',
+                getFeedUser: expect.any(Function),
+            })
+        )
         expect(result.heartbeatSettings).toMatchObject({
             intervalMinutes: 15,
             chancePercent: 100,
@@ -7255,6 +7271,18 @@ describe('assistant settings prompt history', () => {
             )
             expect(mockTransactionUpdate.mock.calls[0][1]).not.toHaveProperty('instructions')
             expect(result).toMatchObject({ success: true, updatedFields: ['photo'], photoUrl: url })
+            // The same Updates entries MCP's update_assistant writes, computed from before and after.
+            const { writeAssistantChangeFeeds } = require('../Feeds/workspaceChangeFeeds')
+            expect(writeAssistantChangeFeeds).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'default-project',
+                    assistantId: 'assistant-1',
+                    before: expect.objectContaining({ instructions: 'Same' }),
+                    after: expect.objectContaining({ photoURL: url, photoURL50: url }),
+                    userId: 'user-1',
+                    getFeedUser: expect.any(Function),
+                })
+            )
         } finally {
             download.mockRestore()
             store.mockRestore()

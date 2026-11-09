@@ -105,6 +105,17 @@ const baseDb = (extra = {}) =>
         ...extra,
     })
 
+// Updates entries (Feeds/workspaceChangeFeeds.js) are recorded here; the module has its own suite.
+const feeds = {
+    writeProjectCreatedFeed: jest.fn(async () => true),
+    writeContactStatusesAddedFeed: jest.fn(async () => true),
+    writeAssistantCreatedFeeds: jest.fn(async () => true),
+    writeAssistantChangeFeeds: jest.fn(async () => true),
+    writeProjectAssistantChangedFeed: jest.fn(async () => true),
+    writeAssistantTaskFeed: jest.fn(async () => true),
+}
+beforeEach(() => Object.values(feeds).forEach(fn => fn.mockClear()))
+
 const run = (db, tool, args, userId = USER) =>
     executeWorkspaceSetupTool(
         tool,
@@ -114,6 +125,7 @@ const run = (db, tool, args, userId = USER) =>
         {
             db,
             now: () => NOW,
+            feeds,
         }
     )
 
@@ -674,6 +686,120 @@ describe('MCP workspace setup tools', () => {
         })
     })
 
+    describe('Updates entries (decision 2026-11-09: every MCP change shows in Updates)', () => {
+        const mcpContext = expect.objectContaining({ mcpClient: 'Claude' })
+
+        it('create_project writes "created project" once the project exists', async () => {
+            const db = baseDb()
+            const result = await run(db, 'create_project', { name: 'Launch', description: 'Ship it' })
+            expect(feeds.writeProjectCreatedFeed).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: result.projectId,
+                    project: expect.objectContaining({ name: 'Launch', id: result.projectId }),
+                    userId: USER,
+                    context: mcpContext,
+                })
+            )
+            expect(db.docs.has(`projects/${result.projectId}`)).toBe(true)
+        })
+
+        it('add_contact_statuses writes the names it added, and nothing when nothing was new', async () => {
+            const db = baseDb()
+            await run(db, 'add_contact_statuses', {
+                projectId: 'p-existing',
+                statuses: [{ name: 'Lead' }, { name: 'Customer' }],
+            })
+            expect(feeds.writeContactStatusesAddedFeed).toHaveBeenLastCalledWith(
+                expect.objectContaining({ projectId: 'p-existing', statusNames: ['Lead', 'Customer'] })
+            )
+            await run(db, 'add_contact_statuses', { projectId: 'p-existing', statuses: [{ name: 'Lead' }] })
+            expect(feeds.writeContactStatusesAddedFeed).toHaveBeenLastCalledWith(
+                expect.objectContaining({ statusNames: [] })
+            )
+        })
+
+        it('create_assistant writes "created assistant" and, as project assistant, the project entry', async () => {
+            const db = baseDb()
+            const result = await run(db, 'create_assistant', {
+                projectId: 'p-existing',
+                name: 'Growth Lead',
+                instructions: 'Find customers',
+                projectAssistant: true,
+            })
+            expect(feeds.writeAssistantCreatedFeeds).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'p-existing',
+                    assistantId: result.assistantId,
+                    assistant: expect.objectContaining({ displayName: 'Growth Lead', uid: result.assistantId }),
+                })
+            )
+            expect(feeds.writeProjectAssistantChangedFeed).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'p-existing', assistantName: 'Growth Lead' })
+            )
+        })
+
+        it('update_assistant hands the assistant before and after the change to the feed layer', async () => {
+            const db = baseDb({
+                'assistants/p-existing/items/a1': {
+                    displayName: 'Growth Lead',
+                    instructions: 'Old',
+                    model: 'MODEL_GPT6_SOL',
+                    allowedTools: ['web_search'],
+                },
+            })
+            await run(db, 'update_assistant', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                name: 'Growth Captain',
+                addTools: ['artifacts'],
+            })
+            expect(feeds.writeAssistantChangeFeeds).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'p-existing',
+                    assistantId: 'a1',
+                    before: expect.objectContaining({ displayName: 'Growth Lead', allowedTools: ['web_search'] }),
+                    after: expect.objectContaining({
+                        displayName: 'Growth Captain',
+                        allowedTools: ['web_search', 'artifacts'],
+                    }),
+                    context: mcpContext,
+                })
+            )
+            expect(feeds.writeProjectAssistantChangedFeed).not.toHaveBeenCalled()
+        })
+
+        it('scheduled tasks: an entry for a new task and for a change, none for a no-op', async () => {
+            const db = baseDb({ 'assistants/p-existing/items/a1': { displayName: 'Growth Lead' } })
+            const created = await run(db, 'create_assistant_task', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                name: 'Daily discovery',
+                prompt: 'Find leads',
+                recurrence: 'daily',
+            })
+            expect(feeds.writeAssistantTaskFeed).toHaveBeenLastCalledWith(
+                expect.objectContaining({ kind: 'created', taskName: 'Daily discovery', assistantId: 'a1' })
+            )
+            await run(db, 'update_assistant_task', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                taskId: created.taskId,
+                prompt: 'Find better leads',
+            })
+            expect(feeds.writeAssistantTaskFeed).toHaveBeenLastCalledWith(
+                expect.objectContaining({ kind: 'changed', taskName: 'Daily discovery', changes: ['prompt'] })
+            )
+            const calls = feeds.writeAssistantTaskFeed.mock.calls.length
+            await run(db, 'update_assistant_task', {
+                projectId: 'p-existing',
+                assistantId: 'a1',
+                taskId: created.taskId,
+                prompt: 'Find better leads',
+            })
+            expect(feeds.writeAssistantTaskFeed.mock.calls.length).toBe(calls)
+        })
+    })
+
     describe('assistant pictures', () => {
         const ASSISTANT_PATH = 'assistants/p-existing/items/a1'
         const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)])
@@ -690,7 +816,7 @@ describe('MCP workspace setup tools', () => {
                 USER,
                 args,
                 { mcpClient: 'Claude', baseUrl: 'https://my.alldone.app' },
-                { db, now: () => NOW, photo }
+                { db, now: () => NOW, photo, feeds }
             )
         const withAssistant = (assistant = {}, extra = {}) =>
             baseDb({
