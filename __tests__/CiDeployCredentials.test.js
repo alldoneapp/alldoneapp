@@ -47,8 +47,6 @@ describe('Firebase deploy credentials per environment', () => {
                 'deploy:firestore:rules:production',
                 'deploy:web',
                 'deploy:web-dev',
-                'deploy:web-staging-live',
-                'deploy:web-webpack-preview',
             ].sort()
         )
     })
@@ -92,6 +90,29 @@ describe('Firebase deploy credentials per environment', () => {
             expect(`${name}: ${/service_accounts\/\S*\.json/.test(text(job))}`).toBe(`${name}: false`)
         }
         expect(onlyOnDefaultBranch(CI_CONFIG['deploy:cloud:runner:production'])).toBe(true)
+    })
+
+    it('reads the staging secrets only in develop pipelines', () => {
+        // The staging secrets are protected like production's (2026-11-09): GitLab hands a
+        // protected variable only to protected branches, so a job that needs one anywhere
+        // else would fail. Staging is deployed from develop and nowhere else.
+        const STAGING_SECRET =
+            /useFirebaseDeployCredentials\.sh staging|GOOGLE_FUNCTIONS_ENV_DEV|GOOGLE_SERVICE_ACCOUNT_DEVELOP/
+        const users = jobs().filter(([, job]) => STAGING_SECRET.test(text(job)))
+        expect(users.map(([name]) => name).sort()).toEqual(
+            [
+                'check:firestore:indexes:staging',
+                'deploy:cloud:functions:staging',
+                'deploy:cloud:runner:staging',
+                'deploy:web-dev',
+            ].sort()
+        )
+        for (const [name, job] of users) {
+            const conditions = (job.rules || []).map(rule => String(rule.if || '').trim())
+            expect(
+                `${name}: ${conditions.length > 0 && conditions.every(c => c === '$CI_COMMIT_BRANCH == "develop"')}`
+            ).toBe(`${name}: true`)
+        }
     })
 
     it('records the production functions and runner deploys against the production environment', () => {
