@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { View } from 'react-native'
 import { useSelector, useDispatch, shallowEqual } from 'react-redux'
 
@@ -14,6 +14,7 @@ import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonConta
 import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
 import TaskListSkeleton from '../TaskListSkeleton'
+import { useIsUserEditing } from '../../../utils/editingGuard'
 
 export default function OpenTasksByDate({
     projectId,
@@ -62,8 +63,15 @@ export default function OpenTasksByDate({
     )
     const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
     const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
-    const showFallbackSkeleton =
+    const liveFallbackSkeleton =
         !singleTaskIsLoading && initialTaskDataIsLoading && amountTasks === 0 && emptyGoalsAmount === 0
+    // AT-3010: the ghosts REPLACE the sections, and with them any inline add-task editor open in
+    // there. Once the real sections are on screen, keep them while the user is typing; the ghosts
+    // may come back only when editing ends. See utils/editingGuard.js.
+    const isUserEditing = useIsUserEditing()
+    const sectionsShownRef = useRef(!liveFallbackSkeleton)
+    if (!isUserEditing) sectionsShownRef.current = !liveFallbackSkeleton
+    const showFallbackSkeleton = liveFallbackSkeleton && !(isUserEditing && sectionsShownRef.current)
 
     const openTasksShowMoreData = useSelector(state => state.openTasksShowMoreData[projectId])
     const hasFutureTasks = openTasksShowMoreData?.hasFutureTasks

@@ -16,6 +16,7 @@ import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
 import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
 import InlineAddTaskFileDrop from '../InlineAddTaskFileDrop'
+import { getInlineAddTaskLineKey, useReopenInlineAddTaskAfterRebuild } from './inlineAddTaskReopen'
 
 function AddTaskEditor(props) {
     const taskEditorLock = useTaskEditorLock()
@@ -50,6 +51,12 @@ export default function NewTaskSection({
 
     const dateIsToday = dateFormated === TODAY_DATE
     const date = dateIsToday ? moment() : moment(dateFormated, 'YYYYMMDD')
+
+    // AT-3010: reopen this line if the board rebuilt its parent while the editor was open.
+    const onEditorToggle = useReopenInlineAddTaskAfterRebuild(
+        getInlineAddTaskLineKey(projectId, originalParentGoal?.id, dateFormated),
+        newItemRef
+    )
 
     const onKeyDown = e => {
         if (store.getState().blockShortcuts || isLocked || suspendShortcut) {
@@ -141,6 +148,7 @@ export default function NewTaskSection({
             >
                 <DismissibleItem
                     ref={newItemRef}
+                    onToggleModal={onEditorToggle}
                     defaultComponent={
                         !hideItemFutureTasks && (
                             <AddTask
