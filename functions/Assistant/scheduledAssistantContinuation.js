@@ -12,9 +12,39 @@ function hasActiveAttempt(execution, now = Date.now()) {
     return execution?.status === 'in_progress' && (!execution.leaseExpiresAt || execution.leaseExpiresAt > now)
 }
 
+function readLastExecuted(task, userId) {
+    return task?.lastExecutedByUser?.[userId] ?? task?.lastExecuted ?? null
+}
+
+// The scan queues an occurrence by moving lastExecuted forward, so the next five-minute scan does
+// not queue it again. It does so only if lastExecuted is still what the scan read: two overlapping
+// scans (a Cloud Scheduler redelivery) cannot both queue the same occurrence. Returns the value it
+// wrote, which the run's claim must then expect; null when another scan got there first.
+async function reserveScheduledOccurrence({ taskRef, userId, task, now = Date.now() }) {
+    return taskRef.firestore.runTransaction(async transaction => {
+        const snapshot = await transaction.get(taskRef)
+        if (!snapshot.exists) return null
+        if (readLastExecuted(snapshot.data(), userId) !== readLastExecuted(task, userId)) return null
+        transaction.update(taskRef, { lastExecuted: now, [`lastExecutedByUser.${userId}`]: now })
+        return now
+    })
+}
+
 // Reserve the thread ID before creating its documents. Duplicate scheduler deliveries
 // cannot execute the same occurrence, and a crashed attempt can reclaim the same thread.
-async function claimScheduledPromptAttempt({ taskRef, userId, task, executionProjectId, newTaskId, now = Date.now() }) {
+//
+// expectedLastExecuted is the value reserveScheduledOccurrence wrote. Without it the claim compares
+// against the scanned snapshot, which the scan's own reservation has already moved on from, so every
+// queued run refused itself and returned without a trace (2026-11-10, "Daily growth discovery").
+async function claimScheduledPromptAttempt({
+    taskRef,
+    userId,
+    task,
+    executionProjectId,
+    newTaskId,
+    expectedLastExecuted,
+    now = Date.now(),
+}) {
     return taskRef.firestore.runTransaction(async transaction => {
         const snapshot = await transaction.get(taskRef)
         if (!snapshot.exists) return null
@@ -23,9 +53,8 @@ async function claimScheduledPromptAttempt({ taskRef, userId, task, executionPro
             return null
         const previous = current.executionByUser?.[userId] || {}
         if (hasActiveAttempt(previous, now)) return null
-        const lastExecuted = current.lastExecutedByUser?.[userId] ?? current.lastExecuted ?? null
-        const expectedLastExecuted = task.lastExecutedByUser?.[userId] ?? task.lastExecuted ?? null
-        if (lastExecuted !== expectedLastExecuted) return null
+        const expected = expectedLastExecuted !== undefined ? expectedLastExecuted : readLastExecuted(task, userId)
+        if (readLastExecuted(current, userId) !== expected) return null
         const promptHash = scheduledPromptHash(task, executionProjectId)
         const resume =
             ['failed', 'in_progress'].includes(previous.status) &&
@@ -86,6 +115,7 @@ async function updateScheduledAttempt(taskRef, userId, attempt, update) {
 module.exports = {
     scheduledPromptHash,
     hasActiveAttempt,
+    reserveScheduledOccurrence,
     claimScheduledPromptAttempt,
     failedScheduledAttempt,
     updateScheduledAttempt,

@@ -1,5 +1,6 @@
 const {
     hasActiveAttempt,
+    reserveScheduledOccurrence,
     claimScheduledPromptAttempt,
     failedScheduledAttempt,
     updateScheduledAttempt,
@@ -780,7 +781,10 @@ async function ensureTaskChatExists(
     }
 }
 
-async function executeAssistantTask(projectId, assistantId, task, userDataCache = null) {
+// options.reservedLastExecuted: the lastExecuted value the scan wrote when it queued this run
+// (reserveScheduledOccurrence). `task` stays the scanned snapshot, whose lastExecuted a failed run
+// restores so the next scan retries it.
+async function executeAssistantTask(projectId, assistantId, task, userDataCache = null, options = {}) {
     // Identify the activator (the person who scheduled this recurring task)
     // This is the person who should pay gold, receive notifications, and whose timezone should be used
     const activatorUserId = task.activatorUserId || task.creatorUserId
@@ -901,8 +905,17 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 task,
                 executionProjectId,
                 newTaskId: getId(),
+                expectedLastExecuted: options.reservedLastExecuted,
             })
-            if (!scheduledAttempt) return
+            if (!scheduledAttempt) {
+                console.log('Scheduled assistant task already claimed or changed since the scan; skipping:', {
+                    assistantProjectId: projectId,
+                    assistantId,
+                    taskId: task.id,
+                    activatorUserId,
+                })
+                return
+            }
         }
         if (!scheduledAttempt)
             await taskDocRef.update({
@@ -1326,8 +1339,10 @@ async function executeBatch(tasksToExecute, concurrency = 20, userDataCache = nu
 
         const batchStartTime = Date.now()
         const batchResults = await Promise.allSettled(
-            batch.map(({ projectId, assistantId, task, activatorUserId }) =>
-                executeAssistantTask(projectId, assistantId, { ...task, activatorUserId }, userDataCache)
+            batch.map(({ projectId, assistantId, task, activatorUserId, reservedLastExecuted }) =>
+                executeAssistantTask(projectId, assistantId, { ...task, activatorUserId }, userDataCache, {
+                    reservedLastExecuted,
+                })
             )
         )
 
@@ -1579,25 +1594,22 @@ async function checkAndExecuteRecurringTasks() {
                                 activatedUserId,
                             })
 
-                            // CRITICAL: Update lastExecuted for this user immediately to prevent re-queueing
+                            // CRITICAL: Move lastExecuted for this user forward now so the next scan
+                            // does not queue this occurrence again. The run's claim expects exactly
+                            // the value written here (see reserveScheduledOccurrence).
                             const taskDocRef = admin
                                 .firestore()
                                 .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
 
+                            let reservedLastExecuted = null
                             try {
-                                await taskDocRef.update({
-                                    lastExecuted: Date.now(),
-                                    [`lastExecutedByUser.${activatedUserId}`]: Date.now(),
-                                })
-                                console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
-                                    projectId,
-                                    assistantId,
-                                    taskId: task.id,
-                                    taskName: task.name,
-                                    activatedUserId,
+                                reservedLastExecuted = await reserveScheduledOccurrence({
+                                    taskRef: taskDocRef,
+                                    userId: activatedUserId,
+                                    task,
                                 })
                             } catch (error) {
-                                console.error('Failed to pre-emptively update lastExecuted:', {
+                                console.error('Failed to reserve recurring task occurrence:', {
                                     error: error.message,
                                     projectId,
                                     assistantId,
@@ -1605,8 +1617,33 @@ async function checkAndExecuteRecurringTasks() {
                                     activatedUserId,
                                 })
                             }
+                            if (reservedLastExecuted === null) {
+                                // Another scan queued it, or the write failed and the next scan retries.
+                                console.log('Recurring task occurrence not reserved; not queueing:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    activatedUserId,
+                                })
+                                continue
+                            }
+                            console.log('Reserved recurring task occurrence:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                                activatedUserId,
+                                reservedLastExecuted,
+                            })
 
-                            tasksToExecute.push({ projectId, assistantId, task, activatorUserId: activatedUserId })
+                            tasksToExecute.push({
+                                projectId,
+                                assistantId,
+                                task,
+                                activatorUserId: activatedUserId,
+                                reservedLastExecuted,
+                            })
                         } else {
                             console.log('Recurring task not ready for execution at this run:', {
                                 projectId,

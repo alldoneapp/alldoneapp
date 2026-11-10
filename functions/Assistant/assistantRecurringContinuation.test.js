@@ -106,3 +106,75 @@ test('the real scheduler refuses false success at 6/13, resumes the same thread,
     expect(mockCreateTask).toHaveBeenCalledTimes(2)
     expect(mockDocuments.get(taskPath).lastGeneratedTaskId).toBe('run-3')
 })
+
+describe('the scan reserves an occurrence and the run claims what the scan wrote (2026-11-10)', () => {
+    const { reserveScheduledOccurrence } = require('./scheduledAssistantContinuation')
+    const taskRef = mockDb.doc(taskPath)
+
+    beforeEach(() => {
+        mockDocuments.clear()
+        mockId = 0
+        mockGenerate.mockReset()
+        mockCreateTask.mockClear()
+        mockComplete.mockClear()
+        mockDocuments.set(taskPath, {
+            name: 'Daily growth discovery',
+            prompt: 'Daily discovery run',
+            executionMode: 'direct',
+            recurrence: 'everyWorkday',
+            startDate: Date.now() - 86400000,
+            startTime: '07:30',
+            activatorUserId: 'user',
+            lastExecuted: null,
+        })
+        mockDocuments.set('users/user', { uid: 'user', gold: 1000, timezone: 1, displayName: 'User' })
+    })
+
+    test('a queued run executes after the scan moved lastExecuted forward', async () => {
+        // The scan reads first, then reserves; the run gets the snapshot it read.
+        const scanned = currentTask()
+        const reservedLastExecuted = await reserveScheduledOccurrence({ taskRef, userId: 'user', task: scanned })
+        expect(reservedLastExecuted).toEqual(expect.any(Number))
+        expect(mockDocuments.get(taskPath).lastExecutedByUser.user).toBe(reservedLastExecuted)
+
+        mockGenerate.mockResolvedValueOnce({ success: true })
+        await executeAssistantTask('project', 'assistant', scanned, null, { reservedLastExecuted })
+
+        expect(mockGenerate).toHaveBeenCalledTimes(1)
+        expect(mockCreateTask).toHaveBeenCalledTimes(1)
+        expect(mockDocuments.get(taskPath).executionStatus).toBe('succeeded')
+    })
+
+    test('without the reserved value the claim refuses, which is what skipped every run', async () => {
+        const scanned = currentTask()
+        await reserveScheduledOccurrence({ taskRef, userId: 'user', task: scanned })
+
+        await executeAssistantTask('project', 'assistant', scanned)
+
+        expect(mockGenerate).not.toHaveBeenCalled()
+        expect(mockCreateTask).not.toHaveBeenCalled()
+    })
+
+    test('two overlapping scans queue the occurrence once', async () => {
+        const scanA = currentTask()
+        const scanB = currentTask()
+        const reservedA = await reserveScheduledOccurrence({ taskRef, userId: 'user', task: scanA, now: 1000 })
+        const reservedB = await reserveScheduledOccurrence({ taskRef, userId: 'user', task: scanB, now: 2000 })
+        expect(reservedA).toBe(1000)
+        expect(reservedB).toBeNull()
+    })
+
+    test('a failed run restores the scanned lastExecuted so the next scan retries it', async () => {
+        const scanned = currentTask()
+        const reservedLastExecuted = await reserveScheduledOccurrence({ taskRef, userId: 'user', task: scanned })
+        mockGenerate.mockResolvedValueOnce({ success: false })
+
+        await expect(
+            executeAssistantTask('project', 'assistant', scanned, null, { reservedLastExecuted })
+        ).rejects.toThrow()
+
+        const stored = mockDocuments.get(taskPath)
+        expect(stored.executionByUser.user).toMatchObject({ status: 'failed' })
+        expect(stored.lastExecuted).not.toBe(reservedLastExecuted)
+    })
+})

@@ -196,3 +196,22 @@ Documents written while it was live may still carry `approvedContentHashByUser` 
 - Cloud Tasks IAM must be granted to the **firebase-adminsdk SA** after deploying `runAssistantHeartbeat`. Run `functions/Assistant/grant-heartbeat-task-worker.sh <projectId>`; it grants project-level enqueue, self `actAs`, and `run.invoker` on the worker.
 - Rollback requires pausing or purging the `runassistantheartbeat` task queue before restoring the legacy scanner. Legacy assistant heartbeat status maps are intentionally retained.
 - **A heartbeat runs as a member only after that member confirmed it (security audit NV-17).** A heartbeat runs unattended with the member's identity, Gold and connected accounts (`search_gmail` reads their mailbox), while its prompt, tools and instructions sit on the shared assistant document that every member may edit. `functions/Assistant/heartbeatOptIn.js` therefore requires `users/{uid}.heartbeatOptIns["<projectId>__<assistantId>"].configHash` to equal the hash of the assistant's current heartbeat prompt, `allowedTools`, `instructions` and `mcpServers`. Chance, interval, awake window, model and WhatsApp delivery are not hashed. `buildHeartbeatScheduleData`, the worker and the legacy scanner all check it, so any other member's change to one of those fields stops the heartbeat for everyone who confirmed the old version. Members confirm, re-confirm or revoke through the `assistantHeartbeatOptIn` callable (row "Run heartbeat for me" in the heartbeat settings; the client never computes the hash). The client calls `refresh` after the member's own edit to instructions, heartbeat prompt or tools, which re-confirms only for a member who had already confirmed. The server confirms for a project's **only** member at the moments nobody else can have written the configuration: assistant created, hashed field changed, project created (`confirmHeartbeatsForSoleMember`, before the schedule sync). Being alone is not trust in itself: someone who changes the prompt and then leaves must not have it run as the member left behind. MCP-server changes made through the server-side connect flow need a fresh confirmation in shared projects. A heartbeat topic (`Heartbeat<date><uid>`) is now `isPublicFor: [uid]`, and an existing project-visible one is made private on reuse. The WhatsApp daily topic stays project-visible by design. One-time migration: `node migration/confirmAssistantHeartbeats.js --firebase-project-id=<project>` (dry run; `--execute`). Run it right before and again right after the functions deploy. The default `--scope=owner` confirms the only member of a one-member project and the assistant's `creatorId` in shared projects; `--scope=all` keeps today's fan-out.
+
+## A scheduled run claims the lastExecuted the scan wrote, not the one it read (2026-11-10)
+
+`checkAndExecuteRecurringTasks` moves `lastExecuted`/`lastExecutedByUser[uid]` forward the moment it
+queues an occurrence, so the next five-minute scan does not queue it again. Since `e2cfa030fd`
+(2026-09-27) the direct-mode run then calls `claimScheduledPromptAttempt`, which refuses when the
+stored `lastExecuted` differs from the task it was handed — and it was handed the snapshot the scan
+read **before** its own write. Every direct-mode scheduled prompt (all MCP-created ones, and workflow
+tasks whose assistant has no workflow step) therefore refused itself and returned with no error, no
+Gold and no task. The only trace was a `lastRun` a few seconds after a scheduler tick instead of the
+finish time. Found when the Growth Lead's "Daily growth discovery" never ran.
+
+The scan now reserves the occurrence through `reserveScheduledOccurrence` (a transaction that writes
+only if `lastExecuted` is still what the scan read, so two overlapping scans queue it once), and the
+reserved value travels to the claim as `expectedLastExecuted`. The run keeps the scanned snapshot,
+because a failed run restores its `lastExecuted` so the next scan retries. Pinned by the
+`the scan reserves an occurrence and the run claims what the scan wrote` block of
+`functions/Assistant/assistantRecurringContinuation.test.js`; the earlier integration test called
+`executeAssistantTask` directly, skipping the scan's write, which is why it stayed green.
