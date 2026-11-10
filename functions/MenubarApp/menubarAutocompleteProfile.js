@@ -22,8 +22,6 @@ const PROFILE_ITEM_MAX_CHARS = 200
 // The description gets the first share of the budget; memory facts fill the rest.
 const PROFILE_DESCRIPTION_BUDGET_CHARS = 300
 
-const LANGUAGE_NAMES = { en: 'English', de: 'German', es: 'Spanish' }
-
 const SENSITIVE_PATTERNS = [
     // Email addresses
     /[^\s@]+@[^\s@]+\.[^\s@]+/,
@@ -169,8 +167,8 @@ function buildAutocompleteProfile({
     const company = cleanField(projectUserData.company) || cleanField(userData.company)
     const headline = buildHeadline({ name, role, company })
 
-    const languageName = LANGUAGE_NAMES[String(userData.language || '').toLowerCase()]
-    const headItems = [headline, languageName ? `Writes in ${languageName}.` : ''].filter(Boolean)
+    // No "Writes in <language>" line: the app language says little about what someone types,
+    // and many users switch languages all the time. The model reads the language from the text.
 
     const descriptionItems = [
         ...splitDescription(pickDescription(userData)),
@@ -192,8 +190,7 @@ function buildAutocompleteProfile({
         return true
     }
 
-    headItems.forEach(item => tryAdd(item, maxChars))
-    if (!parts.length) return truncateOnWordBoundary(name, maxChars)
+    if (!tryAdd(headline, maxChars)) return truncateOnWordBoundary(name, maxChars)
 
     const descriptionLimit = Math.min(maxChars, length + PROFILE_DESCRIPTION_BUDGET_CHARS)
     const leftoverDescription = descriptionItems.filter(item => !tryAdd(item, descriptionLimit))

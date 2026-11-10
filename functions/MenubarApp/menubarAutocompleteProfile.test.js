@@ -130,7 +130,7 @@ describe('POST /api/menubar/autocomplete-profile', () => {
         expect(res.body).toEqual({
             success: true,
             profile:
-                'Karsten Wysk, CEO at Alldone. Writes in German. Works with Anna Berger and Tom Kühn on the Mac app. ' +
+                'Karsten Wysk, CEO at Alldone. Works with Anna Berger and Tom Kühn on the Mac app. ' +
                 'Lives in Berlin. Main customer is Bäckerei Schmidt in Potsdam.',
         })
     })
@@ -150,6 +150,8 @@ describe('POST /api/menubar/autocomplete-profile', () => {
         expect(profile).not.toContain('1234567')
         expect(profile).not.toContain(token)
         expect(profile).not.toContain('900')
+        // The app language says nothing about what is typed; many users switch all the time.
+        expect(profile).not.toMatch(/writes in|german/i)
     })
 
     test('ignores the default project and its memory once the user has left it', async () => {
@@ -187,7 +189,7 @@ describe('buildAutocompleteProfile', () => {
         // The description leads, and the newest memory facts still get a share of the budget.
         // Heading lines carry no fact and are dropped.
         expect(profile).not.toContain('Fact 0')
-        expect(profile.startsWith('Karsten Wysk. Writes in English. Colleague number 0 is called Person0.')).toBe(true)
+        expect(profile.startsWith('Karsten Wysk. Colleague number 0 is called Person0.')).toBe(true)
         expect(profile).toContain('Customer 39 is Firma39.')
     })
 
