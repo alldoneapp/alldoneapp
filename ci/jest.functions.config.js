@@ -15,6 +15,12 @@
 
 const path = require('path')
 
+// Cloud Functions run in UTC, and `npm test` / CI pin TZ=UTC too. This config is usually
+// run directly with npx, which used to inherit the machine's zone: the AT-2803 recurrence
+// suites then failed on any non-UTC laptop with every time shifted by the local offset.
+// Set before Jest starts its workers, which inherit this environment.
+process.env.TZ = 'UTC'
+
 const baseConfig = require('../package.json').jest
 
 // Web-located suites that require functions/ code. The root config excludes them
