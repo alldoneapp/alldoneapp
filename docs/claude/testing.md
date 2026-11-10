@@ -32,6 +32,10 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   inside it. The guard drops an immediate whose environment is gone, the way jsdom drops its
   timers. A retry always passed, which is what made it look like a flaky test. Pinned by
   `__tests__/JestPolyfills.test.js`.
+- **Firestore rules suite** (`__tests__/Firestore/firestoreRules.emulator.test.js`) needs the
+  emulator, so every config ignores it except `ci/jest.firestoreRules.config.js`, which
+  `npm run test:firestore-rules` uses (it starts the emulator itself). Before 2026-11-10 the
+  root config still picked it up, and a plain `npm test` failed it with `fetch failed`.
 - **Functions suites**: `npx jest --config ci/jest.functions.config.js` (same Node 22).
   That config skips Babel for `functions/node_modules` (modern CJS runs natively) and
   resolves exports maps with the **node** conditions — under jsdom's default browser
