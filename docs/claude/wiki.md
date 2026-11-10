@@ -209,7 +209,9 @@ link to the wiki settings (`components/Feeds/FeedsObjects/wikiDayCost.js`): the 
 runs that worked during that local day, read from `knowledgeBases/{id}/runs` (members may read the
 tree) with one query per card and day. Per day and not per line, because one run rewrites many
 pages and a cost on every line would add up to many times what was spent; a running run counts
-as "still going" until it writes its total. Member corrections are not runs, since their model
+as "still going" until it writes its total. Each page row of the collapsed card leads with the time of that
+page's newest revision of the day (the one the row opens), formatted like every other feed line: local
+time, `getTimeFormatForDateFormat(state.dateFormat)` (AT-3006). Member corrections are not runs, since their model
 calls are billed to the chat they came from. Ids are derived from slug + revision, so a redelivered
 trigger rewrites the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
 (`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,

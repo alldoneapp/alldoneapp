@@ -1,12 +1,14 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
+let mockDateFormat = 'DD.MM.YYYY'
 jest.mock('react-redux', () => ({
     useSelector: selector =>
         selector({
             activeModalInFeed: false,
             isMiddleScreen: false,
             currentUser: { uid: 'u1' },
+            dateFormat: mockDateFormat,
         }),
 }))
 jest.mock('../../../utils/backends/Feeds/wikiDayFeeds', () => ({ watchWikiDayFeeds: jest.fn() }))
@@ -101,6 +103,7 @@ const expand = component =>
 
 beforeEach(() => {
     jest.clearAllMocks()
+    mockDateFormat = 'DD.MM.YYYY'
     clearWikiFeedPageTitles()
     clearWikiDayCosts()
     getKnowledgeRunsStartedBefore.mockResolvedValue([])
@@ -152,6 +155,46 @@ describe('the wiki in the Updates feed', () => {
             component.root.findAll(node => typeof node.type === 'string' && node.props['data-testid'] === id)
         expect(rows('wiki-feed-wiki_kunden_000002')).toHaveLength(1)
         expect(rows('wiki-feed-wiki_old_000003')).toHaveLength(1)
+    })
+
+    it('leads each page with the local time of its newest revision, in the user’s time format', async () => {
+        // Local dates, so the expected clock time holds in any timezone the tests run in.
+        const at = (hours, minutes) => new Date(2026, 9, 24, hours, minutes).getTime()
+        const feeds = [
+            feed('wiki_kunden_000002', {
+                wikiSlug: 'kunden',
+                wikiRevision: 2,
+                wikiChange: 'updated',
+                lastChangeDate: at(3, 12),
+            }),
+            feed('wiki_kunden_000003', {
+                creatorId: 'u2',
+                wikiSlug: 'kunden',
+                wikiRevision: 3,
+                wikiChange: 'corrected',
+                lastChangeDate: at(14, 5),
+            }),
+            feed('wiki_new_000001', {
+                wikiSlug: 'new',
+                wikiRevision: 1,
+                wikiChange: 'created',
+                lastChangeDate: at(3, 9),
+            }),
+        ]
+        const time = (component, slug) =>
+            textOf(component.root.findByProps({ testID: `wiki-digest-page-time-${slug}` }).children)
+
+        const component = await mount(feeds)
+        expect(time(component, 'kunden')).toBe('14:05')
+        expect(time(component, 'new')).toBe('03:09')
+        expect(textOf(component.root.findByProps({ testID: 'wiki-digest-page-kunden' }).children)).toMatch(
+            /^14:05Kunden/
+        )
+
+        mockDateFormat = 'MM.DD.YYYY'
+        const american = await mount(feeds)
+        expect(time(american, 'kunden')).toBe('02:05 pm')
+        expect(time(american, 'new')).toBe('03:09 am')
     })
 
     it('refreshes the digest in place and labels cached or failed day reads as partial', async () => {

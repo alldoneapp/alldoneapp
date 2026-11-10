@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import moment from 'moment'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -22,6 +23,7 @@ import useWikiFeedPageTitle from '../FeedsTypes/useWikiFeedPageTitle'
 import useWikiDayCost from './wikiDayCost'
 import { FOLLOWED_TAB } from '../Utils/FeedsConstants'
 import NewFeedDot from '../FollowSwitchableTag/NewFeedDot'
+import { getTimeFormatForDateFormat } from '../../../utils/dateTimeFormats'
 
 const PREVIEW_LIMIT = 3
 const COUNT_LABELS = {
@@ -63,9 +65,13 @@ function groupChanges(feeds) {
     )
 }
 
+// A page row leads with the time of its newest revision today (the one the row opens), in local
+// time and the user's time format, like every other line in the Updates feed.
 function WikiDigestPage({ page, projectId, disabled }) {
     const { slug, latest, status, memberEdit } = page
     const title = useWikiFeedPageTitle(projectId, slug, latest.revision)
+    const timeFormat = useSelector(state => getTimeFormatForDateFormat(state.dateFormat))
+    const changedAt = latest.feed.lastChangeDate
     return (
         <TouchableOpacity
             testID={`wiki-digest-page-${slug}`}
@@ -75,6 +81,11 @@ function WikiDigestPage({ page, projectId, disabled }) {
             disabled={disabled}
             onPress={() => openProjectWikiChange(projectId, slug, latest.revision)}
         >
+            {!!changedAt && (
+                <Text testID={`wiki-digest-page-time-${slug}`} style={localStyles.time}>
+                    {moment(changedAt).format(timeFormat)}
+                </Text>
+            )}
             <Text style={localStyles.pageTitle} numberOfLines={1}>
                 {title}
             </Text>
@@ -248,6 +259,10 @@ const localStyles = StyleSheet.create({
         flexWrap: 'wrap',
         gap: 8,
         paddingVertical: 4,
+    },
+    time: {
+        ...styles.body3,
+        color: colors.Text03,
     },
     pageTitle: {
         ...styles.body2,
