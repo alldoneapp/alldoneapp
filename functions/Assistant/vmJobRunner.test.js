@@ -1311,7 +1311,11 @@ describe('VM repo context binds the token to its validated repository (security 
                 vmGolden: { status: 'ready', snapshotId: 'team/attacker-built:1' },
             },
             githubToken: GITHUB_TOKEN_DOC,
-            golden: { status: 'ready', snapshotId: 'team/server-built:3' },
+            golden: {
+                status: 'ready',
+                snapshotId: 'team/server-built:3',
+                baseTemplate: require('./vmGolden').GOLDEN_BASE_TEMPLATE,
+            },
         })
         const ctx = await __private__.loadRepoContext({ projectId: 'p1', requestUserId: 'u1', correlationId: 'c1' })
         expect(require('./vmGolden').resolveGoldenTemplate({ vmGolden: ctx.vmGolden })).toBe('team/server-built:3')

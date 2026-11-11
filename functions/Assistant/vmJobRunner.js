@@ -12,6 +12,7 @@ const {
 } = require('./vmWorkflowHold')
 const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
 const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
+const { VM_AGENT_TEMPLATES, createAgentSandbox } = require('./vmTemplates')
 const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const {
@@ -2338,7 +2339,7 @@ const AGENT_CONFIGS = {
     claude: {
         label: 'Claude Code',
         displayName: 'Claude',
-        defaultTemplate: 'claude',
+        templates: VM_AGENT_TEMPLATES.claude,
         apiKeyField: 'ANTHROPIC_API_KEY',
         installGuard: buildClaudeInstallGuard,
         // On resume, `--continue` continues the most recent session in the working dir.
@@ -2364,7 +2365,7 @@ const AGENT_CONFIGS = {
     codex: {
         label: 'Codex',
         displayName: 'Codex',
-        defaultTemplate: 'codex',
+        templates: VM_AGENT_TEMPLATES.codex,
         apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
         installGuard: buildCodexInstallGuard,
         // On resume, `codex exec resume --last` continues the most recent thread.
@@ -3543,8 +3544,10 @@ async function runAgentInSandbox(
     // The key slot, which for an OpenRouter model is not the agent (AT-2230 BYOK).
     const credentialProvider = resolveJobCredentialProvider(vmJob)
     const credentialLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
-    // Always use E2B's managed prebuilt template for the selected agent.
-    const template = config.defaultTemplate
+    // Start from the agent's sized template (managed CLI image + 4 GB, see vmTemplates.js). A
+    // session is reused only when it was started from this template, so threads still parked on
+    // a smaller one move to the sized template on their next job.
+    const template = config.templates.sized
     vmJob.vmTemplate = template
     const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
     const sessionLeaseOwner = `${vmJob.correlationId}-${crypto.randomUUID()}`
@@ -3676,26 +3679,29 @@ async function runAgentInSandbox(
     if (!sandbox) {
         const createOpts = { apiKey: e2bApiKey, timeoutMs: E2B_SANDBOX_TIMEOUT_MS, allowInternetAccess: true }
         // Seed a repo-backed cold job from the project's golden snapshot (repo + node_modules +
-        // package-manager cache pre-baked) when one is ready; fall back to the bare managed
-        // template. The session sandbox is still recorded under `template`, so per-thread resume
-        // matching stays stable across golden rebuilds. Non-repo tasks always use the managed base.
+        // package-manager cache pre-baked) when one is ready; fall back to the agent's template.
+        // The session sandbox is still recorded under `template`, so per-thread resume matching
+        // stays stable across golden rebuilds. Non-repo tasks always start from the agent template.
         let goldenSnapshotId = null
         if (gitContext && gitContext.enabled) {
             goldenSnapshotId = require('./vmGolden').resolveGoldenTemplate({ vmGolden: gitContext.vmGolden })
         }
         const sandboxCreateStartedAt = Date.now()
         try {
-            const createTemplate = goldenSnapshotId || template
             console.log('🖥️ VM JOB: creating sandbox', {
                 correlationId: vmJob.correlationId,
                 agent: config.label,
-                template: createTemplate,
+                template: goldenSnapshotId || template,
                 fromGolden: !!goldenSnapshotId,
                 timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
             })
-            sandbox = createTemplate
-                ? await Sandbox.create(createTemplate, createOpts)
-                : await Sandbox.create(createOpts)
+            if (goldenSnapshotId) {
+                sandbox = await Sandbox.create(goldenSnapshotId, createOpts)
+            } else {
+                const created = await createAgentSandbox(Sandbox, config.templates, createOpts)
+                sandbox = created.sandbox
+                vmJob.vmTemplate = created.template
+            }
         } catch (error) {
             if (!goldenSnapshotId) throw error
             // The golden snapshot is unusable (deleted/expired/corrupt). Fall back to the managed
@@ -3715,7 +3721,9 @@ async function runAgentInSandbox(
                 })
                 .catch(() => {})
             goldenSnapshotId = null
-            sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+            const created = await createAgentSandbox(Sandbox, config.templates, createOpts)
+            sandbox = created.sandbox
+            vmJob.vmTemplate = created.template
         }
         // Record that a valid golden was actually seeded (drives the unused-TTL cleanup).
         if (goldenSnapshotId) require('./vmGolden').touchGoldenUsage(vmJob.projectId)

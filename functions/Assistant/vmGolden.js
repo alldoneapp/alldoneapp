@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { VM_AGENT_TEMPLATES, createAgentSandbox } = require('./vmTemplates')
 
 // ---------------------------------------------------------------------------
 // Per-project "golden" E2B template.
@@ -39,10 +40,17 @@ const GOLDEN_BUILDER_WORKER_NAME = 'runGoldenBuild'
 const E2B_API_BASE = 'https://api.e2b.dev'
 
 // The golden is agent-agnostic (deps don't depend on the CLI), so it is built
-// from one managed base. A codex job seeding from it installs the codex CLI on
-// top via ensureAgentCliAvailable exactly as it would on a cold managed start —
-// no regression, and the expensive dependency install is still skipped.
-const GOLDEN_BASE_TEMPLATE = 'claude'
+// from one base: the sized Claude template (vmTemplates.js). A codex job seeding
+// from it installs the codex CLI on top via ensureAgentCliAvailable exactly as it
+// would on a cold start — no regression, and the expensive dependency install is
+// still skipped. A snapshot keeps the RAM of the sandbox it was taken from, so a
+// golden built on another base (the 1 GB managed `claude`, before the sized
+// templates existed) is outdated: it is not served, and the next cold job
+// rebuilds it. A golden built on the managed fallback because the sized template
+// is missing in this E2B team is marked `baseTemplateFallback` and still served,
+// so that team does not rebuild on every cold job.
+const GOLDEN_BASE_TEMPLATES = VM_AGENT_TEMPLATES.claude
+const GOLDEN_BASE_TEMPLATE = GOLDEN_BASE_TEMPLATES.sized
 
 const GOLDEN_BUILD_SANDBOX_TIMEOUT_MS = 30 * 60 * 1000 // sandbox self-kill ceiling for a build
 const GOLDEN_INSTALL_TIMEOUT_MS = 20 * 60 * 1000 // per install command (leaves headroom under the 30-min worker ceiling for clone + snapshot)
@@ -323,8 +331,15 @@ async function enqueueGoldenRebuild(projectId, buildId, requestUserId) {
 // the server-only state from readGoldenState — never the project doc's display mirror.
 function resolveGoldenTemplate(project) {
     const g = (project && project.vmGolden) || {}
-    if (g.status === 'ready' && g.snapshotId) return g.snapshotId
+    if (g.status === 'ready' && g.snapshotId && !isGoldenOnOutdatedBase(g)) return g.snapshotId
     return null
+}
+
+// True for a golden snapshot taken on a base other than GOLDEN_BASE_TEMPLATE (see above).
+function isGoldenOnOutdatedBase(g) {
+    if (!g || !g.snapshotId) return false
+    if (g.baseTemplateFallback === true) return false
+    return g.baseTemplate !== GOLDEN_BASE_TEMPLATE
 }
 
 // Mark the project's golden as used now, so the unused-TTL cleanup only deletes snapshots
@@ -345,13 +360,14 @@ async function maybeTriggerGoldenRebuild({ projectId, requestUserId, project, cu
     try {
         const g = (project && project.vmGolden) || {}
         const missing = !g.snapshotId || g.status !== 'ready'
+        const outdated = isGoldenOnOutdatedBase(g)
         const drifted = !!currentLockfileHash && (!g.lockfileHash || g.lockfileHash !== currentLockfileHash)
-        if (!force && !missing && !drifted) {
+        if (!force && !missing && !outdated && !drifted) {
             touchGoldenUsage(projectId)
             return { triggered: false }
         }
 
-        const reason = force ? 'broken' : missing ? 'missing' : 'drift'
+        const reason = force ? 'broken' : missing ? 'missing' : outdated ? 'outdated_base' : 'drift'
         const { claimed, buildId } = await claimGoldenRebuildLease(projectId, requestUserId, reason)
         if (!claimed) return { triggered: false, reason: 'locked' }
         try {
@@ -425,11 +441,12 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
     let sandbox = null
     try {
         console.log('🌱 GOLDEN: building', { projectId, buildId, provider: gitContext.provider })
-        sandbox = await Sandbox.create(GOLDEN_BASE_TEMPLATE, {
+        const created = await createAgentSandbox(Sandbox, GOLDEN_BASE_TEMPLATES, {
             apiKey: e2bApiKey,
             timeoutMs: GOLDEN_BUILD_SANDBOX_TIMEOUT_MS,
             allowInternetAccess: true,
         })
+        sandbox = created.sandbox
         await setupGitRepo(sandbox, gitContext, correlationId)
         const { packageManager } = await runGoldenInstall(sandbox, (g.setupCommand || '').trim())
         const { lockfile, lockfileHash } = await readGoldenLockfileHash(sandbox)
@@ -443,7 +460,8 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
             lockfile: lockfile || null,
             lockfileHash: lockfileHash || null,
             packageManager,
-            baseTemplate: GOLDEN_BASE_TEMPLATE,
+            baseTemplate: created.template,
+            baseTemplateFallback: created.fellBack,
             status: 'ready',
             rebuildState: 'idle',
             rebuildLeaseOwner: null,
@@ -548,6 +566,7 @@ module.exports = {
     releaseGoldenRebuildLease,
     enqueueGoldenRebuild,
     resolveGoldenTemplate,
+    isGoldenOnOutdatedBase,
     maybeTriggerGoldenRebuild,
     touchGoldenUsage,
     deleteGoldenSnapshot,

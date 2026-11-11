@@ -1,68 +1,63 @@
 /**
- * Docker-free E2B template builder (Build System 2.0).
+ * Builds the sized E2B templates the VM runner starts sandboxes from (Build System 2.0, no Docker).
  *
- * Builds the sandbox image used by the execute_task_in_vm tool, with Node 20 +
- * the Claude Code CLI (and common deliverable tooling) baked in so sandboxes boot
- * ready instead of installing Claude Code on every run.
+ * E2B fixes a sandbox's RAM and vCPU count when its template is built, and its managed
+ * `claude` / `codex` templates come with 1 GB, which OOM-kills dependency installs and builds.
+ * Each sized template is the managed one unchanged, plus memory. The agent CLIs are still kept
+ * current at runtime by the runner, so these templates never need a rebuild for a CLI release.
+ *
+ * Names and sizes come from ../Assistant/vmTemplates.js, the same module the runner reads.
+ * Build them in EVERY E2B team the functions use (staging and production keys may differ)
+ * before deploying a runner that selects them; until then the runner falls back to the managed
+ * 1 GB templates and logs an error.
  *
  * Run with tsx (NOT raw node — e2b v2's bundle needs tsx's ESM/`node:` interop):
  *   cd functions/e2b-template
- *   npm install
- *   E2B_API_KEY=e2b_*** npm run build
- *
- * The build runs remotely on E2B's builders — no local Docker required.
- * On success it prints the template name/ID; set that as E2B_CLAUDE_TEMPLATE in the
- * functions environment so the worker uses it.
+ *   npm ci
+ *   E2B_API_KEY=e2b_*** npm run build            # both agents
+ *   E2B_API_KEY=e2b_*** npm run build -- codex   # one agent
  */
 import 'dotenv/config'
 import { Template } from 'e2b'
+import vmTemplates from '../Assistant/vmTemplates.js'
 
-const TEMPLATE_NAME = process.env.E2B_TEMPLATE_NAME || 'alldone-claude'
+const { VM_AGENT_TEMPLATES, VM_SANDBOX_MEMORY_MB, VM_SANDBOX_CPU_COUNT } = vmTemplates as {
+    VM_AGENT_TEMPLATES: Record<string, { sized: string; managed: string }>
+    VM_SANDBOX_MEMORY_MB: number
+    VM_SANDBOX_CPU_COUNT: number
+}
+
+// A cheap step that also proves the managed CLI is present in the base before the build is kept.
+const CLI_CHECKS: Record<string, string> = {
+    claude: 'claude --version',
+    codex: 'codex --version',
+}
 
 if (!process.env.E2B_API_KEY) {
     console.error('❌ E2B_API_KEY is required. Set it in functions/e2b-template/.env or the shell.')
     process.exit(1)
 }
 
-// NOTE: Build System 2.0 runs runCmd as the non-root `user` by default, so any
-// step that touches the system (apt, global npm, system pip) must pass { user: 'root' }.
-const asRoot = { user: 'root' }
+const requested = process.argv.slice(2)
+const agents = requested.length > 0 ? requested : Object.keys(VM_AGENT_TEMPLATES)
+for (const agent of agents) {
+    if (!VM_AGENT_TEMPLATES[agent]) {
+        console.error(`❌ Unknown agent "${agent}". Known: ${Object.keys(VM_AGENT_TEMPLATES).join(', ')}`)
+        process.exit(1)
+    }
+}
 
-const template = Template()
-    .fromImage('e2bdev/code-interpreter:latest')
-    // Node 20 + Claude Code CLI (nodesource setup + install in one root shell)
-    .runCmd('curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs', asRoot)
-    .runCmd('npm install -g @anthropic-ai/claude-code', asRoot)
-    // Common tooling for the document / data task types, plus git for the coding flow
-    // (clone the connected repo + push a Merge Request / Pull Request).
-    .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc git', asRoot)
-    // GitHub CLI (gh) for opening Pull Requests on the GitHub coding flow. If this is ever
-    // unavailable, the agent falls back to the GitHub REST API via curl (see vmJobRunner).
-    .runCmd(
-        'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && apt-get update && apt-get install -y gh',
-        asRoot
+for (const agent of agents) {
+    const { sized, managed } = VM_AGENT_TEMPLATES[agent]
+    const template = Template().fromTemplate(managed).runCmd(CLI_CHECKS[agent])
+
+    console.log(
+        `🏗️  Building "${sized}" from managed "${managed}" (${VM_SANDBOX_CPU_COUNT} vCPU / ${VM_SANDBOX_MEMORY_MB} MB)…`
     )
-    // Debian bookworm pip may refuse system-wide installs (externally-managed-environment),
-    // so fall back to --break-system-packages. The import check below fails the build if
-    // the libraries still did not land (a silent miss here caused per-run pip installs that
-    // got OOM-killed on the 1 GB prebuilt template).
-    .runCmd(
-        'pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || pip3 install --no-cache-dir --break-system-packages pandas openpyxl python-docx python-pptx',
-        asRoot
-    )
-    .runCmd('python3 -c "import pandas, openpyxl, docx, pptx"')
-    // Fail the build if the CLI didn't install (runs as the default user, like the worker)
-    .runCmd('claude --version')
-
-console.log(`🏗️  Building E2B template "${TEMPLATE_NAME}" (Docker-free, remote build)…`)
-
-// 4 vCPU / 4 GB — within E2B Hobby-tier limits (max 8 vCPU / 8 GB per build).
-// The prebuilt `claude` template's 1 GB OOM-killed pip installs during PPT jobs.
-const info = await Template.build(template, TEMPLATE_NAME, {
-    cpuCount: 4,
-    memoryMB: 4096,
-    onBuildLogs: (entry: any) => console.log(entry?.message ?? entry),
-})
-
-console.log('\n✅ Built E2B template:', info)
-console.log(`\nNext: set E2B_CLAUDE_TEMPLATE="${TEMPLATE_NAME}" in the functions environment.`)
+    const info = await Template.build(template, sized, {
+        cpuCount: VM_SANDBOX_CPU_COUNT,
+        memoryMB: VM_SANDBOX_MEMORY_MB,
+        onBuildLogs: (entry: any) => console.log(entry?.message ?? entry),
+    })
+    console.log(`✅ Built "${sized}":`, info)
+}

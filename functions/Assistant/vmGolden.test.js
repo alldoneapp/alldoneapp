@@ -16,6 +16,8 @@ const admin = require('firebase-admin')
 const { getFunctions } = require('firebase-admin/functions')
 const vmGolden = require('./vmGolden')
 
+const BASE = vmGolden.GOLDEN_BASE_TEMPLATE
+
 // Firestore mock. The golden's authoritative state lives in the server-only vmGoldens/{projectId}
 // doc (`goldenData`); projects/{projectId} only exists (`projectExists`) and receives the display
 // mirror. `sets` captures transactional writes to the golden doc, `mirrors` the project-doc mirror
@@ -112,9 +114,24 @@ describe('hashLockfileContent', () => {
 
 describe('resolveGoldenTemplate', () => {
     it('returns the snapshotId when ready', () => {
-        expect(vmGolden.resolveGoldenTemplate({ vmGolden: { status: 'ready', snapshotId: 'team/g:1' } })).toBe(
-            'team/g:1'
-        )
+        expect(
+            vmGolden.resolveGoldenTemplate({
+                vmGolden: { status: 'ready', snapshotId: 'team/g:1', baseTemplate: BASE },
+            })
+        ).toBe('team/g:1')
+    })
+    it('returns null for a golden taken on an outdated base (the 1 GB managed template)', () => {
+        expect(vmGolden.resolveGoldenTemplate({ vmGolden: { status: 'ready', snapshotId: 'team/g:1' } })).toBeNull()
+        expect(
+            vmGolden.resolveGoldenTemplate({
+                vmGolden: { status: 'ready', snapshotId: 'team/g:1', baseTemplate: 'claude' },
+            })
+        ).toBeNull()
+    })
+    it('serves a golden built on the managed fallback when the sized template is missing', () => {
+        const g = { status: 'ready', snapshotId: 'team/g:1', baseTemplate: 'claude', baseTemplateFallback: true }
+        expect(vmGolden.resolveGoldenTemplate({ vmGolden: g })).toBe('team/g:1')
+        expect(vmGolden.isGoldenOnOutdatedBase(g)).toBe(false)
     })
     it('returns null when not ready or missing', () => {
         expect(vmGolden.resolveGoldenTemplate({ vmGolden: { status: 'building', snapshotId: 'team/g:1' } })).toBeNull()
@@ -184,11 +201,11 @@ describe('claimGoldenRebuildLease', () => {
 describe('maybeTriggerGoldenRebuild', () => {
     it('does nothing when the golden is ready and the lockfile matches', async () => {
         const { enqueue } = mockQueue()
-        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' })
+        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE })
         const res = await vmGolden.maybeTriggerGoldenRebuild({
             projectId: 'p1',
             requestUserId: 'u1',
-            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' } },
+            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE } },
             currentLockfileHash: 'abc',
         })
         expect(res.triggered).toBe(false)
@@ -197,15 +214,56 @@ describe('maybeTriggerGoldenRebuild', () => {
 
     it('triggers exactly one rebuild when the lockfile drifted', async () => {
         const { enqueue } = mockQueue()
-        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' })
+        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE })
         const res = await vmGolden.maybeTriggerGoldenRebuild({
             projectId: 'p1',
             requestUserId: 'u1',
-            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' } },
+            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE } },
             currentLockfileHash: 'xyz',
         })
         expect(res.triggered).toBe(true)
         expect(enqueue).toHaveBeenCalledTimes(1)
+    })
+
+    it('rebuilds a golden taken on an outdated base even when the lockfile matches', async () => {
+        const { enqueue } = mockQueue()
+        const { sets } = mockFirestore({
+            status: 'ready',
+            snapshotId: 'team/g:1',
+            lockfileHash: 'abc',
+            baseTemplate: 'claude',
+        })
+        const res = await vmGolden.maybeTriggerGoldenRebuild({
+            projectId: 'p1',
+            requestUserId: 'u1',
+            project: {
+                vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: 'claude' },
+            },
+            currentLockfileHash: 'abc',
+        })
+        expect(res.triggered).toBe(true)
+        expect(enqueue).toHaveBeenCalledTimes(1)
+        expect(sets[0].rebuildReason).toBe('outdated_base')
+    })
+
+    it('does not rebuild a fallback-built golden on every cold job', async () => {
+        const { enqueue } = mockQueue()
+        const g = {
+            status: 'ready',
+            snapshotId: 'team/g:1',
+            lockfileHash: 'abc',
+            baseTemplate: 'claude',
+            baseTemplateFallback: true,
+        }
+        mockFirestore(g)
+        const res = await vmGolden.maybeTriggerGoldenRebuild({
+            projectId: 'p1',
+            requestUserId: 'u1',
+            project: { vmGolden: g },
+            currentLockfileHash: 'abc',
+        })
+        expect(res.triggered).toBe(false)
+        expect(enqueue).not.toHaveBeenCalled()
     })
 
     it('triggers a build when no golden exists yet', async () => {
@@ -227,7 +285,7 @@ describe('maybeTriggerGoldenRebuild', () => {
         const res = await vmGolden.maybeTriggerGoldenRebuild({
             projectId: 'p1',
             requestUserId: 'u1',
-            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' } },
+            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE } },
             currentLockfileHash: 'xyz',
         })
         expect(res.triggered).toBe(false)
@@ -236,11 +294,16 @@ describe('maybeTriggerGoldenRebuild', () => {
 
     it('stamps lastUsedAt (not a rebuild) when the golden is fresh and used', async () => {
         mockQueue()
-        const { docSets } = mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' })
+        const { docSets } = mockFirestore({
+            status: 'ready',
+            snapshotId: 'team/g:1',
+            lockfileHash: 'abc',
+            baseTemplate: BASE,
+        })
         await vmGolden.maybeTriggerGoldenRebuild({
             projectId: 'p1',
             requestUserId: 'u1',
-            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' } },
+            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE } },
             currentLockfileHash: 'abc',
         })
         expect(docSets.length).toBe(1)
@@ -250,11 +313,11 @@ describe('maybeTriggerGoldenRebuild', () => {
 
     it('force triggers a rebuild even when the golden looks fresh', async () => {
         const { enqueue } = mockQueue()
-        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' })
+        mockFirestore({ status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE })
         const res = await vmGolden.maybeTriggerGoldenRebuild({
             projectId: 'p1',
             requestUserId: 'u1',
-            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc' } },
+            project: { vmGolden: { status: 'ready', snapshotId: 'team/g:1', lockfileHash: 'abc', baseTemplate: BASE } },
             currentLockfileHash: 'abc',
             force: true,
         })
@@ -387,11 +450,36 @@ describe('the golden is server-owned (security audit 2026-11)', () => {
         // The pointer is recorded only in the server-only doc; the project gets a mirror without it.
         const goldenWrite = writes.find(write => write.path === 'vmGoldens/p1' && write.op === 'set')
         expect(goldenWrite.data.snapshotId).toBe('team/g:9')
+        // Built on the sized base, so the snapshot keeps its memory and is served.
+        expect(require('e2b').Sandbox.create.mock.calls[0][0]).toBe(BASE)
+        expect(goldenWrite.data.baseTemplate).toBe(BASE)
+        expect(goldenWrite.data.baseTemplateFallback).toBe(false)
         const mirror = writes.find(write => write.path === 'projects/p1')
         expect(mirror.op).toBe('update')
         expect(mirror.data['vmGolden.snapshotId']).toBeNull()
         expect(mirror.data['vmGolden.hasSnapshot']).toBe(true)
         expect(JSON.stringify(writes.filter(write => write.path === 'projects/p1'))).not.toContain('team/g:9')
+    })
+
+    it('records a managed-fallback base when the sized template is missing in the E2B team', async () => {
+        const { writes } = mockBuildFirestore({ golden: { rebuildLeaseOwner: 'b3' } })
+        mockSandbox()
+        const create = require('e2b').Sandbox.create
+        const built = create.getMockImplementation()
+        create.mockImplementation(async template => {
+            if (template === BASE) throw new Error("404: template 'alldone-claude-4gb' not found")
+            return built(template)
+        })
+        global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ snapshotID: 'team/g:11' }) }))
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        await vmGolden.runGoldenBuild({ buildId: 'b3', projectId: 'p1', requestUserId: 'u1' })
+
+        errorSpy.mockRestore()
+        const goldenWrite = writes.find(write => write.path === 'vmGoldens/p1' && write.op === 'set')
+        expect(goldenWrite.data.baseTemplate).toBe('claude')
+        expect(goldenWrite.data.baseTemplateFallback).toBe(true)
+        expect(vmGolden.resolveGoldenTemplate({ vmGolden: goldenWrite.data })).toBe('team/g:11')
     })
 
     it('runs no member-written command when vmGoldens carries none', async () => {

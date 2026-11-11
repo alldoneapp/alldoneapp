@@ -1,49 +1,47 @@
-# E2B template — `alldone-claude`
+# E2B templates — `alldone-claude-4gb`, `alldone-codex-4gb`
 
-Sandbox image for the `execute_task_in_vm` assistant tool. The worker
-([../Assistant/vmJobRunner.js](../Assistant/vmJobRunner.js)) spins up a sandbox from this
-template, writes the objective + context into it, and runs Claude Code headless.
+Sandbox templates for the `execute_task_in_vm` assistant tool. The runner
+([../Assistant/vmJobRunner.js](../Assistant/vmJobRunner.js)) starts each job from the selected
+agent's sized template; names and sizes live in
+[../Assistant/vmTemplates.js](../Assistant/vmTemplates.js), which this builder reads too.
 
-> **Optional optimization.** If `E2B_CLAUDE_TEMPLATE` is unset, the worker uses E2B's base
-> image and `npm i -g @anthropic-ai/claude-code` at the start of each run (~30–60s slower cold
-> start, but fully functional). Build this template to remove that per-run install.
+**Why they exist.** E2B fixes a sandbox's RAM and vCPU count when its template is built;
+`Sandbox.create` cannot change them. E2B's managed `claude` / `codex` templates have 1 GB, which
+OOM-kills dependency installs and builds. Each sized template is the managed one unchanged
+(`fromTemplate`), built with 2 vCPU / 4 GB. The runner keeps the agent CLIs current at runtime, so
+a CLI release needs no rebuild.
+
+**Fallback.** If a sized template is missing in the E2B team behind the key in use, the runner
+logs `sized E2B template missing` and starts from the managed 1 GB template, so jobs keep working.
+A thread started that way is cold-started again on its next job, so build the templates before
+deploying.
 
 This is a **Docker-free** build using E2B's Build System 2.0 — it runs remotely on E2B's
 builders. No Docker, no Dockerfile, no `e2b` CLI login.
 
 ## Why this dir is isolated (and ESM)
 
-The functions runtime pins **`e2b@^1.x`** because e2b **v2 cannot be loaded in our Node 20
-CommonJS functions runtime** (its CJS bundle `require()`s ESM-only deps → `ERR_REQUIRE_ESM`;
-its ESM bundle hits `Dynamic require of node:url` under raw `node`). The v2 **build** API only
-runs cleanly under **`tsx`**, so the build tooling lives here as a separate `"type": "module"`
-package with its own `e2b@^2.x` + `tsx` devDependencies. It never touches the runtime, and the
-whole dir is excluded from the functions deploy (see `functions.ignore` in `firebase.json`).
+The functions runtime pins **`e2b@^1.x`** because e2b **v2 cannot be loaded in our CommonJS
+functions runtime** (its CJS bundle `require()`s ESM-only deps → `ERR_REQUIRE_ESM`; its ESM bundle
+hits `Dynamic require of node:url` under raw `node`). The v2 **build** API only runs cleanly under
+**`tsx`**, so the build tooling lives here as a separate `"type": "module"` package with its own
+`e2b@^2.x` + `tsx` devDependencies. It never touches the runtime, and the whole dir is excluded
+from the functions deploy (see `functions.ignore` in `firebase.json`).
 
 ## Build (no Docker)
 
+Run it once per E2B team the functions use (staging and production may use different keys):
+
 ```bash
 cd functions/e2b-template
-npm install
+npm ci
 
-# Build remotely. Auth via your E2B API key (from https://e2b.dev/dashboard).
-E2B_API_KEY=e2b_*** npm run build
-# …or put E2B_API_KEY in functions/e2b-template/.env and just: npm run build
+E2B_API_KEY=e2b_*** npm run build            # both agents
+E2B_API_KEY=e2b_*** npm run build -- codex   # one agent
 ```
 
-On success it prints the template name/ID. Edit the image steps in
-[build.ts](build.ts) (it replaces what a Dockerfile would do).
-
-## Wire it up
-
-Set the template name so the worker uses it:
-
-- **Local:** `E2B_CLAUDE_TEMPLATE=alldone-claude` in `functions/.env`
-  (or `"E2B_CLAUDE_TEMPLATE": "alldone-claude"` in `functions/env_functions.json`).
-- **Staging/prod:** add `E2B_CLAUDE_TEMPLATE` as a GitLab CI variable.
-
-Also set the real `E2B_API_KEY` in the functions env — the worker uses it at runtime to spawn
-sandboxes (the same key builds the template here).
+Rebuilding under the same name replaces the template for new sandboxes; running and paused
+sandboxes keep the build they started from. Nothing needs to be configured afterwards.
 
 ## Legacy Cloud Tasks IAM grants
 
