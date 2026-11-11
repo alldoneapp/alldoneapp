@@ -6,9 +6,13 @@ const { spawn } = require('child_process')
 const { completedFunctionNames, exportedFunctionNames } = require('./assertFirebaseFunctionsDeployed')
 const { readPlan } = require('./functionsDeploymentPlan')
 
-// A redeploy of more than this many functions is not the partial-group loss described below,
-// so it is left to the verification step instead of tying the job up for another full round.
-const MAX_REDEPLOY_NAMES = 120
+// Functions Firebase left without a result are redeployed by name in batches of this size. Small
+// batches keep each `firebase deploy` under the Cloud Functions per-minute mutation quota, whose
+// 429s are what made firebase-tools drop whole groups in the first place (2026-11-11).
+const REDEPLOY_BATCH_SIZE = 20
+// Matches the Cloud Functions mutation 429s firebase-tools retries itself and only logs as
+// warnings, as well as the fatal ones QUOTA_ERROR_PATTERN catches.
+const QUOTA_WARNING_PATTERN = /Quota exceeded/
 
 // A Google API per-minute quota (HTTP 429) that firebase-tools does not retry itself fails the
 // whole command. On 2026-11-11 the fourth 10-function batch of a production deploy died on
@@ -25,20 +29,19 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 function deploymentFilters(plan) {
     if (plan.mode === 'none') throw new Error('No Functions selected; the scope gate should have skipped this job')
     if (plan.mode === 'full') return ['functions']
+    return nameFilters(plan.names, 10)
+}
+
+function nameFilters(names, size) {
     const filters = []
-    for (let i = 0; i < plan.names.length; i += 10)
+    for (let i = 0; i < names.length; i += size)
         filters.push(
-            plan.names
-                .slice(i, i + 10)
+            names
+                .slice(i, i + size)
                 .map(name => `functions:${name}`)
                 .join(',')
         )
     return filters
-}
-
-function filterNames(filter, plan) {
-    if (filter === 'functions') return plan.names
-    return filter.split(',').map(part => part.replace(/^functions:/, ''))
 }
 
 // Runs one `firebase` command, streaming its output live into the job log (and through the CI
@@ -74,13 +77,17 @@ async function run({ root, head, args, exec = runFirebase, wait = sleep }) {
         JSON.stringify({ head, names: plan.names }) + '\n'
     )
     let output = ''
+    // Resolves to { status, hitQuota }: hitQuota when Firebase met a quota 429 on the way, even one
+    // it retried itself and survived.
     const deploy = async filter => {
+        let hitQuota = false
         for (let attempt = 0; ; attempt++) {
             console.log(`Deploying ${filter}`)
             const result = await exec(['deploy', '--only', filter, ...args], { cwd: root })
             output += result.output || ''
+            hitQuota = hitQuota || QUOTA_WARNING_PATTERN.test(result.output || '')
             if (result.status === 0 || attempt >= QUOTA_RETRIES || !QUOTA_ERROR_PATTERN.test(result.output || ''))
-                return result.status
+                return { status: result.status, hitQuota }
             console.log(
                 `Firebase stopped on a Google API quota (HTTP 429); retrying this batch in ` +
                     `${QUOTA_RETRY_DELAY_MS / 1000}s (retry ${attempt + 1} of ${QUOTA_RETRIES}).`
@@ -89,7 +96,7 @@ async function run({ root, head, args, exec = runFirebase, wait = sleep }) {
         }
     }
     for (const filter of filters) {
-        const status = await deploy(filter)
+        const { status } = await deploy(filter)
         if (status !== 0) return status || 1
     }
 
@@ -97,24 +104,26 @@ async function run({ root, head, args, exec = runFirebase, wait = sleep }) {
     // exception that escapes one group is only written to its debug log
     // (fabricator.applyPlan: "This should never happen"): the command still exits 0, with
     // every function of that group untouched. On 2026-11-09 a full deploy lost the 1, 2 and
-    // 4 GiB groups (67 functions) on production and on staging. Running the same command again
-    // deploys exactly those, because every function that did update is now skipped by its
-    // source hash. Retry once; whatever is still missing fails the verification step.
+    // 4 GiB groups (67 functions) on production and on staging; on 2026-11-11 a full production
+    // deploy that ran into the Cloud Functions mutation quota lost 187 of 303. Redeploy exactly
+    // the missing functions once, by name in small batches, waiting out the quota minute after a
+    // batch that met a 429 so the next one starts with a fresh quota. Whatever is still missing
+    // fails the verification step.
     const completed = completedFunctionNames(output)
     const missing = plan.names.filter(name => !completed.has(name))
     if (missing.length === 0) return 0
-    if (missing.length > MAX_REDEPLOY_NAMES) {
-        console.log(`${missing.length} Functions have no completed result; too many to redeploy automatically.`)
-        return 0
-    }
     console.log(
         `Firebase exited 0 but ${missing.length} Functions have no completed result; redeploying them once: ` +
             missing.join(', ')
     )
-    const missingSet = new Set(missing)
-    for (const filter of filters.filter(filter => filterNames(filter, plan).some(name => missingSet.has(name)))) {
-        const status = await deploy(filter)
+    const redeployFilters = nameFilters(missing, REDEPLOY_BATCH_SIZE)
+    for (let i = 0; i < redeployFilters.length; i++) {
+        const { status, hitQuota } = await deploy(redeployFilters[i])
         if (status !== 0) return status || 1
+        if (hitQuota && i < redeployFilters.length - 1) {
+            console.log(`That batch met a Google API quota; waiting ${QUOTA_RETRY_DELAY_MS / 1000}s before the next.`)
+            await wait(QUOTA_RETRY_DELAY_MS)
+        }
     }
     return 0
 }
@@ -132,4 +141,4 @@ if (require.main === module) {
         process.exitCode = 1
     })
 }
-module.exports = { MAX_REDEPLOY_NAMES, QUOTA_RETRIES, QUOTA_RETRY_DELAY_MS, deploymentFilters, run }
+module.exports = { REDEPLOY_BATCH_SIZE, QUOTA_RETRIES, QUOTA_RETRY_DELAY_MS, deploymentFilters, run }

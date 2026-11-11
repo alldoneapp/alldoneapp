@@ -173,12 +173,16 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   2026-11-09 a full deploy lost the 1, 2 and 4 GiB groups (the same 67 functions on
   production and staging) and reported success. The script streams Firebase's output live
   and keeps a copy. It then reads the completed results with the verification's own parser
-  (`completedFunctionNames`) and reruns, once, only the batches that hold a function without
-  a result. On a full deploy that is a second `--only functions`, which skips every function
-  already current by its source hash. More than `MAX_REDEPLOY_NAMES` missing is not this
-  failure and is left to the verification step, which still fails the job for anything
-  missing after the retry. Pinned by `__tests__/CiFunctionSelection.test.js` and a
-  real-process case in `__tests__/CiFirebaseFunctionsDeployment.test.js`.
+  (`completedFunctionNames`) and redeploys, once, exactly the functions without a result, by
+  name in batches of `REDEPLOY_BATCH_SIZE` (20). There is no upper limit any more: on
+  2026-11-11 (pipeline 9673) a full production deploy met the Cloud Functions "Per project
+  mutation requests per minute per region" quota, firebase-tools retried those 429s as
+  warnings, still lost groups, and left 187 of 303 functions without a result; the old
+  120-name cap gave up and the job failed until it was retried by hand. Small named batches keep
+  each command under that quota, and after a redeploy batch whose output contains
+  `Quota exceeded` the script waits `QUOTA_RETRY_DELAY_MS` before the next one. Whatever is
+  still missing fails the verification step. Pinned by `__tests__/CiFunctionSelection.test.js`
+  and a real-process case in `__tests__/CiFirebaseFunctionsDeployment.test.js`.
 - **A batch that stops on a Google API quota (HTTP 429) is retried after the quota minute.**
   A partial production deploy runs one `firebase deploy` per 10 functions, and each run looks the
   Firestore database up again for its Firestore triggers. On 2026-11-11 the fourth batch hit

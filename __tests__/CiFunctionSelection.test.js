@@ -6,7 +6,7 @@ const { execFileSync, spawnSync } = require('child_process')
 const { selectDeployment, makePlan } = require('../ci/selectFunctionsDeployment')
 const { validatePlan } = require('../ci/functionsDeploymentPlan')
 const {
-    MAX_REDEPLOY_NAMES,
+    REDEPLOY_BATCH_SIZE,
     QUOTA_RETRIES,
     QUOTA_RETRY_DELAY_MS,
     deploymentFilters,
@@ -592,7 +592,7 @@ describe('function deployment execution and completion', () => {
     })
 
     describe('one automatic redeploy of functions Firebase left without a result', () => {
-        it('reruns a full deploy once when a whole group went missing with exit 0 (2026-11-09)', async () => {
+        it('redeploys a group a full deploy lost with exit 0 by name, once (2026-11-09)', async () => {
             const full = { version: 1, mode: 'full', head: 'abc', names }
             await withRoot(async root => {
                 const lost = names.slice(18)
@@ -606,11 +606,14 @@ describe('function deployment execution and completion', () => {
                 } finally {
                     log.mockRestore()
                 }
-                expect(exec.mock.calls.map(filterOf)).toEqual(['functions', 'functions'])
+                expect(exec.mock.calls.map(filterOf)).toEqual([
+                    'functions',
+                    lost.map(name => `functions:${name}`).join(','),
+                ])
             }, full)
         })
 
-        it('reruns only the batches that hold a missing function', async () => {
+        it('reruns only the missing functions, not their whole batches', async () => {
             await withRoot(async root => {
                 const exec = jest
                     .fn()
@@ -625,7 +628,7 @@ describe('function deployment execution and completion', () => {
                     log.mockRestore()
                 }
                 expect(exec).toHaveBeenCalledTimes(4)
-                expect(filterOf(exec.mock.calls[3])).toBe(filterOf(exec.mock.calls[1]))
+                expect(filterOf(exec.mock.calls[3])).toBe('functions:fn17,functions:fn18,functions:fn19')
             })
         })
 
@@ -656,28 +659,74 @@ describe('function deployment execution and completion', () => {
             }, full)
         })
 
-        it('leaves a near-total loss to the verification step instead of redeploying everything', async () => {
-            const many = Array.from({ length: MAX_REDEPLOY_NAMES + 1 }, (_, i) => `big${i}`)
+        describe('a large loss (2026-11-11: 187 of 303 after Cloud Functions mutation 429s)', () => {
+            const many = Array.from({ length: REDEPLOY_BATCH_SIZE * 2 + 5 }, (_, i) => `big${i}`)
             const full = { version: 1, mode: 'full', head: 'abc', names: many }
-            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'function-run-'))
-            try {
-                fs.mkdirSync(path.join(root, 'functions'))
-                fs.writeFileSync(
-                    path.join(root, 'functions/index.js'),
-                    many.map(name => `exports.${name} = () => {}`).join('\n')
-                )
-                fs.writeFileSync(path.join(root, 'functions-deploy-scope.json'), JSON.stringify(full))
-                const exec = jest.fn().mockResolvedValue({ status: 0, output: '' })
-                const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+            const withManyRoot = async fn => {
+                const root = fs.mkdtempSync(path.join(os.tmpdir(), 'function-run-'))
                 try {
-                    await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
+                    fs.mkdirSync(path.join(root, 'functions'))
+                    fs.writeFileSync(
+                        path.join(root, 'functions/index.js'),
+                        many.map(name => `exports.${name} = () => {}`).join('\n')
+                    )
+                    fs.writeFileSync(path.join(root, 'functions-deploy-scope.json'), JSON.stringify(full))
+                    const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+                    try {
+                        return await fn(root)
+                    } finally {
+                        log.mockRestore()
+                    }
                 } finally {
-                    log.mockRestore()
+                    fs.rmSync(root, { recursive: true, force: true })
                 }
-                expect(exec).toHaveBeenCalledTimes(1)
-            } finally {
-                fs.rmSync(root, { recursive: true, force: true })
             }
+            const quotaWarning =
+                "⚠  functions: Request to https://cloudfunctions.googleapis.com/v2/... had HTTP Error: 429, Quota exceeded for quota metric 'Per project mutation requests'"
+            const namesOf = call =>
+                filterOf(call)
+                    .replace(/functions:/g, '')
+                    .split(',')
+
+            it('redeploys every missing function by name in small batches', async () => {
+                await withManyRoot(async root => {
+                    const exec = jest
+                        .fn()
+                        .mockResolvedValueOnce({ status: 0, output: '' })
+                        .mockImplementation(async ([, , filter]) => ({
+                            status: 0,
+                            output: done(filter.replace(/functions:/g, '').split(',')),
+                        }))
+                    const wait = jest.fn().mockResolvedValue()
+                    await expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(0)
+                    const redeploys = exec.mock.calls.slice(1)
+                    expect(redeploys.map(call => namesOf(call).length)).toEqual([
+                        REDEPLOY_BATCH_SIZE,
+                        REDEPLOY_BATCH_SIZE,
+                        5,
+                    ])
+                    expect(redeploys.flatMap(namesOf)).toEqual(many)
+                    expect(wait).not.toHaveBeenCalled()
+                })
+            })
+
+            it('waits out the quota minute after a redeploy batch that met a 429', async () => {
+                await withManyRoot(async root => {
+                    const exec = jest
+                        .fn()
+                        .mockResolvedValueOnce({ status: 0, output: quotaWarning })
+                        .mockImplementation(async ([, , filter]) => ({
+                            status: 0,
+                            output: `${quotaWarning}\n${done(filter.replace(/functions:/g, '').split(','))}`,
+                        }))
+                    const wait = jest.fn().mockResolvedValue()
+                    await expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(0)
+                    expect(exec).toHaveBeenCalledTimes(4)
+                    // Between the three redeploy batches, not after the last one.
+                    expect(wait).toHaveBeenCalledTimes(2)
+                    expect(wait).toHaveBeenCalledWith(QUOTA_RETRY_DELAY_MS)
+                })
+            })
         })
     })
 
