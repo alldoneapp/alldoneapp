@@ -143,6 +143,13 @@
                 }
             },
             {
+                "source": "/api/menubar/autocomplete-profile",
+                "function": {
+                    "functionId": "menubarAutocompleteProfile",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/menubar/upcoming",
                 "function": {
                     "functionId": "menubarUpcoming",

@@ -787,6 +787,42 @@ async function handleMenubarProjects(req, res) {
     }
 }
 
+// POST /api/menubar/autocomplete-profile  { token } ->
+//   200 { success: true, profile } | 401 { success: false, error: 'Invalid token' }
+// The "Writer:" line for the Mac app's on-device autocomplete. Pure data assembly, no model call
+// and no Gold; see menubarAutocompleteProfile.js for what goes in and what never does.
+async function handleMenubarAutocompleteProfile(req, res) {
+    res.set('Cache-Control', 'no-store')
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ success: false, error: 'Method not allowed' })
+        return
+    }
+
+    const token = req.body?.token
+    const ip = getRequestIp(req)
+    const tokenKey = typeof token === 'string' ? hashToken(token).slice(0, 16) : 'invalid'
+    if (isRateLimited(`mbap:ip:${ip}`, 120, 60 * 1000) || isRateLimited(`mbap:token:${tokenKey}`, 30, 60 * 1000)) {
+        res.status(429).json({ success: false, error: 'Rate limit exceeded' })
+        return
+    }
+
+    try {
+        const tokenUser = await resolveTokenUser(token)
+        if (!tokenUser) {
+            res.status(401).json({ success: false, error: 'Invalid token' })
+            return
+        }
+
+        const { getAutocompleteProfile } = require('./menubarAutocompleteProfile')
+        const profile = await getAutocompleteProfile(admin.firestore(), tokenUser.userId, tokenUser.userData)
+        res.status(200).json({ success: true, profile })
+    } catch (error) {
+        console.error('menubarAutocompleteProfile: error', error)
+        res.status(500).json({ success: false, error: 'Internal error' })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Upcoming meetings (Anna's "meeting starts in a minute" reminder)
 // ---------------------------------------------------------------------------
@@ -2820,6 +2856,7 @@ module.exports = {
     handleMenubarSession,
     handleMenubarGoldWebhook,
     handleMenubarProjects,
+    handleMenubarAutocompleteProfile,
     handleMenubarUpcoming,
     handleMenubarPushNote,
     handleMenubarAssistantMessage,

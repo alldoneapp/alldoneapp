@@ -57,6 +57,22 @@ always mounted in the single-project Goals view. Fixing it means either sharing 
 per-project task listener across milestone buckets or making the stats lazy — not a
 cosmetic change, so it was left out of AT-2336.
 
+**An open inline "Add new task" editor dies with its parent (AT-3010).** Its open state is
+component-local (`DismissibleItem.visibleModal`), its draft is in Redux (`tmpInputTextTask`), so
+when the task board replaces the composer's PARENT the editor closes and the keyboard drops while
+the draft silently survives — reported on Android, typing in an empty project right after a
+sidebar project switch. `utils/editingGuard.js` (`useIsUserEditing`) freezes the known
+restructures (missing-dates composer in `OpenTasksByProject`, empty-list composer and grouping in
+`MainSection`, the fallback ghosts in `OpenTasksByDate`), but the board renders today's general
+composer in more than one parent and not every switch can be frozen — the date-section list in
+`OpenTasksByProject` is read straight from the store, so its children cannot be held once their
+data is gone. `inlineAddTaskReopen.js` is the safety net: `OpenTasksByProject` provides one
+`InlineAddTaskReopenScope` per board; a `NewTaskSection` that unmounts while open records its line
+(project, day, goal), and the next composer for that line on the same board reopens itself
+(`EditTask` restores the draft and focuses). It is scoped to the board instance, not to time —
+leaving the board drops it. When adding a new place that renders `NewTaskSection`, keep it inside
+the board's scope. Pinned by `InlineAddTaskReopen.test.js` and `OpenTasksByDate.test.js`.
+
 ## Client performance telemetry
 
 Boot, page readiness, Firestore first snapshots, offline note workers and bulk task operations emit

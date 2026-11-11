@@ -150,6 +150,53 @@ describe('OpenTasksByDate assistant task creation layout', () => {
         expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(1)
     })
 
+    it('keeps the shown sections (and an open add-task editor) instead of ghosts while the user types (AT-3010)', () => {
+        const render = () =>
+            renderer.create(
+                <OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />
+            )
+        let tree
+        act(() => {
+            tree = render()
+        })
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
+
+        // The user opens the inline composer; then a loading state that would show ghosts lands.
+        mockState = {
+            ...mockState,
+            activeEditMode: true,
+            initialLoadingEndObservedTasks: { instance: false },
+        }
+        act(() =>
+            tree.update(<OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />)
+        )
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
+
+        // Editing over: the live loading state applies again.
+        mockState = { ...mockState, activeEditMode: false }
+        act(() =>
+            tree.update(<OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />)
+        )
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(0)
+    })
+
+    it('still shows ghosts for a section that mounts while some other editor is open', () => {
+        mockState.activeEditMode = true
+        mockState.initialLoadingEndObservedTasks.instance = false
+
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />
+            )
+        })
+
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(0)
+    })
+
     it('adds one ghost row while a later task is resolving', () => {
         mockState.taskListSingleLoading.instance = true
 
