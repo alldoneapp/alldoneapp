@@ -65,3 +65,21 @@ describe('MCP conversation context', () => {
         expect(buildConversationSafeToolResult(mcpTool, raw)).toEqual({ ...raw, content: [] })
     })
 })
+
+describe('get_goals context ceiling', () => {
+    test('an oversized goal listing keeps every goal, not the first twenty', () => {
+        const goals = Array.from({ length: 331 }, (_, index) => ({
+            id: `-OefCuSmRPR9k${String(index).padStart(7, '0')}`,
+            name: `Goal ${index}`,
+            description: 'Long description. '.repeat(40),
+            progress: 20,
+            projectId: `project-${index % 9}`,
+            projectName: `Project ${index % 9}`,
+            status: 'active',
+        }))
+        const safe = buildConversationSafeToolResult('get_goals', { goals, count: 331 })
+        expect(JSON.stringify(safe).length).toBeLessThanOrEqual(40000)
+        expect(safe.shownCount).toBe(331)
+        expect(safe.projects.reduce((sum, project) => sum + project.goals.length, 0)).toBe(331)
+    })
+})

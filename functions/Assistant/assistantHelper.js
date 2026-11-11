@@ -14,10 +14,12 @@ const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { executeToolCallBatch, canRunToolInParallel } = require('./toolCallBatch')
+const { mapAssistantGoalForToolResponse } = require('./goalListingContext')
 const {
     prepareResearchRequest,
     compactResearchConversation,
     FINAL_REPLY_INSTRUCTION,
+    toolsForFinalReply,
 } = require('./assistantResearchGuard')
 const moment = require('moment')
 const OpenAI = require('openai')
@@ -862,33 +864,6 @@ function mapAssistantTaskForToolResponse(task, requestingUserId = '') {
         comments,
         commentsData: task?.commentsData || null,
         isFocus: task?.isFocus || false,
-    }
-}
-
-function mapAssistantGoalForToolResponse(goal) {
-    return {
-        id: goal?.id,
-        name: goal?.name,
-        description: goal?.description || '',
-        progress: goal?.progress,
-        projectId: goal?.projectId || null,
-        projectName: goal?.projectName || null,
-        ownerId: goal?.ownerId || '',
-        assigneesIds: Array.isArray(goal?.assigneesIds) ? goal.assigneesIds : [],
-        commentsData: goal?.commentsData || null,
-        status: goal?.status || 'active',
-        startingMilestoneDate: Number.isFinite(Number(goal?.startingMilestoneDate))
-            ? Number(goal.startingMilestoneDate)
-            : null,
-        completionMilestoneDate: Number.isFinite(Number(goal?.completionMilestoneDate))
-            ? Number(goal.completionMilestoneDate)
-            : null,
-        isBacklog: goal?.isBacklog === true,
-        matchedMilestone: goal?.matchedMilestone || null,
-        doneMilestones: Array.isArray(goal?.doneMilestones) ? goal.doneMilestones : [],
-        latestDoneMilestoneDate: Number.isFinite(Number(goal?.latestDoneMilestoneDate))
-            ? Number(goal.latestDoneMilestoneDate)
-            : null,
     }
 }
 
@@ -2916,6 +2891,16 @@ async function interactWithChatStream(
     } catch (error) {
         console.warn('[knowledge base] Wiki tool availability check failed', { error: error.message })
     }
+    // Research that hit its limit ends with one more reply. It gets no lookup tools, but keeps the
+    // tools that act, so a run asked to research and then save can still save (the 2026-11-11
+    // scheduled user description update hit the limit and could not call update_user_description).
+    // Delegation, external app and MCP tools stay out: they are open-ended, not a single action.
+    const requestToolNames = finalizeResearch ? toolsForFinalReply(runtimeAllowedTools) : runtimeAllowedTools
+    const requestAdditionalToolSchemas = finalizeResearch ? [] : additionalToolSchemas
+    const loadDynamicToolSchemas = () =>
+        finalizeResearch
+            ? Promise.resolve({ delegationToolSchemas: [], externalToolSchemas: [], mcpToolSchemas: [], mcpApps: [] })
+            : getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
         modelKey,
@@ -2949,12 +2934,11 @@ async function interactWithChatStream(
 
         let openRouterTools = null
         if (
-            !finalizeResearch &&
             modelSupportsNativeTools(modelKey) &&
-            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+            (requestToolNames.length > 0 || requestAdditionalToolSchemas.length > 0)
         ) {
             const { getToolSchemas } = require('./toolSchemas')
-            const staticAllowedTools = runtimeAllowedTools.filter(
+            const staticAllowedTools = requestToolNames.filter(
                 toolName =>
                     toolName !== TALK_TO_ASSISTANT_TOOL_KEY &&
                     toolName !== EXTERNAL_TOOLS_KEY &&
@@ -2965,7 +2949,7 @@ async function interactWithChatStream(
                 externalToolSchemas,
                 mcpToolSchemas: allMcpToolSchemas = [],
                 mcpApps = [],
-            } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+            } = await loadDynamicToolSchemas()
             // No tool search on this transport: a large MCP server is opened app by app (./mcpAppGroups).
             const { schemas: mcpToolSchemas } = selectMcpToolSchemas({
                 schemas: allMcpToolSchemas,
@@ -2976,7 +2960,7 @@ async function interactWithChatStream(
             // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
             openRouterTools = withEmailAttachmentToolDescriptions(
                 [
-                    ...additionalToolSchemas,
+                    ...requestAdditionalToolSchemas,
                     ...getToolSchemas(staticAllowedTools),
                     ...delegationToolSchemas,
                     ...externalToolSchemas,
@@ -3136,12 +3120,11 @@ async function interactWithChatStream(
 
         // Add tools if model supports native tools and tools are allowed
         if (
-            !finalizeResearch &&
             modelSupportsNativeTools(modelKey) &&
-            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+            (requestToolNames.length > 0 || requestAdditionalToolSchemas.length > 0)
         ) {
             const { getToolSchemas } = require('./toolSchemas')
-            const staticAllowedTools = runtimeAllowedTools.filter(
+            const staticAllowedTools = requestToolNames.filter(
                 toolName =>
                     toolName !== TALK_TO_ASSISTANT_TOOL_KEY &&
                     toolName !== EXTERNAL_TOOLS_KEY &&
@@ -3154,7 +3137,7 @@ async function interactWithChatStream(
                 externalToolSchemas,
                 mcpToolSchemas: allMcpToolSchemas = [],
                 mcpApps = [],
-            } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+            } = await loadDynamicToolSchemas()
             // Every app of a connected MCP server is a tool-search group of its own; without tool search,
             // a large server is opened app by app through open_mcp_app (./mcpAppGroups).
             const { schemas: mcpToolSchemas, namespaceIndex: mcpNamespaceIndex } = selectMcpToolSchemas({
@@ -3171,7 +3154,7 @@ async function interactWithChatStream(
             })
             const toolSchemas = withEmailAttachmentToolDescriptions(
                 [
-                    ...additionalToolSchemas,
+                    ...requestAdditionalToolSchemas,
                     ...staticToolSchemas,
                     ...delegationToolSchemas,
                     ...externalToolSchemas,
@@ -3206,7 +3189,11 @@ async function interactWithChatStream(
                 )
             }
 
-            if (runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY) && externalToolSchemas.length === 0) {
+            if (
+                !finalizeResearch &&
+                runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY) &&
+                externalToolSchemas.length === 0
+            ) {
                 console.warn('🔧 TOOL SCHEMAS: External tools are enabled but none are reachable at runtime', {
                     projectId: toolRuntimeContext?.projectId,
                     assistantId: toolRuntimeContext?.assistantId,

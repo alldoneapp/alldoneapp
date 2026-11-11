@@ -1,6 +1,7 @@
 // Bounds the in-memory research loop. This does not change the persisted thread.
 const { createHash } = require('crypto')
 const { compactTaskListing } = require('./taskListingContext')
+const { compactGoalListing } = require('./goalListingContext')
 
 const RESEARCH_TOOLS = new Set([
     'read_knowledge_page',
@@ -24,12 +25,31 @@ const RESEARCH_TOOLS = new Set([
 const MAX_RESEARCH_CALLS = 16
 const MAX_STALLED_SEARCHES = 4
 const CONTEXT_BYTE_LIMIT = 100000
+// The final reply may still carry out what the user asked for: a run told to research and then save
+// (a scheduled "update my user description") otherwise ends with the research done and nothing saved.
 const FINAL_REPLY_INSTRUCTION =
     'Research has stopped because further searches were repetitive or the working context was too large. ' +
-    'Answer the original user request using the evidence already returned. Give the closest relevant findings ' +
-    'and their exact source URLs when available. Clearly distinguish confirmed evidence from tentative matches. ' +
-    'Explain any unfinished work briefly and ask for a specific detail only if needed. Do not claim that an ' +
-    'unexecuted action succeeded. Do not call more tools.'
+    'Do not call more research or lookup tools. If the original user request asks you to save, update or create ' +
+    'something and a tool for that is still available to you, call it now using the evidence already returned; ' +
+    'otherwise answer with what you have. Answer the original user request using the evidence already returned. ' +
+    'Give the closest relevant findings and their exact source URLs when available. Clearly distinguish confirmed ' +
+    'evidence from tentative matches. Explain any unfinished work briefly and ask for a specific detail only if ' +
+    'needed. Do not claim that an unexecuted action succeeded.'
+
+// Tools that only look things up. Once research has stopped the final reply is offered every other
+// tool the run has, so the requested change can still be made, but none of these.
+const LOOKUP_TOOL_PREFIX = /^(get|read|search|list|find|fetch)_|^browser_/
+const NON_ACTION_TOOLS = new Set(['load_skill', 'compact_thread_context'])
+
+function isLookupTool(toolName) {
+    return RESEARCH_TOOLS.has(toolName) || NON_ACTION_TOOLS.has(toolName) || LOOKUP_TOOL_PREFIX.test(toolName)
+}
+
+function toolsForFinalReply(toolNames = []) {
+    return (Array.isArray(toolNames) ? toolNames : []).filter(
+        toolName => typeof toolName === 'string' && toolName && !isLookupTool(toolName)
+    )
+}
 
 function roleOf(entry) {
     return Array.isArray(entry) ? entry[0] : entry.role
@@ -99,6 +119,9 @@ function compactResearchConversation(conversation, aggressive = false) {
             if (Buffer.byteLength(JSON.stringify(result), 'utf8') <= budget) return entry
             if (toolNames.get(entry.tool_call_id) === 'get_tasks' && Array.isArray(result?.tasks)) {
                 return replaceContent(entry, JSON.stringify(compactTaskListing(result, budget)))
+            }
+            if (toolNames.get(entry.tool_call_id) === 'get_goals' && Array.isArray(result?.goals)) {
+                return replaceContent(entry, JSON.stringify(compactGoalListing(result, budget)))
             }
             let compacted = compactValue(result, Math.min(2000, budget / 2))
             if (!compacted || typeof compacted !== 'object' || Array.isArray(compacted)) {
@@ -250,6 +273,7 @@ module.exports = {
     prepareResearchRequest,
     compactResearchConversation,
     FINAL_REPLY_INSTRUCTION,
+    toolsForFinalReply,
     MAX_RESEARCH_CALLS,
     MAX_STALLED_SEARCHES,
 }

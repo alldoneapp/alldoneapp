@@ -1,5 +1,6 @@
 const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved for the next external tool call]'
 const { compactTaskListing } = require('./taskListingContext')
+const { compactGoalListing } = require('./goalListingContext')
 const { isDeepStrictEqual } = require('node:util')
 const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
 const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
@@ -216,6 +217,9 @@ function enforceToolResultContextCeiling(toolName, toolResult) {
 
     if (toolName === 'get_tasks' && Array.isArray(toolResult?.tasks)) {
         return compactTaskListing(toolResult, MAX_TOOL_RESULT_CONTEXT_CHARS)
+    }
+    if (toolName === 'get_goals' && Array.isArray(toolResult?.goals)) {
+        return compactGoalListing(toolResult, MAX_TOOL_RESULT_CONTEXT_CHARS)
     }
 
     const compactResult = truncateToolResultForGlobalCeiling(toolResult)

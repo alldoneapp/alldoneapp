@@ -20,7 +20,7 @@
         "precoverage": "npm run check:runtime",
         "coverage": "TZ=UTC NODE_OPTIONS=--max-old-space-size=4096 jest --coverage",
         "pretest:firestore-rules": "npm run check:runtime:firestore",
-        "test:firestore-rules": "node ci/check-firestore-rule-coverage.js && TZ=UTC firebase emulators:exec --only firestore --project demo-alldone-rules \"jest --config ci/jest.firestoreRules.config.js __tests__/Firestore/firestoreRules.emulator.test.js --runInBand\"",
+        "test:firestore-rules": "node ci/check-firestore-rule-coverage.js && TZ=UTC firebase emulators:exec --only firestore --project demo-alldone-rules \"jest __tests__/Firestore/firestoreRules.emulator.test.js --runInBand\"",
         "format-code": "prettier --write --ignore-unknown .",
         "prepare": "husky"
     },
@@ -81,7 +81,6 @@
             "<rootDir>/.claude/",
             "<rootDir>/functions/",
             "<rootDir>/cloudflare/",
-            "<rootDir>/__tests__/Firestore/firestoreRules.emulator.test.js",
             "__tests__/TwilioWhatsAppService.test.js",
             "__tests__/Chats/copyChatToOtherProject.test.js",
             "__tests__/Feeds/copyInnerFeedsToOtherProject.test.js",

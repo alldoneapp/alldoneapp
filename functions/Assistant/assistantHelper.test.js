@@ -1441,10 +1441,63 @@ describe('Responses API compatibility helpers', () => {
             expect((await stream.next()).value.content).toContain('unconfirmed')
             const params = mockResponsesCreate.mock.calls[0][0]
             expect(params.tools).toBeUndefined()
-            expect(params.input.at(-1).content).toContain('Do not call more tools')
+            expect(params.input.at(-1).content).toContain('Do not call more research or lookup tools')
             expect(params.input).toEqual(expect.arrayContaining([{ role: 'user', content: 'Find the Juno meeting' }]))
         }
     )
+
+    test('keeps action tools on the final reply so capped research can still save the result', async () => {
+        // 2026-11-11: a scheduled user description update read 17 times, hit the research limit and
+        // ended with no tools, so update_user_description could not be called.
+        const prompt = [
+            ['system', 'Keep original instructions'],
+            ['user', 'Update my global user description from my recent work'],
+        ]
+        for (let i = 0; i < 16; i++) {
+            prompt.push(
+                {
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: [
+                        {
+                            id: `read-${i}`,
+                            type: 'function',
+                            function: { name: 'get_tasks', arguments: JSON.stringify({ projectId: `project-${i}` }) },
+                        },
+                    ],
+                },
+                {
+                    role: 'tool',
+                    tool_call_id: `read-${i}`,
+                    content: JSON.stringify({ tasks: [{ id: `task-${i}`, name: `Task ${i}` }], count: 1 }),
+                }
+            )
+        }
+        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Saved.' }])
+        const stream = await interactWithChatStream(
+            prompt,
+            'MODEL_GPT6_SOL',
+            'TEMPERATURE_NORMAL',
+            ['get_tasks', 'search', 'update_user_description', 'update_task'],
+            {
+                sourceChannel: 'chat',
+                additionalToolSchemas: [
+                    {
+                        type: 'function',
+                        function: { name: 'channel_action', parameters: { type: 'object', properties: {} } },
+                    },
+                ],
+            }
+        )
+        await stream.next()
+        const params = mockResponsesCreate.mock.calls[0][0]
+        const offered = (params.tools || []).map(tool => tool.name || tool.function?.name)
+        expect(offered).toEqual(expect.arrayContaining(['update_user_description', 'update_task']))
+        expect(offered).not.toContain('get_tasks')
+        expect(offered).not.toContain('search')
+        expect(offered).not.toContain('channel_action')
+        expect(params.input.at(-1).content).toContain('call it now using the evidence already returned')
+    })
 
     test('recovers a preflight block without dispatching the oversized request or replaying tools', async () => {
         const prompt = [
@@ -1465,7 +1518,9 @@ describe('Responses API compatibility helpers', () => {
         expect((await stream.next()).value.content).toBe('Partial findings')
         expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
         expect(mockResponsesCreate.mock.calls[0][0].tools).toBeUndefined()
-        expect(mockResponsesCreate.mock.calls[0][0].input.at(-1).content).toContain('Do not call more tools')
+        expect(mockResponsesCreate.mock.calls[0][0].input.at(-1).content).toContain(
+            'Do not call more research or lookup tools'
+        )
     })
 
     test('returns actual source links when the compacted request is still blocked', async () => {
@@ -3572,7 +3627,6 @@ describe('assistant attachment handoff helpers', () => {
             progress: 80,
             projectId: 'project-1',
             projectName: 'Product',
-            ownerId: 'ALL_USERS',
             assigneesIds: ['user-1'],
             commentsData: {
                 amount: 2,
@@ -3581,7 +3635,6 @@ describe('assistant attachment handoff helpers', () => {
             status: 'both',
             startingMilestoneDate: 1774970400000,
             completionMilestoneDate: 1775575200000,
-            isBacklog: false,
             matchedMilestone: {
                 id: 'milestone-1',
                 date: 1774970400000,

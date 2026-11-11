@@ -32,18 +32,11 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   inside it. The guard drops an immediate whose environment is gone, the way jsdom drops its
   timers. A retry always passed, which is what made it look like a flaky test. Pinned by
   `__tests__/JestPolyfills.test.js`.
-- **Firestore rules suite** (`__tests__/Firestore/firestoreRules.emulator.test.js`) needs the
-  emulator, so every config ignores it except `ci/jest.firestoreRules.config.js`, which
-  `npm run test:firestore-rules` uses (it starts the emulator itself). Before 2026-11-10 the
-  root config still picked it up, and a plain `npm test` failed it with `fetch failed`.
 - **Functions suites**: `npx jest --config ci/jest.functions.config.js` (same Node 22).
   That config skips Babel for `functions/node_modules` (modern CJS runs natively) and
   resolves exports maps with the **node** conditions — under jsdom's default browser
   condition, jest 30 would resolve e.g. jwks-rsa's `jose` to its browser ESM build and
-  fail at require time. It also sets `process.env.TZ = 'UTC'` itself (2026-11-10): run
-  straight through npx it used to inherit the laptop's zone, and the AT-2803 recurrence
-  tests in `recurringTasksCloud.test.js` failed on any non-UTC machine with every time
-  shifted by the local offset. CI's `test:web:changed` excludes `functions/` entirely, so the
+  fail at require time. CI's `test:web:changed` excludes `functions/` entirely, so the
   functions suite is a local check — drift CAN land on master unnoticed, and it does.
   **Run `npx jest --config ci/jest.functions.config.js functions` before pushing anything
   under `functions/`**; as of 2026-09-01 it is fully green (236 suites / 3247 tests), so a

@@ -1,4 +1,9 @@
-const { prepareResearchRequest, compactResearchConversation, MAX_RESEARCH_CALLS } = require('./assistantResearchGuard')
+const {
+    prepareResearchRequest,
+    compactResearchConversation,
+    toolsForFinalReply,
+    MAX_RESEARCH_CALLS,
+} = require('./assistantResearchGuard')
 
 function round(
     index,
@@ -169,5 +174,30 @@ describe('shared assistant research safeguards', () => {
         expect(compacted[0].tool_calls).toEqual(prompt[0].tool_calls)
         expect(compacted.slice(1).map(entry => entry.tool_call_id)).toEqual(['a', 'b'])
         compacted.slice(1).forEach(entry => expect(JSON.parse(entry.content).contextTruncated).toBe(true))
+    })
+
+    test('offers the final reply only tools that act, never lookups', () => {
+        expect(
+            toolsForFinalReply([
+                'get_tasks',
+                'get_goals',
+                'search',
+                'web_search',
+                'read_knowledge_page',
+                'search_knowledge',
+                'list_recent_chat_media',
+                'find_profile_photo',
+                'fetch_url',
+                'browser_navigate',
+                'load_skill',
+                'compact_thread_context',
+                'update_user_description',
+                'update_task',
+                'create_note',
+                'execute_task_in_vm',
+                null,
+            ])
+        ).toEqual(['update_user_description', 'update_task', 'create_note', 'execute_task_in_vm'])
+        expect(toolsForFinalReply(undefined)).toEqual([])
     })
 })

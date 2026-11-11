@@ -33,7 +33,6 @@ import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
 import NewTaskSection from './NewTaskSection'
 import SharedHelper from '../../../utils/SharedHelper'
 import { useIsUserEditing } from '../../../utils/editingGuard'
-import { InlineAddTaskReopenScope } from './inlineAddTaskReopen'
 
 function OpenTasksByProject({
     firstProject,
@@ -175,9 +174,8 @@ function OpenTasksByProject({
         dispatch(setTasksArrowButtonIsExpanded(false))
     }, [currentUserId, projectId, tasksArrowButtonIsExpanded])
 
-    // AT-3010: one board = one scope for reopening an inline composer whose parent was rebuilt.
     return (
-        <InlineAddTaskReopenScope>
+        <>
             <OpenTasksByProjectHandler
                 projectIndex={projectIndex}
                 firstProject={firstProject}
@@ -271,7 +269,7 @@ function OpenTasksByProject({
                     </ProjectSectionBody>
                 </ProjectSection>
             )}
-        </InlineAddTaskReopenScope>
+        </>
     )
 }
 

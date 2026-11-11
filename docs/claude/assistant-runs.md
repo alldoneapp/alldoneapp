@@ -215,3 +215,38 @@ because a failed run restores its `lastExecuted` so the next scan retries. Pinne
 `the scan reserves an occurrence and the run claims what the scan wrote` block of
 `functions/Assistant/assistantRecurringContinuation.test.js`; the earlier integration test called
 `executeAssistantTask` directly, skipping the scan's write, which is why it stayed green.
+
+## Research that hits its limit can still carry out the request (2026-11-11)
+
+`assistantResearchGuard.js` stops a run after 16 lookup calls (or repeated searches, or an oversized
+context) and asks for one final reply. That reply used to get **no tools at all**. The daily "User
+Description Update" asks Anna to read tasks, goals, notes, contacts and chats and then save the
+result. On 2026-11-11 it made 17 reads (`get_chats` and `get_tasks` once per project), hit the
+limit, and the final reply could not call `update_user_description`. Anna posted the draft and said
+the save "wasn't executed". Nothing failed in the logs; the tell is
+`Finalizing bounded research { reason: 'research_call_limit' }` followed by `hasTools: false`.
+
+The final reply now gets every tool that acts (`toolsForFinalReply`) and none that looks things up:
+the guard's research set, any `get_`/`read_`/`search_`/`list_`/`find_`/`fetch_`/`browser_` tool,
+`load_skill` and `compact_thread_context`. Delegation, external-app and MCP tools and the channel's
+`additionalToolSchemas` stay out, because they are open-ended rather than one action.
+`FINAL_REPLY_INSTRUCTION` tells the model to make the requested change if it can, and not to claim
+an action it did not run. A successful write counts as workflow progress and resets the guard, so
+the turn after it has its full tools again. The preflight-recovery request (oversized input) still
+goes out without tools. Pinned by `keeps action tools on the final reply…` in
+`assistantHelper.test.js` and `offers the final reply only tools that act` in
+`assistantResearchGuard.test.js`.
+
+## get_goals is shaped for a model, not mirrored from the document (2026-11-11)
+
+The same run's `get_goals` (status `all`, 331 goals) came to 224k characters. Most of it was empty
+fields, the backlog placeholder dates (`Number.MAX_SAFE_INTEGER`) and one entry per done milestone
+of a recurring goal. The generic 40k ceiling in `attachmentToolHandoff.js` then kept **only the
+first 20 goals**, so the model reasoned over 6% of the list without knowing it. `goalListingContext.js`
+now owns the shape. `mapAssistantGoalForToolResponse` leaves out empty and default fields
+(`ownerId: 'ALL_USERS'`, `isBacklog: false`, the placeholder dates), keeps the five newest done
+milestones plus `doneMilestoneCount`, and trims comments to `amount` and a 300-character
+`lastComment`. When a listing is still over the ceiling, or the research guard compacts it,
+`compactGoalListing` keeps every goal as an identity line grouped by project before it drops any
+goal, and it reports `shownCount`/`listingComplete`. The same applies over MCP, which runs the same
+executor.

@@ -3245,19 +3245,6 @@ exports.menubarProjects = onRequest(
     }
 )
 
-// The Mac app's local autocomplete "Writer:" profile. Firestore reads only, no model call.
-exports.menubarAutocompleteProfile = onRequest(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async (req, res) => {
-        const { handleMenubarAutocompleteProfile } = require('./MenubarApp/menubarApp')
-        return await handleMenubarAutocompleteProfile(req, res)
-    }
-)
-
 // 1GiB, not the 256MiB the other read-only menubar endpoints use: this one pulls
 // in assistantCalendarTools, and with it the full googleapis client, on top of
 // the tiktoken encoder index.js preloads at module load. At 256MiB it died with
