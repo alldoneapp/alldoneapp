@@ -14,6 +14,7 @@ jest.mock('../styles/global', () => ({
     },
 }))
 
+import { resolveColor, themed } from '../../Themes/colorMode'
 import undoActionBarStyles, { getUndoOverlayPosition } from './undoActionBarStyles'
 import {
     FLOATING_ACTION_SIZE,
@@ -43,8 +44,19 @@ describe('UndoActionBar layout', () => {
     })
 
     it('makes only the banner background 20% transparent', () => {
-        expect(undoActionBarStyles.container.backgroundColor).toBe('rgba(4,20,47,0.8)')
+        expect(undoActionBarStyles.container.backgroundColor).toBe(themed.Snackbar)
+        expect(resolveColor(undoActionBarStyles.container.backgroundColor, 'light')).toBe('rgba(4, 20, 47, 0.8)')
         expect(undoActionBarStyles.container.opacity).toBeUndefined()
+    })
+
+    it('stays a dark bar under its white text in dark mode', () => {
+        // Text01 is near-white in dark mode; deriving the bar from it made it light grey.
+        const [r, g, b] = resolveColor(undoActionBarStyles.container.backgroundColor, 'dark').match(/\d+/g).map(Number)
+        expect(Math.max(r, g, b)).toBeLessThan(100)
+        expect(resolveColor(undoActionBarStyles.container.backgroundColor, 'dark')).not.toBe(
+            resolveColor(themed.Surface, 'dark')
+        )
+        expect(undoActionBarStyles.message.color).toBe('#FFFFFF')
     })
 
     describe('the auto-hide countdown line (AT-2503)', () => {

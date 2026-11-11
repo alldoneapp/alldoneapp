@@ -44,6 +44,8 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
 - Plain CSS files use `var(--ad-<Token>, <light fallback>)`. A light background without a
   token uses `var(--ad-hl-RRGGBB, #RRGGBB)` and must be listed in `CSS_ADAPTIVE_COLORS`.
 - Navy popovers (`Secondary400`) intentionally stay navy in both modes.
+- Never derive a background from a text token (`hexColorToRGBa(colors.Text01, …)`): `Text01`
+  is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`.
 
 ## Known gaps (not yet themed)
 

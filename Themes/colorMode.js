@@ -109,6 +109,9 @@ const LIGHT_BASE = {
     // Generic overlay used behind modals
     Backdrop: 'rgba(4, 20, 47, 0.24)',
     Shadow: 'rgba(4, 20, 47, 0.24)',
+    // Floating notification bars (the Undo bar) carry white text. Navy on the light page; in
+    // dark mode a raised surface lighter than the page, never the near-white of Text01.
+    Snackbar: 'rgba(4, 20, 47, 0.8)',
 }
 
 const DARK_BASE = {
@@ -135,6 +138,7 @@ const DARK_BASE = {
     SidebarSelected: '#1B3555',
     Backdrop: 'rgba(0, 0, 0, 0.55)',
     Shadow: 'rgba(0, 0, 0, 0.6)',
+    Snackbar: 'rgba(52, 62, 82, 0.97)',
 }
 
 const buildPalettes = () => {

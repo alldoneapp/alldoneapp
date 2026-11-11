@@ -1,6 +1,7 @@
 import { StyleSheet } from 'react-native'
 
 import { colors, hexColorToRGBa } from '../styles/global'
+import { themed } from '../../Themes/colorMode'
 import {
     FLOATING_ACTION_SIZE,
     FLOATING_ACTION_STACK_GAP,
@@ -33,7 +34,9 @@ const undoActionBarStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 8,
-        backgroundColor: hexColorToRGBa(colors.Text01, 0.8),
+        // Its own token: `Text01` is near-white in dark mode, which turned the bar light grey
+        // under its white text.
+        backgroundColor: themed.Snackbar,
         flexDirection: 'row',
         alignItems: 'center',
         boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
