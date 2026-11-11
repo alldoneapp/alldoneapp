@@ -250,3 +250,18 @@ milestones plus `doneMilestoneCount`, and trims comments to `amount` and a 300-c
 `compactGoalListing` keeps every goal as an identity line grouped by project before it drops any
 goal, and it reports `shownCount`/`listingComplete`. The same applies over MCP, which runs the same
 executor.
+
+## Scheduled runs get a larger research budget (2026-11-11)
+
+`assistantResearchGuard.js` ends a run's research after `MAX_RESEARCH_CALLS` (16) lookups since the
+last successful write, then compacts older tool results to excerpts and asks for a final answer.
+That suits a chat, where the user can say "keep going". A scheduled assistant task has nobody to
+say it: the Growth Lead's daily discovery spent its 16 calls on the playbook, contacts and a few web
+searches, stopped after ~100 seconds with 0 of 6 prospects, and the compaction cut the playbook to
+an excerpt without the tracked links (its two playbook entries contradict each other for that
+reason). `checkAndExecuteRecurringTasks` now passes `maxResearchCalls: SCHEDULED_MAX_RESEARCH_CALLS`
+(48) through `generatePreConfigTaskResult`'s options into `toolRuntimeContext`, which
+`interactWithChatStream` hands to `prepareResearchRequest`. Interactive runs leave it unset; invalid
+values fall back to 16 and anything above 100 is capped. The scheduled 25-minute wall clock still
+bounds the run. Prompts for research-heavy schedules should also save each result as soon as it is
+verified, because every successful write resets the budget.

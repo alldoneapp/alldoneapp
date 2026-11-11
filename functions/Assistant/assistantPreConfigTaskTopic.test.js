@@ -421,6 +421,17 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             )
         })
 
+        test('an unattended caller can raise the research budget; interactive runs leave it unset', async () => {
+            await runWithOptions({ maxResearchCalls: 48 })
+            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+                expect.objectContaining({ maxResearchCalls: 48 })
+            )
+
+            mockInteractWithChatStream.mockClear()
+            await runWithOptions({})
+            expect(mockInteractWithChatStream.mock.calls[0][4]).not.toHaveProperty('maxResearchCalls')
+        })
+
         test('passes the server workflow handoff hook to VM tool execution', async () => {
             const onVmJobStarted = jest.fn()
             await runWithOptions({ onVmJobStarted })

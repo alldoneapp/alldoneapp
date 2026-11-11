@@ -128,7 +128,13 @@ function buildScheduledTaskSourceLabel(taskMetadata) {
 // transport was sized for 25, and the run's own guardrail could never fire before the platform cut
 // it off. The two bags look interchangeable at a call site, so name the mistake instead of
 // tolerating it.
-const RUN_SHAPING_OPTION_KEYS = ['maxRunWallClockMs', 'disableToolSearch', 'triggerMessageId', 'serverGrantedTools']
+const RUN_SHAPING_OPTION_KEYS = [
+    'maxRunWallClockMs',
+    'disableToolSearch',
+    'maxResearchCalls',
+    'triggerMessageId',
+    'serverGrantedTools',
+]
 
 function warnAboutMisplacedRunOptions(taskMetadata) {
     if (!taskMetadata || typeof taskMetadata !== 'object') return
@@ -462,6 +468,9 @@ async function generatePreConfigTaskResult(
             // whole job, reports the tool as unavailable, spends the Gold and is marked done. An
             // interactive run keeps tool search, because there the user simply asks again.
             disableToolSearch: options?.disableToolSearch === true,
+            // Unattended runs may also look things up more often before the research guard asks for
+            // the final answer (assistantResearchGuard.js); interactive runs keep the chat budget.
+            ...(options?.maxResearchCalls ? { maxResearchCalls: options.maxResearchCalls } : {}),
             // Tools this SERVER-authored run may execute on top of the assistant's persisted list.
             // Listing a tool in aiSettings.allowedTools only puts its schema in front of the model;
             // the execution gate in storeChunks reads the assistant document, so a run that needs a

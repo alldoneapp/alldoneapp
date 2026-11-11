@@ -3,6 +3,7 @@ const {
     compactResearchConversation,
     toolsForFinalReply,
     MAX_RESEARCH_CALLS,
+    SCHEDULED_MAX_RESEARCH_CALLS,
 } = require('./assistantResearchGuard')
 
 function round(
@@ -199,5 +200,48 @@ describe('shared assistant research safeguards', () => {
             ])
         ).toEqual(['update_user_description', 'update_task', 'create_note', 'execute_task_in_vm'])
         expect(toolsForFinalReply(undefined)).toEqual([])
+    })
+})
+
+// The Growth Lead's daily discovery (2026-11-11) hit the 16-call chat budget after a few web searches
+// and stopped at 0 of 6 prospects. Scheduled runs pass a larger budget; chats keep the default.
+describe('the research budget of unattended runs', () => {
+    const webResearch = count => {
+        const prompt = [...request]
+        for (let i = 0; i < count; i++)
+            prompt.push(
+                ...round(i, 'web_search', { results: [{ title: `Hit ${i}`, url: `https://example.com/${i}` }] })
+            )
+        return prompt
+    }
+
+    test('a scheduled run keeps researching past the chat budget', () => {
+        expect(SCHEDULED_MAX_RESEARCH_CALLS).toBeGreaterThan(MAX_RESEARCH_CALLS)
+        expect(prepareResearchRequest(webResearch(MAX_RESEARCH_CALLS)).stopReason).toBe('research_call_limit')
+        expect(
+            prepareResearchRequest(webResearch(MAX_RESEARCH_CALLS), {
+                maxResearchCalls: SCHEDULED_MAX_RESEARCH_CALLS,
+            }).stopReason
+        ).toBeNull()
+    })
+
+    test('the larger budget is still a bound', () => {
+        expect(
+            prepareResearchRequest(webResearch(SCHEDULED_MAX_RESEARCH_CALLS), {
+                maxResearchCalls: SCHEDULED_MAX_RESEARCH_CALLS,
+            }).stopReason
+        ).toBe('research_call_limit')
+    })
+
+    test.each([undefined, null, 0, -5, 2.5, 'many'])('an invalid budget (%p) keeps the chat default', value => {
+        expect(prepareResearchRequest(webResearch(MAX_RESEARCH_CALLS), { maxResearchCalls: value }).stopReason).toBe(
+            'research_call_limit'
+        )
+    })
+
+    test('a budget above the ceiling is capped at 100 calls', () => {
+        expect(prepareResearchRequest(webResearch(100), { maxResearchCalls: 10000 }).stopReason).toBe(
+            'research_call_limit'
+        )
     })
 })

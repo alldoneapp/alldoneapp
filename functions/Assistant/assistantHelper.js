@@ -2855,7 +2855,9 @@ async function interactWithChatStream(
 ) {
     toolRuntimeContext?.whatsAppRunGuard?.assertActive()
     const streamStartTime = Date.now()
-    const researchRequest = prepareResearchRequest(formattedPrompt)
+    const researchRequest = prepareResearchRequest(formattedPrompt, {
+        maxResearchCalls: toolRuntimeContext?.maxResearchCalls,
+    })
     formattedPrompt = researchRequest.messages
     const finalizeResearch = !!researchRequest.stopReason
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)

@@ -141,6 +141,10 @@ describe('the scan reserves an occurrence and the run claims what the scan wrote
         await executeAssistantTask('project', 'assistant', scanned, null, { reservedLastExecuted })
 
         expect(mockGenerate).toHaveBeenCalledTimes(1)
+        // Unattended, so it gets the scheduled research budget rather than the chat one.
+        expect(mockGenerate.mock.calls[0][12].maxResearchCalls).toBe(
+            require('./assistantResearchGuard').SCHEDULED_MAX_RESEARCH_CALLS
+        )
         expect(mockCreateTask).toHaveBeenCalledTimes(1)
         expect(mockDocuments.get(taskPath).executionStatus).toBe('succeeded')
     })
