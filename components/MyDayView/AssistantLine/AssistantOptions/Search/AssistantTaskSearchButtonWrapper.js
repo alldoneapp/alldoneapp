@@ -5,8 +5,8 @@ import { useDispatch } from 'react-redux'
 import OptionButton from '../OptionButtons/OptionButton'
 import AssistantTaskSearchModal from './AssistantTaskSearchModal'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
-import { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
+import { modeColor } from '../../../../../Themes/colorMode'
 
 export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
     const dispatch = useDispatch()
@@ -63,9 +63,11 @@ export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
 }
 
 const localStyles = {
+    // Light blue with a pastel rim on the light card. In dark mode a solid primary blue: the
+    // pastel rim glared and white text on the light blue was hard to read.
     searchButton: {
-        backgroundColor: colors.UtilityBlue200,
-        borderColor: colors.UtilityBlue150,
+        backgroundColor: modeColor('#5AACFF', '#2F7CF6'),
+        borderColor: modeColor('#A3D1FF', '#2F7CF6'),
     },
     searchText: {
         color: '#ffffff',

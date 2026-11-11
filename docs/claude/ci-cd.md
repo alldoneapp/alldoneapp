@@ -143,6 +143,16 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   `^latest$`. `deployed/*` tags are deliberately NOT protected (see the marker note).
   Earlier notes in this repo that said there were no protected branches (for example in
   `TYPESENSE_MIGRATION.md`) describe the state before that date.
+- **The "new version" notice needs an authenticated call (fixed 2026-11-11).** The security
+  audit (2026-11-08, AT-2971) made `increaseVersionSecondGen` POST-only with a Bearer token,
+  while `update:version:*` still ran `curl "$NEW_APP_VERSION_FUNCTION_*"`: a GET that got 405
+  and passed, because curl exits 0 on an HTTP error. No client was told about a deploy for
+  three days. The jobs now source `useFirebaseDeployCredentials.sh` and run
+  `ci/bumpAppVersion.js`, which mints a Google identity token for the deploy service account
+  (audience: the function URL), POSTs, and fails on any non-2xx. The function accepts that
+  token only for a verified service account of its own project and only with its own URL as
+  audience (`functions/WebApp/versionBumpAuth.js`); the administrator's Firebase ID token still
+  works. Pinned by `__tests__/CiBumpAppVersion.test.js` and `versionBumpAuth.test.js`.
 - **Functions deploy only affected exports.** `ci/selectFunctionsDeployment.js` parses
   committed `functions/index.js`, follows entrypoint helpers and transitive local imports,
   and compares both trees against `deployed/functions-production` (or `functions-staging`).

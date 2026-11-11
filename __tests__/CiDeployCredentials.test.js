@@ -105,6 +105,7 @@ describe('Firebase deploy credentials per environment', () => {
                 'deploy:cloud:functions:staging',
                 'deploy:cloud:runner:staging',
                 'deploy:web-dev',
+                'update:version:staging',
             ].sort()
         )
         for (const [name, job] of users) {

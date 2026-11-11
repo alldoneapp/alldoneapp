@@ -8,11 +8,17 @@ import useCollapsibleSidebar from '../../Collapsible/UseCollapsibleSidebar'
 import ColoredCircleAmount from './ColoredCircleAmount'
 import ProjectLetter from './ProjectLetter'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import { useIsDarkMode } from '../../../../Themes/colorMode'
+
+// Inactive project dots are faded on the light sidebar. On a dark sidebar the same fade reads
+// as a muddy dark disc, so dark mode fades them much less.
+const INACTIVE_OPACITY = { light: 0.4, dark: 0.75 }
 
 export default function ColoredCircle({ projectId, projectColor, highlight, isGuide }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const { expanded } = useCollapsibleSidebar()
+    const isDarkMode = useIsDarkMode()
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.ProjectList.ProjectItem.ProjectItemIcon')
 
@@ -22,7 +28,10 @@ export default function ColoredCircle({ projectId, projectColor, highlight, isGu
                 localStyles.projectMarker,
                 {
                     backgroundColor: theme.marker(projectColor),
-                    opacity: themeName === COLORS_THEME_MODERN && !highlight ? 0.4 : 1,
+                    opacity:
+                        themeName === COLORS_THEME_MODERN && !highlight
+                            ? INACTIVE_OPACITY[isDarkMode ? 'dark' : 'light']
+                            : 1,
                 },
             ]}
         >

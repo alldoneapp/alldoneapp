@@ -951,15 +951,19 @@ check:firestore:indexes:production:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 update:version:staging:
-    image: curlimages/curl
+    image: node:22-alpine
     stage: 'update_version'
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
     interruptible: false
     script:
-        - curl "$NEW_APP_VERSION_FUNCTION_DEV"
+        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh staging
+        - node $CI_PROJECT_DIR/ci/bumpAppVersion.js "$NEW_APP_VERSION_FUNCTION_DEV"
 
-# Tells the live app a new version is available, which makes clients reload. It therefore
+# Tells the live app a new version is available, which makes clients reload. Since the 2026-11
+# security audit the function needs a token: ci/bumpAppVersion.js signs in as the deploy service
+# account and fails the job on any HTTP error (a bare `curl` got 405 and passed, so no client
+# heard about a deploy from 2026-11-08 on). It therefore
 # has to fire only when a web deploy actually happened: it used to run on every master
 # push, including pushes that changed no web file at all and pushes whose deploy was
 # skipped as superseded, so users were being asked to reload for a bundle that had not
@@ -974,7 +978,7 @@ update:version:staging:
 # where both git and curl can be installed (curlimages/curl runs as a non-root user, so it
 # cannot apk add).
 update:version:production:
-    image: alpine:3.20
+    image: node:22-alpine
     stage: 'update_version'
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
@@ -982,10 +986,11 @@ update:version:production:
     dependencies:
         - 'deploy_scope'
     before_script:
-        - apk add --no-cache git curl
+        - apk add --no-cache git
     script:
         - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh update:version:production
-        - curl "$NEW_APP_VERSION_FUNCTION_PROD"
+        - . $CI_PROJECT_DIR/ci/useFirebaseDeployCredentials.sh production
+        - node $CI_PROJECT_DIR/ci/bumpAppVersion.js "$NEW_APP_VERSION_FUNCTION_PROD"
     allow_failure:
         exit_codes: 75

@@ -6242,8 +6242,10 @@ exports.increaseVersionSecondGen = onRequest(
     },
     async (req, res) => {
         // Bumping info/version makes every open client show the new-version banner and reload, so
-        // only the administrator may call it (it was public until the 2026-11 security audit).
-        // Call with `Authorization: Bearer <Firebase ID token of the administrator>`.
+        // only the administrator or the CI deploy may call it (it was public until the 2026-11
+        // security audit). Call with `Authorization: Bearer <Firebase ID token of the
+        // administrator>`, or a Google identity token of a service account of this project
+        // (ci/bumpAppVersion.js, see WebApp/versionBumpAuth.js).
         const admin = require('firebase-admin')
         if (req.method !== 'POST') {
             res.status(405).send('Method not allowed')
@@ -6255,9 +6257,16 @@ exports.increaseVersionSecondGen = onRequest(
             return
         }
         try {
-            const decoded = await admin.auth().verifyIdToken(match[1])
-            await assertAdministrator(decoded.uid)
+            const { isGoogleIdentityToken, verifyDeployIdentityToken } = require('./WebApp/versionBumpAuth')
+            if (isGoogleIdentityToken(match[1])) {
+                // The CI deploy (ci/bumpAppVersion.js) with the deploy service account.
+                await verifyDeployIdentityToken(match[1])
+            } else {
+                const decoded = await admin.auth().verifyIdToken(match[1])
+                await assertAdministrator(decoded.uid)
+            }
         } catch (error) {
+            console.warn('[increaseVersion] rejected:', error.message)
             res.status(403).send('Forbidden')
             return
         }
