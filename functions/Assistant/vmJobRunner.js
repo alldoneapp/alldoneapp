@@ -66,6 +66,7 @@ const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const VM_JOB_INTERRUPTED_STATUS = 'interrupted'
 const VM_JOB_INTERRUPTED_FAILURE_REASON = 'execution_interrupted'
+const VM_SANDBOX_REBOOTED_FAILURE_REASON = 'sandbox_rebooted'
 const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
 const VM_SUBSCRIPTION_AUTH_FAILURE_REASON = 'subscription_auth_refresh_required'
 const VM_AUTH_RECOVERY_WAIT_MS = 2 * 60 * 1000
@@ -208,6 +209,10 @@ function buildVmRuntimeTimeoutText(runtimeMs = MAX_VM_RUNTIME_MS) {
 
 function buildVmExecutionInterruptedText(agentLabel = 'the agent') {
     return `⚠️ The VM lost its connection to ${agentLabel} before receiving a final result. Some requested actions may already have completed. The same VM session was preserved when possible; check the current state before continuing. No consequential action was repeated automatically.`
+}
+
+function buildVmSandboxRebootedText(agentLabel = 'the agent') {
+    return `⚠️ The VM had to restart while its runtime was being extended, which stopped ${agentLabel} mid-run. The files in the VM were kept (anything not yet saved to disk may be missing). Reply in this thread to let ${agentLabel} check the current state and continue.`
 }
 
 function isInteractiveVmExecutionEnabled(env = process.env, userId = '') {
@@ -1998,12 +2003,22 @@ function buildStageError(stage, error, stdout = '', stderr = '') {
     return new Error(`${stage} failed.${detail ? ` ${detail}` : ''}`)
 }
 
+// Node prints process warnings (deprecations, SDK notices such as
+// CLAUDE_SDK_CAN_USE_TOOL_SHADOWED) to stderr. They are never the reason a run failed, but
+// appended to a failure message they read like one, so they are left out of it.
+function stripNodeProcessWarnings(text) {
+    return String(text || '')
+        .split('\n')
+        .filter(line => !/^\s*\(node:\d+\)\s.*warning/i.test(line) && !/^\s*\(Use `node --trace-/.test(line))
+        .join('\n')
+}
+
 function buildAgentExitError(agentLabel, result, state, stderr = '', fallbackError = null) {
     const exitCode = result?.exitCode ?? fallbackError?.exitCode ?? fallbackError?.code
     const output = (state?.finalResult || state?.assistantText || '').trim()
     const bridgeError = sanitizeVmErrorText(state?.bridgeError || '')
     const transportError = sanitizeVmErrorText(fallbackError?.message || '')
-    const cleanStderr = sanitizeVmErrorText(stderr)
+    const cleanStderr = sanitizeVmErrorText(stripNodeProcessWarnings(stderr))
     const partialOutput = sanitizeVmErrorText(output)
     // A transport failure can arrive after many minutes of valid assistant output. Keep that
     // partial output as diagnostics, but lead with the actual failure so truncation cannot erase
@@ -2780,10 +2795,16 @@ function vmSessionDocId(vmJob) {
 
 // Pause an E2B sandbox via the REST API (e2b@1.x exposes no pause() method). The paused
 // sandbox keeps its full state and is resumable later via Sandbox.connect(sandboxId).
-async function pauseE2bSandbox(sandboxId, e2bApiKey) {
+//
+// `requireHealthyGuest` makes E2B check that the sandbox's guest agent (envd) answers before it
+// snapshots. Without it, a pause of a busy sandbox records the unresponsive agent in the
+// snapshot and the snapshot can no longer be restored with its memory (see resumeE2bSandbox).
+// With it, E2B refuses with 503 and leaves the sandbox running, so the caller can retry.
+async function pauseE2bSandbox(sandboxId, e2bApiKey, { requireHealthyGuest = false } = {}) {
     const resp = await fetch(`${E2B_API_BASE}/sandboxes/${sandboxId}/pause`, {
         method: 'POST',
         headers: { 'X-API-KEY': e2bApiKey, 'Content-Type': 'application/json' },
+        ...(requireHealthyGuest ? { body: JSON.stringify({ requireHealthyGuest: true }) } : {}),
     })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
@@ -2794,21 +2815,66 @@ async function pauseE2bSandbox(sandboxId, e2bApiKey) {
     }
 }
 
+// E2B's answer to a plain resume of a snapshot taken while the guest agent was not answering.
+// Restoring that memory would bring the dead agent back, so E2B only allows a resume without
+// memory: a cold boot from the sandbox's disk.
+const E2B_GUEST_AGENT_UNRESPONSIVE_ERROR_CODE = 'sandbox_snapshot_guest_agent_unresponsive'
+// resumeE2bSandbox's return value when the sandbox had to be cold-booted from disk. Truthy and
+// not `false`, so callers that only distinguish "resumed" from "already running" keep working.
+const E2B_RESUME_REBOOTED = 'rebooted'
+
+function readE2bErrorCode(body) {
+    try {
+        return JSON.parse(body)?.error_code || null
+    } catch (_) {
+        return null
+    }
+}
+
+async function postE2bResume(sandboxId, e2bApiKey, payload) {
+    return fetch(`${E2B_API_BASE}/sandboxes/${sandboxId}/resume`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': e2bApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+}
+
+function buildE2bResumeError(status, body, errorCode = null) {
+    const error = new Error(`E2B resume ${status}: ${body.substring(0, 200)}`)
+    error.status = status
+    if (errorCode) error.e2bErrorCode = errorCode
+    return error
+}
+
 // Resume a PAUSED sandbox back to running. e2b@1.x's Sandbox.connect only attaches to a
 // RUNNING sandbox — it does NOT auto-resume a paused one (operations 404 otherwise), so a
 // paused session must be resumed via this REST call first. `timeout` is the new TTL (seconds).
+//
+// Returns true for a normal resume, false when the sandbox was already running, and
+// E2B_RESUME_REBOOTED when its snapshot could only be resumed without memory. A reboot keeps
+// the disk (crash-recovery semantics: writes not flushed before the pause may be lost) but no
+// running process, so a caller that left an agent running inside must treat it as stopped.
 async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
-    const resp = await fetch(`${E2B_API_BASE}/sandboxes/${sandboxId}/resume`, {
-        method: 'POST',
-        headers: { 'X-API-KEY': e2bApiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeout: timeoutSec, autoPause: false }),
-    })
+    const resp = await postE2bResume(sandboxId, e2bApiKey, { timeout: timeoutSec, autoPause: false })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
         // Firestore can lag the E2B lifecycle briefly. If E2B says the sandbox is already running,
         // connecting to it is exactly the desired continuation behavior.
         if (resp.status === 409 && /already running/i.test(body)) return false
-        throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
+        const errorCode = readE2bErrorCode(body)
+        if (resp.status === 409 && errorCode === E2B_GUEST_AGENT_UNRESPONSIVE_ERROR_CODE) {
+            // The production incident on 2026-11-11 discarded a sandbox — and an hour of the
+            // agent's work on its disk — because this answer was treated as fatal.
+            const rebootResp = await postE2bResume(sandboxId, e2bApiKey, {
+                timeout: timeoutSec,
+                autoPause: false,
+                memory: false,
+            })
+            if (rebootResp.ok) return E2B_RESUME_REBOOTED
+            const rebootBody = await rebootResp.text().catch(() => '')
+            throw buildE2bResumeError(rebootResp.status, rebootBody, readE2bErrorCode(rebootBody) || errorCode)
+        }
+        throw buildE2bResumeError(resp.status, body, errorCode)
     }
     return true
 }
@@ -2868,8 +2934,8 @@ async function resumeVmSessionWithFreshLease({
             pauseError = error
         }
     }
-    const sessionRestarted =
-        (await resumeSandbox(sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))) !== false
+    const resumeOutcome = await resumeSandbox(sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
+    const sessionRestarted = resumeOutcome !== false
     const sandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
     await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
     // Verify the command channel actually executes before we commit to it. connect() and
@@ -2884,6 +2950,9 @@ async function resumeVmSessionWithFreshLease({
         // shorter budgeted run instead of a sandbox that dies under a running agent.
         leaseDeadlineMs: await readLeaseDeadline(sandbox, Date.now() + E2B_SANDBOX_TIMEOUT_MS),
         sessionRestarted,
+        // Nothing runs in a session between runs, so a cold boot from disk loses nothing a run
+        // relies on; it is reported so the log shows why the resume took longer.
+        rebootedFromDisk: resumeOutcome === E2B_RESUME_REBOOTED,
         pauseError,
     }
 }
@@ -2899,6 +2968,59 @@ function startVmSliceTimer(runtimeMs) {
             if (timer) clearTimeout(timer)
             timer = null
         },
+    }
+}
+
+// Pausing at a slice boundary snapshots a sandbox with the agent still running in it, often while
+// it is busy. A snapshot taken while E2B's guest agent does not answer cannot be restored with its
+// memory, which stops the agent mid-run. So the rotation flushes the disk first (a cold boot from
+// disk then keeps those writes) and asks E2B to pause only while the guest answers, retrying
+// briefly. The lease still has a few minutes left at the boundary, which bounds this budget.
+const SLICE_ROTATION_SYNC_TIMEOUT_MS = 15 * 1000
+const SLICE_ROTATION_HEALTHY_PAUSE_ATTEMPTS = 6
+const SLICE_ROTATION_HEALTHY_PAUSE_RETRY_MS = 15 * 1000
+
+const sleepMs = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function pauseSandboxForSliceRotation({ sandbox, sandboxId, e2bApiKey, pauseSandbox, sleep = sleepMs }) {
+    if (sandbox?.commands && typeof sandbox.commands.run === 'function') {
+        await sandbox.commands.run('sync', { timeoutMs: SLICE_ROTATION_SYNC_TIMEOUT_MS }).catch(() => {})
+    }
+    let lastRefusal = null
+    for (let attempt = 1; attempt <= SLICE_ROTATION_HEALTHY_PAUSE_ATTEMPTS; attempt += 1) {
+        try {
+            await pauseSandbox(sandboxId, e2bApiKey, { requireHealthyGuest: true })
+            return { healthy: true, attempts: attempt }
+        } catch (error) {
+            // 503 = "cannot pause right now" (guest not answering, node busy); the sandbox keeps
+            // running. Anything else is a real failure the plain pause below would hit too.
+            if (Number(error?.status) !== 503) throw error
+            lastRefusal = error
+            if (attempt < SLICE_ROTATION_HEALTHY_PAUSE_ATTEMPTS) await sleep(SLICE_ROTATION_HEALTHY_PAUSE_RETRY_MS)
+        }
+    }
+    // The guest never answered in time. Pausing anyway is still better than letting the lease run
+    // out under the agent: if the snapshot cannot be restored, the resume reboots from disk.
+    console.warn('🖥️ VM JOB: sandbox guest did not answer before the slice pause; pausing anyway', {
+        sandboxId,
+        attempts: SLICE_ROTATION_HEALTHY_PAUSE_ATTEMPTS,
+        error: lastRefusal?.message || null,
+    })
+    await pauseSandbox(sandboxId, e2bApiKey)
+    return { healthy: false, attempts: SLICE_ROTATION_HEALTHY_PAUSE_ATTEMPTS + 1 }
+}
+
+// The slice resume had to cold-boot the sandbox from disk, which ended the agent process. The disk
+// (repository checkout, agent session files, output) is kept, so the session must stay reusable.
+class VmSandboxRebootedError extends Error {
+    constructor(sandboxId = null) {
+        super(
+            'The VM had to restart from its disk while its runtime was being extended, which stopped the agent mid-run.'
+        )
+        this.name = 'VmSandboxRebootedError'
+        this.code = VM_SANDBOX_REBOOTED_FAILURE_REASON
+        this.vmSandboxRebooted = true
+        this.sandboxId = sandboxId
     }
 }
 
@@ -2920,6 +3042,7 @@ async function superviseVmCommand({
     resolveSliceRuntime = resolveVmAgentSliceRuntimeMs,
     readLeaseDeadline = readSandboxLeaseDeadlineMs,
     now = Date.now,
+    sleep = sleepMs,
 }) {
     let activeSandbox = sandbox
     let activeCommandHandle = commandHandle
@@ -3043,12 +3166,12 @@ async function superviseVmCommand({
             }
         }
         const sandboxId = activeSandbox.sandboxId || activeSandbox.id
-        await pauseSandbox(sandboxId, e2bApiKey)
+        await pauseSandboxForSliceRotation({ sandbox: activeSandbox, sandboxId, e2bApiKey, pauseSandbox, sleep })
         const completedSliceCount = sliceCount
         if (typeof onSliceRotated === 'function') {
             await onSliceRotated({ completedSliceCount, activeRuntimeMs })
         }
-        await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
+        const resumeOutcome = await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
         activeSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
         await activeSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
         // The resume above genuinely re-arms E2B's clock, so `now + timeout` is right here —
@@ -3056,6 +3179,25 @@ async function superviseVmCommand({
         // budgeted against what E2B will actually enforce rather than what we asked for.
         leaseDeadlineMs = await readLeaseDeadline(activeSandbox, now() + E2B_SANDBOX_TIMEOUT_MS)
         sliceCount += 1
+        if (resumeOutcome === E2B_RESUME_REBOOTED) {
+            // A cold boot ran no process forward, so the agent is gone. It may still have
+            // finished just before the pause; its durable output on disk says so.
+            const completedAfterReboot =
+                typeof getCompletedResult === 'function' ? await getCompletedResult(activeSandbox) : null
+            if (completedAfterReboot) {
+                return {
+                    result: completedAfterReboot,
+                    sandbox: activeSandbox,
+                    commandHandle: activeCommandHandle,
+                    sliceCount,
+                }
+            }
+            const rebootError = new VmSandboxRebootedError(sandboxId)
+            // The runner's own handle still points at the pre-pause connection; reading the
+            // durable output and keeping the session alive must use this one.
+            rebootError.vmActiveSandbox = activeSandbox
+            throw rebootError
+        }
         try {
             activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
                 timeoutMs: E2B_COMMAND_CONNECTION_TIMEOUT_MS,
@@ -3486,6 +3628,7 @@ async function runAgentInSandbox(
                     sandboxId: sess.sandboxId,
                     wasPaused,
                     sessionRestarted: lease.sessionRestarted,
+                    rebootedFromDisk: lease.rebootedFromDisk === true,
                     leaseRemainingMs: sandboxLeaseDeadlineMs - Date.now(),
                 })
             } catch (error) {
@@ -3966,6 +4109,9 @@ async function runAgentInSandbox(
                 if (cancellationMonitor) cancellationMonitor.stop()
             }
         } catch (runError) {
+            // A slice rotation that cold-booted the sandbox hands back its new connection; the old
+            // one predates the pause, and everything below (output reload, keep-alive) needs this.
+            if (runError?.vmActiveSandbox) sandbox = runError.vmActiveSandbox
             await reloadDurableAgentOutput()
             if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
             if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
@@ -4019,6 +4165,12 @@ async function runAgentInSandbox(
                     !isVmRuntimeTimeoutError(errorToThrow)
                 ) {
                     errorToThrow.vmExecutionInterrupted = true
+                }
+                if (runError.vmSandboxRebooted) {
+                    // The agent was stopped by the reboot, not by anything it did: report it as
+                    // an interruption and keep the session (its disk holds the agent's work).
+                    errorToThrow.vmExecutionInterrupted = true
+                    errorToThrow.vmSandboxRebooted = true
                 }
                 if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
                     errorToThrow.runtimeGoldCharged =
@@ -5054,7 +5206,9 @@ async function runVmJobByCorrelationId(correlationId) {
             await markRejectedVmSubscriptionAuth(vmJob.requestUserId, subscriptionAuth, correlationId)
         }
         if (error.vmExecutionInterrupted && !subscriptionAuthFailure) {
-            const interruptedText = buildVmExecutionInterruptedText(agentLabel)
+            const interruptedText = error.vmSandboxRebooted
+                ? buildVmSandboxRebootedText(agentLabel)
+                : buildVmExecutionInterruptedText(agentLabel)
             await writeStatusComment(pendingWebhook, interruptedText, {
                 assistantRunStatus: VM_JOB_INTERRUPTED_STATUS,
                 failureReason: VM_JOB_INTERRUPTED_FAILURE_REASON,
@@ -5081,6 +5235,7 @@ async function runVmJobByCorrelationId(correlationId) {
                         unobservedCommandStopped: error.vmUnobservedCommandStopped === true,
                         terminationError: error.vmCommandTerminationError || null,
                         terminationUncertain: error.vmCommandTerminationUncertain === true,
+                        sandboxRebooted: error.vmSandboxRebooted === true,
                     },
                 })
                 .catch(() => {})

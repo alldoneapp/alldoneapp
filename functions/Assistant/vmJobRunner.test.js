@@ -1912,7 +1912,9 @@ describe('VM runner timeout handling', () => {
         })
 
         expect(firstHandle.disconnect).toHaveBeenCalledTimes(1)
-        expect(pauseSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key')
+        // The rotation pause snapshots a running agent, so it asks E2B to pause only while the
+        // guest agent answers (a snapshot of an unresponsive guest cannot be restored).
+        expect(pauseSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key', { requireHealthyGuest: true })
         expect(resumeSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key', 3600)
         expect(Sandbox.connect).toHaveBeenCalledWith('sandbox-1', {
             apiKey: 'test-key',
@@ -3978,5 +3980,233 @@ describe('VM lifecycle cleanup regressions (AT-2962)', () => {
         getEnvFunctions.mockReturnValue({})
         await expect(cleanupIdleVmSessions()).rejects.toThrow('E2B_API_KEY is required')
         expect(mockFirestore).not.toHaveBeenCalled()
+    })
+})
+
+// Production 2026-11-11: the 55-minute slice pause snapshotted a busy sandbox while E2B's guest
+// agent was not answering. E2B then refused the plain resume with 409
+// sandbox_snapshot_guest_agent_unresponsive, the runner treated that as fatal, killed the sandbox
+// and lost an hour of agent work. E2B allows such a snapshot to be resumed without memory.
+describe('VM slice rotation with an unresponsive sandbox guest', () => {
+    const guestUnresponsiveBody = JSON.stringify({
+        code: 409,
+        error_code: 'sandbox_snapshot_guest_agent_unresponsive',
+        message: "Sandbox 'sandbox-1' cannot be resumed with its memory",
+    })
+
+    const withFetch = async (impl, run) => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(impl)
+        try {
+            await run(global.fetch)
+        } finally {
+            global.fetch = originalFetch
+        }
+    }
+
+    test('resumes an unresponsive-guest snapshot from disk instead of failing', async () => {
+        const responses = [
+            { ok: false, status: 409, text: async () => guestUnresponsiveBody },
+            { ok: true, status: 201, text: async () => '{}' },
+        ]
+        await withFetch(
+            async () => responses.shift(),
+            async fetchMock => {
+                await expect(__private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600)).resolves.toBe('rebooted')
+                expect(fetchMock).toHaveBeenCalledTimes(2)
+                expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ timeout: 3600, autoPause: false })
+                expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+                    timeout: 3600,
+                    autoPause: false,
+                    memory: false,
+                })
+            }
+        )
+    })
+
+    test('surfaces a failed reboot with its status and E2B error code', async () => {
+        const responses = [
+            { ok: false, status: 409, text: async () => guestUnresponsiveBody },
+            { ok: false, status: 400, text: async () => '{"code":400,"message":"memory:false is not enabled"}' },
+        ]
+        await withFetch(
+            async () => responses.shift(),
+            async () => {
+                const error = await __private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600).catch(e => e)
+                expect(error.message).toMatch(/^E2B resume 400/)
+                expect(error.status).toBe(400)
+                expect(error.e2bErrorCode).toBe('sandbox_snapshot_guest_agent_unresponsive')
+            }
+        )
+    })
+
+    test('asks E2B for a healthy-guest pause only when requested', async () => {
+        await withFetch(
+            async () => ({ ok: true, status: 204, text: async () => '' }),
+            async fetchMock => {
+                await __private__.pauseE2bSandbox('sandbox-1', 'test-key')
+                expect(fetchMock.mock.calls[0][1].body).toBeUndefined()
+                await __private__.pauseE2bSandbox('sandbox-1', 'test-key', { requireHealthyGuest: true })
+                expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ requireHealthyGuest: true })
+            }
+        )
+    })
+
+    const buildRotationDoubles = ({ resumeOutcome = true, secondResult = { exitCode: 0 } } = {}) => {
+        const firstHandle = {
+            pid: 42,
+            wait: jest.fn(() => new Promise(() => {})),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const secondHandle = {
+            pid: 42,
+            wait: jest.fn(async () => secondResult),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const resumedSandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+        const runningSandbox = {
+            sandboxId: 'sandbox-1',
+            commands: { run: jest.fn(async () => ({ exitCode: 0 })) },
+        }
+        return {
+            firstHandle,
+            secondHandle,
+            resumedSandbox,
+            runningSandbox,
+            Sandbox: { connect: jest.fn(async () => resumedSandbox) },
+            resumeSandbox: jest.fn(async () => resumeOutcome),
+            sleep: jest.fn(async () => {}),
+        }
+    }
+
+    const supervise = (doubles, extra = {}) =>
+        __private__.superviseVmCommand({
+            Sandbox: doubles.Sandbox,
+            sandbox: doubles.runningSandbox,
+            commandHandle: doubles.firstHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            resumeSandbox: doubles.resumeSandbox,
+            resolveSliceRuntime: () => 1,
+            sleep: doubles.sleep,
+            ...extra,
+        })
+
+    test('flushes the disk and retries the pause while E2B reports the guest busy', async () => {
+        const doubles = buildRotationDoubles()
+        const busy = Object.assign(new Error('E2B pause 503: guest agent not responding'), { status: 503 })
+        const pauseSandbox = jest
+            .fn()
+            .mockRejectedValueOnce(busy)
+            .mockRejectedValueOnce(busy)
+            .mockResolvedValueOnce(undefined)
+
+        const supervision = await supervise(doubles, { pauseSandbox })
+
+        expect(doubles.runningSandbox.commands.run).toHaveBeenCalledWith('sync', expect.any(Object))
+        expect(pauseSandbox).toHaveBeenCalledTimes(3)
+        for (const call of pauseSandbox.mock.calls) {
+            expect(call).toEqual(['sandbox-1', 'test-key', { requireHealthyGuest: true }])
+        }
+        expect(doubles.sleep).toHaveBeenCalledTimes(2)
+        expect(supervision.sliceCount).toBe(2)
+    })
+
+    test('falls back to a plain pause when the guest never answers', async () => {
+        const doubles = buildRotationDoubles()
+        const busy = Object.assign(new Error('E2B pause 503: guest agent not responding'), { status: 503 })
+        const pauseSandbox = jest.fn(async (_id, _key, options) => {
+            if (options?.requireHealthyGuest) throw busy
+        })
+        jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+        await supervise(doubles, { pauseSandbox })
+
+        const plainPauses = pauseSandbox.mock.calls.filter(call => call.length === 2)
+        expect(plainPauses).toEqual([['sandbox-1', 'test-key']])
+        expect(pauseSandbox.mock.calls.length).toBeGreaterThan(2)
+        console.warn.mockRestore()
+    })
+
+    test('does not retry a pause that failed for a reason other than a busy guest', async () => {
+        const doubles = buildRotationDoubles()
+        const gone = Object.assign(new Error('E2B pause 404: missing'), { status: 404 })
+        const pauseSandbox = jest.fn(async () => {
+            throw gone
+        })
+
+        await expect(supervise(doubles, { pauseSandbox })).rejects.toBe(gone)
+        expect(pauseSandbox).toHaveBeenCalledTimes(1)
+        expect(doubles.resumeSandbox).not.toHaveBeenCalled()
+    })
+
+    test('reports a cold-booted sandbox as a reboot that keeps the session', async () => {
+        const doubles = buildRotationDoubles({ resumeOutcome: 'rebooted' })
+        const pauseSandbox = jest.fn(async () => {})
+        const getCompletedResult = jest.fn(async () => null)
+
+        const error = await supervise(doubles, { pauseSandbox, getCompletedResult }).catch(e => e)
+
+        expect(error.vmSandboxRebooted).toBe(true)
+        expect(error.vmActiveSandbox).toBe(doubles.resumedSandbox)
+        expect(getCompletedResult).toHaveBeenCalledWith(doubles.resumedSandbox)
+        // The process did not survive the reboot, so the runner must not try to attach to it.
+        expect(doubles.resumedSandbox.commands.connect).not.toHaveBeenCalled()
+        // The disk holds the agent's work: this must not be classified as a dead session.
+        expect(__private__.isUnhealthyVmSessionError(error)).toBe(false)
+        const agentError = __private__.buildAgentExitError('Claude', null, {}, '', error)
+        expect(__private__.isUnhealthyVmSessionError(agentError)).toBe(false)
+    })
+
+    test('returns a result the agent finished before the reboot', async () => {
+        const doubles = buildRotationDoubles({ resumeOutcome: 'rebooted' })
+        const durableResult = { exitCode: 0 }
+
+        const supervision = await supervise(doubles, {
+            pauseSandbox: jest.fn(async () => {}),
+            // Not finished when the slice ended; finished by the time the snapshot was taken.
+            getCompletedResult: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(durableResult),
+        })
+
+        expect(supervision.result).toBe(durableResult)
+        expect(supervision.sandbox).toBe(doubles.resumedSandbox)
+    })
+
+    test('reports a run-start resume that had to reboot from disk', async () => {
+        const connectedSandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            getInfo: jest.fn(async () => ({ endAt: new Date(Date.now() + 60 * 60 * 1000) })),
+        }
+        const lease = await __private__.resumeVmSessionWithFreshLease({
+            Sandbox: { connect: jest.fn(async () => connectedSandbox) },
+            sandboxId: 'sandbox-1',
+            e2bApiKey: 'test-key',
+            wasPaused: true,
+            resumeSandbox: jest.fn(async () => 'rebooted'),
+            probeSandbox: jest.fn(async () => {}),
+        })
+
+        expect(lease.sessionRestarted).toBe(true)
+        expect(lease.rebootedFromDisk).toBe(true)
+        expect(lease.sandbox).toBe(connectedSandbox)
+    })
+
+    test('keeps Node process warnings out of agent failure messages', () => {
+        const stderr = [
+            "(node:3722) [CLAUDE_SDK_CAN_USE_TOOL_SHADOWED] Warning: canUseTool will not be invoked: permissionMode 'bypassPermissions' auto-approves every tool call.",
+            '(Use `node --trace-warnings ...` to show where the warning was created)',
+            'fatal: the real problem',
+        ].join('\n')
+
+        const error = __private__.buildAgentExitError('Claude', { exitCode: 1 }, {}, stderr)
+
+        expect(error.message).toBe('Claude exited with exit status 1. fatal: the real problem')
     })
 })

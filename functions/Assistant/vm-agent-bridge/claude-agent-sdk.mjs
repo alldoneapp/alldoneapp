@@ -38,7 +38,12 @@ const options = {
     allowDangerouslySkipPermissions: input.permissionMode === 'bypassPermissions',
     settingSources: Array.isArray(input.settingSources) ? input.settingSources : ['user', 'project', 'local'],
     ...(sessionId ? { resume: sessionId } : {}),
-    canUseTool: async (toolName, toolInput) => {
+}
+// Under bypassPermissions the SDK approves every tool before consulting canUseTool and warns
+// on stderr when one is passed anyway (CLAUDE_SDK_CAN_USE_TOOL_SHADOWED), so only gated modes
+// get the callback.
+if (input.permissionMode !== 'bypassPermissions') {
+    options.canUseTool = async (toolName, toolInput) => {
         if (toolName === 'ExitPlanMode') {
             interaction = {
                 kind: 'plan_review',
@@ -105,7 +110,7 @@ const options = {
             behavior: 'deny',
             message: 'The host application will ask the user and resume this session in a new turn.',
         }
-    },
+    }
 }
 
 try {
