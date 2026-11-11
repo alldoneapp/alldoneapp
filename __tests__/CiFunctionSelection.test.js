@@ -5,7 +5,13 @@ const path = require('path')
 const { execFileSync, spawnSync } = require('child_process')
 const { selectDeployment, makePlan } = require('../ci/selectFunctionsDeployment')
 const { validatePlan } = require('../ci/functionsDeploymentPlan')
-const { MAX_REDEPLOY_NAMES, deploymentFilters, run } = require('../ci/runFunctionsDeployment')
+const {
+    MAX_REDEPLOY_NAMES,
+    QUOTA_RETRIES,
+    QUOTA_RETRY_DELAY_MS,
+    deploymentFilters,
+    run,
+} = require('../ci/runFunctionsDeployment')
 const { assertCompletedDeployment, findMissingFunctions } = require('../ci/assertFirebaseFunctionsDeployed')
 
 const tree = files => ({ files: new Set(Object.keys(files)), read: file => files[file] ?? null })
@@ -527,6 +533,61 @@ describe('function deployment execution and completion', () => {
             await expect(run({ root, head: 'def', args: [], exec: fallbackExec })).resolves.toBe(0)
             expect(fallbackExec.mock.calls[0][0]).toEqual(['deploy', '--only', 'functions'])
             expect(fallbackExec).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('a batch stopped by a Google API quota is retried after the quota minute (2026-11-11)', () => {
+        const quotaFailure = {
+            status: 1,
+            output: "Error: Request to https://firestore.googleapis.com/v1/projects/alldonealeph/databases/(default) had HTTP Error: 429, Quota exceeded for quota metric 'Database operation requests'",
+        }
+        const quiet = async fn => {
+            const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+            try {
+                return await fn()
+            } finally {
+                log.mockRestore()
+            }
+        }
+
+        it('waits and reruns the same batch, then carries on with the rest', async () => {
+            await withRoot(async root => {
+                const exec = jest
+                    .fn()
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                    .mockResolvedValueOnce(quotaFailure)
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(10, 20)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(20)) })
+                const wait = jest.fn().mockResolvedValue()
+                await quiet(() => expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(0))
+                const filters = deploymentFilters(plan)
+                expect(exec.mock.calls.map(filterOf)).toEqual([filters[0], filters[1], filters[1], filters[2]])
+                expect(wait).toHaveBeenCalledTimes(1)
+                expect(wait).toHaveBeenCalledWith(QUOTA_RETRY_DELAY_MS)
+            })
+        })
+
+        it('gives up after the allowed retries and reports the failure', async () => {
+            await withRoot(async root => {
+                const exec = jest
+                    .fn()
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                    .mockResolvedValue(quotaFailure)
+                const wait = jest.fn().mockResolvedValue()
+                await quiet(() => expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(1))
+                expect(exec).toHaveBeenCalledTimes(2 + QUOTA_RETRIES)
+                expect(wait).toHaveBeenCalledTimes(QUOTA_RETRIES)
+            })
+        })
+
+        it('does not retry a failure that is not a quota error', async () => {
+            await withRoot(async root => {
+                const exec = jest.fn().mockResolvedValueOnce({ status: 2, output: 'Error: Build failed' })
+                const wait = jest.fn().mockResolvedValue()
+                await expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(2)
+                expect(exec).toHaveBeenCalledTimes(1)
+                expect(wait).not.toHaveBeenCalled()
+            })
         })
     })
 

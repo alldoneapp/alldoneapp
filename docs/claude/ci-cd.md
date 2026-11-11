@@ -179,6 +179,17 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   failure and is left to the verification step, which still fails the job for anything
   missing after the retry. Pinned by `__tests__/CiFunctionSelection.test.js` and a
   real-process case in `__tests__/CiFirebaseFunctionsDeployment.test.js`.
+- **A batch that stops on a Google API quota (HTTP 429) is retried after the quota minute.**
+  A partial production deploy runs one `firebase deploy` per 10 functions, and each run looks the
+  Firestore database up again for its Firestore triggers. On 2026-11-11 the fourth batch hit
+  `firestore.googleapis.com ... databases/(default)` "Database Operations Per Minute" and exited
+  1 before changing anything, which failed the job (pipeline 9668). firebase-tools retries the
+  Cloud Functions mutation 429s on its own (they show up as warnings), but not this one.
+  `ci/runFunctionsDeployment.js` now waits `QUOTA_RETRY_DELAY_MS` (65s) and reruns the same batch,
+  at most `QUOTA_RETRIES` (2) times, only when the failed output contains
+  `HTTP Error: 429, Quota exceeded`; any other failure still stops the job at once. Re-running is
+  safe because functions already current are skipped by source hash. Pinned in
+  `__tests__/CiFunctionSelection.test.js`.
 - **`resource_group` process mode is an API-only setting and defaults to `unordered`.** With
   the guard and the markers in place the default is safe (an out-of-order job skips and the
   next pipeline catches up), but `newest_first` gets the current commit live sooner and wastes

@@ -10,6 +10,18 @@ const { readPlan } = require('./functionsDeploymentPlan')
 // so it is left to the verification step instead of tying the job up for another full round.
 const MAX_REDEPLOY_NAMES = 120
 
+// A Google API per-minute quota (HTTP 429) that firebase-tools does not retry itself fails the
+// whole command. On 2026-11-11 the fourth 10-function batch of a production deploy died on
+// `firestore.googleapis.com ... databases/(default)` ("Database Operations Per Minute") before it
+// changed anything, because every batch looks the database up again for its Firestore triggers.
+// The quota refills each minute and re-running a deploy is safe (functions already current are
+// skipped by source hash), so wait out the minute and run the same batch again.
+const QUOTA_ERROR_PATTERN = /HTTP Error: 429, Quota exceeded/
+const QUOTA_RETRIES = 2
+const QUOTA_RETRY_DELAY_MS = 65 * 1000
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
 function deploymentFilters(plan) {
     if (plan.mode === 'none') throw new Error('No Functions selected; the scope gate should have skipped this job')
     if (plan.mode === 'full') return ['functions']
@@ -48,7 +60,7 @@ function runFirebase(args, { cwd }) {
     })
 }
 
-async function run({ root, head, args, exec = runFirebase }) {
+async function run({ root, head, args, exec = runFirebase, wait = sleep }) {
     const source = fs.readFileSync(path.join(root, 'functions/index.js'), 'utf8')
     const planFile = path.join(root, 'functions-deploy-scope.json')
     const plan = readPlan(planFile, exportedFunctionNames(source), head)
@@ -63,10 +75,18 @@ async function run({ root, head, args, exec = runFirebase }) {
     )
     let output = ''
     const deploy = async filter => {
-        console.log(`Deploying ${filter}`)
-        const result = await exec(['deploy', '--only', filter, ...args], { cwd: root })
-        output += result.output || ''
-        return result.status
+        for (let attempt = 0; ; attempt++) {
+            console.log(`Deploying ${filter}`)
+            const result = await exec(['deploy', '--only', filter, ...args], { cwd: root })
+            output += result.output || ''
+            if (result.status === 0 || attempt >= QUOTA_RETRIES || !QUOTA_ERROR_PATTERN.test(result.output || ''))
+                return result.status
+            console.log(
+                `Firebase stopped on a Google API quota (HTTP 429); retrying this batch in ` +
+                    `${QUOTA_RETRY_DELAY_MS / 1000}s (retry ${attempt + 1} of ${QUOTA_RETRIES}).`
+            )
+            await wait(QUOTA_RETRY_DELAY_MS)
+        }
     }
     for (const filter of filters) {
         const status = await deploy(filter)
@@ -112,4 +132,4 @@ if (require.main === module) {
         process.exitCode = 1
     })
 }
-module.exports = { MAX_REDEPLOY_NAMES, deploymentFilters, run }
+module.exports = { MAX_REDEPLOY_NAMES, QUOTA_RETRIES, QUOTA_RETRY_DELAY_MS, deploymentFilters, run }
