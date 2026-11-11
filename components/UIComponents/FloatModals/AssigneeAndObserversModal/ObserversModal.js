@@ -21,6 +21,8 @@ import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { filterUserShapesByText } from './AssigneeAndObserversModal'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function ObserversModal({
     projectIndex,
     task,
@@ -168,7 +170,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

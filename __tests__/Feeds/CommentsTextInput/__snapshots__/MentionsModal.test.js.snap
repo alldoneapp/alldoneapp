@@ -35,7 +35,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+          className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
           dir="auto"
         >
           Tasks
@@ -46,7 +46,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         />
       </div>
       <div
-        className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+        className="css-view-g5y9jx r-backgroundColor-cpuwww r-height-109y4c4 r-width-13qz1uu"
         dir={null}
       />
     </div>
@@ -68,7 +68,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+          className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
           dir="auto"
         >
           Goals
@@ -79,7 +79,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         />
       </div>
       <div
-        className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+        className="css-view-g5y9jx r-backgroundColor-cpuwww r-height-109y4c4 r-width-13qz1uu"
         dir={null}
       />
     </div>
@@ -101,7 +101,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+          className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
           dir="auto"
         >
           Notes
@@ -112,7 +112,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         />
       </div>
       <div
-        className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+        className="css-view-g5y9jx r-backgroundColor-cpuwww r-height-109y4c4 r-width-13qz1uu"
         dir={null}
       />
     </div>
@@ -167,7 +167,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+          className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
           dir="auto"
         >
           Chats
@@ -178,7 +178,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         />
       </div>
       <div
-        className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+        className="css-view-g5y9jx r-backgroundColor-cpuwww r-height-109y4c4 r-width-13qz1uu"
         dir={null}
       />
     </div>

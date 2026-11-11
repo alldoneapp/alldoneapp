@@ -12,6 +12,8 @@ import {
     moveTasksFromOpen,
 } from '../../../utils/backends/Tasks/tasksFirestore'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default class StatusPickerStepItem extends Component {
     render() {
         const { step, open, done, stepNum, selected, active } = this.props
@@ -117,7 +119,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     stepMarker: {
-        borderColor: 'white',
+        borderColor: themed.Surface,
         borderRadius: 4,
         borderWidth: 2,
         alignItems: 'center',

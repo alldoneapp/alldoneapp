@@ -59,11 +59,11 @@ exports[`DateItem component DateItem snapshot test should render correctly 1`] =
       dir={null}
     >
       <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
         dir={null}
       >
         <div
-          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
           dir="auto"
         >
           1
@@ -117,11 +117,11 @@ exports[`DateItem component DateItem snapshot test should render correctly 2`] =
       dir={null}
     >
       <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
         dir={null}
       >
         <div
-          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
           dir="auto"
         >
           Q

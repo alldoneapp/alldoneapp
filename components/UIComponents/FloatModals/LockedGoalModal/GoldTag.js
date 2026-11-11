@@ -6,6 +6,8 @@ import styles, { colors } from '../../../styles/global'
 import { parseNumberToUseThousand } from '../../../StatisticsView/statisticsHelper'
 import Gold from '../../../../assets/svg/Gold'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function GoldTag() {
     const gold = useSelector(state => state.loggedUser.gold)
 
@@ -30,7 +32,7 @@ const localStyle = StyleSheet.create({
         alignItems: 'center',
         marginRight: 16,
         height: 28,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     text: {
         ...styles.caption2,

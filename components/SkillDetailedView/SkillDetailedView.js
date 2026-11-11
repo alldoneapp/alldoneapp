@@ -22,6 +22,8 @@ import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSe
 import usePrivateProject from '../../hooks/usePrivateProject'
 import GoldAnimationsContainer from '../RootView/GoldAnimationsContainer'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function SkillDetailedView({ navigation }) {
     const dispatch = useDispatch()
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -114,6 +116,6 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
 })

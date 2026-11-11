@@ -12,6 +12,8 @@ import { DV_TAB_SETTINGS_PREMIUM } from '../../utils/TabNavigationConstants'
 import { translate } from '../../i18n/TranslationService'
 import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function LimitedFeatureModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
@@ -89,7 +91,7 @@ const localStyles = StyleSheet.create({
     },
     line: {
         borderWidth: 1,
-        borderBottomColor: '#fff',
+        borderBottomColor: themed.Surface,
         marginTop: 8,
         marginBottom: 8,
         opacity: 0.2,

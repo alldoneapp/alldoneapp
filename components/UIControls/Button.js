@@ -7,6 +7,8 @@ import store from '../../redux/store'
 import Shortcut from './Shortcut'
 import GoalProgress from '../Feeds/CommentsTextInput/MentionsModal/GoalProgress'
 
+import { themed } from '../../Themes/colorMode'
+
 class Button extends Component {
     constructor(props) {
         super(props)
@@ -381,7 +383,7 @@ const styles = StyleSheet.create({
         maxHeight: 40,
         minHeight: 40,
         borderRadius: 4,
-        backgroundColor: '#04142F',
+        backgroundColor: themed.Text01,
         alignItems: 'center',
         justifyContent: 'center',
         alignSelf: 'flex-start',
@@ -471,19 +473,19 @@ const styles = StyleSheet.create({
 
     // Secondary Button Styles
     buttonSecondary: {
-        backgroundColor: '#EAF0F5',
+        backgroundColor: themed.SecondaryButton,
     },
     buttonSecondaryHover: {
-        backgroundColor: '#E3EBF2',
+        backgroundColor: themed.SecondaryButton_Pressed,
     },
     buttonSecondaryFocus: {
-        backgroundColor: '#F1F5F8',
+        backgroundColor: themed.SecondaryButton_Focus,
     },
     buttonSecondaryPressed: {
-        backgroundColor: '#E3EBF2',
+        backgroundColor: themed.SecondaryButton_Pressed,
     },
     textSecondary: {
-        color: '#04142F',
+        color: themed.Text01,
     },
 
     // Text Button Styles
@@ -497,7 +499,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     buttonTextPressed: {
-        backgroundColor: '#F1F5F8',
+        backgroundColor: themed.SecondaryButton_Focus,
     },
     textTextDefault: {
         color: '#0D55CF',
@@ -523,30 +525,30 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         borderWidth: 1,
         borderStyle: 'solid',
-        borderColor: '#C6CDD2',
+        borderColor: themed.Grey400,
     },
     buttonGhostHover: {
         backgroundColor: 'transparent',
-        borderColor: '#C6CDD2',
+        borderColor: themed.Grey400,
     },
     buttonGhostFocus: {
         backgroundColor: 'transparent',
     },
     buttonGhostPressed: {
-        backgroundColor: '#F1F5F8',
+        backgroundColor: themed.SecondaryButton_Focus,
         borderColor: 'transparent',
     },
     textGhostDefault: {
-        color: '#8A94A6',
+        color: themed.Text03,
     },
     textGhostHover: {
-        color: '#4E5D78',
+        color: themed.Text02,
     },
     textGhostFocus: {
-        color: '#4E5D78',
+        color: themed.Text02,
     },
     textGhostPressed: {
-        color: '#04142F',
+        color: themed.Text01,
     },
 })
 

@@ -6,6 +6,8 @@ import Button from '../UIControls/Button'
 import styles, { colors, em2px } from '../styles/global'
 import { deleteCacheAndRefresh } from '../../utils/Observers'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function ErrorBoundaryPage({}) {
     const MAX_WIDTH = 532
     const MAX_HEIGHT = 830
@@ -87,11 +89,11 @@ export default function ErrorBoundaryPage({}) {
 const localStyles = StyleSheet.create({
     parent: {
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     parentContent: {
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         width: '100%',
         alignItems: 'center',
     },

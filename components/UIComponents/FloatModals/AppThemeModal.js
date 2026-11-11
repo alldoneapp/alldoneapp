@@ -16,7 +16,7 @@ import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const themeOptions = [
     { symbol: 'Default', value: COLORS_THEME_DEFAULT, shortcut: '1', name: 'Blue' },
-    { symbol: 'Modern', value: COLORS_THEME_MODERN, shortcut: '2', name: 'Light' },
+    { symbol: 'Modern', value: COLORS_THEME_MODERN, shortcut: '2', name: 'Neutral' },
     // { symbol: 'Dark (coming soon)', value: COLORS_THEME_DARK, shortcut: '3', name:'Dark' },
 ]
 

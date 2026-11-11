@@ -6,6 +6,8 @@ import OpenTasksByProjectForAssistants from './OpenTaskViewForAssistants/OpenTas
 import OpenTasksByProject from './OpenTasksByProject'
 import { setLaterTasksExpanded, setSomedayTasksExpanded } from '../../../redux/actions'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function OpenTasksViewSelectedProject() {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -45,7 +47,7 @@ export default function OpenTasksViewSelectedProject() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

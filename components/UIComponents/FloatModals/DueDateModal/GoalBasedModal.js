@@ -10,6 +10,8 @@ import DateItemSection from './DateItemSection'
 import { translate } from '../../../../i18n/TranslationService'
 import Icon from '../../../Icon'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function GoalBasedModal({
     task,
     inParentGoal,
@@ -146,7 +148,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
     },

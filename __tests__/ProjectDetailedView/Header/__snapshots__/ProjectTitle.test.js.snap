@@ -12,11 +12,11 @@ exports[`Detailed Project Title component Detailed Project Title snapshot test s
   }
 >
   <div
-    className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-mabqd8"
+    className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-mabqd8"
     dir={null}
   />
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flex-13awgt0 r-flexDirection-18u37iz r-height-mabqd8 r-justifyContent-1h0z5md"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nl0xfs r-flex-13awgt0 r-flexDirection-18u37iz r-height-mabqd8 r-justifyContent-1h0z5md"
     dir={null}
   >
     <div
@@ -24,7 +24,7 @@ exports[`Detailed Project Title component Detailed Project Title snapshot test s
       dir="auto"
       style={
         {
-          "color": "rgba(4,20,47,1.00)",
+          "color": "var(--ad-Text01)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "24px",
           "lineHeight": "32px",

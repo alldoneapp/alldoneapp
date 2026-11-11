@@ -9,6 +9,8 @@ import { hideFloatPopup, navigateToAllProjectsTasks, resetFloatPopup } from '../
 import { MIN_URLS_IN_HISTORY } from '../../../URLSystem/URLTrigger'
 import SharedHelper from '../../../utils/SharedHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function BackButton({ assistant }) {
     const dispatch = useDispatch()
     const lastVisitedScreen = useSelector(state => state.lastVisitedScreen)
@@ -47,7 +49,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },

@@ -4,6 +4,8 @@ import Icon from '../components/Icon'
 import { colors } from './styles/global'
 import { setDomAttributes } from '../utils/setDomAttributes'
 
+import { themed } from '../Themes/colorMode'
+
 export default function CheckBox({ checked, isSubtask, dragMode, checkOnDrag, externalContainerStyle, checkBoxId }) {
     const checkBoxRef = useRef(null)
 
@@ -39,7 +41,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         borderWidth: 1,
         borderColor: colors.Text03,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     dragMode: {
         borderRadius: 100,

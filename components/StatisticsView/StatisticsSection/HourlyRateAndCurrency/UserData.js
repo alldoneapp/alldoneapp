@@ -3,6 +3,8 @@ import { Image, StyleSheet, Text, View } from 'react-native'
 
 import styles from '../../../styles/global'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function UserData({ photoURL, displayName }) {
     return (
         <View style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}>
@@ -17,7 +19,7 @@ const localStyles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 100,
-        borderColor: '#FFFFFF',
+        borderColor: themed.Surface,
     },
     name: {
         ...styles.subtitle1,

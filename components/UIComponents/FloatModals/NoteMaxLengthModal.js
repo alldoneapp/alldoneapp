@@ -9,6 +9,8 @@ import { translate } from '../../../i18n/TranslationService'
 import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 import { useFixedModalOverlayPadding } from '../../../hooks/useSafeAreaOverlayPadding'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function NoteMaxLengthModal() {
     const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
@@ -86,6 +88,6 @@ const localStyles = StyleSheet.create({
     },
     description: {
         ...styles.body2,
-        color: '#8A94A6',
+        color: themed.Text03,
     },
 })

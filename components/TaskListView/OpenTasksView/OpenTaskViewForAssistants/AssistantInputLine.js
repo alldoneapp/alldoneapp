@@ -24,6 +24,8 @@ import {
     getAssistantComposerMaxHeight,
 } from '../../../MyDayView/AssistantLine/assistantComposerMedia'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // Same list the My Day line declares — see AssistantOptions for why the presence of `attachment` /
 // `customImageFormat` is what actually switches attachment support on (AT-2441 / AT-2444).
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
@@ -277,7 +279,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         minHeight: 40,
         maxHeight: 120,
         // 24px text + 2 × 7px padding + 2px border = the 40px control row.

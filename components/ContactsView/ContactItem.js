@@ -2,6 +2,7 @@ import { TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
 import React, { Component } from 'react'
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
+import { resolveColors, resolveSurfaceColor } from '../../Themes/colorMode'
 import store from '../../redux/store'
 import MemberTag from '../Tags/MemberTag'
 import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
@@ -214,7 +215,11 @@ export default class ContactItem extends Component {
         const contactHighlightColor = ProjectHelper.getUserHighlightInProject(projectIndex, contact)
 
         const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : this.context
-        const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
+        const outputColors = resolveColors([
+            colors.UtilityYellow125,
+            resolveSurfaceColor(restingBackgroundColor),
+            colors.UtilityGreen125,
+        ])
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
             outputRange: outputColors,
@@ -223,7 +228,11 @@ export default class ContactItem extends Component {
 
         const backColorHighlight = panColor.interpolate({
             inputRange: [-100, 0, 100],
-            outputRange: [colors.UtilityYellow125, contactHighlightColor, colors.UtilityGreen125],
+            outputRange: resolveColors([
+                colors.UtilityYellow125,
+                resolveSurfaceColor(contactHighlightColor),
+                colors.UtilityGreen125,
+            ]),
             extrapolate: 'clamp',
         })
 

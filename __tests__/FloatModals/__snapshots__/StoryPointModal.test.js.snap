@@ -69,7 +69,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                     dir="auto"
                     style={
                       {
-                        "color": "rgba(138,148,166,1.00)",
+                        "color": "var(--ad-Text03)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
                         "opacity": 1,
@@ -88,7 +88,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
               Estimation
             </div>
             <div
-              className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
+              className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
               dir="auto"
             >
               Select an estimation for your task
@@ -197,7 +197,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -206,7 +206,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           0
@@ -251,7 +251,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -292,7 +292,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -301,7 +301,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           1
@@ -346,7 +346,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -387,7 +387,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -396,7 +396,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           2
@@ -441,7 +441,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -482,7 +482,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -491,7 +491,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           3
@@ -536,7 +536,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -577,7 +577,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -586,7 +586,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           4
@@ -631,7 +631,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -672,7 +672,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -681,7 +681,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           5
@@ -726,7 +726,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -767,7 +767,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -776,7 +776,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           6
@@ -821,7 +821,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         dir="auto"
                         style={
                           {
-                            "color": "rgba(138,148,166,1.00)",
+                            "color": "var(--ad-Text03)",
                             "fontFamily": "alldone",
                             "fontSize": "24px",
                             "opacity": 1,
@@ -862,7 +862,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -871,7 +871,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           7
@@ -918,7 +918,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                     dir="auto"
                     style={
                       {
-                        "color": "rgba(138,148,166,1.00)",
+                        "color": "var(--ad-Text03)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
                         "opacity": 1,
@@ -959,7 +959,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                   }
                 >
                   <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                     dir={null}
                     style={
                       {
@@ -968,7 +968,7 @@ exports[`StoryPointModal component StoryPointModal snapshot test Should render c
                     }
                   >
                     <div
-                      className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                      className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                       dir="auto"
                     >
                       8

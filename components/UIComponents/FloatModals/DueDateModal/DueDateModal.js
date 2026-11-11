@@ -24,6 +24,8 @@ import { applyPostponeToGoalTaskList } from './applyPostponeToGoalTaskList'
 import { postponeGoalWithMotion } from '../../../TaskListView/OpenTasksView/goalPostponeMotion'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
+import { themed } from '../../../../Themes/colorMode'
+
 function DueDateModal({
     task,
     projectId,
@@ -312,7 +314,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
     },

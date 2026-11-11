@@ -8,6 +8,8 @@ import { Themes } from './Themes'
 import { translate } from '../../i18n/TranslationService'
 import { openAnalyticsConsentSettings } from '../../utils/analytics/analytics'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function ImpressumLink() {
     const themeName = useSelector(state => state.loggedUser.themeName)
 
@@ -88,7 +90,7 @@ const localStyles = StyleSheet.create({
         width: 4,
         height: 4,
         borderRadius: 50,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.4,
     },
 })

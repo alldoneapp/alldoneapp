@@ -52,7 +52,7 @@ exports[`ArchivedProjects component ArchivedProjects snapshot test should render
               dir="auto"
               style={
                 {
-                  "color": "rgba(183,189,200,1.00)",
+                  "color": "var(--ad-Text04)",
                   "fontFamily": "alldone",
                   "fontSize": "22px",
                   "opacity": 1,

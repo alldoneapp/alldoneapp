@@ -12,6 +12,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { updateNoteShared } from '../../../../utils/backends/Notes/notesFirestore'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function Sharing({ projectId, note, disabled }) {
     const [open, setOpen] = useState(false)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -86,7 +88,7 @@ const localStyles = StyleSheet.create({
         fontSize: 12,
         lineHeight: 14,
         letterSpacing: em2px(0.03),
-        color: '#4E5D78',
+        color: themed.Text02,
         maxWidth: 142,
     },
 })

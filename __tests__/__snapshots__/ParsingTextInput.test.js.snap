@@ -72,7 +72,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
             virtualkeyboardpolicy="auto"
           />
           <div
-            className="css-text-146c3p1 r-color-qmo3aw r-display-6koalj r-flexDirection-18u37iz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingLeft-1qhn6m8 r-paddingTop-tskmnb"
+            className="css-text-146c3p1 r-color-a7285f r-display-6koalj r-flexDirection-18u37iz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingLeft-1qhn6m8 r-paddingTop-tskmnb"
             dir="auto"
           >
             <span
@@ -80,7 +80,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               dir={null}
               style={
                 {
-                  "color": "rgba(4,20,47,1.00)",
+                  "color": "var(--ad-Text01)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",
                   "letterSpacing": "0.32px",

@@ -13,6 +13,8 @@ import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 export const SHARE_ALL_SEE_MEMBER_EDIT = 0
 export const SHARE_ALL_SEE_ALL_EDIT = 1
 export const SHARE_MEMBER_SEE_MEMBER_EDIT = 2
@@ -150,7 +152,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
     },

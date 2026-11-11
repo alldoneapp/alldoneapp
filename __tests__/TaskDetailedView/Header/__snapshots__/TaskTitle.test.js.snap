@@ -15,11 +15,11 @@ exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`]
   }
 >
   <div
-    className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-mabqd8"
+    className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-mabqd8"
     dir={null}
   />
   <div
-    className="css-view-g5y9jx r-alignContent-e8mqni r-alignItems-1habvwh r-backgroundColor-14lw9ot r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minHeight-15ysp7h r-overflow-1udh08x"
+    className="css-view-g5y9jx r-alignContent-e8mqni r-alignItems-1habvwh r-backgroundColor-nl0xfs r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minHeight-15ysp7h r-overflow-1udh08x"
     dir={null}
     style={
       {

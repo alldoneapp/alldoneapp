@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function Switch({ active, activeSwitch, deactiveSwitch, disabled }) {
     const SWITCH_ACTIVE_POSTION = 18
     const SWITCH_INACTIVE_POSTION = 0
@@ -87,7 +89,7 @@ const localStyles = StyleSheet.create({
     switch: {
         width: 20,
         height: 20,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 100,
         boxShadow: '0px 0px 4px rgba(138,148,166,0.50)',
         elevation: 1,

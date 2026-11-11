@@ -29,6 +29,8 @@ import { getTaskPriorityColors } from '../Utils/TaskPriorityPresentation'
 import { BACKLOG_DATE_NUMERIC } from '../Utils/TasksHelper'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 const PRIORITY_KEYS = [
     TASK_PRIORITY_MUST_DO,
     TASK_PRIORITY_SHOULD_DO,
@@ -540,7 +542,7 @@ const localStyles = StyleSheet.create({
         width: 10,
         height: 2,
         borderRadius: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     flag: {
         marginLeft: 12,

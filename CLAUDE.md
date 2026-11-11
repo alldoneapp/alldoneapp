@@ -81,6 +81,9 @@ Each rule has its reasoning in the named topic file.
   `awaitWriteAck`. Online-only features fail fast offline with `code: 'offline'`. (`offline.md`)
 - Links that open member-written data go through `utils/safeUrl.js`. Build stored links with
   `getAppLinkOrigin()`, never `window.location.origin`. (`rules-and-access.md`, `editor-quill-yjs.md`)
+- Colors must work in light and dark mode: backgrounds `colors.Surface`, text `colors.Text0x`, never
+  `'#ffffff'` as a surface; never store a `var(--ad-…)` token; Animated colors go through
+  `resolveColors`. (`dark-mode.md`)
 - Always consider i18n: add strings to `en.json`, `de.json` and `es.json`; use TranslationService.
 
 **Backend and data**
@@ -137,6 +140,7 @@ features on the same code; a write over MCP also writes its Updates entry. Full 
 | `web-shell-and-popups.md`        | App shell scrolling, iOS safe areas, popup sizing, Escape handling, modal system, bottom sheets, assistant workspace viewport, Anna activity/composer                            |
 | `offline.md`                     | Connectivity signal, offline notes, persistence, tab handoff, cached snapshots, service worker, logout cleanup, write acks                                                       |
 | `task-row-interactions.md`       | Swipeable rows, task completion animation, gold coin animation                                                                                                                   |
+| `dark-mode.md`                   | Light/dark mode: color tokens, Auto/Light/Dark preference, stored vs display colors, Animated colors                                                                             |
 | `celebrations.md`                | Empty-inbox celebration, per-project sweep and disintegration (mostly disabled)                                                                                                  |
 | `skyline.md`                     | Empty inbox 3D skyline                                                                                                                                                           |
 | `rage-mode.md`                   | Rage mode game                                                                                                                                                                   |

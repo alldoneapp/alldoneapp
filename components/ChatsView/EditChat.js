@@ -34,6 +34,8 @@ import {
 import { createChat } from '../../utils/backends/Chats/chatsComments'
 import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 
+import { themed } from '../../Themes/colorMode'
+
 const EditChat = ({
     formType,
     projectId,
@@ -327,7 +329,7 @@ const EditChat = ({
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

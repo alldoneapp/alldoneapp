@@ -51,6 +51,8 @@ import {
     normalizeMilestoneType,
 } from '../../utils/GoalMilestonesHelper'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function EditGoal({
     projectId,
     adding,
@@ -488,7 +490,7 @@ export default function EditGoal({
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

@@ -2,6 +2,8 @@ import React from 'react'
 import { translate } from '../../i18n/TranslationService'
 import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function VoiceCallDevices({ call }) {
     const devices = call.audioDevices
     if (!devices) return null
@@ -84,7 +86,7 @@ export default function VoiceCallDevices({ call }) {
 }
 
 const styles = {
-    container: { width: '100%', minWidth: 0, marginTop: 8, fontSize: 12, color: '#4e5d78' },
+    container: { width: '100%', minWidth: 0, marginTop: 8, fontSize: 12, color: themed.Text02 },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 },
     card: { display: 'flex', flexDirection: 'column', minWidth: 0, gap: 4 },
     heading: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 18, gap: 4 },
@@ -95,7 +97,7 @@ const styles = {
         padding: '6px 4px',
         border: '1px solid #e7ecef',
         borderRadius: 8,
-        background: '#fff',
+        background: themed.Surface,
         color: 'inherit',
         font: 'inherit',
         textOverflow: 'ellipsis',

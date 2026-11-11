@@ -7,6 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes, SKYLINE_WEEKS } from './skylineData'
 
+import { themed } from '../../../../../Themes/colorMode'
+
 // Canvas height as a share of its width, and its bounds. The month is a 7×5 block; a single week is
 // a 7×1 strip whose buildings stand up out of it, so it is wider than tall and gets a flatter canvas —
 // the camera fits the city to whatever it is given, so a canvas the city cannot fill is wasted card.
@@ -36,7 +38,13 @@ const getActiveProjects = (projects, user) =>
  * them, and a glowing green roof is a day the inbox was cleared — the same `emptyInboxDays` the grid
  * reads, so the two can never disagree about which days count.
  */
-export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRunId, width, weeks: weekCount = SKYLINE_WEEKS }) {
+export default function EmptyInboxSkyline({
+    user,
+    emptyInboxDays,
+    celebrationRunId,
+    width,
+    weeks: weekCount = SKYLINE_WEEKS,
+}) {
     const containerRef = useRef(null)
     const sceneRef = useRef(null)
     const [sceneReady, setSceneReady] = useState(false)
@@ -193,7 +201,7 @@ const localStyles = StyleSheet.create({
     },
     canvas: {
         width: '100%',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     resetText: {
         ...styles.caption1,

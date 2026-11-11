@@ -55,6 +55,8 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 import { countBrokenConnections, countBrokenVmSubscriptions } from './Integrations/connectionHealth'
 import { getVmSubscriptionStatus } from '../../utils/backends/firestore'
 
+import { themed } from '../../Themes/colorMode'
+
 const SettingsView = ({ navigation }) => {
     const dispatch = useDispatch()
     const scrollRef = useRef(null)
@@ -218,7 +220,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButtonContainer: {
         position: 'absolute',
@@ -229,7 +231,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {
@@ -240,7 +242,7 @@ const localStyles = StyleSheet.create({
     },
     scrollContainer: {
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         flex: 1,
     },
     navigationBar: {

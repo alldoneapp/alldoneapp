@@ -2,7 +2,7 @@
 
 exports[`CheckBox component CheckBox checked snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-borderColor-t1myqv r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-1472mwg r-width-lrsllp r-alignItems-1awozwy r-backgroundColor-1w8984d r-justifyContent-1777fci"
+  className="css-view-g5y9jx r-borderColor-b9b20s r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-1472mwg r-width-lrsllp r-alignItems-1awozwy r-backgroundColor-7r0adx r-justifyContent-1777fci"
   dir={null}
 >
   <div
@@ -29,14 +29,14 @@ exports[`CheckBox component CheckBox checked snapshot test should render correct
 
 exports[`CheckBox component CheckBox snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderColor-t1myqv r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-1472mwg r-width-lrsllp"
+  className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderColor-b9b20s r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-1472mwg r-width-lrsllp"
   dir={null}
 />
 `;
 
 exports[`CheckBox component CheckBox subtask checked snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-borderColor-t1myqv r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-alignItems-1awozwy r-backgroundColor-1w8984d r-justifyContent-1777fci r-height-z80fyv r-width-19wmn03"
+  className="css-view-g5y9jx r-borderColor-b9b20s r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-alignItems-1awozwy r-backgroundColor-7r0adx r-justifyContent-1777fci r-height-z80fyv r-width-19wmn03"
   dir={null}
 >
   <div
@@ -63,7 +63,7 @@ exports[`CheckBox component CheckBox subtask checked snapshot test should render
 
 exports[`CheckBox component CheckBox subtask snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderColor-t1myqv r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-z80fyv r-width-19wmn03"
+  className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderColor-b9b20s r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-height-z80fyv r-width-19wmn03"
   dir={null}
 />
 `;

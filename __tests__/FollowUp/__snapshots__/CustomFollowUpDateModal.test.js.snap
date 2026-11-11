@@ -39,7 +39,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "14px",
             "letterSpacing": "0.32px",
@@ -68,7 +68,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           "arrowColor": "orange",
           "backgroundColor": "#091540",
           "calendarBackground": "#091540",
-          "dayTextColor": "#8A94A6",
+          "dayTextColor": "var(--ad-Text03)",
           "disabledArrowColor": "#d9e1e8",
           "dotColor": "#00adf5",
           "indicatorColor": "blue",
@@ -112,11 +112,11 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           "textDayHeaderFontFamily": "Roboto-Regular",
           "textDayHeaderFontSize": 11,
           "textDayHeaderFontWeight": "normal",
-          "textDisabledColor": "#4E5D78",
+          "textDisabledColor": "var(--ad-Text02)",
           "textMonthFontFamily": "Roboto-Medium",
           "textMonthFontSize": 16,
           "textMonthFontWeight": "500",
-          "textSectionTitleColor": "#8A94A6",
+          "textSectionTitleColor": "var(--ad-Text03)",
           "todayTextColor": "white",
         }
       }
@@ -152,7 +152,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           dir="auto"
           style={
             {
-              "color": "rgba(138,148,166,1.00)",
+              "color": "var(--ad-Text03)",
               "fontFamily": "alldone",
               "fontSize": "24px",
               "opacity": 1,
@@ -185,11 +185,11 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           dir={null}
         >
           <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+            className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
             dir={null}
           >
             <div
-              className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+              className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
               dir="auto"
             >
               B
@@ -225,7 +225,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           dir="auto"
           style={
             {
-              "color": "rgba(138,148,166,1.00)",
+              "color": "var(--ad-Text03)",
               "fontFamily": "alldone",
               "fontSize": "24px",
               "opacity": 1,

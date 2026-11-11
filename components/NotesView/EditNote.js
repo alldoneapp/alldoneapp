@@ -47,6 +47,8 @@ import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFir
 import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 import Spinner from '../UIComponents/Spinner'
 
+import { themed } from '../../Themes/colorMode'
+
 class EditNote extends Component {
     // The form can be dismissed while a creation is still in flight (react-dismissible
     // still owns Escape and outside clicks), so every continuation below has to know
@@ -861,7 +863,7 @@ EditNote.defaultProps = {
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

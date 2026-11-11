@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux'
 
 import UserItem from './UserItem'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function UsersArea({ projectId, userId, selectedUserId, setSelectedUserId, inProgress }) {
     const usersInProject = useSelector(state => state.projectUsers[projectId])
 
@@ -37,7 +39,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         width: '100%',
         height: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginTop: 8,
     },

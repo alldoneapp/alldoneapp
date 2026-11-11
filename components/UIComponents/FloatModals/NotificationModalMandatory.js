@@ -7,6 +7,8 @@ import Icon from '../../Icon'
 import { deleteCacheAndRefresh } from '../../../utils/Observers'
 import { showNewVersionMandtoryNotifcation } from '../../../redux/actions'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function NotificationModalMandatory() {
     const dispatch = useDispatch()
 
@@ -17,7 +19,7 @@ export default function NotificationModalMandatory() {
     return (
         <View style={localstyles.container}>
             <Text style={[styles.title7, localstyles.title]}>Alldone.app needs to reload</Text>
-            <Text style={[styles.body2, { color: '#8A94A6' }]}>
+            <Text style={[styles.body2, { color: themed.Text03 }]}>
                 Alldone app needs to reload in order to update features. Do not worry, we will take care of everything
                 for you.
             </Text>

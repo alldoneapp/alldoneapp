@@ -4,12 +4,14 @@ import { Draggable } from '@hello-pangea/dnd'
 
 import ProjectItem from '../ProjectItem'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function DraggableProject({ project, index }) {
     return (
         <Draggable draggableId={project.id} index={index}>
             {provided => (
                 <div {...provided.draggableProps} ref={provided.innerRef} {...provided.dragHandleProps}>
-                    <View style={{ backgroundColor: '#ffffff' }}>
+                    <View style={{ backgroundColor: themed.Surface }}>
                         <ProjectItem project={project} activeDragMode={true} />
                     </View>
                 </div>

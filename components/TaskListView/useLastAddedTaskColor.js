@@ -3,6 +3,7 @@ import { Animated, Easing } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import { colors } from '../styles/global'
+import { resolveColor, resolveSurfaceColor } from '../../Themes/colorMode'
 import { setLastTaskAddedId } from '../../redux/actions'
 
 export default function useLastAddedTaskColor(taskId, lastTaskAddedId, hasStar) {
@@ -28,7 +29,7 @@ export default function useLastAddedTaskColor(taskId, lastTaskAddedId, hasStar) 
 
     const backgroundColor = addedTaskColorAnimation.interpolate({
         inputRange: [0, 1],
-        outputRange: [colors.UtilityBlue125, hasStar],
+        outputRange: [resolveColor(colors.UtilityBlue125), resolveSurfaceColor(hasStar)],
     })
 
     return backgroundColor

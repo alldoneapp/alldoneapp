@@ -10,6 +10,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Goals/GoalMoreButton'
+import { alphaColor, themed } from '../../../Themes/colorMode'
 
 export default function TagsArea({
     projectId,
@@ -107,7 +108,7 @@ const localStyles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: alphaColor(themed.Surface, 0.85),
     },
     taskMoreWrapper: {
         marginLeft: 2,

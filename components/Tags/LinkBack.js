@@ -6,6 +6,8 @@ import styles, { colors, windowTagStyle } from '../styles/global'
 import NavigationService from '../../utils/NavigationService'
 import URLTrigger from '../../URLSystem/URLTrigger'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function LinkBack({
     link,
     text,
@@ -60,7 +62,7 @@ export default function LinkBack({
 
 const localStyles = StyleSheet.create({
     urlTag: {
-        backgroundColor: '#D6EBFF',
+        backgroundColor: themed.UtilityBlue112,
         paddingLeft: 4,
         paddingRight: 8,
         borderRadius: 50,

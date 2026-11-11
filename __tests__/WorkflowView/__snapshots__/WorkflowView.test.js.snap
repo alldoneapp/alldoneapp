@@ -14,7 +14,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       dir="auto"
       style={
         {
-          "color": "rgba(4,20,47,1.00)",
+          "color": "var(--ad-Text01)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "20px",
           "lineHeight": "28px",
@@ -39,7 +39,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(78,93,120,1.00)",
+            "color": "var(--ad-Text02)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
             "letterSpacing": "0.48px",
@@ -69,7 +69,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "16px",
             "opacity": 1,
@@ -93,7 +93,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
             "letterSpacing": "0.48px",
@@ -106,7 +106,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-xwsjt6 r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
     dir={null}
   >
     <div
@@ -118,7 +118,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(198,205,210,1.00)",
+            "color": "var(--ad-Grey400)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,
@@ -142,7 +142,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "14px",
             "letterSpacing": "0.16px",
@@ -163,7 +163,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1m04atk"
+      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderColor-xwsjt6 r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1m04atk"
       dir={null}
       onClick={[Function]}
       onContextMenu={[Function]}
@@ -208,7 +208,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
           dir="auto"
           style={
             {
-              "color": "rgba(138,148,166,1.00)",
+              "color": "var(--ad-Text03)",
               "fontFamily": "Roboto-Regular",
               "fontSize": "16px",
               "letterSpacing": "0.32px",
@@ -222,7 +222,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-xwsjt6 r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
     dir={null}
     style={
       {
@@ -239,7 +239,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(198,205,210,1.00)",
+            "color": "var(--ad-Grey400)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,
@@ -263,7 +263,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "14px",
             "letterSpacing": "0.16px",

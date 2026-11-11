@@ -58,7 +58,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
             dir="auto"
             style={
               {
-                "color": "rgba(138,148,166,1.00)",
+                "color": "var(--ad-Text03)",
                 "fontFamily": "Roboto-Regular",
                 "fontSize": "14px",
                 "letterSpacing": "0.32px",
@@ -131,11 +131,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           0
@@ -149,7 +149,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
           </div>
         </div>
         <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
+          className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
           dir={null}
         />
         <div
@@ -214,11 +214,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           1
@@ -288,11 +288,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           2
@@ -362,11 +362,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           3
@@ -436,11 +436,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           4
@@ -510,11 +510,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           5
@@ -584,11 +584,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           6
@@ -658,11 +658,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           7
@@ -732,11 +732,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           8
@@ -806,11 +806,11 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           9
@@ -857,7 +857,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                   dir="auto"
                   style={
                     {
-                      "color": "rgba(138,148,166,1.00)",
+                      "color": "var(--ad-Text03)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",
                       "opacity": 1,

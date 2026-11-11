@@ -25,6 +25,8 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../../styles/global'
 import useCollapsibleSidebar from '../../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function DvContainer({ projectId, note, navigation, updateObjectState }) {
     const openModals = useSelector(state => state.openModals)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -138,7 +140,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,

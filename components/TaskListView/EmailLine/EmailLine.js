@@ -21,6 +21,8 @@ import {
     splitChipsForDisplay,
 } from './emailLineHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export const EMAIL_SUMMARY_LOAD_DELAY_MS = 500
 
 // A gently pulsating green dot shown in the Email header while labeling is
@@ -365,7 +367,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 8,

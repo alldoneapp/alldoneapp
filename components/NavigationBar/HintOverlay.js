@@ -2,6 +2,8 @@ import React, { Component } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { colors } from '../styles/global'
 
+import { themed } from '../../Themes/colorMode'
+
 export default class HintOverlay extends Component {
     constructor(props) {
         super(props)
@@ -21,7 +23,7 @@ const localStyles = StyleSheet.create({
         height: 12,
         width: 12,
         borderRadius: 100,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         alignItems: 'center',
         justifyContent: 'center',
     },

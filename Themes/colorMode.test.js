@@ -1,0 +1,121 @@
+/**
+ * Light/dark color mode: preference handling, CSS variables and color resolution.
+ */
+
+const mockMatchMedia = dark => {
+    const listeners = []
+    const query = {
+        matches: dark,
+        addEventListener: (event, cb) => listeners.push(cb),
+        removeEventListener: () => {},
+    }
+    window.matchMedia = jest.fn(() => query)
+    return {
+        setDark(next) {
+            query.matches = next
+            listeners.forEach(cb => cb({ matches: next }))
+        },
+    }
+}
+
+const load = () => {
+    let mod
+    jest.isolateModules(() => {
+        mod = require('./colorMode')
+    })
+    return mod
+}
+
+describe('colorMode', () => {
+    beforeEach(() => {
+        window.localStorage.clear()
+        document.head.innerHTML = '<meta name="theme-color" content="#FFFFFF" />'
+        document.documentElement.removeAttribute('data-theme')
+    })
+
+    it('defaults to auto and follows the device', () => {
+        const media = mockMatchMedia(true)
+        const cm = load()
+        expect(cm.getColorModePreference()).toBe('auto')
+        expect(cm.getColorMode()).toBe('dark')
+        expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+        expect(document.querySelector('meta[name="theme-color"]').getAttribute('content')).toBe(
+            cm.DARK_PALETTE.AppBackground
+        )
+
+        media.setDark(false)
+        expect(cm.getColorMode()).toBe('light')
+        expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    })
+
+    it('a manual choice overrides the device and is remembered', () => {
+        const media = mockMatchMedia(false)
+        const cm = load()
+        cm.setColorModePreference('dark')
+        expect(cm.getColorMode()).toBe('dark')
+        expect(window.localStorage.getItem(cm.COLOR_MODE_STORAGE_KEY)).toBe('dark')
+
+        media.setDark(false)
+        expect(cm.getColorMode()).toBe('dark')
+
+        const reloaded = load()
+        expect(reloaded.getColorModePreference()).toBe('dark')
+        expect(reloaded.getColorMode()).toBe('dark')
+    })
+
+    it('ignores unknown stored values', () => {
+        mockMatchMedia(false)
+        window.localStorage.setItem('alldone.colorMode', 'sepia')
+        const cm = load()
+        expect(cm.getColorModePreference()).toBe('auto')
+    })
+
+    it('injects light and dark values for every token', () => {
+        mockMatchMedia(false)
+        const cm = load()
+        const css = document.getElementById('alldone-color-mode').textContent
+        expect(css).toContain(`--ad-Text01:${cm.LIGHT_PALETTE.Text01};`)
+        expect(css).toContain(`:root[data-theme="dark"]{`)
+        expect(css).toContain(`--ad-Text01:${cm.DARK_PALETTE.Text01};`)
+        expect(Object.keys(cm.DARK_PALETTE).sort()).toEqual(Object.keys(cm.LIGHT_PALETTE).sort())
+    })
+
+    it('resolves tokens, alpha variants and adaptive colors to concrete values', () => {
+        mockMatchMedia(false)
+        const cm = load()
+        expect(cm.themed.Text01).toBe('var(--ad-Text01)')
+        expect(cm.resolveColor(cm.themed.Text01, 'light')).toBe('#04142F')
+        expect(cm.resolveColor(cm.themed.Text01, 'dark')).toBe(cm.DARK_PALETTE.Text01)
+        expect(cm.resolveColor('#123456', 'dark')).toBe('#123456')
+
+        const alpha = cm.alphaColor(cm.themed.Text03, 0.5)
+        expect(alpha).toBe('var(--ad-Text03-a500)')
+        expect(cm.resolveColor(alpha, 'light')).toBe('rgba(138,148,166,0.5)')
+        expect(document.getElementById('alldone-color-mode-alpha').textContent).toContain('--ad-Text03-a500')
+
+        const adaptive = cm.adaptiveColor('#ffe6c7')
+        expect(adaptive).toBe('var(--ad-hl-FFE6C7)')
+        expect(cm.resolveColor(adaptive, 'light')).toBe('#FFE6C7')
+        expect(cm.resolveColor(adaptive, 'dark')).toBe(cm.getHighlightDisplayColor('#FFE6C7', 'dark'))
+    })
+
+    it('shows stored highlight colors as dark tints in dark mode only', () => {
+        mockMatchMedia(false)
+        const cm = load()
+        expect(cm.getHighlightDisplayColor('#FFE6C7', 'light')).toBe('#FFE6C7')
+        expect(cm.getHighlightDisplayColor('#ffffff', 'dark')).toBe(cm.DARK_PALETTE.Surface)
+        const tint = cm.getHighlightDisplayColor('#FFE6C7', 'dark')
+        const [r, g, b] = [1, 3, 5].map(i => parseInt(tint.slice(i, i + 2), 16))
+        // dark, and still warm (red > blue) like the light yellow it stands for
+        expect(Math.max(r, g, b)).toBeLessThan(110)
+        expect(r).toBeGreaterThan(b)
+        expect(cm.resolveSurfaceColor(cm.themed.Grey200, 'dark')).toBe(cm.DARK_PALETTE.Grey200)
+    })
+
+    it('hexColorToRGBa keeps working for palette tokens', () => {
+        mockMatchMedia(false)
+        const { hexColorToRGBa, colors } = require('../components/styles/global')
+        expect(hexColorToRGBa('#FFFFFF', 0.2)).toBe('rgba(255,255,255,0.2)')
+        expect(hexColorToRGBa(colors.Text03, 0.24)).toMatch(/^var\(--ad-Text03-a240\)$/)
+    })
+})

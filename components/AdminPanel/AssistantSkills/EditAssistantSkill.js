@@ -24,6 +24,8 @@ import SkillSourceInput from './SkillSourceInput'
 import { GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID } from '../../../utils/AssistantSkills/skillCatalog'
 import { bytesToBase64 } from './skillDraftFromSource'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function EditAssistantSkill({ adding, skill, onClose, projectId = GLOBAL_PROJECT_ID }) {
     const [tmpSkill, setTmpSkill] = useState(() => (adding ? getNewDefaultAssistantSkill() : { ...skill }))
     const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -299,7 +301,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         padding: 16,
         marginBottom: 16,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     label: {
         ...styles.caption2,

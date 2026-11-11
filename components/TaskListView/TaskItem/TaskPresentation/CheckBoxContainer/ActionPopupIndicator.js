@@ -3,6 +3,8 @@ import { StyleSheet, Animated, View } from 'react-native'
 
 import { colors } from '../../../../styles/global'
 
+import { themed } from '../../../../../Themes/colorMode'
+
 export default function ActionPopupIndicator({ visible = false, borderColor = '#ffffff' }) {
     return visible ? (
         <Animated.View style={[localStyles.container, { backgroundColor: borderColor }]}>
@@ -17,7 +19,7 @@ const localStyles = StyleSheet.create({
         height: 10,
         flexDirection: 'row',
         justifyContent: 'flex-end',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         position: 'absolute',
         borderBottomLeftRadius: 4,
         top: 0,

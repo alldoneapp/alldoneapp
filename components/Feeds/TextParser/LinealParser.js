@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function LinealParser({ children, parentWidth, dotsStyle, innerFeed }) {
     const [showDots, setShowDots] = useState(false)
     const [dotsPosition, setDotsPosition] = useState(0)
@@ -41,7 +43,7 @@ const localStyles = StyleSheet.create({
     },
     dotsContainer: {
         zIndex: 10,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         position: 'absolute',
     },
 })

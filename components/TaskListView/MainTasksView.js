@@ -10,6 +10,8 @@ import WriteTasksUrl from './WriteTasksUrl'
 import TasksSections from './TasksSections'
 import useDeferredStartupWork from '../../hooks/useDeferredStartupWork'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function MainTasksView() {
     const dispatch = useDispatch()
     const deferredStartupWorkReady = useDeferredStartupWork()
@@ -31,6 +33,6 @@ export default function MainTasksView() {
 const localStyles = {
     container: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
 }

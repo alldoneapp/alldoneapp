@@ -2,6 +2,8 @@ import React from 'react'
 import { StyleSheet, View, Text } from 'react-native'
 import ProgressiveLoadingScreen from './ProgressiveLoadingScreen'
 
+import { adaptiveColor, themed } from '../Themes/colorMode'
+
 const AppShell = ({ loadingStep, loadingMessage, children }) => {
     if (loadingStep > 0 && loadingStep < 5) {
         return (
@@ -36,7 +38,7 @@ const AppShell = ({ loadingStep, loadingMessage, children }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     appShell: {
         flex: 1,
@@ -46,15 +48,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         height: 60,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: adaptiveColor('#F8F9FA'),
         borderBottomWidth: 1,
-        borderBottomColor: '#e9ecef',
+        borderBottomColor: adaptiveColor('#E9ECEF'),
         paddingHorizontal: 20,
     },
     logo: {
         width: 120,
         height: 30,
-        backgroundColor: '#e9ecef',
+        backgroundColor: adaptiveColor('#E9ECEF'),
         borderRadius: 4,
         marginRight: 40,
     },
@@ -64,7 +66,7 @@ const styles = StyleSheet.create({
     navItem: {
         width: 80,
         height: 20,
-        backgroundColor: '#dee2e6',
+        backgroundColor: adaptiveColor('#DEE2E6'),
         borderRadius: 4,
         marginRight: 20,
     },
@@ -74,15 +76,15 @@ const styles = StyleSheet.create({
         top: 60,
         bottom: 0,
         width: 250,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: adaptiveColor('#F8F9FA'),
         borderRightWidth: 1,
-        borderRightColor: '#e9ecef',
+        borderRightColor: adaptiveColor('#E9ECEF'),
         padding: 20,
     },
     sidebarItem: {
         width: '100%',
         height: 40,
-        backgroundColor: '#dee2e6',
+        backgroundColor: adaptiveColor('#DEE2E6'),
         borderRadius: 6,
         marginBottom: 16,
     },

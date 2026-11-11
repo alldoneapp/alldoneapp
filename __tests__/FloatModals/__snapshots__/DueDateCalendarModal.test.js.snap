@@ -47,7 +47,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
         "arrowColor": "orange",
         "backgroundColor": "#091540",
         "calendarBackground": "#091540",
-        "dayTextColor": "#8A94A6",
+        "dayTextColor": "var(--ad-Text03)",
         "disabledArrowColor": "#d9e1e8",
         "dotColor": "#00adf5",
         "indicatorColor": "blue",
@@ -91,11 +91,11 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
         "textDayHeaderFontFamily": "Roboto-Regular",
         "textDayHeaderFontSize": 11,
         "textDayHeaderFontWeight": "normal",
-        "textDisabledColor": "#4E5D78",
+        "textDisabledColor": "var(--ad-Text02)",
         "textMonthFontFamily": "Roboto-Medium",
         "textMonthFontSize": 16,
         "textMonthFontWeight": "500",
-        "textSectionTitleColor": "#8A94A6",
+        "textSectionTitleColor": "var(--ad-Text03)",
         "todayTextColor": "white",
       }
     }

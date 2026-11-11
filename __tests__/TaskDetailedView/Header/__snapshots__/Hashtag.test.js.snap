@@ -6,7 +6,7 @@ exports[`Hashtag component Hashtag snapshot test should render correctly 1`] = `
   dir={null}
 >
   <div
-    className="css-text-146c3p1 r-backgroundColor-2lf47b r-borderRadius-1867qdf r-color-ujv0fi r-paddingBlock-1559e4e r-paddingInline-is05cd"
+    className="css-text-146c3p1 r-backgroundColor-nla24r r-borderRadius-1867qdf r-color-ujv0fi r-paddingBlock-1559e4e r-paddingInline-is05cd"
     dir="auto"
     style={
       {

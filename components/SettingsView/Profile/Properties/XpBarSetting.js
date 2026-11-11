@@ -6,6 +6,8 @@ import Icon from '../../../Icon'
 import { getRelativeLevelXp, getXpNeededToReachLevel } from '../../../../utils/Levels'
 import { translate, useTranslator } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function XpBarSetting({ xp, level }) {
     useTranslator()
     const barPercent = (getRelativeLevelXp(level, xp) / getXpNeededToReachLevel(level + 1)) * 100
@@ -28,7 +30,7 @@ export default function XpBarSetting({ xp, level }) {
 
 const localStyle = StyleSheet.create({
     container: {
-        backgroundColor: '#F1F3F4',
+        backgroundColor: themed.Grey200,
         borderRadius: 16,
         zIndex: -3,
     },
@@ -41,7 +43,7 @@ const localStyle = StyleSheet.create({
     },
     progressContainer: {
         position: 'absolute',
-        backgroundColor: '#D6EBFF',
+        backgroundColor: themed.UtilityBlue112,
         borderRadius: 16,
         height: 24,
         zIndex: -1,
@@ -57,7 +59,7 @@ const localStyle = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     levelText: {
-        color: '#04142F',
+        color: themed.Text01,
         marginLeft: 5,
         alignSelf: 'center',
     },

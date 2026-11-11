@@ -3,6 +3,8 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import styles, { colors } from '../../../../styles/global'
 
+import { themed } from '../../../../../Themes/colorMode'
+
 export default function SkillPointButton({ points, containerStyle, disabled, onPress }) {
     return (
         <TouchableOpacity style={[localStyles.container, containerStyle]} onPress={onPress} disabled={disabled}>
@@ -21,7 +23,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 2,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderColor: colors.UtilityBlue150,
     },
     text: {

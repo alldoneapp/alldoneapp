@@ -2,6 +2,8 @@ import React from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import GoalItemPresentation from '../GoalsView/GoalItemPresentation'
 
+import { themed } from '../../Themes/colorMode'
+
 const DraggableGoalActive = ({ projectId, goal, provided, isDragging }) => {
     return (
         <div {...provided.draggableProps} ref={provided.innerRef}>
@@ -15,7 +17,7 @@ const DraggableGoalActive = ({ projectId, goal, provided, isDragging }) => {
 const localStyle = StyleSheet.create({
     shadowGoal: {
         borderRadius: 4,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         ...Platform.select({
             web: {
                 boxShadow: `${0}px ${8}px ${16}px rgba(0,0,0,0.04), ${0}px ${4}px ${8}px rgba(0,0,0,0.04)`,

@@ -92,7 +92,7 @@ describe.each([
             tree = renderer.create(<Component />)
         })
         expect(bellColor(tree)).toBe('#007FFF')
-        expect(bellBackground(tree)).toBe('#E2EFFF')
+        expect(bellBackground(tree)).toBe('var(--ad-hl-E2EFFF)')
 
         for (const route of ['ROOT_TASKS', 'ROOT_CHATS', 'TaskDetailedView']) {
             mockState = { ...mockState, route }

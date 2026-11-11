@@ -14,6 +14,8 @@ import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
+import { themed } from '../../../Themes/colorMode'
+
 const Header = ({
     projectId,
     task,
@@ -122,7 +124,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
     },
     userImage: {
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         height: 24,
         width: 24,
         borderRadius: 100,

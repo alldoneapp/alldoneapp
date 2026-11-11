@@ -27,7 +27,7 @@ exports[`ProjectItem component should render correctly 1`] = `
       onMouseLeave={[Function]}
       style={
         {
-          "backgroundColor": "rgba(245,245,245,1.00)",
+          "backgroundColor": "var(--ad-GraySidebar)",
         }
       }
     >
@@ -78,7 +78,7 @@ exports[`ProjectItem component should render correctly when it is the selected p
       onMouseLeave={[Function]}
       style={
         {
-          "backgroundColor": "rgba(214,235,255,1.00)",
+          "backgroundColor": "var(--ad-hl-D6EBFF)",
         }
       }
     >

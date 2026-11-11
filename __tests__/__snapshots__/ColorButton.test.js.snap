@@ -9,11 +9,11 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   onKeyDown={[Function]}
   style={
     {
-      "backgroundColor": "rgba(250,251,251,1.00)",
-      "borderBottomColor": "rgba(198,205,210,1.00)",
-      "borderLeftColor": "rgba(198,205,210,1.00)",
-      "borderRightColor": "rgba(198,205,210,1.00)",
-      "borderTopColor": "rgba(198,205,210,1.00)",
+      "backgroundColor": "var(--ad-Grey100)",
+      "borderBottomColor": "var(--ad-Grey400)",
+      "borderLeftColor": "var(--ad-Grey400)",
+      "borderRightColor": "var(--ad-Grey400)",
+      "borderTopColor": "var(--ad-Grey400)",
       "transitionDuration": "0s",
     }
   }
@@ -33,7 +33,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     dir="auto"
     style={
       {
-        "color": "rgba(138,148,166,1.00)",
+        "color": "var(--ad-Text03)",
       }
     }
   >
@@ -51,11 +51,11 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   onKeyDown={[Function]}
   style={
     {
-      "backgroundColor": "rgba(250,251,251,1.00)",
-      "borderBottomColor": "rgba(198,205,210,1.00)",
-      "borderLeftColor": "rgba(198,205,210,1.00)",
-      "borderRightColor": "rgba(198,205,210,1.00)",
-      "borderTopColor": "rgba(198,205,210,1.00)",
+      "backgroundColor": "var(--ad-Grey100)",
+      "borderBottomColor": "var(--ad-Grey400)",
+      "borderLeftColor": "var(--ad-Grey400)",
+      "borderRightColor": "var(--ad-Grey400)",
+      "borderTopColor": "var(--ad-Grey400)",
       "transitionDuration": "0s",
     }
   }
@@ -75,7 +75,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     dir="auto"
     style={
       {
-        "color": "rgba(138,148,166,1.00)",
+        "color": "var(--ad-Text03)",
       }
     }
   >

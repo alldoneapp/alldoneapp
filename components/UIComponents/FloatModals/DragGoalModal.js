@@ -6,6 +6,8 @@ import { colors } from '../../styles/global'
 import styles from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function DragGoalModal({ closeDragMode }) {
     useEffect(() => {
         window.addEventListener('keydown', onKeyDown)
@@ -53,7 +55,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         borderWidth: 1,
-        borderColor: '#C6CDD2',
+        borderColor: themed.Grey400,
         width: 'fit-content',
     },
     info: {

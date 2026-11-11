@@ -9,6 +9,8 @@ import store from '../../../redux/store'
 import { setSelectedNavItem } from '../../../redux/actions'
 import { DV_TAB_USER_PROFILE } from '../../../utils/TabNavigationConstants'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function UserTitle({ contact, project, isContact }) {
     const role = ProjectHelper.getUserRoleInProject(project.id, contact.uid, contact.role)
     const company = ProjectHelper.getUserCompanyInProject(project.id, contact.uid, contact.company)
@@ -71,14 +73,14 @@ export default function UserTitle({ contact, project, isContact }) {
 const localStyles = StyleSheet.create({
     upperContainer: {
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flex: 1,
         flexDirection: 'row',
         justifyContent: 'flex-start',
         alignItems: 'center',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         height: 32,
     },
     userImage: {

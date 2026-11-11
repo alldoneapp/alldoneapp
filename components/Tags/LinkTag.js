@@ -85,6 +85,8 @@ import { confirmPreConfigTaskRunFromLink } from '../../utils/preConfigTaskRunCon
 import { getShortExternalUrlText } from './linkTextUtils'
 import { getPeopleDocumentDescriptor } from '../../utils/People/peopleDocumentPath'
 
+import { themed } from '../../Themes/colorMode'
+
 export const MIN_WIDTH_LINK_TAG = 100
 
 // An artifact is shared with its project when the whole project (0) may read it, like a note.
@@ -982,7 +984,7 @@ const localStyles = StyleSheet.create({
         maxWidth: '100%',
     },
     urlTag: {
-        backgroundColor: '#D6EBFF',
+        backgroundColor: themed.UtilityBlue112,
         paddingLeft: 4,
         paddingRight: 8,
         borderRadius: 50,

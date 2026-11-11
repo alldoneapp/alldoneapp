@@ -10,7 +10,7 @@ exports[`ProjectPropertiesHeader component ProjectPropertiesHeader snapshot test
     dir="auto"
     style={
       {
-        "color": "rgba(4,20,47,1.00)",
+        "color": "var(--ad-Text01)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
         "lineHeight": "28px",

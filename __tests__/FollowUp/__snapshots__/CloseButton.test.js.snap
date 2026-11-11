@@ -27,7 +27,7 @@ exports[`CloseButton component CloseButton snapshot test should render correctly
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,

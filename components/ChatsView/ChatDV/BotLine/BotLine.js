@@ -8,6 +8,8 @@ import BotOptionsModalWrapper from './BotOptionsModalWrapper'
 import CloseButton from './CloseButton'
 import SharedHelper from '../../../../utils/SharedHelper'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function BotLine({
     setFullscreen,
     objectId,
@@ -39,7 +41,7 @@ export default function BotLine({
                 />
             </View>
             <View style={localStyles.rightArea}>
-                <GoldArea containerStyle={{ backgroundColor: '#ffffff' }} />
+                <GoldArea containerStyle={{ backgroundColor: themed.Surface }} />
             </View>
         </View>
     )

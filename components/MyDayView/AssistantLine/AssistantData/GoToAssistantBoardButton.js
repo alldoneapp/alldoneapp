@@ -22,6 +22,8 @@ import store from '../../../../redux/store'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ContactsHelper from '../../../ContactsView/Utils/ContactsHelper'
 
+import { adaptiveColor } from '../../../../Themes/colorMode'
+
 export default function GoToAssistantBoardButton({ isAssistant, creator, project }) {
     const dispatch = useDispatch()
     const showFloatPopup = useSelector(state => state.showFloatPopup)
@@ -81,7 +83,7 @@ export default function GoToAssistantBoardButton({ isAssistant, creator, project
             ref={ref => (this.openBtnRef = ref)}
             title={translate('Open')}
             titleStyle={{ color: colors.Text03, fontSize: 12 }}
-            buttonStyle={{ backgroundColor: '#f1f5f7', marginTop: 2 }}
+            buttonStyle={{ backgroundColor: adaptiveColor('#F1F5F7'), marginTop: 2 }}
             type={'ghost'}
             noBorder={true}
             icon={'maximize-2'}

@@ -31,6 +31,8 @@ import SharedHelper from '../../../../../utils/SharedHelper'
 import { DV_TAB_SKILL_PROPERTIES } from '../../../../../utils/TabNavigationConstants'
 import useSingleFlightSubmit from '../../../../../hooks/useSingleFlightSubmit'
 
+import { themed } from '../../../../../Themes/colorMode'
+
 export default function EditSkill({ refKey, projectId, adding, skill, onCancelAction }) {
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
@@ -335,7 +337,7 @@ export default function EditSkill({ refKey, projectId, adding, skill, onCancelAc
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

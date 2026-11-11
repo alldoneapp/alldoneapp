@@ -7,11 +7,11 @@ exports[`ProjectHeader component ProjectHeader snapshot test should render corre
   dir={null}
 >
   <div
-    className="css-view-g5y9jx r-borderBottomColor-tt9ieb r-borderBottomWidth-ndvcnb r-borderRadius-1q9bdsx"
+    className="css-view-g5y9jx r-borderBottomColor-1m4r70m r-borderBottomWidth-ndvcnb r-borderRadius-1q9bdsx"
     dir={null}
     style={
       {
-        "backgroundColor": "rgba(214,235,255,1.00)",
+        "backgroundColor": "var(--ad-hl-D6EBFF)",
       }
     }
   >

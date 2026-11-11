@@ -12,6 +12,8 @@ import { PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import styles, { colors } from '../../styles/global'
 
+import { themed } from '../../../Themes/colorMode'
+
 // The row is a stand-in for a real goal row, so its geometry deliberately mirrors
 // components/GoalsView:
 //   GoalProgressBar  -> a 61px wide, full-height bar on the left   = `blockContainer`
@@ -115,7 +117,7 @@ const localStyles = StyleSheet.create({
         height: 32,
         borderRadius: 4,
         borderWidth: 2,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     text: {
         ...styles.body1,

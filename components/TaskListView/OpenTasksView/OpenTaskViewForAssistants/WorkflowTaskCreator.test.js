@@ -259,7 +259,7 @@ describe('WorkflowTaskCreator', () => {
         })
         expect(inputAreaStyle).toMatchObject({
             marginHorizontal: 8,
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--ad-Surface)',
             borderRadius: 4,
         })
         expect(inputAreaStyle.borderWidth).toBeUndefined()

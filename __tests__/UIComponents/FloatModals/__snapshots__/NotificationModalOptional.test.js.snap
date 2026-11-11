@@ -2,7 +2,7 @@
 
 exports[`NotificationModalOptional component NotificationModalOptional snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-th0y25 r-borderRadius-z2wwpe r-bottom-1prstla r-boxShadow-1kiz81i r-height-1i6j0pn r-paddingLeft-1qhn6m8 r-paddingTop-95jzfe r-position-u8s1d r-right-17e4thx r-width-1qewag5 r-zIndex-145dblm"
+  className="css-view-g5y9jx r-backgroundColor-1mie5jg r-borderRadius-z2wwpe r-bottom-1prstla r-boxShadow-1kiz81i r-height-1i6j0pn r-paddingLeft-1qhn6m8 r-paddingTop-95jzfe r-position-u8s1d r-right-17e4thx r-width-1qewag5 r-zIndex-145dblm"
   dir={null}
 >
   <div
@@ -23,7 +23,7 @@ exports[`NotificationModalOptional component NotificationModalOptional snapshot 
     dir="auto"
     style={
       {
-        "color": "rgba(78,93,120,1.00)",
+        "color": "var(--ad-Text02)",
         "fontFamily": "Roboto-Regular",
         "fontSize": "14px",
         "letterSpacing": "0.32px",
@@ -94,7 +94,7 @@ exports[`NotificationModalOptional component NotificationModalOptional snapshot 
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,

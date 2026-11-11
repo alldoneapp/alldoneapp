@@ -7,6 +7,8 @@ import { setSelectedSidebarTab } from '../../../redux/actions'
 import { DV_TAB_CHAT_BOARD, DV_TAB_ROOT_CHATS, DV_TAB_ROOT_NOTES } from '../../../utils/TabNavigationConstants'
 import { useDispatch, useSelector } from 'react-redux'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function BackButton({ isFullscreen }) {
     const dispatch = useDispatch()
     const lastVisitedScreen = useSelector(state => state.lastVisitedScreen)
@@ -43,7 +45,7 @@ const localStyles = StyleSheet.create({
     upperContainer: {
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flexDirection: 'column',
@@ -51,7 +53,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },

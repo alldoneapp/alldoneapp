@@ -17,6 +17,8 @@ import {
 } from '../../../../utils/backends/Projects/contactStatusFirestore'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 
+import { themed } from '../../../../Themes/colorMode'
+
 class EditContactStatus extends Component {
     constructor(props) {
         super(props)
@@ -292,7 +294,7 @@ export default EditContactStatus
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

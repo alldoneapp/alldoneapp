@@ -10,7 +10,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-backgroundColor-2lf47b r-borderColor-1mwhlak r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
+      className="css-view-g5y9jx r-backgroundColor-nla24r r-borderColor-eqswfy r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
       dir={null}
     >
       <div
@@ -35,7 +35,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Tasks
@@ -55,7 +55,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Goals
@@ -75,7 +75,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Notes
@@ -95,7 +95,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Contacts
@@ -115,7 +115,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Artifacts
@@ -141,11 +141,11 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             }
           >
             <div
-              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1v0ekwd r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
+              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1ds0fg2 r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
               dir={null}
             >
               <div
-                className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
+                className="css-view-g5y9jx r-backgroundColor-wodtp1 r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
                 dir={null}
                 style={
                   {
@@ -213,7 +213,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                     dir={null}
                   >
                     <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
+                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
                       dir="auto"
                     >
                       Done
@@ -223,7 +223,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       dir="auto"
                       style={
                         {
-                          "color": "rgba(138,148,166,1.00)",
+                          "color": "var(--ad-Text03)",
                           "paddingRight": "12px",
                         }
                       }
@@ -252,7 +252,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-backgroundColor-2lf47b r-borderColor-1mwhlak r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
+      className="css-view-g5y9jx r-backgroundColor-nla24r r-borderColor-eqswfy r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
       dir={null}
     >
       <div
@@ -277,7 +277,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Tasks
@@ -297,7 +297,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Goals
@@ -317,7 +317,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Notes
@@ -337,7 +337,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Contacts
@@ -357,7 +357,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             tabIndex="0"
           >
             <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
+              className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
               Artifacts
@@ -383,11 +383,11 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             }
           >
             <div
-              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1v0ekwd r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
+              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1ds0fg2 r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
               dir={null}
             >
               <div
-                className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
+                className="css-view-g5y9jx r-backgroundColor-wodtp1 r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
                 dir={null}
                 style={
                   {
@@ -455,7 +455,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                     dir={null}
                   >
                     <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
+                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
                       dir="auto"
                     >
                       Done
@@ -465,7 +465,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       dir="auto"
                       style={
                         {
-                          "color": "rgba(138,148,166,1.00)",
+                          "color": "var(--ad-Text03)",
                           "paddingRight": "12px",
                         }
                       }

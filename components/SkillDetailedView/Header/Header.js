@@ -14,6 +14,8 @@ import DvBotButton from '../../UIControls/DvBotButton'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 import { setDvIsFullScreen } from '../../../redux/actions'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function Header({ projectId, userHasAccessToProject }) {
     const dispatch = useDispatch()
     const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
@@ -90,7 +92,7 @@ const localStyles = StyleSheet.create({
     ellipsis: {
         ...styles.title4,
         color: colors.Text01,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 8,
         position: 'absolute',
         bottom: 0,

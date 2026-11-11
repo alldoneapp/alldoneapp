@@ -4,6 +4,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import Spinner from './UIComponents/Spinner'
 import ConnectionStatusChip from './TopBar/ConnectionStatusChip'
 
+import { themed } from '../Themes/colorMode'
+
 const LoadingScreen = ({ text, secondText }) => {
     return (
         <View style={localstyles.container}>
@@ -21,7 +23,7 @@ const localstyles = StyleSheet.create({
         paddingHorizontal: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         alignContent: 'center',
     },
     text: {

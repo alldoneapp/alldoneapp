@@ -8,6 +8,8 @@ import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerMo
 import { translate } from '../../../i18n/TranslationService'
 import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function DateHeader({
     dateText = 'Today',
     isToday = false,
@@ -91,7 +93,7 @@ const localStyles = StyleSheet.create({
     },
     overdueIContainer: {
         height: 20,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     dateText: {
         color: colors.Text02,

@@ -32,6 +32,8 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 const ChatDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -197,12 +199,12 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

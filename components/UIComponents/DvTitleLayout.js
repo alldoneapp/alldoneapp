@@ -7,6 +7,8 @@ import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import useLastEditDate from '../../hooks/useLastEditDate'
 
+import { themed } from '../../Themes/colorMode'
+
 function LastEdited({ lastEditionDate, editorName, shortEditorName, useShortName, mobile }) {
     const editionText = useLastEditDate(lastEditionDate, 1000, mobile)
     const name = useShortName ? shortEditorName || editorName : editorName
@@ -93,7 +95,7 @@ const localStyles = StyleSheet.create({
     ellipsis: {
         ...styles.title4,
         color: colors.Text01,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 8,
         position: 'absolute',
         bottom: 0,

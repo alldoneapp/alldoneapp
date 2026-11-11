@@ -3,6 +3,8 @@ import { StyleSheet, View, Text, Image, ScrollView, TouchableOpacity, Animated, 
 import Colors from '../../Themes/Colors'
 import Icon from '../Icon'
 
+import { adaptiveColor, themed } from '../../Themes/colorMode'
+
 const TypingIndicator = () => {
     const dot1Opacity = useRef(new Animated.Value(0)).current
     const dot2Opacity = useRef(new Animated.Value(0)).current
@@ -206,7 +208,7 @@ const styles = StyleSheet.create({
     phoneFrame: {
         width: 280,
         height: 500,
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
         borderRadius: 40,
         borderWidth: 8,
         borderColor: '#1c1c1e',
@@ -220,7 +222,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        backgroundColor: '#F6F6F6',
+        backgroundColor: adaptiveColor('#F6F6F6'),
     },
     timeText: {
         fontSize: 14,
@@ -238,13 +240,13 @@ const styles = StyleSheet.create({
 
     header: {
         height: 60,
-        backgroundColor: '#F6F6F6',
+        backgroundColor: adaptiveColor('#F6F6F6'),
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5EA',
+        borderBottomColor: adaptiveColor('#E5E5EA'),
     },
     headerLeft: {
         flexDirection: 'row',
@@ -276,11 +278,11 @@ const styles = StyleSheet.create({
 
     chatArea: {
         flex: 1,
-        backgroundColor: '#EFEFF4', // WhatsApp default background color roughly
+        backgroundColor: adaptiveColor('#EFEFF4'), // WhatsApp default background color roughly
     },
     dateBubble: {
         alignSelf: 'center',
-        backgroundColor: '#E1E4E8',
+        backgroundColor: adaptiveColor('#E1E4E8'),
         borderRadius: 8,
         paddingHorizontal: 8,
         paddingVertical: 4,
@@ -294,7 +296,7 @@ const styles = StyleSheet.create({
     },
     messageBubbleReceived: {
         alignSelf: 'flex-start',
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
         borderRadius: 16,
         borderTopLeftRadius: 4,
         padding: 10,
@@ -304,7 +306,7 @@ const styles = StyleSheet.create({
     },
     messageBubbleSent: {
         alignSelf: 'flex-end',
-        backgroundColor: '#DCF8C6',
+        backgroundColor: adaptiveColor('#DCF8C6'),
         borderRadius: 16,
         borderTopRightRadius: 4,
         padding: 10,
@@ -337,7 +339,7 @@ const styles = StyleSheet.create({
 
     homeIndicatorContainer: {
         height: 34,
-        backgroundColor: '#F6F6F6',
+        backgroundColor: adaptiveColor('#F6F6F6'),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -353,7 +355,7 @@ const styles = StyleSheet.create({
         // gap: 8, // gap is not supported in RN styles, using margin on children instead
     },
     optionBubble: {
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
         paddingVertical: 12, // Increased padding
         paddingHorizontal: 20, // Increased padding
         borderRadius: 24, // Increased border radius

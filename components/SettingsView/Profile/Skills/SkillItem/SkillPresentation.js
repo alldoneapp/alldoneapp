@@ -20,6 +20,8 @@ import SkillProgressBar from './SkillProgressBar'
 import { updateSkillDescription } from '../../../../../utils/backends/Skills/skillsFirestore'
 import ProjectMoveIndicator from '../../../../UIComponents/ProjectMoveIndicator'
 
+import { themed } from '../../../../../Themes/colorMode'
+
 export default function SkillPresentation({ projectId, skill, higherSkill, onPress, isDragging, inCommentPopup }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -167,7 +169,7 @@ const localStyles = StyleSheet.create({
     draggedContainer: {
         paddingVertical: 4,
         borderRadius: 4,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         boxShadow: `${0}px ${8}px ${16}px rgba(0,0,0,0.04), ${0}px ${4}px ${8}px rgba(0,0,0,0.04)`,
     },
     container: {

@@ -3430,5 +3430,11 @@
     "Save memory": "Gedächtnis speichern",
     "Cancel editing": "Bearbeiten abbrechen",
     "Could not load the assistant memory.": "Das Assistenten-Gedächtnis konnte nicht geladen werden.",
-    "Could not save the assistant memory.": "Das Assistenten-Gedächtnis konnte nicht gespeichert werden."
+    "Could not save the assistant memory.": "Das Assistenten-Gedächtnis konnte nicht gespeichert werden.",
+    "Appearance": "Erscheinungsbild",
+    "Appearance auto": "Automatisch (wie Gerät)",
+    "Appearance light": "Hell",
+    "Appearance dark": "Dunkel",
+    "Sidebar theme": "Seitenleisten-Design",
+    "Neutral": "Neutral"
 }

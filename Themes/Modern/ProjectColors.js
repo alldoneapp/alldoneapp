@@ -1,4 +1,5 @@
 import Colors from '../Colors'
+import { adaptiveColor, themed } from '../colorMode'
 
 export const PROJECT_COLOR_DEFAULT = Colors.Marker_PrimaryBlue_01
 export const PROJECT_COLOR_BLUE = Colors.Marker_Blue_01
@@ -12,7 +13,7 @@ export const PROJECT_COLOR_PELOROUS = Colors.Marker_Pelorous_01
 export const PROJECT_COLOR_LIME = Colors.Marker_Lime_01
 export const PROJECT_COLOR_VIOLET = Colors.Marker_Violet_01
 
-export const PROJECT_COLOR_SYSTEM = {
+const PROJECT_COLOR_SYSTEM_HEX = {
     [PROJECT_COLOR_DEFAULT]: {
         MARKER: Colors.Marker_PrimaryBlue_01,
         MARKER_TEXT: Colors.Marker_PrimaryBlue_Dark,
@@ -146,3 +147,25 @@ export const PROJECT_COLOR_SYSTEM = {
         PROJECT_ITEM_SECTION_ITEM_ACTIVE: Colors.Marker_Violet_02,
     },
 }
+
+// The project tints are display-only backgrounds: in dark mode they become dark tints of the
+// same hue (Themes/colorMode.js). MARKER (the saturated project color) and MARKER_TEXT stay hex.
+const ADAPTIVE_KEYS = [
+    'PROJECT_ITEM_ACTIVE',
+    'PROJECT_ITEM_SECTION',
+    'PROJECT_ITEM_SECTION_HEADER',
+    'PROJECT_ITEM_SECTION_ACTIVE',
+    'PROJECT_ITEM_SECTION_SELECTED',
+    'PROJECT_ITEM_SECTION_ITEM',
+    'PROJECT_ITEM_SECTION_ITEM_ACTIVE',
+]
+
+export const PROJECT_COLOR_SYSTEM = Object.fromEntries(
+    Object.entries(PROJECT_COLOR_SYSTEM_HEX).map(([key, system]) => {
+        const adapted = { ...system, PROJECT_ITEM: themed.GraySidebar }
+        ADAPTIVE_KEYS.forEach(name => {
+            adapted[name] = adaptiveColor(system[name])
+        })
+        return [key, adapted]
+    })
+)

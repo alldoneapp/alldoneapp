@@ -54,6 +54,8 @@ import {
     isManualOfflineMode,
 } from '../../../utils/connectionHealth'
 
+import { themed } from '../../../Themes/colorMode'
+
 /**
  * Ceiling for the statistics re-read that follows a successful reconnect
  * (AT-2391). `getUserStatistics` is callback-based and reports nothing when it
@@ -1116,7 +1118,7 @@ const localStyles = StyleSheet.create({
     },
     line: {
         height: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 20,
     },

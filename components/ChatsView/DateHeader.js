@@ -7,6 +7,8 @@ import moment from 'moment'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 
+import { themed } from '../../Themes/colorMode'
+
 function DateHeader({ dateText = 'Today', isToday = false, isOverdue = false, date }) {
     const accentColor = useProjectSectionAccent()
     const weekdays = [
@@ -82,7 +84,7 @@ const localStyles = StyleSheet.create({
     },
     overdueIContainer: {
         height: 20,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     dateText: {
         color: colors.Text02,

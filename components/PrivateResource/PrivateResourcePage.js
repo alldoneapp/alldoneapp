@@ -15,6 +15,8 @@ import {
 import URLSystem, { URL_PRIVATE_RESOURCE } from '../../URLSystem/URLSystem'
 import NavigationService from '../../utils/NavigationService'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function PrivateResourcePage({}) {
     const [width, setWidth] = useState(580)
     const [top, setTop] = useState(190)
@@ -92,11 +94,11 @@ export default function PrivateResourcePage({}) {
 const localStyles = StyleSheet.create({
     parent: {
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     parentContent: {
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         width: '100%',
         alignItems: 'center',
     },

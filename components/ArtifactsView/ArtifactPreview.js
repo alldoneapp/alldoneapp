@@ -14,6 +14,8 @@ import { ARTIFACT_BRIDGE_SANDBOX } from '../../functions/Artifacts/artifactDataB
 import useArtifactDataBridge from './useArtifactDataBridge'
 import useArtifactFrameHeight from './useArtifactFrameHeight'
 
+import { themed } from '../../Themes/colorMode'
+
 // The second line of defence for an HTML artifact. The first is the CSP sandbox serveArtifact sends
 // with it; both deliberately leave out allow-same-origin and allow-top-navigation, so the page can
 // run its own script but can neither read storage nor navigate the app away.
@@ -206,7 +208,7 @@ const webStyles = {
         width: '100%',
         border: `1px solid ${colors.Grey300}`,
         borderRadius: 8,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         display: 'block',
         // The height is the frame's viewport, which is what a page reports as its own height.
         boxSizing: 'content-box',
@@ -260,7 +262,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         padding: 16,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     monospace: {
         fontFamily: 'monospace',

@@ -8,6 +8,8 @@ import { SKILL_SOURCE_PASTE, SKILL_SOURCE_UPLOAD } from './assistantSkillsHelper
 import { buildSkillDraftFromFile, buildSkillDraftFromMarkdown, SKILL_UPLOAD_ACCEPT } from './skillDraftFromSource'
 import { describeSkillSourceError, describeSkillSourceWarning } from './skillSourceMessages'
 
+import { themed } from '../../../Themes/colorMode'
+
 const HIDDEN_INPUT_STYLE = { display: 'none' }
 const DROP_WRAPPER_STYLE = { display: 'contents' }
 
@@ -263,7 +265,7 @@ const localStyles = StyleSheet.create({
         minHeight: 140,
         textAlignVertical: 'top',
         fontFamily: 'monospace',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     pasteActions: {
         flexDirection: 'row',

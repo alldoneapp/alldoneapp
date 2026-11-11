@@ -33,7 +33,7 @@ describe('assistant workspace monitor frame (AT-2911)', () => {
 
     it('pads the app inside the bezel horizontally only', () => {
         expect(frameBlock).toMatch(
-            /\.anna-stage > \.anna-workspace \{\s*padding-inline: var\(--anna-workspace-gutter\);\s*background: #fff;/
+            /\.anna-stage > \.anna-workspace \{\s*padding-inline: var\(--anna-workspace-gutter\);\s*background: var\(--ad-Surface, #ffffff\);/
         )
         expect(frameBlock).not.toMatch(/padding-block|gutter-block|padding:\s/)
     })

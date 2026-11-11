@@ -53,6 +53,8 @@ import Spinner from '../UIComponents/Spinner'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 
+import { themed } from '../../Themes/colorMode'
+
 export default class EditContact extends Component {
     // AT-2508 - the form can be dismissed while a creation is still in flight (react-dismissible
     // still owns Escape and outside clicks, deliberately, so a hung write can never trap the
@@ -530,7 +532,7 @@ export default class EditContact extends Component {
                                     type={'secondary'}
                                     noBorder={smallScreen}
                                     icon={'maximize-2'}
-                                    iconColor={'#8A94A6'}
+                                    iconColor={themed.Text03}
                                     buttonStyle={buttonItemStyle}
                                     onPress={isNew ? this.openBeforeCreate : this.onUserPress}
                                     disabled={secondaryButtonsDisabled}
@@ -892,7 +894,7 @@ export class Picture extends React.Component {
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

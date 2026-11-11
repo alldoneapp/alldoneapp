@@ -46,6 +46,8 @@ import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../ass
 import { ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT, AssistantOptionButtonsSkeleton } from '../AssistantLineSkeleton'
 import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantLineCache'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // The formats an attachment-capable input must declare. `CustomTextInput3.supportsAttachments`
 // keys on `attachment` / `customImageFormat` being present, and that predicate is what installs
 // `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
@@ -594,7 +596,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         minHeight: 40,
         maxHeight: 120,
         // 24px text + 2 × 7px padding + 2px border = the 40px control row.

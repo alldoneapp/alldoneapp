@@ -18,7 +18,7 @@ describe('TaskInputArea inline task styling', () => {
         expect(style).toMatchObject({
             minHeight: 59,
             marginHorizontal: taskPresentationLayout.taskRow.marginHorizontal,
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--ad-Surface)',
             borderRadius: taskPresentationLayout.taskRow.borderRadius,
         })
         expect(style.borderWidth).toBeUndefined()

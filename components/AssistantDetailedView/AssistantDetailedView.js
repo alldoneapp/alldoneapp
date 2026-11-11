@@ -45,6 +45,8 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import WorkflowView from '../WorkflowView/WorkflowView'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function AssistantDetailedView({ navigation }) {
     const assistantId = navigation.getParam('assistantId', undefined)
     const projectId = navigation.getParam('projectId', undefined)
@@ -169,7 +171,7 @@ export default function AssistantDetailedView({ navigation }) {
                             overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                         ]}
                     >
-                        <View style={{ backgroundColor: 'white', flex: 1 }}>
+                        <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
                             {(!isFullscreen || selectedNavItem !== DV_TAB_ASSISTANT_NOTE) && (
                                 <Header
                                     isGlobalAsisstant={isGlobalAsisstant}
@@ -271,12 +273,12 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

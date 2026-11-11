@@ -15,6 +15,8 @@ import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 import useWindowSize from '../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../utils/modalSafeArea'
 
+import { adaptiveColor, themed } from '../../Themes/colorMode'
+
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
 
 // The timezone picker overlay's existing per-side gap, and the card's fixed
@@ -674,7 +676,7 @@ function AvailabilityLoadingCard() {
 const localStyles = StyleSheet.create({
     page: {
         flex: 1,
-        backgroundColor: '#F7F8FA',
+        backgroundColor: adaptiveColor('#F7F8FA'),
     },
     content: {
         width: '100%',
@@ -687,7 +689,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
-        backgroundColor: '#F7F8FA',
+        backgroundColor: adaptiveColor('#F7F8FA'),
     },
     header: {
         flexDirection: 'row',
@@ -708,7 +710,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 6,
     },
     languageButtonActive: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     languageText: {
         ...styles.caption2,
@@ -740,7 +742,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         maxWidth: 460,
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 16,
         paddingVertical: 40,
         paddingHorizontal: 32,
@@ -821,7 +823,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 8,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     dayButtonActive: {
         borderColor: colors.Primary100,
@@ -859,7 +861,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         marginBottom: 4,
     },
     timeZoneLabel: {
@@ -913,7 +915,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         maxWidth: 440,
         maxHeight: 520,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 14,
         padding: 20,
         boxShadow: '0px 16px 32px rgba(0,0,0,0.20)',
@@ -1072,7 +1074,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         margin: 4,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     durationButtonActive: {
         borderColor: colors.Primary100,
@@ -1097,14 +1099,14 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         padding: 16,
     },
     loaderTimeline: {
         width: 76,
         height: 76,
         borderRadius: 6,
-        backgroundColor: '#F7F8FA',
+        backgroundColor: adaptiveColor('#F7F8FA'),
         padding: 10,
         justifyContent: 'space-between',
         marginRight: 16,
@@ -1160,7 +1162,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         margin: 4,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     slotButtonActive: {
         borderColor: colors.Primary100,
@@ -1180,7 +1182,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         paddingHorizontal: 12,
         marginBottom: 10,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         color: colors.Text01,
     },
     noteInput: {

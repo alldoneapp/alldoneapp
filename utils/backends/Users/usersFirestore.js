@@ -1274,6 +1274,12 @@ export async function setUserThemeName(userId, themeName) {
     getDb().doc(`users/${userId}`).update({ themeName })
 }
 
+// Light/dark appearance: 'auto' (follow the device), 'light' or 'dark'. The device keeps its
+// own copy in localStorage (Themes/colorMode.js) so the first paint is already right.
+export async function setUserColorMode(userId, colorMode) {
+    getDb().doc(`users/${userId}`).update({ colorMode })
+}
+
 // Per-user MCP access config, read server-side by functions/MCP/mcpServerSimple.js.
 // mcpEnabled is the master on/off switch (default on); mcpDisabledTools lists the
 // tool names the user turned off (default none, so new tools are available by default).

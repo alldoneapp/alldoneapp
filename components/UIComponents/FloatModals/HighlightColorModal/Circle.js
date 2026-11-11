@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native'
 import { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function Circle({ color, selectedColor, inButton, icoForcedColor }) {
     return color === '#FFFFFF' ? (
         <Icon
@@ -36,7 +38,7 @@ const localStyles = StyleSheet.create({
         height: 20,
         borderWidth: 2,
         borderRadius: 50,
-        borderColor: '#ffffff',
-        backgroundColor: '#ffffff',
+        borderColor: themed.Surface,
+        backgroundColor: themed.Surface,
     },
 })

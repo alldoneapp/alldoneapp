@@ -9,6 +9,8 @@ import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
 import VoiceCallDevices from './VoiceCallDevices'
 import styles, { colors } from '../styles/global'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function FloatingCallControls({ call }) {
     const { keyboardInset, safeAreaInsets } = useModalSizing()
     if (call.status === 'idle' && !call.error) return null
@@ -114,7 +116,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-end',
         padding: 8,
         borderRadius: 24,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         boxShadow: '0 3px 12px rgba(0, 0, 0, 0.18)',
         maxWidth: 'calc(100vw - 32px)',
     },

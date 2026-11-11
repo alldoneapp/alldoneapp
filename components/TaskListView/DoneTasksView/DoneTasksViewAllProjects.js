@@ -7,6 +7,8 @@ import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
 import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function DoneTasksViewAllProjects() {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -51,7 +53,7 @@ export default function DoneTasksViewAllProjects() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

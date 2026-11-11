@@ -14,6 +14,8 @@ import Backend from '../../../utils/BackendBridge'
 import { getDvMainTabLink } from '../../../utils/LinkingHelper'
 import { setTaskShared } from '../../../utils/backends/Tasks/tasksFirestore'
 
+import { themed } from '../../../Themes/colorMode'
+
 /**
  * DEPRECATED at 07/05/2021
  * Remove after 2 Months [07/07/2021]
@@ -99,7 +101,7 @@ const localStyles = StyleSheet.create({
         fontSize: 12,
         lineHeight: 14,
         letterSpacing: em2px(0.03),
-        color: '#4E5D78',
+        color: themed.Text02,
         maxWidth: 142,
     },
 })

@@ -56,7 +56,7 @@ exports[`FollowingSwitch component should render correctly 1`] = `
         }
       >
         <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
+          className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
           dir={null}
         />
       </div>
@@ -121,7 +121,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
         }
       >
         <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
+          className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
           dir={null}
         />
       </div>
@@ -186,7 +186,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
         }
       >
         <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
+          className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
           dir={null}
         />
       </div>

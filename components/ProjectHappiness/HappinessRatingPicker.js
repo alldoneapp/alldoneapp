@@ -4,6 +4,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import { HAPPINESS_EMOJIS, HAPPINESS_SCALE } from '../../utils/ProjectHappinessHelper'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function HappinessRatingPicker({ value, onChange, compact, light }) {
     return (
         <View style={[localStyles.container, compact && localStyles.containerCompact]}>
@@ -45,7 +47,7 @@ const localStyles = StyleSheet.create({
         marginLeft: 4,
         borderWidth: 1,
         borderColor: colors.Grey200,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     buttonCompact: {
         width: 36,

@@ -39,6 +39,8 @@ import ProjectOKRsView from './OKRs/ProjectOKRsView'
 import ProjectWikiSettings from './Wiki/ProjectWikiSettings'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 const ProjectDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -127,7 +129,7 @@ const ProjectDetailedView = ({ navigation }) => {
                         overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                     ]}
                 >
-                    <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
+                    <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
                         <Header project={project} />
                         <View style={{ flex: 1 }}>
                             <View style={mobile ? localStyles.navigationBar : undefined}>
@@ -187,7 +189,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButton: {
         position: 'absolute',
@@ -198,7 +200,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

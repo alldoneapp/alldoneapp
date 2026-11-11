@@ -9,6 +9,8 @@ import AssistantThinking3D, { useAssistantThinking3DEnabled } from './AssistantT
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
 import { appendAssistantActivity, getAssistantActivityKey } from '../../../../functions/shared/assistantActivityHistory'
 
+import { adaptiveColor, themed } from '../../../../Themes/colorMode'
+
 const EMPTY_HISTORY = []
 const PREPARING_ACTIVITY = { phase: 'preparing' }
 const ACTIVITY_LABELS = {
@@ -328,7 +330,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         padding: 10,
         borderRadius: 12,
-        backgroundColor: '#F4F7FF',
+        backgroundColor: adaptiveColor('#F4F7FF'),
         borderWidth: 1,
         borderColor: '#DFE7FA',
         overflow: 'hidden',
@@ -395,7 +397,7 @@ const localStyles = StyleSheet.create({
         marginTop: 3,
         borderRadius: 7,
         borderLeftColor: colors.Primary100,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     darkCurrentStep: { backgroundColor: 'rgba(138, 163, 255, 0.12)', borderLeftColor: colors.UtilityBlue200 },
     previousStep: { opacity: 0.8 },
@@ -404,7 +406,7 @@ const localStyles = StyleSheet.create({
     connector: {
         position: 'absolute',
         width: 1,
-        backgroundColor: '#D7DFEE',
+        backgroundColor: adaptiveColor('#D7DFEE'),
         left: 7,
         top: 22,
         bottom: -4,

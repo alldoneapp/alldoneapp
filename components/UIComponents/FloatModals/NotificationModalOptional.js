@@ -9,6 +9,8 @@ import { setShowOptionalVersionNotification } from '../../../redux/actions'
 import { deleteCacheAndRefresh } from '../../../utils/Observers'
 import { translate } from '../../../i18n/TranslationService'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function NotificationModalOptional() {
     const alldoneNewVersion = useSelector(state => state.alldoneNewVersion)
 
@@ -43,7 +45,7 @@ const localstyles = StyleSheet.create({
         bottom: 56,
         width: 256,
         height: 136,
-        backgroundColor: '#C7F5E5',
+        backgroundColor: themed.UtilityGreen112,
         borderRadius: 4,
         ...Platform.select({
             web: {

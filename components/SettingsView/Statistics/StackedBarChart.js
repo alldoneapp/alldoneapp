@@ -4,6 +4,8 @@ import 'chartjs-adapter-moment'
 import Chart from 'chart.js/auto'
 import { colors } from '../../styles/global'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
+import { themed } from '../../../Themes/colorMode'
+
 Chart.register(ChartDataLabels)
 
 export default function StackedBarChart({
@@ -19,7 +21,7 @@ export default function StackedBarChart({
         {
             label: 'Alldone',
             data: [{ x: 0, y: 0 }],
-            backgroundColor: '#ffffff',
+            backgroundColor: themed.Surface,
         },
     ])
     const [suggestedMax, setSuggestedMax] = useState(100)

@@ -2,6 +2,8 @@ import React, { createContext, useContext } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { colors } from '../styles/global'
 
+import { adaptiveColor, alphaColor, themed } from '../../Themes/colorMode'
+
 // Shared board presentation. Project sections supply their surface color; standalone
 // rows retain a white surface without changing their interactions.
 export const TaskHierarchyContext = createContext(true)
@@ -86,7 +88,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         height: 32,
         borderRadius: 8,
         borderWidth: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: alphaColor(themed.Surface, 0.85),
         paddingHorizontal: 10,
         alignSelf: 'center',
     },
@@ -96,7 +98,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         minWidth: 32,
         minHeight: 32,
         borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: alphaColor(themed.Surface, 0.85),
     },
     headerMoreButtonMobile: {
         width: 36,
@@ -114,7 +116,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         paddingBottom: 12,
     },
     group: {
-        backgroundColor: '#F6F7F9',
+        backgroundColor: adaptiveColor('#F6F7F9'),
         borderRadius: 8,
         paddingHorizontal: 0,
         paddingBottom: 8,

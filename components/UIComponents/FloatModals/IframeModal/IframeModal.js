@@ -21,6 +21,8 @@ import {
     useAnnaAppPaneState,
 } from '../../../Anna/annaAppPaneBridge'
 
+import { themed } from '../../../../Themes/colorMode'
+
 /**
  * The app-wide embed window for a pre-configured iframe task (e.g. an alldone.team tool page).
  * The app itself, and the protocol it speaks with Alldone, is EmbeddedAppFrame.
@@ -234,6 +236,6 @@ const localStyles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
     },
 })

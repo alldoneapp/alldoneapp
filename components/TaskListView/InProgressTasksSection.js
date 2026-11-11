@@ -5,6 +5,8 @@ import { useSelector, useDispatch } from 'react-redux'
 import OpenTasksByProject from './OpenTasksView/OpenTasksByProject'
 import { setLaterTasksExpanded, setSomedayTasksExpanded } from '../../redux/actions'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function InProgressTasksSection() {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -39,7 +41,7 @@ export default function InProgressTasksSection() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

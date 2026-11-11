@@ -35,7 +35,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           dir="auto"
           style={
             {
-              "color": "rgba(250,251,251,1.00)",
+              "color": "var(--ad-Grey100)",
               "fontFamily": "alldone",
               "fontSize": "20px",
               "opacity": 1,
@@ -83,7 +83,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           dir="auto"
           style={
             {
-              "color": "rgba(250,251,251,1.00)",
+              "color": "var(--ad-Grey100)",
               "fontFamily": "alldone",
               "fontSize": "20px",
               "opacity": 1,

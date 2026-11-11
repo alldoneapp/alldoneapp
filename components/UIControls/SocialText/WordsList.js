@@ -25,6 +25,8 @@ import KarmaTag from '../../Tags/KarmaTag'
 import { getKarmaData } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { getAttachmentData, getImageData, getVideoData } from '../../../functions/Utils/parseTextUtils'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function WordsList({
     numberOfLines,
     wrapText,
@@ -232,7 +234,7 @@ export default function WordsList({
 const localStyles = StyleSheet.create({
     links: {
         color: colors.Primary100,
-        backgroundColor: '#D6EBFF',
+        backgroundColor: themed.UtilityBlue112,
         paddingRight: 8,
         paddingLeft: 2,
         borderRadius: 12,

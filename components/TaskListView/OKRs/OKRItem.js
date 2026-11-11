@@ -30,6 +30,8 @@ import {
 import useOkrRevenueValue from './useOkrRevenueValue'
 import { getOkrTodayOperation } from '../../../redux/okrTodayVisibility'
 
+import { themed } from '../../../Themes/colorMode'
+
 const SEGMENTS = [0, 1, 2, 3, 4]
 const CELEBRATION_DOTS = [
     { x: -18, y: -24, color: colors.UtilityGreen200 },
@@ -512,7 +514,7 @@ const localStyles = StyleSheet.create({
     allProjectsDoneButton: {
         height: 22,
         borderRadius: 11,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderColor: colors.Grey400,
         paddingHorizontal: 8,
@@ -521,7 +523,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     allProjectsRestoreButton: {
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     allProjectsDoneText: {
         color: colors.Text03,

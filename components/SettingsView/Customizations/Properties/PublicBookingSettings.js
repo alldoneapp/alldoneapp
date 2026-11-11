@@ -9,6 +9,8 @@ import { copyTextToClipboard } from '../../../../utils/HelperFunctions'
 import { getBookingSettings, saveBookingSettings } from '../../../../utils/backends/Booking/bookingFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 const DEFAULT_SETTINGS = {
     enabled: false,
     slug: '',
@@ -399,7 +401,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         paddingHorizontal: 10,
         color: colors.Text01,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     weekendRow: {
         flexDirection: 'row',

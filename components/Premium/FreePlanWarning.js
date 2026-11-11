@@ -26,6 +26,8 @@ import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { removeQuotaWarnings } from '../../utils/backends/Premium/premiumFirestore'
 import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function FreePlanWarning() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
@@ -205,7 +207,7 @@ const localStyles = StyleSheet.create({
     },
     line: {
         borderWidth: 1,
-        borderBottomColor: '#fff',
+        borderBottomColor: themed.Surface,
         marginTop: 8,
         marginBottom: 8,
         opacity: 0.2,

@@ -7,6 +7,8 @@ import Icon from '../../../Icon'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function HeartbeatWhatsAppProperty({ disabled, projectId, assistant }) {
     const userHasPhone = useSelector(state => !!state.loggedUser.phone)
     const sendWhatsApp = assistant.heartbeatSendWhatsApp ?? userHasPhone
@@ -63,7 +65,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         borderWidth: 1,
         borderColor: colors.Grey400,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         alignItems: 'center',
         justifyContent: 'center',
     },

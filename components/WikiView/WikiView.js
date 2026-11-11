@@ -40,6 +40,8 @@ import {
     splitKnowledgePageSources,
 } from '../../functions/KnowledgeBase/knowledgeBaseModel'
 
+import { themed } from '../../Themes/colorMode'
+
 function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
     const lines = []
     if (isKnowledgeBaseRunning(knowledgeBase)) lines.push(translate('The wiki is being updated right now'))
@@ -536,7 +538,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderRadius: 6,
         borderColor: colors.Grey400,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     searchInput: {
         ...styles.body2,

@@ -9,6 +9,7 @@ import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
+import { alphaColor, themed } from '../../../../Themes/colorMode'
 
 export default function AllProjectsLine({
     showActions = true,
@@ -124,7 +125,7 @@ const localStyles = StyleSheet.create({
         minWidth: 32,
         minHeight: 32,
         borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: alphaColor(themed.Surface, 0.85),
     },
     toggleByTimeInline: {
         marginTop: 0,

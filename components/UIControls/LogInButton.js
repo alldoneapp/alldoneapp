@@ -5,6 +5,8 @@ import Backend from '../../utils/BackendBridge'
 import Colors from '../../Themes/Colors'
 import { isCapacitorIosShell, isCapacitorShell } from '../../utils/CapacitorShell'
 
+import { themed } from '../../Themes/colorMode'
+
 const START_FAILED_MESSAGE = 'Google sign-in could not be started. Please try again.'
 const REDIRECT_FAILED_MESSAGE = 'Google sign-in did not complete. Please try again.'
 const UNSUPPORTED_BROWSER_MESSAGE =
@@ -151,7 +153,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderColor: '#dadce0',
         borderRadius: 4,

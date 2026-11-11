@@ -6,7 +6,7 @@ exports[`Spinner component Spinner snapshot test should render correctly as defa
   dir={null}
   style={
     {
-      "backgroundColor": "rgba(231,236,239,1.00)",
+      "backgroundColor": "var(--ad-Grey300)",
       "height": "24px",
       "maxHeight": "24px",
       "maxWidth": "24px",
@@ -102,7 +102,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
   dir={null}
   style={
     {
-      "backgroundColor": "rgba(231,236,239,1.00)",
+      "backgroundColor": "var(--ad-Grey300)",
       "height": "100px",
       "maxHeight": "100px",
       "maxWidth": "100px",

@@ -17,6 +17,8 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 export class ImagePickerModal extends Component {
     constructor(props) {
         super(props)
@@ -255,7 +257,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

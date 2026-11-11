@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
+import { resolveColors, resolveSurfaceColor, useColorMode } from '../../Themes/colorMode'
 import moment from 'moment'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
@@ -71,8 +72,12 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
     const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
     const projectBackgroundColor = useTaskHierarchyBackground()
+    const { mode: colorMode } = useColorMode()
     const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : projectBackgroundColor
-    const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
+    const outputColors = resolveColors(
+        [colors.UtilityYellow125, resolveSurfaceColor(restingBackgroundColor, colorMode), colors.UtilityGreen125],
+        colorMode
+    )
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
         outputRange: outputColors,
@@ -81,7 +86,10 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
 
     const backColorHighlight = panColor.interpolate({
         inputRange: [-100, 0, 100],
-        outputRange: [colors.UtilityYellow125, note.hasStar, colors.UtilityGreen125],
+        outputRange: resolveColors(
+            [colors.UtilityYellow125, resolveSurfaceColor(note.hasStar, colorMode), colors.UtilityGreen125],
+            colorMode
+        ),
         extrapolate: 'clamp',
     })
     const highlightColor = inCommentPopup || note.hasStar.toLowerCase() === '#ffffff' ? backColor : backColorHighlight

@@ -6,6 +6,7 @@ import { translate } from '../../i18n/TranslationService'
 import { checkIsLimitedByTraffic } from '../Premium/PremiumHelper'
 import { eventContainsFiles, getDroppedFiles } from '../Feeds/CommentsTextInput/attachmentFileUtils'
 import { isArtifactUploadTooLarge, uploadArtifactFiles } from '../../utils/backends/Artifacts/artifactsFirestore'
+import { alphaColor, themed } from '../../Themes/colorMode'
 
 // Uploading into the artifacts list. New files become one artifact each (most artifacts are a
 // single self-contained HTML file or document); files picked for an existing artifact become one
@@ -161,7 +162,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 2,
         borderStyle: 'dashed',
         borderColor: colors.Primary100,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: alphaColor(themed.Surface, 0.85),
     },
     dropFeedbackText: {
         ...styles.subtitle2,

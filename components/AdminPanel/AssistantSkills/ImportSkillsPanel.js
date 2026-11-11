@@ -14,6 +14,8 @@ import {
 } from '../../../utils/backends/AssistantSkills/assistantSkillsFirestore'
 import { GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID } from '../../../utils/AssistantSkills/skillCatalog'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function ImportSkillsPanel({ skills, pendingImports, projectId = GLOBAL_PROJECT_ID }) {
     const [repoUrl, setRepoUrl] = useState('')
     const [importing, setImporting] = useState(false)
@@ -225,7 +227,7 @@ const localStyles = StyleSheet.create({
         height: 40,
         flexGrow: 1,
         marginRight: 10,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     progressContainer: {
         marginTop: 12,

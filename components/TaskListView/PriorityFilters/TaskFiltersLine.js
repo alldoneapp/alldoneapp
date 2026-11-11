@@ -38,6 +38,8 @@ import AutoPostponeTasksModal from '../AutoPostpone/AutoPostponeTasksModal'
 import { AUTO_POSTPONE_TASKS_MODAL_ID, removeModal, storeModal } from '../../ModalsManager/modalsManager'
 import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
 
+import { themed } from '../../../Themes/colorMode'
+
 const FILTER_PRIORITY_KEYS = [
     TASK_PRIORITY_MUST_DO,
     TASK_PRIORITY_SHOULD_DO,
@@ -347,7 +349,7 @@ const localStyles = StyleSheet.create({
     },
     filterItemSelected: { backgroundColor: colors.Primary200 },
     colorDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
-    colorDotSelected: { borderWidth: 1, borderColor: 'white' },
+    colorDotSelected: { borderWidth: 1, borderColor: themed.Surface },
     filterName: { ...styles.caption1, color: colors.Text03, marginRight: 6 },
     filterNameSelected: { color: 'white' },
     filterCount: { ...styles.caption2, color: colors.Text03 },

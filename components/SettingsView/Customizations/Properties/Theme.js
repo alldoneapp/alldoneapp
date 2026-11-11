@@ -17,7 +17,7 @@ export default function Theme({ userId, themeName }) {
             <View style={[localStyles.settingRowSection, localStyles.settingRowLeft]}>
                 <Icon name={'palette'} size={24} color={colors.Text03} style={{ marginHorizontal: 8 }} />
                 <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
-                    {translate('App theme')}
+                    {translate('Sidebar theme')}
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>

@@ -16,6 +16,8 @@ import { navigateToSettings } from '../../../../redux/actions'
 import LogInButton from '../../../UIControls/LogInButton'
 import { DV_TAB_SETTINGS_PROJECTS } from '../../../../utils/TabNavigationConstants'
 
+import { themed } from '../../../../Themes/colorMode'
+
 const CopyProjectModal = ({ setIsOpen, project }) => {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const [selectedOptions, setSelectedOptions] = useState(new Map(COPY_PROJECT_OPTIONS.map(it => [it.value, true])))
@@ -140,7 +142,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

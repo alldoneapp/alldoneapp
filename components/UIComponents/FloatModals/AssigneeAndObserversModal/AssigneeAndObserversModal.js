@@ -21,6 +21,8 @@ import ModalHeader from '../ModalHeader'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 import useProjectData from '../../../../hooks/useProjectData'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
 // array on every render.
 const EMPTY_LIST = []
@@ -304,7 +306,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

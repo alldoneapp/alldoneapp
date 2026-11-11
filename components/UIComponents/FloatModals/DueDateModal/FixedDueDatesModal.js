@@ -13,6 +13,8 @@ import { translate } from '../../../../i18n/TranslationService'
 import { getPreviousMilestone } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setTaskToBacklog } from '../../../../utils/backends/Tasks/tasksFirestore'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function FixedDueDatesModal({
     task,
     inParentGoal,
@@ -213,7 +215,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
     },

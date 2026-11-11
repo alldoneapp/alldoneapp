@@ -3871,5 +3871,11 @@
     "Save memory": "Save memory",
     "Cancel editing": "Cancel editing",
     "Could not load the assistant memory.": "Could not load the assistant memory.",
-    "Could not save the assistant memory.": "Could not save the assistant memory."
+    "Could not save the assistant memory.": "Could not save the assistant memory.",
+    "Appearance": "Appearance",
+    "Appearance auto": "Auto (match device)",
+    "Appearance light": "Light",
+    "Appearance dark": "Dark",
+    "Sidebar theme": "Sidebar theme",
+    "Neutral": "Neutral"
 }

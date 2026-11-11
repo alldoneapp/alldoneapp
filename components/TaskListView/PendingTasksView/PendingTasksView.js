@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux'
 
 import PendingTasksByProject from './PendingTasksByProject'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function PendingTasksView() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -25,7 +27,7 @@ export default function PendingTasksView() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

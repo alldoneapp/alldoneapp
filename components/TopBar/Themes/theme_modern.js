@@ -1,4 +1,4 @@
-import Colors from '../../../Themes/Colors'
+import Colors from '../../../Themes/ThemedColors'
 
 const ThemeColors = {
     TopBar: {
@@ -12,12 +12,12 @@ const ThemeColors = {
         TopBarStatisticArea: {
             // XpBar component
             XpBar: {
-                bgColorDesktop: Colors.White,
-                bgColorMobile: Colors.White,
+                bgColorDesktop: Colors.Surface,
+                bgColorMobile: Colors.Surface,
                 thumbsUpColor: Colors.UtilityBlue200,
 
                 container: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 bar: {
                     backgroundColor: Colors.UtilityBlue125,
@@ -45,10 +45,10 @@ const ThemeColors = {
             },
             GoldArea: {
                 container: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 containerMobile: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 text: {
                     color: Colors.Text03,
@@ -56,10 +56,10 @@ const ThemeColors = {
             },
             TasksStatisticsArea: {
                 container: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 containerMobile: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 text: {
                     color: Colors.Text03,
@@ -82,7 +82,7 @@ const ThemeColors = {
             // QuotaBar component
             QuotaBar: {
                 container: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 iconColor: Colors.Text04,
                 iconColorMobile: Colors.Text04,
@@ -93,7 +93,7 @@ const ThemeColors = {
                     color: Colors.UtilityBlue200,
                 },
                 containerMobile: {
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 textMobile: {
                     color: Colors.Text03,
@@ -104,7 +104,7 @@ const ThemeColors = {
             PremiumBar: {
                 desktop: {
                     container: {
-                        backgroundColor: Colors.White,
+                        backgroundColor: Colors.Surface,
                     },
                     text: {
                         color: Colors.Text03,
@@ -114,7 +114,7 @@ const ThemeColors = {
                 iconColorMobile: Colors.Text04,
                 mobile: {
                     container: {
-                        backgroundColor: Colors.White,
+                        backgroundColor: Colors.Surface,
                     },
                     text: {
                         color: Colors.Text03,

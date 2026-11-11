@@ -27,7 +27,7 @@ exports[`Show More Button component Task Estimation Button snapshot test should 
         dir="auto"
         style={
           {
-            "color": "rgba(183,189,200,1.00)",
+            "color": "var(--ad-Text04)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,

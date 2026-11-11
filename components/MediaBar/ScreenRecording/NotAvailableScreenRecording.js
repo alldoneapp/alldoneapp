@@ -9,6 +9,8 @@ import { translate } from '../../../i18n/TranslationService'
 import { MODAL_Z_CONTENT } from '../../styles/modals'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
+import { themed } from '../../../Themes/colorMode'
+
 const NotAvailableScreenRecording = ({ onPress }) => {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     return (
@@ -76,7 +78,7 @@ const localStyles = StyleSheet.create({
     },
     sectionSeparator: {
         borderBottomWidth: 1,
-        borderBottomColor: '#ffffff',
+        borderBottomColor: themed.Surface,
         marginVertical: 16,
         opacity: 0.2,
     },

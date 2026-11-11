@@ -20,6 +20,8 @@ import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
 import { canRenderSkyline } from './Skyline/webglSupport'
 import { SKYLINE_RANGE_WEEKS } from './Skyline/skylineData'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // Week or Month (the 3D city) or Year (the 2D grid). Remembered per browser: it is a viewing
 // preference, not account data. Until the user picks one — or where storage is unavailable
 // (private mode) — the card opens on the week, the range whose buildings are big enough to read.
@@ -334,7 +336,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         borderRadius: 8,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     profileCard: {
         marginTop: 16,
@@ -398,7 +400,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 999,
     },
     rangeOptionActive: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         shadowColor: colors.Text01,
         shadowOpacity: 0.08,
         shadowRadius: 3,

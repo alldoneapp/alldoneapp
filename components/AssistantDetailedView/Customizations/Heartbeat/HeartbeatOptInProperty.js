@@ -9,6 +9,8 @@ import {
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // A heartbeat runs as the member it is for: with their Gold and their connected accounts. It
 // therefore runs for a member only after they confirmed the assistant's current heartbeat prompt,
 // tools, instructions and MCP servers, and it stops for them when somebody else changes one of those
@@ -114,7 +116,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         borderWidth: 1,
         borderColor: colors.Grey400,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         alignItems: 'center',
         justifyContent: 'center',
     },

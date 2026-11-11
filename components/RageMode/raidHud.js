@@ -2,6 +2,8 @@ import { RAGE_LAYER_ATTRIBUTE } from './rageTargets'
 import { HANGAR_ITEMS, MAX_BOMBS, MAX_CANNON_LEVEL } from './raidRun'
 import { PICKUP_TYPES } from './raidPickups'
 
+import { themed } from '../../Themes/colorMode'
+
 /**
  * The raid's on-screen chrome, as plain DOM inside the arena's own layers (the arena is not React):
  * the status pill, the special-weapon bar, the boss bar, short announcements, the hangar between
@@ -617,7 +619,7 @@ const buildProfilePanel = ({ strings, zIndex, actions }) => {
         <path fill="#8C95A8" d="M12 30h10v18H12zm30 0h10v18H42z"/>
         <path fill="#0C66FF" d="M12 30h4v18h-4zm36 0h4v18h-4z"/>
         <path fill="#FFAE47" d="M12 50h10v6h-3v6h-4v-6h-3zm30 0h10v6h-3v6h-4v-6h-3z"/>
-        <path fill="#FFE6C7" d="M15 50h4v6h-4zm30 0h4v6h-4z"/>
+        <path fill={themed.UtilityYellow125} d="M15 50h4v6h-4zm30 0h4v6h-4z"/>
         <path fill="#F7DC96" d="M20 6h24v4h4v20h-8V14H24v16h-8V10h4z"/>
         <path fill="#F7D6BD" d="M24 14h16v16H24zM18 40h6v6h-6zm22 0h6v6h-6z"/>
         <path fill="#DDB872" d="M16 26h8v6h-8zm24 0h8v6h-8z"/>

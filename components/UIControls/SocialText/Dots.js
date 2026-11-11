@@ -3,6 +3,8 @@ import { Animated, StyleSheet, Text } from 'react-native'
 
 import styles, { colors } from '../../styles/global'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function Dots({ textStyle, normalStyle, isSubtask, hasStar, bgColor }) {
     return (
         <Animated.View
@@ -26,6 +28,6 @@ const localStyles = StyleSheet.create({
     ellipsis: {
         position: 'absolute',
         right: 0,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
 })

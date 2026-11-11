@@ -15,6 +15,8 @@ import { ALL_GOALS_ID } from '../../AllSections/allSectionHelper'
 import store from '../../../redux/store'
 import { requestProjectDataOnLookupMiss } from '../../../utils/InitialLoad/projectDataLoader'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function AssigneeButton({ projectId, task, disabled, showPopover }) {
     const showShortcuts = useSelector(state => state.showShortcuts)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -106,7 +108,7 @@ const localStyles = StyleSheet.create({
         width: 24,
         height: 24,
         borderRadius: 50,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     shortcut: {
         width: 24,

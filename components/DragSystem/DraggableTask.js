@@ -5,6 +5,8 @@ import { Draggable } from '@hello-pangea/dnd'
 import ParentTaskContainer from '../TaskListView/ParentTaskContainer'
 import { useSelector } from 'react-redux'
 
+import { themed } from '../../Themes/colorMode'
+
 const DraggableTask = ({
     projectId,
     disableDrag,
@@ -21,7 +23,7 @@ const DraggableTask = ({
         <Draggable isDragDisabled={disableDrag} draggableId={task.id} index={index} key={task.id}>
             {provided => (
                 <div {...provided.draggableProps} ref={provided.innerRef}>
-                    <View style={[{ backgroundColor: '#ffffff' }, task.isSubtask && { marginLeft: 34 }]}>
+                    <View style={[{ backgroundColor: themed.Surface }, task.isSubtask && { marginLeft: 34 }]}>
                         <ParentTaskContainer
                             task={task}
                             projectId={projectId}

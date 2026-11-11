@@ -9,6 +9,8 @@ import { watchArtifact } from '../../utils/backends/Artifacts/artifactsFirestore
 import ArtifactPreview from './ArtifactPreview'
 import { showArtifactPreviewAsLink } from './artifactNoteEmbed'
 
+import { themed } from '../../Themes/colorMode'
+
 export const ARTIFACT_EMBED_PREVIEW_HEIGHT = 320
 
 // An artifact shown inside a note: its title, a live preview at a fixed height, and a way to open
@@ -77,7 +79,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         borderRadius: 8,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         padding: 8,
         marginVertical: 4,
     },

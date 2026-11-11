@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import { StyleSheet, Text, View, Animated } from 'react-native'
 import styles, { colors } from '../../styles/global'
+import { resolveColors, themed } from '../../../Themes/colorMode'
 import { TouchableWithoutFeedback } from 'react-native-gesture-handler'
 
 export default class FollowingSwitch extends Component {
@@ -18,11 +19,11 @@ export default class FollowingSwitch extends Component {
     render() {
         let backgroundColor = this.state.backgroundColorAnim.interpolate({
             inputRange: [0, 1],
-            outputRange: [colors.Gray300, colors.Primary300],
+            outputRange: resolveColors([colors.Gray300, colors.Primary300]),
         })
         let textColor = this.state.textColorAnim.interpolate({
             inputRange: [0, 1],
-            outputRange: [colors.Text02, colors.Primary300],
+            outputRange: resolveColors([colors.Text02, colors.Primary300]),
         })
         return (
             <View style={localStyles.container}>
@@ -120,7 +121,7 @@ const localStyles = StyleSheet.create({
     lever: {
         width: 20,
         height: 20,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRadius: 100,
     },
     textContainer: {

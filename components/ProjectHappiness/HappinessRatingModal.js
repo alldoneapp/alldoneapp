@@ -19,6 +19,8 @@ import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal
 import { getHappinessProjects } from './happinessProjects'
 import { translate } from '../../i18n/TranslationService'
 
+import { themed } from '../../Themes/colorMode'
+
 const CALENDAR_DATE_FORMAT = 'YYYY-MM-DD'
 
 export const getTodayHappinessDate = () => moment().startOf('day').valueOf()
@@ -351,7 +353,7 @@ const localStyles = StyleSheet.create({
     },
     line: {
         height: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 20,
     },

@@ -9,6 +9,8 @@ import { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from './UIComponents/ConfirmPopup'
 import { REGEX_EMAIL, REGEX_HASHTAG, REGEX_MENTION, REGEX_URL } from './Feeds/Utils/HelperFunctions'
 import { DV_TAB_ROOT_TASKS } from '../utils/TabNavigationConstants'
 
+import { themed } from '../Themes/colorMode'
+
 class ParsingTextInput extends Component {
     constructor(props) {
         super(props)
@@ -246,7 +248,7 @@ const localStyles = StyleSheet.create({
     buttonX: {
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#EAF0F5',
+        backgroundColor: themed.SecondaryButton,
         width: 48,
         height: 40,
         marginLeft: 8,

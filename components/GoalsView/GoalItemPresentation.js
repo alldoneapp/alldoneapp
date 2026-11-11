@@ -6,6 +6,7 @@ import v4 from 'uuid/v4'
 import moment from 'moment'
 
 import styles, { colors } from '../styles/global'
+import { resolveColors, resolveSurfaceColor } from '../../Themes/colorMode'
 import GoalProgressWrapper from './GoalProgressWrapper'
 import SocialText from '../UIControls/SocialText/SocialText'
 import GoalProgressBar from './GoalProgressBar'
@@ -463,8 +464,12 @@ export default class GoalItemPresentation extends PureComponent {
             ? colors.Secondary200
             : inHierarchyCard
               ? hierarchyBackgroundColor
-              : '#ffffff'
-        const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
+              : colors.Surface
+        const outputColors = resolveColors([
+            colors.UtilityYellow125,
+            resolveSurfaceColor(restingBackgroundColor),
+            colors.UtilityGreen125,
+        ])
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
             outputRange: outputColors,
@@ -472,7 +477,11 @@ export default class GoalItemPresentation extends PureComponent {
         })
         const borderColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
-            outputRange: [colors.UtilityYellow125, highLightColor, colors.UtilityGreen125],
+            outputRange: resolveColors([
+                colors.UtilityYellow125,
+                resolveSurfaceColor(highLightColor),
+                colors.UtilityGreen125,
+            ]),
             extrapolate: 'clamp',
         })
 

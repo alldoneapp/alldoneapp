@@ -47,6 +47,8 @@ import {
     getArtifactSourceLabelKey,
 } from './artifactPresentation'
 
+import { themed } from '../../Themes/colorMode'
+
 function SectionSwitch({ section, onChange, commentCount }) {
     const options = [
         { value: ARTIFACT_SECTION_ARTIFACT, label: translate('Artifact') },
@@ -799,7 +801,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginBottom: 6,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     versionsHeader: {
         flexDirection: 'row',
@@ -836,7 +838,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         paddingHorizontal: 12,
         paddingVertical: 8,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     inputMultiline: {
         minHeight: 72,

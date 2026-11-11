@@ -4,6 +4,8 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import global, { colors } from '../../../styles/global'
 import { respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
 
+import { themed } from '../../../../Themes/colorMode'
+
 function ActionButton({ label, onPress, disabled, secondary, danger }) {
     return (
         <TouchableOpacity
@@ -238,7 +240,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Gray300,
         borderRadius: 6,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         textAlignVertical: 'top',
     },
     command: {
@@ -263,8 +265,8 @@ const styles = StyleSheet.create({
         borderRadius: 5,
         backgroundColor: colors.Primary100,
     },
-    secondaryButton: { backgroundColor: '#FFFFFF' },
-    dangerButton: { backgroundColor: '#FFFFFF', borderColor: colors.UtilityRed200 },
+    secondaryButton: { backgroundColor: themed.Surface },
+    dangerButton: { backgroundColor: themed.Surface, borderColor: colors.UtilityRed200 },
     disabled: { opacity: 0.5 },
     buttonText: { ...global.caption2, color: '#FFFFFF', fontWeight: '600' },
     secondaryButtonText: { color: colors.Primary100 },

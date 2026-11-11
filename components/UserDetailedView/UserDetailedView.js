@@ -53,6 +53,8 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 const UserDetailedView = ({ navigation }) => {
     const selectedTab = useSelector(state => state.selectedNavItem)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -181,7 +183,7 @@ const UserDetailedView = ({ navigation }) => {
                             overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                         ]}
                     >
-                        <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
+                        <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
                             {(!isFullscreen || selectedTab !== DV_TAB_USER_NOTE) && (
                                 <Header
                                     contact={user}
@@ -286,7 +288,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButton: {
         position: 'absolute',
@@ -297,7 +299,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

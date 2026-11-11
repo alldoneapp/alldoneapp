@@ -4,6 +4,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { useDispatch, useSelector } from 'react-redux'
 import { setQuotedText, setActiveChatMessageId } from '../../../../redux/actions'
 import { colors } from '../../../styles/global'
+import { resolveColors, useColorMode } from '../../../../Themes/colorMode'
 import SwipeAreasContainer from '../../../TaskListView/SwipeAreasContainer'
 
 import MessageItemContent from './MessageItemContent'
@@ -127,9 +128,10 @@ export default function MessageItem({
 
     const isQueued = message.pendingSend?.status === 'queued'
 
+    const { mode: colorMode } = useColorMode()
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
-        outputRange: [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125],
+        outputRange: resolveColors([colors.UtilityYellow125, colors.Surface, colors.UtilityGreen125], colorMode),
         extrapolate: 'clamp',
     })
 

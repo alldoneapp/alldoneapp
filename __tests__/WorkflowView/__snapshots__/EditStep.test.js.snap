@@ -2,7 +2,7 @@
 
 exports[`EditStep component EditStep snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderColor-xld3ed r-borderRadius-z2wwpe r-borderStyle-1phboty r-borderWidth-rs99b7 r-boxShadow-qmdso3 r-flex-13awgt0 r-marginBottom-1ifxtd0 r-marginLeft-1nkf79l r-marginRight-xzortm"
+  className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderColor-p3kz10 r-borderRadius-z2wwpe r-borderStyle-1phboty r-borderWidth-rs99b7 r-boxShadow-qmdso3 r-flex-13awgt0 r-marginBottom-1ifxtd0 r-marginLeft-1nkf79l r-marginRight-xzortm"
   dir={null}
 >
   <div
@@ -40,7 +40,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
           {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
-            "color": "#04142F",
+            "color": "var(--ad-Text01)",
             "fontFamily": "Roboto-Regular",
             "fontSize": 16,
             "letterSpacing": 0.32,
@@ -62,12 +62,12 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
       numberOfLines={2}
       onChangeText={[Function]}
       placeholder="Type to add new step"
-      placeholderTextColor="#8A94A6"
+      placeholderTextColor="var(--ad-Text03)"
       returnKeyType="done"
     />
   </div>
   <div
-    className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderStyle-1phboty r-borderTopColor-1h5c48e r-borderTopWidth-5kkj8d r-flex-13awgt0 r-flexDirection-18u37iz r-paddingBlock-11f147o r-paddingInline-1ezpcd1"
+    className="css-view-g5y9jx r-backgroundColor-wodtp1 r-borderStyle-1phboty r-borderTopColor-e4yjz5 r-borderTopWidth-5kkj8d r-flex-13awgt0 r-flexDirection-18u37iz r-paddingBlock-11f147o r-paddingInline-1ezpcd1"
     dir={null}
   >
     <div
@@ -93,7 +93,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
           }
         >
           <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-paddingLeft-f727ji r-paddingRight-i023vh r-backgroundColor-1niwhzg r-borderColor-ql2gnw r-borderStyle-1phboty r-borderWidth-rs99b7"
+            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-paddingLeft-f727ji r-paddingRight-i023vh r-backgroundColor-1niwhzg r-borderColor-1br7mu7 r-borderStyle-1phboty r-borderWidth-rs99b7"
             dir={null}
             onClick={[Function]}
             onContextMenu={[Function]}
@@ -123,7 +123,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
                   dir="auto"
                   style={
                     {
-                      "color": "rgba(138,148,166,1.00)",
+                      "color": "var(--ad-Text03)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",
                       "opacity": 1,
@@ -135,7 +135,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
               </div>
             </div>
             <div
-              className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
+              className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-1phcoeb"
               dir="auto"
               style={
                 {
@@ -154,7 +154,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
       dir={null}
     >
       <div
-        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-1uxh0fu r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-1fuc2rd r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
         dir={null}
         onClick={[Function]}
         onContextMenu={[Function]}
@@ -168,7 +168,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-a7285f"
           dir="auto"
           style={
             {

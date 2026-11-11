@@ -57,7 +57,7 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -100,7 +100,7 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -143,7 +143,7 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -186,7 +186,7 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -266,7 +266,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -309,7 +309,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -352,7 +352,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -395,7 +395,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -475,7 +475,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -518,7 +518,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -561,7 +561,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",
@@ -604,7 +604,7 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
                     "letterSpacing": "0.32px",

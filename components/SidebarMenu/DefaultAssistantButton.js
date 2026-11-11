@@ -18,6 +18,8 @@ import NavigationService from '../../utils/NavigationService'
 import AnnaChatNavigationContext from '../Anna/AnnaChatNavigationContext'
 import { translate } from '../../i18n/TranslationService'
 
+import { adaptiveColor } from '../../Themes/colorMode'
+
 export default function DefaultAssistantButton() {
     const dispatch = useDispatch()
     const assistant = useSelector(state => state.defaultAssistant)
@@ -76,6 +78,6 @@ const localStyles = StyleSheet.create({
         borderRadius: 6,
     },
     hovered: {
-        backgroundColor: '#E2EFFF',
+        backgroundColor: adaptiveColor('#E2EFFF'),
     },
 })

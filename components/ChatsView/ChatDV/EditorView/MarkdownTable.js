@@ -4,6 +4,8 @@ import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colors } from '../../../styles/global'
 import { parseInlineFormatting } from './markdownParserFunctions'
 
+import { adaptiveColor } from '../../../../Themes/colorMode'
+
 /**
  * Renders a parsed markdown table as a React Native component.
  * Used in chat messages and feed comments.
@@ -94,7 +96,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 8,
     },
     headerCell: {
-        backgroundColor: '#f6f8fc',
+        backgroundColor: adaptiveColor('#F6F8FC'),
     },
     firstCell: {
         borderLeftWidth: 0,

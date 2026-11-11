@@ -33,6 +33,8 @@ import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
 import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
 
+import { themed } from '../../../../Themes/colorMode'
+
 const Delta = ReactQuill.Quill.import('delta')
 
 export default function ChatInput({
@@ -529,7 +531,7 @@ const localStyles = StyleSheet.create({
         bottom: CHAT_COMPOSER_LIFT,
         left: 0,
         right: 0,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

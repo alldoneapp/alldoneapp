@@ -3819,5 +3819,11 @@
     "Save memory": "Guardar memoria",
     "Cancel editing": "Cancelar edición",
     "Could not load the assistant memory.": "No se pudo cargar la memoria del asistente.",
-    "Could not save the assistant memory.": "No se pudo guardar la memoria del asistente."
+    "Could not save the assistant memory.": "No se pudo guardar la memoria del asistente.",
+    "Appearance": "Apariencia",
+    "Appearance auto": "Automático (según el dispositivo)",
+    "Appearance light": "Claro",
+    "Appearance dark": "Oscuro",
+    "Sidebar theme": "Tema de la barra lateral",
+    "Neutral": "Neutro"
 }

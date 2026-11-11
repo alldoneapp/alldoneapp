@@ -24,6 +24,8 @@ import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import { useSelector, useDispatch } from 'react-redux'
 import { translate } from '../../i18n/TranslationService'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function EditMilestone({ milestone, onCancelAction, projectId }) {
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
@@ -233,7 +235,7 @@ export default function EditMilestone({ milestone, onCancelAction, projectId }) 
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

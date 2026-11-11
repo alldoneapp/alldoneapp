@@ -53,6 +53,8 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function GoalDetailedView({ navigation }) {
     const projectId = navigation.getParam('projectId', undefined)
     const goalId = navigation.getParam('goalId', undefined)
@@ -204,7 +206,7 @@ export default function GoalDetailedView({ navigation }) {
                             overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                         ]}
                     >
-                        <View style={{ backgroundColor: 'white', flex: 1 }}>
+                        <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
                             {(!isFullscreen || selectedNavItem !== DV_TAB_GOAL_NOTE) && (
                                 <Header
                                     projectIndex={projectIndex}
@@ -299,7 +301,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButton: {
         position: 'absolute',
@@ -310,7 +312,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

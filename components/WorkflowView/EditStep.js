@@ -23,6 +23,8 @@ import {
 import AiStepAction from './AiStepAction/AiStepAction'
 import { aiStepFieldsChanged, isAiWorkflowStep } from './workflowStepHelper'
 
+import { themed } from '../../Themes/colorMode'
+
 /*user,
 step,
 steps,
@@ -383,7 +385,7 @@ export default EditStep
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

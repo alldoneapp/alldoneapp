@@ -1,4 +1,4 @@
-import Colors from '../../../Themes/Colors'
+import Colors from '../../../Themes/ThemedColors'
 import { PROJECT_COLOR_DEFAULT, PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 import { CREATE_PROJECT_THEME_MODERN, INVITE_THEME_MODERN } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { em2px } from '../../styles/global'
@@ -255,7 +255,7 @@ const ThemeColors = {
                 icon: Colors.Primary100,
                 container: {
                     borderColor: Colors.Grey200,
-                    backgroundColor: Colors.White,
+                    backgroundColor: Colors.Surface,
                 },
                 textInput: {
                     color: Colors.Primary100,

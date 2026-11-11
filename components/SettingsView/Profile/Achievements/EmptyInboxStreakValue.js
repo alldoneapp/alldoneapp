@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Animated } from 'react-native'
 
 import { colors } from '../../../styles/global'
+import { resolveColors, useColorMode } from '../../../../Themes/colorMode'
 import { STREAK_TICK_DELAY_MS } from './emptyInboxDotMotion'
 
 /**
@@ -28,6 +29,7 @@ export default function EmptyInboxStreakValue({ value, celebration, style }) {
     const { tick, animated, celebrating } = celebration
     const ticking = animated && celebrating
     const [holdsPreviousValue, setHoldsPreviousValue] = useState(false)
+    const { mode: colorMode } = useColorMode()
 
     useEffect(() => {
         if (!ticking) {
@@ -68,7 +70,10 @@ export default function EmptyInboxStreakValue({ value, celebration, style }) {
                         // metric that is grey every other day of the year.
                         color: tick.interpolate({
                             inputRange: [0, 0.25, 1],
-                            outputRange: [colors.Text01, colors.UtilityGreen200, colors.Text01],
+                            outputRange: resolveColors(
+                                [colors.Text01, colors.UtilityGreen200, colors.Text01],
+                                colorMode
+                            ),
                         }),
                     },
                 ]}

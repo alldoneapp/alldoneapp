@@ -15,7 +15,7 @@ exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test shoul
   tabIndex="0"
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1ds0fg2 r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
     dir={null}
   >
     <div
@@ -27,7 +27,7 @@ exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test shoul
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "16px",
             "opacity": 1,
@@ -38,7 +38,7 @@ exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test shoul
       </div>
     </div>
     <div
-      className="css-text-146c3p1 r-color-hiecfz r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
+      className="css-text-146c3p1 r-color-1phcoeb r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
       dir="auto"
       style={
         {

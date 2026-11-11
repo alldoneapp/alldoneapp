@@ -25,7 +25,7 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       dir="auto"
       style={
         {
-          "color": "rgba(183,189,200,1.00)",
+          "color": "var(--ad-Text04)",
           "fontFamily": "alldone",
           "fontSize": "22px",
           "opacity": 1,
@@ -63,7 +63,7 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       dir="auto"
       style={
         {
-          "color": "rgba(183,189,200,1.00)",
+          "color": "var(--ad-Text04)",
           "fontFamily": "alldone",
           "fontSize": "22px",
           "opacity": 1,

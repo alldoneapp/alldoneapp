@@ -1,13 +1,15 @@
 import { DV_TAB_ROOT_CHATS, DV_TAB_ROOT_UPDATES } from '../../utils/TabNavigationConstants'
 import { colors } from '../styles/global'
 
+import { adaptiveColor } from '../../Themes/colorMode'
+
 // Same look as the assistant-mode button: Primary100 icon on the light blue it
 // uses for hover. The background keeps the icon readable on the dark-blue
 // mobile top bar of the default theme, where a blue icon alone would vanish.
 export const SELECTED_TOP_BAR_ICON_COLOR = colors.Primary100
 
 export const selectedTopBarButtonStyle = {
-    backgroundColor: '#E2EFFF',
+    backgroundColor: adaptiveColor('#E2EFFF'),
     borderRadius: 6,
 }
 

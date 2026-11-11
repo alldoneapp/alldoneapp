@@ -22,6 +22,8 @@ import {
     trackPageView,
 } from '../../utils/analytics/analytics'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function AnalyticsConsentManager() {
     const loggedUser = useSelector(state => state.loggedUser)
     const navigationRoute = useSelector(state => state.route)
@@ -159,7 +161,7 @@ const localStyles = StyleSheet.create({
         maxWidth: 960,
         padding: 20,
         borderRadius: 12,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         flexDirection: 'row',
         alignItems: 'center',
@@ -205,7 +207,7 @@ const localStyles = StyleSheet.create({
     secondaryButton: {
         borderWidth: 1,
         borderColor: colors.Primary100,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     primaryButton: {
         backgroundColor: colors.Primary100,

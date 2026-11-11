@@ -6,6 +6,8 @@ import { resolveReportedLocation } from './embeddedAppLocation'
 import { translate } from '../../../../i18n/TranslationService'
 import { buildEmbeddedToolWindowUrl } from '../../../../utils/embeddedToolWindowUrl'
 
+import { adaptiveColor } from '../../../../Themes/colorMode'
+
 const showToolAddress = url => {
     const address = buildEmbeddedToolWindowUrl(url)
     if (address && address !== window.location.href) window.history.replaceState(window.history.state, '', address)
@@ -78,7 +80,7 @@ export default function EmbeddedToolWindow({ id, url, userId }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', position: 'fixed', inset: 0 }}>
             {failed && (
-                <p role="status" style={{ margin: 0, padding: '8px 16px', background: '#f4f6f8' }}>
+                <p role="status" style={{ margin: 0, padding: '8px 16px', background: adaptiveColor('#F4F6F8') }}>
                     {translate('embedded_tool_handoff_fallback')}
                 </p>
             )}

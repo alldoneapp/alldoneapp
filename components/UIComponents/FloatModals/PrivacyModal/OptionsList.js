@@ -8,6 +8,8 @@ import PrivateItem from './PrivateItem'
 import PublicItem from './PublicItem'
 import UserItem from './UserItem'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function OptionsList({
     isPrivate,
     setPublic,
@@ -170,7 +172,7 @@ const localStyles = StyleSheet.create({
     line: {
         height: 1,
         borderTopWidth: 1,
-        borderTopColor: '#ffffff',
+        borderTopColor: themed.Surface,
         opacity: 0.2,
         marginTop: 8,
         marginBottom: 8,

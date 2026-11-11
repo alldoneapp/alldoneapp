@@ -61,6 +61,8 @@ import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
 import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
 import { postponeTaskWithMotion } from './TaskPresentation/taskPostponeMotion'
 
+import { themed } from '../../../Themes/colorMode'
+
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
 
@@ -861,7 +863,7 @@ export default function EditTask({
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

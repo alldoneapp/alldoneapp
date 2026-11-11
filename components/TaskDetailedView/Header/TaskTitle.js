@@ -12,6 +12,8 @@ import { setTaskName } from '../../../utils/backends/Tasks/tasksFirestore'
 import { isGmailLabelFollowUpTask } from '../../../utils/Gmail/gmailTaskUtils'
 import GmailTag from '../../Tags/GmailTag'
 
+import { themed } from '../../../Themes/colorMode'
+
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
 
@@ -205,11 +207,11 @@ const localStyles = StyleSheet.create({
     },
     upperContainer: {
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         minHeight: 32,
         // maxHeight: 64,
         overflow: 'hidden',
@@ -226,7 +228,7 @@ const localStyles = StyleSheet.create({
     ellipsis: {
         ...styles.title4,
         color: colors.Text01,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 8,
         position: 'absolute',
         bottom: 0,

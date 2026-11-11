@@ -34,6 +34,8 @@ import {
 import { setTaskRecurrence } from '../../../utils/backends/Tasks/tasksFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 class RecurrenceModal extends Component {
     constructor(props) {
         super(props)
@@ -406,7 +408,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
     },

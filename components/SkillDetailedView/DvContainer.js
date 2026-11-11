@@ -14,6 +14,8 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function DvContainer({ projectId }) {
     const dispatch = useDispatch()
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -58,7 +60,7 @@ export default function DvContainer({ projectId }) {
                     overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                 ]}
             >
-                <View style={{ backgroundColor: 'white', flex: 1 }}>
+                <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
                     {(!isFullScreen || selectedNavItem !== DV_TAB_SKILL_NOTE) && (
                         <Header projectId={projectId} userHasAccessToProject={userHasAccessToProject} />
                     )}
@@ -76,7 +78,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

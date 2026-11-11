@@ -19,6 +19,8 @@ import {
 import { PLAN_STATUS_PREMIUM } from '../PremiumHelper'
 import { inProductionEnvironment } from '../../../utils/backends/firestore'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function StripePremiumTab() {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -441,7 +443,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 12,
     },
     statusContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 16,
         padding: 32,
         marginBottom: 24,
@@ -473,7 +475,7 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
     },
     upgradeContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 16,
         padding: 0,
         marginBottom: 24,
@@ -706,7 +708,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-start',
     },
     linkingSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         borderRadius: 16,
         padding: 32,
         marginTop: 24,

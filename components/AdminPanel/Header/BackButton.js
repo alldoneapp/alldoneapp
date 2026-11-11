@@ -10,6 +10,8 @@ import store from '../../../redux/store'
 import { MIN_URLS_IN_HISTORY } from '../../../URLSystem/URLTrigger'
 import SharedHelper from '../../../utils/SharedHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function BackButton() {
     const onPress = () => {
         let { lastVisitedScreen } = store.getState()
@@ -37,7 +39,7 @@ const localStyles = StyleSheet.create({
     upperContainer: {
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flexDirection: 'column',
@@ -45,7 +47,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },

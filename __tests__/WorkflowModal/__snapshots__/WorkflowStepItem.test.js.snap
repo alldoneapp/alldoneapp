@@ -58,7 +58,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
     dir={null}
   >
     <div
-      className="css-text-146c3p1 r-color-hiecfz r-fontWeight-majxgm r-marginRight-1d4mawv"
+      className="css-text-146c3p1 r-color-1phcoeb r-fontWeight-majxgm r-marginRight-1d4mawv"
       dir="auto"
       style={
         {

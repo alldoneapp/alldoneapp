@@ -19,7 +19,7 @@ exports[`ProjectModalItem component renders differently once it is the active ro
     tabIndex="0"
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-paddingLeft-1m04atk r-paddingRight-1pyaxff r-backgroundColor-u3tufj r-borderRadius-z2wwpe"
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-paddingLeft-1m04atk r-paddingRight-1pyaxff r-backgroundColor-icfbfc r-borderRadius-z2wwpe"
       dir={null}
     >
       <div

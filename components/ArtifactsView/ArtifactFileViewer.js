@@ -9,6 +9,8 @@ import { translate } from '../../i18n/TranslationService'
 import { ARTIFACT_KINDS } from '../../functions/Artifacts/artifactModel'
 import { canShowLinkedUploadInline, getArtifactKindIcon, getArtifactKindTint } from './artifactPresentation'
 
+import { themed } from '../../Themes/colorMode'
+
 const OVERLAY_GAP = { top: 16, bottom: 16, left: 16, right: 16 }
 
 function HeaderButton({ icon, label, onPress, testID }) {
@@ -232,7 +234,7 @@ const webStyles = {
         display: 'block',
         borderRadius: 4,
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     video: {
         maxWidth: '100%',

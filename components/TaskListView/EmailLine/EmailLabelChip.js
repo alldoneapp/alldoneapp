@@ -8,6 +8,8 @@ import Icon from '../../Icon'
 import EmailLabelModal from './EmailLabelModal/EmailLabelModal'
 import { shouldIgnoreEmailLabelModalDismiss } from './emailLineHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
 // A single merged label/folder pill with its inbox thread count summed across all
@@ -111,7 +113,7 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         // Use the same outline color as the project-line "Add task" control.
         borderColor: colors.Text03,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         flexDirection: 'row',
         alignItems: 'center',
         marginRight: 8,

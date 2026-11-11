@@ -13,6 +13,8 @@ import Button from '../../../UIControls/Button'
 import { goToObjectDetailView, goToObjectNoteView } from '../../../GlobalSearchAlgolia/searchFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function RevisionHistoryConfirmationModal({
     projectId,
     noteId,
@@ -148,7 +150,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 13,
     },
     cancelButton: {
-        backgroundColor: '#EAF0F5',
+        backgroundColor: themed.SecondaryButton,
         marginRight: 8,
     },
     proceedButton: {

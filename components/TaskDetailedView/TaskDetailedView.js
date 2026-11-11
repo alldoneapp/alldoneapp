@@ -55,6 +55,8 @@ import TaskChatWorkflowControls from './TaskChatWorkflowControls'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 import useTaskProjectMoveHandoff from './useTaskProjectMoveHandoff'
 
+import { themed } from '../../Themes/colorMode'
+
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
     const projectId = navigation.getParam('projectId', undefined)
@@ -289,7 +291,7 @@ const TaskDetailedView = ({ navigation }) => {
                     ]}
                 >
                     {!!projectCopy && !!projectId && (
-                        <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
+                        <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
                             {(!isFullscreen || selectedTab !== DV_TAB_TASK_NOTE) && (
                                 <Header
                                     projectId={projectId}
@@ -388,7 +390,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButton: {
         position: 'absolute',
@@ -399,7 +401,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {

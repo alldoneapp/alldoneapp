@@ -3,6 +3,8 @@ import { Platform, StyleSheet, View } from 'react-native'
 import ParentTaskContainer from '../TaskListView/ParentTaskContainer'
 import { useSelector } from 'react-redux'
 
+import { themed } from '../../Themes/colorMode'
+
 const DraggableTaskActive = ({
     projectId,
     task,
@@ -34,7 +36,7 @@ const DraggableTaskActive = ({
 const localStyle = StyleSheet.create({
     shadowTask: {
         borderRadius: 4,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         ...Platform.select({
             web: {
                 boxShadow: `${0}px ${8}px ${16}px rgba(0,0,0,0.04), ${0}px ${4}px ${8}px rgba(0,0,0,0.04)`,

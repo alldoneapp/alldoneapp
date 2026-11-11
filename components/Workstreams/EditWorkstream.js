@@ -30,6 +30,8 @@ import SharedHelper from '../../utils/SharedHelper'
 import { updateWorkstream, uploadNewWorkstream } from '../../utils/backends/Workstreams/workstreamsFirestore'
 import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 
+import { themed } from '../../Themes/colorMode'
+
 export default class EditWorkstream extends Component {
     constructor(props) {
         super(props)
@@ -293,7 +295,7 @@ export default class EditWorkstream extends Component {
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

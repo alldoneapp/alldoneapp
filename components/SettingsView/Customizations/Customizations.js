@@ -16,6 +16,7 @@ import Notifications from './Properties/Notifications'
 import ServerTime from './Properties/ServerTime'
 import UserTimezone from './Properties/UserTimezone'
 import Theme from './Properties/Theme'
+import Appearance from './Properties/Appearance'
 import Language from './Properties/Language'
 import AutoPostponeAfterDaysOverdue from './Properties/AutoPostponeAfterDaysOverdue'
 import { useTranslator } from '../../../i18n/TranslationService'
@@ -64,6 +65,7 @@ const Customizations = () => {
                 {!mobile && <View style={localStyles.columnsSpacer} />}
 
                 <View style={localStyles.settingsColumn}>
+                    <Appearance userId={loggedUser.uid} />
                     <Theme userId={loggedUser.uid} themeName={loggedUser.themeName} />
                     <AutoPostponeAfterDaysOverdue
                         userId={loggedUser.uid}

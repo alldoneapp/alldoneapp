@@ -10,6 +10,8 @@ import { MIN_URLS_IN_HISTORY } from '../../../URLSystem/URLTrigger'
 import { DV_TAB_SETTINGS_PROJECTS } from '../../../utils/TabNavigationConstants'
 import SharedHelper from '../../../utils/SharedHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function BackButton({ project }) {
     const dispatch = useDispatch()
     const lastVisitedScreen = useSelector(state => state.lastVisitedScreen)
@@ -41,7 +43,7 @@ const localStyles = StyleSheet.create({
     upperContainer: {
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flexDirection: 'column',
@@ -49,7 +51,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },

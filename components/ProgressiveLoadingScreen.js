@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import Spinner from './UIComponents/Spinner'
 import ConnectionStatusChip from './TopBar/ConnectionStatusChip'
 
+import { adaptiveColor, themed } from '../Themes/colorMode'
+
 const ProgressiveLoadingScreen = ({ step, totalSteps, currentMessage }) => {
     const progressPercentage = Math.round((step / totalSteps) * 100)
 
@@ -29,7 +31,7 @@ const localstyles = StyleSheet.create({
         paddingHorizontal: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         alignContent: 'center',
     },
     text: {
@@ -45,7 +47,7 @@ const localstyles = StyleSheet.create({
     progressBar: {
         width: '100%',
         height: 6,
-        backgroundColor: '#e0e0e0',
+        backgroundColor: adaptiveColor('#E0E0E0'),
         borderRadius: 3,
         overflow: 'hidden',
         marginBottom: 10,

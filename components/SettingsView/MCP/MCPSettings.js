@@ -12,6 +12,8 @@ import { setUserBrowserAgentToolsEnabled, setUserMCPSettings } from '../../../ut
 import { storeLoggedUser } from '../../../redux/actions'
 import { TOOL_LABEL_BY_KEY } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 
+import { themed } from '../../../Themes/colorMode'
+
 // Tools exposed over MCP, in display order. Keep in sync with
 // MCP_DELEGATED_ASSISTANT_TOOLS in functions/MCP/mcpServerSimple.js — that constant
 // is the server-side source of truth for what the MCP server actually serves.
@@ -459,7 +461,7 @@ const localStyles = StyleSheet.create({
     },
     urlBox: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey400,

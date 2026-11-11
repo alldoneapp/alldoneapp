@@ -10,6 +10,8 @@ import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { useSelector } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
 
+import { themed } from '../../../Themes/colorMode'
+
 const EditMember = ({ projectId, onCancelAction, style }) => {
     const [email, setEmail] = useState('')
     const smallScreen = useSelector(state => state.smallScreen)
@@ -109,7 +111,7 @@ export default EditMember
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

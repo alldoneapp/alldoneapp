@@ -10,7 +10,7 @@ exports[`ProjectMembersHeader component ProjectMembersHeader snapshot test shoul
     dir="auto"
     style={
       {
-        "color": "rgba(4,20,47,1.00)",
+        "color": "var(--ad-Text01)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
         "lineHeight": "28px",
@@ -28,7 +28,7 @@ exports[`ProjectMembersHeader component ProjectMembersHeader snapshot test shoul
       dir="auto"
       style={
         {
-          "color": "rgba(78,93,120,1.00)",
+          "color": "var(--ad-Text02)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",
           "letterSpacing": "0.48px",

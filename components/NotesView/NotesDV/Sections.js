@@ -28,6 +28,8 @@ import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { canOpenNoteSideChat, canShowNoteSideChat, getNoteSideChatWidth } from './sideChatHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function Sections({ projectId, note, project, navigation, updateObjectState }) {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -101,7 +103,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
     }
 
     return (
-        <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
+        <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
             <Header
                 projectId={projectId}
                 note={note}
@@ -242,7 +244,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderLeftWidth: 1,
         borderLeftColor: colors.Gray300,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     sideChatHeader: {
         height: 48,

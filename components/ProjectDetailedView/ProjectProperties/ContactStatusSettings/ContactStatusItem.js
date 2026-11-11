@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 
+import { themed } from '../../../../Themes/colorMode'
+
 const ContactStatusItem = ({ status, dragHandleProps, isDragging }) => {
     return (
         <View style={[localStyles.container, isDragging && localStyles.dragging]}>
@@ -36,7 +38,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Grey300,
         paddingHorizontal: 8,
         marginBottom: 8,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     dragging: {
         borderColor: colors.Primary100,

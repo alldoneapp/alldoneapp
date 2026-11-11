@@ -20,6 +20,8 @@ import { translate } from '../../../../i18n/TranslationService'
 import { filterUserShapesByText } from '../AssigneeAndObserversModal/AssigneeAndObserversModal'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function WorkstreamMembersModal({
     closeModal,
     updateUsers,
@@ -153,7 +155,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

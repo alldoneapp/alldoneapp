@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
+import { resolveColors } from '../../../Themes/colorMode'
 
 import FeedInteractionBar from '../InteractionBar/FeedInteractionBar'
 import SVGGenericUser from '../../../assets/svg/SVGGenericUser'
@@ -97,7 +98,7 @@ const ContactObjectHeader = ({ projectId, feed }) => {
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
-    const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
+    const outputColors = resolveColors([colors.UtilityYellow125, colors.Surface, colors.UtilityGreen125])
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
         outputRange: outputColors,

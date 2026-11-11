@@ -12,11 +12,11 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
   }
 >
   <div
-    className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-mabqd8"
+    className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-mabqd8"
     dir={null}
   />
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flex-13awgt0 r-flexDirection-18u37iz r-height-mabqd8 r-justifyContent-1h0z5md"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nl0xfs r-flex-13awgt0 r-flexDirection-18u37iz r-height-mabqd8 r-justifyContent-1h0z5md"
     dir={null}
   >
     <div
@@ -24,7 +24,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
       dir={null}
     >
       <div
-        className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-borderRadius-18c69zk r-height-1k25im9 r-marginRight-1d4mawv r-overflow-1udh08x r-width-19tjxh9"
+        className="css-view-g5y9jx r-backgroundColor-cpuwww r-borderRadius-18c69zk r-height-1k25im9 r-marginRight-1d4mawv r-overflow-1udh08x r-width-19tjxh9"
         dir={null}
       >
         <svg
@@ -162,7 +162,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
         tabIndex="0"
       >
         <div
-          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-wordWrap-1iln25a r-color-qmo3aw r-fontFamily-1k9400p r-fontSize-1x35g6 r-lineHeight-37tt59 r-whiteSpace-yrgyi6"
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-wordWrap-1iln25a r-color-a7285f r-fontFamily-1k9400p r-fontSize-1x35g6 r-lineHeight-37tt59 r-whiteSpace-yrgyi6"
           dir="auto"
         >
           a b
@@ -178,7 +178,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
             "letterSpacing": "0.48px",

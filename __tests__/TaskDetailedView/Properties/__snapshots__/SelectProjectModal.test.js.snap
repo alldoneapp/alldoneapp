@@ -43,7 +43,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
             dir="auto"
             style={
               {
-                "color": "rgba(138,148,166,1.00)",
+                "color": "var(--ad-Text03)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
                 "opacity": 1,
@@ -62,7 +62,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
       Move task
     </div>
     <div
-      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
+      className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
       dir="auto"
     >
       Select the project this task will move to
@@ -127,7 +127,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
           tabIndex="0"
         >
           <div
-            className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+            className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
             dir="auto"
           >
             Archived
@@ -138,7 +138,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
           />
         </div>
         <div
-          className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+          className="css-view-g5y9jx r-backgroundColor-cpuwww r-height-109y4c4 r-width-13qz1uu"
           dir={null}
         />
       </div>
@@ -183,7 +183,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
                 dir="auto"
                 style={
                   {
-                    "color": "rgba(183,189,200,1.00)",
+                    "color": "var(--ad-Text04)",
                     "fontFamily": "alldone",
                     "fontSize": "32px",
                     "opacity": 1,
@@ -194,7 +194,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
               </div>
             </div>
             <div
-              className="css-text-146c3p1 r-color-1e7q3sq r-fontFamily-1k9400p r-fontSize-adyw6z r-lineHeight-vrz42v r-marginTop-knv0ih r-textAlign-q4m81j"
+              className="css-text-146c3p1 r-color-1byejo5 r-fontFamily-1k9400p r-fontSize-adyw6z r-lineHeight-vrz42v r-marginTop-knv0ih r-textAlign-q4m81j"
               dir="auto"
             >
               There are not projects to show here.

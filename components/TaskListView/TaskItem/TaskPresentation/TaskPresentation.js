@@ -4,6 +4,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
+import { resolveColors, resolveSurfaceColor, useColorMode } from '../../../../Themes/colorMode'
 import store from '../../../../redux/store'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem, setSwipeDueDatePopupData, showSwipeDueDatePopup } from '../../../../redux/actions'
@@ -128,7 +129,12 @@ function TaskPresentation(
 
     const hasStar = task.hasStar.toUpperCase() === '#FFFFFF' && inMyDayAndNotSubtask ? colors.Grey500 : task.hasStar
 
-    const lastAddedTaskBackgroundColor = useLastAddedTaskColor(task.id, lastTaskAddedId, hasStar)
+    // Animated color interpolation needs concrete colors, so resolve the palette tokens and the
+    // stored highlight for the active light/dark mode (and re-render when it changes).
+    const { mode: colorMode } = useColorMode()
+    const hasStarDisplay = resolveSurfaceColor(hasStar, colorMode)
+
+    const lastAddedTaskBackgroundColor = useLastAddedTaskColor(task.id, lastTaskAddedId, hasStarDisplay)
 
     // AT-2381 — "the server is still deciding where this task belongs", and the one-shot
     // confirmation when that decision actually changed the task. Null for the overwhelming
@@ -283,17 +289,20 @@ function TaskPresentation(
           ? colors.Grey200
           : taskHierarchy
             ? hierarchyBackgroundColor
-            : '#ffffff'
+            : colors.Surface
 
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
-        outputRange: [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125],
+        outputRange: resolveColors(
+            [colors.UtilityYellow125, resolveSurfaceColor(restingBackgroundColor, colorMode), colors.UtilityGreen125],
+            colorMode
+        ),
         extrapolate: 'clamp',
     })
 
     const backColorHighlight = panColor.interpolate({
         inputRange: [-100, 0, 100],
-        outputRange: [colors.UtilityYellow125, hasStar, colors.UtilityGreen125],
+        outputRange: resolveColors([colors.UtilityYellow125, hasStarDisplay, colors.UtilityGreen125], colorMode),
         extrapolate: 'clamp',
     })
 

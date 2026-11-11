@@ -20,6 +20,8 @@ import TaskListSkeleton from '../TaskListSkeleton'
 import { getTaskBearingProjectIndexes, getTaskColdStartDayKey } from '../../../utils/InitialLoad/taskColdStartCache'
 import { markNamedPerformanceTrace } from '../../../utils/performance/performanceLogger'
 
+import { themed } from '../../../Themes/colorMode'
+
 // Task rows are spread across the active projects, and live Pixel traces showed that shrinking this
 // wave serialized even the first three task-bearing projects. Keep the user's assigned-task queries
 // in one foreground discovery wave; their observed/workstream/decorative streams remain deferred,
@@ -457,7 +459,7 @@ export default function OpenTasksViewAllProjects() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         marginBottom: 32,
     },
     containerForMobile: {
@@ -481,7 +483,7 @@ const localStyles = StyleSheet.create({
         right: 104,
         minHeight: 360,
         paddingTop: 16,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     skippedProjectCatchUpSkeletonMobile: {
         left: 16,

@@ -64,7 +64,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
           dir={null}
         >
           <div
-            className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBottom-15zivkp"
+            className="css-text-146c3p1 r-color-w1lfa1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBottom-15zivkp"
             dir="auto"
           >
             [missing "en.Text" translation]
@@ -73,7 +73,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             autoCapitalize="sentences"
             autoComplete="on"
             autoCorrect="on"
-            className="css-textinput-11aywtz r-placeholderTextColor-6taxm2 r-borderColor-ql2gnw r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-color-jwli3a r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingBlock-11f147o r-paddingInline-3pj75a"
+            className="css-textinput-11aywtz r-placeholderTextColor-6taxm2 r-borderColor-1br7mu7 r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-color-jwli3a r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingBlock-11f147o r-paddingInline-3pj75a"
             dir="auto"
             onBlur={[Function]}
             onChange={[Function]}
@@ -85,7 +85,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             spellCheck={true}
             style={
               {
-                "--placeholderTextColor": "#8A94A6",
+                "--placeholderTextColor": "var(--ad-Text03)",
               }
             }
             value=""
@@ -156,7 +156,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
                   dir="auto"
                   style={
                     {
-                      "color": "rgba(138,148,166,1.00)",
+                      "color": "var(--ad-Text03)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",
                       "opacity": 1,

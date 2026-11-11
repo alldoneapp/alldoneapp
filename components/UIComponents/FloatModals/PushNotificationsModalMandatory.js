@@ -10,6 +10,8 @@ import { hideConfirmPopup, hideFloatPopup } from '../../../redux/actions'
 import Backend from '../../../utils/BackendBridge'
 import { initFCM } from '../../../utils/backends/firestore'
 
+import { adaptiveColor, themed } from '../../../Themes/colorMode'
+
 export default function PushNotificationsModalMandatory() {
     const smallScreen = useSelector(state => state.smallScreen)
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
@@ -61,7 +63,7 @@ export default function PushNotificationsModalMandatory() {
 const localStyles = StyleSheet.create({
     container: {
         maxWidth: 448,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         padding: 16,
         borderRadius: 8,
         ...Platform.select({
@@ -89,7 +91,7 @@ const localStyles = StyleSheet.create({
     illustrationContainer: {
         maxWidth: 416,
         minHeight: 200,
-        backgroundColor: '#F0F4FF',
+        backgroundColor: adaptiveColor('#F0F4FF'),
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',

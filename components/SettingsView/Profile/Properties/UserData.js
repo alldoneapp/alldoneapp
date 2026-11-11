@@ -7,6 +7,8 @@ import Icon from '../../../Icon'
 import { getDateFormat, getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../../../i18n/TranslationService'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function UserData({ user, projectRole }) {
     const { role, photoURL, displayName, level, lastLogin } = user
 
@@ -27,8 +29,8 @@ export default function UserData({ user, projectRole }) {
                     </Text>
                 )}
                 <View style={localStyles.centeredRow}>
-                    <Icon name="star" size={17} color="#8A94A6" />
-                    <Text style={(styles.body2, { color: '#4E5D78', marginLeft: 5 })}>
+                    <Icon name="star" size={17} color={themed.Text03} />
+                    <Text style={(styles.body2, { color: themed.Text02, marginLeft: 5 })}>
                         {translate('Level', { level: level })}
                     </Text>
                 </View>

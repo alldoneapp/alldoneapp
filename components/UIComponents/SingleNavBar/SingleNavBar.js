@@ -3,6 +3,8 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import SingleNavBarItem from './SingleNavBarItem'
 import { colors } from '../../styles/global'
 
+import { themed } from '../../../Themes/colorMode'
+
 export const SINGLE_NAV_BAR_LIGHT = 'SINGLE_NAV_BAR_LIGHT'
 export const SINGLE_NAV_BAR_DARK = 'SINGLE_NAV_BAR_DARK'
 
@@ -88,7 +90,7 @@ const localStyles = StyleSheet.create({
         borderBottomColor: colors.Grey400,
     },
     containerDark: {
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderBottomColor: colors.Primary400,
     },
     itemsContainer: {

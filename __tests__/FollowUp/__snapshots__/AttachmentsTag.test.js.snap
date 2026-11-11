@@ -2,7 +2,7 @@
 
 exports[`AttachmentsTag component AttachmentsTag snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-k200y r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-k200y r-backgroundColor-1ds0fg2 r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg"
   dir={null}
   style={
     {
@@ -21,7 +21,7 @@ exports[`AttachmentsTag component AttachmentsTag snapshot test should render cor
     />
   </div>
   <div
-    className="css-text-146c3p1 r-color-hiecfz r-marginRight-1kb76zh"
+    className="css-text-146c3p1 r-color-1phcoeb r-marginRight-1kb76zh"
     dir="auto"
     style={
       {
@@ -60,7 +60,7 @@ exports[`AttachmentsTag component AttachmentsTag snapshot test should render cor
           dir="auto"
           style={
             {
-              "color": "rgba(138,148,166,1.00)",
+              "color": "var(--ad-Text03)",
               "fontFamily": "alldone",
               "fontSize": "16px",
               "opacity": 1,
@@ -77,7 +77,7 @@ exports[`AttachmentsTag component AttachmentsTag snapshot test should render cor
 
 exports[`AttachmentsTag component AttachmentsTag snapshot test should render correctly 2`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-k200y r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-k200y r-backgroundColor-1ds0fg2 r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg"
   dir={null}
   style={
     {
@@ -98,7 +98,7 @@ exports[`AttachmentsTag component AttachmentsTag snapshot test should render cor
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "16px",
             "opacity": 1,
@@ -110,7 +110,7 @@ exports[`AttachmentsTag component AttachmentsTag snapshot test should render cor
     </div>
   </div>
   <div
-    className="css-text-146c3p1 r-color-hiecfz r-marginRight-1kb76zh"
+    className="css-text-146c3p1 r-color-1phcoeb r-marginRight-1kb76zh"
     dir="auto"
     style={
       {

@@ -4,6 +4,8 @@ import { translate } from '../../i18n/TranslationService'
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 
+import { themed } from '../../Themes/colorMode'
+
 // Keep 10 Hz meter updates inside this small component, not in the app-wide
 // call context (which would rerender every assistant composer while speaking).
 export default function VoiceMicrophoneStatus({ read, compact = false }) {
@@ -69,7 +71,7 @@ const localStyles = StyleSheet.create({
     compactMeter: { flex: 1, marginTop: 0, marginLeft: 5 },
     row: { flexDirection: 'row', alignItems: 'center' },
     label: { ...styles.caption1, color: colors.Text03, marginLeft: 4, flexShrink: 1 },
-    meter: { height: 4, borderRadius: 2, backgroundColor: '#E7ECEF', overflow: 'hidden', marginTop: 3 },
+    meter: { height: 4, borderRadius: 2, backgroundColor: themed.Grey300, overflow: 'hidden', marginTop: 3 },
     fill: { height: '100%', backgroundColor: '#36A77B', transition: 'width 80ms linear' },
     hint: { ...styles.caption1, color: colors.Text03, marginTop: 2 },
 })

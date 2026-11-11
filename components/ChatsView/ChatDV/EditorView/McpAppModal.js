@@ -18,6 +18,8 @@ import { closeMcpAppView, getOpenMcpAppView, openMcpAppView, subscribeMcpAppView
 import OpenInAssistantPaneButton from '../../../Anna/OpenInAssistantPaneButton'
 import { openInAnnaAppPane, registerEmbedWindow, useAnnaAppPaneState } from '../../../Anna/annaAppPaneBridge'
 
+import { themed } from '../../../../Themes/colorMode'
+
 /**
  * The window an MCP Apps view (e.g. Judy) opens in outside Anna's assistant shell: the viewport but
  * for one uniform gap (the whole screen, inside the safe area, on a phone), a slim header with the
@@ -82,8 +84,8 @@ export default function McpAppModal() {
 
 const styles = StyleSheet.create({
     // On a phone the safe-area strips around the full-screen window take its colour.
-    overlayFullscreen: { backgroundColor: '#FFFFFF' },
-    container: { backgroundColor: '#FFFFFF' },
+    overlayFullscreen: { backgroundColor: themed.Surface },
+    container: { backgroundColor: themed.Surface },
     header: {
         height: 40,
         flexDirection: 'row',

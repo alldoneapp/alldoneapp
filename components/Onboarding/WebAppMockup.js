@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, SafeAreaVi
 import Icon from '../Icon'
 import Colors from '../../Themes/Colors'
 
+import { adaptiveColor, themed } from '../../Themes/colorMode'
+
 const { width } = Dimensions.get('window')
 
 export default function WebAppMockup({ onContinue, taskName = 'Prepare meeting with Claudia', style }) {
@@ -113,7 +115,7 @@ export default function WebAppMockup({ onContinue, taskName = 'Prepare meeting w
                                             {taskName}
                                         </Text>
                                         <View style={styles.taskMeta}>
-                                            <View style={[styles.tag, { backgroundColor: '#E3F2FD' }]}>
+                                            <View style={[styles.tag, { backgroundColor: adaptiveColor('#E3F2FD') }]}>
                                                 <Icon name="file-text" size={10} color={Colors.Primary100} />
                                                 <Text style={[styles.tagText, { color: Colors.Primary100 }]}>
                                                     onboarding
@@ -162,7 +164,7 @@ const styles = StyleSheet.create({
     phoneFrame: {
         width: 280,
         height: 500,
-        backgroundColor: '#fff',
+        backgroundColor: themed.Surface,
         borderRadius: 40,
         borderWidth: 8,
         borderColor: '#1c1c1e',
@@ -196,7 +198,7 @@ const styles = StyleSheet.create({
     homeIndicator: { width: 100, height: 4, backgroundColor: '#000', borderRadius: 2 },
     container: {
         flex: 1,
-        backgroundColor: '#F7F9FC',
+        backgroundColor: adaptiveColor('#F7F9FC'),
     },
     touchableArea: {
         flex: 1,
@@ -274,7 +276,7 @@ const styles = StyleSheet.create({
     openFilter: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#EBF5FF',
+        backgroundColor: themed.UtilityBlue100,
         paddingHorizontal: 6,
         paddingVertical: 3,
         borderRadius: 4,
@@ -386,7 +388,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 4,
-        backgroundColor: '#EBF5FF',
+        backgroundColor: themed.UtilityBlue100,
         alignSelf: 'flex-start',
         paddingHorizontal: 6,
         paddingVertical: 2,
@@ -432,7 +434,7 @@ const styles = StyleSheet.create({
     },
     taskRowHighlighted: {
         borderColor: Colors.Primary100,
-        backgroundColor: '#F7FBFF',
+        backgroundColor: adaptiveColor('#F7FBFF'),
     },
     taskCheckbox: {
         width: 16,

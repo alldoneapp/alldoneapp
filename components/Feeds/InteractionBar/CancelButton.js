@@ -4,6 +4,8 @@ import { Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { colors, em2px } from '../../styles/global'
 import Icon from '../../Icon'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function CancelButton({ text, setShowInteractionBar, isMiddleScreen }) {
     const closeInteractionBar = () => {
         setShowInteractionBar(false)
@@ -27,7 +29,7 @@ const localStyles = StyleSheet.create({
         height: 40,
         width: 95,
         borderRadius: 4,
-        backgroundColor: '#EAF0F5',
+        backgroundColor: themed.SecondaryButton,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 24,

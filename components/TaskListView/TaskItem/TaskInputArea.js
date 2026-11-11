@@ -4,6 +4,8 @@ import { StyleSheet, View } from 'react-native'
 import TaskInput from './TaskInput'
 import { colors } from '../../styles/global'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function TaskInputArea({
     leftAccessory,
     rightAccessory,
@@ -40,7 +42,7 @@ const localStyles = StyleSheet.create({
     },
     inlineTaskContainer: {
         marginHorizontal: 8,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderRadius: 4,
     },
     focusedInlineTaskContainer: {

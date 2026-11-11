@@ -12,6 +12,8 @@ import { DV_TAB_ROOT_CONTACTS } from '../../../utils/TabNavigationConstants'
 import { getDvLink } from '../../../utils/LinkingHelper'
 import SharedHelper from '../../../utils/SharedHelper'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function ({ user, projectIndex }) {
     const dispatch = useDispatch()
 
@@ -44,7 +46,7 @@ const localStyles = StyleSheet.create({
     upperContainer: {
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     bottomContainer: {
         flexDirection: 'column',
@@ -52,7 +54,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         width: 57,
         height: 32,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },

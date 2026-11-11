@@ -28,6 +28,8 @@ import { PROJECT_TYPE_SHARED } from '../../SettingsView/ProjectsSettings/Project
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import DvContainer from './DvContainer'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function NotesDetailedView({ navigation }) {
     const dispatch = useDispatch()
     const noteId = navigation.getParam('noteId', undefined)
@@ -130,6 +132,6 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
 })

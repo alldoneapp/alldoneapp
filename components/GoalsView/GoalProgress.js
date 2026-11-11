@@ -6,6 +6,8 @@ import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import styles from '../styles/global'
 import { DYNAMIC_PERCENT, progressMap } from './GoalsHelper'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function GoalProgress({ projectId, openModal, progress, disabled, dynamicProgress }) {
     let { progressBorderColor, progressTextColor } = progressMap[progress]
         ? progressMap[progress]
@@ -38,6 +40,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 8,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
 })

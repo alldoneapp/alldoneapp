@@ -4013,6 +4013,7 @@ export function mapUserData(userId, user) {
         pushNotificationsStatus: user.pushNotificationsStatus ? user.pushNotificationsStatus : false,
         workstreams: user.workstreams ? user.workstreams : {},
         themeName: user.themeName ? user.themeName : COLORS_THEME_MODERN,
+        colorMode: user.colorMode || null,
         autoPostponeAfterDaysOverdue:
             user.autoPostponeAfterDaysOverdue != null
                 ? user.autoPostponeAfterDaysOverdue

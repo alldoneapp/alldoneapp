@@ -5,6 +5,8 @@ import { useSelector, useDispatch } from 'react-redux'
 import DoneTasksByProject from './DoneTasksByProject'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function DoneTasksView() {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -33,7 +35,7 @@ export default function DoneTasksView() {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

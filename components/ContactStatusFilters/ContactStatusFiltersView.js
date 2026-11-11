@@ -12,6 +12,8 @@ import { setSelectedNavItem } from '../../redux/actions'
 import { DV_TAB_PROJECT_CONTACT_STATUSES } from '../../utils/TabNavigationConstants'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from './contactStatusFilterConstants'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function ContactStatusFiltersView({ projectContacts }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -178,7 +180,7 @@ const localStyles = StyleSheet.create({
     },
     colorDotSelected: {
         borderWidth: 1,
-        borderColor: 'white',
+        borderColor: themed.Surface,
     },
     statusName: {
         ...styles.caption1,

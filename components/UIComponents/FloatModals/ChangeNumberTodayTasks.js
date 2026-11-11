@@ -16,6 +16,8 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 class ChangeNumberTodayTasks extends Component {
     constructor(props) {
         super(props)
@@ -175,7 +177,7 @@ const localStyles = StyleSheet.create({
     line: {
         height: 1,
         borderTopWidth: 1,
-        borderTopColor: '#ffffff',
+        borderTopColor: themed.Surface,
         opacity: 0.2,
         marginTop: 8,
         marginBottom: 16,

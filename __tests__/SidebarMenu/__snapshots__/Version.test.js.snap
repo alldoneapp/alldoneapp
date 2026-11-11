@@ -10,7 +10,7 @@ exports[`Version component Version snapshot test should render correctly 1`] = `
     dir="auto"
     style={
       {
-        "color": "rgba(138,148,166,1.00)",
+        "color": "var(--ad-Text03)",
         "opacity": 0.4,
       }
     }

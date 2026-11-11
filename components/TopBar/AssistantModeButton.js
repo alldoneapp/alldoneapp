@@ -6,6 +6,8 @@ import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
+import { adaptiveColor } from '../../Themes/colorMode'
+
 export default function AssistantModeButton({ onOpen, inline = false, style }) {
     const assistant = useSelector(state => state.defaultAssistant)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -54,7 +56,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 6,
     },
     hovered: {
-        backgroundColor: '#E2EFFF',
+        backgroundColor: adaptiveColor('#E2EFFF'),
     },
     centered: {
         position: 'absolute',

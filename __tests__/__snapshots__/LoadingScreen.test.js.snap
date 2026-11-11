@@ -2,7 +2,7 @@
 
 exports[`LoadingScreen component LoadingScreen snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignContent-uia4a0 r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flex-13awgt0 r-justifyContent-1777fci r-paddingInline-1ubuhtd"
+  className="css-view-g5y9jx r-alignContent-uia4a0 r-alignItems-1awozwy r-backgroundColor-nl0xfs r-flex-13awgt0 r-justifyContent-1777fci r-paddingInline-1ubuhtd"
   dir={null}
 >
   <div
@@ -10,7 +10,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
     dir={null}
     style={
       {
-        "backgroundColor": "rgba(231,236,239,1.00)",
+        "backgroundColor": "var(--ad-Grey300)",
         "height": "200px",
         "maxHeight": "200px",
         "maxWidth": "200px",

@@ -23,7 +23,7 @@ exports[`Following component Following snapshot test should render correctly 1`]
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "fontFamily": "alldone",
             "fontSize": "24px",
             "opacity": 1,
@@ -39,7 +39,7 @@ exports[`Following component Following snapshot test should render correctly 1`]
     dir="auto"
     style={
       {
-        "color": "rgba(138,148,166,1.00)",
+        "color": "var(--ad-Text03)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "14px",
         "letterSpacing": "0.16px",
@@ -113,7 +113,7 @@ exports[`Following component Following snapshot test should render correctly 1`]
             }
           >
             <div
-              className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
+              className="css-view-g5y9jx r-backgroundColor-nl0xfs r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
               dir={null}
             />
           </div>

@@ -27,7 +27,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "opacity": 0.4,
           }
         }
@@ -41,7 +41,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     dir={null}
     style={
       {
-        "backgroundColor": "rgba(138,148,166,1.00)",
+        "backgroundColor": "var(--ad-Text03)",
         "opacity": 0.4,
       }
     }
@@ -68,7 +68,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "opacity": 0.4,
           }
         }
@@ -82,7 +82,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     dir={null}
     style={
       {
-        "backgroundColor": "rgba(138,148,166,1.00)",
+        "backgroundColor": "var(--ad-Text03)",
         "opacity": 0.4,
       }
     }
@@ -109,7 +109,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "opacity": 0.4,
           }
         }
@@ -123,7 +123,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     dir={null}
     style={
       {
-        "backgroundColor": "rgba(138,148,166,1.00)",
+        "backgroundColor": "var(--ad-Text03)",
         "opacity": 0.4,
       }
     }
@@ -150,7 +150,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         dir="auto"
         style={
           {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "var(--ad-Text03)",
             "opacity": 0.4,
           }
         }

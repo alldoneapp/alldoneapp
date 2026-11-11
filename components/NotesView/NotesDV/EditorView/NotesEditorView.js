@@ -121,6 +121,8 @@ import store from '../../../../redux/store'
 import { enableDeferredNoteEmbeds } from '../../../Feeds/CommentsTextInput/autoformat/formats/noteEmbedVisibility'
 import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
+import { themed } from '../../../../Themes/colorMode'
+
 const Delta = ReactQuill.Quill.import('delta')
 
 const icons = ReactQuill.Quill.import('ui/icons')
@@ -1512,7 +1514,7 @@ const NotesEditorView = ({
                     const deltaY = e.nativeEvent.contentOffset.y
                     updateScreenMode(deltaY)
                 }}
-                style={{ backgroundColor: 'white' }}
+                style={{ backgroundColor: themed.Surface }}
                 indicatorStyle={mobile && { right: -10 }}
                 onScrollbarGone={() => {
                     scrollbarGone.current = true

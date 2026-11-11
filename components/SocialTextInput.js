@@ -20,6 +20,8 @@ import { exitsOpenModals } from './ModalsManager/modalsManager'
 import { Dismissible } from 'react-dismissible'
 import { isInboxSummaryGmailTask } from '../utils/Gmail/gmailTaskUtils'
 
+import { themed } from '../Themes/colorMode'
+
 class SocialTextInput extends Component {
     constructor(props) {
         super(props)
@@ -360,7 +362,7 @@ const localStyles = StyleSheet.create({
     buttonX: {
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#EAF0F5',
+        backgroundColor: themed.SecondaryButton,
         width: 48,
         height: 40,
         marginLeft: 8,

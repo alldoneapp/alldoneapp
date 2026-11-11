@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, View } from 'react-native'
 import FeedInteractionBar from '../InteractionBar/FeedInteractionBar'
 import styles, { colors } from '../../styles/global'
+import { resolveColors, themed } from '../../../Themes/colorMode'
 import Icon from '../../Icon'
 import TaskEstimation from '../../Tags/TaskEstimation'
 import TaskRecurrence from '../../Tags/TaskRecurrence'
@@ -311,7 +312,7 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
-    const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
+    const outputColors = resolveColors([colors.UtilityYellow125, colors.Surface, colors.UtilityGreen125])
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
         outputRange: outputColors,
@@ -390,7 +391,7 @@ const localStyles = StyleSheet.create({
         right: 0,
         bottom: 4,
         paddingLeft: 8,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
     },
     descriptionContainer: {
         flexGrow: 1,

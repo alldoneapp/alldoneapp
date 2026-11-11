@@ -18,7 +18,7 @@ describe('EmailNewBadge', () => {
         const badge = tree.root.findByProps({ testID: 'email-new-badge' })
         const style = StyleSheet.flatten(badge.props.style)
 
-        expect(style.backgroundColor).toBe('#718592')
+        expect(style.backgroundColor).toBe('var(--ad-Gray500)')
         expect(style.width).toBe(6)
         expect(style.height).toBe(6)
         // The word "New" must not be rendered as visible text any more - the dot is the whole marker.
@@ -38,6 +38,6 @@ describe('EmailNewBadge', () => {
 
         expect(style.marginLeft).toBe('auto')
         expect(style.marginRight).toBe(8)
-        expect(style.backgroundColor).toBe('#718592')
+        expect(style.backgroundColor).toBe('var(--ad-Gray500)')
     })
 })

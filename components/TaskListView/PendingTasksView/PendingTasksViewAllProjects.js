@@ -7,6 +7,8 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -50,7 +52,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
 const localStyles = StyleSheet.create({
     container: {
         paddingHorizontal: 104,
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,

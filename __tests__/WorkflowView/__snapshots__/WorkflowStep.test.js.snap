@@ -2,7 +2,7 @@
 
 exports[`WorkflowStep component WorkflowStep snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-ujb5q5 r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-sga3zk r-marginBottom-1ifxtd0 r-paddingLeft-qhyqy2 r-paddingRight-1pyaxff"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-q31g1f r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-sga3zk r-marginBottom-1ifxtd0 r-paddingLeft-qhyqy2 r-paddingRight-1pyaxff"
   dir={null}
 >
   <div
@@ -34,7 +34,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       dir="auto"
       style={
         {
-          "color": "rgba(4,20,47,1.00)",
+          "color": "var(--ad-Text01)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "16px",
           "letterSpacing": "0.32px",
@@ -49,7 +49,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       dir="auto"
       style={
         {
-          "color": "rgba(138,148,166,1.00)",
+          "color": "var(--ad-Text03)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",
           "letterSpacing": "0.48px",
@@ -61,7 +61,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-borderLeftColor-1rh4w1 r-borderLeftWidth-1ljd8xs r-flexDirection-18u37iz r-height-1472mwg r-marginLeft-1jj8364 r-paddingLeft-f727ji"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderLeftColor-5m9cn2 r-borderLeftWidth-1ljd8xs r-flexDirection-18u37iz r-height-1472mwg r-marginLeft-1jj8364 r-paddingLeft-f727ji"
     dir={null}
   >
     <div
@@ -69,7 +69,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       dir="auto"
       style={
         {
-          "color": "rgba(78,93,120,1.00)",
+          "color": "var(--ad-Text02)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "14px",
           "letterSpacing": "0.32px",
@@ -108,7 +108,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
             style={
               {
                 "alignItems": "center",
-                "backgroundColor": "rgba(231,236,239,1.00)",
+                "backgroundColor": "var(--ad-Grey300)",
                 "borderBottomLeftRadius": "12px",
                 "borderBottomRightRadius": "12px",
                 "borderTopLeftRadius": "12px",
@@ -154,7 +154,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
                 dir={null}
                 style={
                   {
-                    "color": "rgba(138,148,166,1.00)",
+                    "color": "var(--ad-Text03)",
                     "fontFamily": "Roboto-Medium",
                     "fontSize": "14px",
                     "letterSpacing": "0.16px",

@@ -12,6 +12,8 @@ import { setSelectedNavItem } from '../../../redux/actions'
 import { DV_TAB_PROJECT_PROPERTIES } from '../../../utils/TabNavigationConstants'
 import Icon from '../../Icon'
 
+import { themed } from '../../../Themes/colorMode'
+
 const ProjectItem = ({ project, isDragging, activeDragMode }) => {
     const dispatch = useDispatch()
 
@@ -29,7 +31,7 @@ const ProjectItem = ({ project, isDragging, activeDragMode }) => {
         <View
             style={[
                 localStyles.container,
-                { borderRadius: 4, backgroundColor: '#ffffff' },
+                { borderRadius: 4, backgroundColor: themed.Surface },
                 isDragging && {
                     boxShadow: `${0}px ${8}px ${16}px rgba(0,0,0,0.04), ${0}px ${4}px ${8}px rgba(0,0,0,0.04)`,
                 },

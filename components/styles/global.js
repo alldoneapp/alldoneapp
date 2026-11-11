@@ -1,5 +1,6 @@
 import { Dimensions } from 'react-native'
 import MyPlatform from '../MyPlatform'
+import { alphaColor, themed } from '../../Themes/colorMode'
 
 export const em2px = em => {
     const base = 1 / 16
@@ -15,6 +16,8 @@ export const em2px = em => {
  * @returns {string}
  */
 export const hexColorToRGBa = (hexColor, alpha) => {
+    // Light/dark palette tokens (`var(--ad-…)`) get their own alpha variable per mode.
+    if (typeof hexColor === 'string' && hexColor.startsWith('var(')) return alphaColor(hexColor, alpha || 1)
     hexColor = hexColor.replace('#', '')
     let r = parseInt(hexColor.length === 3 ? hexColor.slice(0, 1).repeat(2) : hexColor.slice(0, 2), 16)
     let g = parseInt(hexColor.length === 3 ? hexColor.slice(1, 2).repeat(2) : hexColor.slice(2, 4), 16)
@@ -34,94 +37,101 @@ export const windowTagStyle = () => {
 }
 
 export const sideMenuLabelColor = 'rgb(108,143,201)'
-export const tasksViewLabelColor = '#8A94A6'
+export const tasksViewLabelColor = themed.Text03
 
 export const colors = {
+    // Values marked themed.* are CSS variables that switch between the light and dark palette
+    // (Themes/colorMode.js). The rest are accents that read well in both modes.
+    Surface: themed.Surface,
+    SurfaceRaised: themed.SurfaceRaised,
+    AppBackground: themed.AppBackground,
+    Backdrop: themed.Backdrop,
+    Shadow: themed.Shadow,
     funnyWhite: hexColorToRGBa('#FFFFFF', 0.2),
 
-    UtilityRed100: '#FFEBEB',
-    UtilityRed112: '#FFD6D6',
-    UtilityRed125: '#FFC7C7',
-    UtilityRed150: '#FFA3A3',
+    UtilityRed100: themed.UtilityRed100,
+    UtilityRed112: themed.UtilityRed112,
+    UtilityRed125: themed.UtilityRed125,
+    UtilityRed150: themed.UtilityRed150,
     UtilityRed200: '#E00000',
     UtilityRed300: '#BD0303',
 
-    UtilityBlue100: '#EBF5FF',
-    UtilityBlue112: '#D6EBFF',
-    UtilityBlue125: '#C7E3FF',
-    UtilityBlue150: '#A3D1FF',
+    UtilityBlue100: themed.UtilityBlue100,
+    UtilityBlue112: themed.UtilityBlue112,
+    UtilityBlue125: themed.UtilityBlue125,
+    UtilityBlue150: themed.UtilityBlue150,
     UtilityBlue200: '#5AACFF',
     UtilityBlue300: '#0070E0',
 
-    UtilityDarkBlue125: '#D6E3FF',
+    UtilityDarkBlue125: themed.UtilityDarkBlue125,
     UtilityDarkBlue300: '#0055FF',
 
-    UtilityGreen100: '#EAFFF8',
-    UtilityGreen112: '#C7F5E5',
-    UtilityGreen125: '#ADF0D9',
-    UtilityGreen150: '#7BEAC5',
+    UtilityGreen100: themed.UtilityGreen100,
+    UtilityGreen112: themed.UtilityGreen112,
+    UtilityGreen125: themed.UtilityGreen125,
+    UtilityGreen150: themed.UtilityGreen150,
     UtilityGreen200: '#00C282',
     UtilityGreen300: '#07A873',
 
-    UtilityYellow100: '#FFF6EB',
-    UtilityYellow112: '#FFEDD6',
-    UtilityYellow125: '#FFE6C7',
-    UtilityYellow150: '#FFCE8F',
+    UtilityYellow100: themed.UtilityYellow100,
+    UtilityYellow112: themed.UtilityYellow112,
+    UtilityYellow125: themed.UtilityYellow125,
+    UtilityYellow150: themed.UtilityYellow150,
     UtilityYellow200: '#FFAE47',
     UtilityYellow300: '#F58E0A',
 
-    UtilityLime100: '#F0F3CE',
-    UtilityLime112: '#EAF0AF',
-    UtilityLime125: '#E0EA80',
-    UtilityLime150: '#CCDA49',
+    UtilityLime100: themed.UtilityLime100,
+    UtilityLime112: themed.UtilityLime112,
+    UtilityLime125: themed.UtilityLime125,
+    UtilityLime150: themed.UtilityLime150,
     UtilityLime200: '#B5C200',
     UtilityLime300: '#A8A700',
 
-    UtilityOrange100: '#FFE8E0',
-    UtilityOrange112: '#FFE0D6',
-    UtilityOrange125: '#FFD4C7',
-    UtilityOrange150: '#FFB59E',
+    UtilityOrange100: themed.UtilityOrange100,
+    UtilityOrange112: themed.UtilityOrange112,
+    UtilityOrange125: themed.UtilityOrange125,
+    UtilityOrange150: themed.UtilityOrange150,
     UtilityOrange200: '#FF7043',
     UtilityOrange300: '#E64A19',
     UtilityOrange400: '#FFC887',
 
-    UtilityViolet100: '#ECE0FF',
-    UtilityViolet112: '#E5D6FF',
-    UtilityViolet125: '#DBC7FF',
+    UtilityViolet100: themed.UtilityViolet100,
+    UtilityViolet112: themed.UtilityViolet112,
+    UtilityViolet125: themed.UtilityViolet125,
     UtilityViolet150: '#A16BFF',
     UtilityViolet200: '#8743FF',
     UtilityViolet300: '#702EE6',
 
-    Green125: '#ADF0D9',
+    Green125: themed.UtilityGreen125,
     Green300: '#07A873',
     Green400: '#057651',
     Yellow300: '#F58E0A',
     Yellow400: '#A66007',
-    Yellow112: '#FFEDD6',
-    Yellow125: '#FFE6C7',
-    Violet125: '#DBC7FF',
+    Yellow112: themed.UtilityYellow112,
+    Yellow125: themed.UtilityYellow125,
+    Violet125: themed.UtilityViolet125,
     Violet150: '#A16BFF',
     Violet300: '#702EE6',
-    Grey100: '#FAFBFB',
-    Grey200: '#F1F3F4',
-    Grey300: '#E7ECEF',
-    Grey400: '#C6CDD2',
-    Grey500: '#F7F7F7',
+    Grey100: themed.Grey100,
+    Grey200: themed.Grey200,
+    Grey300: themed.Grey300,
+    Grey400: themed.Grey400,
+    Grey500: themed.Grey500Bg,
     Red200: '#E00000',
-    Text01: '#04142F',
-    Text02: '#4E5D78',
-    Text03: '#8A94A6',
-    Text04: '#B7BDC8',
-    Gray200: '#F1F3F4',
-    Gray300: '#E7ECEF',
-    Gray400: '#C6CDD2',
-    Gray500: '#718592',
+    Text01: themed.Text01,
+    Text02: themed.Text02,
+    Text03: themed.Text03,
+    Text04: themed.Text04,
+    Gray200: themed.Grey200,
+    Gray300: themed.Grey300,
+    Gray400: themed.Grey400,
+    Gray500: themed.Gray500,
     Secondary100: '#4F66BA',
     Secondary200: '#1A3289',
     Secondary250: '#172C78',
     Secondary300: '#152560',
     Secondary400: '#091540',
-    SecondaryButton: '#EAF0F5',
+    SecondaryButton: themed.SecondaryButton,
     Primary100: '#007FFF',
     Primary200: '#0C66FF',
     Primary300: '#0D55CF',
@@ -137,7 +147,7 @@ export const colors = {
     ProjectColor800: '#45AFFC',
     ProjectColor900: '#B4E44E',
     ProjectColor1000: '#E06EFD',
-    UtilityBlue: '#EBF5FF',
+    UtilityBlue: themed.UtilityBlue100,
 }
 
 export const collabColors = [
@@ -255,25 +265,25 @@ const styles = {
         fontFamily: 'Roboto-Regular',
         fontSize: 56,
         lineHeight: 64,
-        color: '#04142F',
+        color: colors.Text01,
     },
     title2: {
         fontFamily: 'Roboto-Medium',
         fontSize: 40,
         lineHeight: 48,
-        color: '#04142F',
+        color: colors.Text01,
     },
     title3: {
         fontFamily: 'Roboto-Medium',
         fontSize: 32,
         lineHeight: 40,
-        color: '#04142F',
+        color: colors.Text01,
     },
     title4: {
         fontFamily: 'Roboto-Medium',
         fontSize: 24,
         lineHeight: 32,
-        color: '#04142F',
+        color: colors.Text01,
     },
     title5: {
         fontFamily: 'Roboto-Regular',
@@ -284,13 +294,13 @@ const styles = {
         fontFamily: 'Roboto-Medium',
         fontSize: 20,
         lineHeight: 28,
-        color: '#04142F',
+        color: colors.Text01,
     },
     title7: {
         fontFamily: 'Roboto-Medium',
         fontSize: 18,
         lineHeight: 26,
-        color: '#04142F',
+        color: colors.Text01,
     },
     subtitle1: {
         fontFamily: 'Roboto-Medium',
@@ -303,49 +313,49 @@ const styles = {
         fontSize: 14,
         lineHeight: 22,
         letterSpacing: em2px(0.01),
-        color: '#04142F',
+        color: colors.Text01,
     },
     body1: {
         fontFamily: 'Roboto-Regular',
         fontSize: 16,
         lineHeight: 24,
         letterSpacing: em2px(0.02),
-        color: '#04142F',
+        color: colors.Text01,
     },
     body2: {
         fontFamily: 'Roboto-Regular',
         fontSize: 14,
         lineHeight: 22,
         letterSpacing: em2px(0.02),
-        color: '#04142F',
+        color: colors.Text01,
     },
     body3: {
         fontFamily: 'Roboto-Regular',
         fontSize: 11,
         lineHeight: 20,
         letterSpacing: em2px(0.03),
-        color: '#8A94A6',
+        color: colors.Text03,
     },
     caption1: {
         fontFamily: 'Roboto-Medium',
         fontSize: 12,
         lineHeight: 20,
         letterSpacing: em2px(0.03),
-        color: '#04142F',
+        color: colors.Text01,
     },
     caption2: {
         fontFamily: 'Roboto-Regular',
         fontSize: 12,
         lineHeight: 20,
         letterSpacing: em2px(0.03),
-        color: '#04142F',
+        color: colors.Text01,
     },
     overline: {
         fontFamily: 'Roboto-Regular',
         fontSize: 11,
         lineHeight: 20,
         letterSpacing: 1.5,
-        color: '#04142F',
+        color: colors.Text01,
     },
     overlineNormal: {
         fontFamily: 'Roboto-Regular',
@@ -360,7 +370,7 @@ const styles = {
         fontSize: 14,
         lineHeight: 14,
         letterSpacing: em2px(0.05),
-        color: '#04142F',
+        color: colors.Text01,
     },
     buttonLabel: {
         fontFamily: 'Roboto-Medium',
@@ -373,7 +383,7 @@ const styles = {
         fontFamily: 'Roboto-Medium',
         fontSize: 24,
         lineHeight: 32,
-        color: '#04142F',
+        color: colors.Text01,
     },
     inactiveWhite: {
         color: 'white',
@@ -383,10 +393,10 @@ const styles = {
         color: 'white',
     },
     inactiveGray: {
-        color: '#C6CDD2',
+        color: themed.Grey400,
     },
     inactiveGray2: {
-        color: '#8A94A6',
+        color: colors.Text03,
     },
     impressumText: {
         fontFamily: 'Roboto-Regular',

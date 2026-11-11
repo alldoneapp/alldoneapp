@@ -140,7 +140,7 @@ describe('SuggestedGoalTag popup', () => {
 
         const reason = tree.root.findAllByType(Text).find(node => node.props.children === mockLongReason)
         expect(reason.props.numberOfLines).toBe(5)
-        expect(StyleSheet.flatten(reason.props.style).color).toBe('#B7BDC8')
+        expect(StyleSheet.flatten(reason.props.style).color).toBe('var(--ad-Text04)')
 
         const chooseAnotherAction = tree.root.findAllByProps({ title: 'Choose another' })[0]
         expect(StyleSheet.flatten(chooseAnotherAction.props.buttonStyle).marginBottom).toBe(4)

@@ -14,6 +14,8 @@ import { getNewDefaultAssistant, openAssistantDv } from './assistantsHelper'
 import { uploadNewAssistant } from '../../../utils/backends/Assistants/assistantsFirestore'
 import useSingleFlightSubmit from '../../../hooks/useSingleFlightSubmit'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function EditAssistant({ projectId, adding, assistant, onCancelAction }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
@@ -121,7 +123,7 @@ export default function EditAssistant({ projectId, adding, assistant, onCancelAc
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: colors.Grey200,

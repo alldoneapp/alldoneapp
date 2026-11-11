@@ -6,11 +6,11 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
   dir={null}
 >
   <div
-    className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1v0ekwd r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
+    className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1ds0fg2 r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
+      className="css-view-g5y9jx r-backgroundColor-wodtp1 r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
       dir={null}
       style={
         {
@@ -66,7 +66,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
           dir={null}
         >
           <div
-            className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-j2kj52"
+            className="css-text-146c3p1 r-alignItems-1awozwy r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-j2kj52"
             dir="auto"
           >
             Pending
@@ -91,7 +91,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
           dir={null}
         >
           <div
-            className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-j2kj52"
+            className="css-text-146c3p1 r-alignItems-1awozwy r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-j2kj52"
             dir="auto"
           >
             Done

@@ -147,6 +147,27 @@
                 }
             }
         </script>
+        <!-- Light/dark mode before the first paint (Themes/colorMode.js owns it after boot).
+             Preference: localStorage "alldone.colorMode" = auto | light | dark; auto follows
+             the device (browser, iOS app and Android app all report prefers-color-scheme). -->
+        <script>
+            ;(function () {
+                try {
+                    var pref = localStorage.getItem('alldone.colorMode')
+                    var dark =
+                        pref === 'dark' ||
+                        (pref !== 'light' &&
+                            window.matchMedia &&
+                            window.matchMedia('(prefers-color-scheme: dark)').matches)
+                    var mode = dark ? 'dark' : 'light'
+                    document.documentElement.setAttribute('data-theme', mode)
+                    if (dark) {
+                        var meta = document.querySelector('meta[name="theme-color"]')
+                        if (meta) meta.setAttribute('content', '#10141B')
+                    }
+                } catch (e) {}
+            })()
+        </script>
         <script src="/service-worker-handler.js"></script>
         <title>Alldone.app</title>
         <style>
@@ -261,12 +282,23 @@
                 box-shadow: 0px 4px 16px rgba(78, 93, 120, 0.56);
             }
 
-            /* Enable for apps that support dark-theme */
-            /*@media (prefers-color-scheme: dark) {
-        body {
-          background-color: black;
-        }
-      }*/
+            /* Dark mode (Themes/colorMode.js sets data-theme on <html>; the boot script above
+               sets it before the first paint). The app paints its own surfaces; this only covers
+               the shell behind them and the moments before React mounts. */
+            html[data-theme='dark'],
+            html[data-theme='dark'] body,
+            html[data-theme='dark'] #root {
+                background-color: #10141b;
+                color: #e6eaf1;
+            }
+
+            html[data-theme='dark'] {
+                color-scheme: dark;
+            }
+
+            html[data-theme='dark'] .react-tiny-popover-container {
+                box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.6);
+            }
         </style>
     </head>
 

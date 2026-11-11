@@ -109,7 +109,7 @@ describe('ChatsButton', () => {
         mockRoute = 'ROOT_CHATS'
         const component = renderer.create(<ChatsButton color={'black'} />)
         expect(component.root.findByType('Icon').props.color).toBe('#007FFF')
-        expect(background(component)).toBe('#E2EFFF')
+        expect(background(component)).toBe('var(--ad-hl-E2EFFF)')
 
         mockRoute = 'ROOT_UPDATES'
         act(() => component.update(<ChatsButton color={'black'} />))

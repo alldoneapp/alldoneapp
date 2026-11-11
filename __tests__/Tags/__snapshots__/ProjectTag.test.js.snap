@@ -15,7 +15,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
   tabIndex="0"
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-18c69zk r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1ds0fg2 r-borderRadius-18c69zk r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
     dir={null}
     style={
       {
@@ -38,7 +38,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
       }
     />
     <div
-      className="css-text-146c3p1 r-color-hiecfz r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
+      className="css-text-146c3p1 r-color-1phcoeb r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
       dir="auto"
       style={
         {

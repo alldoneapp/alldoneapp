@@ -30,6 +30,8 @@ import { GLOBAL_PROJECT_ID } from './Assistants/assistantsHelper'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
+import { themed } from '../../Themes/colorMode'
+
 export default function AdminPanelView({ navigation }) {
     const dispatch = useDispatch()
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -108,7 +110,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     backButtonContainer: {
         position: 'absolute',
@@ -119,7 +121,7 @@ const localStyles = StyleSheet.create({
     scrollPanel: {
         flex: 1,
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         paddingHorizontal: 104,
     },
     scrollPanelMobile: {
@@ -130,7 +132,7 @@ const localStyles = StyleSheet.create({
     },
     scrollContainer: {
         flexDirection: 'column',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
         flex: 1,
     },
     navigationBar: {

@@ -15,6 +15,8 @@ import {
 } from '../../AdminPanel/AssistantSkills/assistantSkillsHelper'
 import TaskPriorityLearningOverlayModal from '../../UIComponents/FloatModals/TaskPriorityLearningOverlayModal/TaskPriorityLearningOverlayModal'
 
+import { themed } from '../../../Themes/colorMode'
+
 export default function SettingsSkills() {
     const [skills, setSkills] = useState([])
     const [loading, setLoading] = useState(true)
@@ -212,7 +214,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         padding: 16,
         marginBottom: 12,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
     },
     skillTopRow: {
         flexDirection: 'row',

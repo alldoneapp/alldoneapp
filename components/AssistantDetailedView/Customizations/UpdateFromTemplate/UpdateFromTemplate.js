@@ -9,6 +9,8 @@ import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assis
 import { getAssistantTemplateReviewLabelKey } from './templateReview'
 import { formatTemplateConflictField } from './templateConflictFields'
 
+import { themed } from '../../../../Themes/colorMode'
+
 // Re-exported so the existing importers (and UpdateFromTemplate.test.js) keep
 // their entry point after the formatter moved to a Firestore-free module.
 export { formatTemplateConflictField }
@@ -132,7 +134,7 @@ const localStyles = StyleSheet.create({
     status: { ...styles.caption1, color: colors.Text02, marginTop: 2 },
     reviewCount: { ...styles.subtitle2, color: colors.UtilityYellow300 },
     conflict: {
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,

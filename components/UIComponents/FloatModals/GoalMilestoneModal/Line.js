@@ -2,6 +2,8 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { colors } from '../../../styles/global'
 
+import { themed } from '../../../../Themes/colorMode'
+
 export default function Line({ style }) {
     return <View style={[localStyles.line, style]} />
 }
@@ -9,7 +11,7 @@ export default function Line({ style }) {
 const localStyles = StyleSheet.create({
     line: {
         height: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 8,
         marginHorizontal: -16,

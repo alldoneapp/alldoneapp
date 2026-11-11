@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -12,12 +12,21 @@ import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer
 import GoldAnimationsContainer from './GoldAnimationsContainer'
 import { useTranslator } from '../../i18n/TranslationService'
 
+import { setColorModePreference, themed } from '../../Themes/colorMode'
+
 export default function RootView({ navigation }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     useTranslator()
+
+    // The appearance chosen in settings follows the user to every device. Until they choose,
+    // the device's own preference (default: auto, i.e. the OS light/dark setting) stays.
+    const userColorMode = useSelector(state => state.loggedUser.colorMode)
+    useEffect(() => {
+        if (userColorMode) setColorModePreference(userColorMode)
+    }, [userColorMode])
 
     const onLayout = ({ nativeEvent }) => {
         dispatch(setScreenDimensions(nativeEvent.layout))
@@ -47,7 +56,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     subContainer: {
         flex: 1,

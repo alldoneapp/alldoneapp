@@ -14,6 +14,8 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import useWindowSize from '../../../utils/useWindowSize'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
+import { themed } from '../../../Themes/colorMode'
+
 const items = [
     { key: 'One per Day', value: '1', shortcut: 'Alt + 1' },
     { key: 'Three per day', value: '3', shortcut: 'Alt + 2' },
@@ -141,7 +143,7 @@ const localStyles = StyleSheet.create({
     sectionSeparator: {
         height: 1,
         width: '100%',
-        backgroundColor: '#ffffff',
+        backgroundColor: themed.Surface,
         opacity: 0.2,
         marginVertical: 16,
     },

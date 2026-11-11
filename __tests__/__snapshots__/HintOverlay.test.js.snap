@@ -2,7 +2,7 @@
 
 exports[`HintOverlay component HintOverlay snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-tbmifm r-justifyContent-1777fci r-width-16eto9q"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nl0xfs r-borderRadius-18c69zk r-height-tbmifm r-justifyContent-1777fci r-width-16eto9q"
   dir={null}
 >
   <div

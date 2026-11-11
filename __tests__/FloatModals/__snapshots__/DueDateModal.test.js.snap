@@ -50,7 +50,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               Select reminder
             </div>
             <div
-              className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
+              className="css-text-146c3p1 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
               dir="auto"
             >
               Select the date to postpone the task
@@ -87,7 +87,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   dir="auto"
                   style={
                     {
-                      "color": "rgba(138,148,166,1.00)",
+                      "color": "var(--ad-Text03)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",
                       "opacity": 1,
@@ -194,7 +194,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -203,7 +203,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             1
@@ -255,7 +255,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         Tomorrow
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -277,7 +277,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -286,7 +286,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             2
@@ -338,7 +338,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         This next Saturday
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -360,7 +360,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -369,7 +369,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             3
@@ -421,7 +421,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         This next Monday
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -443,7 +443,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -452,7 +452,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             4
@@ -465,7 +465,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               </div>
             </div>
             <div
-              className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
+              className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
               dir={null}
             />
             <div
@@ -513,7 +513,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         In 2 days
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -535,7 +535,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -544,7 +544,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             5
@@ -596,7 +596,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         In 4 days
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -618,7 +618,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -627,7 +627,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             6
@@ -679,7 +679,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         In 7 days
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -701,7 +701,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -710,7 +710,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             7
@@ -762,7 +762,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         In 30 days
                          
                         <span
-                          className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                           dir={null}
                         >
                            • 
@@ -784,7 +784,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                           dir={null}
                           style={
                             {
@@ -793,7 +793,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         >
                           <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
                             8
@@ -806,7 +806,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               </div>
             </div>
             <div
-              className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
+              className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
               dir={null}
             />
             <div
@@ -859,11 +859,11 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           9
@@ -876,7 +876,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
             </div>
           </div>
           <div
-            className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
+            className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
             dir={null}
           />
           <div
@@ -924,7 +924,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       Last selected
                        
                       <span
-                        className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                        className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                         dir={null}
                       >
                          • 
@@ -946,7 +946,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       }
                     >
                       <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                         style={
                           {
@@ -955,7 +955,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         }
                       >
                         <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
                           C
@@ -1017,7 +1017,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     dir="auto"
                     style={
                       {
-                        "color": "rgba(138,148,166,1.00)",
+                        "color": "var(--ad-Text03)",
                         "fontFamily": "Roboto-Regular",
                         "fontSize": "16px",
                         "letterSpacing": "0.32px",
@@ -1030,11 +1030,11 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <span
-                          className="css-textHasAncestor-1jxf684 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-textHasAncestor-1jxf684 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir={null}
                         >
                           D
@@ -1082,7 +1082,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     Auto-postpone
                      
                     <span
-                      className="css-textHasAncestor-1jxf684 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
+                      className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
                       dir={null}
                     >
                        • 
@@ -1104,7 +1104,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     dir="auto"
                     style={
                       {
-                        "color": "rgba(138,148,166,1.00)",
+                        "color": "var(--ad-Text03)",
                         "fontFamily": "Roboto-Regular",
                         "fontSize": "16px",
                         "letterSpacing": "0.32px",
@@ -1117,11 +1117,11 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       dir={null}
                     >
                       <div
-                        className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
+                        className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
                         dir={null}
                       >
                         <span
-                          className="css-textHasAncestor-1jxf684 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
+                          className="css-textHasAncestor-1jxf684 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir={null}
                         >
                           A

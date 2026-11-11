@@ -16,11 +16,11 @@ exports[`Badge component Badge snapshot test should render correctly for a blue 
 
 exports[`Badge component Badge snapshot test should render correctly for a grey badge 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1ds0fg2"
   dir={null}
 >
   <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
+    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-1phcoeb"
     dir="auto"
   >
     5
@@ -30,11 +30,11 @@ exports[`Badge component Badge snapshot test should render correctly for a grey 
 
 exports[`Badge component Badge snapshot test should render correctly passing number 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1ds0fg2"
   dir={null}
 >
   <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
+    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-1phcoeb"
     dir="auto"
   >
     5
@@ -44,11 +44,11 @@ exports[`Badge component Badge snapshot test should render correctly passing num
 
 exports[`Badge component Badge snapshot test should render correctly passing text 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1ds0fg2"
   dir={null}
 >
   <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
+    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-1phcoeb"
     dir="auto"
   >
     2

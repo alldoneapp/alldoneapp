@@ -12,6 +12,8 @@ import dom from 'react-dom'
 import { NAVBAR_ITEM_MAP } from '../../utils/TabNavigationConstants'
 import { resolveTabBadgeAmount } from './tabBadges'
 
+import { themed } from '../../Themes/colorMode'
+
 const finalHeight = 56
 export default class NavigationBar extends Component {
     _isMounted = false
@@ -401,7 +403,7 @@ export default class NavigationBar extends Component {
 
 const localStyles = StyleSheet.create({
     container: {
-        // backgroundColor: 'white',
+        // backgroundColor: themed.Surface,
         flexDirection: 'row',
         borderBottomColor: colors.Primary400,
         borderBottomWidth: 1,
@@ -423,7 +425,7 @@ const localStyles = StyleSheet.create({
         alignSelf: 'flex-end',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: themed.Surface,
     },
     scrollArrowDisabled: {
         opacity: 0.4,
