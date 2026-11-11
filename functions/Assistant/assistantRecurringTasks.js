@@ -31,7 +31,6 @@ const {
     normalizeTimezoneOffset,
 } = require('./timezoneResolver')
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
-const { SCHEDULED_MAX_RESEARCH_CALLS } = require('./assistantResearchGuard')
 const {
     TASK_EXECUTION_MODE_DIRECT,
     TASK_EXECUTION_MODE_WORKFLOW,
@@ -1025,9 +1024,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 // the tool as missing, spends the Gold and is marked done. Send every
                 // schema up front and trade the prompt-size saving for determinism.
                 disableToolSearch: true,
-                // The 16-call chat research budget assumes someone can say "keep going"; nobody
-                // can here, so a research-heavy schedule stopped with tentative findings.
-                maxResearchCalls: SCHEDULED_MAX_RESEARCH_CALLS,
                 resumeScheduledWorkflow: scheduledAttempt?.resume === true,
             }
         )

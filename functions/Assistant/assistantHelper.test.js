@@ -1449,11 +1449,12 @@ describe('Responses API compatibility helpers', () => {
     test('keeps action tools on the final reply so capped research can still save the result', async () => {
         // 2026-11-11: a scheduled user description update read 17 times, hit the research limit and
         // ended with no tools, so update_user_description could not be called.
+        const { MAX_RESEARCH_CALLS } = require('./assistantResearchGuard')
         const prompt = [
             ['system', 'Keep original instructions'],
             ['user', 'Update my global user description from my recent work'],
         ]
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < MAX_RESEARCH_CALLS; i++) {
             prompt.push(
                 {
                     role: 'assistant',

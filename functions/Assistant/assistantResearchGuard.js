@@ -22,13 +22,11 @@ const RESEARCH_TOOLS = new Set([
     'web_search',
     'fetch_url',
 ])
-const MAX_RESEARCH_CALLS = 16
-// A scheduled assistant task runs unattended: nobody can answer "keep going" when the 16-call chat
-// budget runs out, so it stops with tentative findings and still costs the Gold. The Growth Lead's
-// daily discovery (2026-11-11) needs a search, a source and a date check per prospect and ended at
-// 0 of 6. Its own 25-minute wall clock (assistantRunLimits.js) still bounds the run.
-const SCHEDULED_MAX_RESEARCH_CALLS = 48
-const RESEARCH_CALL_LIMIT_CEILING = 100
+// One budget for every run. It was 16, which suited a chat where the user can say "keep going" but
+// stopped unattended runs half-way: the Growth Lead's scheduled discovery (2026-11-11) used it up on
+// the playbook, the contacts and a few web searches and ended at 0 of 6 prospects. Each run is still
+// bounded by its wall clock (assistantRunLimits.js), and a successful write resets the count.
+const MAX_RESEARCH_CALLS = 48
 const MAX_STALLED_SEARCHES = 4
 const CONTEXT_BYTE_LIMIT = 100000
 // The final reply may still carry out what the user asked for: a run told to research and then save
@@ -170,13 +168,7 @@ function collectSourceRecords(value, records = []) {
     return records
 }
 
-function resolveMaxResearchCalls(value) {
-    const limit = Number(value)
-    return Number.isInteger(limit) && limit > 0 ? Math.min(limit, RESEARCH_CALL_LIMIT_CEILING) : MAX_RESEARCH_CALLS
-}
-
-function createResearchGuard({ maxResearchCalls = MAX_RESEARCH_CALLS } = {}) {
-    const callLimit = resolveMaxResearchCalls(maxResearchCalls)
+function createResearchGuard() {
     const calls = new Set()
     const evidence = new Set()
     const sources = new Map()
@@ -187,10 +179,10 @@ function createResearchGuard({ maxResearchCalls = MAX_RESEARCH_CALLS } = {}) {
             if (!RESEARCH_TOOLS.has(toolName)) return null
             const key = `${toolName}:${fingerprint(args)}`
             if (calls.has(key)) return 'duplicate_research_call'
-            if (researchCalls >= callLimit) return 'research_call_limit'
+            if (researchCalls >= MAX_RESEARCH_CALLS) return 'research_call_limit'
             calls.add(key)
             researchCalls++
-            return researchCalls >= callLimit ? 'research_call_limit' : null
+            return researchCalls >= MAX_RESEARCH_CALLS ? 'research_call_limit' : null
         },
         recordResult(toolName, result) {
             collectSourceRecords(result).forEach(record => sources.set(record.url, record))
@@ -245,11 +237,9 @@ function isWorkflowProgress(toolName, result) {
 
 // All channel-specific loops pass their tool history through interactWithChatStream.
 // Deriving state from that history also keeps concurrent runs isolated without runtime globals.
-// options.maxResearchCalls raises the call budget for unattended runs (SCHEDULED_MAX_RESEARCH_CALLS);
-// anything that is not a positive integer keeps the chat default.
-function prepareResearchRequest(conversation, { maxResearchCalls } = {}) {
+function prepareResearchRequest(conversation) {
     if (!Array.isArray(conversation)) return { messages: conversation, stopReason: null, fallback: () => '' }
-    const guard = createResearchGuard({ maxResearchCalls })
+    const guard = createResearchGuard()
     const callsById = new Map()
     let stopReason = null
     for (const entry of conversation) {
@@ -289,6 +279,5 @@ module.exports = {
     FINAL_REPLY_INSTRUCTION,
     toolsForFinalReply,
     MAX_RESEARCH_CALLS,
-    SCHEDULED_MAX_RESEARCH_CALLS,
     MAX_STALLED_SEARCHES,
 }
