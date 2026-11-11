@@ -177,3 +177,19 @@ describe('popup palette scope', () => {
         })
     })
 })
+
+describe('modeColor', () => {
+    it('returns one var per light/dark pair, light in light mode and popups, dark in dark mode', () => {
+        const { modeColor, LIGHT_PALETTE, DARK_PALETTE } = require('./colorMode')
+        const value = modeColor('#FFFFFF', 'transparent')
+        expect(value).toMatch(/^var\(--ad-mc-\d+\)$/)
+        expect(modeColor('#FFFFFF', 'transparent')).toBe(value)
+        const name = value.slice(4, -1)
+        const css = document.getElementById('alldone-color-mode-alpha').textContent
+        expect(css).toContain(`:root{${name}:#FFFFFF;}`)
+        expect(css).toContain(`:root[data-theme="dark"]{${name}:transparent;}`)
+        expect(css).toContain(`[data-ad-popup]{${name}:#FFFFFF;}`)
+        expect(LIGHT_PALETTE.AccentText).toBe('#0D55CF')
+        expect(DARK_PALETTE.AccentText).not.toBe(LIGHT_PALETTE.AccentText)
+    })
+})

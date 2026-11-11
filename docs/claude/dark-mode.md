@@ -57,6 +57,9 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
   `.react-tiny-popover-container` and `[data-ad-popup]` (the bottom sheet sets
   `dataSet={{ adPopup: 'true' }}`). A new popup surface outside those two needs that dataSet.
   Consequence: a popup whose root is `colors.Surface` stays white in dark mode.
+- Blue text on a blue tint (milestone date chips) uses `themed.AccentText`, not `Primary300`,
+  which is too dark on the dark tint. For a runtime pair with no token (a project's own colour),
+  `modeColor(lightValue, darkValue)` returns one `var()` that flips with the mode.
 - Never derive a background from a text token (`hexColorToRGBa(colors.Text01, …)`): `Text01`
   is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`
   and `themed.SnackbarShadow`.

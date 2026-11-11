@@ -113,6 +113,8 @@ const LIGHT_BASE = {
     // dark mode the same raised card as popups, never the near-white of Text01.
     Snackbar: 'rgba(4, 20, 47, 0.8)',
     SnackbarShadow: '0px 4px 8px rgba(0,0,0,0.20)',
+    // Blue text on a blue tint (milestone date chips). Primary300 is too dark on the dark tint.
+    AccentText: '#0D55CF',
     // Popups (FloatModals, sheets, the add-task card) and the Undo bar: navy on the light page.
     // In dark mode one raised neutral card with a hairline ring, a recessed input field and grey
     // controls, so the only blue left is the focus and the primary action.
@@ -152,6 +154,7 @@ const DARK_BASE = {
     Shadow: 'rgba(0, 0, 0, 0.6)',
     Snackbar: '#1C2230',
     SnackbarShadow: '0px 0px 0px 1px rgba(255,255,255,0.08), 0px 8px 24px rgba(0,0,0,0.55)',
+    AccentText: '#6EA8FF',
     Popup: '#1C2230',
     PopupRaised: '#252C3A',
     PopupControl: '#2C3546',
@@ -423,6 +426,20 @@ const registeredAdaptiveVars = new Set()
  * A light background color (pastel or white) that becomes a dark tint of the same hue in dark
  * mode. Use it for hardcoded light backgrounds that have no palette token.
  */
+// A one-off pair: `modeColor(lightValue, darkValue)` is a `var()` holding the light value in light
+// mode (and inside popups) and the dark value in dark mode. For colours computed at runtime, such as
+// a project's own colour, where no palette token fits.
+const registeredModeVars = new Map()
+export const modeColor = (lightValue, darkValue) => {
+    const key = `${lightValue}|${darkValue}`
+    if (!registeredModeVars.has(key)) {
+        const varName = `${VAR_PREFIX}mc-${registeredModeVars.size}`
+        registeredModeVars.set(key, varName)
+        appendDynamicVar(varName, lightValue, darkValue)
+    }
+    return `var(${registeredModeVars.get(key)})`
+}
+
 export const adaptiveColor = hex => {
     if (typeof hex !== 'string' || !/^#([0-9A-Fa-f]{3}){1,2}$/.test(hex.trim())) return hex
     const full = toHex(parseHex(hex.trim())).slice(1)

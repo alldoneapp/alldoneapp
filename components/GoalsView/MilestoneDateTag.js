@@ -3,6 +3,7 @@ import moment from 'moment'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
+import { themed } from '../../Themes/colorMode'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 
@@ -23,7 +24,7 @@ export default function MilestoneDateTag({ date, inDetailedView, style, onMilest
             <Icon
                 name="milestone-2"
                 size={inDetailedView ? 16 : 18}
-                color={isOverdue ? colors.UtilityRed200 : colors.Primary300}
+                color={isOverdue ? colors.UtilityRed200 : themed.AccentText}
             />
             <Text
                 style={[
@@ -65,12 +66,12 @@ const localStyles = StyleSheet.create({
     },
     date: {
         ...styles.subtitle1,
-        color: colors.Primary300,
+        color: themed.AccentText,
         marginLeft: 6,
     },
     dateDetailedView: {
         ...styles.subtitle2,
-        color: colors.Primary300,
+        color: themed.AccentText,
         marginLeft: 4,
     },
     dateOverdue: {
