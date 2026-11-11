@@ -20,6 +20,7 @@ import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 import useCreateTaskPopupWidth from '../RichCreateTaskModal/createTaskPopupWidth'
 import useTaskEditorLock from '../../../../hooks/useTaskEditorLock'
+import { themed } from '../../../../Themes/colorMode'
 
 class ManageTaskModal extends Component {
     constructor(props) {
@@ -204,7 +205,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
 })

@@ -37,6 +37,7 @@ import {
     moveSuggestedTaskToDoneBypassingWorkflow,
 } from './suggestedTaskBypass'
 import { completeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
+import { themed } from '../../Themes/colorMode'
 
 export default class SuggestedModal extends Component {
     constructor(props) {
@@ -510,7 +511,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     heading: {

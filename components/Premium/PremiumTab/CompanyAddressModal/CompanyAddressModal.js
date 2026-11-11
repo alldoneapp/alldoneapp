@@ -10,6 +10,7 @@ import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
 import CompanyData from '../CompanyInfoModal/CompanyData'
 import { updateCompanyDataInSubscription } from '../../../../utils/backends/Premium/premiumFirestore'
 import Backend from '../../../../utils/BackendBridge'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function CompanyAddressModal({
     usePersistentSave,
@@ -67,7 +68,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     line: {

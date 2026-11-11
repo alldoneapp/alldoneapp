@@ -14,6 +14,7 @@ import { updateAssistant } from '../../../../utils/backends/Assistants/assistant
 import { startMcpOAuthFlow } from '../../../../utils/Mcp/mcpOAuth'
 import useModalSizing from '../../../../hooks/useModalSizing'
 import { isManagedMcpServer } from '../../../../functions/Assistants/managedMcpServers'
+import { themed } from '../../../../Themes/colorMode'
 
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MODAL_HORIZONTAL_MARGIN = 32
@@ -402,7 +403,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     emptyText: {

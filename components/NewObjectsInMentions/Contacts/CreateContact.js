@@ -31,6 +31,7 @@ import {
 import { DV_TAB_CONTACT_PROPERTIES } from '../../../utils/TabNavigationConstants'
 import { addContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import { themed } from '../../../Themes/colorMode'
 
 export default function CreateContact({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const [sendingData, setSendingData] = useState(false)
@@ -192,7 +193,8 @@ export default function CreateContact({ projectId, containerStyle, selectItemToM
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -205,7 +207,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

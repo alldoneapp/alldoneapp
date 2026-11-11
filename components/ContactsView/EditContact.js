@@ -999,7 +999,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         margin: 16,
         maxWidth: 320,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 5,
     },
     copyModalTitle: {

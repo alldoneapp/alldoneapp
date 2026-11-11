@@ -14,6 +14,7 @@ import {
     setUserReceivePushNotifications,
     setUserReceiveWhatsApp,
 } from '../../../utils/backends/Users/usersFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 const NotificationSettingsModal = ({ setIsOpen }) => {
     const { uid, receiveEmails, pushNotificationsStatus, receiveWhatsApp } = useSelector(state => state.loggedUser)
@@ -105,7 +106,7 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
     },

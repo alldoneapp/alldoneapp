@@ -14,6 +14,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TYPE_3RD_PARTY, TYPE_PROMPT_BASED } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 const options = [
     { text: 'Prompt based', option: TYPE_PROMPT_BASED, shortcutKey: '1' },
@@ -133,7 +134,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

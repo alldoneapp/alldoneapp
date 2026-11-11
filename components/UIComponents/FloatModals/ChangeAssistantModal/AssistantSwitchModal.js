@@ -9,6 +9,7 @@ import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantItem from './AssistantItem'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 /**
  * AT-2430 — the assistant line's "switch assistant" popup.
@@ -88,7 +89,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

@@ -11,6 +11,7 @@ import ButtonsContainer from './ButtonsContainer'
 import useWindowSize from '../../../utils/useWindowSize'
 import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 export default function AddTopicModal({
     projectId,
@@ -122,7 +123,7 @@ const localStyles = StyleSheet.create({
         position: 'fixed',
         zIndex: 1,
         left: '50%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
@@ -147,7 +148,8 @@ const localStyles = StyleSheet.create({
     },
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {

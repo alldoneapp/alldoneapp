@@ -4,6 +4,7 @@ import { colors } from '../../../styles/global'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import ModalHeader from '../ModalHeader'
 import ModalItem from '../MorePopupsOfEditModals/Common/ModalItem'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function DragTaskModalMoreButtonModal({ closeModal, onPressDeleteButton, setShowHighlight }) {
     const renderItems = () => {
@@ -54,7 +55,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         paddingBottom: 8,

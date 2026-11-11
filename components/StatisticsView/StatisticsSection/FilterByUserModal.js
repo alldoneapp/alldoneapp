@@ -11,6 +11,7 @@ import useWindowSize from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
 import { updateStatisticsSelectedUsersIds } from '../../../utils/backends/Users/usersFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 const FilterStatisticsModal = ({ projectIndex, filterByUsers, setIsOpen, projectId }) => {
     const usersInProject = useSelector(state => state.projectUsers[projectId])
@@ -71,7 +72,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         width: 432,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     closeButton: {

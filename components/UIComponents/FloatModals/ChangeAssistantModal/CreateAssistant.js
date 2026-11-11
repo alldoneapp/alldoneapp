@@ -9,6 +9,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import Button from '../../../UIControls/Button'
 import { uploadNewAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { getNewDefaultAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function CreateAssistant({ inputRef, projectId, closeModal, closeInput }) {
     const [tmpAssistant, setTmpAssistant] = useState(getNewDefaultAssistant())
@@ -96,7 +97,8 @@ export default function CreateAssistant({ inputRef, projectId, closeModal, close
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -109,7 +111,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

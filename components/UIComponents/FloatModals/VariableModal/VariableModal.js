@@ -10,6 +10,7 @@ import ModalHeader from '../ModalHeader'
 import NameArea from './NameArea'
 import ButtonsArea from './ButtonsArea'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function VariableModal({ disabled, closeModal, addVariable, updateVariable, variableIndex, variables }) {
     const variable = variables[variableIndex]
@@ -88,7 +89,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

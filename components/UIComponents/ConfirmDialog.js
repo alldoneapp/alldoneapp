@@ -6,6 +6,7 @@ import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import useEscapeKey from '../../hooks/useEscapeKey'
+import { themed } from '../../Themes/colorMode'
 
 /**
  * The canonical presentational confirm card (MODAL_IMPROVEMENT_PLAN.md,
@@ -83,7 +84,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     buttons: {

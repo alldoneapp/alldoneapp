@@ -11,6 +11,7 @@ import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import { translate } from '../../i18n/TranslationService'
+import { themed } from '../../Themes/colorMode'
 
 export default function WorkflowSelection({
     closePopover,
@@ -157,7 +158,7 @@ const localStyles = StyleSheet.create({
         width: 305,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     heading: {

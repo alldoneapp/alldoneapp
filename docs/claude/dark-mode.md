@@ -43,12 +43,23 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
   concatenate (`colors.Text03 + '33'`) on a token.
 - Plain CSS files use `var(--ad-<Token>, <light fallback>)`. A light background without a
   token uses `var(--ad-hl-RRGGBB, #RRGGBB)` and must be listed in `CSS_ADAPTIVE_COLORS`.
-- Popups are navy in light mode and the Undo bar's slate in dark mode: `colors.Secondary400`
-  (card), `Secondary300` (rows, hover, dividers) and `Secondary200` (chips, inner buttons) are
-  the `Popup`, `PopupRaised` and `PopupControl` tokens. Use them for any new popup surface,
-  never a hardcoded `'#091540'`. three.js / canvas code that wants that navy uses the hex.
+- Popups are navy in light mode and one raised neutral card (`#1C2230`, the dark
+  `SurfaceRaised`) in dark mode, and the Undo bar uses the same card. Tokens:
+  `colors.Secondary400` (card), `Secondary300` (rows, hover, dividers) and `Secondary200`
+  (chips, inner buttons) are `Popup`, `PopupRaised` and `PopupControl`; an edit form's field
+  is `themed.PopupFieldBorder` + `PopupFieldFill`, its button bar `themed.PopupField` (recessed,
+  darker than the card in dark mode); the card shadow is `themed.PopupShadow` (adds a hairline
+  ring in dark mode). Never hardcode `'#091540'` / `'#162764'` or the shadow literal.
+  three.js / canvas code that wants the navy uses the hex.
+- Popup content keeps the LIGHT palette in dark mode. It was designed for a navy card, so it
+  uses light tokens (`Text04`, `Grey400`, `UtilityBlue125`) as text. `colorMode.js` re-declares
+  every token except the popup's own surfaces with its light value inside
+  `.react-tiny-popover-container` and `[data-ad-popup]` (the bottom sheet sets
+  `dataSet={{ adPopup: 'true' }}`). A new popup surface outside those two needs that dataSet.
+  Consequence: a popup whose root is `colors.Surface` stays white in dark mode.
 - Never derive a background from a text token (`hexColorToRGBa(colors.Text01, …)`): `Text01`
-  is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`.
+  is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`
+  and `themed.SnackbarShadow`.
 
 ## Known gaps (not yet themed)
 

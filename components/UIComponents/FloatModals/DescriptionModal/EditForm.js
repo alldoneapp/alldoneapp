@@ -9,6 +9,7 @@ import Hotkeys from 'react-hot-keys'
 import store from '../../../../redux/store'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 export default class EditForm extends Component {
     constructor(props) {
@@ -153,7 +154,8 @@ export default class EditForm extends Component {
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -168,7 +170,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

@@ -19,6 +19,7 @@ import ModalHeader from '../ModalHeader'
 import EstimationModalOptions from './EstimationModalOptions'
 import AutoAdaptEstimation from './AutoAdaptEstimation'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function EstimationModal({
     projectId,
@@ -100,7 +101,7 @@ export default function EstimationModal({
 
 const localStyles = StyleSheet.create({
     container: {
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

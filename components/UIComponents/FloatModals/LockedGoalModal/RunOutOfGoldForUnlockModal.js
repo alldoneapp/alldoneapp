@@ -30,6 +30,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import { GUIDE_MAIN_CHAT_ID } from '../../../../utils/backends/Projects/guidesFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function RunOutOfGoldForUnlockModal({ closeModal, projectId }) {
     const dispatch = useDispatch()
@@ -130,7 +131,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

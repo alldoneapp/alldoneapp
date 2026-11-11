@@ -33,6 +33,7 @@ import { DV_TAB_TASK_PROPERTIES } from '../../../utils/TabNavigationConstants'
 import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import { themed } from '../../../Themes/colorMode'
 
 export default function CreateTask({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
@@ -266,7 +267,8 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -279,7 +281,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

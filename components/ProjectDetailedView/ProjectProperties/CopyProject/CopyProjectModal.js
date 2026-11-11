@@ -126,7 +126,7 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
     },

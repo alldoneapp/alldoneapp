@@ -9,6 +9,7 @@ import Button from '../../../UIControls/Button'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { formatHeartbeatInterval, getHeartbeatIntervalMs, getHeartbeatIntervalOptions } from './heartbeatIntervalHelper'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function HeartbeatIntervalProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -111,7 +112,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     header: {

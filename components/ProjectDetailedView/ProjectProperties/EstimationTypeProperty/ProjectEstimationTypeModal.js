@@ -8,6 +8,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { PROJECT_ESTIMATION_TYPE_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { ESTIMATION_TYPE_POINTS, ESTIMATION_TYPE_TIME } from '../../../../utils/EstimationHelper'
 import { setProjectEstimationType } from '../../../../utils/backends/Projects/projectsFirestore'
+import { themed } from '../../../../Themes/colorMode'
 
 const ProjectEstimationTypeModal = ({ setIsOpen, project, setEstimationTypeProperty }) => {
     const setEstimationType = type => {
@@ -75,7 +76,7 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
     },

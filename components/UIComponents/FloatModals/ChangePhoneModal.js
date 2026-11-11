@@ -13,6 +13,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { validatePhoneNumber, getDisplayPhoneNumber } from '../../../utils/phoneValidation'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 export default function ChangePhoneModal({ currentPhone, closePopover, onSaveData, disabled }) {
     const [phone, setPhone] = useState(currentPhone && typeof currentPhone === 'string' ? currentPhone : '')
@@ -125,7 +126,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

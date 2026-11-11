@@ -19,6 +19,7 @@ import {
     writeMicModeSetting,
     writePreferredInputDevice,
 } from '../../../../hooks/rambleMicCapture'
+import { themed } from '../../../../Themes/colorMode'
 
 /**
  * Settings → Customizations: which microphone dictation records from, and how it captures it
@@ -241,7 +242,7 @@ const localStyles = StyleSheet.create({
         minWidth: 300,
         maxWidth: 340,
         paddingVertical: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     helpText: {

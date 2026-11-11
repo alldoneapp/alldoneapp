@@ -19,6 +19,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { copyContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 export default function ChangeContactInfoModal({
     currentRole,
@@ -238,7 +239,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {
@@ -301,7 +302,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         padding: 16,
         margin: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 5,
     },
     copyModalTitle: {

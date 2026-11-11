@@ -10,6 +10,7 @@ import { CONNECTION_SERVICE_CALENDAR, getProviderLabel } from '../../../utils/In
 import GmailLabelingSettings from '../../ProjectDetailedView/ProjectProperties/ConnectGmail/ConnectGmailModal/GmailLabelingSettings'
 import CalendarProjectRoutingSettings from '../../ProjectDetailedView/ProjectProperties/ConnectCalendar/ConnectCalendarModal/CalendarProjectRoutingSettings'
 import { getSafeAreaEdgeOffsets, getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
@@ -138,7 +139,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: MODAL_PADDING,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

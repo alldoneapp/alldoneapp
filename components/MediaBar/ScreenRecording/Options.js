@@ -9,6 +9,7 @@ import Backend from '../../../utils/BackendBridge'
 import { useSelector } from 'react-redux'
 import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import { translate } from '../../../i18n/TranslationService'
+import { themed } from '../../../Themes/colorMode'
 
 const Options = ({
     setShowOptions,
@@ -159,7 +160,7 @@ const localStyles = StyleSheet.create({
     center: {
         position: 'fixed',
         left: '50%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

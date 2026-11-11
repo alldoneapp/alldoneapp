@@ -39,7 +39,7 @@ const undoActionBarStyles = StyleSheet.create({
         backgroundColor: themed.Snackbar,
         flexDirection: 'row',
         alignItems: 'center',
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
+        boxShadow: themed.SnackbarShadow,
         elevation: 8,
         // AT-2503 — clips the countdown line to the card's rounded corners. `overflow` clips
         // descendants only; an element's own `box-shadow` is painted outside its border box and is

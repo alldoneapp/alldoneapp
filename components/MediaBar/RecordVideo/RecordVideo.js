@@ -13,6 +13,7 @@ import Options from '../ScreenRecording/Options'
 import { removeOpenModal, storeOpenModal } from '../../../redux/actions'
 import { RECORD_VIDEO_MODAL_ID } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { translate } from '../../../i18n/TranslationService'
+import { themed } from '../../../Themes/colorMode'
 
 let video
 let recorder
@@ -352,7 +353,7 @@ const localStyles = StyleSheet.create({
         position: 'fixed',
         zIndex: 1,
         left: '50%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

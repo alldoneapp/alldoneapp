@@ -18,6 +18,7 @@ import {
     getProviderLabel,
     resolveEmailConnection,
 } from '../../../../../utils/IntegrationProviders'
+import { themed } from '../../../../../Themes/colorMode'
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
@@ -190,7 +191,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

@@ -14,6 +14,7 @@ import {
     saveTaskPriorityLearning,
 } from '../../../../utils/backends/TaskPriorityLearning/taskPriorityLearningFirestore'
 import { TASK_PRIORITIZATION_SKILL_BODY } from '../../../../utils/AssistantSkills/builtInAssistantSkills'
+import { themed } from '../../../../Themes/colorMode'
 
 const getMethodSummary = skill => {
     const body = typeof skill?.body === 'string' && skill.body.trim() ? skill.body : TASK_PRIORITIZATION_SKILL_BODY
@@ -148,7 +149,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         padding: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

@@ -6,6 +6,7 @@ import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import useHomeIndicatorLift from '../../../hooks/useHomeIndicatorLift'
 import { CHAT_BOARD_CONTENT_OFFSET, getNewMessagesPillBottom } from './chatComposerLayout'
+import { themed } from '../../../Themes/colorMode'
 
 // White on Primary100, the same literal the primary `Button` uses for its own label — there is no
 // white token in the palette.
@@ -74,7 +75,7 @@ const localStyles = StyleSheet.create({
         // The thread scrolls underneath it, so it needs to read as floating rather than as part of
         // the message it happens to be over. Same shadow the app's other floating elements use;
         // the RN `shadow*` props are deprecated in react-native-web.
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
     },
     text: {
         ...global.subtitle2,

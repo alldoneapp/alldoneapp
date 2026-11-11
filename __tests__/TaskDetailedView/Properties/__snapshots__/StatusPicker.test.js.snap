@@ -2,7 +2,7 @@
 
 exports[`StatusPicker component StatusPicker snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-eqz5dr"
+  className="css-view-g5y9jx r-boxShadow-bvhn88 r-flexDirection-eqz5dr"
   dir={null}
   style={
     {

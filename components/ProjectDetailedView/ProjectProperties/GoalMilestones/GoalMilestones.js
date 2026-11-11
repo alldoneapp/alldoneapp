@@ -22,6 +22,7 @@ import {
     getCurrentTimezone,
     normalizeGoalMilestonesConfig,
 } from '../../../../utils/GoalMilestonesHelper'
+import { themed } from '../../../../Themes/colorMode'
 
 const MIN_FUTURE_MILESTONES = 1
 const MAX_FUTURE_MILESTONES = 12
@@ -229,7 +230,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     modalTitle: {

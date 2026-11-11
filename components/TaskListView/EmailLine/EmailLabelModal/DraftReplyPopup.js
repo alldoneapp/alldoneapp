@@ -6,6 +6,7 @@ import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
 import { performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { openUrlInNewTab } from '../emailLineHelper'
+import { themed } from '../../../../Themes/colorMode'
 
 // Inline popover to draft an AI reply for a single email with optional guidance.
 export default function DraftReplyPopup({ projectId, messageId, sourceProjectId, sourceTaskId, closePopover }) {
@@ -94,7 +95,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 12,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
     },
     header: {
         flexDirection: 'row',

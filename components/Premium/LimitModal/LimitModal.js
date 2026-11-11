@@ -24,6 +24,7 @@ import ProgressBar from './ProgressBar'
 import Line from '../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import ModalHeader from '../../UIComponents/FloatModals/ModalHeader'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
+import { themed } from '../../../Themes/colorMode'
 
 export default function LimitModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
@@ -125,7 +126,7 @@ const localStyles = StyleSheet.create({
     },
     container: {
         maxHeight: '90%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

@@ -20,6 +20,7 @@ import {
 } from '../../../../utils/TaskPriority'
 import { getTaskPriorityColors } from '../../../TaskListView/Utils/TaskPriorityPresentation'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 const PRIORITY_OPTIONS = [
     TASK_PRIORITY_MUST_DO,
@@ -88,7 +89,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

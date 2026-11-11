@@ -20,6 +20,7 @@ import {
     updateChatTitle,
     updateStickyChatData,
 } from '../../../utils/backends/Chats/chatsFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditChatLink({ projectId, containerStyle, chatData, closeModal, objectUrl }) {
     const chatId = chatData.id
@@ -138,7 +139,8 @@ export default function EditChatLink({ projectId, containerStyle, chatData, clos
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -151,7 +153,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
+import { themed } from '../../../Themes/colorMode'
 
 export default function ButtonsContainer({
     isPrivate,
@@ -61,7 +62,7 @@ export default function ButtonsContainer({
 const localStyles = StyleSheet.create({
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

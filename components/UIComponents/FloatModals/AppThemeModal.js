@@ -13,6 +13,7 @@ import { COLORS_THEME_DEFAULT, COLORS_THEME_MODERN } from '../../../Themes/Theme
 import { translate } from '../../../i18n/TranslationService'
 import { setUserThemeName } from '../../../utils/backends/Users/usersFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 const themeOptions = [
     { symbol: 'Default', value: COLORS_THEME_DEFAULT, shortcut: '1', name: 'Blue' },
@@ -102,7 +103,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

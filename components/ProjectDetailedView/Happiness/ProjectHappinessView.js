@@ -24,6 +24,7 @@ import { getStatisticsFilterData, getFilterOption } from '../../StatisticsView/s
 import HappinessFilterBy from '../../ProjectHappiness/HappinessFilterBy'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
 import Icon from '../../Icon'
+import { themed } from '../../../Themes/colorMode'
 
 function HappinessRow({ entry, project, userId }) {
     const [comment, setComment] = useState(entry.comment || '')
@@ -277,7 +278,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 12,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     commentInput: {

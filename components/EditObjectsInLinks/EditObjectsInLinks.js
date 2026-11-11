@@ -17,6 +17,7 @@ import EditProjectLink from './Projects/EditProjectLink'
 import EditChatLink from './Chats/EditChatLink'
 import EditSkillLink from './Skills/EditSkillLink'
 import EditArtifactLink from './Artifacts/EditArtifactLink'
+import { themed } from '../../Themes/colorMode'
 
 export default function EditObjectsInLinks({
     projectId,
@@ -178,7 +179,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 0,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         height: 'auto',
         maxWidth: 305,

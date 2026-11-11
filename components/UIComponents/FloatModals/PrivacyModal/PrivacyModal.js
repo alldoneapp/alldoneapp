@@ -47,6 +47,7 @@ import { setUserPrivacyInProject } from '../../../../utils/backends/Users/usersF
 import { updateOKRPrivacy } from '../../../../utils/backends/OKRs/okrsFirestore'
 import { mergeRequiredPrivateAccess } from './privacyAccess'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 const getOwnersId = (object, objectType) => {
     switch (objectType) {
@@ -408,7 +409,7 @@ const localStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 8,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     section: {

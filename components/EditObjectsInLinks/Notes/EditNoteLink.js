@@ -36,6 +36,7 @@ import {
     updateNotePrivacy,
     updateNoteStickyData,
 } from '../../../utils/backends/Notes/notesFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditNoteLink({ projectId, containerStyle, noteData, closeModal, objectUrl }) {
     const dispatch = useDispatch()
@@ -288,7 +289,8 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -301,7 +303,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

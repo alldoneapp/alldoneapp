@@ -12,6 +12,7 @@ import { FOLLOW_UP_CUSTOM_DUE_DATE_MODAL_ID, removeModal, storeModal } from '../
 import AppCalendar from '../UIComponents/Calendar/AppCalendar'
 import { translate } from '../../i18n/TranslationService'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
+import { themed } from '../../Themes/colorMode'
 
 const funnyWhite = hexColorToRGBa('#FFFFFF', 0.2)
 export default function CustomFollowUpDateModal({ selectDate, backToDueDate, hidePopover }) {
@@ -78,7 +79,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         paddingTop: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     closeSubContainer: {

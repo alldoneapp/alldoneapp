@@ -18,6 +18,7 @@ import { getSubscriptionStatus, PLAN_STATUS_PREMIUM } from '../../PremiumHelper'
 import PaymentPreviewModal from '../PaymentPreviewModal/PaymentPreviewModal'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function SelectPremiumUsersModal({
     closeModal,
@@ -165,7 +166,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     line: {

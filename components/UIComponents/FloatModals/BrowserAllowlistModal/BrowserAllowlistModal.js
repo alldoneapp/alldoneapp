@@ -18,6 +18,7 @@ import {
     splitAllowlistInput,
     validateAllowlistEntry,
 } from '../../../../utils/browserAllowlistInput'
+import { themed } from '../../../../Themes/colorMode'
 
 /**
  * The editor for which websites the assistant may open (`browser_automation`).
@@ -340,7 +341,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         width: 360,

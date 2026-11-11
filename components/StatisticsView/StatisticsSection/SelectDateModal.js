@@ -21,6 +21,7 @@ import {
     STATISTIC_RANGE_LAST_MONTH,
     STATISTIC_RANGE_TODAY,
 } from '../statisticsHelper'
+import { themed } from '../../../Themes/colorMode'
 
 export default function SelectDateModal({
     updateFilterData,
@@ -136,7 +137,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     descriptionContainer: {

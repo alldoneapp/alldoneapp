@@ -2,7 +2,7 @@
 
 exports[`SelectUserModal component SelectUserModal snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-18u37iz"
+  className="css-view-g5y9jx r-boxShadow-bvhn88 r-flexDirection-18u37iz"
   dir={null}
 >
   <div

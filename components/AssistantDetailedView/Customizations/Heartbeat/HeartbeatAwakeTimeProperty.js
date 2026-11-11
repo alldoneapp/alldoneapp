@@ -10,6 +10,7 @@ import Button from '../../../UIControls/Button'
 import TimePickerModal from '../../../UIComponents/FloatModals/TimePickerModal/TimePickerModal'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 const msToMoment = ms => {
     const hours = Math.floor(ms / 3600000)
@@ -150,7 +151,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     pickerColumn: {

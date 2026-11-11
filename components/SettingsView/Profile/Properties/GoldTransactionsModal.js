@@ -13,6 +13,7 @@ import Button from '../../../UIControls/Button'
 import styles from '../../../styles/global'
 import { getDateFormat, getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 function getTransactionTimestamp(entry) {
     const createdAt = entry?.createdAt
@@ -330,7 +331,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         overflow: 'hidden',
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

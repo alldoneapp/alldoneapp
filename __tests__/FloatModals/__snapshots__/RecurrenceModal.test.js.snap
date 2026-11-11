@@ -2,7 +2,7 @@
 
 exports[`RecurrenceModal component Should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-overflow-bztko3 r-paddingBottom-xd6kpl r-paddingTop-95jzfe"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-bvhn88 r-overflow-bztko3 r-paddingBottom-xd6kpl r-paddingTop-95jzfe"
   dir={null}
   style={
     {

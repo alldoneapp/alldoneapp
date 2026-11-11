@@ -12,6 +12,7 @@ import { submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/e
 import { markEmailLabelPickerInteraction, openUrlInNewTab, resolveUnsubscribeUrl } from '../emailLineHelper'
 import DraftReplyPopup from './DraftReplyPopup'
 import EmailTaskAction from '../EmailTaskAction'
+import { themed } from '../../../../Themes/colorMode'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -603,7 +604,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Secondary200,
         backgroundColor: colors.Secondary400,
         paddingVertical: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
     },
     feedbackDropdownItem: {
         minHeight: 34,

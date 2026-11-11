@@ -14,6 +14,7 @@ import Backend from '../../../../utils/BackendBridge'
 import { CONFIRM_POPUP_NOTE_REVISION_HISTORY } from '../../ConfirmPopup'
 import { showConfirmPopup } from '../../../../redux/actions'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 export const CURRENT_DAY_VERSION_ID = '-1'
 
@@ -136,7 +137,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
         height: 548,

@@ -14,6 +14,7 @@ import {
     COLOR_MODE_LIGHT,
     setColorModePreference,
     useColorMode,
+    themed,
 } from '../../../../Themes/colorMode'
 
 export const appearanceOptions = [
@@ -118,7 +119,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         minWidth: 260,
         paddingVertical: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     optionItem: {

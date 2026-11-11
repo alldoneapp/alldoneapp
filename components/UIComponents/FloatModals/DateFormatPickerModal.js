@@ -24,6 +24,7 @@ export {
     TIME_FORMAT_EUROPE_S,
     TIME_FORMAT_AMERICA_S,
 } from '../../../utils/dateTimeFormats'
+import { themed } from '../../../Themes/colorMode'
 
 export const SUNDAY_FIRST_IN_CALENDAR = 0
 export const MONDAY_FIRST_IN_CALENDAR = 1
@@ -130,7 +131,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

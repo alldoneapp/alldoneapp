@@ -121,14 +121,25 @@ describe('colorMode', () => {
 })
 
 describe('popup surfaces', () => {
-    it('stay navy in light mode and match the Undo bar slate in dark mode', () => {
+    it('stay navy in light mode and share one raised card with the Undo bar in dark mode', () => {
         const { LIGHT_PALETTE, DARK_PALETTE } = require('./colorMode')
         expect(LIGHT_PALETTE.Popup).toBe('#091540')
         expect(LIGHT_PALETTE.PopupRaised).toBe('#152560')
         expect(LIGHT_PALETTE.PopupControl).toBe('#1A3289')
-        // The Undo bar is rgba(52, 62, 82, 0.97); the popup card is its opaque colour.
-        expect(DARK_PALETTE.Snackbar).toBe('rgba(52, 62, 82, 0.97)')
-        expect(DARK_PALETTE.Popup).toBe('#343E52')
+        expect(DARK_PALETTE.Popup).toBe(DARK_PALETTE.SurfaceRaised)
+        expect(DARK_PALETTE.Snackbar).toBe(DARK_PALETTE.Popup)
+        // The input field is recessed: darker than the card it sits on.
+        const lumOf = hex =>
+            parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16)
+        expect(lumOf(DARK_PALETTE.PopupField)).toBeLessThan(lumOf(DARK_PALETTE.Popup))
+        expect(DARK_PALETTE.PopupFieldFill).toBe(DARK_PALETTE.PopupField)
+        // Light mode keeps the navy field and its old shadow, unchanged.
+        expect(LIGHT_PALETTE.PopupField).toBe('#162764')
+        expect(LIGHT_PALETTE.PopupFieldFill).toBe('transparent')
+        expect(LIGHT_PALETTE.PopupShadow).toBe('0px 4px 16px rgba(78,93,120,0.56)')
+        expect(LIGHT_PALETTE.SnackbarShadow).toBe('0px 4px 8px rgba(0,0,0,0.20)')
+        // In dark mode the shadow carries a hairline ring, so cards separate from the dark page.
+        expect(DARK_PALETTE.PopupShadow).toMatch(/^0px 0px 0px 1px rgba\(255,255,255,/)
         // Rows and chips step lighter than the card, as they do on navy.
         const lum = hex => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16)
         expect(lum(DARK_PALETTE.PopupRaised)).toBeGreaterThan(lum(DARK_PALETTE.Popup))
@@ -141,5 +152,28 @@ describe('popup surfaces', () => {
         expect(colors.Secondary400).toBe(themed.Popup)
         expect(colors.Secondary300).toBe(themed.PopupRaised)
         expect(colors.Secondary200).toBe(themed.PopupControl)
+    })
+})
+
+describe('popup palette scope', () => {
+    it('keeps light text tokens inside dark-mode popups, but not the popup surfaces', () => {
+        jest.isolateModules(() => {
+            document.getElementById('alldone-color-mode')?.remove()
+            const mod = require('./colorMode')
+            mod.setColorModePreference('dark')
+            const css = document.getElementById('alldone-color-mode').textContent
+            const scoped = css.slice(css.indexOf('.react-tiny-popover-container'))
+            const body = scoped.slice(scoped.indexOf('{') + 1, scoped.indexOf('}'))
+            expect(css).toContain(':root[data-theme="dark"] [data-ad-popup]')
+            // Content tokens take their light values, as on the navy card in light mode.
+            expect(body).toContain(`--ad-Text04:${mod.LIGHT_PALETTE.Text04};`)
+            expect(body).toContain(`--ad-UtilityBlue125:${mod.LIGHT_PALETTE.UtilityBlue125};`)
+            // The card, field and shadow stay on their dark values.
+            expect(body).not.toContain('--ad-Popup:')
+            expect(body).not.toContain('--ad-PopupField:')
+            expect(body).not.toContain('--ad-PopupShadow:')
+            expect(mod.isPopupScopedToken('Text01')).toBe(true)
+            expect(mod.isPopupScopedToken('Popup')).toBe(false)
+        })
     })
 })

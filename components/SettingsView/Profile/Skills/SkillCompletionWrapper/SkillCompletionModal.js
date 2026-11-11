@@ -20,6 +20,7 @@ import EditForm from '../../../../UIComponents/FloatModals/RichCommentModal/Edit
 import AttachmentsSelectorModal from '../../../../UIComponents/FloatModals/AttachmentsSelectorModal'
 import { createObjectMessage } from '../../../../../utils/backends/Chats/chatsComments'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
+import { themed } from '../../../../../Themes/colorMode'
 
 export default function SkillCompletionModal({ closeModal, changeCompletion, completion, projectId, skillId }) {
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -128,7 +129,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

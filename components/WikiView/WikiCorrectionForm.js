@@ -12,6 +12,7 @@ import { translate } from '../../i18n/TranslationService'
 import { useProjectAssistantLine } from '../MyDayView/AssistantLine/useAssistantLineSwitch'
 import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
 import { createBotQuickTopic } from '../../utils/assistantHelper'
+import { themed } from '../../Themes/colorMode'
 
 const CORRECTION_MAX_CHARS = 2000
 
@@ -119,7 +120,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     containerInSheet: {

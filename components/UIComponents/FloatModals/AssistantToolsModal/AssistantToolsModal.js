@@ -14,6 +14,7 @@ import {
     TOOL_LABEL_BY_KEY,
     BROWSER_TOOL_KEY,
 } from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function AssistantToolsModal({
     allowedTools,
@@ -122,7 +123,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         width: 320,

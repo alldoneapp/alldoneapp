@@ -12,6 +12,7 @@ import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../redux/store'
 import { setSelectedTypeOfProject } from '../../../../redux/actions'
 import Backend from '../../../../utils/BackendBridge'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function ProjectStatusModal({ closeModal, project }) {
     const dispatch = useDispatch()
@@ -68,7 +69,7 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
     },

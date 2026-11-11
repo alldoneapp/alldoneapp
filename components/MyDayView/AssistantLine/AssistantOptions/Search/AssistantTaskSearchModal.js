@@ -27,6 +27,7 @@ import {
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
 import { getAssistantTaskIcon } from '../assistantTaskIcon'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
+import { themed } from '../../../../../Themes/colorMode'
 
 const getAiSettings = task => {
     return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
@@ -350,7 +351,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingTop: 16,
         paddingHorizontal: 16,

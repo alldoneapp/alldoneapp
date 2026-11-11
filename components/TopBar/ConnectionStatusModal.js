@@ -14,6 +14,7 @@ import {
     isManualOfflineMode,
     reconnectNow,
 } from '../../utils/connectionHealth'
+import { themed } from '../../Themes/colorMode'
 
 /**
  * The explanation behind the connection chip (PT-4660).
@@ -123,7 +124,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         padding: 16,
         ...Platform.select({
-            web: { boxShadow: '0px 4px 16px rgba(78,93,120,0.56)' },
+            web: { boxShadow: themed.PopupShadow },
         }),
         elevation: 3,
     },

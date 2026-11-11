@@ -19,6 +19,7 @@ import CommentWrapper from '../../SettingsView/Profile/Skills/CommentWrapper'
 import SkillPointsWrapper from '../../SettingsView/Profile/Skills/SkillPointsWrapper/SkillPointsWrapper'
 import SkillMoreButton from '../../SettingsView/Profile/Skills/SkillMoreButton/SkillMoreButton'
 import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '../../ModalsManager/modalsManager'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditSkillLink({ projectId, skillData, closeModal, objectUrl }) {
     const [skill, setSkill] = useState(cloneDeep(skillData))
@@ -166,7 +167,8 @@ export default function EditSkillLink({ projectId, skillData, closeModal, object
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -185,7 +187,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

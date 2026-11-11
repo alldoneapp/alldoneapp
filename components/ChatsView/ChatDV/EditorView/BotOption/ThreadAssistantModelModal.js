@@ -14,6 +14,7 @@ import {
     THREAD_ASSISTANT_MODEL_OPTIONS,
     getThreadAssistantModelName,
 } from '../../../../../functions/Assistant/threadAssistantModel'
+import { themed } from '../../../../../Themes/colorMode'
 
 /**
  * The per-thread model picker (AT-2502).
@@ -81,7 +82,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

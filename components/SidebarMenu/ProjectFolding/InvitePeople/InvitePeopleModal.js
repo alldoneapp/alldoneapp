@@ -9,6 +9,7 @@ import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_PROJECT_TEAM_MEMBERS, DV_TAB_PROJECT_ASSISTANTS } from '../../../../utils/TabNavigationConstants'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function InvitePeopleModal({ closeModal, projectIndex }) {
     const dispatch = useDispatch()
@@ -55,7 +56,7 @@ const localStyles = StyleSheet.create({
         width: 300,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
     },

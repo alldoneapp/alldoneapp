@@ -14,6 +14,7 @@ import { navigateToSettings } from '../../../../../redux/actions'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../../../../utils/TabNavigationConstants'
 import { RUN_OUT_OF_GOLD_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
+import { themed } from '../../../../../Themes/colorMode'
 
 export default function RunOutOfGoldAssistantModal({
     closeModal,
@@ -65,7 +66,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

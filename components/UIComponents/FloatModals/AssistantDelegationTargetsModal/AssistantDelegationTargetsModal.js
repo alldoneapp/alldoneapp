@@ -8,6 +8,7 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import CheckBox from '../../../CheckBox'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 const normalizeKey = value => String(value || '').trim()
 
@@ -140,7 +141,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         width: 360,

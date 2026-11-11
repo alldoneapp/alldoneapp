@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function RemovedTaskModal({ closeModal }) {
     const onKeyDown = event => {
@@ -46,7 +47,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     title: {

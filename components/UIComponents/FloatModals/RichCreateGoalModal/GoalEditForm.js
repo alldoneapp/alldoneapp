@@ -7,6 +7,7 @@ import store from '../../../../redux/store'
 import InputArea from './InputArea'
 import ButtonsArea from './ButtonsArea/ButtonsArea'
 import FocusAreaProperty from '../../../GoalDetailedView/GoalProperties/FocusAreaProperty'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function GoalEditForm({
     projectId,
@@ -71,7 +72,8 @@ export default function GoalEditForm({
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
 })

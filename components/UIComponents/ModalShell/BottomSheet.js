@@ -419,6 +419,8 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             <Animated.View
                 ref={sheetNodeRef}
                 testID={'bottom-sheet'}
+                // Popup palette scope (Themes/colorMode.js): the sheet hosts popup content.
+                dataSet={{ adPopup: 'true' }}
                 accessibilityRole={'dialog'}
                 aria-modal={true}
                 style={[

@@ -15,6 +15,7 @@ import {
     isTaskPrioritizationSkill,
 } from '../../../AdminPanel/AssistantSkills/assistantSkillsHelper'
 import TaskPriorityLearningOverlayModal from '../TaskPriorityLearningOverlayModal/TaskPriorityLearningOverlayModal'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply, closeModal }) {
     const [selectedSkills, setSelectedSkills] = useState(() => new Set(enabledSkillIds))
@@ -125,7 +126,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         width: 320,

@@ -20,6 +20,7 @@ import {
     STATISTIC_CHART_OKRS,
 } from '../../../utils/StatisticChartsHelper'
 import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_POINTS, ESTIMATION_TYPE_TIME } from '../../../utils/EstimationHelper'
+import { themed } from '../../../Themes/colorMode'
 
 const StatisticChartsOptions = ({ chart, setChart, hidePopover, estimationTypeToUse, hasMoneyChart = false }) => {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -112,7 +113,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

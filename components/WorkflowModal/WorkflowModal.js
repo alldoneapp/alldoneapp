@@ -47,6 +47,7 @@ import { moveTaskToDoneBypassingWorkflow } from './workflowBypass'
 import { completeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 
 export { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
+import { themed } from '../../Themes/colorMode'
 
 export default class WorkflowModal extends Component {
     constructor(props) {
@@ -702,7 +703,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

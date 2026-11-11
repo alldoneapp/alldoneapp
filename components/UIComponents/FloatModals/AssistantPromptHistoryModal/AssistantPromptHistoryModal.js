@@ -12,6 +12,7 @@ import { getDateFormat, getTimeFormat } from '../DateFormatPickerModal'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import HelperFunctions from '../../../../utils/HelperFunctions'
 import useModalSizing from '../../../../hooks/useModalSizing'
+import { themed } from '../../../../Themes/colorMode'
 
 const CURRENT_PROMPT_ID = 'current'
 
@@ -139,7 +140,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
         paddingHorizontal: 16,

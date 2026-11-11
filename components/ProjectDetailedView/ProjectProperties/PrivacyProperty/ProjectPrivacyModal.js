@@ -12,6 +12,7 @@ import {
 } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { PROJECT_PRIVACY_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { setProjectIsShared } from '../../../../utils/backends/Projects/projectsFirestore'
+import { themed } from '../../../../Themes/colorMode'
 
 const ProjectPrivacyModal = ({ setIsOpen, project, setSharedProperty }) => {
     const setSharedState = sharedValue => {
@@ -94,7 +95,7 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingVertical: 16,
     },

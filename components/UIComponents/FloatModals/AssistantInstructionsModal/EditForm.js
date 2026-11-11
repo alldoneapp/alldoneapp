@@ -7,6 +7,7 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function EditForm({
     disabled,
@@ -62,7 +63,8 @@ export default function EditForm({
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -76,7 +78,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
         justifyContent: 'flex-end',

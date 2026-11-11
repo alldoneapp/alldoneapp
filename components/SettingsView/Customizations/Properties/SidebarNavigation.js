@@ -9,6 +9,7 @@ import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { sidebarNavigationModeOptions } from '../../../../utils/SidebarNavigationModes'
 import { setUserSidebarNavigationMode } from '../../../../utils/backends/Users/usersFirestore'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function SidebarNavigation({ userId, sidebarNavigationMode }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -94,7 +95,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         minWidth: 260,
         paddingVertical: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     optionItem: {

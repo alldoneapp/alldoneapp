@@ -31,6 +31,7 @@ import {
     setProjectContactPrivacy,
 } from '../../../utils/backends/Contacts/contactsFirestore'
 import { object } from 'prop-types'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditContactLink({ projectId, containerStyle, contactData, closeModal, objectUrl }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -204,7 +205,8 @@ export default function EditContactLink({ projectId, containerStyle, contactData
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -217,7 +219,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

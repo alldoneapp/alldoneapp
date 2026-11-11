@@ -26,6 +26,7 @@ import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 import SelectModelOption from './SelectModelOption'
 import ThreadAssistantModelModal from './ThreadAssistantModelModal'
 import { useThreadAssistantModel } from './threadAssistantModelState'
+import { themed } from '../../../../../Themes/colorMode'
 
 export default function BotOptionsModal({
     objectType,
@@ -273,7 +274,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

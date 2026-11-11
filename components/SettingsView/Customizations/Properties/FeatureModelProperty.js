@@ -15,6 +15,7 @@ import {
     getFeatureModelOptionInfo,
     isValidFeatureModelChoice,
 } from '../../../../functions/Assistant/featureModelPreferences'
+import { themed } from '../../../../Themes/colorMode'
 
 /**
  * One Settings row for a one-shot AI feature's model (structure mirrors
@@ -134,7 +135,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     title: {

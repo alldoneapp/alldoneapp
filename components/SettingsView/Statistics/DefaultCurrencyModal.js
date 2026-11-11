@@ -6,6 +6,7 @@ import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import Icon from '../../Icon'
 import { updateUserDefaultCurrency } from '../../../utils/backends/Users/usersFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 const CURRENCIES = ['EUR', 'USD', 'GBP']
 
@@ -56,7 +57,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

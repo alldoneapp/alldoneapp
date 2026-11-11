@@ -2,7 +2,7 @@
 
 exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-bvhn88"
   dir={null}
   style={
     {
@@ -960,7 +960,7 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
 
 exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render correctly 2`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-bvhn88"
   dir={null}
   style={
     {

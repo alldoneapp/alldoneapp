@@ -22,6 +22,7 @@ import {
 } from '../../utils/backends/Tasks/tasksFirestore'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSuggestedGoalPopoverLayout } from './suggestedGoalPopoverHelper'
+import { themed } from '../../Themes/colorMode'
 
 export default function SuggestedGoalTag({ projectId, task, containerStyle, disabled, propertyButton = false }) {
     const smallScreen = useSelector(state => state.smallScreenNavigation)
@@ -222,7 +223,7 @@ const localStyles = StyleSheet.create({
         padding: 20,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     compactPopover: {

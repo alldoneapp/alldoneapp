@@ -14,6 +14,7 @@ import ContinueButton from './ContinueButton'
 import { useSelector } from 'react-redux'
 import CompanyDataExtended from '../Premium/PremiumTab/CompanyInfoModal/CompanyDataExtended'
 import { getSafeAreaModalMaxHeight } from '../../utils/modalSafeArea'
+import { themed } from '../../Themes/colorMode'
 
 const FROM_STEP = 0
 export const TO_STEP = 1
@@ -132,7 +133,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

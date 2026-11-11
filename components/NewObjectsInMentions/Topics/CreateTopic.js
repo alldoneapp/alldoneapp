@@ -33,6 +33,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import { themed } from '../../../Themes/colorMode'
 
 export default function CreateTopic({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -182,7 +183,8 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -195,7 +197,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

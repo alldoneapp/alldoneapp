@@ -34,6 +34,7 @@ import useParentGoalSearch from './useParentGoalSearch'
 import GhostButton from '../../../UIControls/GhostButton'
 import { goalSelectionId, shouldUnselectGoal } from './goalSelectionToggle'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -485,7 +486,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingHorizontal: 8,
         paddingTop: 8,

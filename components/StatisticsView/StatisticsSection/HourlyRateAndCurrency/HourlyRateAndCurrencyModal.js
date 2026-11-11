@@ -12,6 +12,7 @@ import CurrencyArea from './CurrencyArea'
 import HourlyRateArea from './HourlyRateArea'
 import store from '../../../../redux/store'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function HourlyRateAndCurrencyModal({ projectId, closeModal, hourlyRatesData }) {
     const [currency, setCurrency] = useState(hourlyRatesData.currency)
@@ -68,7 +69,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         width: 432,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
 })

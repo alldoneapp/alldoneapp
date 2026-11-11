@@ -17,6 +17,7 @@ import { allGoals } from '../../../AllSections/allSectionHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import useProjectData from '../../../../hooks/useProjectData'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 // AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
 // array on every render.
@@ -189,7 +190,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

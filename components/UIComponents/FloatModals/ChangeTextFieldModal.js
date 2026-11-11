@@ -10,6 +10,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 class ChangeTextFieldModal extends Component {
     constructor(props) {
@@ -112,7 +113,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

@@ -2,7 +2,7 @@
 
 exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingTop-95jzfe"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-bvhn88 r-flexDirection-eqz5dr r-paddingTop-95jzfe"
   dir={null}
   style={
     {

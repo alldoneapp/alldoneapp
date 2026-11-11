@@ -9,6 +9,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
 import CompanyData from './CompanyData'
 import Backend from '../../../../utils/BackendBridge'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function CompanyInfoModal({ openCompanyPreview, closeModal, companyData, setCompanyData }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -53,7 +54,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     line: {

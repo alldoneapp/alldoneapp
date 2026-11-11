@@ -18,6 +18,7 @@ import {
     PROJECT_COLOR_YELLOW,
 } from '../../../Themes/Modern/ProjectColors'
 import { translate } from '../../../i18n/TranslationService'
+import { themed } from '../../../Themes/colorMode'
 
 export default function ColorPickerModal({ color, selectColor, closePopover, inSidebar = false }) {
     const [selectedColor, setSelectedColor] = useState(color || PROJECT_COLOR_DEFAULT)
@@ -124,7 +125,7 @@ const localStyles = StyleSheet.create({
         paddingBottom: 8,
         borderRadius: 4,
         width: 272,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     colorSection: {

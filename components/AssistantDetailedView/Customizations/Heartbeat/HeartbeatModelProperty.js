@@ -10,6 +10,7 @@ import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Ass
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
 import AssistantModelGoldRate from '../../../UIComponents/AssistantModelGoldRate'
+import { themed } from '../../../../Themes/colorMode'
 
 const HEARTBEAT_MODELS = SELECTABLE_ASSISTANT_MODELS.map(({ model, name, descriptionKey, tokensPerGold }) => ({
     key: model,
@@ -111,7 +112,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     title: {

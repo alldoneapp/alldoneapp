@@ -13,6 +13,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getPathname } from '../../Tags/LinkTag'
 import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '../../ModalsManager/modalsManager'
 import { setProjectColor, setProjectName } from '../../../utils/backends/Projects/projectsFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditProjectLink({ containerStyle, projectData, closeModal, objectUrl }) {
     const projectId = projectData.id
@@ -111,7 +112,8 @@ export default function EditProjectLink({ containerStyle, projectData, closeModa
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -124,7 +126,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

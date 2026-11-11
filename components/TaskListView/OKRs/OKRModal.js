@@ -34,6 +34,7 @@ import { setSelectedNavItem, switchProject } from '../../../redux/actions'
 import { DV_TAB_PROJECT_STATISTICS } from '../../../utils/TabNavigationConstants'
 import NavigationService from '../../../utils/NavigationService'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 const CADENCE_OPTIONS = [OKR_CADENCE_DAILY, OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 const TYPE_OPTIONS = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
@@ -412,7 +413,7 @@ const localStyles = StyleSheet.create({
         zIndex: 9999,
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {
@@ -482,7 +483,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderWidth: 1,
         borderColor: colors.Grey400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         zIndex: 4,
     },

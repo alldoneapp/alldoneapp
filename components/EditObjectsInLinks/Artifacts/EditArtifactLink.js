@@ -14,6 +14,7 @@ import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '..
 import { updateArtifactMetadata } from '../../../utils/backends/Artifacts/artifactsFirestore'
 import { showArtifactLinkAsPreview } from '../../ArtifactsView/artifactNoteEmbed'
 import { translate } from '../../../i18n/TranslationService'
+import { themed } from '../../../Themes/colorMode'
 
 // The popup a link to an artifact opens inside a text: rename it in place or open it, and inside a
 // note show it as a live preview card instead. Privacy and versions stay on the artifact itself,
@@ -120,7 +121,8 @@ export default function EditArtifactLink({
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -139,7 +141,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

@@ -12,6 +12,7 @@ import {
     getAssistantDelegationDescriptionStatus,
     updateAssistantDelegationDescriptionManual,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function AssistantDelegationDescriptionModal({
     disabled,
@@ -163,7 +164,7 @@ const localStyles = StyleSheet.create({
         maxWidth: 720,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
     },

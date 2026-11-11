@@ -23,6 +23,7 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../utils/useWindowSize'
 import Backend from '../../../../utils/BackendBridge'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function PaymentPreviewModal({ paymentMethod, closeModal, selectedUserIds, companyData, subscription }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -153,7 +154,7 @@ const localStyles = StyleSheet.create({
     // on phones; inside SelectPremiumUsersModal it renders in place of the
     // users list, so the two steps of the flow no longer jump around.
     container: {
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

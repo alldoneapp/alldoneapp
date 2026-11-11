@@ -19,6 +19,7 @@ import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '../../ModalsManager/modalsManager'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditGoalLink({ projectId, goalData, closeModal, objectUrl }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -175,7 +176,8 @@ export default function EditGoalLink({ projectId, goalData, closeModal, objectUr
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -194,7 +196,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

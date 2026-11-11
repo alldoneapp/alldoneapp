@@ -16,6 +16,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
 import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function GoalMilestoneModal({
     projectId,
@@ -110,7 +111,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         padding: 16,
         paddingBottom: 8,

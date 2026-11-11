@@ -28,6 +28,7 @@ import { createFollowUpTask, moveTasksFromOpen, setTaskAutoEstimation } from '..
 import RecurringTaskDateBasisModal, {
     shouldShowRecurringTaskDateBasisModal,
 } from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
+import { themed } from '../../Themes/colorMode'
 
 const TODAY = 'Today'
 const TOMORROW = 'Tomorrow'
@@ -399,7 +400,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     heading: {

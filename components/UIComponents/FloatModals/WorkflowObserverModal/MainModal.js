@@ -8,6 +8,7 @@ import EstimationOption from './EstimationOption'
 import NextWorkflowOption from './NextWorkflowOption'
 import Buttons from './Buttons'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function MainModal({
     projectId,
@@ -63,7 +64,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

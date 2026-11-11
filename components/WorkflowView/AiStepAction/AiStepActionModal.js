@@ -14,6 +14,7 @@ import useWindowSize from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
 import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 const CUSTOM_PROMPT_ID = null
 
@@ -180,7 +181,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

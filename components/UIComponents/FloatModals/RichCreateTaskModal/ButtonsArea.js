@@ -7,6 +7,7 @@ import DoneButton from './DoneButton'
 import ParentGoal from './ParentGoal'
 import MoreOptions from './MoreOptions'
 import Recurring from './Recurring'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function ButtonsArea({
     projectId,
@@ -44,7 +45,7 @@ export default function ButtonsArea({
 const localStyles = StyleSheet.create({
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

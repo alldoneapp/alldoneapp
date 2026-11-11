@@ -17,6 +17,7 @@ import {
     HAPPINESS_RANGE_LAST_3_MONTHS,
     HAPPINESS_RANGE_LAST_YEAR,
 } from '../../utils/ProjectHappinessHelper'
+import { themed } from '../../Themes/colorMode'
 
 const RANGE_OPTIONS = [
     HAPPINESS_RANGE_LAST_30_DAYS,
@@ -83,7 +84,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

@@ -13,6 +13,7 @@ import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import AppCalendar from '../../UIComponents/Calendar/AppCalendar'
 import { computeDateRangeSelection } from './dateRangeSelection'
 import { STATISTIC_RANGE_CUSTOM } from '../statisticsHelper'
+import { themed } from '../../../Themes/colorMode'
 
 export default function CustomDateRangeModal({ hidePopover, onGoBackPress, updateFilterData }) {
     const [markedDates, setMarkedDates] = useState({})
@@ -110,7 +111,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

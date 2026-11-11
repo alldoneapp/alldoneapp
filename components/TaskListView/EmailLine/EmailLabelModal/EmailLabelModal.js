@@ -25,6 +25,7 @@ import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../email
 import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import EmailRow from './EmailRow'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { themed } from '../../../../Themes/colorMode'
 
 const collectRowMessageIds = row => [...new Set((row?.messageIds || [row?.messageId]).filter(Boolean))]
 
@@ -727,7 +728,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
     },
     containerMobile: {
         paddingHorizontal: 12,

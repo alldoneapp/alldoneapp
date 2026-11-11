@@ -8,6 +8,7 @@ import Backend from '../../../../utils/BackendBridge'
 import InputArea from './InputArea'
 import ButtonsArea from './ButtonsArea'
 import { translate } from '../../../../i18n/TranslationService'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function TaskEditForm({
     projectId,
@@ -181,7 +182,8 @@ export default function TaskEditForm({
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     attachmentHint: {

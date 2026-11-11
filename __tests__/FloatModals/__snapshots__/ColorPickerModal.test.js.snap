@@ -2,7 +2,7 @@
 
 exports[`ColorPickerModal component Should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-paddingBottom-xd6kpl r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe r-width-1tecaoj"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-bvhn88 r-paddingBottom-xd6kpl r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe r-width-1tecaoj"
   dir={null}
 >
   <div

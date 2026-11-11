@@ -7,6 +7,7 @@ import DoneButton from './DoneButton'
 import AssigneesButton from './AssigneesButton'
 import HighlightButton from './HighlightButton'
 import DescriptionButton from './DescriptionButton'
+import { themed } from '../../../../../Themes/colorMode'
 
 export default function ButtonsArea({
     projectId,
@@ -46,7 +47,7 @@ export default function ButtonsArea({
 const localStyles = StyleSheet.create({
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

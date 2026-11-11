@@ -51,12 +51,17 @@ describe('UndoActionBar layout', () => {
 
     it('stays a dark bar under its white text in dark mode', () => {
         // Text01 is near-white in dark mode; deriving the bar from it made it light grey.
-        const [r, g, b] = resolveColor(undoActionBarStyles.container.backgroundColor, 'dark').match(/\d+/g).map(Number)
+        const hex = resolveColor(undoActionBarStyles.container.backgroundColor, 'dark')
+        const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
         expect(Math.max(r, g, b)).toBeLessThan(100)
         expect(resolveColor(undoActionBarStyles.container.backgroundColor, 'dark')).not.toBe(
             resolveColor(themed.Surface, 'dark')
         )
         expect(undoActionBarStyles.message.color).toBe('#FFFFFF')
+        // Same raised card as the popups, so the two read as one family.
+        expect(resolveColor(undoActionBarStyles.container.backgroundColor, 'dark')).toBe(
+            resolveColor(themed.Popup, 'dark')
+        )
     })
 
     describe('the auto-hide countdown line (AT-2503)', () => {

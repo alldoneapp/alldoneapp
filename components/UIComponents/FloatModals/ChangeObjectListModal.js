@@ -17,6 +17,7 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import ChangeObjectListModalItem from './ChangeObjectListModalItem'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { themed } from '../../../Themes/colorMode'
 
 export default function ChangeObjectListModal({ closePopover }) {
     const [width, height] = useWindowSize()
@@ -59,7 +60,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {

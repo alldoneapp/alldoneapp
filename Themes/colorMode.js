@@ -110,13 +110,20 @@ const LIGHT_BASE = {
     Backdrop: 'rgba(4, 20, 47, 0.24)',
     Shadow: 'rgba(4, 20, 47, 0.24)',
     // Floating notification bars (the Undo bar) carry white text. Navy on the light page; in
-    // dark mode a raised surface lighter than the page, never the near-white of Text01.
+    // dark mode the same raised card as popups, never the near-white of Text01.
     Snackbar: 'rgba(4, 20, 47, 0.8)',
-    // Popups (FloatModals, sheets, the add-task card): navy on the light page. In dark mode the
-    // same slate as the Undo bar, so every floating surface reads as one family.
+    SnackbarShadow: '0px 4px 8px rgba(0,0,0,0.20)',
+    // Popups (FloatModals, sheets, the add-task card) and the Undo bar: navy on the light page.
+    // In dark mode one raised neutral card with a hairline ring, a recessed input field and grey
+    // controls, so the only blue left is the focus and the primary action.
     Popup: '#091540',
     PopupRaised: '#152560',
     PopupControl: '#1A3289',
+    // The edit-form field inside a popup (input + its button bar).
+    PopupField: '#162764',
+    PopupFieldFill: 'transparent',
+    PopupFieldBorder: '#162764',
+    PopupShadow: '0px 4px 16px rgba(78,93,120,0.56)',
 }
 
 const DARK_BASE = {
@@ -143,10 +150,15 @@ const DARK_BASE = {
     SidebarSelected: '#1B3555',
     Backdrop: 'rgba(0, 0, 0, 0.55)',
     Shadow: 'rgba(0, 0, 0, 0.6)',
-    Snackbar: 'rgba(52, 62, 82, 0.97)',
-    Popup: '#343E52',
-    PopupRaised: '#3E4960',
-    PopupControl: '#4A566E',
+    Snackbar: '#1C2230',
+    SnackbarShadow: '0px 0px 0px 1px rgba(255,255,255,0.08), 0px 8px 24px rgba(0,0,0,0.55)',
+    Popup: '#1C2230',
+    PopupRaised: '#252C3A',
+    PopupControl: '#2C3546',
+    PopupField: '#141923',
+    PopupFieldFill: '#141923',
+    PopupFieldBorder: 'rgba(255, 255, 255, 0.10)',
+    PopupShadow: '0px 0px 0px 1px rgba(255,255,255,0.08), 0px 12px 32px rgba(0,0,0,0.55)',
 }
 
 const buildPalettes = () => {
@@ -185,14 +197,43 @@ const paletteToCss = palette =>
         .map(([key, value]) => `${VAR_PREFIX}${key}:${value};`)
         .join('')
 
+// Popups were designed as dark cards on a light page: their content uses the light palette's
+// light text and tint tokens (`Text04`, `Grey400`, `UtilityBlue125`) on a navy card. In dark mode
+// only the card itself changes, so inside a popup every token keeps its light value except the
+// popup's own surfaces. Without this scope those tokens flip to their dark values and the text in
+// popups turns dark on a dark card.
+export const POPUP_SCOPE_ATTRIBUTE = 'data-ad-popup'
+export const POPUP_SCOPE_SELECTOR = `.react-tiny-popover-container,[${POPUP_SCOPE_ATTRIBUTE}]`
+const POPUP_OWN_TOKENS = new Set([
+    'Popup',
+    'PopupRaised',
+    'PopupControl',
+    'PopupField',
+    'PopupFieldFill',
+    'PopupFieldBorder',
+    'PopupShadow',
+    'Snackbar',
+    'SnackbarShadow',
+    'Backdrop',
+    'Shadow',
+])
+export const isPopupScopedToken = name => !POPUP_OWN_TOKENS.has(name)
+
+const darkPopupScope = selectorBody =>
+    POPUP_SCOPE_SELECTOR.split(',')
+        .map(selector => `:root[data-theme="dark"] ${selector}`)
+        .join(',') + `{${selectorBody}}`
+
 const injectPaletteCss = () => {
     if (!hasDom || document.getElementById(STYLE_ELEMENT_ID)) return
     const style = document.createElement('style')
     style.id = STYLE_ELEMENT_ID
+    const popupScoped = Object.fromEntries(Object.entries(LIGHT_PALETTE).filter(([key]) => isPopupScopedToken(key)))
     style.textContent =
         `:root{${paletteToCss(LIGHT_PALETTE)}}` +
         `:root[data-theme="dark"]{${paletteToCss(DARK_PALETTE)}color-scheme:dark;}` +
-        `:root[data-theme="light"]{color-scheme:light;}`
+        `:root[data-theme="light"]{color-scheme:light;}` +
+        darkPopupScope(paletteToCss(popupScoped))
     document.head.appendChild(style)
 }
 
@@ -200,7 +241,7 @@ const injectPaletteCss = () => {
 // and a dark value, so `alphaColor(themed.Text03, 0.5)` still flips live.
 const registeredAlphaVars = new Set()
 
-const appendDynamicVar = (varName, lightValue, darkValue) => {
+const appendDynamicVar = (varName, lightValue, darkValue, { popupKeepsLight = true } = {}) => {
     if (!hasDom) return
     let style = document.getElementById(ALPHA_STYLE_ELEMENT_ID)
     if (!style) {
@@ -209,7 +250,10 @@ const appendDynamicVar = (varName, lightValue, darkValue) => {
         document.head.appendChild(style)
     }
     style.appendChild(
-        document.createTextNode(`:root{${varName}:${lightValue};}:root[data-theme="dark"]{${varName}:${darkValue};}`)
+        document.createTextNode(
+            `:root{${varName}:${lightValue};}:root[data-theme="dark"]{${varName}:${darkValue};}` +
+                (popupKeepsLight ? darkPopupScope(`${varName}:${lightValue};`) : '')
+        )
     )
 }
 
@@ -240,7 +284,9 @@ export const alphaColor = (color, alpha) => {
     const varName = `${VAR_PREFIX}${name}-a${alphaKey}`
     if (!registeredAlphaVars.has(varName)) {
         registeredAlphaVars.add(varName)
-        appendDynamicVar(varName, withAlpha(LIGHT_PALETTE[name], alpha), withAlpha(DARK_PALETTE[name], alpha))
+        appendDynamicVar(varName, withAlpha(LIGHT_PALETTE[name], alpha), withAlpha(DARK_PALETTE[name], alpha), {
+            popupKeepsLight: isPopupScopedToken(name),
+        })
     }
     return `var(${varName})`
 }

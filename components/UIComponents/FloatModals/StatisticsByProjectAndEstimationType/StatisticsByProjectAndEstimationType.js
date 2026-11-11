@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux'
 import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_TIME } from '../../../../utils/EstimationHelper'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
+import { themed } from '../../../../Themes/colorMode'
 
 export default function StatisticsByProjectAndEstimationType({
     title,
@@ -69,7 +70,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     innerContainer: {

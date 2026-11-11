@@ -14,6 +14,7 @@ import { getPathname } from '../../Tags/LinkTag'
 import { updateAssistant } from '../../../utils/backends/Assistants/assistantsFirestore'
 import { useSelector } from 'react-redux'
 import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
+import { themed } from '../../../Themes/colorMode'
 
 export default function EditAssistantLink({ projectId, assistantData, closeModal, objectUrl }) {
     const globalAssistants = useSelector(state => state.globalAssistants)
@@ -87,7 +88,8 @@ export default function EditAssistantLink({ projectId, assistantData, closeModal
 const localStyles = StyleSheet.create({
     container: {
         borderWidth: 1,
-        borderColor: '#162764',
+        borderColor: themed.PopupFieldBorder,
+        backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
     },
     inputContainer: {
@@ -106,7 +108,7 @@ const localStyles = StyleSheet.create({
     },
     buttonsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#162764',
+        backgroundColor: themed.PopupField,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },

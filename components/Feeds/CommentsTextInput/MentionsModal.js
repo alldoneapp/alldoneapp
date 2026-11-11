@@ -60,6 +60,7 @@ import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import useTextChange from './useTextChange'
 import store from '../../../redux/store'
 import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
+import { themed } from '../../../Themes/colorMode'
 
 // Tabs that suggest something the moment the picker opens, before anything is typed
 // (AT-2497). Every tab's `sort_by` already falls back to a recency field, so the wildcard
@@ -629,7 +630,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
         paddingHorizontal: 8,
         paddingTop: 8,

@@ -16,6 +16,7 @@ import { fixedModalOverlayStyle } from '../../../../../utils/fixedModalPosition'
 import useEscapeKey from '../../../../../hooks/useEscapeKey'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 import { useFixedModalOverlayPadding } from '../../../../../hooks/useSafeAreaOverlayPadding'
+import { themed } from '../../../../../Themes/colorMode'
 
 export default function BotWarningModal() {
     const safeAreaOverlayPadding = useFixedModalOverlayPadding()
@@ -84,7 +85,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        boxShadow: themed.PopupShadow,
         elevation: 3,
     },
     scroll: {
