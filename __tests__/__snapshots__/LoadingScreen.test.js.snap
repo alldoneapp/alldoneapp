@@ -51,7 +51,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
     </div>
   </div>
   <div
-    className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1ra0lkn r-textAlign-q4m81j"
+    className="css-text-146c3p1 r-color-a7285f r-fontFamily-k9x4vz r-fontSize-1ra0lkn r-textAlign-q4m81j"
     dir="auto"
     style={
       {

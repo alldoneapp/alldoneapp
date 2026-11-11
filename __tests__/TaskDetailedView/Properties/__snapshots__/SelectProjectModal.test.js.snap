@@ -2,7 +2,7 @@
 
 exports[`SelectProjectModal component SelectProjectModal snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-padding-nsbfu8 r-zIndex-vpjg5r"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-padding-nsbfu8 r-zIndex-vpjg5r"
   dir={null}
   style={
     {

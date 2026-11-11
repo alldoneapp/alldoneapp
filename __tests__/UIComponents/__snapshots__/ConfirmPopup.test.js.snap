@@ -14,7 +14,7 @@ exports[`ConfirmPopup component renders nothing while there is nothing to confir
   }
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-marginInline-1xpp3t0 r-maxWidth-z3zdpi r-padding-nsbfu8"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-marginInline-1xpp3t0 r-maxWidth-z3zdpi r-padding-nsbfu8"
     dir={null}
   >
     <div
@@ -136,7 +136,7 @@ exports[`ConfirmPopup component renders once a confirmation is requested 1`] = `
   }
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-marginInline-1xpp3t0 r-maxWidth-z3zdpi r-padding-nsbfu8"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-marginInline-1xpp3t0 r-maxWidth-z3zdpi r-padding-nsbfu8"
     dir={null}
   >
     <div

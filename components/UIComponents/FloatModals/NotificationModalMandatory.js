@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import styles, { em2px } from '../../styles/global'
+import styles, { colors, em2px } from '../../styles/global'
 import Icon from '../../Icon'
 import { deleteCacheAndRefresh } from '../../../utils/Observers'
 import { showNewVersionMandtoryNotifcation } from '../../../redux/actions'
@@ -37,7 +37,7 @@ const localstyles = StyleSheet.create({
     container: {
         width: 317,
         height: 184,
-        backgroundColor: '#091540',
+        backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
         ...Platform.select({

@@ -118,7 +118,7 @@ describe('CommentPopupObjectHeader', () => {
         const event = { stopPropagation: jest.fn() }
 
         expect(boundary.props.style).toEqual({ width: '100%' })
-        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: '#1A3289' }]))
+        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: 'var(--ad-PopupControl)' }]))
 
         boundary.props.onClick(event)
 
@@ -143,7 +143,7 @@ describe('CommentPopupObjectHeader', () => {
         const tree = await renderHeader('topics')
         const surface = tree.root.findByProps({ testID: 'comment-popup-object-surface-topics' })
 
-        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: '#1A3289' }]))
+        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: 'var(--ad-PopupControl)' }]))
     })
 
     describe('owning project line (AT-2867)', () => {

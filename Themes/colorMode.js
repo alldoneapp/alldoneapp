@@ -112,6 +112,11 @@ const LIGHT_BASE = {
     // Floating notification bars (the Undo bar) carry white text. Navy on the light page; in
     // dark mode a raised surface lighter than the page, never the near-white of Text01.
     Snackbar: 'rgba(4, 20, 47, 0.8)',
+    // Popups (FloatModals, sheets, the add-task card): navy on the light page. In dark mode the
+    // same slate as the Undo bar, so every floating surface reads as one family.
+    Popup: '#091540',
+    PopupRaised: '#152560',
+    PopupControl: '#1A3289',
 }
 
 const DARK_BASE = {
@@ -139,6 +144,9 @@ const DARK_BASE = {
     Backdrop: 'rgba(0, 0, 0, 0.55)',
     Shadow: 'rgba(0, 0, 0, 0.6)',
     Snackbar: 'rgba(52, 62, 82, 0.97)',
+    Popup: '#343E52',
+    PopupRaised: '#3E4960',
+    PopupControl: '#4A566E',
 }
 
 const buildPalettes = () => {

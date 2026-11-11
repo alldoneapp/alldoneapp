@@ -119,3 +119,27 @@ describe('colorMode', () => {
         expect(hexColorToRGBa(colors.Text03, 0.24)).toMatch(/^var\(--ad-Text03-a240\)$/)
     })
 })
+
+describe('popup surfaces', () => {
+    it('stay navy in light mode and match the Undo bar slate in dark mode', () => {
+        const { LIGHT_PALETTE, DARK_PALETTE } = require('./colorMode')
+        expect(LIGHT_PALETTE.Popup).toBe('#091540')
+        expect(LIGHT_PALETTE.PopupRaised).toBe('#152560')
+        expect(LIGHT_PALETTE.PopupControl).toBe('#1A3289')
+        // The Undo bar is rgba(52, 62, 82, 0.97); the popup card is its opaque colour.
+        expect(DARK_PALETTE.Snackbar).toBe('rgba(52, 62, 82, 0.97)')
+        expect(DARK_PALETTE.Popup).toBe('#343E52')
+        // Rows and chips step lighter than the card, as they do on navy.
+        const lum = hex => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16)
+        expect(lum(DARK_PALETTE.PopupRaised)).toBeGreaterThan(lum(DARK_PALETTE.Popup))
+        expect(lum(DARK_PALETTE.PopupControl)).toBeGreaterThan(lum(DARK_PALETTE.PopupRaised))
+    })
+
+    it('are what colors.Secondary200/300/400 point at', () => {
+        const { colors } = require('../components/styles/global')
+        const { themed } = require('./colorMode')
+        expect(colors.Secondary400).toBe(themed.Popup)
+        expect(colors.Secondary300).toBe(themed.PopupRaised)
+        expect(colors.Secondary200).toBe(themed.PopupControl)
+    })
+})

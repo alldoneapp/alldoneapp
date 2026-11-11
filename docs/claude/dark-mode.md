@@ -43,7 +43,10 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
   concatenate (`colors.Text03 + '33'`) on a token.
 - Plain CSS files use `var(--ad-<Token>, <light fallback>)`. A light background without a
   token uses `var(--ad-hl-RRGGBB, #RRGGBB)` and must be listed in `CSS_ADAPTIVE_COLORS`.
-- Navy popovers (`Secondary400`) intentionally stay navy in both modes.
+- Popups are navy in light mode and the Undo bar's slate in dark mode: `colors.Secondary400`
+  (card), `Secondary300` (rows, hover, dividers) and `Secondary200` (chips, inner buttons) are
+  the `Popup`, `PopupRaised` and `PopupControl` tokens. Use them for any new popup surface,
+  never a hardcoded `'#091540'`. three.js / canvas code that wants that navy uses the hex.
 - Never derive a background from a text token (`hexColorToRGBa(colors.Text01, …)`): `Text01`
   is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`.
 
@@ -53,6 +56,7 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
   light colors where they hardcode them.
 - Remaining hardcoded hex values that are not exact palette matches (e.g. one-off greys)
   and HTML/email templates rendered into iframes.
-- Unstyled `<Text>` falls back to react-native-web's black.
+- Unstyled `<Text>` falls back to react-native-web's black. Give text a `colors.Text0x` color
+  (the boot loading screens were black on the dark surface until this was fixed).
 
 Tests: `Themes/colorMode.test.js`.

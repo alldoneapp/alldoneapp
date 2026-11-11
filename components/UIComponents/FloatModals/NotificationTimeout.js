@@ -24,7 +24,7 @@ const localstyles = StyleSheet.create({
     container: {
         width: 317,
         height: 184,
-        backgroundColor: '#091540',
+        backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
         ...Platform.select({

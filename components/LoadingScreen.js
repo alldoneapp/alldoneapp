@@ -30,6 +30,7 @@ const localstyles = StyleSheet.create({
         fontFamily: 'Roboto-Regular',
         fontSize: 30,
         textAlign: 'center',
+        color: themed.Text01,
     },
 })
 

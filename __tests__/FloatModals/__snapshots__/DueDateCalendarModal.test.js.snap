@@ -14,7 +14,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
         "2019-04-22": {
           "customStyles": {
             "container": {
-              "backgroundColor": "#091540",
+              "backgroundColor": "var(--ad-Popup)",
               "borderColor": "#0C66FF",
               "borderRadius": 4,
               "borderWidth": 2,
@@ -45,8 +45,8 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
     theme={
       {
         "arrowColor": "orange",
-        "backgroundColor": "#091540",
-        "calendarBackground": "#091540",
+        "backgroundColor": "var(--ad-Popup)",
+        "calendarBackground": "var(--ad-Popup)",
         "dayTextColor": "var(--ad-Text03)",
         "disabledArrowColor": "#d9e1e8",
         "dotColor": "#00adf5",

@@ -122,7 +122,7 @@ describe('SuggestedGoalTag popup', () => {
             expect.objectContaining({
                 width: 343,
                 padding: 16,
-                backgroundColor: '#091540',
+                backgroundColor: 'var(--ad-Popup)',
             })
         )
 

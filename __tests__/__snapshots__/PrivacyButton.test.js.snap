@@ -14,7 +14,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
   type="button"
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-gaux03 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
     dir={null}
     style={
       {
@@ -62,7 +62,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
   type="button"
 >
   <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-gaux03 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
     dir={null}
     style={
       {

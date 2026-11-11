@@ -56,7 +56,7 @@ const localStyles = StyleSheet.create({
     },
     container: {
         width: 317,
-        backgroundColor: '#091540',
+        backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
         ...Platform.select({

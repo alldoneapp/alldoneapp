@@ -2,7 +2,7 @@
 
 exports[`Badge component Badge snapshot test should render correctly for a blue badge 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-o6kplv"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-6oszfu"
   dir={null}
 >
   <div

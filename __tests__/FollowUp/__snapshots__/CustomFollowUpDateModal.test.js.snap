@@ -2,7 +2,7 @@
 
 exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingTop-95jzfe"
+  className="css-view-g5y9jx r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingTop-95jzfe"
   dir={null}
   style={
     {
@@ -66,8 +66,8 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
       theme={
         {
           "arrowColor": "orange",
-          "backgroundColor": "#091540",
-          "calendarBackground": "#091540",
+          "backgroundColor": "var(--ad-Popup)",
+          "calendarBackground": "var(--ad-Popup)",
           "dayTextColor": "var(--ad-Text03)",
           "disabledArrowColor": "#d9e1e8",
           "dotColor": "#00adf5",
@@ -185,7 +185,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           dir={null}
         >
           <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
+            className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
             dir={null}
           >
             <div

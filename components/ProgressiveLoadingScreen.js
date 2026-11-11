@@ -38,6 +38,7 @@ const localstyles = StyleSheet.create({
         fontFamily: 'Roboto-Regular',
         fontSize: 24,
         textAlign: 'center',
+        color: themed.Text01,
         marginBottom: 30,
     },
     progressContainer: {
@@ -60,7 +61,7 @@ const localstyles = StyleSheet.create({
     progressText: {
         fontFamily: 'Roboto-Regular',
         fontSize: 14,
-        color: '#666',
+        color: themed.Text02,
     },
 })
 
