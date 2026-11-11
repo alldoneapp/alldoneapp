@@ -151,3 +151,12 @@ describe('getGoogleSignInErrorMessage', () => {
         )
     })
 })
+
+describe('LogInButton colours', () => {
+    it("keeps Google's light button in dark mode, under its dark label", () => {
+        const source = require('fs').readFileSync(require('path').join(__dirname, 'LogInButton.js'), 'utf8')
+        const block = source.slice(source.indexOf('googleButton: {'), source.indexOf('buttonText: {'))
+        expect(block).toContain("backgroundColor: '#FFFFFF'")
+        expect(block).not.toMatch(/themed\.|colors\./)
+    })
+})
