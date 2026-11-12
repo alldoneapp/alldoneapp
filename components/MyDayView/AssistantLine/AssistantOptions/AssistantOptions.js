@@ -1,23 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { Keyboard, StyleSheet, View, Text } from 'react-native'
 import { useSelector } from 'react-redux'
-import v4 from 'uuid/v4'
 import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
-import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
-import { unwatch } from '../../../../utils/backends/firestore'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
-import { getAssistantLineData, getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
-import OptionButtons from './OptionButtons/OptionButtons'
-import QuickActionsToggle from './QuickActionsToggle'
-import QuickActionsMeasurer from './QuickActionsMeasurer'
+import { getAssistantLineData } from './helper'
 import AssistantAvatarButton from './AssistantAvatarButton'
-import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
+import AssistantSwitchControl from '../AssistantSwitchControl'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import Button from '../../../UIControls/Button'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 // The canonical, dependency-free definition of the key — deliberately not the re-export from
 // `chatsComments`, which would drag the whole comments backend into this composer.
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../../utils/backends/Chats/chatNotificationPriority'
@@ -34,17 +27,19 @@ import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZ
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
-import RageModeButton from '../../../RageMode/RageModeButton'
 import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
 import {
-    getAssistantControlsStacked,
-    getAssistantInputDisplayHeight,
+    ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
+    ASSISTANT_COMPOSER_BOX_PADDING_TOP,
+    ASSISTANT_COMPOSER_TOOLBAR_GAP,
+    ASSISTANT_HEADER_GAP,
+    ASSISTANT_HEADER_HEIGHT,
+    ASSISTANT_INPUT_VERTICAL_PADDING,
+    ASSISTANT_TOOLBAR_CONTROL_SIZE,
     getAssistantInputLayout,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
-import { ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT, AssistantOptionButtonsSkeleton } from '../AssistantLineSkeleton'
-import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantLineCache'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -53,54 +48,44 @@ import { themed } from '../../../../Themes/colorMode'
 // `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
 // as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
-export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
-const QUICK_ACTION_HORIZONTAL_MARGIN = 16
 
+/**
+ * The assistant line: a compact header (avatar, the assistant's name — which is also the switcher
+ * when there is more than one assistant to talk to — and the greeting), then one composer box.
+ * The box is a multi-line text field with a toolbar under it: + (attach) and Templates on the
+ * left; mic, call and send on the right. The + and the mic belong to the text field
+ * (CustomTextInput3 owns their insert/push-to-talk wiring) and are portalled into the toolbar's
+ * slots through `inlineControlTargets`.
+ */
 export default function AssistantOptions({
     headerControls = null,
+    assistantSwitch = null,
     projectOverride = null,
     assistantIdOverride = null,
-    showAllQuickActions = false,
     preferAssistantIdOverride = false,
-    deferQuickActions = false,
 }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const selectedProject = projectOverride || selectedProjectFromStore
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
-    const userId = useSelector(state => state.loggedUser.uid)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const gold = useSelector(state => state.loggedUser.gold)
     const [message, setMessage] = useState('')
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
-    const [controlsStacked, setControlsStacked] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
-    const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
-    const [quickActionsWidth, setQuickActionsWidth] = useState(0)
-    const [searchButtonWidth, setSearchButtonWidth] = useState(0)
-    const [moreButtonWidth, setMoreButtonWidth] = useState(0)
-    const [quickActionWidths, setQuickActionWidths] = useState({})
     // AT-2444: the live Quill instance and caret the drop zone inserts at. The zone stays disabled
     // until `setEditor` has handed the editor over, so an early drop can never be half-applied.
     const [editor, setEditor] = useState(null)
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
+    // The toolbar slots the text field portals its + and mic into. State, not refs: the field
+    // has to re-render once the nodes exist.
+    const [attachmentSlot, setAttachmentSlot] = useState(null)
+    const [dictationSlot, setDictationSlot] = useState(null)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-
-    const storeMeasuredWidth = useCallback((setter, width) => {
-        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
-        setter(currentWidth => (currentWidth === outerWidth ? currentWidth : outerWidth))
-    }, [])
-
-    const storeOptionWidth = useCallback((optionId, width) => {
-        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
-        setQuickActionWidths(currentWidths =>
-            currentWidths[optionId] === outerWidth ? currentWidths : { ...currentWidths, [optionId]: outerWidth }
-        )
-    }, [])
 
     const assistantId = assistantIdOverride || defaultAssistantId
 
@@ -110,66 +95,10 @@ export default function AssistantOptions({
         defaultProjectId,
         preferAssistantIdOverride
     )
-    const assistantTasksProjectId = assistant?.uid
-        ? isGlobalAssistant(assistant.uid)
-            ? GLOBAL_PROJECT_ID
-            : assistantProjectId
-        : null
-    const cachedTasks = useMemo(
-        () =>
-            readAssistantTasksCache({
-                userId,
-                projectId: assistantTasksProjectId,
-                assistantId: assistant?.uid,
-            }),
-        [assistant?.uid, assistantTasksProjectId, userId]
-    )
-    const [tasks, setTasks] = useState(cachedTasks)
     // The assistant can live in another project, but conversations started from
     // this line must inherit the project the user currently has selected.
     const conversationProject = selectedProjectFromStore || selectedProject || assistantProject
     const conversationProjectId = conversationProject?.id || assistantProjectId
-
-    useEffect(() => {
-        setTasks(cachedTasks)
-
-        if (!assistantTasksProjectId || !assistant?.uid) return undefined
-
-        const watcherKey = v4()
-        let watcherStarted = false
-        let refreshTimer = null
-        const startWatcher = () => {
-            watcherStarted = true
-            watchAssistantTasks(assistantTasksProjectId, assistant.uid, watcherKey, liveTasks => {
-                setTasks(liveTasks)
-                writeAssistantTasksCache(
-                    {
-                        userId,
-                        projectId: assistantTasksProjectId,
-                        assistantId: assistant.uid,
-                    },
-                    liveTasks
-                )
-            })
-        }
-
-        if (deferQuickActions) {
-            refreshTimer = setTimeout(startWatcher, DEFERRED_QUICK_ACTION_REFRESH_MS)
-        } else {
-            startWatcher()
-        }
-
-        return () => {
-            if (refreshTimer) clearTimeout(refreshTimer)
-            if (watcherStarted) {
-                unwatch(watcherKey)
-            }
-        }
-    }, [assistant?.uid, assistantTasksProjectId, cachedTasks, deferQuickActions, userId])
-
-    useEffect(() => {
-        setQuickActionsExpanded(showAllQuickActions)
-    }, [assistant?.uid, assistantProjectId, showAllQuickActions])
 
     // Puts a submission back the way it was. Only reached when the send failed: the rich editor is
     // uncontrolled, so `setMessage` alone would leave Quill empty while `canSend` claimed there was
@@ -294,19 +223,6 @@ export default function AssistantOptions({
         [composerMaxHeight]
     )
 
-    // Once the text wraps, voice/send stack into a column (and on mobile the in-field + / mic do
-    // too, AT-2938). The latch releases only on empty text so width changes cannot cause reflow
-    // loops — see getAssistantControlsStacked.
-    useEffect(() => {
-        setControlsStacked(wasStacked =>
-            getAssistantControlsStacked({
-                inputHeight: inputLayout.height,
-                hasText: message.length > 0,
-                wasStacked,
-            })
-        )
-    }, [inputLayout.height, message, isMobile])
-
     const updateMessage = useCallback(text => {
         setMessage(text)
         if (!text) setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
@@ -347,46 +263,18 @@ export default function AssistantOptions({
         return null
     }
 
-    const tasksLoaded = Array.isArray(tasks)
-    // AT-2538: measure the real rendered labels instead of guessing an average button width.
-    // The hidden measuring copies use the exact same button component and margins as the visible
-    // row, so font, translation, and viewport changes all feed into the collapsed count.
-    const collapsedOptions = tasksLoaded
-        ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, Number.MAX_SAFE_INTEGER)
-              .optionsLikeButtons
-        : []
-    const collapsedVisibleCount = getCollapsedQuickActionCount({
-        containerWidth: quickActionsWidth,
-        searchWidth: searchButtonWidth,
-        moreWidth: moreButtonWidth,
-        optionWidths: collapsedOptions.map(option => quickActionWidths[option.id] || 0),
-    })
-    const hasAdditionalOptions = collapsedVisibleCount < collapsedOptions.length
-    const optionsLikeButtons = !tasksLoaded
-        ? []
-        : quickActionsExpanded
-          ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, 0, true).optionsLikeButtons
-          : collapsedOptions.slice(0, collapsedVisibleCount)
-
-    const hasQuickActions = true
     // An image on its own is a complete message — the serialized embed token IS the text, so this
     // is already non-empty for an attachment-only composer and needs no separate condition.
     //
-    // AT-2504: there is no `&& !isSending` term any more. The composer empties synchronously on
-    // submit, so an in-flight send already leaves this false through `message`, and a SECOND
-    // message typed while the first is still being created is deliberately allowed — it gets its
-    // own topic, which is what two sends have always produced.
+    // AT-2504: there is no `&& !isSending` term. The composer empties synchronously on submit, so
+    // an in-flight send already leaves this false through `message`, and a SECOND message typed
+    // while the first is still being created is deliberately allowed — it gets its own topic.
     const canSend = message.trim().length > 0
-    const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked, composerMaxHeight)
-
     const sendLabel = translate('Send')
-    const sendButtonTitle = isMobile ? '' : sendLabel
-    const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
 
     return (
-        // AT-2444 — the whole assistant card is the drop target, not just the field. The composer
-        // is a 40px line inside a ~128px card, so an input-only target is easy to miss; dropping
-        // onto the avatar, the send button or the quick-action row all mean the same thing.
+        // AT-2444 — the whole assistant card is the drop target, not just the field: dropping onto
+        // the avatar, the toolbar or the header all mean the same thing.
         //
         // The zone must stay a CAPTURE-phase claim (see AttachmentDropZone): Quill's own uploader
         // listens on `quill.root`, a descendant of this node, so a bubble-phase handler here would
@@ -399,40 +287,48 @@ export default function AssistantOptions({
             projectId={conversationProjectId}
             setInputCursorIndex={setInputCursorIndex}
         >
-            <View style={localStyles.headerRow}>
-                {headerControls}
-                {/* Kept short on purpose (AT-2442): the header is a single centred line
-                    (numberOfLines={1}) that also carries the assistant's display name, so a
-                    longer greeting ellipsises on narrow phones. */}
-                <View style={[localStyles.headerTitle, headerControls && localStyles.headerTitleWithControls]}>
-                    <Text style={localStyles.headerText} numberOfLines={1}>
-                        {`${assistant.displayName}: ${translate('How can I help?')}`}
+            <View testID="assistant-line-header" style={localStyles.headerRow}>
+                {headerControls ? <View style={localStyles.headerSide}>{headerControls}</View> : null}
+                <View style={localStyles.headerCenter}>
+                    {/* Rage mode's Anna takes off from this avatar when the game is started from a
+                        screen that also shows the assistant line (rageLaunchAnchor.js). */}
+                    <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
+                        <AssistantAvatarButton
+                            projectIndex={assistantProject.index}
+                            assistant={assistant}
+                            size={32}
+                            radius={8}
+                        />
+                    </View>
+                    {assistantSwitch ? (
+                        <AssistantSwitchControl
+                            {...assistantSwitch}
+                            label={assistant.displayName}
+                            labelStyle={localStyles.nameText}
+                        />
+                    ) : (
+                        <Text style={localStyles.nameText} numberOfLines={1}>
+                            {assistant.displayName}
+                        </Text>
+                    )}
+                    {/* Kept short on purpose (AT-2442): the header is a single centred line, so a
+                        longer greeting ellipsises on narrow phones. */}
+                    <Text style={localStyles.greetingText} numberOfLines={1}>
+                        {translate('How can I help?')}
                     </Text>
                 </View>
-                {/* Rage mode is Anna's: she is the one who flies out and shoots the page apart.
-                    Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
-                <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
             </View>
-            <View testID="assistant-composer-row" style={localStyles.firstRow}>
-                {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
-                <View
-                    style={[localStyles.avatarWrapper, isMobile && localStyles.avatarWrapperMobile]}
-                    nativeID={RAGE_LAUNCH_ANCHOR_ID}
-                >
-                    <AssistantAvatarButton
-                        projectIndex={assistantProject.index}
-                        assistant={assistant}
-                        size={isMobile ? 32 : 48}
-                    />
-                </View>
+            <View testID="assistant-composer-row" style={localStyles.composerBox}>
                 <CustomTextInput3
                     ref={inputRef}
-                    containerStyle={[localStyles.messageInput, isMobile && localStyles.messageInputMobile]}
-                    fixedHeight={inputDisplayHeight}
+                    containerStyle={localStyles.messageInput}
+                    fixedHeight={inputLayout.height}
                     maxHeight={composerMaxHeight}
                     onChangeText={updateMessage}
-                    // Include the frame's padding and borders in the natural height.
-                    onContentSizeChange={(width, height) => updateInputHeight(height + 16)}
+                    // Include the field's own vertical padding in the natural height.
+                    onContentSizeChange={(width, height) =>
+                        updateInputHeight(height + ASSISTANT_INPUT_VERTICAL_PADDING)
+                    }
                     placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
@@ -453,100 +349,59 @@ export default function AssistantOptions({
                     showScrollIndicator={inputLayout.scrollEnabled}
                     autoExpand={true}
                     // Dictating is a primary way to use this composer, so the mic is pinned on
-                    // instead of waiting for hover/focus — on touch there is no hover at all, so
-                    // it used to appear only after the field was already tapped (AT-2355).
+                    // instead of waiting for hover/focus — on touch there is no hover (AT-2355).
                     alwaysShowDictation={true}
                     showAttachmentButton={true}
-                    // AT-2938: on a phone the + and mic stack too, handing their row's width back
-                    // to the text. Desktop keeps them side by side.
-                    stackInlineControls={isMobile && controlsStacked}
+                    inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
+                    toolbarControlStyle={localStyles.toolbarControl}
                     // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
                     // inserted and the message is sent. Enter's own guards still apply, since this
                     // is the same send path the keydown listener uses.
                     onDictationSubmit={text => text && handleSendMessage(text)}
                 />
-                <AppPopover
-                    content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
-                    align={'start'}
-                    position={['top', 'bottom', 'left', 'right']}
-                    onClickOutside={() => setShowRunOutOfGoldModal(false)}
-                    isOpen={showRunOutOfGoldModal}
-                    contentLocation={isMobile ? null : undefined}
-                >
-                    <View
-                        testID={'assistant-message-controls'}
-                        style={[
-                            localStyles.sendButtonWrapper,
-                            controlsStacked && localStyles.sendButtonWrapperExpanded,
-                            controlsStacked && isMobile && localStyles.sendButtonWrapperExpandedMobile,
-                        ]}
-                    >
-                        <AssistantVoiceCallButton
-                            compact
-                            assistant={assistant}
-                            projectId={conversationProjectId}
-                            skipNavigationOnThreadCreate
-                            buttonStyle={[
-                                localStyles.voiceButton,
-                                isMobile && localStyles.voiceButtonMobile,
-                                controlsStacked && localStyles.voiceButtonExpanded,
-                                controlsStacked && isMobile && localStyles.voiceButtonExpandedMobile,
-                            ]}
-                        />
-                        <Button
-                            title={sendButtonTitle}
-                            icon={'send'}
-                            onPress={handleSendMessage}
-                            disabled={!canSend}
-                            buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}
-                            titleStyle={localStyles.sendButtonTitle}
-                            accessibilityLabel={sendLabel}
-                            accessible={true}
+                <View testID="assistant-composer-toolbar" style={localStyles.toolbar}>
+                    <View style={localStyles.toolbarSide}>
+                        <View ref={setAttachmentSlot} style={localStyles.controlSlot} />
+                        <AssistantTaskSearchButtonWrapper
+                            preferredAssistantId={assistant.uid}
+                            preferredProjectId={conversationProjectId}
                         />
                     </View>
-                </AppPopover>
-            </View>
-            {hasQuickActions && (
-                <View
-                    testID="assistant-quick-actions"
-                    style={[
-                        localStyles.quickActions,
-                        quickActionsExpanded ? localStyles.quickActionsExpanded : localStyles.quickActionsCollapsed,
-                    ]}
-                    onLayout={event => setQuickActionsWidth(event.nativeEvent.layout.width)}
-                >
-                    <AssistantTaskSearchButtonWrapper
-                        onLayout={event => storeMeasuredWidth(setSearchButtonWidth, event.nativeEvent.layout.width)}
-                    />
-                    {tasksLoaded ? (
-                        <>
-                            <OptionButtons
-                                projectId={conversationProjectId}
-                                options={optionsLikeButtons}
+                    <AppPopover
+                        content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
+                        align={'end'}
+                        position={['top', 'bottom', 'left', 'right']}
+                        onClickOutside={() => setShowRunOutOfGoldModal(false)}
+                        isOpen={showRunOutOfGoldModal}
+                        contentLocation={isMobile ? null : undefined}
+                    >
+                        <View testID={'assistant-message-controls'} style={localStyles.toolbarSide}>
+                            <View ref={setDictationSlot} style={localStyles.controlSlot} />
+                            <AssistantVoiceCallButton
+                                compact
                                 assistant={assistant}
+                                projectId={conversationProjectId}
+                                skipNavigationOnThreadCreate
+                                buttonStyle={localStyles.voiceButton}
                             />
-                            {hasAdditionalOptions && (
-                                <QuickActionsToggle
-                                    expanded={quickActionsExpanded}
-                                    onPress={() => setQuickActionsExpanded(expanded => !expanded)}
-                                    onLayout={
-                                        quickActionsExpanded
-                                            ? undefined
-                                            : event =>
-                                                  storeMeasuredWidth(setMoreButtonWidth, event.nativeEvent.layout.width)
-                                    }
-                                />
-                            )}
-                            <QuickActionsMeasurer options={collapsedOptions} onOptionLayout={storeOptionWidth} />
-                        </>
-                    ) : (
-                        <AssistantOptionButtonsSkeleton />
-                    )}
+                            <Button
+                                icon={'arrow-up'}
+                                iconSize={20}
+                                onPress={handleSendMessage}
+                                disabled={!canSend}
+                                buttonStyle={localStyles.sendButton}
+                                accessibilityLabel={sendLabel}
+                                accessible={true}
+                            />
+                        </View>
+                    </AppPopover>
                 </View>
-            )}
+            </View>
         </AttachmentDropZone>
     )
 }
+
+const CONTROL = ASSISTANT_TOOLBAR_CONTROL_SIZE
 
 const localStyles = StyleSheet.create({
     container: {
@@ -554,145 +409,112 @@ const localStyles = StyleSheet.create({
     },
     headerRow: {
         width: '100%',
+        minHeight: ASSISTANT_HEADER_HEIGHT,
+        justifyContent: 'center',
+        marginBottom: ASSISTANT_HEADER_GAP,
+    },
+    // The edit pencil (assistant board) sits at the left edge, outside the centred line.
+    headerSide: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 16,
+        zIndex: 1,
     },
-    headerTitle: {
-        flex: 1,
+    headerCenter: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginLeft: 22,
+        alignSelf: 'center',
+        maxWidth: '100%',
         minWidth: 0,
+        paddingHorizontal: 36,
     },
-    headerText: {
+    avatarWrapper: {
+        width: ASSISTANT_HEADER_HEIGHT,
+        height: ASSISTANT_HEADER_HEIGHT,
+        borderRadius: 8,
+        marginRight: 10,
+        flexShrink: 0,
+    },
+    nameText: {
         flexShrink: 1,
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600',
         color: colors.Text01,
-        textAlign: 'center',
     },
-    headerTitleWithControls: {
-        marginLeft: 0,
-    },
-    rageButton: {
+    greetingText: {
+        flexShrink: 2,
+        minWidth: 0,
         marginLeft: 8,
-        width: 28,
-        height: 28,
-        flexShrink: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
+        fontSize: 15,
+        color: colors.Text03,
     },
-    firstRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
+    composerBox: {
         width: '100%',
-        marginBottom: 12,
-    },
-    messageInput: {
-        flex: 1,
-        marginRight: 12,
-        borderRadius: 8,
+        borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: themed.Surface,
-        minHeight: 40,
-        maxHeight: 120,
-        // 24px text + 2 × 7px padding + 2px border = the 40px control row.
-        paddingVertical: 7,
-        paddingHorizontal: 12,
+        paddingTop: ASSISTANT_COMPOSER_BOX_PADDING_TOP,
+        paddingBottom: ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
+        paddingHorizontal: 6,
+    },
+    messageInput: {
+        width: '100%',
+        paddingVertical: ASSISTANT_INPUT_VERTICAL_PADDING / 2,
+        paddingHorizontal: 8,
         fontSize: 14,
-        lineHeight: 22,
+        lineHeight: 24,
         color: colors.Text01,
         textAlignVertical: 'top',
     },
-    messageInputMobile: {
-        paddingHorizontal: 8,
-        marginRight: 4,
-        minWidth: 0,
-    },
-    avatarWrapperMobile: {
-        width: 32,
-        height: 40,
-        marginRight: 4,
-    },
-    avatarWrapper: {
-        width: 56,
-        height: 56,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    sendButtonWrapper: {
+    toolbar: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: ASSISTANT_TOOLBAR_CONTROL_SIZE,
+        marginTop: ASSISTANT_COMPOSER_TOOLBAR_GAP,
+    },
+    toolbarSide: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    controlSlot: {
+        flexDirection: 'row',
         alignItems: 'center',
     },
-    sendButtonWrapperExpanded: {
-        flexDirection: 'column',
-        // The cluster shrinks to the widest control (the send button), so the
-        // send button keeps its collapsed position at the right edge of the row
-        // and the voice button sits centred directly above it. The ~48px the
-        // row layout needed for the second button is handed back to the flex:1
-        // input, which is what "the input field should expand accordingly" means.
-        alignItems: 'center',
-        justifyContent: 'flex-end',
+    toolbarControl: {
+        width: CONTROL,
+        minWidth: CONTROL,
+        height: CONTROL,
+        minHeight: CONTROL,
+        borderRadius: CONTROL / 2,
+        padding: 0,
+        paddingHorizontal: 0,
     },
     voiceButton: {
+        width: CONTROL,
+        height: CONTROL,
+        minHeight: CONTROL,
+        borderRadius: CONTROL / 2,
+        borderWidth: 0,
+        paddingHorizontal: 0,
         marginLeft: 0,
-        marginRight: 8,
-    },
-    voiceButtonMobile: {
-        marginRight: 4,
-    },
-    voiceButtonExpanded: {
-        marginRight: 0,
-        marginBottom: 8,
-    },
-    // AT-2938: on mobile the stacked cluster puts Send on top and Call below it, so the gap
-    // moves from below the voice button to above it.
-    sendButtonWrapperExpandedMobile: {
-        flexDirection: 'column-reverse',
-    },
-    voiceButtonExpandedMobile: {
-        marginBottom: 0,
-        marginTop: 8,
-    },
-    sendButtonDesktop: {
-        paddingHorizontal: 16,
-        paddingVertical: 0,
-        height: 40,
-        minHeight: 40,
-    },
-    sendButtonMobile: {
-        paddingHorizontal: 8,
-        paddingVertical: 0,
-        height: 40,
-        minHeight: 40,
-    },
-    sendButtonStacked: {
-        // Button's own buttonMaster sets alignSelf: 'flex-start', which would
-        // win over the wrapper's alignItems and pull the send button off the
-        // shared centre axis. Re-assert it here.
-        alignSelf: 'center',
-    },
-    sendButtonTitle: {
-        fontSize: 14,
-    },
-    quickActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'center',
-        width: '100%',
     },
-    quickActionsCollapsed: {
-        height: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-        overflow: 'hidden',
-    },
-    quickActionsExpanded: {
-        minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-        flexWrap: 'wrap',
+    sendButton: {
+        width: CONTROL,
+        height: CONTROL,
+        minHeight: CONTROL,
+        borderRadius: CONTROL / 2,
+        paddingHorizontal: 0,
+        paddingVertical: 0,
+        marginLeft: 4,
+        alignSelf: 'center',
+        justifyContent: 'center',
     },
 })

@@ -39,8 +39,9 @@ const readProjectsMap = () => {
 }
 
 /**
- * The entry to rage mode, at the top right of the assistant line: Anna takes
- * off from the assistant's avatar beside it, the page slides away under her and a vertical-scrolling raid begins over ground built
+ * The entry to rage mode, at the top right of the Empty inbox card (`AchievementsArea`): Anna takes
+ * off from the assistant line's avatar when one is on the same screen (else from this button), the
+ * page slides away under her and a vertical-scrolling raid begins over ground built
  * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — none of the app's
  * data is written (only the raid's own profile and progress), and its DOM is never touched.
  *
@@ -87,7 +88,7 @@ export default function RageModeButton({ color, style, size = 24 }) {
 
     const onPress = () => {
         if (active) return
-        // She comes out of (and goes back into) her avatar next to the input, not the crosshair.
+        // She comes out of (and goes back into) the assistant line's avatar when the screen has one.
         const from = findLaunchPoint(buttonRef.current)
         setActive(true)
         loadRageArena()

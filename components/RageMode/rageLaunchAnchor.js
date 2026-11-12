@@ -1,9 +1,10 @@
 /**
- * Where Anna takes off from and lands again: the assistant's avatar in the same assistant line as
- * the crosshair. The avatar's wrapper carries this DOM id (react-native-web renders `nativeID` as
- * `id`). It is looked up from the button OUTWARDS — the nearest ancestor that contains an avatar —
- * so with two assistant lines on screen each crosshair launches from its own avatar. Kept in a
- * module of its own so `AssistantOptions` can import the id without importing the button.
+ * Where Anna takes off from and lands again: the assistant line's avatar on the same screen as the
+ * crosshair (the crosshair itself sits on the Empty inbox card). The avatar's wrapper carries this
+ * DOM id (react-native-web renders `nativeID` as `id`). It is looked up from the button OUTWARDS —
+ * the nearest ancestor that contains an avatar — so the closest line wins; with none on screen
+ * (Settings → Profile) she starts from the crosshair. Kept in a module of its own so
+ * `AssistantOptions` can import the id without importing the button.
  */
 export const RAGE_LAUNCH_ANCHOR_ID = 'rage-mode-launch-anchor'
 

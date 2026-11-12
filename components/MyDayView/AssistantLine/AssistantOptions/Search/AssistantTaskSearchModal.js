@@ -24,10 +24,15 @@ import {
     TASK_TYPE_PROMPT,
     TASK_TYPE_WEBHOOK,
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
-import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
+import {
+    filterPreConfigTaskSearchItems,
+    groupPreConfigTaskSearchItems,
+    preferAssistantTasks,
+} from './assistantTaskSearchHelper'
 import { getAssistantTaskIcon } from '../assistantTaskIcon'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 import { themed } from '../../../../../Themes/colorMode'
+import { getSafeNavigationUrl } from '../../../../../utils/safeUrl'
 
 const getAiSettings = task => {
     return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
@@ -45,7 +50,7 @@ const getTaskMetadata = task => ({
     executionMode: task.executionMode,
 })
 
-export default function AssistantTaskSearchModal({ closeModal }) {
+export default function AssistantTaskSearchModal({ closeModal, preferredAssistantId, preferredProjectId }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isMobile = useSelector(state => state.smallScreenNavigation)
@@ -110,7 +115,9 @@ export default function AssistantTaskSearchModal({ closeModal }) {
         } else {
             executingTaskRef.current = true
             closeModal()
-            window.open(task.link, '_blank')
+            // task.link is member-writable (security audit 2026-11).
+            const safeLink = getSafeNavigationUrl(task.link)
+            if (safeLink) window.open(safeLink, '_blank')
         }
     }
 
@@ -120,7 +127,7 @@ export default function AssistantTaskSearchModal({ closeModal }) {
         setLoadError(null)
         try {
             const result = await getPreConfigTasksForAllProjects()
-            if (mountedRef.current) setTasks(result)
+            if (mountedRef.current) setTasks(preferAssistantTasks(result, preferredAssistantId, preferredProjectId))
         } catch (error) {
             console.error('Error loading assistant pre-configured tasks:', error)
             if (mountedRef.current) {
@@ -130,7 +137,7 @@ export default function AssistantTaskSearchModal({ closeModal }) {
         } finally {
             if (mountedRef.current) setLoading(false)
         }
-    }, [])
+    }, [preferredAssistantId, preferredProjectId])
 
     useEffect(() => {
         mountedRef.current = true
@@ -207,7 +214,7 @@ export default function AssistantTaskSearchModal({ closeModal }) {
 
     return (
         <View style={[localStyles.container, widerPopoverStyle, { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
-            <ModalHeader closeModal={closeModal} title={translate('Search assistant tasks')} />
+            <ModalHeader closeModal={closeModal} title={translate('Templates')} />
             <View style={localStyles.searchBox}>
                 <Icon name="search" size={18} color={colors.Text03} />
                 <TextInput

@@ -74,7 +74,8 @@ describe('the window.open guard', () => {
             /getSafeNavigationUrl\(user\.linkedInUrl\)/
         )
         expect(read('components/Tags/FileDownloadableTag.js')).toMatch(/getSafeNavigationUrl\(uri\)/)
-        expect(read('components/MyDayView/AssistantLine/AssistantOptions/helper.js')).toMatch(
+        // The assistant line's Templates picker (it replaced the task chips in helper.js).
+        expect(read('components/MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearchModal.js')).toMatch(
             /getSafeNavigationUrl\(task\.link\)/
         )
         expect(read('components/UIComponents/FloatModals/IframeModal/EmbeddedAppFrame.js')).toMatch(

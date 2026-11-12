@@ -181,6 +181,20 @@ mode is unchanged — there the guard IS the outside-click dismissal. Pinned by
 and `browser-tests/modalsheet` (real Chromium: touch grace timing, focused-input Escape,
 nested LIFO, scroll lock).
 
+**The assistant line (2026-11-13 layout).** `AssistantOptions` is a compact header (32px avatar,
+the assistant's name, "How can I help?") above ONE composer box: a multi-line field (two lines at
+rest, six before it scrolls, `assistantInputLayout.js`) with a toolbar under it — + and **Templates**
+("Vorlagen", the all-projects pre-configured task picker, current assistant listed first) on the
+left; mic, call and send on the right. The per-assistant task chips, the Search pill, More, the
+measuring copies, the side-by-side send/call stacking and the round switch button are gone: the
+name is the switcher (`AssistantSwitchControl` with `label`). The + and mic still belong to
+`CustomTextInput3` (dictation and push-to-talk live there) and are portalled into the toolbar slots
+through `inlineControlTargets`; with it set the field reserves no strip for them. The skeleton
+reserves `ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT`. The Last comment row carries "All chats" on the
+right (`openChatsList.js`: the line's project, or all projects on the All projects line). The rage
+mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
+`AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.

@@ -3,13 +3,11 @@
  */
 
 import React from 'react'
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
+import { Keyboard, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import AssistantOptions, { DEFERRED_QUICK_ACTION_REFRESH_MS } from './AssistantOptions'
+import AssistantOptions from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
-import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
-import { writeAssistantTasksCache } from '../assistantLineCache'
 import {
     PENDING_SEND_AWAITING_REPLY,
     PENDING_SEND_FAILED,
@@ -21,16 +19,6 @@ import {
 const mockInputBlur = jest.fn()
 const mockInputClear = jest.fn()
 const mockInputClearAndSetContent = jest.fn()
-const mockOptions = [
-    { id: 'task-1', text: 'Quick task', icon: 'edit', task: { name: 'Quick task' } },
-    { id: 'task-2', text: 'Overflow task', icon: 'edit', task: { name: 'Overflow task' } },
-]
-const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
-    optionsLikeButtons: expanded ? mockOptions : mockOptions.slice(0, amount),
-    optionsInModal: expanded ? [] : mockOptions.slice(amount),
-    showSubmenu: !expanded && amount < mockOptions.length,
-    hasAdditionalOptions: amount < mockOptions.length,
-}))
 
 const mockState = {
     selectedProjectIndex: 0,
@@ -68,25 +56,9 @@ jest.mock('../../../Feeds/CommentsTextInput/AttachmentDropZone', () => {
     )
 })
 
-jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
-    watchAssistantTasks: jest.fn((projectId, assistantId, watcherKey, callback) => {
-        callback([{ id: 'task-1', name: 'Quick task' }])
-    }),
-}))
-
-jest.mock('../../../../utils/backends/firestore', () => ({
-    unwatch: jest.fn(),
-    runHttpsCallableFunction: jest.fn(),
-}))
-
 jest.mock('../../../../utils/assistantHelper', () => ({
     createBotQuickTopic: jest.fn(),
     generateUserIdsToNotifyForNewComments: jest.fn(),
-}))
-
-jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({
-    GLOBAL_PROJECT_ID: 'globalProject',
-    isGlobalAssistant: jest.fn(() => false),
 }))
 
 jest.mock('../../../Feeds/CommentsTextInput/textInputHelper', () => ({
@@ -110,40 +82,11 @@ jest.mock('./helper', () => ({
         assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
         assistantProjectId: 'default-project',
     }),
-    getOptionsPresentationData: (...args) => mockGetOptionsPresentationData(...args),
-    getCollapsedQuickActionCount: ({ containerWidth, searchWidth, moreWidth, optionWidths }) => {
-        if (!containerWidth || !searchWidth || optionWidths.some(width => !width)) return 0
-        if (searchWidth + optionWidths.reduce((total, width) => total + width, 0) <= containerWidth) {
-            return optionWidths.length
-        }
-        if (!moreWidth) return 0
-
-        let usedWidth = searchWidth + moreWidth
-        let visibleCount = 0
-        for (const width of optionWidths) {
-            if (usedWidth + width > containerWidth) break
-            usedWidth += width
-            visibleCount += 1
-        }
-        return visibleCount
-    },
 }))
 
-jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
-    const React = require('react')
-    const { Text } = require('react-native')
-    return ({ onLayout }) => (
-        <Text testID="assistant-search-button" onLayout={onLayout}>
-            SearchButton
-        </Text>
-    )
-})
-
-jest.mock('./OptionButtons/OptionButtons', () => {
-    const React = require('react')
-    const { Text } = require('react-native')
-    return ({ options }) => <Text>{`OptionButtons: ${options.map(option => option.task.name).join(', ')}`}</Text>
-})
+jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => 'AssistantTaskSearchButtonWrapper')
+// The switcher reaches the popover/modal stack; its own behaviour is AssistantSwitchControl.test.js.
+jest.mock('../AssistantSwitchControl', () => 'AssistantSwitchControl')
 
 jest.mock('./AssistantAvatarButton', () => {
     const React = require('react')
@@ -175,11 +118,6 @@ jest.mock('../../../UIControls/Button', () => {
     )
 })
 
-jest.mock('../../../RageMode/RageModeButton', () => {
-    const React = require('react')
-    const { View } = require('react-native')
-    return props => React.createElement(View, { ...props, testID: 'rage-mode-button' })
-})
 jest.mock('../../../UIComponents/AssistantVoiceCallButton', () => {
     const React = require('react')
     const { Text } = require('react-native')
@@ -198,322 +136,72 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantM
     return () => <Text>RunOutOfGold</Text>
 })
 
-describe('AssistantOptions search button', () => {
+const renderOptions = async (props = {}) => {
+    let tree
+    await act(async () => {
+        tree = renderer.create(<AssistantOptions {...props} />)
+    })
+    return tree
+}
+
+describe('AssistantOptions layout', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        localStorage.clear()
     })
 
-    it('shows Search and a fixed option ghost while the lower-priority listener is deferred', async () => {
-        jest.useFakeTimers()
-        let tree
-        try {
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} deferQuickActions />)
-            })
+    it('shows one Templates entry, told to list the line assistant first', async () => {
+        const tree = await renderOptions()
 
-            expect(watchAssistantTasks).not.toHaveBeenCalled()
-            expect(tree.root.findByProps({ testID: 'assistant-quick-actions-loading-skeleton' })).toBeTruthy()
-            expect(JSON.stringify(tree.toJSON())).toContain('SearchButton')
-
-            await act(async () => {
-                jest.advanceTimersByTime(DEFERRED_QUICK_ACTION_REFRESH_MS)
-            })
-
-            expect(watchAssistantTasks).toHaveBeenCalledTimes(1)
-            expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons')
-        } finally {
-            await act(async () => tree?.unmount())
-            jest.useRealTimers()
-        }
+        const templates = tree.root.findAllByType('AssistantTaskSearchButtonWrapper')
+        expect(templates).toHaveLength(1)
+        expect(templates[0].props.preferredAssistantId).toBe('assistant-1')
+        expect(templates[0].props.preferredProjectId).toBe('selected-project')
     })
 
-    it('renders cached quick actions immediately and refreshes them later', async () => {
-        writeAssistantTasksCache({ userId: 'user-1', projectId: 'default-project', assistantId: 'assistant-1' }, [
-            { id: 'cached-task', name: 'Cached task' },
-        ])
-        jest.useFakeTimers()
-        let tree
-        try {
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} deferQuickActions />)
-            })
+    it('has no game button: rage mode moved to the Empty inbox card', async () => {
+        const tree = await renderOptions()
 
-            expect(JSON.stringify(tree.toJSON())).toContain('SearchButton')
-            expect(watchAssistantTasks).not.toHaveBeenCalled()
-
-            await act(async () => {
-                jest.advanceTimersByTime(DEFERRED_QUICK_ACTION_REFRESH_MS)
-            })
-            expect(watchAssistantTasks).toHaveBeenCalledTimes(1)
-        } finally {
-            await act(async () => tree?.unmount())
-            jest.useRealTimers()
-        }
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Rage mode')
     })
 
-    it('renders the pinned Search button before assistant task quick actions', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+    it('puts the + and the mic into the toolbar instead of floating them in the field', async () => {
+        const tree = await renderOptions()
 
-        const output = JSON.stringify(tree.toJSON())
-        expect(output.indexOf('SearchButton')).toBeGreaterThan(-1)
-        expect(output.indexOf('OptionButtons')).toBeGreaterThan(-1)
-        expect(output.indexOf('SearchButton')).toBeLessThan(output.indexOf('OptionButtons'))
+        const input = tree.root.findByType(TextInput)
+        expect(input.props.showAttachmentButton).toBe(true)
+        expect(input.props.inlineControlTargets).toEqual({ attachment: null, dictation: null })
+        expect(input.props.stackInlineControls).toBeUndefined()
+        expect(tree.root.findByProps({ testID: 'assistant-composer-toolbar' })).toBeTruthy()
     })
 
-    it('expands overflow tasks inline and collapses them again', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+    it('rests at two lines', async () => {
+        const tree = await renderOptions()
 
-        const visibleOptions = () =>
-            tree.root
-                .findAllByType(Text)
-                .find(
-                    node => typeof node.props.children === 'string' && node.props.children.startsWith('OptionButtons:')
-                ).props.children
-
-        expect(visibleOptions()).not.toContain('Overflow task')
-
-        await act(async () => {
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onPress()
-        })
-
-        expect(visibleOptions()).toContain('Overflow task')
-        expect(tree.root.findByProps({ accessibilityLabel: 'Show less' })).toBeTruthy()
-
-        await act(async () => {
-            tree.root.findByProps({ accessibilityLabel: 'Show less' }).props.onPress()
-        })
-
-        expect(visibleOptions()).not.toContain('Overflow task')
-        expect(tree.root.findByProps({ accessibilityLabel: 'More' })).toBeTruthy()
+        expect(tree.root.findByType(TextInput).props.fixedHeight).toBe(56)
     })
 
-    it('measures the row and reserves More while showing the maximum number of fitting tasks', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions />)
-        })
+    it('shows the plain name without a switch scope, and the switcher with the name as its label with one', async () => {
+        const plain = await renderOptions()
+        expect(plain.root.findAllByType('AssistantSwitchControl')).toHaveLength(0)
+        expect(plain.root.findAllByType(Text).some(node => node.props.children === 'Assistant')).toBe(true)
 
-        await act(async () => {
-            tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.onLayout({
-                nativeEvent: { layout: { width: 250 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-search-button' }).props.onLayout({
-                nativeEvent: { layout: { width: 64 } },
-            })
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onLayout({
-                nativeEvent: { layout: { width: 54 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-quick-action-measure-task-1' }).props.onLayout({
-                nativeEvent: { layout: { width: 84 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-quick-action-measure-task-2' }).props.onLayout({
-                nativeEvent: { layout: { width: 84 } },
-            })
-        })
-
-        expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons: Quick task')
-        expect(JSON.stringify(tree.toJSON())).not.toContain('OptionButtons: Quick task, Overflow task')
-        expect(tree.root.findByProps({ accessibilityLabel: 'More' })).toBeTruthy()
-
-        await act(async () => {
-            tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.onLayout({
-                nativeEvent: { layout: { width: 400 } },
-            })
-        })
-
-        expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons: Quick task, Overflow task')
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'More' })).toHaveLength(0)
+        const assistantSwitch = { groups: [], activeAssistantId: 'assistant-1', onSelect: jest.fn() }
+        const switched = await renderOptions({ assistantSwitch })
+        const control = switched.root.findByType('AssistantSwitchControl')
+        expect(control.props.label).toBe('Assistant')
+        expect(control.props.onSelect).toBe(assistantSwitch.onSelect)
     })
 
-    it('keeps the collapsed quick actions to one clipped line and only wraps after More is pressed', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions />)
-        })
+    it('renders the edit control it is handed in the header', async () => {
+        const tree = await renderOptions({ headerControls: <Text testID="edit-control">Edit</Text> })
 
-        const getRowStyle = () =>
-            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.style)
-
-        expect(getRowStyle()).toEqual(expect.objectContaining({ height: 32, overflow: 'hidden' }))
-        expect(getRowStyle().flexWrap).toBeUndefined()
-
-        await act(async () => {
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onPress()
-        })
-
-        expect(getRowStyle()).toEqual(expect.objectContaining({ minHeight: 32, flexWrap: 'wrap' }))
-        expect(getRowStyle().height).toBeUndefined()
-    })
-
-    it('stacks the voice and send controls when the assistant input expands', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        const getControlsStyle = () =>
-            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
-
-        expect(getControlsStyle().flexDirection).toBe('row')
-        expect(tree.root.findByType(TextInput).props.placeholder).toBe('Start a new chat')
-
-        await act(async () => {
-            tree.root.findByType(TextInput).props.onChangeText('A message long enough to wrap')
-        })
-        await act(async () => {
-            tree.root.findByType(TextInput).props.onContentSizeChange(100, 80)
-        })
-
-        expect(getControlsStyle().flexDirection).toBe('column')
-    })
-
-    it('lines the stacked controls up on one axis and lets the input reclaim the freed width', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        const getControls = () => tree.root.findByProps({ testID: 'assistant-message-controls' })
-        const getInput = () => tree.root.findByType(TextInput)
-
-        await act(async () => {
-            getInput().props.onChangeText('A message long enough to wrap')
-        })
-        await act(async () => {
-            getInput().props.onContentSizeChange(100, 72)
-        })
-
-        const expandedStyle = StyleSheet.flatten(getControls().props.style)
-        expect(expandedStyle.flexDirection).toBe('column')
-        // Both controls sit on the same centre axis — "directly below each other".
-        expect(expandedStyle.alignItems).toBe('center')
-        // No pinned width: the cluster shrinks to the send button and the flex:1
-        // input expands into the ~48px the second button no longer needs.
-        expect(expandedStyle.width).toBeUndefined()
-        // The field grows to the stacked cluster height so nothing overhangs it.
-        expect(getInput().props.fixedHeight).toBe(88)
-    })
-
-    // AT-2938: on a phone the controls stack too — Send above Call outside the field, + above the
-    // mic inside it — so the wrapped text gets the freed width back.
-    it('stacks Send above Call and + above the mic on mobile when text wraps', async () => {
-        mockState.smallScreenNavigation = true
-        try {
-            let tree
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-            })
-
-            const getInput = () => tree.root.findByType(TextInput)
-            const getControlsStyle = () =>
-                StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
-
-            expect(getControlsStyle().flexDirection).toBe('row')
-            expect(getInput().props.stackInlineControls).toBe(false)
-
-            await act(async () => {
-                getInput().props.onChangeText('Mobile message that wraps')
-            })
-            await act(async () => {
-                getInput().props.onContentSizeChange(100, 62)
-            })
-
-            const controls = getControlsStyle()
-            // The voice button renders first, so column-reverse puts Send on top.
-            expect(controls.flexDirection).toBe('column-reverse')
-            expect(controls.alignItems).toBe('center')
-            expect(controls.width).toBeUndefined()
-            expect(getInput().props.stackInlineControls).toBe(true)
-            expect(getInput().props.fixedHeight).toBe(88)
-            expect(getInput().props.placeholder).toBe('New message …')
-
-            await act(async () => getInput().props.onContentSizeChange(100, 160))
-            expect(getInput().props.fixedHeight).toBe(120)
-            expect(getControlsStyle().flexDirection).toBe('column-reverse')
-
-            // Re-wrapping to one line in the wider field must not flap back.
-            await act(async () => getInput().props.onContentSizeChange(100, 40))
-            expect(getControlsStyle().flexDirection).toBe('column-reverse')
-
-            await act(async () => {
-                getInput().props.onChangeText('')
-            })
-            expect(getControlsStyle().flexDirection).toBe('row')
-            expect(getInput().props.stackInlineControls).toBe(false)
-            expect(getInput().props.fixedHeight).toBe(40)
-        } finally {
-            mockState.smallScreenNavigation = false
-        }
-    })
-
-    it('keeps the in-field controls in a row on desktop when the text wraps', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-        const getInput = () => tree.root.findByType(TextInput)
-        await act(async () => {
-            getInput().props.onChangeText('A message long enough to wrap')
-        })
-        await act(async () => {
-            getInput().props.onContentSizeChange(100, 80)
-        })
-
-        expect(
-            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
-                .flexDirection
-        ).toBe('column')
-        expect(getInput().props.stackInlineControls).toBe(false)
-    })
-
-    it('does not un-stack when the widened input re-wraps back to a single line', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        const getControls = () => tree.root.findByProps({ testID: 'assistant-message-controls' })
-        const getInput = () => tree.root.findByType(TextInput)
-        const getDirection = () => StyleSheet.flatten(getControls().props.style).flexDirection
-
-        await act(async () => {
-            getInput().props.onChangeText('A message long enough to wrap')
-        })
-        await act(async () => {
-            getInput().props.onContentSizeChange(100, 80)
-        })
-        expect(getDirection()).toBe('column')
-
-        // Stacking made the input wider, so the browser now reports a single
-        // line again. Un-stacking here would re-narrow the input and oscillate.
-        await act(async () => {
-            getInput().props.onContentSizeChange(148, 40)
-        })
-        expect(getDirection()).toBe('column')
-
-        // Clearing the field is the one release condition — and it cannot feed
-        // back into the wrapping, because an empty field is one line at any width.
-        await act(async () => {
-            getInput().props.onChangeText('')
-        })
-        expect(getDirection()).toBe('row')
-        expect(getInput().props.fixedHeight).toBe(40)
+        expect(tree.root.findByProps({ testID: 'edit-control' })).toBeTruthy()
     })
 
     // AT-2355: the mic used to appear only on hover/focus, i.e. on touch only after the field had
     // already been tapped. It must be there from the first render, before any interaction.
     it('shows the dictation mic without focusing or hovering the input', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         expect(tree.root.findByType(TextInput).props.alwaysShowDictation).toBe(true)
     })
@@ -521,10 +209,7 @@ describe('AssistantOptions search button', () => {
     it('keeps showing the mic on small screens, where there is no hover at all', async () => {
         mockState.smallScreenNavigation = true
         try {
-            let tree
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-            })
+            const tree = await renderOptions()
 
             expect(tree.root.findByType(TextInput).props.alwaysShowDictation).toBe(true)
         } finally {
@@ -533,24 +218,22 @@ describe('AssistantOptions search button', () => {
     })
 
     it('keeps the input stable when content measurements oscillate at the scroll boundary', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         const getInput = () => tree.root.findByType(TextInput)
         expect(getInput().props.autoExpand).toBe(true)
 
+        // The field adds its own 8px of vertical padding to the reported content height.
         await act(async () => {
-            getInput().props.onContentSizeChange(100, 121)
+            getInput().props.onContentSizeChange(100, 145)
         })
-        expect(getInput().props.fixedHeight).toBe(120)
+        expect(getInput().props.fixedHeight).toBe(152)
         expect(getInput().props.scrollEnabled).toBe(true)
 
         await act(async () => {
-            getInput().props.onContentSizeChange(100, 119)
+            getInput().props.onContentSizeChange(100, 143)
         })
-        expect(getInput().props.fixedHeight).toBe(120)
+        expect(getInput().props.fixedHeight).toBe(152)
         expect(getInput().props.scrollEnabled).toBe(true)
     })
 
@@ -561,10 +244,7 @@ describe('AssistantOptions search button', () => {
             isPublicFor: ['all'],
         })
         const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss')
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         await act(async () => {
             tree.root.findByType(TextInput).props.onChangeText('Send and close the keyboard')
@@ -593,10 +273,7 @@ describe('AssistantOptions search button', () => {
             isPublicFor: ['all'],
         })
         const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss')
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         // The push-to-talk path hands the text over explicitly, because the `message` state behind
         // it is still a queued setState at that point.
@@ -610,24 +287,14 @@ describe('AssistantOptions search button', () => {
         dismissKeyboard.mockRestore()
     })
 
-    it('creates fallback-assistant chats in the selected project while loading tasks from the assistant project', async () => {
+    it('creates fallback-assistant chats in the selected project', async () => {
         createBotQuickTopic.mockResolvedValue({
             projectId: 'selected-project',
             chatId: 'chat-1',
             isPublicFor: ['all'],
         })
 
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        expect(watchAssistantTasks).toHaveBeenCalledWith(
-            'default-project',
-            'assistant-1',
-            expect.any(String),
-            expect.any(Function)
-        )
+        const tree = await renderOptions()
 
         const input = tree.root.findByType(TextInput)
         expect(input.props.projectId).toBe('selected-project')
@@ -660,14 +327,10 @@ describe('AssistantOptions search button', () => {
 describe('AssistantOptions mentions (AT-2592)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        localStorage.clear()
     })
 
     it('asks the shared composer to preserve selected assistants as real mentions', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         const input = tree.root.findByType(TextInput)
         expect(input.props.insertAssistantAsMention).toBe(true)
@@ -675,7 +338,7 @@ describe('AssistantOptions mentions (AT-2592)', () => {
 })
 
 // AT-2442: the greeting shares one centred `numberOfLines={1}` line with the assistant's
-// display name, so it ellipsises on narrow phones as soon as it grows. These pin BOTH
+// avatar and name, so it ellipsises on narrow phones as soon as it grows. These pin BOTH
 // halves of a copy change — the rendered string and the localisation — because the header
 // is the app's only consumer of the key, so dropping a locale would silently ship the raw
 // English key to German and Spanish users instead of failing anywhere.
@@ -685,19 +348,13 @@ describe('AssistantOptions greeting', () => {
     })
 
     it('renders the short greeting on a single line next to the assistant name', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
+        const tree = await renderOptions()
 
         // translate() is mocked to the identity, so this is the en source string.
-        const header = tree.root
-            .findAllByType(Text)
-            .find(node => typeof node.props.children === 'string' && node.props.children.startsWith('Assistant: '))
+        const greeting = tree.root.findAllByType(Text).find(node => node.props.children === 'How can I help?')
 
-        expect(header).toBeTruthy()
-        expect(header.props.children).toBe('Assistant: How can I help?')
-        expect(header.props.numberOfLines).toBe(1)
+        expect(greeting).toBeTruthy()
+        expect(greeting.props.numberOfLines).toBe(1)
         expect(JSON.stringify(tree.toJSON())).not.toContain('What can I do for you today?')
     })
 
@@ -712,6 +369,8 @@ describe('AssistantOptions greeting', () => {
             expect(typeof translations['How can I help?']).toBe('string')
             expect(translations['How can I help?'].length).toBeGreaterThan(0)
             expect(translations['What can I do for you today?']).toBeUndefined()
+            expect(translations['Templates'].length).toBeGreaterThan(0)
+            expect(translations['All chats'].length).toBeGreaterThan(0)
         })
     })
 })
@@ -753,7 +412,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
 
         let tree
         await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            tree = renderer.create(<AssistantOptions />)
         })
 
         let sendPromise
@@ -795,7 +454,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
 
         let tree
         await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            tree = renderer.create(<AssistantOptions />)
         })
         await act(async () => {
             await typeAndSend(tree, 'where does this show up')
@@ -815,7 +474,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
             createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
             let tree
             await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+                tree = renderer.create(<AssistantOptions />)
             })
             await act(async () => {
                 await typeAndSend(tree, 'one assistant request')
@@ -841,7 +500,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
 
         let tree
         await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            tree = renderer.create(<AssistantOptions />)
         })
 
         let firstSend
@@ -869,7 +528,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
 
         let tree
         await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            tree = renderer.create(<AssistantOptions />)
         })
         await act(async () => {
             await typeAndSend(tree, 'this one fails')
@@ -888,7 +547,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
 
         let tree
         await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            tree = renderer.create(<AssistantOptions />)
         })
         await act(async () => {
             await typeAndSend(tree, 'nowhere to put this')
@@ -903,7 +562,7 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
         try {
             let tree
             await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+                tree = renderer.create(<AssistantOptions />)
             })
             await act(async () => {
                 await typeAndSend(tree, 'no gold left')

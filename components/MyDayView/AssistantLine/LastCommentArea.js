@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, Text } from 'react-native'
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { getAssistantLineData, getCommentData } from './AssistantOptions/helper'
@@ -9,6 +9,7 @@ import PendingAssistantCommentWrapper from './LastComment/PendingAssistantCommen
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
+import { openChatsList } from './openChatsList'
 import {
     assistantHasRepliedToPendingSend,
     resolveAssistantLineSendForChat,
@@ -135,7 +136,7 @@ export default function LastCommentArea({
                     !compact && useCardBackground && localStyles.cardContainer,
                 ]}
             >
-                {!compact && <Text style={localStyles.title}>{translate('Last comment')}</Text>}
+                {!compact && <LastCommentHeader project={projectOverride} />}
                 <View style={compact ? null : localStyles.previewInset}>
                     <PendingAssistantCommentWrapper
                         pending={pendingSend}
@@ -164,7 +165,7 @@ export default function LastCommentArea({
                     useCardBackground && localStyles.cardContainer,
                 ]}
             >
-                <Text style={localStyles.title}>{translate('Last comment')}</Text>
+                <LastCommentHeader project={projectOverride} />
                 <View style={localStyles.previewInset}>
                     <LastCommentPreviewSkeleton />
                 </View>
@@ -181,7 +182,7 @@ export default function LastCommentArea({
                 !compact && useCardBackground && localStyles.cardContainer,
             ]}
         >
-            {!compact && <Text style={localStyles.title}>{translate('Last comment')}</Text>}
+            {!compact && <LastCommentHeader project={projectOverride} />}
             <LastComment
                 project={commentProject}
                 assistant={commentCreator}
@@ -191,6 +192,28 @@ export default function LastCommentArea({
                 compact={compact}
                 scopeKey={scopeKey}
             />
+        </View>
+    )
+}
+
+/**
+ * "Last comment" on the left, "All chats" on the right. The link opens the Chats list of the
+ * project this line belongs to (`openChatsList`), or of all projects on the All projects line.
+ */
+function LastCommentHeader({ project }) {
+    const label = translate('All chats')
+    return (
+        <View style={localStyles.header}>
+            <Text style={localStyles.title}>{translate('Last comment')}</Text>
+            <TouchableOpacity
+                onPress={() => openChatsList(project)}
+                accessibilityRole={'link'}
+                accessibilityLabel={label}
+                testID="assistant-line-all-chats"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+                <Text style={localStyles.link}>{label}</Text>
+            </TouchableOpacity>
         </View>
     )
 }
@@ -215,12 +238,22 @@ const localStyles = StyleSheet.create({
         paddingTop: 14,
         paddingBottom: 12,
     },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginLeft: 16,
+        marginBottom: 8,
+    },
     title: {
         fontSize: 13,
         fontWeight: '600',
         color: colors.Text03,
-        marginBottom: 8,
-        textAlign: 'center',
+    },
+    link: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: colors.Primary100,
     },
     previewInset: {
         marginLeft: 16,

@@ -1717,6 +1717,7 @@
     "No assistant tasks found": "Keine Assistentenaufgaben gefunden",
     "Could not load assistant tasks": "Assistentenaufgaben konnten nicht geladen werden",
     "Last comment": "Letzter Kommentar",
+    "All chats": "Alle Chats",
     "Webhook": "Webhook",
     "Discovering external tools...": "Externe Tools werden erkannt...",
     "External tools discovered count": "%{count} externe Tools erkannt",

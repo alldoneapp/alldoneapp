@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Dimensions, View } from 'react-native'
+import { createPortal } from 'react-dom'
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
@@ -168,6 +169,13 @@ function CustomTextInput3(
         // row. Used by the mobile assistant composers once the text has wrapped, so the text gets
         // the width of one control back. Only meaningful when both controls are shown.
         stackInlineControls = false,
+        // `{ attachment, dictation }` DOM nodes. When given, the + and the mic are portalled into
+        // those nodes (a toolbar the host lays out below the text) instead of floating inside the
+        // field, and the field reserves no strip for them. A target that is still null renders
+        // nothing yet. Used by the assistant line composer.
+        inlineControlTargets = null,
+        // Style for the + and the mic when they are rendered into `inlineControlTargets`.
+        toolbarControlStyle,
         getMentionViewport,
     },
     ref
@@ -267,12 +275,14 @@ function CustomTextInput3(
         ].includes(styleTheme)
     const dictationKind = dictationTargetKind || (dictationIsTitleTarget ? 'title' : 'generic')
 
+    const controlsInToolbar = !!inlineControlTargets
+
     useEffect(() => {
-        if (!dictationEnabled || !editorElement) return
+        if (!dictationEnabled || !editorElement || controlsInToolbar) return
         // Reserve the mic strip in the text layout (see .ql-editorWithDictation in styles.css).
         editorElement.classList.add('ql-editorWithDictation')
         return () => editorElement.classList.remove('ql-editorWithDictation')
-    }, [dictationEnabled, editorElement])
+    }, [dictationEnabled, editorElement, controlsInToolbar])
 
     // Composer inputs (assistant line, chat) pin the mic on: on touch there is no hover, so the
     // activity rule below only reveals it once the field is already focused — AT-2355.
@@ -1218,7 +1228,7 @@ function CustomTextInput3(
     const inlineControlsStacked = stackInlineControls && attachmentButtonEnabled && dictationEnabled
 
     useEffect(() => {
-        if (!attachmentButtonEnabled || !editorElement) return
+        if (!attachmentButtonEnabled || !editorElement || controlsInToolbar) return
         // A stacked column is one control wide, so it reserves the same strip as a single control.
         const className =
             dictationEnabled && !inlineControlsStacked
@@ -1226,7 +1236,7 @@ function CustomTextInput3(
                 : 'ql-editorWithAttachment'
         editorElement.classList.add(className)
         return () => editorElement.classList.remove(className)
-    }, [attachmentButtonEnabled, dictationEnabled, editorElement, inlineControlsStacked])
+    }, [attachmentButtonEnabled, dictationEnabled, editorElement, inlineControlsStacked, controlsInToolbar])
 
     const addAttachmentTag = (text, uri) => {
         if (!quillRef.current || !attachmentButtonEnabled) return
@@ -1603,6 +1613,30 @@ function CustomTextInput3(
         },
     }))
 
+    const attachmentButton = attachmentButtonEnabled ? (
+        <AddFeedAttachButton
+            compact
+            projectId={innerProjectId}
+            isDisabled={!editorElement}
+            addAttachmentTag={addAttachmentTag}
+            buttonStyle={controlsInToolbar ? toolbarControlStyle : undefined}
+        />
+    ) : null
+
+    const dictationButton = dictationEnabled ? (
+        <RambleButton
+            projectId={innerProjectId}
+            targetKind={dictationKind}
+            getCurrentText={() => textRef.current}
+            onTextReady={insertDictatedText}
+            onSubmit={submitDictatedText}
+            visible={dictationButtonVisible}
+            pushToTalkHandoff={pushToTalkHandoff}
+            claimBackgroundSubmit={claimDictationBackgroundSubmit ? claimBackgroundDictation : undefined}
+            style={controlsInToolbar ? toolbarControlStyle : undefined}
+        />
+    ) : null
+
     return (
         <CustomScrollView
             nativeID={scrollBoundaryId}
@@ -1618,7 +1652,16 @@ function CustomTextInput3(
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
             fixedChildren={
-                dictationEnabled || attachmentButtonEnabled ? (
+                controlsInToolbar ? (
+                    <>
+                        {attachmentButton &&
+                            inlineControlTargets.attachment &&
+                            createPortal(attachmentButton, inlineControlTargets.attachment)}
+                        {dictationButton &&
+                            inlineControlTargets.dictation &&
+                            createPortal(dictationButton, inlineControlTargets.dictation)}
+                    </>
+                ) : dictationEnabled || attachmentButtonEnabled ? (
                     <View
                         pointerEvents={'box-none'}
                         testID={'inline-input-controls'}
@@ -1628,28 +1671,8 @@ function CustomTextInput3(
                                 : localDictationWrapperStyle
                         }
                     >
-                        {attachmentButtonEnabled && (
-                            <AddFeedAttachButton
-                                compact
-                                projectId={innerProjectId}
-                                isDisabled={!editorElement}
-                                addAttachmentTag={addAttachmentTag}
-                            />
-                        )}
-                        {dictationEnabled && (
-                            <RambleButton
-                                projectId={innerProjectId}
-                                targetKind={dictationKind}
-                                getCurrentText={() => textRef.current}
-                                onTextReady={insertDictatedText}
-                                onSubmit={submitDictatedText}
-                                visible={dictationButtonVisible}
-                                pushToTalkHandoff={pushToTalkHandoff}
-                                claimBackgroundSubmit={
-                                    claimDictationBackgroundSubmit ? claimBackgroundDictation : undefined
-                                }
-                            />
-                        )}
+                        {attachmentButton}
+                        {dictationButton}
                     </View>
                 ) : null
             }

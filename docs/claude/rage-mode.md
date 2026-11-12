@@ -4,10 +4,12 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 
 ## Rage mode — a vertical-scrolling raid that takes off from your page
 
-A small crosshair after "Anna Alldone: How can I help?" in the assistant line (`AssistantOptions` →
-`components/RageMode/RageModeButton.js`) starts a vertical-scrolling shooter in the style of the
+A small crosshair at the top right of the Empty inbox card (`EmptyInboxOverview` in
+`AchievementsArea.js` → `components/RageMode/RageModeButton.js`; it moved there from the assistant
+line header on 2026-11-13, so it shows on the all-projects board once the inbox is empty and in
+Settings → Profile) starts a vertical-scrolling shooter in the style of the
 early-90s classics (`raidArena.js`). A voxel Anna Alldone with a jetpack takes off from the
-assistant's avatar in the same line (and lands back on it when you leave),
+assistant line's avatar when the screen has one (and lands back on it when you leave),
 **the page you are on slides down off the screen and generated ground scrolls in above it**, and
 the mission is flown over that ground: today's tasks are dug in as labelled bunkers, scripted waves
 of fighters and incoming mail come in, and the boss at the end is built from today's open-task
@@ -54,10 +56,10 @@ fixed thing you can get better at. **Credits are never Gold**: they are earned b
 as long as the run and buy consumables; a game that paid out Gold would let a modified client mint
 real currency.
 
-**Where she launches from** is the avatar wrapper in `AssistantOptions`, tagged with
-`RAGE_LAUNCH_ANCHOR_ID` (`rageLaunchAnchor.js`). `findLaunchPoint` searches OUTWARDS from the
-crosshair for the nearest ancestor containing one, so two assistant lines on one screen never launch
-from each other's avatar, and it falls back to the crosshair itself. The avatar's size is passed too:
+**Where she launches from** is the assistant line's avatar wrapper in `AssistantOptions`, tagged
+with `RAGE_LAUNCH_ANCHOR_ID` (`rageLaunchAnchor.js`). `findLaunchPoint` searches OUTWARDS from the
+crosshair for the nearest ancestor containing one, so the closest line on the same screen wins, and
+it falls back to the crosshair itself (Settings → Profile has no line). The avatar's size is passed too:
 she grows out of it and shrinks back into it.
 
 **Progress follows the user across devices** (`raidProgress.js`). Clearing a mission saves a

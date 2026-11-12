@@ -7,6 +7,9 @@ import AchievementsArea, { EmptyInboxOverview, getGridWidth } from './Achievemen
 import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebrationMarker'
 import { CELEBRATION_CLAIM_SETTLE_MS } from './useTodayEmptyInboxCelebration'
 
+// The game button reads the redux store; this suite renders the card without one.
+jest.mock('../../../RageMode/RageModeButton', () => () => null)
+
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) =>
         values.date ? `${key} ${values.date}` : values.time ? `${key} ${values.time}` : key,

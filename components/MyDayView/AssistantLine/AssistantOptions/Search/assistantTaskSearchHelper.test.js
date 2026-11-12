@@ -1,4 +1,5 @@
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
+import { preferAssistantTasks } from './assistantTaskSearchHelper'
 
 describe('assistant task search UI helpers', () => {
     const alphaProject = { id: 'project-a', name: 'Alpha', index: 2 }
@@ -42,5 +43,23 @@ describe('assistant task search UI helpers', () => {
         expect(groups).toHaveLength(2)
         expect(groups[0].project.id).toBe(alphaProject.id)
         expect(groups[0].assistants.map(group => group.assistant.uid)).toEqual(['local-1', 'global-1'])
+    })
+})
+
+describe('preferAssistantTasks', () => {
+    const tasks = [
+        { id: 'a', assistantId: 'other', projectId: 'p1' },
+        { id: 'b', assistantId: 'anna', projectId: 'p2' },
+        { id: 'c', assistantId: 'other', projectId: 'p2' },
+        { id: 'd', assistantId: 'anna', projectId: 'p1' },
+        { id: 'e', assistantId: 'anna', projectId: 'p1' },
+    ]
+
+    it('lists the line assistant in its project first, then elsewhere, keeping the rest in order', () => {
+        expect(preferAssistantTasks(tasks, 'anna', 'p1').map(task => task.id)).toEqual(['d', 'e', 'b', 'a', 'c'])
+    })
+
+    it('leaves the order alone without an assistant', () => {
+        expect(preferAssistantTasks(tasks, null, 'p1')).toBe(tasks)
     })
 })

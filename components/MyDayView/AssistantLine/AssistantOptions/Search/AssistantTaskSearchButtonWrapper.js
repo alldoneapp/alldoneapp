@@ -1,14 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import OptionButton from '../OptionButtons/OptionButton'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import AssistantTaskSearchModal from './AssistantTaskSearchModal'
+import Icon from '../../../../Icon'
+import styles, { colors } from '../../../../styles/global'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import { translate } from '../../../../../i18n/TranslationService'
-import { modeColor } from '../../../../../Themes/colorMode'
 
-export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
+/**
+ * "Templates" in the assistant line's toolbar: the single way into the pre-configured tasks of
+ * every assistant in every project. It replaced the row of per-assistant task chips, the
+ * Search pill and the More toggle. The tasks of the assistant the line is talking to are listed
+ * first (`preferredAssistantId` / `preferredProjectId`).
+ */
+export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId, preferredProjectId, compact }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
@@ -34,42 +41,68 @@ export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
         dispatch(hideFloatPopup())
     }
 
+    const label = translate('Templates')
+
     return (
         <AppPopover
             // The modal queries assistant tasks across every project. Keep it
             // out of the closed popover tree instead of relying on every
             // popover presenter to suppress closed content.
-            content={isOpen ? <AssistantTaskSearchModal closeModal={closeModal} /> : null}
+            content={
+                isOpen ? (
+                    <AssistantTaskSearchModal
+                        closeModal={closeModal}
+                        preferredAssistantId={preferredAssistantId}
+                        preferredProjectId={preferredProjectId}
+                    />
+                ) : null
+            }
             align={'start'}
-            position={['bottom', 'left', 'right', 'top']}
+            position={['bottom', 'top', 'left', 'right']}
             onClickOutside={closeModal}
             isOpen={isOpen}
             contentLocation={null}
             disableReposition
         >
-            <OptionButton
-                text={translate('Search')}
-                icon="search"
-                containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
-                buttonStyle={localStyles.searchButton}
-                iconColor="#ffffff"
-                textStyle={localStyles.searchText}
+            <TouchableOpacity
+                style={[localStyles.button, compact && localStyles.buttonCompact]}
                 onPress={openModal}
-                onLayout={onLayout}
+                accessibilityRole={'button'}
+                accessibilityLabel={label}
+                accessibilityState={{ expanded: isOpen }}
                 testID="assistant-task-search-button"
-            />
+            >
+                <Icon name="zap" size={16} color={colors.Text03} />
+                {!compact && <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>}
+                {!compact && <Icon name="chevron-down" size={16} color={colors.Text03} />}
+            </TouchableOpacity>
         </AppPopover>
     )
 }
 
-const localStyles = {
-    // Light blue with a pastel rim on the light card. In dark mode a solid primary blue: the
-    // pastel rim glared and white text on the light blue was hard to read.
-    searchButton: {
-        backgroundColor: modeColor('#5AACFF', '#2F7CF6'),
-        borderColor: modeColor('#A3D1FF', '#2F7CF6'),
+const localStyles = StyleSheet.create({
+    button: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 32,
+        paddingLeft: 10,
+        paddingRight: 8,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
     },
-    searchText: {
-        color: '#ffffff',
+    buttonCompact: {
+        width: 36,
+        height: 36,
+        paddingLeft: 0,
+        paddingRight: 0,
+        borderRadius: 18,
+        borderWidth: 0,
+        justifyContent: 'center',
     },
-}
+    text: {
+        color: colors.Text02,
+        marginLeft: 6,
+        marginRight: 2,
+    },
+})

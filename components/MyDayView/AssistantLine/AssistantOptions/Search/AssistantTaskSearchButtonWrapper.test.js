@@ -25,16 +25,12 @@ jest.mock('../../../../UIComponents/ModalShell/AppPopover', () => {
     )
 })
 
-jest.mock('../OptionButtons/OptionButton', () => {
-    const React = require('react')
-    const { TouchableOpacity } = require('react-native')
-    return ({ onPress, onLayout }) => <TouchableOpacity testID="search-button" onPress={onPress} onLayout={onLayout} />
-})
+jest.mock('../../../../Icon', () => 'Icon')
 
 jest.mock('./AssistantTaskSearchModal', () => {
     const React = require('react')
     const { View } = require('react-native')
-    return () => <View testID="assistant-task-search-modal" />
+    return props => <View testID="assistant-task-search-modal" {...props} />
 })
 
 jest.mock('../../../../../i18n/TranslationService', () => ({
@@ -46,31 +42,44 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         mockDispatch.mockClear()
     })
 
-    it('does not mount the all-project task query until Search is opened', () => {
+    const pressButton = tree =>
+        act(() => {
+            tree.root.findByProps({ testID: 'assistant-task-search-button' }).props.onPress()
+        })
+
+    it('does not mount the all-project task query until Templates is opened', () => {
         let tree
         act(() => {
             tree = renderer.create(<AssistantTaskSearchButtonWrapper />)
         })
 
         expect(tree.root.findAllByType(AssistantTaskSearchModal)).toHaveLength(0)
-
-        act(() => {
-            tree.root.findByProps({ testID: 'search-button' }).props.onPress()
-        })
-
+        pressButton(tree)
         expect(tree.root.findByType(AssistantTaskSearchModal)).toBeTruthy()
     })
 
-    it('forwards its measured width to the quick-action row', () => {
-        const onLayout = jest.fn()
+    it('is labelled Templates', () => {
         let tree
         act(() => {
-            tree = renderer.create(<AssistantTaskSearchButtonWrapper onLayout={onLayout} />)
+            tree = renderer.create(<AssistantTaskSearchButtonWrapper />)
         })
 
-        const event = { nativeEvent: { layout: { width: 80 } } }
-        act(() => tree.root.findByProps({ testID: 'search-button' }).props.onLayout(event))
+        const button = tree.root.findByProps({ testID: 'assistant-task-search-button' })
+        expect(button.props.accessibilityLabel).toBe('Templates')
+        expect(JSON.stringify(tree.toJSON())).toContain('Templates')
+    })
 
-        expect(onLayout).toHaveBeenCalledWith(event)
+    it('asks the picker to list the line assistant first', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <AssistantTaskSearchButtonWrapper preferredAssistantId="assistant-1" preferredProjectId="project-1" />
+            )
+        })
+
+        pressButton(tree)
+        const modal = tree.root.findByType(AssistantTaskSearchModal)
+        expect(modal.props.preferredAssistantId).toBe('assistant-1')
+        expect(modal.props.preferredProjectId).toBe('project-1')
     })
 })

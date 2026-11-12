@@ -20,9 +20,6 @@ jest.mock('./AssistantOptions/AssistantOptions', () => {
 jest.mock('./LastCommentArea', () => 'LastCommentArea')
 jest.mock('../../AdminPanel/Assistants/AssistantAvatar', () => 'AssistantAvatar')
 jest.mock('../../Icon', () => 'Icon')
-// The switch control reaches the popover/modal stack and from there the firestore client; its
-// own behaviour is covered by AssistantSwitchControl.test.js.
-jest.mock('./AssistantSwitchControl', () => 'AssistantSwitchControl')
 jest.mock('./AssistantOptions/helper', () => ({
     getAssistantLineData: () => ({
         assistant: mockAssistant,
@@ -98,26 +95,22 @@ describe('AssistantLine switch control (AT-2430)', () => {
         onSelect: jest.fn(),
     }
 
-    it('renders no switch control unless a scope is given', () => {
+    it('passes no switch scope unless one is given', () => {
         let tree
         act(() => {
             tree = renderer.create(<AssistantLine projectOverride={mockProject} />)
         })
 
-        expect(tree.root.findAllByType('AssistantSwitchControl')).toHaveLength(0)
+        expect(tree.root.findByType('AssistantOptions').props.assistantSwitch).toBeNull()
     })
 
-    it('hands the whole switch scope to the inline control', () => {
+    it('hands the whole switch scope to the header, where the name becomes the switcher', () => {
         let tree
         act(() => {
             tree = renderer.create(<AssistantLine projectOverride={mockProject} assistantSwitch={assistantSwitch} />)
         })
 
-        const control = tree.root.findByType('AssistantSwitchControl')
-        expect(control.props.groups).toBe(assistantSwitch.groups)
-        expect(control.props.onSelect).toBe(assistantSwitch.onSelect)
-        expect(control.props.activeAssistantId).toBe(mockAssistant.uid)
-        expect(control.props.inline).toBe(true)
+        expect(tree.root.findByType('AssistantOptions').props.assistantSwitch).toBe(assistantSwitch)
     })
 })
 

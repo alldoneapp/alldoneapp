@@ -3,9 +3,9 @@ import { REGEX_ATTACHMENT, REGEX_IMAGE, REGEX_VIDEO } from '../../../functions/U
 import { ASSISTANT_INPUT_MAX_HEIGHT } from './assistantInputLayout'
 
 /**
- * The assistant line's composer is capped at ASSISTANT_INPUT_MAX_HEIGHT (120px), which is right
+ * The assistant line's composer is capped at ASSISTANT_INPUT_MAX_HEIGHT (six lines), which is right
  * for text and wrong for an attachment (AT-2444): `CustomImage` renders a dropped image at 200px
- * on desktop, so a 120px viewport would show the top half of it inside a scroller — the user
+ * on desktop, so a text-sized viewport would show the top half of it inside a scroller — the user
  * cannot tell what they attached without scrolling a field they are trying to type into.
  *
  * Growing the cap only while the composer actually holds media keeps the resting geometry of the

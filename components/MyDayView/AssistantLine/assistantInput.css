@@ -22,10 +22,11 @@
 }
 
 /* Keep Quill's empty paragraph/caret at the first line without adding a second
-   line below the placeholder. The editor's reserved padding clears mic + attach. */
+   line below the placeholder. The + and mic sit in the toolbar below the text, so
+   nothing is reserved on the right. */
 [data-testid='assistant-composer-row'] .ql-editor.ql-blank > p {
     position: absolute;
     top: 0;
     left: 0;
-    right: 62px;
+    right: 0;
 }

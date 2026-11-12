@@ -7,7 +7,6 @@ import AssistantOptions from './AssistantOptions/AssistantOptions'
 import { getAssistantLineData } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
 import Icon from '../../Icon'
-import AssistantSwitchControl from './AssistantSwitchControl'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
 
@@ -23,12 +22,10 @@ export default function AssistantLine({
     // active is decided by whoever owns the scope (a project board, or the home page), because
     // only they know whether a choice means "talk to someone else here" or "go somewhere else".
     assistantSwitch = null,
-    showAllQuickActions = false,
     preferAssistantIdOverride = false,
     scopeLastCommentToAssistant = false,
     showEditAssistantButton = false,
     onEditAssistant = null,
-    deferQuickActions = false,
 }) {
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -72,17 +69,11 @@ export default function AssistantLine({
             testID="assistant-line"
         >
             <AssistantOptions
-                headerControls={
-                    <View style={localStyles.headerControls}>
-                        {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} />}
-                        {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} inline />}
-                    </View>
-                }
+                headerControls={showEditAssistantButton ? <EditAssistantButton onPress={onEditAssistant} /> : null}
+                assistantSwitch={assistantSwitch}
                 projectOverride={selectedProject}
                 assistantIdOverride={assistantId}
-                showAllQuickActions={showAllQuickActions}
                 preferAssistantIdOverride={preferAssistantIdOverride}
-                deferQuickActions={deferQuickActions}
             />
             {showLastComment && (
                 <LastCommentArea
@@ -119,20 +110,14 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Grey200,
         marginTop: 8,
         borderRadius: 4,
-        minHeight: 128,
+        minHeight: 160,
         marginBottom: 24,
-        paddingLeft: 10,
-        paddingRight: 16,
-        paddingTop: 14,
+        paddingHorizontal: 12,
+        paddingTop: 12,
         paddingBottom: 12,
     },
     containerWithoutBottomSpace: {
         marginBottom: 0,
-    },
-    headerControls: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
     },
     actionButton: {
         width: 28,

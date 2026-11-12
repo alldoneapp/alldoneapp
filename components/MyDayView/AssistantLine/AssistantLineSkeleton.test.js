@@ -6,12 +6,12 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import renderer from 'react-test-renderer'
 
-import AssistantLineSkeleton, {
-    ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT,
-    ASSISTANT_OPTIONS_HEADER_HEIGHT,
-    ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT,
-    LastCommentPreviewSkeleton,
-} from './AssistantLineSkeleton'
+import AssistantLineSkeleton, { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
+import {
+    ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT,
+    ASSISTANT_HEADER_GAP,
+    ASSISTANT_HEADER_HEIGHT,
+} from './assistantInputLayout'
 import { LAST_COMMENT_PREVIEW_HEIGHT } from './LastComment/lastCommentLayout'
 import { ProjectSectionLastCommentTintContext } from '../../TaskListView/TaskHierarchy'
 import { colors } from '../../styles/global'
@@ -19,28 +19,19 @@ import { colors } from '../../styles/global'
 jest.mock('react-redux', () => ({ useSelector: selector => selector({ smallScreenNavigation: true }) }))
 
 describe('AssistantLineSkeleton', () => {
-    it('reserves the measured mobile assistant-line content height', () => {
+    it('reserves the real assistant-line geometry: header, two-line composer box, last comment', () => {
         const tree = renderer.create(<AssistantLineSkeleton />)
         const styles = tree.root.findAllByType(View).map(node => StyleSheet.flatten(node.props.style))
 
         expect(styles).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ height: ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT }),
-                expect.objectContaining({ height: ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT }),
+                expect.objectContaining({ height: ASSISTANT_HEADER_HEIGHT, marginBottom: ASSISTANT_HEADER_GAP }),
+                expect.objectContaining({ height: ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT }),
                 expect.objectContaining({ height: LAST_COMMENT_PREVIEW_HEIGHT }),
             ])
         )
-        expect(
-            ASSISTANT_OPTIONS_HEADER_HEIGHT +
-                16 +
-                ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT +
-                12 +
-                ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT +
-                24 +
-                16 +
-                8 +
-                LAST_COMMENT_PREVIEW_HEIGHT
-        ).toBe(273)
+        // 1px border + 8 padding + 56 field (two lines) + 4 gap + 36 toolbar + 6 padding + 1px border.
+        expect(ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT).toBe(112)
     })
 
     it('uses the same fixed height as the real last-comment preview', () => {

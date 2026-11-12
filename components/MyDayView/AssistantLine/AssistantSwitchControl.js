@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { StyleSheet, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { colors } from '../../styles/global'
@@ -20,6 +20,9 @@ export const ASSISTANT_SWITCH_BUTTON_TEST_ID = 'assistant-line-switch-button'
  * which is what the in-project switch has always done and is one click instead of three. Three
  * or more open the popup, because a blind toggle through a 33-entry ring is not a control.
  *
+ * With a `label` (the assistant line's header) the control IS the assistant's name: the name with
+ * a chevron when there is something to switch to, plain text when there is not.
+ *
  * The press handler stops propagation on purpose: in the collapsed layout this button sits
  * inside the row's own `TouchableOpacity`, whose job is to expand the line.
  */
@@ -31,6 +34,8 @@ export default function AssistantSwitchControl({
     grouped = false,
     collapsed = false,
     inline = false,
+    label = null,
+    labelStyle,
 }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -61,9 +66,27 @@ export default function AssistantSwitchControl({
         if (target) onSelect?.(target)
     }
 
-    if (optionCount < 2) return null
+    if (optionCount < 2) {
+        return label ? (
+            <Text style={[localStyles.labelText, labelStyle]} numberOfLines={1}>
+                {label}
+            </Text>
+        ) : null
+    }
 
-    const button = (
+    const button = label ? (
+        <TouchableOpacity
+            style={localStyles.labelButton}
+            onPress={onPress}
+            testID={ASSISTANT_SWITCH_BUTTON_TEST_ID}
+            accessibilityLabel={translate('Switch assistant')}
+        >
+            <Text style={[localStyles.labelText, labelStyle]} numberOfLines={1}>
+                {label}
+            </Text>
+            <Icon name={'chevron-down'} size={16} color={colors.Text03} style={localStyles.labelChevron} />
+        </TouchableOpacity>
+    ) : (
         <TouchableOpacity
             style={[localStyles.switchButton, (collapsed || inline) && localStyles.switchButtonCollapsed]}
             onPress={onPress}
@@ -113,6 +136,21 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: colors.Grey300,
         zIndex: 1,
+    },
+    labelButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    labelText: {
+        flexShrink: 1,
+        fontSize: 15,
+        fontWeight: '600',
+        color: colors.Text01,
+    },
+    labelChevron: {
+        marginLeft: 2,
     },
     switchButtonCollapsed: {
         position: 'relative',

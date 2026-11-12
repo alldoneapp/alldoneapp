@@ -1,5 +1,29 @@
-export const ASSISTANT_INPUT_MIN_HEIGHT = 40
-export const ASSISTANT_INPUT_MAX_HEIGHT = 120
+// The assistant line's text field: two 24px lines plus 4px padding above and below at rest, six
+// lines before it scrolls. The + / mic / call / send controls live in a toolbar below the text, so
+// the field's height never depends on them and nothing beside it has to stack.
+export const ASSISTANT_INPUT_LINE_HEIGHT = 24
+export const ASSISTANT_INPUT_VERTICAL_PADDING = 8
+export const ASSISTANT_INPUT_MIN_HEIGHT = ASSISTANT_INPUT_LINE_HEIGHT * 2 + ASSISTANT_INPUT_VERTICAL_PADDING
+export const ASSISTANT_INPUT_MAX_HEIGHT = ASSISTANT_INPUT_LINE_HEIGHT * 6 + ASSISTANT_INPUT_VERTICAL_PADDING
+
+// The composer box around the field: the toolbar's 36px controls, the gaps and the box's own
+// padding and border. The skeleton reserves exactly this so the line does not jump on load.
+export const ASSISTANT_TOOLBAR_CONTROL_SIZE = 36
+export const ASSISTANT_COMPOSER_BOX_PADDING_TOP = 8
+export const ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM = 6
+export const ASSISTANT_COMPOSER_TOOLBAR_GAP = 4
+export const ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT =
+    1 +
+    ASSISTANT_COMPOSER_BOX_PADDING_TOP +
+    ASSISTANT_INPUT_MIN_HEIGHT +
+    ASSISTANT_COMPOSER_TOOLBAR_GAP +
+    ASSISTANT_TOOLBAR_CONTROL_SIZE +
+    ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM +
+    1
+
+// The compact header: a 32px avatar on one line with the name and greeting.
+export const ASSISTANT_HEADER_HEIGHT = 32
+export const ASSISTANT_HEADER_GAP = 12
 
 // Keep one line of tolerance when leaving scroll mode. Browser scrollbars can
 // change the available text width and therefore report a slightly different
@@ -15,7 +39,7 @@ const ASSISTANT_INPUT_SCROLL_HYSTERESIS = 8
 // Growth is always applied immediately so a newly typed line is never clipped;
 // only shrinking is damped, so any flap smaller than a line settles on the
 // larger height instead of oscillating. The band is well under one line
-// (lineHeight 22) so deleting a real line still collapses the field normally.
+// (lineHeight 24) so deleting a real line still collapses the field normally.
 const ASSISTANT_INPUT_HEIGHT_HYSTERESIS = 8
 
 export const INITIAL_ASSISTANT_INPUT_LAYOUT = {
@@ -23,58 +47,9 @@ export const INITIAL_ASSISTANT_INPUT_LAYOUT = {
     scrollEnabled: false,
 }
 
-// Geometry of the send/voice control cluster when it is stacked into a column:
-// two 40px controls with an 8px gap between them.
-export const ASSISTANT_CONTROL_BUTTON_SIZE = 40
-export const ASSISTANT_CONTROL_STACK_GAP = 8
-export const ASSISTANT_CONTROLS_STACKED_HEIGHT = ASSISTANT_CONTROL_BUTTON_SIZE * 2 + ASSISTANT_CONTROL_STACK_GAP
-
-// Decide whether the voice + send cluster renders as a row (collapsed) or as a
-// column with the two buttons directly below each other (expanded).
-//
-// Why this is a latch and not a plain `height > MIN` check:
-//
-// The cluster is a sibling of the flex:1 message input in the same row. When it
-// stacks into a column it becomes ~48px NARROWER, which is exactly what we want
-// — the input reclaims that space and expands accordingly. But a wider input
-// re-wraps the text, so the measured content height can drop straight back to a
-// single line. A naive `height > MIN` check would then un-stack, the cluster
-// would widen, the input would narrow, the text would wrap again — and the
-// field oscillates forever, "unable to decide" whether it wants to expand.
-// Height-only hysteresis (see getAssistantInputLayout) cannot damp that,
-// because the content *width*, and therefore the content height, genuinely
-// changes every cycle.
-//
-// The loop is broken by making the un-stack condition independent of any
-// width-sensitive measurement: once stacked, the cluster stays stacked until
-// the field is EMPTY. An empty field is a single line at every width, so the
-// release can never feed back into the wrapping. The cost is that deleting text
-// down to one line keeps the taller composer until the last character is gone —
-// deliberate, and far less jarring than a flapping layout.
-export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked = false }) => {
-    // A wrapped placeholder is still an empty field. Keep its natural height
-    // instead of reserving space for a stacked button column.
-    if (!hasText) return false
-    // Grew past a single line: stack immediately so the buttons line up.
-    if (Number.isFinite(inputHeight) && inputHeight > ASSISTANT_INPUT_MIN_HEIGHT) return true
-    // One line but text present: hold whatever we had, never flap.
-    return wasStacked
-}
-
-// While stacked, the cluster is ASSISTANT_CONTROLS_STACKED_HEIGHT tall. Grow the
-// input to at least that height so the two layouts are exactly the same height
-// and the button column cannot overhang the field it belongs to.
-//
 // `maxHeight` is a parameter rather than the constant because a composer holding a dropped or
 // pasted attachment is allowed to grow taller than a text-only one (AT-2444, see
-// assistantComposerMedia.js). It defaults to the text cap, so every existing caller and every
-// text-only render is unchanged.
-export const getAssistantInputDisplayHeight = (inputHeight, isStacked, maxHeight = ASSISTANT_INPUT_MAX_HEIGHT) => {
-    if (!Number.isFinite(inputHeight)) return ASSISTANT_INPUT_MIN_HEIGHT
-    if (!isStacked) return inputHeight
-    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), resolveMaxHeight(maxHeight))
-}
-
+// assistantComposerMedia.js). It defaults to the text cap.
 const resolveMaxHeight = maxHeight =>
     Number.isFinite(maxHeight) && maxHeight >= ASSISTANT_INPUT_MIN_HEIGHT ? maxHeight : ASSISTANT_INPUT_MAX_HEIGHT
 

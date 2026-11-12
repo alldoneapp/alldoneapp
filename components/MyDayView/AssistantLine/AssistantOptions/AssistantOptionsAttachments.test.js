@@ -47,12 +47,6 @@ jest.mock('../../../Feeds/Utils/HelperFunctions', () => ({
     updateNewAttachmentsData: jest.fn(async (projectId, text) => text),
 }))
 
-jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
-    watchAssistantTasks: jest.fn((projectId, assistantId, watcherKey, callback) => {
-        callback([{ id: 'task-1', name: 'Quick task' }])
-    }),
-}))
-
 jest.mock('../../../../utils/backends/firestore', () => ({
     unwatch: jest.fn(),
     runHttpsCallableFunction: jest.fn(),
@@ -78,13 +72,6 @@ jest.mock('./helper', () => ({
         assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
         assistantProjectId: 'default-project',
     }),
-    getOptionsPresentationData: () => ({
-        optionsLikeButtons: [],
-        optionsInModal: [],
-        showSubmenu: false,
-        hasAdditionalOptions: false,
-    }),
-    getCollapsedQuickActionCount: () => 0,
 }))
 
 jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
@@ -93,7 +80,7 @@ jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
 })
 
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => () => null)
-jest.mock('./OptionButtons/OptionButtons', () => () => null)
+jest.mock('../AssistantSwitchControl', () => () => null)
 jest.mock('../../../UIComponents/Spinner', () => () => null)
 jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal', () => () => null)
 jest.mock('../../../UIComponents/AssistantVoiceCallButton', () => () => null)
@@ -334,12 +321,12 @@ describe('dragging an image onto the assistant line (AT-2444)', () => {
     })
 
     it('raises the composer height cap only while it holds media', async () => {
-        expect(mockInputProps.maxHeight).toBe(120)
+        expect(mockInputProps.maxHeight).toBe(152)
 
         await typeMessage(imageMessage)
         expect(mockInputProps.maxHeight).toBe(260)
 
         await typeMessage('just words now')
-        expect(mockInputProps.maxHeight).toBe(120)
+        expect(mockInputProps.maxHeight).toBe(152)
     })
 })

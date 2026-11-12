@@ -98,7 +98,6 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId, children }
                 useAssistantProjectContext={false}
                 projectOverride={project}
                 assistantIdOverride={currentUser.uid}
-                showAllQuickActions
                 preferAssistantIdOverride
                 scopeLastCommentToAssistant
                 showEditAssistantButton={canEditAssistant}

@@ -1,35 +1,16 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import GhostBlock from '../../UIComponents/Ghosts/GhostBlock'
 import { useGhostPulse } from '../../UIComponents/Ghosts/ghostAnimation'
 import { LAST_COMMENT_PREVIEW_HEIGHT } from './LastComment/lastCommentLayout'
 import { colors } from '../../styles/global'
 import { useProjectSectionLastCommentTint } from '../../TaskListView/TaskHierarchy'
-
-export const ASSISTANT_OPTIONS_HEADER_HEIGHT = 19
-export const ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT = 56
-export const ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT = 32
-export const ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT = 32
-
-export function AssistantOptionButtonsSkeleton() {
-    const isMobile = useSelector(state => state.smallScreenNavigation)
-    const { pulse, reducedMotion } = useGhostPulse()
-
-    return (
-        <View
-            testID="assistant-quick-actions-loading-skeleton"
-            style={[
-                localStyles.optionButtons,
-                { height: isMobile ? ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT : ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT },
-            ]}
-        >
-            <GhostBlock style={localStyles.quickAction} pulse={pulse} reducedMotion={reducedMotion} />
-            <GhostBlock style={localStyles.quickActionWide} pulse={pulse} reducedMotion={reducedMotion} soft />
-        </View>
-    )
-}
+import {
+    ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT,
+    ASSISTANT_HEADER_GAP,
+    ASSISTANT_HEADER_HEIGHT,
+} from './assistantInputLayout'
 
 export function LastCommentPreviewSkeleton({ compact = false }) {
     const { pulse, reducedMotion } = useGhostPulse()
@@ -64,33 +45,18 @@ export function LastCommentPreviewSkeleton({ compact = false }) {
     )
 }
 
+// Same geometry as the real line (AssistantOptions): the compact header, then the composer box at
+// its resting two-line height, then the Last comment area.
 export default function AssistantLineSkeleton({ showLastComment = true }) {
-    const isMobile = useSelector(state => state.smallScreenNavigation)
     const { pulse, reducedMotion } = useGhostPulse()
 
     return (
         <View testID="assistant-line-loading-skeleton" accessibilityRole="progressbar">
-            <GhostBlock style={localStyles.header} pulse={pulse} reducedMotion={reducedMotion} />
-            <View style={localStyles.firstRow}>
+            <View style={localStyles.header}>
                 <GhostBlock style={localStyles.avatar} pulse={pulse} reducedMotion={reducedMotion} />
-                <GhostBlock style={localStyles.input} pulse={pulse} reducedMotion={reducedMotion} soft />
-                <GhostBlock style={localStyles.voiceButton} pulse={pulse} reducedMotion={reducedMotion} />
-                <GhostBlock style={localStyles.sendButton} pulse={pulse} reducedMotion={reducedMotion} />
+                <GhostBlock style={localStyles.headerText} pulse={pulse} reducedMotion={reducedMotion} soft />
             </View>
-            <View
-                style={[
-                    localStyles.quickActions,
-                    {
-                        height: isMobile
-                            ? ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT
-                            : ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-                    },
-                ]}
-            >
-                <GhostBlock style={localStyles.quickActionSearch} pulse={pulse} reducedMotion={reducedMotion} />
-                <GhostBlock style={localStyles.quickAction} pulse={pulse} reducedMotion={reducedMotion} />
-                <GhostBlock style={localStyles.quickActionWide} pulse={pulse} reducedMotion={reducedMotion} soft />
-            </View>
+            <GhostBlock style={localStyles.composerBox} pulse={pulse} reducedMotion={reducedMotion} soft />
             {showLastComment && (
                 <View style={localStyles.lastCommentArea}>
                     <GhostBlock style={localStyles.lastCommentLabel} pulse={pulse} reducedMotion={reducedMotion} soft />
@@ -105,78 +71,28 @@ export default function AssistantLineSkeleton({ showLastComment = true }) {
 
 const localStyles = StyleSheet.create({
     header: {
-        width: '46%',
-        height: ASSISTANT_OPTIONS_HEADER_HEIGHT,
-        borderRadius: 8,
-        alignSelf: 'center',
-        marginBottom: 16,
-    },
-    firstRow: {
-        height: ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT,
+        height: ASSISTANT_HEADER_HEIGHT,
         flexDirection: 'row',
-        alignItems: 'flex-end',
-        marginBottom: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: ASSISTANT_HEADER_GAP,
     },
     avatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        marginLeft: 4,
-        marginRight: 20,
-    },
-    input: {
-        flex: 1,
-        height: 40,
+        width: ASSISTANT_HEADER_HEIGHT,
+        height: ASSISTANT_HEADER_HEIGHT,
         borderRadius: 8,
-        marginRight: 12,
+        marginRight: 10,
     },
-    voiceButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        marginRight: 8,
-    },
-    sendButton: {
-        width: 40,
-        height: 40,
+    headerText: {
+        width: 220,
+        maxWidth: '60%',
+        height: 16,
         borderRadius: 8,
     },
-    quickActions: {
+    composerBox: {
         width: '100%',
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        overflow: 'hidden',
-    },
-    quickActionSearch: {
-        width: 82,
-        height: 24,
+        height: ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT,
         borderRadius: 12,
-        marginHorizontal: 8,
-        marginBottom: 8,
-    },
-    optionButtons: {
-        flex: 1,
-        minWidth: 220,
-        maxWidth: 260,
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        overflow: 'hidden',
-    },
-    quickAction: {
-        width: 112,
-        height: 24,
-        borderRadius: 12,
-        marginHorizontal: 8,
-        marginBottom: 8,
-    },
-    quickActionWide: {
-        width: 94,
-        height: 24,
-        borderRadius: 12,
-        marginHorizontal: 8,
-        marginBottom: 8,
     },
     lastCommentArea: {
         marginTop: 24,
@@ -185,7 +101,8 @@ const localStyles = StyleSheet.create({
         width: 82,
         height: 16,
         borderRadius: 8,
-        alignSelf: 'center',
+        alignSelf: 'flex-start',
+        marginLeft: 16,
         marginBottom: 8,
     },
     lastCommentInset: {

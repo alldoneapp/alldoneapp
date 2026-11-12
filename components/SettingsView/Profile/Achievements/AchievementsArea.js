@@ -19,6 +19,7 @@ import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPicke
 import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
 import { canRenderSkyline } from './Skyline/webglSupport'
 import { SKYLINE_RANGE_WEEKS } from './Skyline/skylineData'
+import RageModeButton from '../../../RageMode/RageModeButton'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -211,6 +212,10 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 />
             )}
 
+            {/* Rage mode lives with the skyline: same three.js, same "your day as a city" idea. The
+                button hides itself without WebGL, under reduced motion and for anonymous viewers. */}
+            <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
+
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
             <Text style={localStyles.description}>{description}</Text>
 
@@ -354,6 +359,14 @@ const localStyles = StyleSheet.create({
         borderColor: colors.UtilityGreen200,
         // In style, not as a prop: react-native-web 0.21 deprecates `props.pointerEvents`.
         pointerEvents: 'none',
+    },
+    rageButton: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 28,
+        height: 28,
+        zIndex: 1,
     },
     title: {
         ...styles.subtitle1,

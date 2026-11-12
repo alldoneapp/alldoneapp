@@ -98,7 +98,6 @@ describe('assistant profile workflow task creator', () => {
         expect(tree.root.findByType('AssistantLine').props).toMatchObject({
             projectOverride: mockState.loggedUserProjectsMap['project-1'],
             assistantIdOverride: 'assistant-1',
-            showAllQuickActions: true,
             preferAssistantIdOverride: true,
             scopeLastCommentToAssistant: true,
             showEditAssistantButton: true,

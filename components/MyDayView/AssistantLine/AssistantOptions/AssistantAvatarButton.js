@@ -19,7 +19,7 @@ import store from '../../../../redux/store'
 import { setAssistantLastVisitedBoardDate } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 
-export default function AssistantAvatarButton({ assistant, projectIndex, size = 24 }) {
+export default function AssistantAvatarButton({ assistant, projectIndex, size = 24, radius = 12 }) {
     const dispatch = useDispatch()
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -59,7 +59,7 @@ export default function AssistantAvatarButton({ assistant, projectIndex, size = 
                 photoURL={assistant.photoURL300}
                 assistantId={assistant.uid}
                 size={size}
-                imageStyle={{ borderRadius: 12 }}
+                imageStyle={{ borderRadius: radius }}
             />
         </TouchableOpacity>
     )

@@ -8,6 +8,9 @@ import { CELEBRATION_TOTAL_MS, STREAK_TICK_DELAY_MS } from './emptyInboxDotMotio
 import { CELEBRATION_CLAIM_SETTLE_MS } from './useTodayEmptyInboxCelebration'
 import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebrationMarker'
 
+// The game button reads the redux store; this suite renders the card without one.
+jest.mock('../../../RageMode/RageModeButton', () => () => null)
+
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
 }))

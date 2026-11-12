@@ -47,3 +47,20 @@ export const groupPreConfigTaskSearchItems = tasks => {
 
     return projects
 }
+
+/**
+ * Puts the tasks of the assistant the composer is talking to first (in the project it is talking
+ * in, then that assistant elsewhere), keeping the existing order otherwise. Grouping preserves
+ * insertion order, so that project and that assistant open the list.
+ */
+export const preferAssistantTasks = (tasks, assistantId, projectId) => {
+    if (!assistantId) return tasks
+    const rank = task => {
+        if (task.assistantId !== assistantId) return 2
+        return projectId && task.projectId === projectId ? 0 : 1
+    }
+    return tasks
+        .map((task, index) => ({ task, index, rank: rank(task) }))
+        .sort((a, b) => a.rank - b.rank || a.index - b.index)
+        .map(({ task }) => task)
+}

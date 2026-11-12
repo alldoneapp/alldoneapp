@@ -6,6 +6,9 @@ import moment from 'moment'
 import { EmptyInboxOverview } from './AchievementsArea'
 import { canRenderSkyline } from './Skyline/webglSupport'
 
+// The game button reads the redux store; this suite renders the card without one.
+jest.mock('../../../RageMode/RageModeButton', () => () => null)
+
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../UIComponents/FloatModals/DateFormatPickerModal', () => ({ getTimeFormat: () => 'HH:mm' }))
 jest.mock('./Skyline/webglSupport', () => ({ canRenderSkyline: jest.fn() }))
