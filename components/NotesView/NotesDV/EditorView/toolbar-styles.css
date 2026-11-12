@@ -765,6 +765,11 @@
     margin-top: 20px;
     margin-bottom: 6px;
 }
+/* The h2 navy is a light-mode design color with no palette token; in dark mode it would be
+   dark text on the dark surface, so use the primary text color there. */
+:root[data-theme='dark'] .ql-snow .ql-editor h2 {
+    color: var(--ad-Text01, #04142F);
+}
 .ql-snow .ql-editor h3 {
     font-family: 'Roboto-Regular';
     font-style: normal;
