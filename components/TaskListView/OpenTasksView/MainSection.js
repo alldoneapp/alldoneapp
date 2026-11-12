@@ -34,6 +34,7 @@ import NewTaskSection from './NewTaskSection'
 import EmptyGoal from './EmptyGoal'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
+import { getTaskGroupSpacingStyle } from './taskGroupSpacing'
 import SortModeActiveInfo from '../../GoalsView/SortModeActiveInfo'
 import { getGoalData, watchGoal } from '../../../utils/backends/Goals/goalsFirestore'
 import { unwatch } from '../../../utils/backends/firestore'
@@ -512,7 +513,7 @@ export default function MainSection({
                             isActiveOrganizeMode={isActiveOrganizeMode}
                             dateIndex={dateIndex}
                             instanceKey={instanceKey}
-                            containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
+                            containerStyle={getTaskGroupSpacingStyle(lastItem || globalAmountToRender === 0)}
                             exitRunId={emptyGoalExitRunId}
                             postponeMotionEnabled={goalSectionExitEnabled}
                         />
@@ -550,7 +551,7 @@ export default function MainSection({
                     return (
                         <TaskHierarchyGroup
                             key={goalId}
-                            style={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
+                            style={getTaskGroupSpacingStyle(lastItem || globalAmountToRender === 0)}
                         >
                             {/* Render header only if other goals exist */}
                             {hasGoals && (
@@ -651,7 +652,7 @@ export default function MainSection({
                             isActiveOrganizeMode={isActiveOrganizeMode}
                             taskList={taskList}
                             taskListIndex={MAIN_TASK_INDEX}
-                            containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
+                            containerStyle={getTaskGroupSpacingStyle(lastItem || globalAmountToRender === 0)}
                             inMainSection={accessGranted}
                             goalIndex={goalIndex}
                             amountToRender={amountToRenderForGoal}

@@ -2,6 +2,8 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import CalendarSection from './CalendarSection'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
+import { TASK_GROUP_SPACING } from './taskGroupSpacing'
 
 let mockState
 const mockSortGoalTasksGorups = jest.fn()
@@ -182,6 +184,20 @@ describe('CalendarSection', () => {
                 'SwipeableGeneralTasksHeader',
                 'TasksList',
             ])
+        })
+
+        // The user's report: a General group sat flush on the goal card below it, while a goal card
+        // kept 16px. Every group gets the main list's gap (MainSection), the last one none.
+        it('spaces goal cards and General groups like the main list', () => {
+            const tree = renderSection(reportedDay)
+
+            const gaps = tree.root
+                .findAll(node => node.type === TaskHierarchyGroup || node.type === 'ParentGoalSection')
+                .map(node => (node.type === TaskHierarchyGroup ? node.props.style : node.props.containerStyle))
+                .map(style => style.marginBottom)
+
+            expect(TASK_GROUP_SPACING).toBe(32)
+            expect(gaps).toEqual([TASK_GROUP_SPACING, TASK_GROUP_SPACING, 0])
         })
 
         // Same rule as the main list: the header only means something once a goal heading exists to

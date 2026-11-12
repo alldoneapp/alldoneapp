@@ -12,6 +12,7 @@ import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import { buildChronologicalCalendarRuns } from './calendarSectionGrouping'
+import { getTaskGroupSpacingStyle } from './taskGroupSpacing'
 import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
 import {
     getCalendarConnectedProjectIds,
@@ -93,10 +94,11 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
             </View>
 
             {calendarRuns.map(({ goalId, taskList, goalIndex, occurrence, key }, index) => {
-                const isLastIndex = calendarRuns.length - 1 === index
+                // Same gap below every group as the main list (MainSection), general and goal alike.
+                const spacingStyle = getTaskGroupSpacingStyle(calendarRuns.length - 1 === index)
 
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <TaskHierarchyGroup key={key}>
+                    <TaskHierarchyGroup key={key} style={spacingStyle}>
                         {showGeneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -132,7 +134,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         // edit popup. Only the second and later runs need it, so the single-run case
                         // (every goal, almost always) keeps the exact key it had before.
                         nestedTaskListIndex={occurrence > 0 ? occurrence : undefined}
-                        containerStyle={isLastIndex ? null : { marginBottom: 16 }}
+                        containerStyle={spacingStyle}
                         goalIndex={goalIndex}
                         instanceKey={instanceKey}
                     />
