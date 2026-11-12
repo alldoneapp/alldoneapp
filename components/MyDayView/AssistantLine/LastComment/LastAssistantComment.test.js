@@ -93,7 +93,7 @@ describe('LastAssistantComment preview height (AT-2344)', () => {
     })
 })
 
-describe('LastAssistantComment title line (AT-2902)', () => {
+describe('LastAssistantComment title line (AT-2902, tag moved to the header 2026-11-13)', () => {
     const titleRowOf = tree => tree.root.findByProps({ testID: 'last-comment-title-row' })
     // The row's own element children, in render order: the tag is the only one carrying projectId.
     const titleChildren = tree =>
@@ -102,15 +102,14 @@ describe('LastAssistantComment title line (AT-2902)', () => {
             .filter(Boolean)
             .map(child => (child.props.projectId ? 'tag' : child.props.children))
 
-    it('puts the project tag at the beginning of the topic name', () => {
+    it('shows the topic name alone: the project tag lives in the Last comment header', () => {
         const tree = renderPreview(SHORT_TEXT, { objectName: 'A chat title' })
 
-        expect(titleChildren(tree)).toEqual(['tag', 'A chat title'])
-        expect(titleRowOf(tree).props.children[0].props.projectId).toBe('project-1')
+        expect(titleChildren(tree)).toEqual(['A chat title'])
         expect(StyleSheet.flatten(titleRowOf(tree).props.style).flexDirection).toBe('row')
     })
 
-    it('truncates the topic name to one line next to the tag', () => {
+    it('truncates the topic name to one line', () => {
         const tree = renderPreview(SHORT_TEXT, { objectName: 'A very long chat title '.repeat(10) })
         const title = titleRowOf(tree).findAll(node => node.props.numberOfLines !== undefined)[0]
 
@@ -118,12 +117,11 @@ describe('LastAssistantComment title line (AT-2902)', () => {
         expect(StyleSheet.flatten(title.props.style).flexShrink).toBe(1)
     })
 
-    it('still shows the tag when the chat has no title, and no tag anywhere else', () => {
+    it('keeps the title line (empty) when the chat has no title, and no tag anywhere in the card', () => {
         const tree = renderPreview(SHORT_TEXT, { objectName: '' })
 
-        expect(titleChildren(tree)).toEqual(['tag'])
-        // Only the title line carries a tag; the old top-right corner tag is gone.
-        expect(tree.root.findAllByType(require('./ProjectTagIndicator'))).toHaveLength(1)
+        expect(titleChildren(tree)).toEqual([])
+        expect(tree.root.findAllByType(require('./ProjectTagIndicator'))).toHaveLength(0)
     })
 
     it('keeps the compact variant without a tag', () => {

@@ -190,8 +190,10 @@ measuring copies, the side-by-side send/call stacking and the round switch butto
 name is the switcher (`AssistantSwitchControl` with `label`). The + and mic still belong to
 `CustomTextInput3` (dictation and push-to-talk live there) and are portalled into the toolbar slots
 through `inlineControlTargets`; with it set the field reserves no strip for them. The skeleton
-reserves `ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT`. The Last comment row carries "All chats" on the
-right (`openChatsList.js`: the line's project, or all projects on the All projects line). The rage
+reserves `ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT`. The Last comment header reads [project tag of the
+comment shown] "Last comment" … "All chats"; the tag is no longer inside the card, whose title line
+is the topic name alone. "All chats" (`openChatsList.js`) opens the line's project, or all projects
+on the All projects line. The rage
 mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
 

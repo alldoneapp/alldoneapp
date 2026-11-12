@@ -10,6 +10,7 @@ import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
 import { openChatsList } from './openChatsList'
+import ProjectTagIndicator from './LastComment/ProjectTagIndicator'
 import {
     assistantHasRepliedToPendingSend,
     resolveAssistantLineSendForChat,
@@ -136,7 +137,7 @@ export default function LastCommentArea({
                     !compact && useCardBackground && localStyles.cardContainer,
                 ]}
             >
-                {!compact && <LastCommentHeader project={projectOverride} />}
+                {!compact && <LastCommentHeader project={projectOverride} tagProjectId={pendingSend.projectId} />}
                 <View style={compact ? null : localStyles.previewInset}>
                     <PendingAssistantCommentWrapper
                         pending={pendingSend}
@@ -182,7 +183,7 @@ export default function LastCommentArea({
                 !compact && useCardBackground && localStyles.cardContainer,
             ]}
         >
-            {!compact && <LastCommentHeader project={projectOverride} />}
+            {!compact && <LastCommentHeader project={projectOverride} tagProjectId={commentProject.id} />}
             <LastComment
                 project={commentProject}
                 assistant={commentCreator}
@@ -197,14 +198,19 @@ export default function LastCommentArea({
 }
 
 /**
- * "Last comment" on the left, "All chats" on the right. The link opens the Chats list of the
- * project this line belongs to (`openChatsList`), or of all projects on the All projects line.
+ * The project tag of the comment shown and "Last comment" on the left, "All chats" on the right.
+ * The tag sits here rather than inside the comment card (2026-11-13), so the card's title line is
+ * the topic name alone. The link opens the Chats list of the project this line belongs to
+ * (`openChatsList`), or of all projects on the All projects line.
  */
-function LastCommentHeader({ project }) {
+function LastCommentHeader({ project, tagProjectId = null }) {
     const label = translate('All chats')
     return (
         <View style={localStyles.header}>
-            <Text style={localStyles.title}>{translate('Last comment')}</Text>
+            <View style={localStyles.headerLabel}>
+                {!!tagProjectId && <ProjectTagIndicator projectId={tagProjectId} />}
+                <Text style={localStyles.title}>{translate('Last comment')}</Text>
+            </View>
             <TouchableOpacity
                 onPress={() => openChatsList(project)}
                 accessibilityRole={'link'}
@@ -244,6 +250,12 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         marginLeft: 16,
         marginBottom: 8,
+    },
+    headerLabel: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
     },
     title: {
         fontSize: 13,

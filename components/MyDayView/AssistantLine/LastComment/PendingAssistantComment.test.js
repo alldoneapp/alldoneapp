@@ -97,12 +97,12 @@ describe('PendingAssistantComment (AT-2504)', () => {
         act(() => tree.unmount())
     })
 
-    it('puts the project tag at the beginning of the status line (AT-2902)', async () => {
+    it('leaves the project tag to the Last comment header: the status line has none', async () => {
         const tree = await render({ assistantName: 'Anna' })
         const titleRow = tree.root.findByProps({ testID: 'assistant-pending-send-title-row' })
         const children = [titleRow.props.children].flat().filter(Boolean)
 
-        expect(children[0].props.projectId).toBe('project-1')
+        expect(children.some(child => child.props.projectId)).toBe(false)
         expect(children[children.length - 1].props.testID).toBe('assistant-pending-send-status')
         act(() => tree.unmount())
     })

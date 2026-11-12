@@ -3,7 +3,6 @@ import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
-import ProjectTagIndicator from './ProjectTagIndicator'
 import LastCommentText from './LastCommentText'
 import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
 
@@ -17,9 +16,8 @@ import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
  * clipped by a viewport that fills the card's whole box, so the padding has to live on the rows
  * inside it.
  *
- * AT-2902 — the project tag leads the title line and the topic name starts right after it,
- * truncated to one line, instead of the tag sitting in the card's top-right corner over the end
- * of the topic name.
+ * AT-2902 — the topic name fills the title line, truncated to one line. The project tag moved out
+ * of the card into the Last comment header (LastCommentArea, 2026-11-13).
  *
  * Purely presentational: no motion, no arrival state, no press handling. The card owns all three.
  */
@@ -38,7 +36,6 @@ const LastCommentRow = ({ projectId, commentText, objectName, compact = false })
             <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
             <View style={localStyles.textContainer}>
                 <View style={localStyles.titleRow} testID="last-comment-title-row">
-                    <ProjectTagIndicator projectId={projectId} />
                     {!!objectName && (
                         <Text numberOfLines={1} style={localStyles.title}>
                             {objectName}

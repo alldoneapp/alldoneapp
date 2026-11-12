@@ -6,15 +6,15 @@ import { colors } from '../../../styles/global'
 import ProjectTag from '../../../Tags/ProjectTag'
 
 /**
- * The project tag of a Last comment card's title line.
+ * The project tag of the comment the Last comment card shows.
  *
- * AT-2902 — it used to sit absolutely positioned in the card's top-right corner, where it covered
- * the end of a long topic name. It now leads the title line and the topic name (or, on the pending
- * card, the send status) starts right after it, so it is rendered in flow and never shrinks: the
- * text next to it is what gives way and truncates.
+ * It sits in the Last comment header, in front of the "Last comment" label (LastCommentArea,
+ * 2026-11-13). Before that it led the card's title line (AT-2902), and before that it sat in the
+ * card's top-right corner over the end of a long topic name. It is rendered in flow and never
+ * shrinks.
  *
  * Renders nothing for a project the user cannot resolve (`ProjectTag` would dereference it), so a
- * pending send or a cached preview that names an unknown project still renders its title line.
+ * pending send or a cached preview that names an unknown project still renders its header.
  */
 export default function ProjectTagIndicator({ projectId }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)

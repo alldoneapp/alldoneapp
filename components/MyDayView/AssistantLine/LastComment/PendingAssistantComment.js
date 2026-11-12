@@ -9,7 +9,6 @@ import { cleanTextMetaData, removeFormatTagsFromText } from '../../../../functio
 import { PENDING_SEND_AWAITING_REPLY, PENDING_SEND_FAILED } from '../assistantLinePendingSend'
 import LastCommentRollCard from './LastCommentRollCard'
 import LastCommentText from './LastCommentText'
-import ProjectTagIndicator from './ProjectTagIndicator'
 import { LAST_COMMENT_ROW_PENDING } from './lastCommentSlotRow'
 import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
 
@@ -103,8 +102,6 @@ export default function PendingAssistantComment({
             <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
             <View style={localStyles.textContainer}>
                 <View style={localStyles.titleRow} testID="assistant-pending-send-title-row">
-                    {/* AT-2902 — same title line as the saved preview: project tag first. */}
-                    <ProjectTagIndicator projectId={pending?.projectId} />
                     {activity}
                     <Text
                         numberOfLines={1}

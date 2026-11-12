@@ -29,7 +29,12 @@ const mockState = {
     projectChatLastNotification: {},
 }
 
-jest.mock('./LastComment/ProjectTagIndicator', () => () => null)
+// The header's project tag (moved out of the card, 2026-11-13): a stub that reports its project.
+jest.mock('./LastComment/ProjectTagIndicator', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return ({ projectId }) => <View testID="header-project-tag" projectId={projectId} />
+})
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
@@ -225,6 +230,23 @@ describe('LastCommentArea pending send (AT-2504)', () => {
         expect(has(tree, 'assistant-pending-send')).toBe(true)
         expect(has(tree, 'assistant-last-comment-loading-skeleton')).toBe(false)
         expect(tree.root.findByType(LastCommentText).props.commentText).toBe('a message I just sent')
+        act(() => tree.unmount())
+    })
+
+    it('shows the pending send’s project tag in the header, in front of Last comment', () => {
+        begin()
+        const tree = render()
+
+        const tags = tree.root.findAllByProps({ testID: 'header-project-tag' })
+        expect(tags).toHaveLength(1)
+        expect(tags[0].props.projectId).toBe('project-1')
+        act(() => tree.unmount())
+    })
+
+    it('shows no project tag while the ghost is loading', () => {
+        const tree = render()
+
+        expect(tree.root.findAllByProps({ testID: 'header-project-tag' })).toHaveLength(0)
         act(() => tree.unmount())
     })
 
