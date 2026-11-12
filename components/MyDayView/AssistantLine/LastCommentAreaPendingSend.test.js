@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import LastCommentArea from './LastCommentArea'
@@ -21,6 +22,7 @@ const mockState = {
     defaultAssistant: { uid: 'assistant-1' },
     selectedProjectIndex: 0,
     loggedUserProjects: [{ id: 'project-1', index: 0, name: 'Project one' }],
+    loggedUserProjectsMap: { 'project-1': { id: 'project-1', index: 0, name: 'Project one', color: '#00CF8C' } },
     loggedUser: {
         defaultProjectId: 'project-1',
         lastAssistantCommentData: {},
@@ -29,12 +31,6 @@ const mockState = {
     projectChatLastNotification: {},
 }
 
-// The header's project tag (moved out of the card, 2026-11-13): a stub that reports its project.
-jest.mock('./LastComment/ProjectTagIndicator', () => {
-    const React = require('react')
-    const { View } = require('react-native')
-    return ({ projectId }) => <View testID="header-project-tag" projectId={projectId} />
-})
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
@@ -233,20 +229,34 @@ describe('LastCommentArea pending send (AT-2504)', () => {
         act(() => tree.unmount())
     })
 
-    it('shows the pending send’s project tag in the header, in front of Last comment', () => {
+    // 2026-11-13 — the comment's project is caption text in the header, "Last comment in ● Project",
+    // and only on a line without a project of its own (the All projects line).
+    const headerText = tree =>
+        tree.root
+            .findByProps({ testID: 'assistant-line-last-comment-label' })
+            .findAllByType(Text)
+            .map(node => node.props.children)
+
+    it('names the pending send’s project in the header on the All projects line', () => {
         begin()
         const tree = render()
 
-        const tags = tree.root.findAllByProps({ testID: 'header-project-tag' })
-        expect(tags).toHaveLength(1)
-        expect(tags[0].props.projectId).toBe('project-1')
+        expect(headerText(tree)).toEqual(['Last comment in', 'Project one'])
         act(() => tree.unmount())
     })
 
-    it('shows no project tag while the ghost is loading', () => {
+    it('does not name the project on a line that belongs to that project', () => {
+        begin()
+        const tree = render({ projectOverride: { id: 'project-1', index: 0 } })
+
+        expect(headerText(tree)).toEqual(['Last comment'])
+        act(() => tree.unmount())
+    })
+
+    it('names no project while the ghost is loading', () => {
         const tree = render()
 
-        expect(tree.root.findAllByProps({ testID: 'header-project-tag' })).toHaveLength(0)
+        expect(headerText(tree)).toEqual(['Last comment'])
         act(() => tree.unmount())
     })
 

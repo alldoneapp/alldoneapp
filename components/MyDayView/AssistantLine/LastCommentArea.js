@@ -10,7 +10,7 @@ import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
 import { openChatsList } from './openChatsList'
-import ProjectTagIndicator from './LastComment/ProjectTagIndicator'
+import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/ColoredCircleSmall'
 import {
     assistantHasRepliedToPendingSend,
     resolveAssistantLineSendForChat,
@@ -137,7 +137,7 @@ export default function LastCommentArea({
                     !compact && useCardBackground && localStyles.cardContainer,
                 ]}
             >
-                {!compact && <LastCommentHeader project={projectOverride} tagProjectId={pendingSend.projectId} />}
+                {!compact && <LastCommentHeader project={projectOverride} commentProjectId={pendingSend.projectId} />}
                 <View style={compact ? null : localStyles.previewInset}>
                     <PendingAssistantCommentWrapper
                         pending={pendingSend}
@@ -183,7 +183,7 @@ export default function LastCommentArea({
                 !compact && useCardBackground && localStyles.cardContainer,
             ]}
         >
-            {!compact && <LastCommentHeader project={projectOverride} tagProjectId={commentProject.id} />}
+            {!compact && <LastCommentHeader project={projectOverride} commentProjectId={commentProject.id} />}
             <LastComment
                 project={commentProject}
                 assistant={commentCreator}
@@ -198,18 +198,44 @@ export default function LastCommentArea({
 }
 
 /**
- * The project tag of the comment shown and "Last comment" on the left, "All chats" on the right.
- * The tag sits here rather than inside the comment card (2026-11-13), so the card's title line is
- * the topic name alone. The link opens the Chats list of the project this line belongs to
- * (`openChatsList`), or of all projects on the All projects line.
+ * "Last comment in ● Project" on the left, "All chats" on the right.
+ *
+ * The project is plain caption text with the project's coloured dot (2026-11-13): a ProjectTag pill
+ * next to the small grey label looked heavy, and inside the card it crowded the topic name. It is
+ * shown only on a line without a project of its own (the All projects line): inside a project the
+ * comment always comes from that project, so naming it again says nothing.
+ *
+ * The link opens the Chats list of the project this line belongs to (`openChatsList`), or of all
+ * projects on the All projects line.
  */
-function LastCommentHeader({ project, tagProjectId = null }) {
+function LastCommentHeader({ project, commentProjectId = null }) {
+    const showCommentProject = !project && !!commentProjectId
+    const commentProject = useSelector(state =>
+        showCommentProject ? state.loggedUserProjectsMap?.[commentProjectId] : null
+    )
     const label = translate('All chats')
     return (
         <View style={localStyles.header}>
-            <View style={localStyles.headerLabel}>
-                {!!tagProjectId && <ProjectTagIndicator projectId={tagProjectId} />}
-                <Text style={localStyles.title}>{translate('Last comment')}</Text>
+            <View style={localStyles.headerLabel} testID="assistant-line-last-comment-label">
+                <Text style={localStyles.title} numberOfLines={1}>
+                    {translate(commentProject ? 'Last comment in' : 'Last comment')}
+                </Text>
+                {!!commentProject && (
+                    <>
+                        <ColoredCircleSmall
+                            size={8}
+                            color={commentProject.color}
+                            containerStyle={localStyles.projectDot}
+                        />
+                        <Text
+                            style={[localStyles.title, localStyles.projectName]}
+                            numberOfLines={1}
+                            testID="assistant-line-last-comment-project"
+                        >
+                            {commentProject.name}
+                        </Text>
+                    </>
+                )}
             </View>
             <TouchableOpacity
                 onPress={() => openChatsList(project)}
@@ -254,6 +280,16 @@ const localStyles = StyleSheet.create({
     headerLabel: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
+        marginRight: 12,
+    },
+    projectDot: {
+        marginLeft: 6,
+        marginRight: 5,
+        flexShrink: 0,
+    },
+    projectName: {
         flexShrink: 1,
         minWidth: 0,
     },
