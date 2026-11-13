@@ -33,6 +33,7 @@ export default function FollowUpDueDate({
     const IN_2_DAYS = 'In 2 days'
     const IN_4_DAYS = 'In 4 days'
     const IN_7_DAYS = 'In 7 days'
+    const IN_14_DAYS = 'In 14 days'
     const IN_30_DAYS = 'In 30 days'
     const BACKLOG = 'Someday'
     const LAST_SELECTED = 'Last selected'
@@ -90,6 +91,9 @@ export default function FollowUpDueDate({
                     </DateItem>
                     <DateItem onPress={selectDate} selected={dateText === IN_7_DAYS}>
                         {IN_7_DAYS}
+                    </DateItem>
+                    <DateItem onPress={selectDate} selected={dateText === IN_14_DAYS}>
+                        {IN_14_DAYS}
                     </DateItem>
                     <DateItem onPress={selectDate} selected={dateText === IN_30_DAYS}>
                         {IN_30_DAYS}
