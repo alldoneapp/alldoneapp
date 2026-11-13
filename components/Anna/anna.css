@@ -1882,6 +1882,15 @@
     border-radius: 50%;
     background: var(--anna-neutral, #b9c1cf);
 }
+/* AT-3024: the "Automatic" choice's icon takes the dot's place. */
+.anna-project-auto-icon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+}
 .anna-project-menu {
     box-sizing: border-box;
     font-family: Roboto, Arial, sans-serif;
