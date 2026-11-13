@@ -110,7 +110,7 @@ the end until the user deliberately scrolls away. Reopening always resets that c
 ```bash
 npm test -- --runInBand --watch=false components/Anna/AnnaShell.test.js \
     components/Anna/AnnaConversation.test.js components/Anna/AnnaChatComposer.test.js \
-    components/Anna/AssistantModeButton.test.js utils/annaMode.test.js
+    components/TopBar/AssistantModeButton.test.js utils/annaMode.test.js
 ASSISTANT_FOCUS_ONLY=1 node browser-tests/anna-workspace/run.js
 ```
 

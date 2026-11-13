@@ -39,8 +39,7 @@ const readProjectsMap = () => {
 }
 
 /**
- * The entry to rage mode, at the top right of the assistant line's header (`AssistantOptions`, back
- * there since AT-3034) and of the Empty inbox card (`AchievementsArea`): Anna takes
+ * The entry to rage mode, at the top right of the Empty inbox card (`AchievementsArea`): Anna takes
  * off from the assistant line's avatar when one is on the same screen (else from this button), the
  * page slides away under her and a vertical-scrolling raid begins over ground built
  * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — none of the app's

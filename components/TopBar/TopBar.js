@@ -8,6 +8,7 @@ import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
 import HomeButton, { HOME_BUTTON_WIDTH } from './HomeButton'
+import AssistantModeButton from './AssistantModeButton'
 import ConnectionStatusChip from './ConnectionStatusChip'
 import { showConnectionChipBelowHeader } from './connectionChipPlacement'
 import { getDesktopTopBarMargins } from './topBarLayout'
@@ -44,8 +45,7 @@ export default function TopBar() {
             testID="top-bar-desktop"
         >
             <View style={localStyles.leftArea}>
-                {/* AT-3034: assistant mode is entered from the assistant line (top left of its
-                    header), no longer from here. */}
+                <AssistantModeButton inline style={localStyles.leadingButton} />
                 {!userIsAnonymous && <TopBarStatisticArea />}
             </View>
             <View style={localStyles.rightArea}>
@@ -86,6 +86,9 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
+    },
+    leadingButton: {
+        marginRight: 8,
     },
     homeButton: {
         position: 'absolute',

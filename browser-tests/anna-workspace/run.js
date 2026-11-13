@@ -1268,18 +1268,21 @@ async function checkProjectSwitcher(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&projects=1`)
     const chip = page.locator('.anna-project-chip')
     await chip.waitFor({ state: 'visible' })
-    assert.equal(await chip.locator('.anna-project-chip-name').textContent(), 'Launch')
-    // AT-3029: + and the project on the left; mic, call and send on the right. An empty draft
-    // shows its mic in Send's place instead (AT-3025), so it has no separate Send button.
+    // AT-3024: "Automatic" is the first choice and the default selection.
+    assert.equal(await chip.locator('.anna-project-chip-name').textContent(), 'Automatic')
+    // AT-3029/AT-3032: + and Templates on the left; mic, call and send on the right. An empty draft
+    // shows its mic in Send's place instead (AT-3025), so it has no separate Send button. The
+    // project chip is no longer in the toolbar; it sits on the field's top edge (checked below).
+    const TEMPLATES = '[data-testid="assistant-task-search-button"]'
     const EMPTY_ORDER = [
         '[aria-label="Select kind of file to add"]',
-        '.anna-project-chip',
+        TEMPLATES,
         '.anna-voice-button',
         '[aria-label="Dictate"]',
     ]
     const TYPED_ORDER = [
         '[aria-label="Select kind of file to add"]',
-        '.anna-project-chip',
+        TEMPLATES,
         '[aria-label="Dictate"]',
         '.anna-voice-button',
         '.anna-send',
@@ -1292,7 +1295,7 @@ async function checkProjectSwitcher(page, width) {
                 const rect = node.getBoundingClientRect()
                 return rect.width > 0 && rect.height > 0
             }
-            const items = [...toolbar.querySelectorAll('button, .anna-project-chip')]
+            const items = [...toolbar.querySelectorAll('button, [role="button"]')]
                 .filter(shown)
                 .map(node => node.getBoundingClientRect())
             const order = selectors.map(selector =>
@@ -1301,7 +1304,29 @@ async function checkProjectSwitcher(page, width) {
             const last = order[order.length - 1]
             const tools = toolbar.querySelector('.anna-composer-tools').getBoundingClientRect()
             const actions = toolbar.querySelector('.anna-composer-actions').getBoundingClientRect()
+            // AT-3032: the chip is centred on the field's top border, left-aligned with the +, and
+            // neither covers the editor's first line nor leaves the composer.
+            const field = document.querySelector('.anna-composer-field').getBoundingClientRect()
+            const chip = document.querySelector('.anna-project-chip').getBoundingClientRect()
+            const plus = toolbar.querySelector('[aria-label="Select kind of file to add"]').getBoundingClientRect()
+            const editor = document.querySelector('.anna-rich-composer .ql-editor').getBoundingClientRect()
+            const composer = document.querySelector('.anna-composer').getBoundingClientRect()
+            const templates = toolbar.querySelector('[data-testid="assistant-task-search-button"]')
+            const chipName = document.querySelector('.anna-project-chip-name')
             return {
+                chipOnEdge: Math.abs(chip.top + chip.height / 2 - field.top) <= 1.5,
+                chipAlignedWithPlus: Math.abs(chip.left - plus.left) <= 1,
+                chipAboveText: chip.bottom <= editor.top,
+                chipInComposer: chip.top >= composer.top && chip.right <= field.right,
+                chipFont: getComputedStyle(chipName).fontSize,
+                chipChevron: !!document
+                    .querySelector('.anna-project-chip > :last-child:not(.anna-project-chip-name)')
+                    ?.getBoundingClientRect().width,
+                templatesLabel: templates.textContent.replace(/\p{Co}/gu, '').trim(),
+                // ANNA_TEMPLATES_COMPACT_WIDTH: icon only in a composer narrower than 360px.
+                templatesExpected: composer.width < 360 ? '' : 'Templates',
+                composerWidth: composer.width,
+                templatesName: templates.getAttribute('aria-label'),
                 inside: items.every(item => item.left >= box.left - 1 && item.right <= box.right + 1),
                 toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
                 pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -1319,7 +1344,15 @@ async function checkProjectSwitcher(page, width) {
     const assertToolbar = async selectors => {
         const geometry = await fits(selectors)
         assert.ok(
-            geometry.inside &&
+            geometry.chipOnEdge &&
+                geometry.chipAlignedWithPlus &&
+                geometry.chipAboveText &&
+                geometry.chipInComposer &&
+                geometry.chipFont === '13px' &&
+                geometry.chipChevron &&
+                geometry.templatesName === 'Templates' &&
+                geometry.templatesLabel === geometry.templatesExpected &&
+                geometry.inside &&
                 geometry.send &&
                 geometry.micCount === 1 &&
                 geometry.ordered &&
@@ -1327,7 +1360,7 @@ async function checkProjectSwitcher(page, width) {
                 geometry.sameRow &&
                 geometry.toolbarOverflow <= 1 &&
                 geometry.pageOverflow <= 0,
-            JSON.stringify(geometry)
+            `${width}px ${JSON.stringify(geometry)}`
         )
     }
     await assertToolbar(EMPTY_ORDER)
@@ -1337,6 +1370,36 @@ async function checkProjectSwitcher(page, width) {
     await page.locator('.anna-send').waitFor({ state: 'visible' })
     await assertToolbar(TYPED_ORDER)
     await page.screenshot({ path: path.join(BUILD, `project-switcher-toolbar-typed-${width}.png`) })
+    // AT-3032: Templates (the assistant line's button and list) opens from the composer: upwards
+    // next to its button on desktop, not pushed into the workspace pane; a bottom sheet on phones.
+    await page.locator(TEMPLATES).click()
+    await page.getByPlaceholder('Search pre-configured tasks').waitFor({ state: 'visible' })
+    await page.waitForTimeout(400)
+    const templatesPlacement = await page.evaluate(() => {
+        const button = document.querySelector('[data-testid="assistant-task-search-button"]').getBoundingClientRect()
+        const search = [...document.querySelectorAll('input')].find(
+            node => node.placeholder === 'Search pre-configured tasks'
+        )
+        const card = (search.closest('.react-tiny-popover-container') || search).getBoundingClientRect()
+        return {
+            popover: !!search.closest('.react-tiny-popover-container'),
+            above: card.bottom <= button.top + 1,
+            nearButton: Math.abs(card.left - button.left) <= 24,
+            inWindow:
+                card.left >= -1 && card.right <= innerWidth + 1 && card.top >= -1 && card.bottom <= innerHeight + 1,
+            card: card.toJSON(),
+            button: button.toJSON(),
+        }
+    })
+    if (templatesPlacement.popover)
+        assert.ok(
+            templatesPlacement.above && templatesPlacement.nearButton && templatesPlacement.inWindow,
+            `${width}px ${JSON.stringify(templatesPlacement)}`
+        )
+    else assert.ok(templatesPlacement.inWindow, `${width}px ${JSON.stringify(templatesPlacement)}`)
+    await page.screenshot({ path: path.join(BUILD, `templates-open-${width}.png`) })
+    await page.keyboard.press('Escape')
+    await page.getByPlaceholder('Search pre-configured tasks').waitFor({ state: 'detached' })
     await chip.click()
     const menu = page.locator('.anna-project-menu')
     await menu.waitFor({ state: 'visible' })
@@ -1356,6 +1419,7 @@ async function checkProjectSwitcher(page, width) {
     assert.ok(placement.inside, JSON.stringify(placement))
     const rows = await menu.locator('.anna-project-option-text').allTextContents()
     assert.deepEqual(rows, [
+        'AutomaticCarl Code Mentor · Let Alldone pick the project for you',
         'LaunchCarl Code Mentor · Default project',
         'Alldone Product with a rather long project nameAlldone CTO · Visible to project members',
         'FamilyCarl Code Mentor (default assistant)',

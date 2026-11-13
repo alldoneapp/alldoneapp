@@ -114,36 +114,6 @@ describe('AssistantLine switch control (AT-2430)', () => {
     })
 })
 
-// AT-3034: the line tells its assistant-mode button which project's chat to open in the sidebar.
-describe('AssistantLine assistant mode project', () => {
-    beforeEach(() => {
-        mockState = {
-            isMiddleScreen: false,
-            smallScreenNavigation: false,
-            defaultAssistant: mockAssistant,
-            loggedUser: { defaultProjectId: 'default-project' },
-            selectedProjectIndex: -1,
-            loggedUserProjects: [],
-        }
-    })
-    const projectOf = element => {
-        let tree
-        act(() => {
-            tree = renderer.create(element)
-        })
-        return tree.root.findByType('AssistantOptions').props.assistantModeProjectId
-    }
-
-    it("defaults to the line's own project", () => {
-        expect(projectOf(<AssistantLine projectOverride={mockProject} />)).toBe('project-1')
-    })
-
-    it('uses "Automatic" (null) without a project, and honours an explicit choice', () => {
-        expect(projectOf(<AssistantLine />)).toBeNull()
-        expect(projectOf(<AssistantLine projectOverride={mockProject} assistantModeProjectId={null} />)).toBeNull()
-    })
-})
-
 describe('AssistantLine project context background (AT-2537)', () => {
     beforeEach(() => {
         mockState = {

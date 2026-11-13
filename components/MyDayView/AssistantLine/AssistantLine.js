@@ -26,9 +26,6 @@ export default function AssistantLine({
     scopeLastCommentToAssistant = false,
     showEditAssistantButton = false,
     onEditAssistant = null,
-    // AT-3034: which project's chat the assistant-mode button opens in the sidebar. By default the
-    // line's own project; the "All projects" line passes null ("Automatic", the default assistant).
-    assistantModeProjectId,
 }) {
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -74,9 +71,6 @@ export default function AssistantLine({
             <AssistantOptions
                 headerControls={showEditAssistantButton ? <EditAssistantButton onPress={onEditAssistant} /> : null}
                 assistantSwitch={assistantSwitch}
-                assistantModeProjectId={
-                    assistantModeProjectId !== undefined ? assistantModeProjectId : selectedProject?.id || null
-                }
                 projectOverride={selectedProject}
                 assistantIdOverride={assistantId}
                 preferAssistantIdOverride={preferAssistantIdOverride}

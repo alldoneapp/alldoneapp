@@ -5,7 +5,7 @@ import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
-import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
+import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices } from './annaProjectSelection'
 import AnnaProjectSwitcher from './AnnaProjectSwitcher'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -18,10 +18,7 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
-import AnnaChatNavigationContext, {
-    AnnaSidebarCloseContext,
-    AnnaSidebarProjectContext,
-} from './AnnaChatNavigationContext'
+import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
@@ -82,29 +79,6 @@ const settleWithin = (promise, ms) =>
                 clearTimeout(timer)
                 resolve()
             })
-    })
-
-// AT-3034: popover viewports for the header's assistant picker.
-const rectViewport = rect =>
-    rect && {
-        x: rect.left,
-        y: rect.top,
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-        width: rect.width,
-        height: rect.height,
-        active: true,
-    }
-const windowViewport = () =>
-    rectViewport({
-        left: 0,
-        top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight,
-        width: window.innerWidth,
-        height: window.innerHeight,
     })
 
 // Always mounted around the same route subtree, including in fullscreen Alldone. A layout switch
@@ -473,45 +447,19 @@ export default function AnnaShell({ children, routeId }) {
         chatConversation.current?.focusInput()
         chatConversation.current?.scrollToLatest()
     }, [latestChatRequest])
-    // AT-3034: the assistant line's entry button hands over its project, so the sidebar continues
-    // with the assistant the line showed: that project's chat, or "Automatic" (the default
-    // project's chat) for the default project and the "All projects" line. The composer's own
-    // switcher rules apply: no switch during a call or offline, and only to a selectable project.
-    // An explicit pick of the default project already continues the default chat, so it stays.
-    const followLineProject = useCallback(
-        options => {
-            if (!options || !Object.prototype.hasOwnProperty.call(options, 'projectId')) return
-            if (call.status !== 'idle' || offline) return
-            const requested = options.projectId
-            const automatic = !requested || requested === user.defaultProjectId
-            if (automatic) {
-                if (!projectSelection.isDefault) selectProject(ANNA_AUTOMATIC_PROJECT)
-            } else if (requested !== projectSelection.choiceId && isAnnaProjectSelectable(user, requested)) {
-                selectProject(requested)
-            }
-        },
-        [call.status, offline, user, projectSelection.isDefault, projectSelection.choiceId, selectProject]
-    )
-    // Through a ref, so the context value (and every entry button) stays stable across user updates.
-    const followLineProjectRef = useRef(followLineProject)
-    followLineProjectRef.current = followLineProject
-    const openChat = useCallback(
-        options => {
-            followLineProjectRef.current(options)
-            requestGeneration.current++
-            // Reveal and mount the editor within the gesture, including on desktop.
-            // Mobile browsers need this synchronous focus to open the keyboard.
-            flushSync(() => {
-                setVisited(true)
-                setMobilePane('chat')
-                setAnnaMode(true)
-            })
-            focusAfterSwitch.current = null
-            focusChatInput()
-            chatConversation.current?.scrollToLatest()
-        },
-        [focusChatInput]
-    )
+    const openChat = useCallback(() => {
+        requestGeneration.current++
+        // Reveal and mount the editor within the gesture, including on desktop.
+        // Mobile browsers need this synchronous focus to open the keyboard.
+        flushSync(() => {
+            setVisited(true)
+            setMobilePane('chat')
+            setAnnaMode(true)
+        })
+        focusAfterSwitch.current = null
+        focusChatInput()
+        chatConversation.current?.scrollToLatest()
+    }, [focusChatInput])
     const showAlldoneNavigation = useCallback(() => {
         if (!active) return
         requestGeneration.current++
@@ -990,20 +938,6 @@ export default function AnnaShell({ children, routeId }) {
                     </span>
                     <strong className="anna-brand">{headerAssistantName}</strong>
                 </button>
-                {/* AT-3034: pick another assistant for the sidebar chat. Same state as the
-                    composer's project chip; listed by assistant instead of by project. */}
-                <AnnaProjectSwitcher
-                    variant="assistant"
-                    choices={projectChoices}
-                    activeProjectId={projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId}
-                    onSelect={selectProject}
-                    disabled={offline || call.status !== 'idle'}
-                    busy={switching}
-                    // The mobile header spans the window; on desktop it sits in the chat pane.
-                    getViewport={() =>
-                        mobile ? windowViewport() : rectViewport(chatPane.current?.getBoundingClientRect?.())
-                    }
-                />
                 {!mobile && (
                     <button
                         type="button"
@@ -1429,11 +1363,9 @@ export default function AnnaShell({ children, routeId }) {
         >
             <AnnaChatNavigationContext.Provider value={openChat}>
                 <AnnaSidebarCloseContext.Provider value={active && !chatOnly && !mobile ? closeChat : null}>
-                    <AnnaSidebarProjectContext.Provider value={projectSelection.projectId}>
-                        <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
-                            {content}
-                        </AnnaWorkspaceNavigationContext.Provider>
-                    </AnnaSidebarProjectContext.Provider>
+                    <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
+                        {content}
+                    </AnnaWorkspaceNavigationContext.Provider>
                 </AnnaSidebarCloseContext.Provider>
             </AnnaChatNavigationContext.Provider>
         </AnnaBrowserTakeoverContext.Provider>

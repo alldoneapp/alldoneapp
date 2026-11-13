@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
+import { Keyboard, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
@@ -87,8 +87,6 @@ jest.mock('./helper', () => ({
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => 'AssistantTaskSearchButtonWrapper')
 // The switcher reaches the popover/modal stack; its own behaviour is AssistantSwitchControl.test.js.
 jest.mock('../AssistantSwitchControl', () => 'AssistantSwitchControl')
-jest.mock('../../../RageMode/RageModeButton', () => 'RageModeButton')
-jest.mock('../../../Anna/AssistantModeButton', () => 'AssistantModeButton')
 
 jest.mock('./AssistantAvatarButton', () => {
     const React = require('react')
@@ -146,13 +144,6 @@ const renderOptions = async (props = {}) => {
     return tree
 }
 
-// The style of the nearest View around a node (react-test-renderer adds host wrappers between).
-const styleAround = node => {
-    let current = node.parent
-    while (current && !current.props.style) current = current.parent
-    return StyleSheet.flatten(current?.props.style)
-}
-
 describe('AssistantOptions layout', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -167,36 +158,10 @@ describe('AssistantOptions layout', () => {
         expect(templates[0].props.preferredProjectId).toBe('selected-project')
     })
 
-    // AT-3034: rage mode is back at the top right of the header (and stays on the Empty inbox card).
-    it('puts the rage mode crosshair at the right of the header, beside the avatar it launches from', async () => {
+    it('has no game button: rage mode moved to the Empty inbox card', async () => {
         const tree = await renderOptions()
 
-        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
-        const rage = header.findAllByType('RageModeButton')
-        expect(rage).toHaveLength(1)
-        expect(styleAround(rage[0])).toMatchObject({ position: 'absolute', right: 0 })
-        expect(header.findByProps({ nativeID: 'rage-mode-launch-anchor' })).toBeTruthy()
-    })
-
-    // AT-3034: assistant mode starts from the top left of the line, with the line's assistant.
-    it('starts assistant mode from the top left of the header with the line project and assistant', async () => {
-        const tree = await renderOptions({ assistantModeProjectId: 'selected-project' })
-
-        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
-        const button = header.findByType('AssistantModeButton')
-        expect(button.props).toMatchObject({
-            inline: true,
-            testID: 'assistant-line-assistant-mode',
-            projectId: 'selected-project',
-            assistantName: 'Assistant',
-        })
-        expect(styleAround(button)).toMatchObject({ position: 'absolute', left: 0 })
-    })
-
-    it('opens the default chat ("Automatic") when the line names no project', async () => {
-        const tree = await renderOptions()
-
-        expect(tree.root.findByType('AssistantModeButton').props.projectId).toBeNull()
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Rage mode')
     })
 
     it('puts the + and the mic into the toolbar instead of floating them in the field', async () => {
@@ -231,9 +196,6 @@ describe('AssistantOptions layout', () => {
         const tree = await renderOptions({ headerControls: <Text testID="edit-control">Edit</Text> })
 
         expect(tree.root.findByProps({ testID: 'edit-control' })).toBeTruthy()
-        // The assistant-mode button leads, the edit pencil follows it.
-        const side = tree.root.findByType('AssistantModeButton').parent
-        expect(side.findByProps({ testID: 'edit-control' })).toBeTruthy()
     })
 
     // AT-2355: the mic used to appear only on hover/focus, i.e. on touch only after the field had
