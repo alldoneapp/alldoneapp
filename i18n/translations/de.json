@@ -82,6 +82,8 @@
     "Anna activity target missing": "Dieser Eintrag existiert nicht mehr oder du hast keinen Zugriff mehr darauf.",
     "Anna activity project unavailable": "Dieses Projekt ist in deinem Workspace nicht verfügbar (archiviert oder verlassen).",
     "Anna activity new messages": "%{count} neue Chatnachrichten",
+    "Anna activity reply": "Antwort",
+    "Anna activity replies": "%{count} Antworten",
     "%{count} open tasks today": "%{count} offene Aufgaben heute",
     "Close chat — Alldone only": "Chat schließen — nur Alldone",
     "Assistant chat open": "Assistenten-Chat geöffnet",

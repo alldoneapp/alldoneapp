@@ -789,12 +789,39 @@ it('shows linked red activity between messages without posting to the assistant'
     ])
     expect(links[0].querySelector('.anna-activity-title').textContent).toBe('created task')
     expect(links[1].querySelector('.anna-activity-title').textContent).toBe('New chat message')
-    expect(links[0].querySelector('.anna-activity-meta').textContent).toBe('Launch')
+    // AT-3046: this thread's own project is not repeated on its cards.
+    expect(links[0].querySelector('.anna-activity-meta')).toBeNull()
     expect(container.querySelector('.anna-messages').textContent.indexOf('Working here')).toBeLessThan(
         container.querySelector('.anna-messages').textContent.indexOf('created task')
     )
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    now.mockRestore()
+})
+
+it('marks still unread activity cards with a blue edge until their badge clears (AT-3046)', () => {
+    jest.useFakeTimers()
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+    render()
+    now.mockReturnValue(2000)
+    mockActivityState.followedFeedsAmount = 2
+    mockActivityState.followedFeedsData = {
+        p1: [{ id: 'feed1', objectId: 'task1', objectTypes: 'tasks', lastChangeDate: 1900, entryText: 'created task' }],
+        p2: [{ id: 'feed2', objectId: 'task2', objectTypes: 'tasks', lastChangeDate: 1950, entryText: 'created task' }],
+    }
+    render()
+    const cards = () => [...container.querySelectorAll('.anna-activity-notice a')]
+    expect(cards()).toHaveLength(2)
+    expect(cards().map(card => card.classList.contains('anna-activity-card-unread'))).toEqual([true, true])
+    // A card from another project names it; one from this thread's project does not.
+    expect(cards()[0].querySelector('.anna-activity-meta')).toBeNull()
+    expect(cards()[1].querySelector('.anna-activity-meta')).not.toBeNull()
+    // The first task is read elsewhere: its badge clears, its card stays but turns grey.
+    mockActivityState.followedFeedsAmount = 1
+    mockActivityState.followedFeedsData = { p2: mockActivityState.followedFeedsData.p2 }
+    render()
+    expect(cards()).toHaveLength(2)
+    expect(cards().map(card => card.classList.contains('anna-activity-card-unread'))).toEqual([false, true])
     now.mockRestore()
 })
 

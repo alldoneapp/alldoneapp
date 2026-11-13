@@ -208,16 +208,71 @@
     font-size: 10px;
     white-space: nowrap;
 }
-.anna-activity-notice a {
-    display: flex;
-    flex: 1;
+/* AT-3046 (variant C): system notices (project switched, view opened) are thin centred dividers,
+   so they read apart from the activity cards and the messages. Text and time stay on one line. */
+.anna-project-switch-notice,
+.anna-view-notice {
+    align-items: center;
+    margin: 12px 0;
+    color: var(--anna-placeholder);
+    font-size: 11px;
+    gap: 8px;
+}
+.anna-project-switch-notice::before,
+.anna-project-switch-notice::after,
+.anna-view-notice::before,
+.anna-view-notice::after {
+    flex: 1 1 12px;
+    height: 1px;
+    background: var(--anna-border);
+    content: '';
+}
+.anna-project-switch-notice > span,
+.anna-view-notice > span {
+    flex: 0 1 auto;
     min-width: 0;
-    align-items: baseline;
-    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* AT-3046 (variant C): every activity row is a card set off from the chat. The whole card is the
+   link (no arrow), its border turns blue on hover/focus, and the left edge is blue while the item
+   is unread and grey once it is read. Colors are Anna's tokens, so light and dark both follow. */
+.anna-activity-notice {
+    display: block;
+    margin: 8px 0;
+}
+.anna-activity-notice a {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px 10px 14px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--anna-neutral);
     color: var(--anna-muted);
     text-decoration: none;
+    transition: border-color 0.12s ease;
 }
-.anna-activity-notice a:hover {
+.anna-activity-notice a::before {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--anna-border);
+    content: '';
+}
+.anna-activity-notice a.anna-activity-card-unread::before {
+    background: var(--anna-accent);
+}
+.anna-activity-notice a:hover,
+.anna-activity-notice a:focus-visible {
+    border-color: var(--anna-accent);
+    outline: none;
     text-decoration: none;
 }
 .anna-activity-content {
@@ -226,12 +281,27 @@
     min-width: 0;
     gap: 3px;
 }
+/* Title and time share the first line; a long title ellipsises, the time never wraps. */
+.anna-activity-head {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 8px;
+}
 .anna-activity-title {
     overflow: hidden;
     color: var(--anna-ink);
+    font-size: 13px;
     font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.anna-activity-head > .anna-activity-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.anna-activity-head > time {
+    color: var(--anna-placeholder);
 }
 .anna-activity-content > span {
     flex: none;
@@ -240,7 +310,8 @@
     display: flex;
     flex-wrap: wrap;
     min-width: 0;
-    gap: 4px;
+    margin-top: 3px;
+    gap: 4px 10px;
 }
 .anna-activity-action,
 .anna-activity-link {
@@ -267,6 +338,22 @@
     flex: 0 1 auto;
     text-overflow: ellipsis;
 }
+/* On a card the type is a small blue label at the bottom ("💬 Antwort"), not a pill (AT-3046). */
+.anna-activity-actions > span.anna-activity-action {
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--anna-accent-text);
+}
+.anna-activity-actions > .anna-activity-action[data-icon]::before {
+    margin-right: 4px;
+    /* Decorative: the label says the same. Browsers without alt text keep the first line. */
+    content: attr(data-icon);
+    content: attr(data-icon) / '';
+    font-family: alldone;
+    font-size: 11px;
+    vertical-align: -1px;
+}
 .anna-activity-link {
     gap: 3px;
     margin: 0 2px;
@@ -279,8 +366,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.anna-activity-preview,
-.anna-activity-meta {
+.anna-activity-preview {
     color: var(--anna-muted);
 }
 /* A preview hints at the message; the object holds the rest (AT-2906). */
@@ -290,15 +376,13 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
 }
+/* Only on a card from another project or actor (AT-3046), so it reads as a hint in blue. */
 .anna-activity-meta {
     overflow: hidden;
+    color: var(--anna-accent-text);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-.anna-activity-notice a > :last-child {
-    flex-shrink: 0;
-    color: var(--anna-accent);
 }
 .anna-messages {
     /* The conversation scrolls vertically only (AT-2917). Wide content owns its own

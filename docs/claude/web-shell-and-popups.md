@@ -260,7 +260,7 @@ owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace
 (`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
 
 **The header closes with the panel icon, fullscreen sits beside it (AT-3042).** The close
-control (at the far right until AT-3045 put the workspace picker after it) is `AssistantModeIcon expanded` (panel, chevron
+control at the far right of the Anna header is `AssistantModeIcon expanded` (panel, chevron
 pointing right), the counterpart to the assistant line's open button, not an X. It is the same
 `closeChat` and label ("Close assistant chat") on every device, mobile included (decided with the
 product owner). The fullscreen toggle (`maximize-2` / `minimize-2`, desktop only) moved from after
@@ -268,14 +268,6 @@ the assistant chevron on the left to directly left of it; "Open app in new tab" 
 The left group is now only avatar, name and assistant chevron. Pinned by "puts the fullscreen
 action directly left of the right-pointing collapse action" and the AT-2954 new-tab case in
 `AnnaShell.test.js`.
-
-**The workspace picker is the last header control and its chevron points right (AT-3045).** The
-"Alldone / Browser / VMs / app" `<select>` (`.anna-header-picker`) chooses what the right-hand pane
-shows, so it sits after the panel/close button at the far right of `.anna-header-right` and uses
-`chevron-right` instead of `chevron-down` (desktop and mobile alike). This overrides AT-3042's
-"close control at the far right"; the order is now open-in-new-tab, fullscreen, close, picker.
-Anna's assistant chevron on the left stays `chevron-down`. Pinned by "puts the workspace picker at
-the far right" in `AnnaShell.test.js` and the header geometry in `browser-tests/anna-workspace`.
 
 **Project switch: one project's chat on the left, the same project on the right (AT-3036).**
 Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
@@ -403,8 +395,9 @@ is added there. A flip inside a mixed batch is published at once from `toolCallB
 `annaWorkspaceWorkState.test.js`, the AT-2911/AT-2926 case in `AnnaShell.test.js`,
 `assistantWorkspaceChangeTools.test.js` and the AT-2926 case in `assistantHelper.test.js`.
 
-**Activity rows open their object, checked first (AT-2906).** Each row's first line is
-`Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
+**Activity rows open their object, checked first (AT-2906).** Each row names
+`Project · Actor(s)` (since AT-3046 only when they differ from the thread's, see below), the
+object as title, the preview and what happened. A row links to the object
 (`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
 object (`/projects/{p}/chats/{id}/chat`), never to the followed chats inbox. On click
 (`data-anna-activity-link`) `AnnaShell` runs `resolveAnnaActivityPath` (one read-only `get`):
@@ -418,6 +411,24 @@ route handler. The crash behind the report: `TasksHelper.getUserInProject` answe
 members-snapshot reducer threw. Never compare that lookup with `null`; the `Store current user`
 reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
 `__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
+
+**Activity rows are cards (AT-3046, variant C).** Chosen by the product owner from four drafts
+(A compact list, B bundled block, C cards, D digest). Each `AnnaActivityGroup` is one card, and the
+whole card is the link (no arrow). The order is: `Project · Actor` (blue, only when needed), then
+title with the time on the same line, then up to 2 lines of preview, then small blue type labels
+at the bottom (`💬 Antwort` / `%{count} Antworten` for chat messages, `✓ <action>` for feed
+changes). The icon is the icon font glyph in `data-icon`, drawn by `::before`, so the label stays
+plain, ellipsised text (AT-2918). A row that is not enriched yet has its action as the title and
+no label. The left edge is `--anna-accent` while the item is still unread and `--anna-border`
+once it is read. "Unread" is the same red followed activity that creates the rows and drives the
+badges (`useAnnaUnreadActivityIds`, computed once per conversation). Opening the item elsewhere
+turns the edge grey, and the card stays. `Project · Actor` shows only when the object's project
+is not the thread's `projectId` or an actor is not the thread's assistant
+(`isForeignAnnaActivity`). Without a `context` prop the line always shows. Hover/focus turns the
+border blue. The project-switch and view notices are thin centred dividers. Colours are Anna
+tokens only (`--anna-neutral` card, `--anna-accent-text` labels). Pinned by the `cards (AT-3046)`
+block in `AnnaActivityNotice.test.js`, the AT-3046 case in `AnnaConversation.test.js` and
+`browser-tests/at3046` (dark/light at 300/380/560px).
 
 **A lost callable response is not a failed message (AT-2921).** The Anna composer starts each run
 with `askToBotSecondGen`, and a phone drops that connection when the app goes to the background.

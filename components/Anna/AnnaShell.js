@@ -1140,44 +1140,6 @@ export default function AnnaShell({ children, routeId }) {
                 </button>
             )}
             <div className="anna-header-right">
-                {visibleWorkspace && selectedAppView?.kind === 'iframe' && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle anna-header-open-tab"
-                        aria-label={translate('Open app in new tab')}
-                        title={translate('Open app in new tab')}
-                        data-testid="anna-app-open-in-new-tab"
-                        onClick={openSelectedAppInNewTab}
-                    >
-                        <Icon name="new-window" size={18} color="currentColor" />
-                    </button>
-                )}
-                {/* AT-3042: fullscreen sits directly left of the collapse control. */}
-                {!mobile && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle anna-header-expand"
-                        aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                        title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                        aria-expanded={!visibleWorkspace}
-                        onClick={toggleWorkspace}
-                    >
-                        <Icon name={chatOnly ? 'minimize-2' : 'maximize-2'} size={18} color="currentColor" />
-                    </button>
-                )}
-                {/* AT-3042: the counterpart to the assistant line's panel button (chevron pointing
-                    right) closes the chat instead of an X. AT-3045 moved the workspace picker after it. */}
-                <button
-                    type="button"
-                    className="anna-pane-toggle anna-header-close"
-                    aria-label={translate('Close assistant chat')}
-                    title={translate('Close assistant chat')}
-                    onClick={closeChat}
-                >
-                    <AssistantModeIcon expanded color="currentColor" />
-                </button>
-                {/* AT-3045: the workspace picker chooses the pane shown on the right, so it sits at
-                    the far right and its chevron points right. */}
                 <label className="anna-header-picker">
                     <select
                         aria-label={translate('Workspace')}
@@ -1207,9 +1169,45 @@ export default function AnnaShell({ children, routeId }) {
                         ))}
                     </select>
                     <span aria-hidden="true">
-                        <Icon name="chevron-right" size={14} color="currentColor" />
+                        <Icon name="chevron-down" size={14} color="currentColor" />
                     </span>
                 </label>
+                {visibleWorkspace && selectedAppView?.kind === 'iframe' && (
+                    <button
+                        type="button"
+                        className="anna-pane-toggle anna-header-open-tab"
+                        aria-label={translate('Open app in new tab')}
+                        title={translate('Open app in new tab')}
+                        data-testid="anna-app-open-in-new-tab"
+                        onClick={openSelectedAppInNewTab}
+                    >
+                        <Icon name="new-window" size={18} color="currentColor" />
+                    </button>
+                )}
+                {/* AT-3042: fullscreen sits directly left of the collapse control. */}
+                {!mobile && (
+                    <button
+                        type="button"
+                        className="anna-pane-toggle anna-header-expand"
+                        aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                        title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                        aria-expanded={!visibleWorkspace}
+                        onClick={toggleWorkspace}
+                    >
+                        <Icon name={chatOnly ? 'minimize-2' : 'maximize-2'} size={18} color="currentColor" />
+                    </button>
+                )}
+                {/* AT-3042: the counterpart to the assistant line's panel button (chevron pointing
+                    right) closes the chat instead of an X. */}
+                <button
+                    type="button"
+                    className="anna-pane-toggle anna-header-close"
+                    aria-label={translate('Close assistant chat')}
+                    title={translate('Close assistant chat')}
+                    onClick={closeChat}
+                >
+                    <AssistantModeIcon expanded color="currentColor" />
+                </button>
             </div>
         </header>
     )

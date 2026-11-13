@@ -4,6 +4,7 @@ import React, {
     useEffect,
     useImperativeHandle,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
 } from 'react'
@@ -21,7 +22,7 @@ import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
 import useAnnaProjectSwitchNotices from './useAnnaProjectSwitchNotices'
-import useAnnaActivityNotices from './useAnnaActivityNotices'
+import useAnnaActivityNotices, { useAnnaUnreadActivityIds } from './useAnnaActivityNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
 import { getAssistantReplies, replyConfirmsProcessing } from './annaSubmissionReconciliation'
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
@@ -154,6 +155,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const viewNotice = useAnnaContextNotices(user.uid, conversation, pageContext)
     const projectNotices = useAnnaProjectSwitchNotices(user.uid, conversation, projectSwitch)
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
+    const unreadActivityIds = useAnnaUnreadActivityIds()
     const contextNotices = [...projectNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     // The draft belongs to the continuous conversation, including across midnight.
@@ -605,6 +607,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     notice.projectId === thread.projectId &&
                                     notice.chatId === (thread.chatId || thread.id)
                             )}
+                            unreadActivityIds={unreadActivityIds}
                             viewNotice={isCurrentThread(thread) ? viewNotice : null}
                             onSuggest={text => {
                                 changeDraft(text)
@@ -803,6 +806,7 @@ function AnnaThreadMessages({
     visible,
     offline,
     contextNotices,
+    unreadActivityIds,
     viewNotice = null,
     localMessages,
     onRetry,
@@ -825,6 +829,11 @@ function AnnaThreadMessages({
         showProject ? state.loggedUserProjectsMap?.[thread.projectId]?.name || '' : ''
     )
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
+    // AT-3046: an activity card names its project and actor only when they differ from this thread's.
+    const activityContext = useMemo(
+        () => ({ projectId: thread.projectId, assistantName: assistant?.displayName || '' }),
+        [thread.projectId, assistant?.displayName]
+    )
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit, annaMessageCache)
@@ -966,7 +975,15 @@ function AnnaThreadMessages({
             )}
             {timeline.map(({ message, notice, notices }) => {
                 if (notices)
-                    return <AnnaActivityGroup key={`context-${notices[0].id}`} notices={notices} onChange={onChange} />
+                    return (
+                        <AnnaActivityGroup
+                            key={`context-${notices[0].id}`}
+                            notices={notices}
+                            onChange={onChange}
+                            unread={!!unreadActivityIds && notices.some(item => unreadActivityIds.has(item.id))}
+                            context={activityContext}
+                        />
+                    )
                 if (notice)
                     return (
                         <p

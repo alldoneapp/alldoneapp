@@ -793,13 +793,14 @@ it('ignores completion from a superseded browser and returns when the current se
     }
 })
 
-it('puts the fullscreen action directly left of the right-pointing collapse action (AT-3042)', () => {
+it('puts the fullscreen action directly left of the right-pointing collapse action at the far right (AT-3042)', () => {
     render(content(1))
     const expand = screen.getByLabelText('Hide workspace — chat only')
     const close = screen.getByLabelText('Close assistant chat')
     const right = document.querySelector('.anna-header-right')
     expect(document.querySelector('.anna-header-left .anna-header-expand')).toBeNull()
     expect(close.parentElement).toBe(right)
+    expect(right.lastElementChild).toBe(close)
     expect(close.previousElementSibling).toBe(expand)
     // The counterpart to the assistant line's panel button: panel glyph, chevron pointing right.
     expect(close.querySelector('svg path:last-child').getAttribute('d')).toBe('m13 8 4 4-4 4')
@@ -810,33 +811,6 @@ it('puts the fullscreen action directly left of the right-pointing collapse acti
     fireEvent.click(screen.getByLabelText('Show workspace'))
     expect(document.querySelector('.anna-chat-only')).toBeNull()
     expect(close.previousElementSibling).toBe(screen.getByLabelText('Hide workspace — chat only'))
-})
-
-it.each([
-    ['desktop', false],
-    ['mobile', true],
-])('puts the workspace picker at the far right with a right-pointing chevron on %s (AT-3045)', (device, isMobile) => {
-    const originalMatchMedia = window.matchMedia
-    mockMobileNavigation = isMobile
-    window.matchMedia = () => ({
-        matches: mockMobileNavigation,
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-    })
-    try {
-        render(content(1))
-        const right = document.querySelector('.anna-header-right')
-        const picker = document.querySelector('.anna-header-picker')
-        expect(picker.parentElement).toBe(right)
-        expect(right.lastElementChild).toBe(picker)
-        expect(picker.previousElementSibling).toBe(screen.getByLabelText('Close assistant chat'))
-        // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
-        const chevron = picker.querySelector(':scope > span[aria-hidden="true"]')
-        expect(chevron.textContent).toBe('\ue932')
-    } finally {
-        if (originalMatchMedia) window.matchMedia = originalMatchMedia
-        else delete window.matchMedia
-    }
 })
 
 it.each([
@@ -863,8 +837,7 @@ it.each([
         else if (start === 'browser') chooseSurface('browser')
 
         const close = screen.getByLabelText('Close assistant chat')
-        // AT-3045: only the workspace picker follows the close control.
-        expect(close.nextElementSibling).toBe(document.querySelector('.anna-header-picker'))
+        expect(close.parentElement.lastElementChild).toBe(close)
         fireEvent.click(close)
 
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()

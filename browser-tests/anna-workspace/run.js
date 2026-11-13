@@ -800,18 +800,15 @@ async function checkActivityNotices(page, width) {
     const header = await page.locator('.anna-header').boundingBox()
     const badge = width <= 760 ? await page.getByLabel('123 open tasks today').boundingBox() : null
     const picker = await page.locator('.anna-header-picker').boundingBox()
-    // AT-3045: the workspace picker is the last control; the first right-hand control bounds the left group.
-    const controls = await page.locator('.anna-header-right > *').first().boundingBox()
     const brand = await page.locator('.anna-brand').boundingBox()
     assert.ok(brand.height <= 20, 'Assistant name stays on one line (AT-3040)')
     if (badge) {
         assert.ok(badge.x >= brand.x + brand.width - 1, 'Badge follows assistant name')
-        assert.ok(badge.x + badge.width <= controls.x, 'Badge must not overlap header controls')
+        assert.ok(badge.x + badge.width <= picker.x, 'Badge must not overlap workspace picker')
     } else {
         assert.equal(await page.locator('.anna-header-tasks').count(), 0)
-        assert.ok(brand.x + brand.width <= controls.x, 'Assistant name must not overlap header controls')
+        assert.ok(brand.x + brand.width <= picker.x, 'Assistant name must not overlap workspace picker')
     }
-    assert.ok(controls.x <= picker.x, 'Workspace picker sits at the far right (AT-3045)')
     assert.ok(picker.x + picker.width <= header.x + header.width, 'Header stays inside chat pane')
     assert.equal(await page.locator('.anna-conversation').evaluate(node => node.scrollWidth <= node.clientWidth), true)
     await page.screenshot({ path: path.join(BUILD, `activity-${width}.png`) })

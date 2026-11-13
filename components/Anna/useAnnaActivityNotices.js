@@ -57,6 +57,25 @@ export function collectAnnaActivity({ user, projects, feeds, feedAmount, chats, 
     return events.sort((a, b) => a.occurredAt - b.occurredAt || a.id.localeCompare(b.id))
 }
 
+const NO_IDS = new Set()
+
+// The ids of activity rows that are still unread: the same followed (red) activity that drives
+// the app badges and created the rows. Opening the item (or reading it elsewhere) clears its
+// badge and so turns its row's blue edge grey (AT-3046). Computed once per conversation, not per row.
+export function useAnnaUnreadActivityIds() {
+    const user = useSelector(state => state.loggedUser)
+    const projects = useSelector(state => state.loggedUserProjects)
+    const feeds = useSelector(state => state.followedFeedsData || EMPTY)
+    const feedAmount = useSelector(getFollowedFeedAmount)
+    const chats = useSelector(state => state.projectChatNotifications || EMPTY)
+    const activeChat = useSelector(state => state.activeChatData)
+    return useMemo(() => {
+        if (!user?.uid) return NO_IDS
+        const events = collectAnnaActivity({ user, projects: projects || [], feeds, feedAmount, chats, activeChat })
+        return events.length ? new Set(events.map(event => event.id)) : NO_IDS
+    }, [user, projects, feeds, feedAmount, chats, activeChat])
+}
+
 export default function useAnnaActivityNotices(userId, conversation, enabled) {
     const user = useSelector(state => state.loggedUser)
     const projects = useSelector(state => state.loggedUserProjects)
