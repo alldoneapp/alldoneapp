@@ -133,6 +133,8 @@
     "Could not change workspace control. Please try again.": "Die Steuerung konnte nicht übergeben werden. Bitte versuche es erneut.",
     "Earlier conversation": "Frühere Unterhaltung",
     "Earlier days": "Frühere Tage",
+    "Chats in other projects": "Chats in anderen Projekten",
+    "Open the chat in %{projectName}": "Chat in %{projectName} öffnen",
     "Following Anna": "Anna hat die Steuerung",
     "I have returned Alldone control to you. Please continue my current request.": "Ich habe dir die Steuerung von Alldone zurückgegeben. Bitte setze meinen aktuellen Auftrag fort.",
     "I have returned browser control to you. Please continue my current request.": "Ich habe dir die Browsersteuerung zurückgegeben. Bitte setze meinen aktuellen Auftrag fort.",

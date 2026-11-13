@@ -62,9 +62,18 @@ jest.mock('../ModalsManager/modalsManager', () => ({ exitsOpenModals: () => fals
 jest.mock('../../utils/backends/Users/usersFirestore', () => ({ updateShowAllProjectsByTime: jest.fn() }))
 jest.mock('../../redux/store', () => ({
     __esModule: true,
-    default: { getState: () => ({ loggedUser: mockUser, smallScreenNavigation: mockMobileNavigation, route: 'Root' }) },
+    default: {
+        getState: () => ({
+            loggedUser: mockUser,
+            smallScreenNavigation: mockMobileNavigation,
+            route: 'Root',
+            ...mockWorkspaceState,
+        }),
+    },
 }))
 
+// AT-3036: what the Alldone workspace shows (redux), for the workspace sync.
+let mockWorkspaceState = {}
 const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
 let mockBrowserProps
@@ -668,6 +677,7 @@ it.each(['home', 'browser'])(
 )
 
 beforeEach(() => {
+    mockWorkspaceState = {}
     mockMobileNavigation = false
     mockSidebarNumbers = {}
     global.IS_REACT_ACT_ENVIRONMENT = true
@@ -1980,6 +1990,107 @@ describe('selected project (AT-2903)', () => {
         expect(lastProject()).toBe('p2')
         // The composer's project chip follows the same choice.
         expect(switcher().props.activeProjectId).not.toBe(':automatic')
+    })
+})
+
+// AT-3036: a project chosen in the chat moves the Alldone workspace on the right to that project.
+describe('the workspace follows the chat’s project (AT-3036)', () => {
+    const cto = { uid: 'cto', displayName: 'Alldone CTO', photoURL50: 'cto.png' }
+    const projects = [
+        { id: 'p1', index: 0, name: 'Home', userIds: ['u1'] },
+        { id: 'p2', index: 1, name: 'Alldone Product', userIds: ['u1'], assistantId: 'cto' },
+        { id: 'p3', index: 2, name: 'Steercom', userIds: ['u1'] },
+    ]
+    beforeEach(() => {
+        Object.assign(mockUser, { defaultProjectId: 'p1', projectIds: ['p1', 'p2', 'p3'] })
+        mockProjectsMap = Object.fromEntries(projects.map(project => [project.id, project]))
+        mockExtraAssistants = { p2: [cto] }
+        // The workspace shows the open tasks of "Home".
+        mockWorkspaceState = {
+            loggedUserProjects: projects,
+            loggedUserProjectsMap: mockProjectsMap,
+            selectedProjectIndex: 0,
+            route: 'ROOT_NOTES',
+            selectedSidebarTab: 'ROOT_NOTES',
+        }
+        mockDispatch.mockClear()
+        NavigationService.navigate.mockClear()
+    })
+    afterEach(() => {
+        delete mockUser.defaultProjectId
+        delete mockUser.projectIds
+    })
+    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
+    const lastProject = () => useAnnaConversation.mock.calls.at(-1)[1].projectId
+    const projectSwitches = () =>
+        mockDispatch.mock.calls
+            .map(([actions]) => (Array.isArray(actions) ? actions.find(action => action.type === 'PROJECT') : null))
+            .filter(Boolean)
+            .map(action => action.index)
+
+    it('moves the workspace when the composer’s project chip picks a project, keeping the view', () => {
+        render(content(1))
+        act(() => switcher().props.onSelect('p3'))
+        expect(lastProject()).toBe('p3')
+        expect(mockDispatch).toHaveBeenLastCalledWith([
+            { type: 'PROJECT', index: 2 },
+            { type: 'CURRENT_USER', user: mockUser },
+            { type: 'PROJECT_TYPE', projectType: 'active' },
+            { type: 'SIDEBAR_TAB', tab: 'ROOT_NOTES' },
+        ])
+        expect(NavigationService.navigate).not.toHaveBeenCalled()
+    })
+
+    it('moves the workspace when the assistant picker at the top left picks a project', () => {
+        render(content(1))
+        fireEvent.click(document.querySelector('.anna-header-left .anna-assistant-picker'))
+        const product = [...document.querySelectorAll('.anna-project-option')].find(row =>
+            row.textContent.includes('Alldone Product')
+        )
+        fireEvent.click(product)
+        expect(lastProject()).toBe('p2')
+        expect(projectSwitches()).toEqual([1])
+    })
+
+    it('opens another project’s chat from a jump and moves the workspace with it', () => {
+        const otherThreads = [{ projectId: 'p3', chatId: 'AnnaChat20261113u1', created: 1 }]
+        useAnnaConversation.mockReturnValue({ ...state, otherThreads })
+        render(content(1))
+        expect(mockConversationProps.otherThreads).toBe(otherThreads)
+        act(() => mockConversationProps.onOpenProject('p3'))
+        expect(lastProject()).toBe('p3')
+        expect(projectSwitches()).toEqual([2])
+    })
+
+    it('keeps only the last of several quick picks, in the chat and in the workspace', () => {
+        render(content(1))
+        act(() => {
+            switcher().props.onSelect('p2')
+            switcher().props.onSelect('p3')
+        })
+        act(() => switcher().props.onSelect('p2'))
+        expect(lastProject()).toBe('p2')
+        expect(projectSwitches().at(-1)).toBe(1)
+    })
+
+    it('does not move a workspace that already shows the project, nor All projects for "Automatic"', () => {
+        render(content(1))
+        act(() => switcher().props.onSelect('p1'))
+        mockWorkspaceState.selectedProjectIndex = -1
+        act(() => switcher().props.onSelect(':automatic'))
+        expect(mockDispatch).not.toHaveBeenCalled()
+    })
+
+    it('does not move the workspace when assistant mode is entered from an assistant line (AT-3034)', () => {
+        setAnnaMode(false)
+        render(
+            <AnnaShell routeId={1}>
+                <AssistantModeButton inline projectId="p3" assistantName="Line assistant" />
+            </AnnaShell>
+        )
+        fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
+        expect(lastProject()).toBe('p3')
+        expect(projectSwitches()).toEqual([])
     })
 })
 

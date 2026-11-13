@@ -902,6 +902,8 @@ it('records a project chosen in the switcher in the chat history of that project
     expect(switchNotices()).toEqual([])
     render({ conversation: p2, threads, pageContext, projectSwitch: toFamilie })
     expect(switchNotices()).toEqual([['p2', 'm2', 'Switched to project: Familie']])
+    // AT-3036: the chosen project's chat starts on its own; the previous project's messages are gone.
+    expect(container.querySelector('[data-anna-message-id="m1"]')).toBeNull()
     // The current view moves with the conversation and exists only once.
     expect(container.querySelectorAll('.anna-view-notice')).toHaveLength(1)
     expect(
@@ -912,10 +914,10 @@ it('records a project chosen in the switcher in the chat history of that project
     render({ conversation: p2, threads, pageContext, projectSwitch: { ...toFamilie } })
     const back = { id: 2, projectId: 'p1', name: 'Alldone Product', created: 6000 }
     render({ conversation: p1, threads, pageContext, projectSwitch: back })
-    expect(switchNotices()).toEqual([
-        ['p2', 'm2', 'Switched to project: Familie'],
-        ['p1', 'm1', 'Switched to project: Alldone Product'],
-    ])
+    // AT-3036: each entry stays in its own project's thread, which is shown alone.
+    expect(switchNotices()).toEqual([['p1', 'm1', 'Switched to project: Alldone Product']])
+    render({ conversation: p2, threads, pageContext, projectSwitch: back })
+    expect(switchNotices()).toEqual([['p2', 'm2', 'Switched to project: Familie']])
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
@@ -1107,7 +1109,8 @@ it('resolves the new local day before sending while preserving retries on their 
     render({ resolveConversation })
     await click('Find a note')
     await submit()
-    render({ resolveConversation, conversation: { projectId: 'p3', id: 'AnnaChat20261009u1', assistantId: 'a3' } })
+    // The next local day of the same project: yesterday's failed message keeps its Retry here.
+    render({ resolveConversation, conversation: { projectId: 'p2', id: 'AnnaChat20261009u1', assistantId: 'a3' } })
     await click('Retry')
     expect(resolveConversation).toHaveBeenCalledTimes(1)
     expect(createObjectMessage).toHaveBeenCalledTimes(1)
@@ -1882,14 +1885,97 @@ describe('selected project (AT-2903)', () => {
         }
     })
 
-    it('labels each project section and keeps the composer’s chat last after switching back', () => {
+    const user = { uid: 'u1', gold: 100, defaultProjectId: 'p1', projectIds: ['p1', 'p2', 'p3'] }
+    const jumps = () =>
+        [...container.querySelectorAll('.anna-project-jump')].map(button => [
+            button.dataset.annaProjectId,
+            button.textContent,
+        ])
+
+    // AT-3036: each project has its own daily thread, and the chat shows only the one it writes to.
+    it('shows only the chat of the project it continues in, never the previous project’s below it', () => {
         render({
             threads,
             conversation: { projectId: 'p1', id: 'AnnaChat20261029u1', assistantId: 'a1' },
             assistant: { uid: 'a1', displayName: 'Anna' },
-            user: { uid: 'u1', gold: 100, defaultProjectId: 'p1' },
+            user,
         })
-        expect(sections()).toEqual(['2026-10-29 · Alldone Product · Alldone CTO', '2026-10-29 · Home · Anna'])
+        expect(sections()).toEqual(['2026-10-29'])
+        render({
+            threads,
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+        })
+        expect(sections()).toEqual(['2026-10-29 · Alldone Product · Alldone CTO'])
+    })
+
+    it('keeps the composer’s chat last when the project had an earlier day (AT-2903)', () => {
+        render({
+            threads: [
+                { projectId: 'p2', chatId: 'AnnaChat20261029u1', dateKey: '20261029', assistantId: 'cto', created: 3 },
+                { projectId: 'p2', chatId: 'AnnaChat20261028u1', dateKey: '20261028', assistantId: 'cto', created: 1 },
+            ],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+        })
+        expect(sections()).toEqual([
+            '2026-10-28 · Alldone Product · Alldone CTO',
+            '2026-10-29 · Alldone Product · Alldone CTO',
+        ])
+    })
+
+    it('offers the other projects’ chats as jumps, latest first, and opens one through the picker (AT-3036)', () => {
+        const onOpenProject = jest.fn()
+        mockActivityState.loggedUserProjectsMap.p3 = { id: 'p3', name: 'Steercom', color: '#ff0000' }
+        render({
+            threads: [threads[1]],
+            otherThreads: [
+                threads[0],
+                { projectId: 'p3', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 5 },
+                // Not selectable (an archived or foreign project): no jump that would fail.
+                { projectId: 'gone', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 9 },
+            ],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+            onOpenProject,
+        })
+        expect(jumps()).toEqual([
+            ['p3', 'Steercom'],
+            ['p1', 'Home'],
+        ])
+        expect(container.querySelector('.anna-project-jump').getAttribute('aria-label')).toBe(
+            'Open the chat in %{projectName}'.replace('%{projectName}', 'Steercom')
+        )
+        act(() => container.querySelector('.anna-project-jump').click())
+        expect(onOpenProject).toHaveBeenCalledWith('p3')
+        // No jumps offline or during a call.
+        render({
+            threads: [threads[1]],
+            otherThreads: [threads[0]],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            user,
+            onOpenProject,
+            offline: true,
+        })
+        expect(container.querySelector('.anna-project-jump').disabled).toBe(true)
+    })
+
+    it('keeps a failed message of another project out of this chat and offers its project instead (AT-3036)', async () => {
+        runHttpsCallableFunction.mockRejectedValueOnce(new Error('Offline'))
+        const onOpenProject = jest.fn()
+        render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
+        await click('Find a note')
+        await submit()
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
+        render({ user, onOpenProject, conversation: { projectId: 'p1', id: 'anna_u1', assistantId: 'a1' } })
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(false)
+        expect(jumps()).toEqual([['p2', 'Alldone Product']])
+        // Back in its project, the message and its Retry are still there.
+        render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
     })
 
     it('shows no project label while every section is in the default project', () => {

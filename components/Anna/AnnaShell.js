@@ -6,6 +6,7 @@ import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
 import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
+import { syncAnnaWorkspaceProject } from './annaWorkspaceProjectSync'
 import AnnaProjectSwitcher from './AnnaProjectSwitcher'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -39,6 +40,7 @@ import { setAnnaMode, setAnnaLayout, useAnnaLayout } from '../../utils/annaMode'
 import useAnnaChatWidth, { MIN_CHAT_WIDTH } from './useAnnaChatWidth'
 import NavigationService from '../../utils/NavigationService'
 import navigateToHome from '../../utils/navigateToHome'
+import store from '../../redux/store'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
@@ -117,6 +119,7 @@ export default function AnnaShell({ children, routeId }) {
     const autoFollow = useRef(false)
     autoFollow.current = active && !chatOnly
     const user = useSelector(state => state.loggedUser)
+    const dispatch = useDispatch()
     const openTasksAmount = useSelector(state =>
         getAllProjectsOpenTasksAmount(
             state.sidebarNumbers,
@@ -149,6 +152,7 @@ export default function AnnaShell({ children, routeId }) {
         error,
         retry,
         threads,
+        otherThreads,
         resolveConversation,
         loadEarlier,
         nextBefore,
@@ -210,7 +214,7 @@ export default function AnnaShell({ children, routeId }) {
     const [projectSwitch, setProjectSwitch] = useState(null)
     const projectSwitchSequence = useRef(0)
     const selectProject = useCallback(
-        projectId => {
+        (projectId, { syncWorkspace = true } = {}) => {
             setProjectNotice('')
             // "Automatic" (AT-3024) continues the default project's chat.
             const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
@@ -228,8 +232,18 @@ export default function AnnaShell({ children, routeId }) {
                 })
             }
             projectSelection.select(projectId)
+            // AT-3036: a choice made in the chat moves the Alldone workspace to the same project,
+            // synchronously, so the latest of several quick picks is the one that stays.
+            if (syncWorkspace) {
+                syncAnnaWorkspaceProject(projectId, {
+                    getState: store.getState,
+                    dispatch,
+                    navigate: route => NavigationService.navigate(route),
+                })
+            }
         },
         [
+            dispatch,
             projectSelection.select,
             user.defaultProjectId,
             activeProjectId,
@@ -436,7 +450,6 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(false)
     }, [])
-    const dispatch = useDispatch()
     // The header's Home button always lands on the open task list, never on whatever
     // page the workspace happened to show last (AT-2920). The X keeps that page.
     const goHome = useCallback(() => {
@@ -485,9 +498,10 @@ export default function AnnaShell({ children, routeId }) {
             const requested = options.projectId
             const automatic = !requested || requested === user.defaultProjectId
             if (automatic) {
-                if (!projectSelection.isDefault) selectProject(ANNA_AUTOMATIC_PROJECT)
+                if (!projectSelection.isDefault) selectProject(ANNA_AUTOMATIC_PROJECT, { syncWorkspace: false })
             } else if (requested !== projectSelection.choiceId && isAnnaProjectSelectable(user, requested)) {
-                selectProject(requested)
+                // The line already shows its project in the workspace (AT-3036: no loop back).
+                selectProject(requested, { syncWorkspace: false })
             }
         },
         [call.status, offline, user, projectSelection.isDefault, projectSelection.choiceId, selectProject]
@@ -1167,6 +1181,8 @@ export default function AnnaShell({ children, routeId }) {
                                         user={user}
                                         call={call}
                                         threads={threads}
+                                        otherThreads={otherThreads}
+                                        onOpenProject={selectProject}
                                         resolveConversation={resolveConversation}
                                         loadEarlier={loadEarlier}
                                         hasEarlier={nextBefore != null}

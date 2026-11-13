@@ -1385,6 +1385,61 @@
 .anna-fullscreen .anna-workspace {
     width: 100%;
 }
+/* AT-3036: the other projects' chats, above this project's thread. Sizes sit on the spans:
+   `.anna-shell button { font: inherit }` outranks a single-class button rule (AT-3032). */
+.anna-project-jumps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 8px 0;
+}
+.anna-project-jumps-label {
+    color: var(--anna-muted);
+    font-size: 12px;
+    line-height: 16px;
+}
+.anna-project-jump {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 200px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--anna-border, var(--ad-hl-DFE3EA, #dfe3ea));
+    border-radius: 14px;
+    background: var(--ad-Surface, #ffffff);
+    color: var(--anna-ink, var(--ad-Text01, #04142f));
+    cursor: pointer;
+}
+.anna-project-jump:hover:not(:disabled) {
+    background: var(--anna-hover, var(--ad-hl-EEF4FF, #eef4ff));
+}
+.anna-project-jump:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+.anna-project-jump:focus-visible {
+    outline: 2px solid var(--anna-accent, #0c66ff);
+    outline-offset: 2px;
+}
+.anna-project-jump-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--anna-neutral, #b9c1cf);
+}
+.anna-project-jump-name {
+    font-size: 12px;
+    line-height: 16px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .anna-date-divider {
     text-align: center;
     color: var(--anna-muted);

@@ -133,6 +133,8 @@
     "Could not change workspace control. Please try again.": "No se pudo transferir el control. Inténtalo de nuevo.",
     "Earlier conversation": "Conversación anterior",
     "Earlier days": "Días anteriores",
+    "Chats in other projects": "Chats en otros proyectos",
+    "Open the chat in %{projectName}": "Abrir el chat en %{projectName}",
     "Following Anna": "Anna tiene el control",
     "I have returned Alldone control to you. Please continue my current request.": "Te he devuelto el control de Alldone. Continúa con mi solicitud actual.",
     "I have returned browser control to you. Please continue my current request.": "Te he devuelto el control del navegador. Continúa con mi solicitud actual.",

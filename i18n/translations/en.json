@@ -133,6 +133,8 @@
     "Could not change workspace control. Please try again.": "Could not change workspace control. Please try again.",
     "Earlier conversation": "Earlier conversation",
     "Earlier days": "Earlier days",
+    "Chats in other projects": "Chats in other projects",
+    "Open the chat in %{projectName}": "Open the chat in %{projectName}",
     "Following Anna": "Following Anna",
     "I have returned Alldone control to you. Please continue my current request.": "I have returned Alldone control to you. Please continue my current request.",
     "I have returned browser control to you. Please continue my current request.": "I have returned browser control to you. Please continue my current request.",

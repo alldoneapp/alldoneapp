@@ -251,6 +251,32 @@ while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pin
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
 `AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
 
+**Project switch: one project's chat on the left, the same project on the right (AT-3036).**
+Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
+by `ensureAnnaConversation`). `useAnnaConversation` used to return every recent thread of every
+project, so a switch to Steercom appended Steercom's thread under the previous project's messages
+and the chat read as one transcript while the backend wrote elsewhere. The hook now splits the
+loaded history by the project on screen (`conversation.projectId`): `threads` (that project's days)
+and `otherThreads`. `scopeAnnaThreads` (`annaThreadScope.js`) does the same for pending/failed sends,
+so another project's failed message is reached through its project, not shown here. The other
+projects appear as one row of jump buttons ("Chats in other projects", latest first, only
+`isAnnaProjectSelectable` ones) that select the project like the chip does. While a switch
+resolves, the previous chat stays and sending waits (`switching`, unchanged). "Earlier days" pages
+the shared registry three threads at a time, so `loadEarlier` keeps paging until the visible
+project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (composer
+chip, assistant picker at the top left, a jump) also moves the Alldone workspace:
+`syncAnnaWorkspaceProject` (`annaWorkspaceProjectSync.js`) dispatches the header project picker's
+batch (`switchProject`, own board or All goals, active type), keeps the root tab (wiki falls back
+to tasks on All projects), leaves an object's detail view of the old project for the root list,
+and does nothing when the workspace already shows that project. "Automatic" matches All projects
+and the default project; from any other project it opens All projects. Entering assistant mode from
+an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits in the workspace's
+project. Only the chat side ever moves the other side (nothing on the workspace side changes the
+chat's project), so the two cannot feed back into each other. An app or VM on the right
+stays on screen; the Alldone view under it moves. Pinned by `annaThreadScope.test.js`,
+`annaWorkspaceProjectSync.test.js`, the AT-3036 cases in `useAnnaConversation.test.js`,
+`AnnaConversation.test.js` and `AnnaShell.test.js`.
+
 **With the sidebar open, the assistant line is only its Last comment (AT-3034 follow-up).** The
 chat box is in the sidebar, so `AssistantLine` hides its whole `AssistantOptions` (header,
 assistant-mode button, rage crosshair and composer) and shows only the Last comment card. Decided
@@ -371,8 +397,8 @@ the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
 newer messages. Re-opening the same view keeps its original time. A project picked in the
 composer's switcher becomes a local "Switched to project: …" entry
-(`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to, and
-re-picking the active project adds nothing. Neither is written to Firestore or seen by the
+(`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to (since
+AT-3036 that thread is shown alone), and re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
 
 **The assistant is told what the work pane shows, not the Alldone route behind it (AT-2955).**

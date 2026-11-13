@@ -47,6 +47,8 @@ import { groupAnnaTimeline } from './annaActivityGroups'
 import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
 import useAnnaChatScroll from './useAnnaChatScroll'
 import useAnnaFileDrop from './useAnnaFileDrop'
+import { isAnnaProjectSelectable } from './annaProjectSelection'
+import { scopeAnnaThreads } from './annaThreadScope'
 
 const MESSAGES_PER_PAGE = 50
 // AT-3032: below this composer width the Templates button drops its label (icon only, same
@@ -78,6 +80,40 @@ const getMessageCreator = (message, user, assistant) => {
     }
 }
 
+// AT-3036: the chat shows one project's threads; the other projects' chats of the loaded days are
+// one tap away. A jump selects that project like the project chip does, so the chat continues in
+// its daily thread and the workspace on the right follows.
+function AnnaProjectJumps({ projectIds, disabled, onOpenProject }) {
+    const projects = useSelector(state => state.loggedUserProjectsMap)
+    return (
+        <nav className="anna-project-jumps" aria-label={translate('Chats in other projects')}>
+            <span className="anna-project-jumps-label">{translate('Chats in other projects')}</span>
+            {projectIds.map(projectId => {
+                const project = projects?.[projectId]
+                const name = project?.name || translate('Project')
+                return (
+                    <button
+                        key={projectId}
+                        type="button"
+                        className="anna-project-jump"
+                        data-anna-project-id={projectId}
+                        disabled={disabled}
+                        aria-label={translate('Open the chat in %{projectName}', { projectName: name })}
+                        onClick={() => onOpenProject(projectId)}
+                    >
+                        <span
+                            className="anna-project-jump-dot"
+                            aria-hidden="true"
+                            style={project?.color ? { background: project.color } : undefined}
+                        />
+                        <span className="anna-project-jump-name">{name}</span>
+                    </button>
+                )
+            })}
+        </nav>
+    )
+}
+
 const AnnaConversation = forwardRef(function AnnaConversation(
     {
         conversation,
@@ -103,6 +139,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         renderProjectSwitcher,
         // AT-2914: the latest project chosen in the switcher ({ id, projectId, name, created }).
         projectSwitch = null,
+        // AT-3036: other projects' threads, offered as jumps; `onOpenProject(projectId)` switches there.
+        otherThreads = [],
+        onOpenProject,
     },
     ref
 ) {
@@ -358,24 +397,18 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     }, [resumeRequest, sending, switching, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
-    const displayedThreads = [...(threads || [{ ...conversation, chatId: conversation.id }])]
-    localMessages.forEach(message => {
-        const thread = message.thread
-        if (
-            thread?.id &&
-            !displayedThreads.some(
-                item => item.projectId === thread.projectId && (item.chatId || item.id) === thread.id
-            )
-        )
-            displayedThreads.push(thread)
+    // AT-3036: only those of the project on screen; another project's are reached by its jump.
+    const { threads: displayedThreads, otherProjectIds } = scopeAnnaThreads({
+        conversation,
+        threads,
+        otherThreads,
+        localThreads: localMessages.map(message => message.thread),
+        canOpen: projectId => !!onOpenProject && isAnnaProjectSelectable(user, projectId),
     })
     const isCurrentThread = thread =>
         thread.projectId === conversation.projectId && (thread.chatId || thread.id) === conversation.id
-    // AT-2903: the composer writes into the current thread, so it is always the last
-    // section, also after switching back to a project whose chat started earlier today.
-    const currentIndex = displayedThreads.findIndex(isCurrentThread)
-    if (currentIndex >= 0 && currentIndex < displayedThreads.length - 1)
-        displayedThreads.push(...displayedThreads.splice(currentIndex, 1))
+    // AT-2903: the composer writes into the current thread, so `scopeAnnaThreads` keeps it the
+    // last section, also after switching back to a project whose chat started earlier today.
     const showProject =
         new Set(displayedThreads.map(thread => thread.projectId)).size > 1 ||
         conversation.projectId !== user.defaultProjectId
@@ -462,6 +495,13 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
                             {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                         </button>
+                    )}
+                    {otherProjectIds.length > 0 && (
+                        <AnnaProjectJumps
+                            projectIds={otherProjectIds}
+                            disabled={voiceActive || offline}
+                            onOpenProject={onOpenProject}
+                        />
                     )}
                     {displayedThreads.map(thread => (
                         <AnnaThreadMessages
