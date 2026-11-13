@@ -2347,6 +2347,24 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             expect(document.activeElement).toBe(document.body)
         })
 
+        it('never focuses on load or for a switch nobody picked in the chat (background, restored choice)', () => {
+            const view = start()
+            // The chat resolves on its own (first load, a restored selection, a new day).
+            opening(view, 'p3')
+            opened(view, 'p3')
+            settle('p3')
+            expect(document.activeElement).toBe(document.body)
+            // Unrelated renders after a finished, focused switch do not take focus back either.
+            act(() => switcher().props.onSelect('p2'))
+            opened(view, 'p2')
+            settle('p2')
+            expect(document.activeElement).toBe(chat())
+            act(() => document.activeElement.blur())
+            view.rerender(content(1))
+            settle('p2')
+            expect(document.activeElement).toBe(document.body)
+        })
+
         it('never focuses for a switch from the workspace or an assistant line', () => {
             const view = start()
             press(workspaceEditor())
