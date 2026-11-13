@@ -667,3 +667,19 @@ independent layers.
 ```bash
 node browser-tests/artifacts/run.js
 ```
+
+### `at3037/` — the queued note in the task comment popup has a line of its own
+
+Renders the real `CommentsList` → `Comment` → `MessageSendStatus` inside a popup card
+(`data-ad-popup`, as the popover sets it) in light and dark mode at 720 px (the reported popup),
+432 px and 320 px, with the German strings of the screenshot. Only the translation service, the
+assistant avatar and the Firestore author lookup are stubbed. The author row of a comment is a
+fixed 24 px; the queued note ("In der Warteschlange …", Jetzt senden / Entfernen) used to sit
+inside it, cut the name and time to "Karsten …" / "5 minute…" and ran over the comment text. It
+checks that the note sits between the header and the text, overlaps and overflows nothing, has its
+own surface, keeps both actions visible and unfaded, and that the author name and time are whole;
+a pending/failed sync status stays inline. Against the code before the fix 24 of 78 checks fail.
+
+```bash
+node browser-tests/at3037/run.js
+```

@@ -218,6 +218,10 @@ const renderMarkdownTable = (line, key, isLastLine, projectId, getLinkCounter) =
     )
 }
 
+// AT-3037: the header row has a fixed height of 24. The queued note used to sit inside it, and
+// once its long label wrapped it overflowed the row and lay over the comment text below.
+export const QUEUED_CONTENT_STYLE = { opacity: 0.6 }
+
 export default function Comment({
     containerStyle,
     projectId,
@@ -234,6 +238,9 @@ export default function Comment({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const { commentText, lastChangeDate, creatorId } = comment
+    // AT-2922 / AT-3037: a queued comment is dimmed, but its "Queued" note sits on a line of its
+    // own under the header and stays fully opaque, so Send now / Remove remain readable.
+    const queued = comment.pendingSend?.status === 'queued'
 
     const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId, {
         fromAssistant: comment.fromAssistant,
@@ -400,16 +407,9 @@ export default function Comment({
     }
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                containerStyle,
-                // AT-2922: a queued message is not sent yet.
-                comment.pendingSend?.status === 'queued' && { opacity: 0.6 },
-            ]}
-        >
+        <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.commentBody}>
-                <View style={localStyles.commentHeader} testID="feed-comment-header">
+                <View style={[localStyles.commentHeader, queued && QUEUED_CONTENT_STYLE]} testID="feed-comment-header">
                     {isAssistant ? (
                         <AssistantAvatar
                             photoURL={photoURL?.uri || photoURL}
@@ -428,88 +428,102 @@ export default function Comment({
                         {localizedMoment(date).fromNow()}
                     </Text>
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
-                    <MessageSendStatus pendingSend={comment.pendingSend} dark style={{ marginLeft: 8 }} />
+                    {!queued && <MessageSendStatus pendingSend={comment.pendingSend} dark style={{ marginLeft: 8 }} />}
                 </View>
-
-                {contentOverride ||
-                    textsFiltered.map((commentData, index) => {
-                        const { type, text } = commentData
-                        const firstItem = index === 0
-                        const lastItem = index === textsFiltered.length - 1
-                        if (type === 'quote') {
-                            return (
-                                <QuotedText
-                                    key={index}
-                                    projectId={projectId}
-                                    lastItem={lastItem}
-                                    quotedText={text}
-                                    backgroundColor={colors.Secondary300}
-                                    textColor={colors.Text04}
-                                />
-                            )
-                        } else {
-                            return renderTextContent(text, firstItem, lastItem)
-                        }
-                    })}
-                {!linkedEmail && isOwnSentEmailComment(comment) && (
-                    <View style={localStyles.linkedEmailActions} testID="sent-email-link">
-                        <GmailTag
-                            gmailData={comment.gmailData}
-                            showLabel={true}
-                            label="Sent email"
-                            propStyles={localStyles.linkedEmailTag}
-                        />
-                    </View>
+                {queued && (
+                    <MessageSendStatus
+                        prominent
+                        dark
+                        pendingSend={comment.pendingSend}
+                        style={localStyles.queuedNote}
+                    />
                 )}
-                {linkedEmail && (
-                    <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
-                        <GmailTag
-                            gmailData={linkedEmailGmailData}
-                            showLabel={true}
-                            propStyles={localStyles.linkedEmailTag}
-                        />
-                        {canArchiveLinkedEmail && (
-                            <>
-                                <EmailTaskAction
-                                    connectionId={linkedEmail.connectionProjectId}
-                                    messageIds={[linkedEmail.messageId]}
-                                    initialTask={linkedEmailGmailData?.taskCreated}
-                                    checkExisting
-                                    iconColor={colors.UtilityBlue125}
-                                    borderColor={colors.Primary350}
-                                    textColor={colors.UtilityBlue125}
-                                    style={localStyles.linkedEmailTaskButton}
-                                />
-                                <TouchableOpacity
-                                    style={localStyles.linkedEmailButton}
-                                    onPress={() => onArchiveLinkedEmail([linkedEmail])}
-                                    disabled={linkedEmailArchiving || linkedEmailArchived}
-                                    accessibilityLabel={translate('Archive email')}
-                                >
-                                    {/* Archived wins over archiving (AT-2424): the archive is
+
+                <View testID="feed-comment-content" style={queued ? QUEUED_CONTENT_STYLE : undefined}>
+                    {contentOverride ||
+                        textsFiltered.map((commentData, index) => {
+                            const { type, text } = commentData
+                            const firstItem = index === 0
+                            const lastItem = index === textsFiltered.length - 1
+                            if (type === 'quote') {
+                                return (
+                                    <QuotedText
+                                        key={index}
+                                        projectId={projectId}
+                                        lastItem={lastItem}
+                                        quotedText={text}
+                                        backgroundColor={colors.Secondary300}
+                                        textColor={colors.Text04}
+                                    />
+                                )
+                            } else {
+                                return renderTextContent(text, firstItem, lastItem)
+                            }
+                        })}
+                    {!linkedEmail && isOwnSentEmailComment(comment) && (
+                        <View style={localStyles.linkedEmailActions} testID="sent-email-link">
+                            <GmailTag
+                                gmailData={comment.gmailData}
+                                showLabel={true}
+                                label="Sent email"
+                                propStyles={localStyles.linkedEmailTag}
+                            />
+                        </View>
+                    )}
+                    {linkedEmail && (
+                        <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
+                            <GmailTag
+                                gmailData={linkedEmailGmailData}
+                                showLabel={true}
+                                propStyles={localStyles.linkedEmailTag}
+                            />
+                            {canArchiveLinkedEmail && (
+                                <>
+                                    <EmailTaskAction
+                                        connectionId={linkedEmail.connectionProjectId}
+                                        messageIds={[linkedEmail.messageId]}
+                                        initialTask={linkedEmailGmailData?.taskCreated}
+                                        checkExisting
+                                        iconColor={colors.UtilityBlue125}
+                                        borderColor={colors.Primary350}
+                                        textColor={colors.UtilityBlue125}
+                                        style={localStyles.linkedEmailTaskButton}
+                                    />
+                                    <TouchableOpacity
+                                        style={localStyles.linkedEmailButton}
+                                        onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                                        disabled={linkedEmailArchiving || linkedEmailArchived}
+                                        accessibilityLabel={translate('Archive email')}
+                                    >
+                                        {/* Archived wins over archiving (AT-2424): the archive is
                                         optimistic, so the check mark is the answer from the
                                         press onwards. */}
-                                    {linkedEmailArchived ? (
-                                        <Icon name="check" size={14} color={colors.UtilityBlue125} />
-                                    ) : linkedEmailArchiving ? (
-                                        <ActivityIndicator size="small" color={colors.UtilityBlue125} />
-                                    ) : (
-                                        <Icon name="archive" size={14} color={colors.UtilityBlue125} />
-                                    )}
-                                    <Text style={localStyles.linkedEmailButtonText}>
-                                        {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
-                                    </Text>
-                                </TouchableOpacity>
-                            </>
-                        )}
-                    </View>
-                )}
+                                        {linkedEmailArchived ? (
+                                            <Icon name="check" size={14} color={colors.UtilityBlue125} />
+                                        ) : linkedEmailArchiving ? (
+                                            <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                                        ) : (
+                                            <Icon name="archive" size={14} color={colors.UtilityBlue125} />
+                                        )}
+                                        <Text style={localStyles.linkedEmailButtonText}>
+                                            {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                        </View>
+                    )}
+                </View>
             </View>
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
+    queuedNote: {
+        marginTop: 6,
+        marginBottom: 6,
+    },
     container: {
         flexDirection: 'row',
     },

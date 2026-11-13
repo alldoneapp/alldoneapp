@@ -6,12 +6,7 @@ import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
 import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
-import {
-    getAnnaWorkspacePlanKey,
-    resolveAnnaChoiceForWorkspace,
-    syncAnnaWorkspaceProject,
-} from './annaWorkspaceProjectSync'
-import useAnnaWorkspaceProjectFollow from './useAnnaWorkspaceProjectFollow'
+import { syncAnnaWorkspaceProject } from './annaWorkspaceProjectSync'
 import AnnaProjectSwitcher from './AnnaProjectSwitcher'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -218,16 +213,6 @@ export default function AnnaShell({ children, routeId }) {
     // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
     const [projectSwitch, setProjectSwitch] = useState(null)
     const projectSwitchSequence = useRef(0)
-    const chatPane = useRef(null)
-    // AT-3036 follow-up: the person opening a project in the workspace moves the chat there (the
-    // handler is set below, once `selectProject` exists). Presses in the chat pane or the Anna
-    // header are the chat's side; everything else, including body portals, the workspace's.
-    const followWorkspace = useRef(null)
-    const { expectSync: expectWorkspaceSync } = useAnnaWorkspaceProjectFollow({
-        active,
-        isChatSide: target => !!target && (!!chatPane.current?.contains(target) || !!target.closest?.('.anna-header')),
-        follow: workspaceKey => followWorkspace.current?.(workspaceKey),
-    })
     const selectProject = useCallback(
         (projectId, { syncWorkspace = true } = {}) => {
             setProjectNotice('')
@@ -252,8 +237,6 @@ export default function AnnaShell({ children, routeId }) {
             if (syncWorkspace) {
                 syncAnnaWorkspaceProject(projectId, {
                     getState: store.getState,
-                    // Announced before it happens, so the follow below never bounces it back.
-                    onPlan: plan => expectWorkspaceSync(getAnnaWorkspacePlanKey(plan)),
                     dispatch,
                     navigate: route => NavigationService.navigate(route),
                 })
@@ -261,7 +244,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         [
             dispatch,
-            expectWorkspaceSync,
             projectSelection.select,
             user.defaultProjectId,
             activeProjectId,
@@ -324,6 +306,7 @@ export default function AnnaShell({ children, routeId }) {
     const [navigationError, setNavigationError] = useState('')
     const workspaceContent = useRef(null)
     const layout = useRef(null)
+    const chatPane = useRef(null)
     const chatConversation = useRef(null)
     const workspaceStage = useRef(null)
     const focusAfterSwitch = useRef(active ? 'chat' : null)
@@ -523,20 +506,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         [call.status, offline, user, projectSelection.isDefault, projectSelection.choiceId, selectProject]
     )
-    // AT-3036 follow-up: the person opened a project (or All projects) in the workspace, so the chat
-    // continues there: that project's daily chat with its assistant (`resolveAnnaChoiceForWorkspace`).
-    // The same limits as the line entry apply (no switch during a call or offline), and the
-    // workspace is not moved back, since it is already there.
-    followWorkspace.current = workspaceKey => {
-        if (call.status !== 'idle' || offline) return
-        const next = resolveAnnaChoiceForWorkspace({
-            user,
-            workspaceKey,
-            choiceId: projectSelection.choiceId,
-            isDefault: projectSelection.isDefault,
-        })
-        if (next) selectProject(next, { syncWorkspace: false })
-    }
     // Through a ref, so the context value (and every entry button) stays stable across user updates.
     const followLineProjectRef = useRef(followLineProject)
     followLineProjectRef.current = followLineProject

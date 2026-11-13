@@ -117,7 +117,10 @@ bubble, squeezed "You" to 0px and hid both actions (`browser-tests/at2927` measu
 task/topic chat (`MessageItem`) the fade goes on the header + content, never on the swipe row:
 that row's opaque background is what hides the green "Quote" swipe layer underneath it, and a
 translucent row let the layer show through over the avatar and name (AT-2963,
-`MessageItemQueuedLayout.test.js`). A failed
+`MessageItemQueuedLayout.test.js`). In the task comment popup (`Comment` in `CommentsList`) the
+author row is a fixed 24 px, so the inline note there cut the name and time and ran over the
+comment text; it is a `prominent dark` note on its own line between the header and the text,
+outside the fade on the two (AT-3037, `Comment.test.js`, `browser-tests/at3037`). A failed
 delivery drops `threadGateCleared`/`forceSend`, so a retry waits for its turn again. Out of scope:
 WhatsApp (its inbound queue is already serial per user), voice calls and pre-configured prompt
 buttons (their runs still hold chat messages in the thread). Known limit: a VM job hosted in a

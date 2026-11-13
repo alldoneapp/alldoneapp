@@ -88,3 +88,18 @@ it('lets the inline status shrink so a header row wraps it instead of overflowin
     expect(style.minWidth).toBe(0)
     tree.unmount()
 })
+
+it('renders the prominent note on the popup card surface for dark callers (AT-3037)', () => {
+    const light = renderer.create(<MessageSendStatus pendingSend={{ status: 'queued' }} prominent />)
+    const dark = renderer.create(<MessageSendStatus pendingSend={{ status: 'queued' }} prominent dark />)
+    const rootStyle = tree => StyleSheet.flatten(tree.root.findAllByType(View)[0].props.style)
+
+    expect(rootStyle(dark).backgroundColor).toBeDefined()
+    expect(rootStyle(dark).backgroundColor).not.toBe(rootStyle(light).backgroundColor)
+    // Same block layout: icon beside a wrapping column.
+    expect(rootStyle(dark).flexDirection).toBe('row')
+    expect(rootStyle(dark).flexWrap).toBeUndefined()
+    expect(dark.root.findAllByType(TouchableOpacity)).toHaveLength(2)
+    light.unmount()
+    dark.unmount()
+})

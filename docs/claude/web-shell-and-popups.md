@@ -271,32 +271,11 @@ to tasks on All projects), leaves an object's detail view of the old project for
 and does nothing when the workspace already shows that project. "Automatic" matches All projects
 and the default project; from any other project it opens All projects. Entering assistant mode from
 an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits in the workspace's
-project. An app or VM on the right stays on screen; the Alldone view under it moves. Pinned by
-`annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
-`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`.
-
-**And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
-the product owner, replacing "nothing on the workspace side changes the chat's project". When the
-person opens a project's root view (tasks, notes, goals, …) in the workspace, the chat selects that
-project (`resolveAnnaChoiceForWorkspace`), so its daily chat and the assistant that answers there
-follow; that assistant comes from the existing rules (`resolveAnnaProjectAssistant` /
-`findProjectAssistantId`: flagged default, `project.assistantId`, else the user's default
-assistant), never from a new mapping. All projects and the default project mean "Automatic"; an
-explicit default pick stays. Archived, template, guide or foreign projects change nothing, nor do
-an object's detail view (opening a task from All projects is not entering its project), a call,
-offline, or assistant mode being off. Only the person's own navigation counts
-(`useAnnaWorkspaceProjectFollow`): a pointer or key press outside the chat pane and the Anna
-header (the header's project picker renders in a body portal, so "outside" rather than "inside
-the pane") opens a 4s window, and the first root project change in it is theirs. The press is used
-up by that change. A press in the chat closes the window; the chat's own sync announces its target
-(`expectSync` via `onPlan`) and closes it too. So the assistant's reveal, `show_workspace`, links
-and activity rows in the chat, and the left-to-right sync never move the chat, and the latest
-side the person touched wins. Known gap: a reveal that lands within 4s of a press in the workspace
-counts as the person's (the reveal itself cancels on interaction, so this needs a press without
-cancelling it). Browser Back/Forward is not a press and does not move the chat. Pinned by the
-`resolveAnnaChoiceForWorkspace` / `getAnnaWorkspaceProjectKey` cases in
-`annaWorkspaceProjectSync.test.js` and "the chat follows a project opened in the workspace" in
-`AnnaShell.test.js`.
+project. Only the chat side ever moves the other side (nothing on the workspace side changes the
+chat's project), so the two cannot feed back into each other. An app or VM on the right
+stays on screen; the Alldone view under it moves. Pinned by `annaThreadScope.test.js`,
+`annaWorkspaceProjectSync.test.js`, the AT-3036 cases in `useAnnaConversation.test.js`,
+`AnnaConversation.test.js` and `AnnaShell.test.js`.
 
 **With the sidebar open, the assistant line is only its Last comment (AT-3034 follow-up).** The
 chat box is in the sidebar, so `AssistantLine` hides its whole `AssistantOptions` (header,

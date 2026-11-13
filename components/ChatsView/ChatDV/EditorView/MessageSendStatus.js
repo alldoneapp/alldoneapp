@@ -15,6 +15,8 @@ export const MESSAGE_QUEUED_LABEL = 'Queued. Sends when the current answer is fi
 // chat clips it, squeezing the author name to nothing and hiding Send now / Remove. The status
 // therefore shrinks and its label wraps. `prominent` renders the queued note as a block of its
 // own (Anna places it on its own line under the author row), readable rather than a caption.
+// AT-3037: the task comment popup (`Comment`, `dark`) does the same; its header row has a fixed
+// height, so an inline queued note that wrapped overflowed it and lay over the comment text.
 const sendQueuedNow = pendingSend => commentOutbox.update(pendingSend.userId, pendingSend.id, { forceSend: true })
 const removeQueued = pendingSend => commentOutbox.remove(pendingSend.userId, pendingSend.id)
 
@@ -51,15 +53,29 @@ export default function MessageSendStatus({
         // Icon beside a column, never a wrapping row: in a wrapping row a long label would drop
         // to its own line and leave the icon alone above it.
         return (
-            <View accessibilityLiveRegion="polite" accessibilityLabel={label} style={[localStyles.note, style]}>
+            <View
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={label}
+                style={[localStyles.note, dark && localStyles.noteDark, style]}
+            >
                 <View style={localStyles.noteIcon}>
-                    <Icon name="clock" size={14} color={colors.Primary100} />
+                    <Icon name="clock" size={14} color={dark ? colors.UtilityBlue125 : colors.Primary100} />
                 </View>
                 <View style={localStyles.noteBody}>
-                    <Text style={[global.caption1, localStyles.noteLabel]}>{label}</Text>
+                    <Text style={[global.caption1, localStyles.noteLabel, dark && localStyles.noteLabelDark]}>
+                        {label}
+                    </Text>
                     <View style={localStyles.noteActions}>
-                        {action('Send now', sendNow, [global.caption1, localStyles.noteAction])}
-                        {action('Remove queued message', remove, [global.caption1, localStyles.noteAction])}
+                        {action('Send now', sendNow, [
+                            global.caption1,
+                            localStyles.noteAction,
+                            dark && localStyles.noteActionDark,
+                        ])}
+                        {action('Remove queued message', remove, [
+                            global.caption1,
+                            localStyles.noteAction,
+                            dark && localStyles.noteActionDark,
+                        ])}
                     </View>
                 </View>
             </View>
@@ -108,4 +124,10 @@ const localStyles = StyleSheet.create({
     noteLabel: { color: colors.Text01 },
     noteActions: { flexDirection: 'row', flexWrap: 'wrap' },
     noteAction: { color: colors.Primary100, marginRight: 16 },
+    // AT-3037: `dark` callers sit on a popup card (navy in light mode, the raised neutral card in
+    // dark mode), whose content keeps the light palette: a light blue tint there would be a bright
+    // block on a dark card, so the note uses the popup's own raised surface and light text tokens.
+    noteDark: { backgroundColor: colors.Secondary300, borderColor: colors.Secondary200 },
+    noteLabelDark: { color: colors.Grey400 },
+    noteActionDark: { color: colors.UtilityBlue125 },
 })
