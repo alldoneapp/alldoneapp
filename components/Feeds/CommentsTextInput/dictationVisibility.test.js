@@ -52,5 +52,33 @@ describe('dictation visibility', () => {
             expect(source).toMatch(/alwaysShowDictation = false,/)
             expect(source).toContain('shouldTrackDictationActivity({ dictationEnabled, alwaysShowDictation })')
         })
+
+        // AT-3025: the blue mic in an empty composer's send slot. Both mics stay mounted and are
+        // only shown/hidden, so a take in progress survives the composer filling up.
+        describe('send-slot mic (AT-3025)', () => {
+            const sendSlotButton = source.slice(
+                source.indexOf('const sendSlotDictationButton'),
+                source.indexOf('const inlineControls = ')
+            )
+
+            it('decides both mics with the shared composer rule', () => {
+                expect(source).toContain("from '../../UIControls/composerMicSlot'")
+                expect(source).toContain('resolveComposerMicSlot({')
+                expect(source).toMatch(/const dictationButtonVisible =\s+inlineMicVisible &&/)
+                expect(sendSlotButton).toContain('visible={micInSendSlot}')
+            })
+
+            it('gives the send-slot mic the same insert and hold-to-send wiring as the usual one', () => {
+                expect(sendSlotButton).toContain('onTextReady={insertDictatedText}')
+                expect(sendSlotButton).toContain('onSubmit={submitDictatedText}')
+                expect(sendSlotButton).toContain("variant={'send'}")
+                expect(source).toContain('createPortal(sendSlotDictationButton, sendSlotTarget)')
+            })
+
+            it('tracks both phases so a recording mic is never replaced mid-take', () => {
+                expect(source).toContain('onPhaseChange={setInlineDictationPhase}')
+                expect(sendSlotButton).toContain('onPhaseChange={setSendSlotDictationPhase}')
+            })
+        })
     })
 })
