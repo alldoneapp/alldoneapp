@@ -35,9 +35,6 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
 
-const mockOpenChatsList = jest.fn()
-jest.mock('./openChatsList', () => ({ openChatsList: (...args) => mockOpenChatsList(...args) }))
-
 jest.mock('../../../i18n/TranslationService', () => ({
     translate: (key, params) => (params?.name ? `${key}:${params.name}` : key),
 }))
@@ -400,56 +397,6 @@ describe('LastCommentArea pending send (AT-2504)', () => {
             expect(has(tree, 'assistant-pending-send')).toBe(false)
             act(() => tree.unmount())
         })
-    })
-})
-
-// AT-3020 — "All chats" sits on the header AND in the popover a card opens, and both lead to the
-// same Chats list: the line's own project, or every project on the All projects line.
-describe('LastCommentArea "All chats"', () => {
-    beforeEach(() => {
-        resetAssistantLinePendingSends()
-        mockState.selectedProjectIndex = 0
-        setLastCommentData(null)
-        mockState.projectChatLastNotification = {}
-        lastWrapperProps = null
-        mockLastCommentProps = null
-        mockOpenChatsList.mockClear()
-    })
-
-    const pressHeaderLink = tree =>
-        act(() => tree.root.findByProps({ testID: 'assistant-line-all-chats' }).props.onPress())
-
-    it('opens the line project’s chats from the header and from the comment popover', () => {
-        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
-        const project = { id: 'project-1', index: 0 }
-        const tree = render({ projectOverride: project })
-
-        pressHeaderLink(tree)
-        act(() => mockLastCommentProps.onOpenAllChats())
-
-        expect(mockOpenChatsList.mock.calls).toEqual([[project], [project]])
-        act(() => tree.unmount())
-    })
-
-    it('opens the chats of all projects from the All projects line', () => {
-        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
-        const tree = render()
-
-        act(() => mockLastCommentProps.onOpenAllChats())
-
-        expect(mockOpenChatsList).toHaveBeenCalledWith(null)
-        act(() => tree.unmount())
-    })
-
-    it('hands the link to the popover of a message still being sent', () => {
-        begin()
-        const project = { id: 'project-1', index: 0 }
-        const tree = render({ projectOverride: project })
-
-        act(() => lastWrapperProps.onOpenAllChats())
-
-        expect(mockOpenChatsList).toHaveBeenCalledWith(project)
-        act(() => tree.unmount())
     })
 })
 

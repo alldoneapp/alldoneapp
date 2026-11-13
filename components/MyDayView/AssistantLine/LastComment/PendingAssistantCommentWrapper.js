@@ -49,7 +49,6 @@ export default function PendingAssistantCommentWrapper({
     compact = false,
     scopeKey = null,
     setAModalIsOpen,
-    onOpenAllChats = null,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -176,7 +175,6 @@ export default function PendingAssistantCommentWrapper({
                     showBotButton={true}
                     objectName={pending?.chatTitle || ''}
                     externalAssistantId={pending?.assistantId}
-                    onOpenAllChats={onOpenAllChats}
                 />
             }
             onClickOutside={closeModal}

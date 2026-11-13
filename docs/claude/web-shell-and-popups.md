@@ -197,16 +197,18 @@ project. The card's title line is the topic name alone. "All chats" (`openChatsL
 on the All projects line. The rage
 mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
-AT-3020: the popover a Last comment card opens (real comment or pending send) shows "All chats" next
-to "open chat" (`CommentPopupFooter`), with the same target as the header link. `RichCommentModal`
-shows it only when the caller passes `onOpenAllChats`; no other comment popup does.
 
-**Simple sidebar Wiki and Chats rows** (AT-3020): under the people list of the selected project, the
-simple sidebar has a Wiki row and, directly below it, a Chats row (`SidebarMenu/Items/WikiItem.js`,
-`ChatsItem.js`, both drawn by `SidebarLinkItem`). Neither hides behind "show more", and neither shows
-for a guest of a shared project. Chats opens the same tab as the advanced sidebar's Chats header
-(`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
-Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
+**The whole two-line field takes a click (AT-3028).** Auto-expand sets Quill's container and
+editor to `height: auto`, so the contenteditable was one line tall inside the 56px field and the
+blank line under "Start a new chat" was dead frame. `assistantInput.css` gives the composer's
+`.ql-editor` a 48px `min-height` (the two resting lines; the Anna composer does the same in
+`anna.css`), which leaves the measured resting height at 48 + 8 = 56. The field's few pixels of
+padding go through `assistantComposerFocus.js`: a `mousedown` on the `assistant-composer-field`
+wrapper (the field only, never the toolbar) focuses the editor at the end of its text. It must
+check `field.contains(target)`: the + and the mic are portalled out of the field, and React
+bubbles their presses through it. Pinned by `assistantComposerFocus.test.js` (also the CSS value
+against `assistantInputLayout.js`), `AssistantOptionsFocus.test.js` and `browser-tests/at3028`
+(real Chromium: click, tap, padding, toolbar controls, and a control run with the old CSS).
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative

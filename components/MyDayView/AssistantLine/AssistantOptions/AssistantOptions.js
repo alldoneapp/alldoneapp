@@ -40,6 +40,7 @@ import {
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
+import { handleComposerFieldMouseDown } from '../assistantComposerFocus'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -244,6 +245,12 @@ export default function AssistantOptions({
         [handleSendMessage, mentionsModalActive, message]
     )
 
+    // AT-3028: the field's padding edges focus the composer too. Scoped to the field wrapper, and
+    // guarded against the + / mic that are portalled out of it (assistantComposerFocus.js).
+    const handleFieldMouseDown = useCallback(event => {
+        handleComposerFieldMouseDown(event, inputRef.current)
+    }, [])
+
     const handleKeyUp = useCallback(event => {
         if (inputRef.current?.isFocused?.() && event.key === 'Shift') {
             isShiftPressed.current = false
@@ -319,46 +326,51 @@ export default function AssistantOptions({
                 </View>
             </View>
             <View testID="assistant-composer-row" style={localStyles.composerBox}>
-                <CustomTextInput3
-                    ref={inputRef}
-                    containerStyle={localStyles.messageInput}
-                    fixedHeight={inputLayout.height}
-                    maxHeight={composerMaxHeight}
-                    onChangeText={updateMessage}
-                    // Include the field's own vertical padding in the natural height.
-                    onContentSizeChange={(width, height) =>
-                        updateInputHeight(height + ASSISTANT_INPUT_VERTICAL_PADDING)
-                    }
-                    placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
-                    projectId={conversationProjectId}
-                    styleTheme={TASK_THEME}
-                    setMentionsModalActive={setMentionsModalActive}
-                    // In object editors an assistant selection is a command to change that
-                    // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
-                    // message content: preserve the selected assistant id in a real @-mention so
-                    // comment parsing and the assistant runtime can detect it (AT-2592).
-                    insertAssistantAsMention={true}
-                    // AT-2444: hands the live editor + caret to the drop zone above, and declares
-                    // the attachment formats. Declaring them is also what gives this composer
-                    // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
-                    setEditor={setEditor}
-                    setInputCursorIndex={setInputCursorIndex}
-                    otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
-                    keepBreakLines={true}
-                    scrollEnabled={inputLayout.scrollEnabled}
-                    showScrollIndicator={inputLayout.scrollEnabled}
-                    autoExpand={true}
-                    // Dictating is a primary way to use this composer, so the mic is pinned on
-                    // instead of waiting for hover/focus — on touch there is no hover (AT-2355).
-                    alwaysShowDictation={true}
-                    showAttachmentButton={true}
-                    inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
-                    toolbarControlStyle={localStyles.toolbarControl}
-                    // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
-                    // inserted and the message is sent. Enter's own guards still apply, since this
-                    // is the same send path the keydown listener uses.
-                    onDictationSubmit={text => text && handleSendMessage(text)}
-                />
+                {/* AT-3028 — the whole two-line field is a click target for typing: the editor
+                    fills both lines (assistantInput.css) and this wrapper hands its padding edges
+                    to the editor. The toolbar below is outside it and keeps its own clicks. */}
+                <View testID="assistant-composer-field" onMouseDown={handleFieldMouseDown}>
+                    <CustomTextInput3
+                        ref={inputRef}
+                        containerStyle={localStyles.messageInput}
+                        fixedHeight={inputLayout.height}
+                        maxHeight={composerMaxHeight}
+                        onChangeText={updateMessage}
+                        // Include the field's own vertical padding in the natural height.
+                        onContentSizeChange={(width, height) =>
+                            updateInputHeight(height + ASSISTANT_INPUT_VERTICAL_PADDING)
+                        }
+                        placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
+                        projectId={conversationProjectId}
+                        styleTheme={TASK_THEME}
+                        setMentionsModalActive={setMentionsModalActive}
+                        // In object editors an assistant selection is a command to change that
+                        // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
+                        // message content: preserve the selected assistant id in a real @-mention so
+                        // comment parsing and the assistant runtime can detect it (AT-2592).
+                        insertAssistantAsMention={true}
+                        // AT-2444: hands the live editor + caret to the drop zone above, and declares
+                        // the attachment formats. Declaring them is also what gives this composer
+                        // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
+                        setEditor={setEditor}
+                        setInputCursorIndex={setInputCursorIndex}
+                        otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
+                        keepBreakLines={true}
+                        scrollEnabled={inputLayout.scrollEnabled}
+                        showScrollIndicator={inputLayout.scrollEnabled}
+                        autoExpand={true}
+                        // Dictating is a primary way to use this composer, so the mic is pinned on
+                        // instead of waiting for hover/focus — on touch there is no hover (AT-2355).
+                        alwaysShowDictation={true}
+                        showAttachmentButton={true}
+                        inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
+                        toolbarControlStyle={localStyles.toolbarControl}
+                        // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
+                        // inserted and the message is sent. Enter's own guards still apply, since this
+                        // is the same send path the keydown listener uses.
+                        onDictationSubmit={text => text && handleSendMessage(text)}
+                    />
+                </View>
                 <View testID="assistant-composer-toolbar" style={localStyles.toolbar}>
                     <View style={localStyles.toolbarSide}>
                         <View ref={setAttachmentSlot} style={localStyles.controlSlot} />

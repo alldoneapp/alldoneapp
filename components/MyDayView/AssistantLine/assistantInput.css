@@ -1,9 +1,14 @@
 /* Scope message typography to the two assistant composers; task/title inputs
    keep their existing styles. Placeholder wrapping participates in auto-expand
    instead of being clipped by the absolutely positioned Quill placeholder. */
+/* AT-3028: two lines, matching the field's resting height (ASSISTANT_INPUT_MIN_HEIGHT minus
+   ASSISTANT_INPUT_VERTICAL_PADDING in assistantInputLayout.js). Auto-expand sets the editor to
+   `height: auto`, so without this the contenteditable was one line tall and the blank line under
+   the placeholder was dead frame. Measured height is unchanged at rest (48 + 8 = the 56px minimum).
+   Pinned by assistantComposerFocus.test.js. */
 [data-testid='assistant-composer-row'] .ql-editor {
     position: relative;
-    min-height: 24px;
+    min-height: 48px;
     line-height: 24px !important;
     overflow-wrap: anywhere;
 }
