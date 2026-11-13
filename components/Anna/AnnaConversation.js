@@ -144,6 +144,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         // AT-3036: other projects' threads, offered as jumps; `onOpenProject(projectId)` switches there.
         otherThreads = [],
         onOpenProject,
+        // AT-3036: called with the project id once a project switch has ended and the new chat's
+        // messages are on screen (right before the snap to the bottom).
+        onSwitchSettled,
     },
     ref
 ) {
@@ -441,10 +444,15 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const switchingRef = useRef(switching)
     switchingRef.current = switching
     const shownProjectId = useRef(conversation.projectId)
+    const onSwitchSettledRef = useRef(onSwitchSettled)
+    onSwitchSettledRef.current = onSwitchSettled
     const snapAfterSwitch = useCallback(() => {
         const pending = switchScroll.current
         if (!pending?.key || switchingRef.current || !loadedThreads.current.has(pending.key)) return
         switchScroll.current = null
+        // The shell may focus the composer (a switch picked in the chat); the snap comes after it,
+        // so nothing the focus does moves the chat away from the bottom.
+        onSwitchSettledRef.current?.(pending.projectId)
         activate()
     }, [activate])
     const threadLoaded = useCallback(
@@ -468,7 +476,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         if (shownProjectId.current !== conversation.projectId) switchScroll.current = { key: null }
         shownProjectId.current = conversation.projectId
         if (!switchScroll.current) return
-        switchScroll.current = { key: conversationKey }
+        switchScroll.current = { key: conversationKey, projectId: conversation.projectId }
         snapAfterSwitch()
     }, [switching, conversation.projectId, conversationKey, snapAfterSwitch])
     // AT-2928: a file dropped anywhere on the chat pane joins the draft, under the same
