@@ -1385,6 +1385,36 @@
 .anna-fullscreen .anna-workspace {
     width: 100%;
 }
+/* AT-3036: while another project's chat opens, in place of the previous project's messages. */
+.anna-project-switch-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 120px;
+    margin: 24px 0;
+    color: var(--anna-muted);
+    font-size: 13px;
+}
+.anna-project-switch-spinner {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--anna-border, var(--ad-hl-DFE3EA, #dfe3ea));
+    border-top-color: var(--anna-accent, #0c66ff);
+    border-radius: 50%;
+    animation: anna-project-switch-spin 0.8s linear infinite;
+}
+@keyframes anna-project-switch-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .anna-project-switch-spinner {
+        animation: none;
+    }
+}
 /* AT-3036: the other projects' chats, above this project's thread. Sizes sit on the spans:
    `.anna-shell button { font: inherit }` outranks a single-class button rule (AT-3032). */
 .anna-project-jumps {

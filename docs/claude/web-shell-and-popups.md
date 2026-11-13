@@ -275,6 +275,22 @@ project. An app or VM on the right stays on screen; the Alldone view under it mo
 `annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
 `useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`.
 
+**A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
+(the selected project's chat is still resolving, from either side), `AnnaConversation` shows a
+`role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
+the timeline: the previous project's messages, its "Earlier days" button and the project jumps
+are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
+(draft kept) and sending stays held exactly as before. Once the switch ends, the current thread
+reports through `onLoaded` when its messages are loaded and rendered (a layout effect, so after
+this commit's DOM), and the conversation snaps once to the very bottom (`activate`), also for a
+cached reused daily thread or a new empty one. The pending snap is keyed to the conversation the
+switch ended in, so an overtaken switch's thread never scrolls; a refused or taken-back switch
+returns to the bottom of the old chat. After the snap the chat follows like any open chat (later
+images/markdown keep it at the bottom through the ResizeObserver), and a reader who scrolls up is
+not pulled down again. A new day in the same project is not a switch and does not force a scroll.
+Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.test.js` and the
+loading-name case in `AnnaShell.test.js`.
+
 **And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
 the product owner, replacing "nothing on the workspace side changes the chat's project". When the
 person opens a project's root view (tasks, notes, goals, …) in the workspace, the chat selects that

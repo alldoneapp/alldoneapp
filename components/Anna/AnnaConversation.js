@@ -136,6 +136,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         pageContext,
         // AT-2903: true while the selected project's chat is still being resolved.
         switching = false,
+        // AT-3036: the project being opened, for the loading state shown meanwhile.
+        switchingProjectName = '',
         renderProjectSwitcher,
         // AT-2914: the latest project chosen in the switcher ({ id, projectId, name, created }).
         projectSwitch = null,
@@ -427,6 +429,48 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     useLayoutEffect(() => {
         if (active && visible) activate()
     }, [active, visible, activate])
+    // AT-3036: a project switch (from the chat's chip or picker, a jump, or the workspace) ends at
+    // the very bottom of the new project's chat, once its messages are really on screen. The
+    // current thread reports when its messages have loaded (`threadLoaded`); the switch is keyed
+    // to the conversation it ends in, so a slower thread of an earlier, overtaken switch never
+    // scrolls. It snaps once (`activate`) and then follows like any open chat: later images or
+    // markdown keep it at the bottom until the reader scrolls up, and nothing else forces it down.
+    const conversationKey = `${conversation.projectId}/${conversation.id}`
+    const loadedThreads = useRef(new Set())
+    const switchScroll = useRef(null)
+    const switchingRef = useRef(switching)
+    switchingRef.current = switching
+    const shownProjectId = useRef(conversation.projectId)
+    const snapAfterSwitch = useCallback(() => {
+        const pending = switchScroll.current
+        if (!pending?.key || switchingRef.current || !loadedThreads.current.has(pending.key)) return
+        switchScroll.current = null
+        activate()
+    }, [activate])
+    const threadLoaded = useCallback(
+        (key, loaded) => {
+            if (!loaded) {
+                loadedThreads.current.delete(key)
+                return
+            }
+            loadedThreads.current.add(key)
+            snapAfterSwitch()
+        },
+        [snapAfterSwitch]
+    )
+    // Runs after the threads' own layout effects, so a thread that loaded in this very commit
+    // (from the message cache) has already reported.
+    useLayoutEffect(() => {
+        if (switching) {
+            switchScroll.current = { key: null }
+            return
+        }
+        if (shownProjectId.current !== conversation.projectId) switchScroll.current = { key: null }
+        shownProjectId.current = conversation.projectId
+        if (!switchScroll.current) return
+        switchScroll.current = { key: conversationKey }
+        snapAfterSwitch()
+    }, [switching, conversation.projectId, conversationKey, snapAfterSwitch])
     // AT-2928: a file dropped anywhere on the chat pane joins the draft, under the same
     // conditions as the attach button.
     const attachmentsBlocked = voiceActive || dictationBusy || offline || !conversation.projectId
@@ -491,19 +535,38 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                 }}
             >
                 <div className="anna-message-timeline" ref={content}>
-                    {hasEarlier && (
+                    {/* AT-3036: while another project's chat opens, the previous project's
+                        messages are not shown as if they were the new chat's. */}
+                    {switching && (
+                        <div
+                            className="anna-project-switch-loading"
+                            role="status"
+                            aria-live="polite"
+                            data-testid="anna-project-switch-loading"
+                        >
+                            <span className="anna-project-switch-spinner" aria-hidden="true" />
+                            <span>
+                                {switchingProjectName
+                                    ? translate('Opening the chat in %{projectName}…', {
+                                          projectName: switchingProjectName,
+                                      })
+                                    : translate('Opening the chat…')}
+                            </span>
+                        </div>
+                    )}
+                    {!switching && hasEarlier && (
                         <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
                             {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                         </button>
                     )}
-                    {otherProjectIds.length > 0 && (
+                    {!switching && otherProjectIds.length > 0 && (
                         <AnnaProjectJumps
                             projectIds={otherProjectIds}
                             disabled={voiceActive || offline}
                             onOpenProject={onOpenProject}
                         />
                     )}
-                    {displayedThreads.map(thread => (
+                    {(switching ? [] : displayedThreads).map(thread => (
                         <AnnaThreadMessages
                             key={`${thread.projectId}/${thread.chatId || thread.id}`}
                             thread={thread}
@@ -524,6 +587,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             onAcknowledge={acknowledge}
                             onWorkStateChange={onWorkStateChange}
                             onChange={messagesChanged}
+                            onLoaded={threadLoaded}
                             onLoadEarlier={preservePosition}
                             visible={visible}
                             offline={offline}
@@ -783,6 +847,7 @@ function AnnaThreadMessages({
     onWorkStateChange,
     reducedMotion,
     showProject = false,
+    onLoaded,
 }) {
     // Earlier sections can belong to another project and its assistant (AT-2903).
     const threadAssistant = useSelector(state =>
@@ -868,6 +933,14 @@ function AnnaThreadMessages({
         pendingMessage?.status,
         onChange,
     ])
+    // AT-3036: the conversation scrolls to the bottom after a project switch once this (current)
+    // thread's messages are rendered, which is now: after this commit's layout.
+    const loadedKey = `${thread.projectId}/${chatId}`
+    useLayoutEffect(() => {
+        if (!current || !onLoaded) return
+        onLoaded(loadedKey, !!messages.loaded)
+        return () => onLoaded(loadedKey, false)
+    }, [current, loadedKey, messages.loaded, onLoaded])
     const timeline = groupAnnaTimeline(
         [
             ...displayedMessages.map(message => ({

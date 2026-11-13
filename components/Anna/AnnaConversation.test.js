@@ -119,10 +119,14 @@ const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
 const mockContextSet = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 const mockThreadMessages = {}
+// Threads whose messages have not arrived yet (useGetMessages reports loaded: false).
+const mockUnloadedThreads = new Set()
 jest.mock(
     '../../hooks/Chats/useGetMessages',
     () => (_a, _b, _projectId, chatId, _type, limit) =>
-        Object.assign((mockThreadMessages[chatId] || mockMessages).slice(-limit), { loaded: true })
+        mockUnloadedThreads.has(chatId)
+            ? Object.assign([], { loaded: false })
+            : Object.assign((mockThreadMessages[chatId] || mockMessages).slice(-limit), { loaded: true })
 )
 const mockMessageRender = jest.fn()
 jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => props => {
@@ -211,6 +215,7 @@ beforeEach(() => {
     mockTrafficLimited = false
     mockMessages = []
     Object.keys(mockThreadMessages).forEach(key => delete mockThreadMessages[key])
+    mockUnloadedThreads.clear()
     Object.keys(mockCreators).forEach(key => delete mockCreators[key])
     createObjectMessage.mockResolvedValue('m1')
     updateNewAttachmentsData.mockImplementation(async (_projectId, text) => text)
@@ -2358,5 +2363,142 @@ describe('empty draft shows the mic in place of Send (AT-3025)', () => {
         mockDictationSupported = false
         render()
         expect(sendButton().disabled).toBe(true)
+    })
+})
+
+// AT-3036: a project switch shows a loading state in place of the previous project's chat and
+// ends at the very bottom of the new project's chat once its messages are rendered.
+describe('project switch loading and scroll (AT-3036)', () => {
+    const p1 = { projectId: 'p1', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p2 = { projectId: 'p2', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p3 = { projectId: 'p3', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p2Thread = 'p2-today'
+    const p3Thread = 'p3-today'
+    const conversation = (base, chatId) => ({ ...base, id: chatId })
+    let log
+    const layout = (scrollHeight, clientHeight = 300) => {
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: scrollHeight })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: clientHeight })
+    }
+    const readEarlier = () => {
+        log.scrollTop = 100
+        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+    }
+    const loading = () => container.querySelector('[data-testid="anna-project-switch-loading"]')
+    const text = () => container.querySelector('[role="log"]').textContent
+    beforeEach(() => {
+        Object.assign(mockThreadMessages, {
+            [p1.id]: [{ id: 'old1', creatorId: 'u1', created: 1, commentText: 'Home project message' }],
+            [p2Thread]: [{ id: 'new1', creatorId: 'u1', created: 2, commentText: 'Steercom message' }],
+            [p3Thread]: [{ id: 'new3', creatorId: 'u1', created: 3, commentText: 'Product message' }],
+        })
+        render({ conversation: p1 })
+        log = container.querySelector('[role="log"]')
+        layout(1200)
+    })
+
+    it('shows a loading state instead of the previous project’s chat, keeping the draft and holding sends', async () => {
+        type('Draft for Steercom')
+        expect(text()).toContain('Home project message')
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        expect(loading().getAttribute('role')).toBe('status')
+        expect(loading().textContent).toBe('Opening the chat in Steercom…')
+        expect(text()).not.toContain('Home project message')
+        // Nothing of the old project to act on meanwhile: no earlier days, no jumps.
+        expect(container.querySelector('.anna-project-jumps')).toBeNull()
+        expect(container.querySelector('.anna-send').disabled).toBe(true)
+        await submit()
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+        // Without a known name the state still says what is happening.
+        render({ conversation: p1, switching: true })
+        expect(loading().textContent).toBe('Opening the chat…')
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(loading()).toBeNull()
+        expect(text()).toContain('Steercom message')
+        expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+    })
+
+    it('scrolls to the very bottom once the new chat’s messages are rendered, not before', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        mockUnloadedThreads.add(p2Thread)
+        render({ conversation: conversation(p2, p2Thread) })
+        // Resolved, but its messages are still on their way.
+        expect(text()).toContain('Loading your conversation…')
+        expect(log.scrollTop).toBe(100)
+        mockUnloadedThreads.delete(p2Thread)
+        layout(1800)
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(text()).toContain('Steercom message')
+        expect(log.scrollTop).toBe(1800)
+    })
+
+    it('scrolls to the bottom of a reused daily chat that is already cached', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('scrolls to the bottom of a new, empty chat', () => {
+        mockThreadMessages.empty = []
+        readEarlier()
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, 'empty') })
+        expect(container.querySelector('.anna-welcome')).not.toBeNull()
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('lets the latest of several quick switches decide, and scrolls only for it', () => {
+        readEarlier()
+        mockUnloadedThreads.add(p2Thread)
+        mockUnloadedThreads.add(p3Thread)
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        render({ conversation: conversation(p2, p2Thread), switching: true, switchingProjectName: 'Product' })
+        // The overtaken project's messages arrive while the next one opens: no scroll, no content.
+        mockUnloadedThreads.delete(p2Thread)
+        render({ conversation: conversation(p2, p2Thread), switching: true, switchingProjectName: 'Product' })
+        expect(text()).not.toContain('Steercom message')
+        expect(log.scrollTop).toBe(100)
+        render({ conversation: conversation(p3, p3Thread) })
+        expect(log.scrollTop).toBe(100)
+        mockUnloadedThreads.delete(p3Thread)
+        layout(1500)
+        render({ conversation: conversation(p3, p3Thread) })
+        expect(text()).toContain('Product message')
+        expect(log.scrollTop).toBe(1500)
+    })
+
+    it('scrolls once per switch: later updates do not pull a reader down', () => {
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(1200)
+        readEarlier()
+        mockThreadMessages[p2Thread] = [
+            ...mockThreadMessages[p2Thread],
+            { id: 'new2', creatorId: 'a1', created: 5, commentText: 'Later answer' },
+        ]
+        layout(1500)
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(100)
+        expect(container.querySelector('.anna-latest')).not.toBeNull()
+    })
+
+    it('returns to the bottom of the previous chat when the switch is refused or taken back', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        // The project could not be opened (or was picked away again): the old chat comes back.
+        render({ conversation: p1 })
+        expect(loading()).toBeNull()
+        expect(text()).toContain('Home project message')
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('does not force a scroll when a new day starts in the same project', () => {
+        readEarlier()
+        render({ conversation: { ...p1, id: 'AnnaChat20261114u1' } })
+        expect(log.scrollTop).toBe(100)
     })
 })

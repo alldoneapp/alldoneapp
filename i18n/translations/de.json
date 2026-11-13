@@ -134,6 +134,8 @@
     "Earlier conversation": "Frühere Unterhaltung",
     "Earlier days": "Frühere Tage",
     "Chats in other projects": "Chats in anderen Projekten",
+    "Opening the chat in %{projectName}…": "Chat in %{projectName} wird geöffnet…",
+    "Opening the chat…": "Chat wird geöffnet…",
     "Open the chat in %{projectName}": "Chat in %{projectName} öffnen",
     "Following Anna": "Anna hat die Steuerung",
     "I have returned Alldone control to you. Please continue my current request.": "Ich habe dir die Steuerung von Alldone zurückgegeben. Bitte setze meinen aktuellen Auftrag fort.",
