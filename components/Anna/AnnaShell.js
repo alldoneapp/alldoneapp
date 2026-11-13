@@ -52,7 +52,6 @@ import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallP
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
-import { ANNA_THEME_VARIABLES } from './annaThemeVariables'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
@@ -1147,7 +1146,18 @@ export default function AnnaShell({ children, routeId }) {
             className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
-                ...ANNA_THEME_VARIABLES,
+                '--anna-ink': colors.Text01,
+                '--anna-muted': colors.Text02,
+                '--anna-placeholder': colors.Text03,
+                '--anna-accent': colors.Primary200,
+                '--anna-unread': colors.UtilityRed200,
+                '--anna-neutral': colors.Grey200,
+                '--anna-tint': colors.UtilityBlue100,
+                '--anna-hover': colors.UtilityBlue112,
+                '--anna-border': colors.Grey300,
+                '--anna-bezel': colors.Grey400,
+                '--anna-focus': colors.UtilityBlue150,
+                '--anna-surface': colors.Grey100,
             }}
             onClickCapture={interceptLink}
         >

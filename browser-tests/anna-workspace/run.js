@@ -801,7 +801,6 @@ async function checkActivityNotices(page, width) {
     const badge = width <= 760 ? await page.getByLabel('123 open tasks today').boundingBox() : null
     const picker = await page.locator('.anna-header-picker').boundingBox()
     const brand = await page.locator('.anna-brand').boundingBox()
-    assert.ok(brand.height <= 20, 'Assistant name stays on one line (AT-3040)')
     if (badge) {
         assert.ok(badge.x >= brand.x + brand.width - 1, 'Badge follows assistant name')
         assert.ok(badge.x + badge.width <= picker.x, 'Badge must not overlap workspace picker')

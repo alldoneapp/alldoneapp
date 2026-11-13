@@ -251,14 +251,6 @@ while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pin
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
 `AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
 
-**The sidebar header's assistant name is one line (AT-3040).** `.anna-brand` never wraps (it used to
-clamp to two lines, "Anna / Alld…"); it ends in an ellipsis and the button's `title` carries the
-full name. `.anna-header` is the `anna-header` size container: at 360px content width and less
-(sidebar chat ≤ 408px, the minimum is 340) `.anna-header-sidebar` tightens its gaps and the
-workspace picker (98 → 80px) so the name keeps ~72px instead of ~40px. Chosen with the product
-owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace/run.js`
-(`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
-
 **Project switch: one project's chat on the left, the same project on the right (AT-3036).**
 Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
 by `ensureAnnaConversation`). `useAnnaConversation` used to return every recent thread of every
