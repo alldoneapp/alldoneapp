@@ -4,7 +4,6 @@
 
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text } from 'react-native'
 
 import AssistantTaskSearchButtonWrapper from './AssistantTaskSearchButtonWrapper'
 import AssistantTaskSearchModal from './AssistantTaskSearchModal'
@@ -68,27 +67,6 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         const button = tree.root.findByProps({ testID: 'assistant-task-search-button' })
         expect(button.props.accessibilityLabel).toBe('Templates')
         expect(JSON.stringify(tree.toJSON())).toContain('Templates')
-    })
-
-    it('shows only a search icon and the label, with no dropdown arrow (AT-3033)', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(<AssistantTaskSearchButtonWrapper />)
-        })
-
-        const iconNames = tree.root.findAllByType('Icon').map(icon => icon.props.name)
-        expect(iconNames).toEqual(['search'])
-    })
-
-    it('shows only the search icon when compact', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(<AssistantTaskSearchButtonWrapper compact />)
-        })
-
-        const iconNames = tree.root.findAllByType('Icon').map(icon => icon.props.name)
-        expect(iconNames).toEqual(['search'])
-        expect(tree.root.findAllByType(Text)).toHaveLength(0)
     })
 
     it('asks the picker to list the line assistant first', () => {

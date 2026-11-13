@@ -72,8 +72,9 @@ export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId,
                 accessibilityState={{ expanded: isOpen }}
                 testID="assistant-task-search-button"
             >
-                <Icon name="search" size={16} color={colors.Text03} />
+                <Icon name="zap" size={16} color={colors.Text03} />
                 {!compact && <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>}
+                {!compact && <Icon name="chevron-down" size={16} color={colors.Text03} />}
             </TouchableOpacity>
         </AppPopover>
     )
@@ -85,7 +86,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         height: 32,
         paddingLeft: 10,
-        paddingRight: 10,
+        paddingRight: 8,
         borderRadius: 16,
         borderWidth: 1,
         borderColor: colors.Grey300,
@@ -102,5 +103,6 @@ const localStyles = StyleSheet.create({
     text: {
         color: colors.Text02,
         marginLeft: 6,
+        marginRight: 2,
     },
 })
