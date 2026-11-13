@@ -56,7 +56,8 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
  * The box is a multi-line text field with a toolbar under it: + (attach) and Templates on the
  * left; mic, call and send on the right. The + and the mic belong to the text field
  * (CustomTextInput3 owns their insert/push-to-talk wiring) and are portalled into the toolbar's
- * slots through `inlineControlTargets`.
+ * slots through `inlineControlTargets`. While the field is empty the send button's place holds a
+ * blue mic instead and the small mic hides (AT-3025, `sendSlotDictation`).
  */
 export default function AssistantOptions({
     headerControls = null,
@@ -84,6 +85,9 @@ export default function AssistantOptions({
     // has to re-render once the nodes exist.
     const [attachmentSlot, setAttachmentSlot] = useState(null)
     const [dictationSlot, setDictationSlot] = useState(null)
+    // AT-3025: where the blue mic goes while the field is empty, and whether it is there now.
+    const [sendDictationSlot, setSendDictationSlot] = useState(null)
+    const [micInSendSlot, setMicInSendSlot] = useState(false)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
@@ -365,6 +369,12 @@ export default function AssistantOptions({
                         showAttachmentButton={true}
                         inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
                         toolbarControlStyle={localStyles.toolbarControl}
+                        sendSlotDictation={{
+                            target: sendDictationSlot,
+                            empty: !canSend,
+                            style: localStyles.sendSlotMic,
+                        }}
+                        onSendSlotDictationChange={setMicInSendSlot}
                         // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
                         // inserted and the message is sent. Enter's own guards still apply, since this
                         // is the same send path the keydown listener uses.
@@ -396,15 +406,20 @@ export default function AssistantOptions({
                                 skipNavigationOnThreadCreate
                                 buttonStyle={localStyles.voiceButton}
                             />
-                            <Button
-                                icon={'arrow-up'}
-                                iconSize={20}
-                                onPress={handleSendMessage}
-                                disabled={!canSend}
-                                buttonStyle={localStyles.sendButton}
-                                accessibilityLabel={sendLabel}
-                                accessible={true}
-                            />
+                            <View style={localStyles.sendSlot}>
+                                <View ref={setSendDictationSlot} style={localStyles.controlSlot} />
+                                {!micInSendSlot && (
+                                    <Button
+                                        icon={'arrow-up'}
+                                        iconSize={20}
+                                        onPress={handleSendMessage}
+                                        disabled={!canSend}
+                                        buttonStyle={localStyles.sendButton}
+                                        accessibilityLabel={sendLabel}
+                                        accessible={true}
+                                    />
+                                )}
+                            </View>
                         </View>
                     </AppPopover>
                 </View>
@@ -518,6 +533,12 @@ const localStyles = StyleSheet.create({
         marginLeft: 0,
         justifyContent: 'center',
     },
+    // The send button and the blue mic that replaces it while the field is empty (AT-3025).
+    sendSlot: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 4,
+    },
     sendButton: {
         width: CONTROL,
         height: CONTROL,
@@ -525,8 +546,14 @@ const localStyles = StyleSheet.create({
         borderRadius: CONTROL / 2,
         paddingHorizontal: 0,
         paddingVertical: 0,
-        marginLeft: 4,
         alignSelf: 'center',
         justifyContent: 'center',
+    },
+    // minWidth, not width: while recording the same button also carries the timer.
+    sendSlotMic: {
+        minWidth: CONTROL,
+        height: CONTROL,
+        borderRadius: CONTROL / 2,
+        paddingHorizontal: 8,
     },
 })
