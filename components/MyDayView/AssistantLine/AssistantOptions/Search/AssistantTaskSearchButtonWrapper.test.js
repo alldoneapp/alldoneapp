@@ -69,6 +69,16 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         expect(JSON.stringify(tree.toJSON())).toContain('Templates')
     })
 
+    it('leads with a search icon, since the control searches templates (AT-3033)', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantTaskSearchButtonWrapper />)
+        })
+
+        const iconNames = tree.root.findAllByType('Icon').map(icon => icon.props.name)
+        expect(iconNames).toEqual(['search', 'chevron-down'])
+    })
+
     it('asks the picker to list the line assistant first', () => {
         let tree
         act(() => {

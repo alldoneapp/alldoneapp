@@ -72,7 +72,7 @@ export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId,
                 accessibilityState={{ expanded: isOpen }}
                 testID="assistant-task-search-button"
             >
-                <Icon name="zap" size={16} color={colors.Text03} />
+                <Icon name="search" size={16} color={colors.Text03} />
                 {!compact && <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>}
                 {!compact && <Icon name="chevron-down" size={16} color={colors.Text03} />}
             </TouchableOpacity>
