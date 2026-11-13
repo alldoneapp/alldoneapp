@@ -190,11 +190,14 @@ const startCall = async tree => {
     return FakePeerConnection.instances[FakePeerConnection.instances.length - 1]
 }
 
-const findEndCallButton = tree => tree.root.findAllByType('Button').find(b => b.props.type === 'danger')
-const findMuteButton = tree =>
-    tree.root
-        .findAllByType('Button')
-        .find(button => ['Mute assistant call', 'Unmute assistant call'].includes(button.props.accessibilityLabel))
+// AT-3038: the floating panel renders the Assistant Mode call controls, whose buttons are DOM
+// <button>s (AnnaCallActions) named by aria-label, not RN Buttons.
+const findPanelButton = (tree, labels) =>
+    tree.root.findAll(node => node.type === 'button' && labels.includes(node.props['aria-label']))[0]
+const findEndCallButton = tree => findPanelButton(tree, ['End assistant call', 'Cancel assistant call'])
+const findMuteButton = tree => findPanelButton(tree, ['Mute assistant call', 'Unmute assistant call'])
+const findMicrophoneMeter = tree =>
+    tree.root.find(node => node.type === 'div' && node.props['aria-label'] === 'Microphone level')
 
 beforeEach(() => {
     jest.useFakeTimers()
@@ -343,14 +346,14 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
             await act(async () => {})
             expect(request).toHaveBeenCalledWith('screen')
 
-            act(() => findMuteButton(tree).props.onPress())
+            act(() => findMuteButton(tree).props.onClick())
             expect(locks[0].release).not.toHaveBeenCalled()
             await setVisibility('hidden')
             expect(locks[0].release).toHaveBeenCalledTimes(1)
             await setVisibility('visible')
             expect(request).toHaveBeenCalledTimes(2)
 
-            await act(async () => findEndCallButton(tree).props.onPress())
+            await act(async () => findEndCallButton(tree).props.onClick())
             expect(locks[1].release).toHaveBeenCalledTimes(1)
         } finally {
             delete navigator.wakeLock
@@ -366,39 +369,33 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         expect(localTrack.enabled).toBe(true)
         expect(senderTrack.enabled).toBe(true)
         expect(findMuteButton(tree).props).toMatchObject({
-            icon: 'mic',
-            accessibilityLabel: 'Mute assistant call',
-            accessibilityState: { selected: false },
+            'aria-label': 'Mute assistant call',
             'aria-pressed': false,
         })
+        expect(findMuteButton(tree).findByType('Icon').props.name).toBe('mic')
 
         await act(async () => {
-            findMuteButton(tree).props.onPress()
+            findMuteButton(tree).props.onClick()
         })
         expect(localTrack.enabled).toBe(true)
         expect(senderTrack.enabled).toBe(false)
         expect(findMuteButton(tree).props).toMatchObject({
-            icon: 'mic-off',
-            accessibilityLabel: 'Unmute assistant call',
-            accessibilityState: { selected: true },
+            'aria-label': 'Unmute assistant call',
             'aria-pressed': true,
         })
+        expect(findMuteButton(tree).findByType('Icon').props.name).toBe('mic-off')
         await advance(100)
-        expect(tree.root.findByProps({ testID: 'voice-microphone-level' }).props.accessibilityLabel).toBe(
-            'Microphone paused'
-        )
+        expect(findMicrophoneMeter(tree).props['aria-valuetext']).toBe('Microphone muted')
         expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenLastCalledWith(false)
 
         await act(async () => {
-            findMuteButton(tree).props.onPress()
+            findMuteButton(tree).props.onClick()
         })
         expect(localTrack.enabled).toBe(true)
         expect(senderTrack.enabled).toBe(true)
-        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Mute assistant call')
+        expect(findMuteButton(tree).props['aria-label']).toBe('Mute assistant call')
         await advance(100)
-        expect(tree.root.findByProps({ testID: 'voice-microphone-level' }).props.accessibilityLabel).not.toBe(
-            'Microphone paused'
-        )
+        expect(findMicrophoneMeter(tree).props['aria-valuetext']).not.toBe('Microphone muted')
         expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenLastCalledWith(true)
     })
 
@@ -418,12 +415,11 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         })
         const tree = render()
         const pc = await startCall(tree)
-        act(() => findMuteButton(tree).props.onPress())
+        act(() => findMuteButton(tree).props.onClick())
         const previousSender = pc.senders[0].track
+        // The audio settings select (AnnaCallAudioControls.test.js) calls exactly this.
         await act(async () => {
-            await tree.root
-                .findByProps({ 'aria-label': 'Call microphone' })
-                .props.onChange({ target: { value: 'pods' } })
+            await currentCall.selectMicrophone('pods')
         })
         expect(FakePeerConnection.instances).toHaveLength(1)
         expect(pc.closed).toBe(false)
@@ -431,9 +427,9 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         expect(pc.senders[0].track.enabled).toBe(false)
         expect(previousSender.readyState).toBe('ended')
         expect(tracks[0].readyState).toBe('ended')
-        expect(tree.root.findByProps({ 'aria-label': 'Call microphone' }).props.value).toBe('pods')
-        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Unmute assistant call')
-        act(() => findMuteButton(tree).props.onPress())
+        expect(currentCall.getMicrophoneSnapshot().selectedDeviceId).toBe('pods')
+        expect(findMuteButton(tree).props['aria-label']).toBe('Unmute assistant call')
+        act(() => findMuteButton(tree).props.onClick())
         expect(pc.senders[0].track.enabled).toBe(true)
     })
 
@@ -463,19 +459,18 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         })
         const tree = render()
         const pc = await startCall(tree)
-        act(() => findMuteButton(tree).props.onPress())
+        act(() => findMuteButton(tree).props.onClick())
         const requests = getUserMedia.mock.calls.length
+        // The audio settings select (AnnaCallAudioControls.test.js) calls exactly this.
         await act(async () => {
-            await tree.root
-                .findByProps({ 'aria-label': 'Call microphone' })
-                .props.onChange({ target: { value: 'pods' } })
+            await currentCall.selectMicrophone('pods')
         })
         expect(nativePlugin.setInput).toHaveBeenCalledWith({ deviceId: 'pods' })
         expect(getUserMedia).toHaveBeenCalledTimes(requests)
         expect(pc.senders[0].track.enabled).toBe(false)
         expect(pc.closed).toBe(false)
-        expect(tree.root.findByProps({ 'aria-label': 'Call microphone' }).props.value).toBe('pods')
-        expect(tree.root.findByProps({ 'aria-label': 'Call audio output' }).props.value).toBe('input:pods')
+        expect(currentCall.getMicrophoneSnapshot().selectedDeviceId).toBe('pods')
+        expect(currentCall.getAudioDevicesSnapshot().outputDeviceId).toBe('input:pods')
         act(() => tree.unmount())
         expect(remove).toHaveBeenCalled()
     })
@@ -486,7 +481,7 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         pc.statsReports = [{ type: 'outbound-rtp', kind: 'audio', bytesSent: 4200 }]
 
         await act(async () => {
-            findMuteButton(tree).props.onPress()
+            findMuteButton(tree).props.onClick()
         })
         await advance(MIC_HEALTH_POLL_MS * 4)
 
@@ -499,14 +494,14 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         const pc = await startCall(tree)
 
         await act(async () => {
-            findMuteButton(tree).props.onPress()
+            findMuteButton(tree).props.onClick()
             tracks[0].onended()
             for (let i = 0; i < 20; i++) await Promise.resolve()
         })
 
         expect(getUserMedia).toHaveBeenCalledTimes(2)
         expect(pc.senders[0].track.enabled).toBe(false)
-        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Unmute assistant call')
+        expect(findMuteButton(tree).props['aria-label']).toBe('Unmute assistant call')
     })
 
     describe('iOS shell audio session', () => {
@@ -520,7 +515,7 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
 
             const track = tracks[0]
             await act(async () => {
-                findEndCallButton(tree).props.onPress()
+                findEndCallButton(tree).props.onClick()
             })
             await act(async () => {})
 
@@ -539,7 +534,7 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
             expect(findEndCallButton(tree)).toBeTruthy()
 
             await act(async () => {
-                findEndCallButton(tree).props.onPress()
+                findEndCallButton(tree).props.onClick()
             })
             // No session was taken, so none is released.
             expect(nativePlugin.end).not.toHaveBeenCalled()
@@ -741,7 +736,7 @@ describe('GPT-Live lifecycle', () => {
         expect(pc.channel.close).not.toHaveBeenCalled()
         let ending
         act(() => {
-            ending = findEndCallButton(tree).props.onPress()
+            ending = findEndCallButton(tree).props.onClick()
         })
         expect(tracks[0].enabled).toBe(false)
         expect(pc.closed).toBe(false)
@@ -824,25 +819,32 @@ describe('voice connection recovery', () => {
                 : Promise.resolve({ closed: true })
         )
         const tree = render(props)
-        const controls = () => [...tree.root.findAllByType('Button'), ...tree.root.findAllByType(TouchableOpacity)]
+        // The launcher (RN Button or link) and the floating panel's DOM buttons.
+        const controls = () => [
+            ...tree.root.findAllByType('Button'),
+            ...tree.root.findAllByType(TouchableOpacity),
+            ...tree.root.findAll(node => node.type === 'button'),
+        ]
+        const press = control => (control.props.onPress || control.props.onClick)()
+        const labelOf = control => control.props.accessibilityLabel || control.props['aria-label']
         let starting
         await act(async () => {
-            starting = controls()[0].props.onPress()
+            starting = press(controls()[0])
             for (let i = 0; i < 30; i++) await Promise.resolve()
         })
         expect(respond).toBeDefined()
         expect(tree.root.findByProps({ testID: 'voice-call-connecting' }).props.role).toBe('status')
         expect(controls()).toHaveLength(1)
-        expect(controls()[0].props.accessibilityLabel).toBe('Cancel assistant call')
+        expect(labelOf(controls()[0])).toBe('Cancel assistant call')
         expect(controls()[0].props.disabled).not.toBe(true)
         // With the SDP answer still pending, the real data channel is not open yet.
         FakePeerConnection.instances[0].channel.readyState = 'connecting'
         await act(async () => {
-            await controls()[0].props.onPress()
+            await press(controls()[0])
         })
         expect(tracks[0].stop).toHaveBeenCalled()
         expect(controls()).toHaveLength(1)
-        expect(controls()[0].props.accessibilityLabel).toContain('Start voice call')
+        expect(labelOf(controls()[0])).toContain('Start voice call')
         await act(async () => {
             respond({ answerSdp: 'answer', sessionId: 'browser-cancelled', voiceProvider: 'gpt-live' })
             await starting
@@ -902,19 +904,13 @@ describe('voice connection recovery', () => {
             await act(async () => {
                 pc.ontrack({ streams: [makeStream(makeTrack())] })
             })
-            const enable = tree.root
-                .findAllByType('Button')
-                .find(button => button.props.accessibilityLabel === 'Enable call audio')
+            const enable = findPanelButton(tree, ['Enable call audio'])
             expect(enable).toBeDefined()
             play.mockResolvedValue(undefined)
             await act(async () => {
-                await enable.props.onPress()
+                await enable.props.onClick()
             })
-            expect(
-                tree.root
-                    .findAllByType('Button')
-                    .some(button => button.props.accessibilityLabel === 'Enable call audio')
-            ).toBe(false)
+            expect(findPanelButton(tree, ['Enable call audio'])).toBeUndefined()
         } finally {
             play.mockRestore()
         }
@@ -1035,7 +1031,7 @@ test.each(['hangup', 'unmount', 'capture-failure'])(
                 expect(audioSession.type).toBe('play-and-record')
                 await act(async () => {
                     if (ending === 'unmount') tree.unmount()
-                    else await findEndCallButton(tree).props.onPress()
+                    else await findEndCallButton(tree).props.onClick()
                 })
                 expect(tracks[0].stop).toHaveBeenCalled()
             }
@@ -1098,16 +1094,18 @@ test('navigation removes the original launcher but keeps one call, audio and a u
         expect(pc.closed).toBe(false)
         expect(track.stop).not.toHaveBeenCalled()
         expect(document.querySelector('audio')).toBe(audio)
-        expect(tree.root.findAllByType('Button')).toHaveLength(2)
-        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
-        const appButton = tree.root.findByType('button')
+        // The launcher is gone; the floating panel's mute and hangup remain.
+        expect(tree.root.findAllByType('Button')).toHaveLength(0)
+        expect(findMuteButton(tree)).toBeDefined()
+        expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
+        const appButton = tree.root.find(node => node.type === 'button' && node.props.children === page)
         act(() => appButton.props.onClick())
         expect(appButton.props.onClick).toHaveBeenCalledTimes(1)
     }
     expect(FakePeerConnection.instances).toHaveLength(1)
     let ending
     await act(async () => {
-        ending = findEndCallButton(tree).props.onPress()
+        ending = findEndCallButton(tree).props.onClick()
         pc.channel.onmessage({ data: JSON.stringify({ type: 'session.closed', usage: { seconds: 30 } }) })
         await ending
     })
@@ -1139,7 +1137,8 @@ test('navigation during startup keeps the pending call, but signing out releases
     await act(async () => {
         tree.update(routeTree('settings'))
     })
-    expect(tree.root.findByType('Button').props.accessibilityLabel).toBe('Cancel assistant call')
+    expect(tree.root.findAllByType('Button')).toHaveLength(0)
+    expect(findEndCallButton(tree).props['aria-label']).toBe('Cancel assistant call')
     await act(async () => {
         respond({ answerSdp: 'answer', sessionId: 'browser-navigation', voiceProvider: 'gpt-live' })
         await starting
@@ -1332,7 +1331,7 @@ test('cancelling during microphone warmup cannot unmute or greet when warmup fin
     const pc = FakePeerConnection.instances[0]
     expect(tone.stop).not.toHaveBeenCalled()
     await act(async () => {
-        ending = findEndCallButton(tree).props.onPress()
+        ending = findEndCallButton(tree).props.onClick()
         prepared(true)
         await starting
     })
@@ -1360,7 +1359,7 @@ test('shows connection feedback through microphone permission, then clears it on
         for (let i = 0; i < 30; i++) await Promise.resolve()
     })
     expect(tree.root.findByProps({ testID: 'voice-call-connecting' }).props.role).toBe('status')
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('Cancel assistant call')
+    expect(findEndCallButton(tree).props['aria-label']).toBe('Cancel assistant call')
     await act(async () => {
         deny(new Error('Microphone permission denied'))
         await starting
@@ -1376,7 +1375,7 @@ test('shows connection feedback through microphone permission, then clears it on
             .find(b => b.props.accessibilityLabel.includes('Start voice call'))
             .props.onPress()
     })
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+    expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
     expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
 })
 
@@ -1401,7 +1400,7 @@ test('cancellation allows immediate retry and a stale answer cannot replace or c
     })
     const finishFirst = respond
     await act(async () => {
-        await findEndCallButton(tree).props.onPress()
+        await findEndCallButton(tree).props.onClick()
     })
     expect(FakePeerConnection.instances[0].closed).toBe(true)
     let second
@@ -1421,7 +1420,7 @@ test('cancellation allows immediate retry and a stale answer cannot replace or c
         respond({ answerSdp: 'new-answer', sessionId: 'retry-session' })
         await second
     })
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+    expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
     expect(tones[1].stop).toHaveBeenCalledTimes(1)
     expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
         sessionId: 'cancelled-session',
@@ -1545,7 +1544,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
             await newCall
         })
         expect(newTone.stop).toHaveBeenCalledTimes(1)
-        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+        expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
     })
 
     test('starts feedback before microphone permission and keeps one wake lease through connection and hangup', async () => {
@@ -1567,7 +1566,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
         expect(tone.stop).toHaveBeenCalledTimes(1)
         expect(request).toHaveBeenCalledTimes(1)
         expect(release).not.toHaveBeenCalled()
-        await act(async () => findEndCallButton(tree).props.onPress())
+        await act(async () => findEndCallButton(tree).props.onClick())
         expect(release).toHaveBeenCalledTimes(1)
         expect(tone.stop).toHaveBeenCalledTimes(1)
     })
@@ -1593,7 +1592,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
             expect(tone.stop).not.toHaveBeenCalled()
             expect(release).not.toHaveBeenCalled()
             await act(async () => {
-                if (ending === 'cancel') await findEndCallButton(tree).props.onPress()
+                if (ending === 'cancel') await findEndCallButton(tree).props.onClick()
                 if (ending === 'peer-failed') FakePeerConnection.instances[0].setConnectionState('failed')
                 if (ending === 'unmount') tree.unmount()
                 if (ending === 'account-changed') tree.update(<AssistantVoiceCallProvider userId="user-2" />)
@@ -1676,7 +1675,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
         })
         expect(tone.stop).toHaveBeenCalledTimes(1)
         expect(pc.senders[0].track.enabled).toBe(true)
-        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+        expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
     })
 
     test('unavailable tone playback and a rejected wake lock still allow a connected call', async () => {
@@ -1684,8 +1683,8 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
         request.mockRejectedValue(new Error('wake lock denied'))
         const tree = render()
         await startCall(tree)
-        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
-        await act(async () => findEndCallButton(tree).props.onPress())
+        expect(findEndCallButton(tree).props['aria-label']).toBe('End assistant call')
+        await act(async () => findEndCallButton(tree).props.onClick())
         expect(release).not.toHaveBeenCalled()
     })
 })

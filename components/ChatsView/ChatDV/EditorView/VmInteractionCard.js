@@ -4,7 +4,25 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import global, { colors } from '../../../styles/global'
 import { respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
 
-import { themed } from '../../../../Themes/colorMode'
+import { modeColor, themed } from '../../../../Themes/colorMode'
+
+// The danger red (#E00000) is too dim as text on the dark card; a lighter red in dark mode only.
+const DANGER_TEXT = modeColor(colors.UtilityRed200, '#FF6B6B')
+
+// A text field that marks its border while focused, so the active field is visible on the light
+// card and on the dark one alike.
+function CardInput({ style, ...props }) {
+    const [focused, setFocused] = useState(false)
+    return (
+        <TextInput
+            {...props}
+            placeholderTextColor={colors.Text03}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={[styles.input, focused && styles.inputFocused, style]}
+        />
+    )
+}
 
 function ActionButton({ label, onPress, disabled, secondary, danger }) {
     return (
@@ -69,7 +87,10 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
     }
 
     return (
-        <View style={styles.card}>
+        // The card is drawn for the page palette (grey card, dark text in light mode). In a task's
+        // comment popup the popup scope would keep it light in dark mode; the marker brings the
+        // dark palette back inside it.
+        <View style={styles.card} dataSet={{ adPagePalette: 'true' }}>
             <Text style={styles.eyebrow}>
                 {interaction.kind === 'plan_review'
                     ? 'PLAN READY'
@@ -82,13 +103,11 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                 <>
                     <Text style={styles.plan}>{interaction.plan}</Text>
                     {revising && (
-                        <TextInput
+                        <CardInput
                             value={message}
                             onChangeText={setMessage}
                             placeholder="What should change in the plan?"
-                            placeholderTextColor={colors.Text03}
                             multiline={true}
-                            style={styles.input}
                         />
                     )}
                     <View style={styles.actions}>
@@ -134,7 +153,7 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                                 )
                             })}
                             {question.isOther !== false && (
-                                <TextInput
+                                <CardInput
                                     value={
                                         typeof answers[`${question.id}:other`] === 'string'
                                             ? answers[`${question.id}:other`]
@@ -142,10 +161,8 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                                     }
                                     onChangeText={value => setAnswers({ ...answers, [`${question.id}:other`]: value })}
                                     placeholder="Type another answer…"
-                                    placeholderTextColor={colors.Text03}
                                     secureTextEntry={!!question.isSecret}
                                     multiline={!question.isSecret}
-                                    style={styles.input}
                                 />
                             )}
                         </View>
@@ -168,13 +185,11 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                     {!!interaction.reason && <Text style={styles.questionText}>{interaction.reason}</Text>}
                     {!!interaction.command && <Text style={styles.command}>{interaction.command}</Text>}
                     {!!interaction.cwd && <Text style={styles.cwd}>in {interaction.cwd}</Text>}
-                    <TextInput
+                    <CardInput
                         value={message}
                         onChangeText={setMessage}
                         placeholder="Optional instruction or reason…"
-                        placeholderTextColor={colors.Text03}
                         multiline={true}
-                        style={styles.input}
                     />
                     <View style={styles.actions}>
                         <ActionButton label="Allow once" onPress={() => submit('approve')} disabled={submitting} />
@@ -229,7 +244,8 @@ const styles = StyleSheet.create({
     option: { borderWidth: 1, borderColor: colors.Gray300, borderRadius: 6, padding: 10, marginBottom: 6 },
     optionSelected: { borderColor: colors.Primary100, backgroundColor: colors.UtilityBlue100 },
     optionLabel: { ...global.body2, color: colors.Text02, fontWeight: '500' },
-    optionLabelSelected: { color: colors.Primary300 },
+    // AccentText is Primary300 in light mode and a lighter blue that reads on the dark tint.
+    optionLabelSelected: { color: themed.AccentText },
     optionDescription: { ...global.caption2, color: colors.Text03, marginTop: 2 },
     input: {
         ...global.body1,
@@ -243,6 +259,7 @@ const styles = StyleSheet.create({
         backgroundColor: themed.Surface,
         textAlignVertical: 'top',
     },
+    inputFocused: { borderColor: colors.Primary100 },
     command: {
         fontFamily: 'monospace',
         fontSize: 13,
@@ -266,11 +283,11 @@ const styles = StyleSheet.create({
         backgroundColor: colors.Primary100,
     },
     secondaryButton: { backgroundColor: themed.Surface },
-    dangerButton: { backgroundColor: themed.Surface, borderColor: colors.UtilityRed200 },
+    dangerButton: { backgroundColor: themed.Surface, borderColor: DANGER_TEXT },
     disabled: { opacity: 0.5 },
     buttonText: { ...global.caption2, color: '#FFFFFF', fontWeight: '600' },
     secondaryButtonText: { color: colors.Primary100 },
-    dangerButtonText: { color: colors.UtilityRed200 },
+    dangerButtonText: { color: DANGER_TEXT },
     spinner: { alignSelf: 'flex-start', marginTop: 6 },
-    error: { ...global.caption2, color: colors.UtilityRed200, marginTop: 6 },
+    error: { ...global.caption2, color: DANGER_TEXT, marginTop: 6 },
 })

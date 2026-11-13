@@ -9,13 +9,16 @@ const path = require('path')
 
 const css = fs.readFileSync(path.join(__dirname, 'anna.css'), 'utf8')
 const shellSource = fs.readFileSync(path.join(__dirname, 'AnnaShell.js'), 'utf8')
+// AT-3038: the shell spreads the shared variables, which the floating call panel reuses.
+const themeSource = fs.readFileSync(path.join(__dirname, 'annaThemeVariables.js'), 'utf8')
 const frameBlock = css.slice(css.indexOf('/* AT-2911'), css.indexOf('.anna-working-label {'))
 
 describe('assistant workspace monitor frame (AT-2911)', () => {
     it('draws one gray bezel width on all four edges from a single variable', () => {
         expect(frameBlock).toMatch(/--anna-workspace-bezel:\s*6px;/)
         expect(frameBlock).toMatch(/--anna-workspace-bezel-color:\s*var\(--anna-bezel\);/)
-        expect(shellSource).toContain("'--anna-bezel': colors.Grey400")
+        expect(shellSource).toContain('...ANNA_THEME_VARIABLES')
+        expect(themeSource).toContain("'--anna-bezel': colors.Grey400")
         expect(frameBlock).toMatch(
             /border:\s*var\(--anna-workspace-bezel\)\s+solid\s+var\(--anna-workspace-bezel-color\);/
         )

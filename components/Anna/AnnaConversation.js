@@ -27,7 +27,7 @@ import { getAssistantReplies, replyConfirmsProcessing } from './annaSubmissionRe
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
-import AnnaCallAudioControls from './AnnaCallAudioControls'
+import AnnaCallAudioControls, { AnnaCallActions } from './AnnaCallAudioControls'
 import VoiceCallConnecting from '../UIComponents/VoiceCallConnecting'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import { resolveComposerMicSlot } from '../UIControls/composerMicSlot'
@@ -740,50 +740,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         </div>
                         {voiceActive && !voiceConnecting && (
                             <AnnaCallAudioControls call={call} seconds={seconds}>
-                                <button
-                                    type="button"
-                                    className="anna-voice-button"
-                                    disabled={call.status === 'ending'}
-                                    aria-label={translate(
-                                        call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
-                                    )}
-                                    aria-pressed={!!call.microphoneMuted}
-                                    onClick={call.toggleMicrophoneMuted}
-                                    onKeyDown={event => {
-                                        if (event.key !== 'Enter') return
-                                        // The shared editor cancels Enter at document level.
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        if (!event.repeat) event.currentTarget.click()
-                                    }}
-                                >
-                                    <Icon
-                                        name={call.microphoneMuted ? 'mic-off' : 'mic'}
-                                        size={20}
-                                        color="currentColor"
-                                    />
-                                </button>
-                                {call.needsAudioPlayback && (
-                                    <button
-                                        type="button"
-                                        className="anna-voice-button"
-                                        aria-label={translate('Enable call audio')}
-                                        title={translate('Enable call audio')}
-                                        onClick={call.playCallAudio}
-                                    >
-                                        <Icon name="volume-2" size={20} color="currentColor" />
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    className="anna-voice-button anna-voice-active"
-                                    aria-label={voiceLabel}
-                                    title={voiceHint}
-                                    disabled={call.status === 'ending'}
-                                    onClick={toggleVoiceCall}
-                                >
-                                    <Icon name="phone-off" size={20} color="currentColor" />
-                                </button>
+                                <AnnaCallActions call={call} endLabel={voiceLabel} onEnd={toggleVoiceCall} />
                             </AnnaCallAudioControls>
                         )}
                     </div>

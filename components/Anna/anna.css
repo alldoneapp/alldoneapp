@@ -84,13 +84,13 @@
     font-size: 14px;
     font-weight: 500;
     line-height: 18px;
+    /* AT-3040: the name always stays on one line; a long name ends in an ellipsis
+       (the button's title carries the full name). */
     display: block;
+    min-width: 0;
     overflow: hidden;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .anna-header-note {
     color: var(--anna-muted);
@@ -794,6 +794,70 @@
 }
 .anna-composer-actions {
     flex: none;
+}
+/* AT-3038: the main app's floating call panel. It renders the Assistant Mode call controls
+   outside .anna-shell, so it carries the composer field's card and the shell's base rules
+   itself (FloatingAssistantVoiceCall.js sets the --anna-* variables). */
+.anna-floating-call {
+    box-sizing: border-box;
+    width: min(400px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 12px 10px;
+    border: 1px solid var(--anna-border);
+    border-radius: 20px;
+    background: var(--anna-surface);
+    color: var(--anna-ink);
+    box-shadow: 0 8px 32px #18283f29;
+    font:
+        14px / 1.4 Roboto,
+        Arial,
+        sans-serif;
+}
+.anna-floating-call-error {
+    padding: 8px 8px 8px 16px;
+}
+.anna-floating-call * {
+    box-sizing: border-box;
+}
+.anna-floating-call button {
+    font: inherit;
+    cursor: pointer;
+}
+.anna-floating-call button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.anna-floating-call button:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-floating-call .anna-call-audio {
+    position: static;
+    padding: 0;
+}
+.anna-floating-call-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+.anna-floating-call-message {
+    flex: 1;
+    min-width: 0;
+    color: var(--anna-unread);
+    font-size: 12px;
+}
+.anna-floating-call-connecting-actions {
+    justify-content: flex-end;
+}
+.anna-floating-call .anna-floating-call-cancel {
+    font-size: 12px;
+}
+.anna-floating-call-hint {
+    line-height: 16px;
 }
 @container anna-composer (max-width: 420px) {
     .anna-composer-footer-idle {
@@ -1836,6 +1900,31 @@
     right: 7px;
     top: 10px;
     pointer-events: none;
+}
+/* AT-3040: in a narrow sidebar chat (about 410px and less) the header tightens its gaps and
+   the workspace picker so the one-line assistant name keeps room ("Anna All…", not "Ann…"). */
+.anna-header {
+    container: anna-header / inline-size;
+}
+@container anna-header (max-width: 360px) {
+    .anna-header-sidebar .anna-header-left,
+    .anna-header-sidebar .anna-header-right {
+        gap: 4px;
+    }
+    .anna-header-sidebar .anna-header-assistant {
+        gap: 6px;
+    }
+    .anna-header-sidebar .anna-header-picker {
+        flex-basis: 80px;
+    }
+    .anna-header-sidebar .anna-header-picker select {
+        width: 80px;
+        padding-right: 22px;
+        padding-left: 8px;
+    }
+    .anna-header-sidebar .anna-header-picker > span {
+        right: 5px;
+    }
 }
 .anna-shell select:focus-visible {
     outline: 2px solid var(--anna-accent);
