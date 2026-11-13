@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import LastCommentArea from './LastCommentArea'
@@ -449,6 +449,45 @@ describe('LastCommentArea "All chats"', () => {
         act(() => lastWrapperProps.onOpenAllChats())
 
         expect(mockOpenChatsList).toHaveBeenCalledWith(project)
+        act(() => tree.unmount())
+    })
+})
+
+// AT-3034 follow-up: while the assistant-mode sidebar is open the assistant line hands its card
+// style to this area, so every branch that renders something must carry it, and a branch that
+// renders nothing leaves no card behind.
+describe('LastCommentArea container style', () => {
+    const cardStyle = { backgroundColor: '#ABCDEF', marginBottom: 24 }
+    const outerStyleOf = tree => StyleSheet.flatten(tree.root.findAllByType(View)[0].props.style)
+
+    beforeEach(() => {
+        resetAssistantLinePendingSends()
+        mockState.selectedProjectIndex = 0
+        mockState.projectChatLastNotification = {}
+        mockState.loggedUser.lastAssistantCommentDataByAssistant = {}
+        setLastCommentData(null)
+    })
+
+    it('carries the style on the loading ghost, the real comment and a pending send', () => {
+        const ghost = render({ style: cardStyle })
+        expect(outerStyleOf(ghost)).toEqual(expect.objectContaining(cardStyle))
+        act(() => ghost.unmount())
+
+        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
+        const comment = render({ style: cardStyle })
+        expect(has(comment, 'real-last-comment')).toBe(true)
+        expect(outerStyleOf(comment)).toEqual(expect.objectContaining(cardStyle))
+        act(() => comment.unmount())
+
+        begin()
+        const pending = render({ style: cardStyle })
+        expect(outerStyleOf(pending)).toEqual(expect.objectContaining(cardStyle))
+        act(() => pending.unmount())
+    })
+
+    it('renders nothing at all for an assistant without a comment of its own', () => {
+        const tree = render({ style: cardStyle, scopeToAssistant: true })
+        expect(tree.toJSON()).toBeNull()
         act(() => tree.unmount())
     })
 })

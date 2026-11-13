@@ -8,7 +8,10 @@ A small crosshair at the top right of the assistant line's header (`AssistantOpt
 Empty inbox card (`EmptyInboxOverview` in `AchievementsArea.js`), both
 `components/RageMode/RageModeButton.js`, starts a vertical-scrolling shooter in the style of the
 early-90s classics (`raidArena.js`). (History: it left the assistant line for the Empty inbox
-card on 2026-11-13 and came back to the line the same day with AT-3034, keeping the card's copy.) A voxel Anna Alldone with a jetpack takes off from the
+card on 2026-11-13 and came back to the line the same day with AT-3034, keeping the card's copy.
+While the desktop assistant-mode sidebar is open the line shows only its Last comment, so the
+line's crosshair is hidden then; the Empty inbox card's stays. Its hidden button stays mounted, so
+a running arena is not torn down when the sidebar opens.) A voxel Anna Alldone with a jetpack takes off from the
 assistant line's avatar when the screen has one (and lands back on it when you leave),
 **the page you are on slides down off the screen and generated ground scrolls in above it**, and
 the mission is flown over that ground: today's tasks are dug in as labelled bunkers, scripted waves

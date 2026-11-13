@@ -33,7 +33,6 @@ import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import { resolveComposerMicSlot } from '../UIControls/composerMicSlot'
 import { colors } from '../styles/global'
 import AddFeedAttachButton from '../Feeds/AddFeed/AddFeedAttachButton'
-import AssistantTaskSearchButtonWrapper from '../MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearchButtonWrapper'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
 import { isBrowserOffline } from '../../utils/connectionState'
@@ -49,22 +48,6 @@ import useAnnaChatScroll from './useAnnaChatScroll'
 import useAnnaFileDrop from './useAnnaFileDrop'
 
 const MESSAGES_PER_PAGE = 50
-// AT-3032: below this composer width the Templates button drops its label (icon only, same
-// accessible name), so +, Templates, mic, call and send stay on one row on the narrowest phones.
-export const ANNA_TEMPLATES_COMPACT_WIDTH = 360
-// The Templates list (up to 520px) is wider than the chat pane, so it opens upwards over the
-// window rather than inside the pane; without a viewport it would be pushed into the workspace
-// pane (window.__alldoneWorkspaceViewport). Phones get the usual bottom sheet.
-const ANNA_TEMPLATES_POSITION = ['top', 'bottom', 'right', 'left']
-const getTemplatesViewport = () => ({
-    top: 0,
-    left: 0,
-    right: window.innerWidth,
-    bottom: window.innerHeight,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    active: true,
-})
 
 const getMessageCreator = (message, user, assistant) => {
     if (message.creatorId === user.uid && !message.fromAssistant) return user
@@ -147,21 +130,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const { follow, update: updateScroll, stop: stopFollowing } = chatScroll
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
-    const composerForm = useRef(null)
-    const [compactTemplates, setCompactTemplates] = useState(false)
-    useLayoutEffect(() => {
-        const form = composerForm.current
-        if (!form) return
-        const measure = () => {
-            const width = form.getBoundingClientRect().width
-            if (width > 0) setCompactTemplates(width < ANNA_TEMPLATES_COMPACT_WIDTH)
-        }
-        measure()
-        if (typeof ResizeObserver === 'undefined') return
-        const observer = new ResizeObserver(measure)
-        observer.observe(form)
-        return () => observer.disconnect()
-    }, [])
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
     // AT-3025: the second mic, drawn in the send button's place while the draft is empty.
     const [sendSlotDictationPhase, setSendSlotDictationPhase] = useState(RAMBLE_PHASE_IDLE)
@@ -508,7 +476,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                     {translate('Latest messages')} ↓
                 </button>
             )}
-            <form className="anna-composer" ref={composerForm} onSubmit={send}>
+            <form className="anna-composer" onSubmit={send}>
                 {offline && (
                     <p className="anna-muted" role="status">
                         {translate(
@@ -531,11 +499,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             aria-hidden={voiceActive || undefined}
                             inert={voiceActive ? '' : undefined}
                         >
-                            {/* AT-3032: the project chip sits on the field's top edge, half over the
-                                border (anna.css). First in the DOM, so it is also first in tab order. */}
-                            <div className="anna-composer-project">
-                                {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
-                            </div>
                             <div>
                                 <AnnaChatComposer
                                     ref={composer}
@@ -551,7 +514,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 />
                             </div>
                             <div className="anna-composer-toolbar">
-                                {/* AT-3029/AT-3032: + and Templates on the left; mic, call and send on the right. */}
+                                {/* AT-3029: + and the project on the left; mic, call and send on the right. */}
                                 <div className="anna-composer-tools">
                                     <div className="anna-composer-attachment">
                                         <AddFeedAttachButton
@@ -578,16 +541,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             }}
                                         />
                                     </div>
-                                    {/* The assistant line's own Templates button and modal, unchanged. */}
-                                    <div className="anna-composer-templates">
-                                        <AssistantTaskSearchButtonWrapper
-                                            preferredAssistantId={conversation.assistantId || assistant?.uid}
-                                            preferredProjectId={conversation.projectId}
-                                            compact={compactTemplates}
-                                            position={ANNA_TEMPLATES_POSITION}
-                                            getPopoverViewport={getTemplatesViewport}
-                                        />
-                                    </div>
+                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
                                 </div>
                                 <div className="anna-composer-actions">
                                     {dictationAvailable && (

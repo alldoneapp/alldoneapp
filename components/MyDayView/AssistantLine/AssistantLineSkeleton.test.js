@@ -34,6 +34,18 @@ describe('AssistantLineSkeleton', () => {
         expect(ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT).toBe(112)
     })
 
+    // AT-3034 follow-up: while the assistant-mode sidebar is open the line is only its Last comment.
+    it('drops the header and composer ghosts for the Last-comment-only line', () => {
+        const tree = renderer.create(<AssistantLineSkeleton lastCommentOnly />)
+        const styles = tree.root.findAllByType(View).map(node => StyleSheet.flatten(node.props.style) || {})
+
+        expect(styles.some(style => style.height === ASSISTANT_COMPOSER_BOX_RESTING_HEIGHT)).toBe(false)
+        expect(styles.some(style => style.height === ASSISTANT_HEADER_HEIGHT)).toBe(false)
+        expect(tree.root.findAllByProps({ testID: 'assistant-last-comment-loading-skeleton' }).length).toBeGreaterThan(
+            0
+        )
+    })
+
     it('uses the same fixed height as the real last-comment preview', () => {
         const tree = renderer.create(<LastCommentPreviewSkeleton />)
         const card = StyleSheet.flatten(

@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaConversation, { ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
+import AnnaConversation from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
@@ -95,12 +95,6 @@ let mockAttachments
 jest.mock('../Feeds/AddFeed/AddFeedAttachButton', () => props => {
     mockAttachments = props
     return <button type="button" aria-label="Select kind of file to add" disabled={props.isDisabled} />
-})
-// AT-3032: the assistant line's own Templates button, reused next to the +.
-let mockTemplates
-jest.mock('../MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearchButtonWrapper', () => props => {
-    mockTemplates = props
-    return <button type="button" aria-label="Templates" data-compact={props.compact ? 'true' : 'false'} />
 })
 let mockDictationSupported = true
 jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
@@ -206,7 +200,6 @@ beforeEach(() => {
     mockDictation = null
     mockSendSlotDictation = null
     mockAttachments = null
-    mockTemplates = null
     mockDictationSupported = true
     mockTrafficLimited = false
     mockMessages = []
@@ -335,105 +328,20 @@ it('follows viewport resizing after focus without pulling a reader away from old
     }
 })
 
-it('orders the toolbar as + and Templates on the left, then mic, call and send on the right (AT-3029, AT-3032)', () => {
+it('orders the toolbar as + and project on the left, then mic, call and send on the right (AT-3029)', () => {
     render({ renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
     const labels = selector =>
         [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
     // An empty draft shows its mic in Send's place (AT-3025), still on the right.
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Dictate'])
     type('Draft')
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
     expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
     // Offline hides only the mic; the rest keep their places.
     render({ offline: true, renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
-})
-
-describe('project chip on the field edge and Templates beside the + (AT-3032)', () => {
-    const project = () => <button type="button" aria-label="Project" />
-
-    it('renders the project chip above the editor, out of the toolbar, first in tab order', () => {
-        render({ renderProjectSwitcher: project })
-        const slot = container.querySelector('.anna-composer-draft > .anna-composer-project')
-        expect(slot.querySelector('[aria-label="Project"]')).not.toBeNull()
-        expect(container.querySelector('.anna-composer-toolbar [aria-label="Project"]')).toBeNull()
-        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
-        expect(buttonsAndEditor[0].getAttribute('aria-label')).toBe('Project')
-        expect(buttonsAndEditor[1].tagName).toBe('TEXTAREA')
-    })
-
-    it('leaves the slot empty when there is no project to choose', () => {
-        render({ renderProjectSwitcher: () => null })
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
-        render()
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
-    })
-
-    it('still disables the chip during dictation, calls and offline', () => {
-        const renderProjectSwitcher = jest.fn(project)
-        render({ renderProjectSwitcher })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ renderProjectSwitcher, offline: true })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
-        render({ renderProjectSwitcher, call: { status: 'connected' } })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
-    })
-
-    it('opens the assistant line Templates for the chat’s project and assistant', () => {
-        render({ assistant: { uid: 'default-assistant', displayName: 'Existing assistant' } })
-        expect(mockTemplates).toEqual(
-            expect.objectContaining({ preferredAssistantId: 'a1', preferredProjectId: 'p1', compact: false })
-        )
-        // Opens upwards over the window, not pushed into the workspace pane's viewport.
-        expect(mockTemplates.position[0]).toBe('top')
-        expect(mockTemplates.getPopoverViewport()).toEqual(
-            expect.objectContaining({ top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight })
-        )
-        render({
-            conversation: { projectId: 'p2', id: 'anna_u1' },
-            assistant: { uid: 'default-assistant', displayName: 'Existing assistant' },
-        })
-        expect(mockTemplates).toEqual(
-            expect.objectContaining({ preferredAssistantId: 'default-assistant', preferredProjectId: 'p2' })
-        )
-    })
-
-    it('shows Templates as an icon in a narrow composer', () => {
-        const originalObserver = global.ResizeObserver
-        const observers = []
-        global.ResizeObserver = class {
-            constructor(callback) {
-                this.callback = callback
-                this.observe = jest.fn()
-                this.disconnect = jest.fn()
-                observers.push(this)
-            }
-        }
-        try {
-            render()
-            const form = container.querySelector('form')
-            const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === form))
-            expect(observer).toBeDefined()
-            const width = value =>
-                jest.spyOn(form, 'getBoundingClientRect').mockReturnValue({ width: value, toJSON: () => ({}) })
-            width(ANNA_TEMPLATES_COMPACT_WIDTH - 1)
-            act(() => observer.callback())
-            expect(mockTemplates.compact).toBe(true)
-            width(ANNA_TEMPLATES_COMPACT_WIDTH)
-            act(() => observer.callback())
-            expect(mockTemplates.compact).toBe(false)
-            // A hidden pane measures 0: keep the last real layout instead of flipping.
-            width(0)
-            act(() => observer.callback())
-            expect(mockTemplates.compact).toBe(false)
-            act(() => root.unmount())
-            expect(observer.disconnect).toHaveBeenCalledTimes(1)
-        } finally {
-            global.ResizeObserver = originalObserver
-        }
-    })
 })
 
 it('places the shared attachment picker in the toolbar and inserts the selected file', () => {
@@ -1910,7 +1818,7 @@ describe('selected project (AT-2903)', () => {
         await submit()
         expect(createObjectMessage).not.toHaveBeenCalled()
         expect(container.querySelector('textarea').value).toBe('For the product project')
-        expect(container.querySelector('.anna-composer-project [data-testid="project-chip"]')).not.toBeNull()
+        expect(container.querySelector('.anna-composer-tools [data-testid="project-chip"]')).not.toBeNull()
         expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
         render({ switching: false, renderProjectSwitcher })
         expect(container.querySelector('.anna-send').disabled).toBe(false)

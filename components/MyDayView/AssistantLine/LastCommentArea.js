@@ -27,6 +27,9 @@ export default function LastCommentArea({
     assistantIdOverride = null,
     preferAssistantIdOverride = false,
     scopeToAssistant = false,
+    // AT-3034 follow-up: extra container style. The assistant line passes its card here while the
+    // assistant-mode sidebar is open, so the card disappears with the area when it renders nothing.
+    style = null,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -139,6 +142,7 @@ export default function LastCommentArea({
                     compact && localStyles.compactContainer,
                     !compact && withTopMargin && localStyles.containerWithTopMargin,
                     !compact && useCardBackground && localStyles.cardContainer,
+                    style,
                 ]}
             >
                 {!compact && <LastCommentHeader project={projectOverride} commentProjectId={pendingSend.projectId} />}
@@ -169,6 +173,7 @@ export default function LastCommentArea({
                     localStyles.container,
                     withTopMargin && localStyles.containerWithTopMargin,
                     useCardBackground && localStyles.cardContainer,
+                    style,
                 ]}
             >
                 <LastCommentHeader project={projectOverride} />
@@ -186,6 +191,7 @@ export default function LastCommentArea({
                 compact && localStyles.compactContainer,
                 !compact && withTopMargin && localStyles.containerWithTopMargin,
                 !compact && useCardBackground && localStyles.cardContainer,
+                style,
             ]}
         >
             {!compact && <LastCommentHeader project={projectOverride} commentProjectId={commentProject.id} />}

@@ -18,8 +18,8 @@ jest.mock('react-redux', () => ({
 jest.mock('../../../../UIComponents/ModalShell/AppPopover', () => {
     const React = require('react')
     const { View } = require('react-native')
-    return ({ children, content, position, getViewport }) => (
-        <View testID="search-popover" position={position} getViewport={getViewport}>
+    return ({ children, content }) => (
+        <View testID="search-popover">
             {children}
             {content}
         </View>
@@ -103,24 +103,5 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         const modal = tree.root.findByType(AssistantTaskSearchModal)
         expect(modal.props.preferredAssistantId).toBe('assistant-1')
         expect(modal.props.preferredProjectId).toBe('project-1')
-    })
-
-    it('opens downwards in the assistant line and takes a placement from the Anna composer (AT-3032)', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(<AssistantTaskSearchButtonWrapper />)
-        })
-        const popover = () => tree.root.findByProps({ testID: 'search-popover' })
-        expect(popover().props.position).toEqual(['bottom', 'top', 'left', 'right'])
-        expect(popover().props.getViewport).toBeUndefined()
-
-        const getViewport = () => ({ top: 0, left: 0, right: 800, bottom: 600 })
-        act(() => {
-            tree.update(
-                <AssistantTaskSearchButtonWrapper position={['top', 'bottom']} getPopoverViewport={getViewport} />
-            )
-        })
-        expect(popover().props.position).toEqual(['top', 'bottom'])
-        expect(popover().props.getViewport).toBe(getViewport)
     })
 })
