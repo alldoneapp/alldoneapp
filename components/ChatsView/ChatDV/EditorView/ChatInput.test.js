@@ -631,6 +631,66 @@ describe('ChatInput push-to-talk submit', () => {
     })
 })
 
+// AT-3025: an empty composer shows a blue mic where Send sits.
+describe('ChatInput empty composer mic', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockState.disableAutoFocusInChat = true
+        mockState.quotedText = null
+    })
+
+    afterEach(() => {
+        mockState.disableAutoFocusInChat = false
+    })
+
+    const renderComposer = async (props = {}) => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    {...props}
+                />
+            )
+        })
+        return tree
+    }
+    const input = tree => tree.root.findByProps({ testID: 'chat-input' }).props
+    const buttons = tree => tree.root.findByProps({ testID: 'chat-input-buttons' }).props
+
+    it('wires the Send slot between the input and the buttons and tracks emptiness', async () => {
+        const tree = await renderComposer()
+        expect(input(tree).sendSlotDictation).toEqual(expect.objectContaining({ target: null, empty: true }))
+
+        const node = {}
+        await act(async () => buttons(tree).setSendDictationSlot(node))
+        expect(input(tree).sendSlotDictation.target).toBe(node)
+
+        await act(async () => input(tree).onChangeText('Hi team'))
+        expect(input(tree).sendSlotDictation.empty).toBe(false)
+        tree.unmount()
+    })
+
+    it('tells the buttons when the mic has taken the Send slot', async () => {
+        const tree = await renderComposer()
+        expect(buttons(tree).micInSendSlot).toBe(false)
+        await act(async () => input(tree).onSendSlotDictationChange(true))
+        expect(buttons(tree).micInSendSlot).toBe(true)
+        tree.unmount()
+    })
+
+    it('keeps Ok/Save while editing an existing message', async () => {
+        const tree = await renderComposer({ editing: true, messageId: 'message-1', creatorId: 'user-1' })
+        expect(input(tree).sendSlotDictation).toBeNull()
+        await act(async () => input(tree).onSendSlotDictationChange(true))
+        expect(buttons(tree).micInSendSlot).toBe(false)
+        tree.unmount()
+    })
+})
+
 describe('ChatInput durable submission', () => {
     const context = { userId: 'user-1', projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' }
     const renderComposer = () =>
