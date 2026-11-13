@@ -229,6 +229,28 @@ toolbar's + / Templates / mic keep their own focus ring. The border width never 
 shift); the `!important` on the colour beats react-native-web's atomic class. Pinned by
 `assistantComposerOutline.test.js`.
 
+**Assistant mode is entered from the assistant line (AT-3034).** The panel button
+(`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sits at the top left of the
+assistant line's header (`AssistantOptions`, before the assistant-board edit pencil). The desktop
+top bar and the mobile header no longer carry it. The app sidebar's `DefaultAssistantButton` stays,
+so screens without an assistant line still have an entry. The line passes its project
+(`assistantModeProjectId`: the line's project, null for `AllProjectsAssistantLine`), and
+`AnnaShell.openChat({ projectId })` selects that project's daily chat in the sidebar, so whoever
+answers there takes over. null or the default project means "Automatic", and an explicit pick of
+the default project stays. It does not switch during a call, while offline, or to a project that
+`isAnnaProjectSelectable` refuses. This is per project and frontend-only (decided with the
+product owner): a second assistant picked in the line's switcher inside the same project is NOT
+carried over, because the server's daily chat answers with the project's assistant
+(`findProjectAssistantId`). `AnnaSidebarProjectContext` publishes the sidebar's project. The
+button closes the desktop sidebar only when the sidebar already shows its line's project;
+otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
+a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
+with the composer's project chip. It lists "Automatic", each project with an assistant of its own
+and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
+while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
+`AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
+`AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.

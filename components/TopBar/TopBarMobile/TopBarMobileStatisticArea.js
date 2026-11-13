@@ -8,7 +8,6 @@ import store from '../../../redux/store'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import GoldArea from '../GoldArea'
-import AssistantModeButton from '../AssistantModeButton'
 
 export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact, showMenu = true }) {
     const dispatch = useDispatch()
@@ -30,11 +29,6 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact,
                     <Icon name={'menu'} size={24} color={theme.menuIcon} />
                 </TouchableOpacity>
             )}
-            <AssistantModeButton
-                inline
-                style={localStyle.assistantButton}
-                onOpen={() => store.getState().expandedNavPicker && expandSecondaryBar?.()}
-            />
 
             {!isAnonymous && !compact && <GoldArea />}
         </View>
@@ -53,8 +47,5 @@ const localStyle = StyleSheet.create({
         height: 28,
         marginRight: 8,
         overflow: 'hidden',
-    },
-    assistantButton: {
-        marginRight: 18,
     },
 })

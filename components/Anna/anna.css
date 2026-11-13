@@ -1717,6 +1717,14 @@
     background: var(--anna-tint);
     color: var(--anna-accent);
 }
+/* AT-3034: the chevron beside the assistant's name that picks another assistant. */
+.anna-assistant-picker {
+    width: 24px;
+    margin-left: -4px;
+}
+.anna-assistant-picker:disabled {
+    opacity: 0.5;
+}
 .anna-header-picker {
     position: relative;
     flex: 0 1 98px;
@@ -1820,6 +1828,9 @@
     }
     .anna-pane-toggle {
         width: 40px;
+    }
+    .anna-pane-toggle.anna-assistant-picker {
+        width: 32px;
     }
     .anna-header-picker > span {
         top: 14px;

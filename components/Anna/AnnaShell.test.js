@@ -35,7 +35,7 @@ import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUserSidebarHeader'
 import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
-import AssistantModeButton from '../TopBar/AssistantModeButton'
+import AssistantModeButton from './AssistantModeButton'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -210,6 +210,7 @@ jest.mock('../../redux/actions', () => ({
     showGlobalSearchPopup: () => ({ type: 'SEARCH' }),
     hideWebSideBar: () => ({ type: 'HIDE_SIDEBAR' }),
     hideFloatPopup: () => ({ type: 'HIDE_FLOAT_POPUP' }),
+    showFloatPopup: () => ({ type: 'SHOW_FLOAT_POPUP' }),
     hideGlobalSearchPopup: () => ({ type: 'HIDE_SEARCH' }),
     setGlobalSearchResults: results => ({ type: 'SEARCH_RESULTS', results }),
     navigateToAllProjectsTasks: options => ({ type: 'ALL_PROJECTS_TASKS', options }),
@@ -1898,6 +1899,87 @@ describe('selected project (AT-2903)', () => {
         render(content(1))
         expect(switcher().props.disabled).toBe(false)
         expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
+    })
+
+    // AT-3034: assistant mode is entered from the assistant line, which hands over its project so
+    // the sidebar continues with the assistant the line showed.
+    const lineShell = projectId => (
+        <AnnaShell routeId={1}>
+            <AssistantModeButton
+                inline
+                testID="assistant-line-assistant-mode"
+                projectId={projectId}
+                assistantName="Line assistant"
+            />
+        </AnnaShell>
+    )
+    const lastProject = () => useAnnaConversation.mock.calls.at(-1)[1].projectId
+
+    it("opens assistant mode on the assistant line's project (AT-3034)", () => {
+        setAnnaMode(false)
+        render(lineShell('p2'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
+        expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+        expect(lastProject()).toBe('p2')
+        expect(switcher().props.activeProjectId).not.toBe(':automatic')
+        // The sidebar now shows this line, so the same button closes it.
+        fireEvent.click(screen.getByLabelText('Line assistant: Close assistant chat'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    })
+
+    it('moves an open sidebar back to "Automatic" from the All projects line (AT-3034)', () => {
+        setAnnaMode(true)
+        render(lineShell(null))
+        act(() => switcher().props.onSelect('p2'))
+        expect(lastProject()).toBe('p2')
+        fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
+        expect(lastProject()).toBe('p1')
+        expect(switcher().props.activeProjectId).toBe(':automatic')
+        expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+    })
+
+    it('keeps an explicitly chosen default project when the All projects line opens it (AT-3034)', () => {
+        setAnnaMode(true)
+        render(lineShell(null))
+        act(() => switcher().props.onSelect('p1'))
+        // The sidebar already continues the default chat, so this line's button closes it ...
+        fireEvent.click(screen.getByLabelText('Line assistant: Close assistant chat'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        // ... and reopening it keeps the explicit pick.
+        fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
+        expect(lastProject()).toBe('p1')
+        expect(switcher().props.activeProjectId).not.toBe(':automatic')
+    })
+
+    it('opens without switching when the line project cannot hold the chat (AT-3034)', () => {
+        setAnnaMode(false)
+        mockUser.archivedProjectIds = ['p2']
+        try {
+            render(lineShell('p2'))
+            fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
+            expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+            expect(lastProject()).toBe('p1')
+        } finally {
+            delete mockUser.archivedProjectIds
+        }
+    })
+
+    it('lets the sidebar pick another assistant at its top left (AT-3034)', () => {
+        setAnnaMode(true)
+        render(content(1))
+        const picker = document.querySelector('.anna-header-left .anna-assistant-picker')
+        expect(picker.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
+        fireEvent.click(picker)
+        const rows = [...document.querySelectorAll('.anna-project-option')]
+        expect(rows.map(row => row.querySelector('.anna-project-option-text').textContent)).toEqual([
+            'Anna AlldoneAutomatic project description',
+            'Alldone CTOAlldone Product · Visible to project members',
+        ])
+        fireEvent.click(rows[1])
+        expect(lastProject()).toBe('p2')
+        // The composer's project chip follows the same choice.
+        expect(switcher().props.activeProjectId).not.toBe(':automatic')
     })
 })
 
