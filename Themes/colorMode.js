@@ -64,6 +64,39 @@ export const mixHex = (color, base, weight) => {
     return toHex(a.map((v, i) => v * weight + b[i] * (1 - weight)))
 }
 
+const relativeLuminance = hex => {
+    const [r, g, b] = parseHex(hex).map(v => {
+        const c = v / 255
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** WCAG contrast ratio (1..21) between two hex colors. */
+export const contrastRatio = (a, b) => {
+    const la = relativeLuminance(a)
+    const lb = relativeLuminance(b)
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/**
+ * `accent` mixed into the dark `background` just far enough to reach `contrast` against it.
+ * Use it for lines and fills that carry structure on a dark surface: a fixed mixing weight makes
+ * a yellow accent glare while a violet one stays invisible, a fixed contrast reads the same for
+ * every hue. The accent must be lighter than the background; if it cannot reach the contrast it
+ * is returned as it is.
+ */
+export const tintForContrast = (accent, background, contrast) => {
+    let low = 0
+    let high = 1
+    for (let i = 0; i < 12; i++) {
+        const weight = (low + high) / 2
+        if (contrastRatio(mixHex(accent, background, weight), background) < contrast) low = weight
+        else high = weight
+    }
+    return mixHex(accent, background, high)
+}
+
 // Tinted backgrounds (the *100 … *150 steps) are light pastels in light mode. In dark mode
 // they become the accent mixed into the dark surface, so a "light green" chip stays a green
 // chip without glaring.
@@ -389,6 +422,8 @@ export const resolveColor = (value, forMode = mode) => {
     if (alphaMatch) return withAlpha(palette[alphaMatch[1]], Number(alphaMatch[2]) / 1000)
     const adaptiveMatch = value.match(ADAPTIVE_VAR_RE)
     if (adaptiveMatch) return getHighlightDisplayColor(`#${adaptiveMatch[1]}`, forMode)
+    const modePair = modeVarValues.get(value)
+    if (modePair) return forMode === COLOR_MODE_DARK ? modePair.dark : modePair.light
     return value
 }
 
@@ -430,11 +465,14 @@ const registeredAdaptiveVars = new Set()
 // mode (and inside popups) and the dark value in dark mode. For colours computed at runtime, such as
 // a project's own colour, where no palette token fits.
 const registeredModeVars = new Map()
+// `var(--ad-mc-N)` -> its pair, so resolveColor() can hand Animated a concrete value.
+const modeVarValues = new Map()
 export const modeColor = (lightValue, darkValue) => {
     const key = `${lightValue}|${darkValue}`
     if (!registeredModeVars.has(key)) {
         const varName = `${VAR_PREFIX}mc-${registeredModeVars.size}`
         registeredModeVars.set(key, varName)
+        modeVarValues.set(`var(${varName})`, { light: lightValue, dark: darkValue })
         appendDynamicVar(varName, lightValue, darkValue)
     }
     return `var(${registeredModeVars.get(key)})`

@@ -41,7 +41,9 @@ export default function ProjectSection({
     // Mirrors Grey200 -> Grey300 in All Projects: keep the assistant surface light and give its
     // last-comment card the adjacent darker project tint.
     const lastCommentTint = palette.PROJECT_ITEM_ACTIVE
-    const borderColor = palette.PROJECT_ITEM_SECTION_ACTIVE
+    // The frame around each goal and its tasks. Its own palette entry, because in dark mode the
+    // plain tint is too close to the card to draw a visible line.
+    const borderColor = palette.PROJECT_ITEM_SECTION_BORDER
 
     // Assistant timelines already live inside the project's outer section.
     if (embedded) return <>{children}</>

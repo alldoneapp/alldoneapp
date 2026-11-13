@@ -1,5 +1,13 @@
 import Colors from '../Colors'
-import { adaptiveColor, themed } from '../colorMode'
+import {
+    adaptiveColor,
+    alphaColor,
+    COLOR_MODE_DARK,
+    getHighlightDisplayColor,
+    modeColor,
+    themed,
+    tintForContrast,
+} from '../colorMode'
 
 export const PROJECT_COLOR_DEFAULT = Colors.Marker_PrimaryBlue_01
 export const PROJECT_COLOR_BLUE = Colors.Marker_Blue_01
@@ -160,12 +168,40 @@ const ADAPTIVE_KEYS = [
     'PROJECT_ITEM_SECTION_ITEM_ACTIVE',
 ]
 
+// Lines and fills that carry structure on the project card (the frame around a goal and its tasks,
+// the goal progress bar). The adaptive dark tints above are meant to be quiet backgrounds: on the
+// dark card the frame of a violet project came out at 1.05:1 and was invisible, a blue one at 1.5:1.
+// In dark mode these are therefore mixed from the project's own colour to one fixed contrast against
+// the card, so every project colour reads the same. Light mode keeps the pastels.
+export const PROJECT_DARK_BORDER_CONTRAST = 2
+export const PROJECT_DARK_GOAL_BAR_CONTRAST = 1.3
+
+// The percentage box itself: white in light mode; in dark mode it sits on its row instead of being
+// a darker hole in it.
+export const GOAL_BOX_BACKGROUND = modeColor('#FFFFFF', 'transparent')
+
 export const PROJECT_COLOR_SYSTEM = Object.fromEntries(
     Object.entries(PROJECT_COLOR_SYSTEM_HEX).map(([key, system]) => {
         const adapted = { ...system, PROJECT_ITEM: themed.GraySidebar }
         ADAPTIVE_KEYS.forEach(name => {
             adapted[name] = adaptiveColor(system[name])
         })
+        const darkCard = getHighlightDisplayColor(system.PROJECT_ITEM_SECTION, COLOR_MODE_DARK)
+        adapted.PROJECT_ITEM_SECTION_BORDER = modeColor(
+            system.PROJECT_ITEM_SECTION_ACTIVE,
+            tintForContrast(system.MARKER, darkCard, PROJECT_DARK_BORDER_CONTRAST)
+        )
+        adapted.PROJECT_GOAL_BAR = modeColor(
+            system.PROJECT_ITEM_ACTIVE,
+            tintForContrast(system.MARKER, darkCard, PROJECT_DARK_GOAL_BAR_CONTRAST)
+        )
+        // The empty percentage box on a goal row (GoalProgress at 0%, the "General tasks" stand-in).
+        // Its pastel border would be a dark tint the size of the row behind it, so the box read as
+        // an empty hole: draw it from the project colour instead.
+        adapted.PROJECT_GOAL_BOX_BORDER = modeColor(
+            system.PROJECT_ITEM_SECTION_ITEM_ACTIVE,
+            alphaColor(system.MARKER, 0.6)
+        )
         return [key, adapted]
     })
 )

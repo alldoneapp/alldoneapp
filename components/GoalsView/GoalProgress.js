@@ -1,12 +1,10 @@
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
+import { GOAL_BOX_BACKGROUND, PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 
 import styles from '../styles/global'
 import { DYNAMIC_PERCENT, progressMap } from './GoalsHelper'
-
-import { alphaColor, modeColor, resolveColor } from '../../Themes/colorMode'
 
 export default function GoalProgress({ projectId, openModal, progress, disabled, dynamicProgress }) {
     let { progressBorderColor, progressTextColor } = progressMap[progress]
@@ -14,13 +12,8 @@ export default function GoalProgress({ projectId, openModal, progress, disabled,
         : progressMap[DYNAMIC_PERCENT]
     if (progress === 0) {
         const projectColor = ProjectHelper.getProjectColorById(projectId)
-        const { PROJECT_ITEM_SECTION_ITEM_ACTIVE, MARKER } = PROJECT_COLOR_SYSTEM[projectColor]
-        // In dark mode the light pastel border becomes a dark tint the size of the row behind it,
-        // so the box read as an empty hole. Draw the border from the project colour instead.
-        progressBorderColor = modeColor(
-            resolveColor(PROJECT_ITEM_SECTION_ITEM_ACTIVE, 'light'),
-            alphaColor(resolveColor(MARKER, 'light'), 0.6)
-        )
+        const { PROJECT_GOAL_BOX_BORDER, MARKER } = PROJECT_COLOR_SYSTEM[projectColor]
+        progressBorderColor = PROJECT_GOAL_BOX_BORDER
         progressTextColor = MARKER
     }
 
@@ -46,7 +39,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 8,
-        // White in light mode; in dark mode the box sits on its row instead of a darker hole.
-        backgroundColor: modeColor('#FFFFFF', 'transparent'),
+        backgroundColor: GOAL_BOX_BACKGROUND,
     },
 })

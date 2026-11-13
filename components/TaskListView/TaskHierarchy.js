@@ -2,7 +2,11 @@ import React, { createContext, useContext } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { colors } from '../styles/global'
 
-import { adaptiveColor, alphaColor, themed } from '../../Themes/colorMode'
+import { adaptiveColor, alphaColor, DARK_PALETTE, modeColor, themed } from '../../Themes/colorMode'
+
+// The frame around a goal and its tasks where no project section supplies its own colour. The
+// light grey would be a glaring line on the dark surface.
+const GROUP_OUTLINE_COLOR = modeColor('#DDE4EB', DARK_PALETTE.Grey400)
 
 // Shared board presentation. Project sections supply their surface color; standalone
 // rows retain a white surface without changing their interactions.
@@ -125,7 +129,7 @@ export const taskHierarchyStyles = StyleSheet.create({
     goalGroup: {
         backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: '#DDE4EB',
+        borderColor: GROUP_OUTLINE_COLOR,
         paddingTop: 0,
         paddingBottom: 0,
     },
@@ -136,7 +140,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         left: -1,
         right: -1,
         borderWidth: 1,
-        borderColor: '#DDE4EB',
+        borderColor: GROUP_OUTLINE_COLOR,
         borderRadius: 8,
         zIndex: 1,
     },
@@ -147,7 +151,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         left: -1,
         right: -1,
         borderWidth: 1,
-        borderColor: '#DDE4EB',
+        borderColor: GROUP_OUTLINE_COLOR,
         borderRadius: 8,
         zIndex: 1,
     },

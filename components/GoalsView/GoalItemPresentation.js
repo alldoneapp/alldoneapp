@@ -6,7 +6,7 @@ import v4 from 'uuid/v4'
 import moment from 'moment'
 
 import styles, { colors } from '../styles/global'
-import { resolveColors, resolveSurfaceColor } from '../../Themes/colorMode'
+import { resolveColors, resolveSurfaceColor, subscribeColorMode } from '../../Themes/colorMode'
 import GoalProgressWrapper from './GoalProgressWrapper'
 import SocialText from '../UIControls/SocialText/SocialText'
 import GoalProgressBar from './GoalProgressBar'
@@ -91,6 +91,12 @@ export default class GoalItemPresentation extends PureComponent {
 
     componentDidMount() {
         this.unsubscribe = store.subscribe(this.updateState)
+        // The row's Animated colours are resolved to concrete values in render(), so a live switch
+        // of the colour mode (the device going dark at sunset) has to render the row again.
+        // Without this a goal row kept its dark surface on the light page.
+        this.unsubscribeColorMode = subscribeColorMode(() => {
+            if (!this._isUnmounted) this.forceUpdate()
+        })
         const { projectId, goal, milestoneId, inParentGoal, isEmptyGoal } = this.props
 
         watchGoalLinkedOpenTasksAmount(projectId, goal.id, this.setTasksAmount, this.childrenTasksWatcherKey)
@@ -170,6 +176,7 @@ export default class GoalItemPresentation extends PureComponent {
         Backend.unwatch(this.childrenTasksWatcherKey)
         Backend.unwatchBacklinksCount(goal.id, this.backlinksWatcherKey)
         this.unsubscribe()
+        if (this.unsubscribeColorMode) this.unsubscribeColorMode()
 
         // Clear all timeouts to prevent state updates after unmount
         this.timeouts.forEach(timeoutId => clearTimeout(timeoutId))
@@ -457,7 +464,11 @@ export default class GoalItemPresentation extends PureComponent {
 
         const isHighlight = goal.hasStar !== '#FFFFFF'
         const projectColor = ProjectHelper.getProjectColorById(projectId)
-        const highLightColor = isHighlight ? goal.hasStar : PROJECT_COLOR_SYSTEM[projectColor].PROJECT_ITEM_ACTIVE
+        const projectPalette = PROJECT_COLOR_SYSTEM[projectColor]
+        const highLightColor = isHighlight ? goal.hasStar : projectPalette.PROJECT_ITEM_ACTIVE
+        // The progress fill is what tells a goal row from the card around it. PROJECT_GOAL_BAR is
+        // the same pastel in light mode and a tint that stays visible on the dark card.
+        const progressBarColor = isHighlight ? highLightColor : projectPalette.PROJECT_GOAL_BAR
 
         // Match the project surface while keeping the swipe actions underneath hidden at rest.
         const restingBackgroundColor = inCommentPopup
@@ -555,7 +566,7 @@ export default class GoalItemPresentation extends PureComponent {
                         ) : (
                             <GoalProgressBar
                                 progress={progress}
-                                barColor={highLightColor}
+                                barColor={progressBarColor}
                                 dynamicProgress={dynamicProgress}
                                 style={inHierarchyCard && localStyles.cardHeaderCorners}
                             />

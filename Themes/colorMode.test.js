@@ -193,3 +193,23 @@ describe('modeColor', () => {
         expect(DARK_PALETTE.AccentText).not.toBe(LIGHT_PALETTE.AccentText)
     })
 })
+
+describe('structure colors on a dark surface', () => {
+    it('modeColor pairs resolve to concrete values, so Animated can take them', () => {
+        const { modeColor, resolveColor } = require('./colorMode')
+        const value = modeColor('#ADD6FF', '#315B86')
+        expect(resolveColor(value, 'light')).toBe('#ADD6FF')
+        expect(resolveColor(value, 'dark')).toBe('#315B86')
+    })
+
+    it('tintForContrast mixes an accent to the same contrast whatever its hue', () => {
+        const { tintForContrast, contrastRatio } = require('./colorMode')
+        const card = '#232835'
+        ;['#7C70FF', '#F0E219', '#FF5274', '#0AFFBE'].forEach(accent => {
+            const line = tintForContrast(accent, card, 2)
+            expect(contrastRatio(line, card)).toBeGreaterThanOrEqual(2)
+            expect(contrastRatio(line, card)).toBeLessThan(2.1)
+        })
+        expect(contrastRatio('#FFFFFF', '#000000')).toBeCloseTo(21, 5)
+    })
+})

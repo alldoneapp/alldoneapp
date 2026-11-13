@@ -8,11 +8,9 @@ import {
 import { StyleSheet, Text, View } from 'react-native'
 
 import { translate } from '../../../i18n/TranslationService'
-import { PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
+import { GOAL_BOX_BACKGROUND, PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import styles, { colors } from '../../styles/global'
-
-import { themed } from '../../../Themes/colorMode'
 
 // The row is a stand-in for a real goal row, so its geometry deliberately mirrors
 // components/GoalsView:
@@ -33,8 +31,10 @@ export default function GeneralTasksHeader({ projectId, noVerticalMargin = false
     const projectBorderColor = useProjectSectionBorder()
     const project = ProjectHelper.getProjectById(projectId)
     if (!project) return null
-    const conatinerColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_ACTIVE
-    const blockColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_SECTION_ITEM_ACTIVE
+    // The same palette entries as a real goal row (GoalItemPresentation / GoalProgress at 0%), so
+    // the stand-in stays as visible as a goal in dark mode.
+    const conatinerColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_GOAL_BAR
+    const blockColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_GOAL_BOX_BORDER
 
     return (
         <View
@@ -117,7 +117,7 @@ const localStyles = StyleSheet.create({
         height: 32,
         borderRadius: 4,
         borderWidth: 2,
-        backgroundColor: themed.Surface,
+        backgroundColor: GOAL_BOX_BACKGROUND,
     },
     text: {
         ...styles.body1,

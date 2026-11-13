@@ -4,6 +4,7 @@ import renderer, { act } from 'react-test-renderer'
 import ProjectSection, { getProjectPalette } from './ProjectSection'
 import {
     useProjectSectionAccent,
+    useProjectSectionBorder,
     useProjectSectionLastCommentTint,
     useTaskHierarchy,
     useTaskHierarchyBackground,
@@ -71,6 +72,25 @@ it('supplies the adjacent darker palette tint for last comments', () => {
         accent: getProjectPalette(PROJECT_COLOR_RED).PROJECT_ITEM_SECTION_HEADER,
         lastComment: getProjectPalette(PROJECT_COLOR_RED).PROJECT_ITEM_ACTIVE,
     })
+    act(() => tree.unmount())
+})
+
+it('frames goals with the border entry of the palette, not the plain tint', () => {
+    function BorderProbe() {
+        return <Border color={useProjectSectionBorder()} />
+    }
+    function Border() {
+        return null
+    }
+    const tree = renderer.create(
+        <ProjectSection projectColor={PROJECT_COLOR_RED}>
+            <BorderProbe />
+        </ProjectSection>
+    )
+    const palette = getProjectPalette(PROJECT_COLOR_RED)
+    expect(tree.root.findByType(Border).props.color).toBe(palette.PROJECT_ITEM_SECTION_BORDER)
+    // The plain tint is too close to the dark card to draw a visible line.
+    expect(palette.PROJECT_ITEM_SECTION_BORDER).not.toBe(palette.PROJECT_ITEM_SECTION_ACTIVE)
     act(() => tree.unmount())
 })
 

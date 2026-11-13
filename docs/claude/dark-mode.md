@@ -60,6 +60,17 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
 - Blue text on a blue tint (milestone date chips) uses `themed.AccentText`, not `Primary300`,
   which is too dark on the dark tint. For a runtime pair with no token (a project's own colour),
   `modeColor(lightValue, darkValue)` returns one `var()` that flips with the mode.
+- Lines and fills that carry structure on a project card do not use the adaptive project tints:
+  those are quiet backgrounds, and a violet project's goal frame came out at 1.05:1 on the dark
+  card (blue at 1.5:1), so the task board lost its structure. `PROJECT_COLOR_SYSTEM` has its own
+  entries, the light pastel in light mode and the project colour mixed to a fixed contrast against
+  the dark card (`tintForContrast`): `PROJECT_ITEM_SECTION_BORDER` (the frame around a goal and its
+  tasks, 2:1; `ProjectSection` supplies it through `useProjectSectionBorder`), `PROJECT_GOAL_BAR`
+  (goal progress fill, 1.3:1) and `PROJECT_GOAL_BOX_BORDER` (the empty percentage box). A new
+  divider or outline on a project card takes one of these. Pinned by
+  `Themes/Modern/ProjectColors.test.js`.
+- A class component that resolves Animated colors in `render()` has no `useColorMode()`; it
+  subscribes with `subscribeColorMode` and re-renders (see `GoalItemPresentation`).
 - Never derive a background from a text token (`hexColorToRGBa(colors.Text01, …)`): `Text01`
   is near-white in dark mode. Floating bars with white text (the Undo bar) use `themed.Snackbar`
   and `themed.SnackbarShadow`.
