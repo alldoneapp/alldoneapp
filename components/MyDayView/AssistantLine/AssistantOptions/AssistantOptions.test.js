@@ -324,49 +324,6 @@ describe('AssistantOptions layout', () => {
     })
 })
 
-describe('AssistantOptions empty composer mic (AT-3025)', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-    })
-
-    const findSend = tree =>
-        tree.root.findAllByType(TouchableOpacity).find(node => node.props.accessibilityLabel === 'Send')
-
-    it('hands the field the send slot and says whether the composer is empty', async () => {
-        const tree = await renderOptions()
-        const input = () => tree.root.findByType(TextInput)
-
-        expect(input().props.sendSlotDictation).toEqual(
-            expect.objectContaining({ empty: true, style: expect.anything() })
-        )
-        await act(async () => {
-            input().props.onChangeText('Hello')
-        })
-        expect(input().props.sendSlotDictation.empty).toBe(false)
-        await act(async () => {
-            input().props.onChangeText('   ')
-        })
-        expect(input().props.sendSlotDictation.empty).toBe(true)
-    })
-
-    it('replaces the send button while the mic sits in its slot, and brings it back after', async () => {
-        const tree = await renderOptions()
-        const input = () => tree.root.findByType(TextInput)
-        expect(findSend(tree)).toBeTruthy()
-
-        await act(async () => {
-            input().props.onSendSlotDictationChange(true)
-        })
-        expect(findSend(tree)).toBeUndefined()
-
-        await act(async () => {
-            input().props.onChangeText('Hello')
-            input().props.onSendSlotDictationChange(false)
-        })
-        expect(findSend(tree)).toBeTruthy()
-    })
-})
-
 describe('AssistantOptions mentions (AT-2592)', () => {
     beforeEach(() => {
         jest.clearAllMocks()

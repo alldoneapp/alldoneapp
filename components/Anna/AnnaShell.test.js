@@ -1833,10 +1833,8 @@ describe('selected project (AT-2903)', () => {
     it('offers the projects in the composer and continues the chat in the chosen one', () => {
         const view = render(content(1))
         expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
-        // AT-3024: the chip starts on "Automatic", which continues the default project's chat.
-        expect(switcher().props).toMatchObject({ activeProjectId: ':automatic', busy: undefined })
+        expect(switcher().props).toMatchObject({ activeProjectId: undefined, busy: undefined })
         expect(switcher().props.choices.map(choice => [choice.id, choice.assistant?.uid])).toEqual([
-            [':automatic', 'anna'],
             ['p1', 'anna'],
             ['p2', 'cto'],
         ])
@@ -1868,19 +1866,6 @@ describe('selected project (AT-2903)', () => {
         act(() => switcher().props.onSelect(null))
         expect(mockConversationProps.projectSwitch).toMatchObject({ id: 2, projectId: 'p1', name: 'Home' })
         now.mockRestore()
-    })
-
-    it('keeps the default chat when switching between Automatic and the default project (AT-3024)', () => {
-        useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p1' })
-        render(content(1))
-        expect(switcher().props.activeProjectId).toBe(':automatic')
-        act(() => switcher().props.onSelect('p1'))
-        expect(switcher().props.activeProjectId).toBe('p1')
-        expect(mockConversationProps.projectSwitch).toBeNull()
-        act(() => switcher().props.onSelect(':automatic'))
-        expect(switcher().props.activeProjectId).toBe(':automatic')
-        expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
-        expect(mockConversationProps.projectSwitch).toBeNull()
     })
 
     it('returns to the default project with a notice when the chosen project is refused', () => {

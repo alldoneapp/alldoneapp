@@ -292,6 +292,12 @@ so an empty or failed take can never send the bare draft. No focus after a voice
 keyboard stays closed. Pinned by the AT-2929 block of `AnnaConversation.test.js` and the
 hold-to-send step of `browser-tests/anna-workspace` (`DICTATION_ONLY=1`).
 
+**Anna composer toolbar order (AT-3029).** Like the assistant line's composer: `.anna-composer-tools`
+(left) holds + then the project chip; `.anna-composer-actions` (right, `flex: none`) holds mic,
+call, send. On narrow panes the chip is the only item that shrinks, so the right group never
+wraps. Offline hides the mic only. Pinned by the AT-3029 case in `AnnaConversation.test.js` and
+the order/alignment geometry in `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
+
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after

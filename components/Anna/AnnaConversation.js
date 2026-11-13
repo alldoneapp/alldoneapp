@@ -30,8 +30,6 @@ import Icon from '../Icon'
 import AnnaCallAudioControls from './AnnaCallAudioControls'
 import VoiceCallConnecting from '../UIComponents/VoiceCallConnecting'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
-import { resolveComposerMicSlot } from '../UIControls/composerMicSlot'
-import { colors } from '../styles/global'
 import AddFeedAttachButton from '../Feeds/AddFeed/AddFeedAttachButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
@@ -131,9 +129,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    // AT-3025: the second mic, drawn in the send button's place while the draft is empty.
-    const [sendSlotDictationPhase, setSendSlotDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE || sendSlotDictationPhase !== RAMBLE_PHASE_IDLE
+    const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const resumed = useRef(null)
     const mounted = useRef(true)
     // Set only when the latest transcript really reached the composer; consumed by the
@@ -365,26 +361,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     // AT-2928: a file dropped anywhere on the chat pane joins the draft, under the same
     // conditions as the attach button.
     const attachmentsBlocked = voiceActive || dictationBusy || offline || !conversation.projectId
-    // Both mics (toolbar and send slot) share one wiring; only where they sit and when they show
-    // differ (AT-3025, composerMicSlot.js).
-    const dictationAvailable = !offline && !!conversation.projectId && isDictationSupported()
-    const { micInSendSlot, inlineMicVisible } = resolveComposerMicSlot({
-        enabled: dictationAvailable,
-        isEmpty: !hasText,
-        inlinePhase: dictationPhase,
-        sendSlotPhase: sendSlotDictationPhase,
-    })
-    const dictationProps = {
-        projectId: conversation.projectId,
-        targetKind: 'generic',
-        getCurrentText: () => draftRef.current,
-        onTextReady: insertDictatedText,
-        onSubmit: sendDictation,
-        getOverlayViewport: () => {
-            const pane = composer.current?.getPane()
-            return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
-        },
-    }
     const draggingFiles = useAnnaFileDrop({
         getPane: () => scroll.current?.closest('.anna-conversation') || scroll.current?.parentElement,
         canAccept: () => !attachmentsBlocked && !isBrowserOffline(),
@@ -514,16 +490,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 />
                             </div>
                             <div className="anna-composer-toolbar">
+                                {/* AT-3029: + and the project on the left; mic, call and send on the right. */}
                                 <div className="anna-composer-tools">
-                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
-                                    {dictationAvailable && (
-                                        <RambleButton
-                                            {...dictationProps}
-                                            visible={inlineMicVisible}
-                                            onPhaseChange={setDictationPhase}
-                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                        />
-                                    )}
                                     <div className="anna-composer-attachment">
                                         <AddFeedAttachButton
                                             compact
@@ -549,8 +517,26 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             }}
                                         />
                                     </div>
+                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
                                 </div>
                                 <div className="anna-composer-actions">
+                                    {!offline && conversation.projectId && isDictationSupported() && (
+                                        <RambleButton
+                                            projectId={conversation.projectId}
+                                            targetKind="generic"
+                                            getCurrentText={() => draftRef.current}
+                                            onTextReady={insertDictatedText}
+                                            onSubmit={sendDictation}
+                                            onPhaseChange={setDictationPhase}
+                                            getOverlayViewport={() => {
+                                                const pane = composer.current?.getPane()
+                                                return (
+                                                    pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                                )
+                                            }}
+                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
+                                        />
+                                    )}
                                     <button
                                         type="button"
                                         className="anna-voice-button"
@@ -561,29 +547,14 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     >
                                         <Icon name="phone-call" size={20} color="currentColor" />
                                     </button>
-                                    {/* AT-3025: an empty draft offers the mic where Send sits. Both mics
-                                        stay mounted so a take survives the draft filling up. */}
-                                    {dictationAvailable && (
-                                        <RambleButton
-                                            {...dictationProps}
-                                            visible={micInSendSlot}
-                                            variant="send"
-                                            testID="anna-send-slot-dictation"
-                                            onPhaseChange={setSendSlotDictationPhase}
-                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                            sendIdleStyle={{ backgroundColor: colors.Primary200 }}
-                                        />
-                                    )}
-                                    {!micInSendSlot && (
-                                        <button
-                                            type="submit"
-                                            className="anna-send"
-                                            disabled={offline || voiceActive || dictationBusy || switching || !hasText}
-                                            aria-label={translate('Send message')}
-                                        >
-                                            <Icon name="arrow-up" size={20} color="currentColor" />
-                                        </button>
-                                    )}
+                                    <button
+                                        type="submit"
+                                        className="anna-send"
+                                        disabled={offline || voiceActive || dictationBusy || switching || !hasText}
+                                        aria-label={translate('Send message')}
+                                    >
+                                        <Icon name="arrow-up" size={20} color="currentColor" />
+                                    </button>
                                 </div>
                             </div>
                         </div>

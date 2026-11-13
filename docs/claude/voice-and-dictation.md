@@ -216,25 +216,6 @@ A failed write after a "+" hold is restored the same way. Pinned by
 `RichCreateTaskModalBackgroundDictation.test.js` and `useRambleRecorder.test.js`,
 `TaskEditFormBackgroundDictation.test.js` and `CommentsTextInput/backgroundDictation.test.js`.
 
-## An empty composer shows the mic where Send sits (AT-3025)
-
-In the four send composers (assistant line `AssistantOptions`, Anna pane `AnnaConversation`, chat
-`ChatInput`, comment popup `RichCommentModal/EditForm`), an empty draft no longer shows a greyed-out
-send button. The send button's place holds a blue mic (`RambleButton variant="send"`) and the usual
-small mic hides, so there is only one mic on screen. With text, Send comes back and the small mic
-reappears. One rule decides it: `components/UIControls/composerMicSlot.js`
-(`resolveComposerMicSlot`). **The two mics are separate `RambleButton`s that both stay mounted**, and
-only `visible` changes. A recorder lives inside its button, so moving one button between the places,
-or unmounting the hidden one, would cancel a take whose transcript has just filled the field while
-the button was still `processing`. For the same reason a busy mic always keeps its place until it is
-idle. The CustomTextInput3 hosts pass `sendSlotDictation={{ target, empty, style }}`: the host owns the
-slot node next to its send button, the input portals the blue mic into it and reports
-`onSendSlotDictationChange(bool)` from a layout effect, so the host hides Send before paint. Anna
-renders both buttons itself. Where dictation is unavailable (offline, unsupported browser,
-read-only, editing a chat message, a popup with `hideDoneButton`) the old greyed-out Send stays.
-Pinned by `composerMicSlot.test.js`, `RambleSendVariant.test.js`, the AT-3025 blocks in the four
-hosts' tests, both `SubmitButton.test.js` files and the wiring guard in `dictationVisibility.test.js`.
-
 ## Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
 
 Transcription biases towards a curated product glossary in **two** places, and both are required.

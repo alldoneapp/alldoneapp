@@ -9,14 +9,6 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.t
 const keyFor = userId => `${PREFIX}${encodeURIComponent(userId)}`
 const list = value => (Array.isArray(value) ? value : [])
 
-/**
- * AT-3024 — the "Automatic" entry of the switcher, and its default. It is not a
- * project: it continues the default project's daily chat, where the assistant picks
- * the project for each task itself (`projectRoutingReason`). The ':' keeps it from
- * ever passing `validId`, so it is never stored or sent as a project id.
- */
-export const ANNA_AUTOMATIC_PROJECT = ':automatic'
-
 /** Active member projects only: no archived, template or guide projects. */
 export const isAnnaProjectSelectable = (user = {}, projectId) =>
     validId(projectId) &&
@@ -56,9 +48,8 @@ export const resolveAnnaProjectAssistant = ({
 }
 
 /**
- * The projects offered by the switcher: "Automatic" (AT-3024), the default project,
- * then the sidebar order (`ProjectHelper.sortProjects`: sort index desc, then name).
- * "Automatic" is only offered when there is a project to choose between.
+ * The projects offered by the switcher: the default project first, then the
+ * sidebar order (`ProjectHelper.sortProjects`: sort index desc, then name).
  */
 export const getAnnaProjectChoices = ({
     user = {},
@@ -77,7 +68,7 @@ export const getAnnaProjectChoices = ({
         if (b.id === user.defaultProjectId) return 1
         return sortIndex(b) - sortIndex(a) || (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
     })
-    const choices = projects.map(project => {
+    return projects.map(project => {
         const { assistant, isProjectAssistant } = resolveAnnaProjectAssistant({
             project,
             defaultProjectId: user.defaultProjectId,
@@ -96,20 +87,6 @@ export const getAnnaProjectChoices = ({
             isProjectAssistant,
         }
     })
-    const home = choices[0]
-    if (choices.length < 2 || !home?.isDefault) return choices
-    return [
-        {
-            ...home,
-            id: ANNA_AUTOMATIC_PROJECT,
-            name: '',
-            color: '',
-            isDefault: false,
-            isAutomatic: true,
-            projectId: home.id,
-        },
-        ...choices,
-    ]
 }
 
 /** A selection is valid for the local day it was made on (until midnight). */

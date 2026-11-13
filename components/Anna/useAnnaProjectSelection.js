@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getAnnaHistoryWindow } from '../../functions/Assistant/annaHistoryWindow'
 import { subscribePageVisible } from '../../utils/appResume'
-import {
-    ANNA_AUTOMATIC_PROJECT,
-    isAnnaProjectSelectable,
-    readAnnaProjectSelection,
-    saveAnnaProjectSelection,
-} from './annaProjectSelection'
+import { isAnnaProjectSelectable, readAnnaProjectSelection, saveAnnaProjectSelection } from './annaProjectSelection'
 
 // AT-2903 — the chat starts in the default project. Another project stays
 // selected on this device until local midnight, when the next daily chat begins.
-// AT-3024 — the start is shown as "Automatic" (`choiceId`), which continues the
-// default project's chat. Picking the default project itself is an explicit choice
-// and is remembered until midnight like any other project.
 export default function useAnnaProjectSelection(user = {}) {
     const userId = user.uid
     const today = useCallback(
@@ -36,23 +28,22 @@ export default function useAnnaProjectSelection(user = {}) {
     }, [userId, today])
 
     const current = selection.userId === userId ? selection : {}
-    const selected = current.projectId && isAnnaProjectSelectable(user, current.projectId) ? current.projectId : null
+    const selected =
+        current.projectId &&
+        current.projectId !== user.defaultProjectId &&
+        isAnnaProjectSelectable(user, current.projectId)
+            ? current.projectId
+            : null
 
     const select = useCallback(
         projectId => {
             const dateKey = today()
-            const chosen = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : null
-            saveAnnaProjectSelection(userId, chosen, dateKey)
-            setSelection(chosen ? { userId, projectId: chosen, dateKey } : { userId })
+            const other = projectId && projectId !== user.defaultProjectId ? projectId : null
+            saveAnnaProjectSelection(userId, other, dateKey)
+            setSelection(other ? { userId, projectId: other, dateKey } : { userId })
         },
-        [userId, today]
+        [userId, user.defaultProjectId, today]
     )
 
-    return {
-        projectId: selected || user.defaultProjectId || null,
-        choiceId: selected || ANNA_AUTOMATIC_PROJECT,
-        isAutomatic: !selected,
-        isDefault: !selected || selected === user.defaultProjectId,
-        select,
-    }
+    return { projectId: selected || user.defaultProjectId || null, isDefault: !selected, select }
 }

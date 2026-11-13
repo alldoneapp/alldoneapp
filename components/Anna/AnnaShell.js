@@ -5,7 +5,7 @@ import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
-import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices } from './annaProjectSelection'
+import { getAnnaProjectChoices } from './annaProjectSelection'
 import AnnaProjectSwitcher from './AnnaProjectSwitcher'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -186,8 +186,7 @@ export default function AnnaShell({ children, routeId }) {
     const selectProject = useCallback(
         projectId => {
             setProjectNotice('')
-            // "Automatic" (AT-3024) continues the default project's chat.
-            const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
+            const targetId = projectId || user.defaultProjectId
             const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
             if (targetId && targetId !== currentId) {
                 projectSwitchSequence.current += 1
@@ -1121,11 +1120,7 @@ export default function AnnaShell({ children, routeId }) {
                                         renderProjectSwitcher={({ disabled }) => (
                                             <AnnaProjectSwitcher
                                                 choices={projectChoices}
-                                                activeProjectId={
-                                                    projectSelection.isAutomatic
-                                                        ? ANNA_AUTOMATIC_PROJECT
-                                                        : activeProjectId
-                                                }
+                                                activeProjectId={activeProjectId}
                                                 onSelect={selectProject}
                                                 disabled={disabled || call.status !== 'idle'}
                                                 busy={switching}

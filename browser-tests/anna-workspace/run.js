@@ -1276,18 +1276,42 @@ async function checkProjectSwitcher(page, width) {
             const items = [...toolbar.querySelectorAll('button, .anna-project-chip')].map(node =>
                 node.getBoundingClientRect()
             )
+            // AT-3029: + and the project on the left; mic, call and send on the right.
+            const order = [
+                '[aria-label="Select kind of file to add"]',
+                '.anna-project-chip',
+                '[aria-label="Dictate"]',
+                '.anna-voice-button',
+                '.anna-send',
+            ].map(selector => toolbar.querySelector(selector)?.getBoundingClientRect())
+            const tools = toolbar.querySelector('.anna-composer-tools').getBoundingClientRect()
+            const actions = toolbar.querySelector('.anna-composer-actions').getBoundingClientRect()
             return {
                 inside: items.every(item => item.left >= box.left - 1 && item.right <= box.right + 1),
                 toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
                 pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 send: document.querySelector('.anna-send').getBoundingClientRect().right <= box.right + 1,
+                ordered:
+                    order.every(Boolean) &&
+                    order.every((rect, index) => index === 0 || rect.left >= order[index - 1].right - 1),
+                aligned: tools.left <= box.left + 1 && actions.right >= box.right - 1,
+                sameRow: order.every(
+                    rect => rect && Math.abs(rect.top + rect.height / 2 - (box.top + box.height / 2)) <= 2
+                ),
             }
         })
     let geometry = await fits()
     assert.ok(
-        geometry.inside && geometry.send && geometry.toolbarOverflow <= 1 && geometry.pageOverflow <= 0,
+        geometry.inside &&
+            geometry.send &&
+            geometry.ordered &&
+            geometry.aligned &&
+            geometry.sameRow &&
+            geometry.toolbarOverflow <= 1 &&
+            geometry.pageOverflow <= 0,
         JSON.stringify(geometry)
     )
+    await page.screenshot({ path: path.join(BUILD, `project-switcher-toolbar-${width}.png`) })
     const input = page.getByLabel('Message Carl Code Mentor')
     await input.fill('Unsent for the product team')
     await chip.click()
