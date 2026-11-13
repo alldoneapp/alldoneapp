@@ -1,7 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-    ANNA_AUTOMATIC_PROJECT,
     getAnnaProjectChoices,
     isAnnaProjectSelectable,
     readAnnaProjectSelection,
@@ -45,23 +44,15 @@ const projectsMap = {
 }
 
 describe('which projects and assistants the switcher offers', () => {
-    it('lists Automatic, then active projects only, default first, then in sidebar order', () => {
+    it('lists active projects only, default first, then in sidebar order', () => {
         const choices = getAnnaProjectChoices({
             user,
             projectsMap,
             projectAssistants: { product: [cto] },
             defaultAssistant: anna,
         })
-        expect(choices.map(choice => choice.id)).toEqual([ANNA_AUTOMATIC_PROJECT, 'home', 'team', 'product'])
-        // AT-3024: "Automatic" continues the default project's chat with the default assistant.
-        expect(choices[0]).toMatchObject({
-            isAutomatic: true,
-            isDefault: false,
-            projectId: 'home',
-            assistant: anna,
-            isShared: false,
-        })
-        expect(choices[1]).toMatchObject({ isDefault: true, assistant: anna, isShared: false })
+        expect(choices.map(choice => choice.id)).toEqual(['home', 'team', 'product'])
+        expect(choices[0]).toMatchObject({ isDefault: true, assistant: anna, isShared: false })
         expect(choices.find(choice => choice.id === 'product')).toMatchObject({
             assistant: cto,
             isProjectAssistant: true,
@@ -92,17 +83,7 @@ describe('which projects and assistants the switcher offers', () => {
         expect(resolve({ ...projectsMap.home, assistantId: 'cto' }, { home: [cto] })).toBe(anna)
     })
 
-    it('offers no Automatic when there is only the default project', () => {
-        const choices = getAnnaProjectChoices({
-            user: { ...user, projectIds: ['home'] },
-            projectsMap,
-            defaultAssistant: anna,
-        })
-        expect(choices.map(choice => choice.id)).toEqual(['home'])
-    })
-
     it('never selects archived, template, guide or foreign projects', () => {
-        expect(isAnnaProjectSelectable(user, ANNA_AUTOMATIC_PROJECT)).toBe(false)
         expect(isAnnaProjectSelectable(user, 'product')).toBe(true)
         expect(isAnnaProjectSelectable(user, 'old')).toBe(false)
         expect(isAnnaProjectSelectable(user, 'guide')).toBe(false)
@@ -136,19 +117,9 @@ describe('remembering the choice until midnight', () => {
         const root = createRoot(document.createElement('div'))
         try {
             await act(async () => root.render(<Harness account={user} />))
-            expect(selection).toMatchObject({
-                projectId: 'home',
-                choiceId: ANNA_AUTOMATIC_PROJECT,
-                isAutomatic: true,
-                isDefault: true,
-            })
+            expect(selection).toMatchObject({ projectId: 'home', isDefault: true })
             await act(async () => selection.select('product'))
-            expect(selection).toMatchObject({
-                projectId: 'product',
-                choiceId: 'product',
-                isAutomatic: false,
-                isDefault: false,
-            })
+            expect(selection).toMatchObject({ projectId: 'product', isDefault: false })
             // A reload on the same day restores it.
             await act(async () => root.render(<Harness account={{ ...user, uid: 'u1', other: 1 }} />))
             expect(selection.projectId).toBe('product')
@@ -159,43 +130,8 @@ describe('remembering the choice until midnight', () => {
             expect(selection.projectId).toBe('product')
             jest.setSystemTime(new Date('2026-10-29T23:00:30Z'))
             await act(async () => mockVisible())
-            expect(selection).toMatchObject({ projectId: 'home', choiceId: ANNA_AUTOMATIC_PROJECT, isAutomatic: true })
+            expect(selection).toMatchObject({ projectId: 'home', isDefault: true })
             expect(readAnnaProjectSelection('u1', '20261030')).toBeNull()
-        } finally {
-            act(() => root.unmount())
-            jest.useRealTimers()
-            delete global.IS_REACT_ACT_ENVIRONMENT
-        }
-    })
-
-    it('starts on Automatic and keeps an explicit default-project pick until midnight (AT-3024)', async () => {
-        jest.useFakeTimers()
-        jest.setSystemTime(new Date('2026-11-13T10:38:00Z'))
-        global.IS_REACT_ACT_ENVIRONMENT = true
-        let selection
-        const Harness = ({ account }) => {
-            selection = useAnnaProjectSelection(account)
-            return null
-        }
-        const root = createRoot(document.createElement('div'))
-        try {
-            await act(async () => root.render(<Harness account={user} />))
-            expect(selection).toMatchObject({ choiceId: ANNA_AUTOMATIC_PROJECT, projectId: 'home' })
-            await act(async () => selection.select('home'))
-            expect(selection).toMatchObject({
-                choiceId: 'home',
-                projectId: 'home',
-                isAutomatic: false,
-                isDefault: true,
-            })
-            expect(readAnnaProjectSelection('u1', '20261113')).toEqual({ projectId: 'home', dateKey: '20261113' })
-            // A reload on the same day keeps the explicit pick.
-            await act(async () => root.render(<Harness account={{ ...user, other: 1 }} />))
-            expect(selection.choiceId).toBe('home')
-            // Back to Automatic: nothing is remembered and the chat stays the default one.
-            await act(async () => selection.select(ANNA_AUTOMATIC_PROJECT))
-            expect(selection).toMatchObject({ choiceId: ANNA_AUTOMATIC_PROJECT, projectId: 'home', isAutomatic: true })
-            expect(readAnnaProjectSelection('u1', '20261113')).toBeNull()
         } finally {
             act(() => root.unmount())
             jest.useRealTimers()

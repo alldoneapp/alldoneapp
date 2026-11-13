@@ -1269,74 +1269,27 @@ async function checkProjectSwitcher(page, width) {
     const chip = page.locator('.anna-project-chip')
     await chip.waitFor({ state: 'visible' })
     assert.equal(await chip.locator('.anna-project-chip-name').textContent(), 'Launch')
-    // AT-3029: + and the project on the left; mic, call and send on the right. An empty draft
-    // shows its mic in Send's place instead (AT-3025), so it has no separate Send button.
-    const EMPTY_ORDER = [
-        '[aria-label="Select kind of file to add"]',
-        '.anna-project-chip',
-        '.anna-voice-button',
-        '[aria-label="Dictate"]',
-    ]
-    const TYPED_ORDER = [
-        '[aria-label="Select kind of file to add"]',
-        '.anna-project-chip',
-        '[aria-label="Dictate"]',
-        '.anna-voice-button',
-        '.anna-send',
-    ]
-    const fits = selectors =>
-        page.evaluate(selectors => {
+    const fits = () =>
+        page.evaluate(() => {
             const toolbar = document.querySelector('.anna-composer-toolbar')
             const box = toolbar.getBoundingClientRect()
-            const shown = node => {
-                const rect = node.getBoundingClientRect()
-                return rect.width > 0 && rect.height > 0
-            }
-            const items = [...toolbar.querySelectorAll('button, .anna-project-chip')]
-                .filter(shown)
-                .map(node => node.getBoundingClientRect())
-            const order = selectors.map(selector =>
-                [...toolbar.querySelectorAll(selector)].find(shown)?.getBoundingClientRect()
+            const items = [...toolbar.querySelectorAll('button, .anna-project-chip')].map(node =>
+                node.getBoundingClientRect()
             )
-            const last = order[order.length - 1]
-            const tools = toolbar.querySelector('.anna-composer-tools').getBoundingClientRect()
-            const actions = toolbar.querySelector('.anna-composer-actions').getBoundingClientRect()
             return {
                 inside: items.every(item => item.left >= box.left - 1 && item.right <= box.right + 1),
                 toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
                 pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-                send: !!last && last.right <= box.right + 1,
-                micCount: [...toolbar.querySelectorAll('[aria-label="Dictate"]')].filter(shown).length,
-                ordered:
-                    order.every(Boolean) &&
-                    order.every((rect, index) => index === 0 || rect.left >= order[index - 1].right - 1),
-                aligned: tools.left <= box.left + 1 && actions.right >= box.right - 1,
-                sameRow: order.every(
-                    rect => rect && Math.abs(rect.top + rect.height / 2 - (box.top + box.height / 2)) <= 2
-                ),
+                send: document.querySelector('.anna-send').getBoundingClientRect().right <= box.right + 1,
             }
-        }, selectors)
-    const assertToolbar = async selectors => {
-        const geometry = await fits(selectors)
-        assert.ok(
-            geometry.inside &&
-                geometry.send &&
-                geometry.micCount === 1 &&
-                geometry.ordered &&
-                geometry.aligned &&
-                geometry.sameRow &&
-                geometry.toolbarOverflow <= 1 &&
-                geometry.pageOverflow <= 0,
-            JSON.stringify(geometry)
-        )
-    }
-    await assertToolbar(EMPTY_ORDER)
-    await page.screenshot({ path: path.join(BUILD, `project-switcher-toolbar-${width}.png`) })
+        })
+    let geometry = await fits()
+    assert.ok(
+        geometry.inside && geometry.send && geometry.toolbarOverflow <= 1 && geometry.pageOverflow <= 0,
+        JSON.stringify(geometry)
+    )
     const input = page.getByLabel('Message Carl Code Mentor')
     await input.fill('Unsent for the product team')
-    await page.locator('.anna-send').waitFor({ state: 'visible' })
-    await assertToolbar(TYPED_ORDER)
-    await page.screenshot({ path: path.join(BUILD, `project-switcher-toolbar-typed-${width}.png`) })
     await chip.click()
     const menu = page.locator('.anna-project-menu')
     await menu.waitFor({ state: 'visible' })
@@ -1372,8 +1325,11 @@ async function checkProjectSwitcher(page, width) {
     await page.waitForFunction(() =>
         [...document.querySelectorAll('.anna-date-divider')].some(node => node.textContent.includes('Alldone CTO'))
     )
-    // The draft survived, so Send is back after the switch.
-    await assertToolbar(TYPED_ORDER)
+    geometry = await fits()
+    assert.ok(
+        geometry.inside && geometry.send && geometry.toolbarOverflow <= 1 && geometry.pageOverflow <= 0,
+        JSON.stringify(geometry)
+    )
     await page.screenshot({ path: path.join(BUILD, `project-switcher-switched-${width}.png`) })
     // Reloading on the same day keeps the selection.
     await page.reload()
