@@ -197,6 +197,16 @@ project. The card's title line is the topic name alone. "All chats" (`openChatsL
 on the All projects line. The rage
 mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
+AT-3020: the popover a Last comment card opens (real comment or pending send) shows "All chats" next
+to "open chat" (`CommentPopupFooter`), with the same target as the header link. `RichCommentModal`
+shows it only when the caller passes `onOpenAllChats`; no other comment popup does.
+
+**Simple sidebar Wiki and Chats rows** (AT-3020): under the people list of the selected project, the
+simple sidebar has a Wiki row and, directly below it, a Chats row (`SidebarMenu/Items/WikiItem.js`,
+`ChatsItem.js`, both drawn by `SidebarLinkItem`). Neither hides behind "show more", and neither shows
+for a guest of a shared project. Chats opens the same tab as the advanced sidebar's Chats header
+(`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
+Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
 
 **The whole two-line field takes a click (AT-3028).** Auto-expand sets Quill's container and
 editor to `height: auto`, so the contenteditable was one line tall inside the 56px field and the

@@ -116,6 +116,10 @@ export default function LastCommentArea({
         if (assistantReplied) resolveAssistantLineSendForChat(pendingSend.chatId)
     }, [pendingSend, lastAssistantCommentData, followedProjectChatLastNotification])
 
+    // AT-3020 — the popover a Last comment card opens leads to the same Chats list as the header's
+    // "All chats" link: this line's project, or every project on the All projects line.
+    const openAllChats = () => openChatsList(projectOverride)
+
     const { commentCreator, commentProject } = getCommentData(
         project,
         currentProjectChatLastNotification,
@@ -145,6 +149,7 @@ export default function LastCommentArea({
                         compact={compact}
                         scopeKey={scopeKey}
                         setAModalIsOpen={setAModalIsOpen}
+                        onOpenAllChats={openAllChats}
                     />
                 </View>
             </View>
@@ -192,6 +197,7 @@ export default function LastCommentArea({
                 currentLastAssistantCommentData={currentLastAssistantCommentData}
                 compact={compact}
                 scopeKey={scopeKey}
+                onOpenAllChats={openAllChats}
             />
         </View>
     )

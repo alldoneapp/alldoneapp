@@ -31,6 +31,7 @@ export default function LastAssistantCommentWrapper({
     compact = false,
     arrivalId = null,
     scopeKey = null,
+    onOpenAllChats = null,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -144,6 +145,7 @@ export default function LastAssistantCommentWrapper({
                     objectName={objectName}
                     externalAssistantId={assistantId}
                     openedFromUnreadComment={isNew}
+                    onOpenAllChats={onOpenAllChats}
                 />
             }
             onClickOutside={closeModal}
