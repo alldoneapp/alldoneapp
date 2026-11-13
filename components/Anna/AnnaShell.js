@@ -1220,6 +1220,11 @@ export default function AnnaShell({ children, routeId }) {
                                         onBeforeSend={resumeForMessage}
                                         pageContext={chatPageContext}
                                         switching={switching}
+                                        switchingProjectName={
+                                            switching
+                                                ? activeChoice?.name || projectsMap?.[activeProjectId]?.name || ''
+                                                : ''
+                                        }
                                         projectSwitch={projectSwitch}
                                         renderProjectSwitcher={({ disabled }) => (
                                             <AnnaProjectSwitcher

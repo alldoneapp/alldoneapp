@@ -251,6 +251,14 @@ while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pin
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
 `AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
 
+**The sidebar header's assistant name is one line (AT-3040).** `.anna-brand` never wraps (it used to
+clamp to two lines, "Anna / Alld…"); it ends in an ellipsis and the button's `title` carries the
+full name. `.anna-header` is the `anna-header` size container: at 360px content width and less
+(sidebar chat ≤ 408px, the minimum is 340) `.anna-header-sidebar` tightens its gaps and the
+workspace picker (98 → 80px) so the name keeps ~72px instead of ~40px. Chosen with the product
+owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace/run.js`
+(`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
+
 **Project switch: one project's chat on the left, the same project on the right (AT-3036).**
 Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
 by `ensureAnnaConversation`). `useAnnaConversation` used to return every recent thread of every
@@ -274,6 +282,22 @@ an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits
 project. An app or VM on the right stays on screen; the Alldone view under it moves. Pinned by
 `annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
 `useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`.
+
+**A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
+(the selected project's chat is still resolving, from either side), `AnnaConversation` shows a
+`role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
+the timeline: the previous project's messages, its "Earlier days" button and the project jumps
+are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
+(draft kept) and sending stays held exactly as before. Once the switch ends, the current thread
+reports through `onLoaded` when its messages are loaded and rendered (a layout effect, so after
+this commit's DOM), and the conversation snaps once to the very bottom (`activate`), also for a
+cached reused daily thread or a new empty one. The pending snap is keyed to the conversation the
+switch ended in, so an overtaken switch's thread never scrolls; a refused or taken-back switch
+returns to the bottom of the old chat. After the snap the chat follows like any open chat (later
+images/markdown keep it at the bottom through the ResizeObserver), and a reader who scrolls up is
+not pulled down again. A new day in the same project is not a switch and does not force a scroll.
+Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.test.js` and the
+loading-name case in `AnnaShell.test.js`.
 
 **And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
 the product owner, replacing "nothing on the workspace side changes the chat's project". When the
