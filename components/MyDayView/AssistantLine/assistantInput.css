@@ -35,3 +35,28 @@
     left: 0;
     right: 0;
 }
+
+/* AT-3031: the composer box rests on a soft blue outline (UtilityBlue150, set in AssistantOptions.js)
+   and turns brand blue with a light glow while the editor has focus. Only the editor counts, so
+   tabbing to the + / Templates / mic keeps their own focus ring. Border width stays 1px: no layout
+   shift. The glow is a box-shadow, so it does not move the toolbar either. */
+[data-testid='assistant-composer-row'] {
+    transition:
+        border-color 150ms ease,
+        box-shadow 150ms ease;
+}
+
+[data-testid='assistant-composer-row']:has(.ql-editor:focus) {
+    border-color: #0c66ff !important;
+    box-shadow: 0 0 0 3px rgba(12, 102, 255, 0.18);
+}
+
+[data-testid='assistant-composer-row'] .ql-editor:focus-visible {
+    outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-testid='assistant-composer-row'] {
+        transition: none;
+    }
+}

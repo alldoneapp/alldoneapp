@@ -483,7 +483,9 @@ const localStyles = StyleSheet.create({
         width: '100%',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: colors.Grey300,
+        // AT-3031: a soft blue outline marks the assistant's input (Grey300 vanished on the grey
+        // card). The focus border and glow live in assistantInput.css.
+        borderColor: colors.UtilityBlue150,
         backgroundColor: themed.Surface,
         paddingTop: ASSISTANT_COMPOSER_BOX_PADDING_TOP,
         paddingBottom: ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,

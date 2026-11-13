@@ -27,7 +27,6 @@ export default class DateItem extends Component {
             'In 2 days': moment().add(2, 'day'),
             'In 4 days': moment().add(4, 'day'),
             'In 7 days': moment().add(7, 'day'),
-            'In 14 days': moment().add(14, 'day'),
             'In 30 days': moment().add(30, 'day'),
             Someday: moment(),
             'Last selected':
@@ -45,10 +44,9 @@ export default class DateItem extends Component {
             'In 2 days': '5',
             'In 4 days': '6',
             'In 7 days': '7',
-            'In 14 days': '8',
-            'In 30 days': '9',
-            Someday: '0',
-            'Last selected': 'C',
+            'In 30 days': '8',
+            Someday: '9',
+            'Last selected': '0',
             'Custom date': 'Q',
         }
     }

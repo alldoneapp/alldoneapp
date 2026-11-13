@@ -759,89 +759,6 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           }
                         }
                       >
-                        In 14 days
-                         
-                        <span
-                          className="css-textHasAncestor-1jxf684 r-color-1phcoeb r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7"
-                          dir={null}
-                        >
-                           • 
-                          6 May
-                        </span>
-                      </div>
-                    </div>
-                    <div
-                      className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                      dir={null}
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1k53dq1 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-b9b20s r-borderWidth-rs99b7"
-                          dir={null}
-                          style={
-                            {
-                              "marginLeft": "4px",
-                            }
-                          }
-                        >
-                          <div
-                            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
-                            dir="auto"
-                          >
-                            8
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                className="css-view-g5y9jx"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
-                  onClick={[Function]}
-                  onContextMenu={[Function]}
-                  onKeyDown={[Function]}
-                  style={
-                    {
-                      "transitionDuration": "0s",
-                    }
-                  }
-                  tabIndex="0"
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(255,255,255,1.00)",
-                            "fontFamily": "Roboto-Medium",
-                            "fontSize": "16px",
-                            "letterSpacing": "0.16px",
-                            "lineHeight": "24px",
-                          }
-                        }
-                      >
                         In 30 days
                          
                         <span
@@ -879,7 +796,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                             className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                             dir="auto"
                           >
-                            9
+                            8
                           </div>
                         </div>
                       </div>
@@ -949,7 +866,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-1phcoeb"
                           dir="auto"
                         >
-                          0
+                          9
                         </div>
                       </div>
                     </div>

@@ -220,6 +220,15 @@ bubbles their presses through it. Pinned by `assistantComposerFocus.test.js` (al
 against `assistantInputLayout.js`), `AssistantOptionsFocus.test.js` and `browser-tests/at3028`
 (real Chromium: click, tap, padding, toolbar controls, and a control run with the old CSS).
 
+**The composer box outline (AT-3031).** The assistant line's composer box rests on a 1px
+`colors.UtilityBlue150` border (adaptive: light pastel blue / blue mixed into the dark surface;
+`Grey300` vanished on the `Grey200` card). While the editor has focus, `assistantInput.css` turns
+it `#0C66FF` with a 3px `rgba(12,102,255,0.18)` box-shadow glow, via
+`[data-testid='assistant-composer-row']:has(.ql-editor:focus)`. Only the editor counts, so the
+toolbar's + / Templates / mic keep their own focus ring. The border width never changes (no layout
+shift); the `!important` on the colour beats react-native-web's atomic class. Pinned by
+`assistantComposerOutline.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
