@@ -89,8 +89,6 @@ jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
 })
 
 let mockDictation
-// AT-3025: the second mic, in the send button's place while the draft is empty.
-let mockSendSlotDictation
 let mockAttachments
 jest.mock('../Feeds/AddFeed/AddFeedAttachButton', () => props => {
     mockAttachments = props
@@ -101,12 +99,9 @@ jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => 
 jest.mock('../UIControls/RambleButton', () => ({
     __esModule: true,
     RAMBLE_PHASE_IDLE: 'idle',
-    // Like the real button, an idle mic that is not `visible` renders nothing (it stays mounted).
     default: props => {
-        if (props.variant === 'send') mockSendSlotDictation = props
-        else mockDictation = props
-        if (props.visible === false) return null
-        return <button type="button" aria-label="Dictate" data-variant={props.variant || 'inline'} />
+        mockDictation = props
+        return <button type="button" aria-label="Dictate" />
     },
 }))
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
@@ -198,7 +193,6 @@ beforeEach(() => {
     getId.mockImplementation(() => `m${++messageSequence}`)
     localStorage.clear()
     mockDictation = null
-    mockSendSlotDictation = null
     mockAttachments = null
     mockDictationSupported = true
     mockTrafficLimited = false
@@ -331,15 +325,12 @@ it('follows viewport resizing after focus without pulling a reader away from old
 it('places the shared attachment picker next to the microphone and inserts the selected file', () => {
     render()
     const tools = container.querySelector('.anna-composer-tools')
+    expect(tools.querySelector('[aria-label="Dictate"]')).not.toBeNull()
     expect(tools.querySelector('[aria-label="Select kind of file to add"]')).not.toBeNull()
     expect(mockAttachments.compact).toBe(true)
     expect(mockAttachments.projectId).toBe('p1')
     mockAttachments.addAttachmentTag('plan.pdf', 'blob:plan')
     expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, expect.any(Object), 'plan.pdf', 'blob:plan')
-    // An empty draft has its mic in the send slot (AT-3025); with text it is back next to the +.
-    expect(tools.querySelector('[aria-label="Dictate"]')).toBeNull()
-    type('Draft')
-    expect(tools.querySelector('[aria-label="Dictate"]')).not.toBeNull()
 })
 
 it.each([{ offline: true }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
@@ -2091,74 +2082,5 @@ describe('dropping files onto the chat pane (AT-2928)', () => {
         expect(overlay()).not.toBeNull()
         act(() => window.dispatchEvent(new Event('dragend')))
         expect(overlay()).toBeNull()
-    })
-})
-
-describe('empty draft shows the mic in place of Send (AT-3025)', () => {
-    const actions = () => container.querySelector('.anna-composer-actions')
-    const tools = () => container.querySelector('.anna-composer-tools')
-    const sendButton = () => container.querySelector('[aria-label="Send message"]')
-
-    it('shows one blue mic where Send sits while the draft is empty', () => {
-        render()
-        expect(sendButton()).toBeNull()
-        expect(actions().querySelector('[aria-label="Dictate"][data-variant="send"]')).not.toBeNull()
-        expect(tools().querySelector('[aria-label="Dictate"]')).toBeNull()
-        expect(container.querySelectorAll('[aria-label="Dictate"]')).toHaveLength(1)
-    })
-
-    it('brings Send back, and the small mic next to the +, as soon as there is text', () => {
-        render()
-        type('Hello')
-        expect(sendButton().disabled).toBe(false)
-        expect(actions().querySelector('[aria-label="Dictate"]')).toBeNull()
-        expect(tools().querySelector('[aria-label="Dictate"]')).not.toBeNull()
-        type('   ')
-        expect(sendButton()).toBeNull()
-    })
-
-    it('shares the composer wiring with the small mic', () => {
-        render()
-        expect(mockSendSlotDictation.projectId).toBe('p1')
-        expect(mockSendSlotDictation.onTextReady).toBe(mockDictation.onTextReady)
-        expect(mockSendSlotDictation.onSubmit).toBe(mockDictation.onSubmit)
-    })
-
-    it('keeps a take started in the send slot there until it is done, then offers Send', () => {
-        render()
-        act(() => mockSendSlotDictation.onPhaseChange('recording'))
-        act(() => mockSendSlotDictation.onPhaseChange('processing'))
-        act(() => mockSendSlotDictation.onTextReady('Call Sam tomorrow.'))
-        expect(container.querySelector('textarea').value).toBe('Call Sam tomorrow.')
-        // Still processing: the recording mic keeps the slot, no Send and no second mic yet.
-        expect(mockSendSlotDictation.visible).toBe(true)
-        expect(sendButton()).toBeNull()
-        expect(mockDictation.visible).toBe(false)
-        act(() => mockSendSlotDictation.onPhaseChange('idle'))
-        expect(sendButton().disabled).toBe(false)
-        expect(mockSendSlotDictation.visible).toBe(false)
-        expect(mockDictation.visible).toBe(true)
-    })
-
-    it('sends a held take from the send slot on release', async () => {
-        render()
-        act(() => mockSendSlotDictation.onPhaseChange('recording'))
-        act(() => mockSendSlotDictation.onPhaseChange('processing'))
-        await act(async () => {
-            mockSendSlotDictation.onTextReady('Book the train.')
-            mockSendSlotDictation.onSubmit('Book the train.')
-        })
-        act(() => mockSendSlotDictation.onPhaseChange('idle'))
-        expect(createObjectMessage).toHaveBeenCalledTimes(1)
-        expect(createObjectMessage.mock.calls[0][2]).toBe('Book the train.')
-    })
-
-    it('keeps the greyed-out Send where dictation is unavailable', () => {
-        render({ offline: true })
-        expect(sendButton().disabled).toBe(true)
-        expect(container.querySelector('[aria-label="Dictate"]')).toBeNull()
-        mockDictationSupported = false
-        render()
-        expect(sendButton().disabled).toBe(true)
     })
 })
