@@ -109,6 +109,7 @@ export default function TasksSections({
             {!assistantProfileMode && messageTasksAmount > 0 && (
                 <MessagesSection
                     projectId={projectId}
+                    projectIndex={projectIndex}
                     dateIndex={dateIndex}
                     instanceKey={instanceKey}
                     isActiveOrganizeMode={isActiveOrganizeMode}
@@ -118,6 +119,7 @@ export default function TasksSections({
             {!assistantProfileMode && calendarTasksAmount > 0 && (
                 <CalendarSectionContainer
                     projectId={projectId}
+                    projectIndex={projectIndex}
                     dateIndex={dateIndex}
                     instanceKey={instanceKey}
                     isActiveOrganizeMode={isActiveOrganizeMode}
