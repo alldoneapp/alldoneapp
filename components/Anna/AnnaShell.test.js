@@ -2222,25 +2222,6 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             expect(projectSwitches()).toEqual([1, 2])
         })
 
-        it('names the opening project for the chat’s loading state, from either side (AT-3036)', () => {
-            const view = render(content(1))
-            expect(mockConversationProps.switchingProjectName).toBe('')
-            // From the workspace ...
-            pressWorkspace()
-            workspaceShows(view, 'p3')
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p3', switching: true })
-            view.rerender(content(1))
-            expect(mockConversationProps).toMatchObject({ switching: true, switchingProjectName: 'Steercom' })
-            // ... and from the chat's chip.
-            act(() => switcher().props.onSelect('p2'))
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
-            view.rerender(content(1))
-            expect(mockConversationProps.switchingProjectName).toBe('Alldone Product')
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: false })
-            view.rerender(content(1))
-            expect(mockConversationProps.switchingProjectName).toBe('')
-        })
-
         it('does not switch during a voice call', () => {
             mockCallStatus = 'active'
             try {

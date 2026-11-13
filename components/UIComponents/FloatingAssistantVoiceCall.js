@@ -1,131 +1,101 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { View } from 'react-native'
 import { describeBackgroundCallSupport, BACKGROUND_SUPPORT_FOREGROUND_ONLY } from './assistantCallBackground'
 import useModalSizing from '../../hooks/useModalSizing'
 import { translate } from '../../i18n/TranslationService'
-import Button from '../UIControls/Button'
+import Icon from '../Icon'
 import VoiceCallConnecting from './VoiceCallConnecting'
 import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
-import VoiceCallDevices from './VoiceCallDevices'
-import styles, { colors } from '../styles/global'
+import AnnaCallAudioControls, { AnnaCallActions } from '../Anna/AnnaCallAudioControls'
+import { ANNA_THEME_VARIABLES } from '../Anna/annaThemeVariables'
+import '../Anna/anna.css'
 
-import { themed } from '../../Themes/colorMode'
+// Above everything in the main app, including modals (MODAL_Z_CONTENT is 10000).
+const FLOATING_CALL_Z_INDEX = 100000
 
+// AT-3038: the main app's call panel is the Assistant Mode call (AnnaCallAudioControls): level
+// meters and timer on top, audio settings on the left and mute / hang up on the right, in the
+// same card as Anna's composer field (anna.css, `.anna-floating-call`).
 export default function FloatingCallControls({ call }) {
     const { keyboardInset, safeAreaInsets } = useModalSizing()
     if (call.status === 'idle' && !call.error) return null
     const showForegroundHint =
         call.status !== 'idle' && describeBackgroundCallSupport().level === BACKGROUND_SUPPORT_FOREGROUND_ONLY
     const connecting = call.status === 'connecting'
-    const seconds = Math.max(0, Math.floor(call.voiceSeconds))
-    const duration = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
-    const label = translate(connecting ? 'Cancel assistant call' : 'End assistant call')
+    const seconds = Math.max(0, Math.floor(call.voiceSeconds || 0))
+    const endCall = () => call.endCall()
     return (
         <View
             testID="floating-voice-call"
-            style={[
-                localStyles.floating,
-                {
-                    right: 16 + safeAreaInsets.right,
-                    bottom: 16 + keyboardInset + (keyboardInset ? 0 : safeAreaInsets.bottom),
-                },
-            ]}
+            style={{
+                position: 'fixed',
+                zIndex: FLOATING_CALL_Z_INDEX,
+                right: 16 + safeAreaInsets.right,
+                bottom: 16 + keyboardInset + (keyboardInset ? 0 : safeAreaInsets.bottom),
+            }}
         >
-            <View style={localStyles.row}>
+            <div
+                className={`anna-floating-call${call.status === 'idle' ? ' anna-floating-call-error' : ''}`}
+                style={ANNA_THEME_VARIABLES}
+            >
                 {call.status === 'idle' ? (
-                    <>
-                        <Text accessibilityLiveRegion="polite" style={localStyles.error}>
+                    <div className="anna-floating-call-row">
+                        <span aria-live="polite" className="anna-floating-call-message">
                             {call.error}
-                        </Text>
-                        <Button
-                            type="ghost"
-                            icon="x"
-                            onPress={call.dismissError}
-                            accessibilityLabel={translate('Close')}
-                            accessible
-                        />
+                        </span>
+                        <button
+                            type="button"
+                            className="anna-voice-button"
+                            aria-label={translate('Close')}
+                            onClick={call.dismissError}
+                        >
+                            <Icon name="x" size={20} color="currentColor" />
+                        </button>
+                    </div>
+                ) : connecting ? (
+                    <>
+                        <VoiceCallConnecting assistantName={call.callName} style={{ borderRadius: 14 }} />
+                        <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
+                        <div className="anna-floating-call-row anna-floating-call-connecting-actions">
+                            {call.needsAudioPlayback && (
+                                <button
+                                    type="button"
+                                    className="anna-text-button"
+                                    aria-label={translate('Enable call audio')}
+                                    onClick={() => call.playCallAudio()}
+                                >
+                                    {translate('Enable call audio')}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className="anna-text-button anna-floating-call-cancel"
+                                aria-label={translate('Cancel assistant call')}
+                                onClick={endCall}
+                            >
+                                {translate('Cancel call')}
+                            </button>
+                        </div>
                     </>
                 ) : (
-                    <>
-                        <View style={[localStyles.details, connecting && localStyles.connectingDetails]}>
-                            {connecting ? (
-                                <VoiceCallConnecting assistantName={call.callName} />
-                            ) : (
-                                !!call.callName && (
-                                    <Text style={localStyles.name} numberOfLines={1}>
-                                        {call.callName}
-                                    </Text>
-                                )
-                            )}
-                            {(connecting || !call.audioDevices) && (
-                                <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
-                            )}
-                        </View>
-                        {call.needsAudioPlayback && (
-                            <Button
-                                type="ghost"
-                                icon="volume-2"
-                                onPress={call.playCallAudio}
-                                accessibilityLabel={translate('Enable call audio')}
-                                accessible
-                            />
-                        )}
-                        {call.status === 'connected' && (
-                            <Button
-                                type={call.microphoneMuted ? 'secondary' : 'ghost'}
-                                icon={call.microphoneMuted ? 'mic-off' : 'mic'}
-                                onPress={call.toggleMicrophoneMuted}
-                                buttonStyle={localStyles.muteButton}
-                                accessibilityLabel={translate(
-                                    call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
-                                )}
-                                accessibilityState={{ selected: call.microphoneMuted }}
-                                aria-pressed={call.microphoneMuted}
-                                accessible
-                            />
-                        )}
-                        <Button
-                            type="danger"
-                            icon={connecting ? 'x' : 'phone-call'}
-                            title={connecting ? translate('Cancel call') : duration}
-                            onPress={call.endCall}
-                            disabled={call.status === 'ending'}
-                            buttonStyle={localStyles.button}
-                            accessibilityLabel={label}
-                            accessible
-                        />
-                    </>
+                    <AnnaCallAudioControls
+                        call={call}
+                        seconds={seconds}
+                        label={call.callName}
+                        settingsZIndex={FLOATING_CALL_Z_INDEX + 1}
+                        settingsUseSheet={false}
+                    >
+                        <AnnaCallActions call={call} endLabel={translate('End assistant call')} onEnd={endCall} />
+                    </AnnaCallAudioControls>
                 )}
-            </View>
-            {call.status === 'connected' && <VoiceCallDevices call={call} />}
-            {showForegroundHint && (
-                <Text style={localStyles.foregroundHint}>
-                    {translate(
-                        'Keep Alldone open during the call, this browser pauses the microphone in the background'
-                    )}
-                </Text>
-            )}
+                {showForegroundHint && (
+                    <span className="anna-call-hint anna-floating-call-hint">
+                        {translate(
+                            'Keep Alldone open during the call, this browser pauses the microphone in the background'
+                        )}
+                    </span>
+                )}
+            </div>
         </View>
     )
 }
-
-const localStyles = StyleSheet.create({
-    floating: {
-        position: 'fixed',
-        zIndex: 100000,
-        alignItems: 'flex-end',
-        padding: 8,
-        borderRadius: 24,
-        backgroundColor: themed.Surface,
-        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.18)',
-        maxWidth: 'calc(100vw - 32px)',
-    },
-    row: { flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
-    foregroundHint: { ...styles.caption1, color: colors.Text03, maxWidth: 260, padding: 8 },
-    button: { height: 48, minHeight: 48, borderRadius: 24 },
-    muteButton: { width: 48, height: 48, minHeight: 48, borderRadius: 24, marginRight: 8 },
-    details: { width: 180, minWidth: 0, flexShrink: 1, marginHorizontal: 8 },
-    connectingDetails: { width: 260 },
-    name: { ...styles.body2, color: colors.Text02 },
-    error: { ...styles.caption1, color: colors.UtilityRed200, maxWidth: 220, flexShrink: 1 },
-})

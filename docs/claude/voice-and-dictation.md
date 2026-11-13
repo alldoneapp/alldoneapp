@@ -404,3 +404,18 @@ line exists to tell apart. Pinned by `functions/shared/voiceVocabularyTerms.test
 **Meeting transcription shares the same helper.** `functions/Notes/transcribeMeeting.js` used to
 repeat the Deepgram call inline with its own copy of the options; it now calls
 `transcribeAudioBase64`, so the model, formatting and vocabulary cannot drift between the two paths.
+
+## One call UI in both shells (AT-3038)
+
+The main app's floating call panel (`FloatingAssistantVoiceCall.js`, rendered by the provider
+whenever Assistant Mode is off) renders the Assistant Mode call controls: `AnnaCallAudioControls`
+(level meters, the call's name above the timer, the audio settings popover) and `AnnaCallActions`
+(mute, enable call audio, hang up), shared with `AnnaConversation`. The card is
+`.anna-floating-call` in `anna.css`; because it sits outside `.anna-shell` it sets the
+`--anna-*` variables itself from `annaThemeVariables.js` (the same object `AnnaShell` spreads)
+and repeats the shell's base button rules. Two differences from the composer are deliberate: the
+settings popover opens above the panel's own layer (`settingsZIndex`, the panel is at 100000) and
+never as a bottom sheet (`settingsUseSheet={false}`), because a sheet at the modal z-index would
+open underneath the panel. The old `VoiceCallDevices` dropdown grid is gone; device switching is
+covered by `AnnaCallAudioControls.test.js`, and `AssistantVoiceCallButton.test.js` drives the
+panel through its aria-labelled DOM buttons.
