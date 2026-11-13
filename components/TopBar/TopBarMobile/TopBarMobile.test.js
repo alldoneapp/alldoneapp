@@ -1,5 +1,5 @@
 import React from 'react'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 
 let mockCompact = false
 let mockExpanded = false
@@ -17,7 +17,7 @@ jest.mock('react-redux', () => ({
 jest.mock('./TopBarMobileStatisticArea', () => 'TopBarMobileStatisticArea')
 jest.mock('./MobileNotificationArea', () => 'MobileNotificationArea')
 jest.mock('../ConnectionStatusChip', () => 'ConnectionStatusChip')
-jest.mock('../HomeButton', () => 'HomeButton')
+jest.mock('../HomeButton', () => ({ __esModule: true, default: 'HomeButton', HOME_BUTTON_WIDTH: 40 }))
 jest.mock('../GoldArea', () => 'GoldArea')
 jest.mock('../QuotaBar/QuotaBar', () => ({
     __esModule: true,
@@ -41,7 +41,7 @@ jest.mock('../../../Themes/Themes', () => ({
 }))
 jest.mock('../Themes', () => ({ Themes: {} }))
 
-import TopBarMobile from './TopBarMobile'
+import TopBarMobile, { getLeftAreaMaxWidth } from './TopBarMobile'
 
 describe('TopBarMobile connection health', () => {
     beforeEach(() => {
@@ -59,15 +59,44 @@ describe('TopBarMobile connection health', () => {
         expect(component.root.findByProps({ testID: 'top-bar-mobile' }).findByType('HomeButton')).toBeTruthy()
     })
 
-    it('keeps the Gold balance accessible in expanded statistics on narrow phones', () => {
+    it('keeps Gold in the top row on narrow phones instead of the expanded statistics (AT-3044)', () => {
         mockCompact = true
         mockExpanded = true
         const component = renderer.create(<TopBarMobile />)
-        expect(component.root.findByType('TopBarMobileStatisticArea').props.compact).toBe(true)
+        expect(
+            component.root.findByProps({ testID: 'top-bar-mobile' }).findByType('TopBarMobileStatisticArea')
+        ).toBeTruthy()
         expect(component.root.findByType('MobileNotificationArea').props.compact).toBe(true)
-        expect(component.root.findAllByType('GoldArea')).toHaveLength(1)
+        // GoldArea is rendered by TopBarMobileStatisticArea (mocked here), not duplicated in the row.
+        expect(
+            component.root.findByProps({ testID: 'top-bar-mobile-statistics' }).findAllByType('GoldArea')
+        ).toHaveLength(0)
         expect(component.root.findAllByType('XpBar')).toHaveLength(1)
         expect(component.root.findAllByType('TasksStatisticsArea')).toHaveLength(1)
         expect(component.root.findAllByType('QuotaBar')).toHaveLength(1)
+    })
+
+    it('caps the left area so Gold never reaches the centred Home button', () => {
+        const component = renderer.create(<TopBarMobile />)
+        const leftArea = () => component.root.findByProps({ testID: 'top-bar-mobile-left' })
+        const maxWidthOf = node => Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean)).maxWidth
+
+        expect(maxWidthOf(leftArea())).toBeUndefined()
+        act(() =>
+            component.root
+                .findByProps({ testID: 'top-bar-mobile' })
+                .props.onLayout({ nativeEvent: { layout: { width: 360 } } })
+        )
+        // 360 / 2 - 40 / 2 (Home) - 16 (padding) - 8 (gap)
+        expect(maxWidthOf(leftArea())).toBe(136)
+    })
+
+    it.each([
+        [0, undefined],
+        [320, 116],
+        [432, 172],
+        [40, 0],
+    ])('getLeftAreaMaxWidth(%s) is %s', (width, expected) => {
+        expect(getLeftAreaMaxWidth(width)).toBe(expected)
     })
 })

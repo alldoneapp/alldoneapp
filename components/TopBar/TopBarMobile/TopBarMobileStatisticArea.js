@@ -9,7 +9,7 @@ import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import GoldArea from '../GoldArea'
 
-export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact, showMenu = true }) {
+export default function TopBarMobileStatisticArea({ expandSecondaryBar, showMenu = true }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -30,7 +30,8 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact,
                 </TouchableOpacity>
             )}
 
-            {!isAnonymous && !compact && <GoldArea />}
+            {/* AT-3044: Gold stays top left on every phone width, also on narrow (compact) ones. */}
+            {!isAnonymous && <GoldArea containerStyle={localStyle.gold} />}
         </View>
     )
 }
@@ -38,7 +39,10 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact,
 const localStyle = StyleSheet.create({
     container: {
         flexDirection: 'row',
+        alignItems: 'center',
         overflow: 'hidden',
+        flexShrink: 1,
+        minWidth: 0,
     },
     menu: {
         alignItems: 'center',
@@ -47,5 +51,11 @@ const localStyle = StyleSheet.create({
         height: 28,
         marginRight: 8,
         overflow: 'hidden',
+    },
+    gold: {
+        // Last item before the centred Home button: no trailing margin, and allowed to shrink.
+        marginRight: 0,
+        flexShrink: 1,
+        minWidth: 0,
     },
 })

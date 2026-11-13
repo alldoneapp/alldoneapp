@@ -683,3 +683,17 @@ a pending/failed sync status stays inline. Against the code before the fix 24 of
 ```bash
 node browser-tests/at3037/run.js
 ```
+
+### `at3044/` — Gold sits top left in the mobile header
+
+Mounts the real `TopBarContainer` → `TopBarMobile` → `GoldArea` / `HomeButton` /
+`MobileNotificationArea` at 320-768 px with balances 0, 1,234, 123,456 and 123,456,789, with the ⋮
+row closed and open. It checks that exactly one Gold pill is shown and that it is in the top row,
+that it overlaps neither the centred Home button nor the right-hand icons, stays in the viewport,
+does not make the document scroll sideways, and that balances up to 123,456 are never truncated
+from 360 px up. Against the code before the fix 88 checks fail (no Gold in the top row on phones).
+`SCREENSHOTS=1` writes header PNGs into `.build/`.
+
+```bash
+node browser-tests/at3044/run.js
+```
