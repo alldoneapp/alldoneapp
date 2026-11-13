@@ -75,30 +75,8 @@ describe('AllProjectsEmptyInbox', () => {
             options: settingsOptions,
         })
         expect(NavigationService.navigate).toHaveBeenCalledWith('SettingsView')
-        // AT-3041: the card (with its skyline) closes the block; no Anna picture below it.
-        expect(children[children.length - 1].type).toBe('EmptyInboxOverview')
-    })
-
-    // AT-3041: the skyline in the achievement card is the picture of this board. The Anna
-    // "projects complete" illustration below it was a second hero image, so it is only shown where
-    // there is no card — My Day and the Done/Pending/Workflow boards.
-    describe('the Anna picture (AT-3041)', () => {
-        it('is not rendered next to the achievement card and its skyline', () => {
-            const openTasksEmptyInbox = renderer.create(
-                <AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />
-            )
-
-            expect(openTasksEmptyInbox.root.findAllByType('EmptyInboxOverview')).toHaveLength(1)
-            expect(openTasksEmptyInbox.root.findAllByType('AllProjectsEmptyInboxPicture')).toHaveLength(0)
-        })
-
-        it('stays on boards that render no achievement card', () => {
-            const genericEmptyInbox = renderer.create(<AllProjectsEmptyInbox />)
-            const myDayEmptyInbox = renderer.create(<AllProjectsEmptyInbox celebrationRunId={1} />)
-
-            expect(genericEmptyInbox.root.findAllByType('AllProjectsEmptyInboxPicture')).toHaveLength(1)
-            expect(myDayEmptyInbox.root.findAllByType('AllProjectsEmptyInboxPicture')).toHaveLength(1)
-        })
+        expect(children[children.length - 2].type).toBe('EmptyInboxOverview')
+        expect(children[children.length - 1].type).toBe('AllProjectsEmptyInboxPicture')
     })
 
     // AT-2306: adding a task is the primary action on this screen, so the button

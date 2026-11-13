@@ -79,7 +79,7 @@ export default function AllProjectsEmptyInbox({
 
     // A settled block is the plain block: no residual transform, so what a reload renders and what
     // the celebration leaves behind are byte-identical. Only the headline is animated — the picture
-    // below it (on boards without the achievement card) is a 460px illustration whose own `flex: 1` / `width: '100%'` sizing would have to be
+    // below it is a 460px illustration whose own `flex: 1` / `width: '100%'` sizing would have to be
     // reproduced by any wrapper put around it, and it is not worth a layout risk for the least
     // important beat.
     const headlineStyle = celebrating
@@ -132,11 +132,7 @@ export default function AllProjectsEmptyInbox({
                     celebrationRunId={resolvedCelebrationRunId}
                 />
             )}
-            {/* AT-3041: the Anna "projects complete" picture only stands in where there is no
-                achievement card. Next to the card's skyline it was a second, competing hero image
-                below the city, so the board that shows the card ends with the card. My Day and the
-                Done/Pending/Workflow boards render no card and keep the picture. */}
-            {!showEmptyInboxOverview && <AllProjectsEmptyInboxPicture />}
+            <AllProjectsEmptyInboxPicture />
         </View>
     )
 }

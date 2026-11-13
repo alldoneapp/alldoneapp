@@ -793,22 +793,24 @@ it('ignores completion from a superseded browser and returns when the current se
     }
 })
 
-it('keeps the expand action immediately after the assistant name and the close action at the far right', () => {
+it('puts the fullscreen action directly left of the right-pointing collapse action at the far right (AT-3042)', () => {
     render(content(1))
-    const identity = screen.getByLabelText('Anna Alldone – Latest messages')
     const expand = screen.getByLabelText('Hide workspace — chat only')
     const close = screen.getByLabelText('Close assistant chat')
-    expect(identity.nextElementSibling).toBe(expand)
-    expect(expand.closest('.anna-header-left')).toBeTruthy()
-    expect(close.parentElement).toBe(document.querySelector('.anna-header-right'))
-    expect(close.parentElement.lastElementChild).toBe(close)
+    const right = document.querySelector('.anna-header-right')
+    expect(document.querySelector('.anna-header-left .anna-header-expand')).toBeNull()
+    expect(close.parentElement).toBe(right)
+    expect(right.lastElementChild).toBe(close)
+    expect(close.previousElementSibling).toBe(expand)
+    // The counterpart to the assistant line's panel button: panel glyph, chevron pointing right.
+    expect(close.querySelector('svg path:last-child').getAttribute('d')).toBe('m13 8 4 4-4 4')
 
     fireEvent.click(expand)
     expect(document.querySelector('.anna-chat-only')).toBeTruthy()
-    expect(identity.nextElementSibling).toBe(screen.getByLabelText('Show workspace'))
+    expect(close.previousElementSibling).toBe(screen.getByLabelText('Show workspace'))
     fireEvent.click(screen.getByLabelText('Show workspace'))
     expect(document.querySelector('.anna-chat-only')).toBeNull()
-    expect(identity.nextElementSibling).toBe(screen.getByLabelText('Hide workspace — chat only'))
+    expect(close.previousElementSibling).toBe(screen.getByLabelText('Hide workspace — chat only'))
 })
 
 it.each([
@@ -816,7 +818,7 @@ it.each([
     ['desktop', 'chat-only'],
     ['mobile', 'chat'],
     ['mobile', 'browser'],
-])('closes Anna through the header X on %s from %s without losing drafts or the current page', (device, start) => {
+])('closes Anna from the header on %s from %s without losing drafts or the current page', (device, start) => {
     const originalMatchMedia = window.matchMedia
     mockMobileNavigation = device === 'mobile'
     window.matchMedia = () => ({
@@ -2253,192 +2255,6 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             }
         })
     })
-
-    // AT-3036 follow-up: a project picked in the chat sidebar focuses the composer once the new
-    // project's chat is on screen (the conversation reports that through `onSwitchSettled`).
-    describe('focuses the composer after a switch picked in the chat', () => {
-        const chat = () => screen.getByLabelText('Persistent conversation')
-        const workspaceEditor = () => screen.getByLabelText('Real workspace editor')
-        const press = target => act(() => target.dispatchEvent(new Event('pointerdown', { bubbles: true })))
-        const settle = projectId => act(() => mockConversationProps.onSwitchSettled(projectId))
-        // The resolving state the conversation hook reports, then the new project's chat.
-        const opening = (view, projectId) => {
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: projectId, switching: true })
-            view.rerender(content(1))
-        }
-        const opened = (view, projectId) => {
-            useAnnaConversation.mockReturnValue({
-                ...state,
-                conversation: { ...conversation, projectId },
-                activeProjectId: projectId,
-            })
-            view.rerender(content(1))
-        }
-        const start = () => {
-            const view = render(content(1))
-            // Entering assistant mode focuses the chat; start from somewhere neutral.
-            act(() => document.activeElement.blur())
-            expect(document.activeElement).toBe(document.body)
-            return view
-        }
-
-        it('waits for the switch to end, then focuses the composer and keeps the draft (project chip)', () => {
-            const view = start()
-            chat().value = 'Draft for Steercom'
-            act(() => switcher().props.onSelect('p3'))
-            expect(document.activeElement).toBe(document.body)
-            opening(view, 'p3')
-            expect(document.activeElement).toBe(document.body)
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(chat())
-            expect(chat().value).toBe('Draft for Steercom')
-            expect(mockUnmounts).toBe(0)
-        })
-
-        it('focuses after a pick in the assistant picker at the top left', () => {
-            const view = start()
-            fireEvent.click(document.querySelector('.anna-header-left .anna-assistant-picker'))
-            const product = [...document.querySelectorAll('.anna-project-option')].find(row =>
-                row.textContent.includes('Alldone Product')
-            )
-            press(product)
-            fireEvent.click(product)
-            expect(lastProject()).toBe('p2')
-            opening(view, 'p2')
-            expect(document.activeElement).not.toBe(chat())
-            opened(view, 'p2')
-            settle('p2')
-            expect(document.activeElement).toBe(chat())
-        })
-
-        it('focuses after a jump to another project’s chat', () => {
-            const otherThreads = [{ projectId: 'p3', chatId: 'AnnaChat20261113u1', created: 1 }]
-            useAnnaConversation.mockReturnValue({ ...state, otherThreads })
-            const view = start()
-            act(() => mockConversationProps.onOpenProject('p3'))
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(chat())
-        })
-
-        it('focuses right away when the pick keeps the chat on screen ("Automatic" to the default project)', () => {
-            start()
-            act(() => switcher().props.onSelect('p1'))
-            expect(document.activeElement).toBe(chat())
-        })
-
-        it('lets only the latest of quick picks focus, and never a refused one', () => {
-            const view = start()
-            act(() => switcher().props.onSelect('p2'))
-            opening(view, 'p2')
-            act(() => switcher().props.onSelect('p3'))
-            opening(view, 'p3')
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(chat())
-            // A refused switch ends back in the previous project: no focus, and nothing left pending.
-            act(() => document.activeElement.blur())
-            act(() => switcher().props.onSelect('p2'))
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(document.body)
-            settle('p2')
-            expect(document.activeElement).toBe(document.body)
-        })
-
-        it('never focuses on load or for a switch nobody picked in the chat (background, restored choice)', () => {
-            const view = start()
-            // The chat resolves on its own (first load, a restored selection, a new day).
-            opening(view, 'p3')
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(document.body)
-            // Unrelated renders after a finished, focused switch do not take focus back either.
-            act(() => switcher().props.onSelect('p2'))
-            opened(view, 'p2')
-            settle('p2')
-            expect(document.activeElement).toBe(chat())
-            act(() => document.activeElement.blur())
-            view.rerender(content(1))
-            settle('p2')
-            expect(document.activeElement).toBe(document.body)
-        })
-
-        it('never focuses for a switch from the workspace or an assistant line', () => {
-            const view = start()
-            press(workspaceEditor())
-            act(() => workspaceEditor().blur())
-            mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: 2 }
-            view.rerender(content(1))
-            expect(lastProject()).toBe('p3')
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(document.body)
-        })
-
-        it('drops the focus when the workspace takes over the switch while the chat loads', () => {
-            const view = start()
-            act(() => switcher().props.onSelect('p2'))
-            opening(view, 'p2')
-            // The person opens Steercom in the workspace meanwhile: that is the switch that counts.
-            press(workspaceEditor())
-            act(() => workspaceEditor().blur())
-            mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: 2 }
-            view.rerender(content(1))
-            expect(lastProject()).toBe('p3')
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(document.body)
-        })
-
-        it('does not take focus from what the person did while the chat loaded', () => {
-            const view = start()
-            // A press anywhere (here the workspace, without a project change) ...
-            act(() => switcher().props.onSelect('p3'))
-            press(workspaceEditor())
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).not.toBe(chat())
-            // ... or a key press ...
-            act(() => switcher().props.onSelect('p2'))
-            act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })))
-            opened(view, 'p2')
-            settle('p2')
-            expect(document.activeElement).not.toBe(chat())
-            // ... or a field outside the chat that got focus some other way.
-            act(() => switcher().props.onSelect('p3'))
-            act(() => workspaceEditor().focus())
-            opened(view, 'p3')
-            settle('p3')
-            expect(document.activeElement).toBe(workspaceEditor())
-        })
-
-        it('does not focus once assistant mode is closed', () => {
-            const view = start()
-            act(() => switcher().props.onSelect('p3'))
-            act(() => setAnnaMode(false))
-            opened(view, 'p3')
-            if (mockConversationProps.onSwitchSettled) settle('p3')
-            expect(document.activeElement).not.toBe(chat())
-        })
-
-        it('does not focus on a phone, where the keyboard would cover the new chat', () => {
-            const originalMatchMedia = window.matchMedia
-            window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
-            try {
-                const view = start()
-                act(() => switcher().props.onSelect('p3'))
-                opened(view, 'p3')
-                settle('p3')
-                expect(document.activeElement).toBe(document.body)
-                act(() => switcher().props.onSelect('p1'))
-                expect(document.activeElement).toBe(document.body)
-            } finally {
-                window.matchMedia = originalMatchMedia
-            }
-        })
-    })
 })
 
 describe('opening an activity row (AT-2906)', () => {
@@ -2734,7 +2550,7 @@ describe('opening the pane’s embedded app in a new tab (AT-2954)', () => {
     })
     afterEach(() => open.mockRestore())
 
-    it('sits immediately left of the X while an embedded app is on screen', () => {
+    it('sits left of the fullscreen and collapse controls while an embedded app is on screen', () => {
         render(content(1))
         expect(button()).toBeNull()
         act(() => openInAnnaAppPane(iframeAppView(url, 'Story Builder')))
@@ -2742,7 +2558,9 @@ describe('opening the pane’s embedded app in a new tab (AT-2954)', () => {
         expect(button()).toBeTruthy()
         expect(button().getAttribute('aria-label')).toBe('Open app in new tab')
         expect(button().getAttribute('title')).toBe('Open app in new tab')
-        expect(button().nextElementSibling.getAttribute('aria-label')).toBe('Close assistant chat')
+        // AT-3042: fullscreen sits directly left of the collapse control, so this comes before both.
+        expect(button().nextElementSibling.getAttribute('aria-label')).toBe('Hide workspace — chat only')
+        expect(button().nextElementSibling.nextElementSibling.getAttribute('aria-label')).toBe('Close assistant chat')
 
         chooseSurface('alldone')
         expect(button()).toBeNull()

@@ -54,8 +54,7 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
 
 /**
  * The assistant line: a compact header (avatar, the assistant's name — which is also the switcher
- * when there is more than one assistant to talk to — and, on desktop, the greeting), then one
- * composer box.
+ * when there is more than one assistant to talk to — and the greeting), then one composer box.
  * The box is a multi-line text field with a toolbar under it: + (attach) and Templates on the
  * left; mic, call and send on the right. The + and the mic belong to the text field
  * (CustomTextInput3 owns their insert/push-to-talk wiring) and are portalled into the toolbar's
@@ -340,14 +339,10 @@ export default function AssistantOptions({
                         </Text>
                     )}
                     {/* Kept short on purpose (AT-2442): the header is a single centred line, so a
-                        longer greeting ellipsises on narrow phones. AT-3043: on mobile it is left
-                        out altogether, so the assistant's name gets the whole line instead of both
-                        being cut off. */}
-                    {!isMobile && (
-                        <Text style={localStyles.greetingText} numberOfLines={1}>
-                            {translate('How can I help?')}
-                        </Text>
-                    )}
+                        longer greeting ellipsises on narrow phones. */}
+                    <Text style={localStyles.greetingText} numberOfLines={1}>
+                        {translate('How can I help?')}
+                    </Text>
                 </View>
                 {/* AT-3034: rage mode is back at the top right (it is also on the Empty inbox card).
                     Anna takes off from the avatar above (rageLaunchAnchor.js). Hidden without
