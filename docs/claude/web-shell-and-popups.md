@@ -309,6 +309,25 @@ not pulled down again. A new day in the same project is not a switch and does no
 Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.test.js` and the
 loading-name case in `AnnaShell.test.js`.
 
+**A switch picked in the chat ends with the composer focused (AT-3036 follow-up).** A project
+picked in the chat sidebar (composer chip, assistant picker at the top left, "Chats in other
+projects") goes through `AnnaShell.selectProjectFromChat`. It remembers the target
+(`chatSwitchFocus`), and the composer takes focus when the switch has ended. The conversation reports
+that through `onSwitchSettled(projectId)` from the same point as the snap to the bottom (messages
+loaded and rendered, cached and empty chats included), right before the snap. A pick that keeps
+the chat on screen ("Automatic" to the explicit default project) focuses at once. The draft stays
+(the composer never remounts). It applies on desktop only (decided with the product owner): on a
+phone the keyboard would cover the chat that just opened. A switch from the workspace or an
+assistant line never focuses here; `selectProject` drops the pending focus, and only the chat's
+picks set it. The latest pick wins: a switch only ends in the latest selected project, so a report
+for another project (refused, fallback to the default) drops it. Any pointer or key press while the
+chat loads (in the workspace, the chat or a menu; capture phase, so the press that makes a new pick
+re-arms it afterwards) drops it, as do leaving assistant mode and focus already sitting in a field
+or modal outside the chat (`isFocusHeldElsewhere`). Not verified in a real browser: iOS opens no
+keyboard for a focus this late, which does not matter on desktop. Pinned by "focuses the composer
+after a switch picked in the chat" in `AnnaShell.test.js` and "reports the end of a switch" in
+`AnnaConversation.test.js`.
+
 **And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
 the product owner, replacing "nothing on the workspace side changes the chat's project". When the
 person opens a project's root view (tasks, notes, goals, …) in the workspace, the chat selects that

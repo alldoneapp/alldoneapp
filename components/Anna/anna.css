@@ -795,6 +795,70 @@
 .anna-composer-actions {
     flex: none;
 }
+/* AT-3038: the main app's floating call panel. It renders the Assistant Mode call controls
+   outside .anna-shell, so it carries the composer field's card and the shell's base rules
+   itself (FloatingAssistantVoiceCall.js sets the --anna-* variables). */
+.anna-floating-call {
+    box-sizing: border-box;
+    width: min(400px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 12px 10px;
+    border: 1px solid var(--anna-border);
+    border-radius: 20px;
+    background: var(--anna-surface);
+    color: var(--anna-ink);
+    box-shadow: 0 8px 32px #18283f29;
+    font:
+        14px / 1.4 Roboto,
+        Arial,
+        sans-serif;
+}
+.anna-floating-call-error {
+    padding: 8px 8px 8px 16px;
+}
+.anna-floating-call * {
+    box-sizing: border-box;
+}
+.anna-floating-call button {
+    font: inherit;
+    cursor: pointer;
+}
+.anna-floating-call button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.anna-floating-call button:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-floating-call .anna-call-audio {
+    position: static;
+    padding: 0;
+}
+.anna-floating-call-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+.anna-floating-call-message {
+    flex: 1;
+    min-width: 0;
+    color: var(--anna-unread);
+    font-size: 12px;
+}
+.anna-floating-call-connecting-actions {
+    justify-content: flex-end;
+}
+.anna-floating-call .anna-floating-call-cancel {
+    font-size: 12px;
+}
+.anna-floating-call-hint {
+    line-height: 16px;
+}
 @container anna-composer (max-width: 420px) {
     .anna-composer-footer-idle {
         display: none;

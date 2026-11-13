@@ -2501,4 +2501,65 @@ describe('project switch loading and scroll (AT-3036)', () => {
         render({ conversation: { ...p1, id: 'AnnaChat20261114u1' } })
         expect(log.scrollTop).toBe(100)
     })
+
+    // AT-3036 follow-up: the shell focuses the composer after a switch picked in the chat; it is told
+    // when the switch has ended, i.e. once the new chat's messages are on screen.
+    describe('reports the end of a switch (composer focus)', () => {
+        const settled = jest.fn()
+        const seen = []
+        beforeEach(() => {
+            seen.length = 0
+            settled.mockReset().mockImplementation(projectId => seen.push([projectId, text()]))
+        })
+
+        it('reports once, after the new chat’s messages are rendered, with the composer and draft in place', () => {
+            type('Draft for Steercom')
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            mockUnloadedThreads.add(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).not.toHaveBeenCalled()
+            mockUnloadedThreads.delete(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).toHaveBeenCalledTimes(1)
+            expect(seen[0][0]).toBe('p2')
+            expect(seen[0][1]).toContain('Steercom message')
+            expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+            // Later updates and a new day are no switch.
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            render({ conversation: { ...p2, id: 'AnnaChat20261114u1' }, onSwitchSettled: settled })
+            expect(settled).toHaveBeenCalledTimes(1)
+        })
+
+        it('reports a reused cached chat and a new empty chat right away', () => {
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).toHaveBeenLastCalledWith('p2')
+            mockThreadMessages.empty = []
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p3, 'empty'), onSwitchSettled: settled })
+            expect(container.querySelector('.anna-welcome')).not.toBeNull()
+            expect(settled.mock.calls).toEqual([['p2'], ['p3']])
+        })
+
+        it('reports only the latest of several quick switches', () => {
+            mockUnloadedThreads.add(p2Thread)
+            mockUnloadedThreads.add(p3Thread)
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            mockUnloadedThreads.delete(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p3, p3Thread), onSwitchSettled: settled })
+            expect(settled).not.toHaveBeenCalled()
+            mockUnloadedThreads.delete(p3Thread)
+            render({ conversation: conversation(p3, p3Thread), onSwitchSettled: settled })
+            expect(settled.mock.calls).toEqual([['p3']])
+        })
+
+        it('reports the previous project when the switch is refused, so the shell can drop it', () => {
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: p1, onSwitchSettled: settled })
+            expect(settled.mock.calls).toEqual([['p1']])
+        })
+    })
 })

@@ -53,6 +53,7 @@ import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallP
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
+import { ANNA_THEME_VARIABLES } from './annaThemeVariables'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
@@ -114,6 +115,19 @@ const windowViewport = () =>
         width: window.innerWidth,
         height: window.innerHeight,
     })
+
+// AT-3036 follow-up: focus the person (or another dialog) put into a field outside the chat, e.g.
+// a task title in the workspace or an open modal, is theirs; a finished switch does not take it.
+const isFocusHeldElsewhere = chatPane => {
+    const element = document.activeElement
+    if (!element || element === document.body || chatPane?.contains(element)) return false
+    if (element.closest?.('[aria-modal="true"]')) return true
+    return (
+        element.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) ||
+        element.getAttribute?.('role') === 'textbox'
+    )
+}
 
 // Always mounted around the same route subtree, including in fullscreen Alldone. A layout switch
 // must never destroy a note editor, an unsent message, a selection, or the workspace scroll state.
@@ -224,6 +238,9 @@ export default function AnnaShell({ children, routeId }) {
     // handler is set below, once `selectProject` exists). Presses in the chat pane or the Anna
     // header are the chat's side; everything else, including body portals, the workspace's.
     const followWorkspace = useRef(null)
+    // AT-3036 follow-up: a project picked in the chat sidebar waits here (its target project) to
+    // focus the composer once that project's chat is on screen. Any other selection drops it.
+    const chatSwitchFocus = useRef(null)
     const { expectSync: expectWorkspaceSync } = useAnnaWorkspaceProjectFollow({
         active,
         isChatSide: target => !!target && (!!chatPane.current?.contains(target) || !!target.closest?.('.anna-header')),
@@ -232,6 +249,7 @@ export default function AnnaShell({ children, routeId }) {
     const selectProject = useCallback(
         (projectId, { syncWorkspace = true } = {}) => {
             setProjectNotice('')
+            chatSwitchFocus.current = null
             // "Automatic" (AT-3024) continues the default project's chat.
             const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
             const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
@@ -346,6 +364,54 @@ export default function AnnaShell({ children, routeId }) {
         chatPane.current?.focus({ preventScroll: true })
         awaitingChatInputFocus.current = !chatConversation.current
         chatConversation.current?.focusInput()
+    }, [])
+    // AT-3036 follow-up: after a project switch picked in the chat sidebar (composer chip, assistant
+    // picker at the top left, "Chats in other projects"), the composer takes focus once the new
+    // project's chat is loaded and on screen, so the person can type right away; the draft stays.
+    // Desktop only (decided with the product owner): on a phone the keyboard would cover the chat
+    // that just opened. Switches from the workspace or an assistant line never focus here, the
+    // latest pick wins, and any press while the chat loads (in the workspace, the chat, a menu)
+    // drops the pending focus, so it never takes over from what the person did meanwhile.
+    const chatInputFocusAllowed = useRef(false)
+    chatInputFocusAllowed.current = active && !mobile
+    const focusChatInputAfterSwitch = useCallback(() => {
+        if (!chatInputFocusAllowed.current || isFocusHeldElsewhere(chatPane.current)) return
+        focusChatInput()
+    }, [focusChatInput])
+    const selectProjectFromChat = useCallback(
+        projectId => {
+            const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
+            // e.g. "Automatic" -> the default project picked explicitly: the chat stays as it is.
+            const alreadyShown = !switching && !!conversation && conversation.projectId === targetId
+            selectProject(projectId)
+            if (!conversation || !chatInputFocusAllowed.current) return
+            if (alreadyShown) focusChatInputAfterSwitch()
+            else chatSwitchFocus.current = { projectId: targetId }
+        },
+        [selectProject, focusChatInputAfterSwitch, user.defaultProjectId, switching, conversation]
+    )
+    // Called by the conversation once a switch has ended and its messages are rendered. A switch
+    // only ends in the latest selected project, so a different project here means it was refused.
+    const chatSwitchSettled = useCallback(
+        projectId => {
+            const pending = chatSwitchFocus.current
+            chatSwitchFocus.current = null
+            if (pending?.projectId === projectId) focusChatInputAfterSwitch()
+        },
+        [focusChatInputAfterSwitch]
+    )
+    useEffect(() => {
+        const drop = () => {
+            chatSwitchFocus.current = null
+        }
+        // Capture phase: runs before the press's own handler, so a pick made by this very press
+        // (a menu option, a jump, Enter in the menu's search) is armed after the drop.
+        document.addEventListener('pointerdown', drop, true)
+        document.addEventListener('keydown', drop, true)
+        return () => {
+            document.removeEventListener('pointerdown', drop, true)
+            document.removeEventListener('keydown', drop, true)
+        }
     }, [])
     const selectSurface = nextSurface => {
         if (mobile && nextSurface === 'alldone') {
@@ -592,6 +658,7 @@ export default function AnnaShell({ children, routeId }) {
     }, [active, visited, conversation])
     useEffect(() => {
         if (!active) {
+            chatSwitchFocus.current = null
             requestGeneration.current++
             followedBrowser.current = null
             setSurface('alldone')
@@ -1042,7 +1109,7 @@ export default function AnnaShell({ children, routeId }) {
                     variant="assistant"
                     choices={projectChoices}
                     activeProjectId={projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId}
-                    onSelect={selectProject}
+                    onSelect={selectProjectFromChat}
                     disabled={offline || call.status !== 'idle'}
                     busy={switching}
                     // The mobile header spans the window; on desktop it sits in the chat pane.
@@ -1150,18 +1217,7 @@ export default function AnnaShell({ children, routeId }) {
             className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
-                '--anna-ink': colors.Text01,
-                '--anna-muted': colors.Text02,
-                '--anna-placeholder': colors.Text03,
-                '--anna-accent': colors.Primary200,
-                '--anna-unread': colors.UtilityRed200,
-                '--anna-neutral': colors.Grey200,
-                '--anna-tint': colors.UtilityBlue100,
-                '--anna-hover': colors.UtilityBlue112,
-                '--anna-border': colors.Grey300,
-                '--anna-bezel': colors.Grey400,
-                '--anna-focus': colors.UtilityBlue150,
-                '--anna-surface': colors.Grey100,
+                ...ANNA_THEME_VARIABLES,
             }}
             onClickCapture={interceptLink}
         >
@@ -1217,7 +1273,8 @@ export default function AnnaShell({ children, routeId }) {
                                         call={call}
                                         threads={threads}
                                         otherThreads={otherThreads}
-                                        onOpenProject={selectProject}
+                                        onOpenProject={selectProjectFromChat}
+                                        onSwitchSettled={chatSwitchSettled}
                                         resolveConversation={resolveConversation}
                                         loadEarlier={loadEarlier}
                                         hasEarlier={nextBefore != null}
@@ -1248,7 +1305,7 @@ export default function AnnaShell({ children, routeId }) {
                                                         ? ANNA_AUTOMATIC_PROJECT
                                                         : activeProjectId
                                                 }
-                                                onSelect={selectProject}
+                                                onSelect={selectProjectFromChat}
                                                 disabled={disabled || call.status !== 'idle'}
                                                 busy={switching}
                                                 getViewport={() => {
