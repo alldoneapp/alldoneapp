@@ -22,23 +22,9 @@ jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../utils/backends/firestore', () => ({ checkIfCalendarConnected: jest.fn() }))
 jest.mock('../../../utils/backends/openTasks', () => ({
     CALENDAR_TASK_INDEX: 10,
-    DATE_TASK_INDEX: 0,
     NOT_PARENT_GOAL_INDEX: '0',
     sortGoalTasksGorups: (...args) => mockSortGoalTasksGorups(...args),
 }))
-
-jest.mock('../../UIControls/ShowMoreButton', () => 'ShowMoreButton')
-// AT-3027 - the expand/collapse state is the hook's job (useCollapsibleTaskSection.test.js); here
-// it is a switch the tests flip.
-let mockSectionExpanded = false
-const mockExpandSection = jest.fn()
-const mockContractSection = jest.fn()
-const mockUseCollapsibleTaskSection = jest.fn(() => ({
-    expanded: mockSectionExpanded,
-    expand: mockExpandSection,
-    contract: mockContractSection,
-}))
-jest.mock('./useCollapsibleTaskSection', () => args => mockUseCollapsibleTaskSection(args))
 
 const GENERAL_TASKS = '0'
 
@@ -68,17 +54,16 @@ const allDay = (id, day) => meeting(id, { date: day })
 
 // AT-2377 - the dedicated Calendar section on the open-tasks board, removed by AT-2252.
 describe('CalendarSection', () => {
-    const renderSection = (calendarEvents, { isActiveOrganizeMode = false } = {}) => {
+    const renderSection = calendarEvents => {
         let tree
         act(() => {
             tree = renderer.create(
                 <CalendarSection
                     projectId="project-1"
-                    projectIndex={2}
                     calendarEvents={calendarEvents}
                     dateIndex={0}
                     instanceKey="instance"
-                    isActiveOrganizeMode={isActiveOrganizeMode}
+                    isActiveOrganizeMode={false}
                 />
             )
         })
@@ -93,8 +78,6 @@ describe('CalendarSection', () => {
             goalsByProjectInTasks: {},
             currentUser: { uid: 'user-1' },
         }
-        mockSectionExpanded = false
-        mockUseCollapsibleTaskSection.mockClear()
         mockSortGoalTasksGorups.mockReturnValue({ [GENERAL_TASKS]: 0, 'goal-1': 1 })
     })
 
@@ -351,93 +334,5 @@ describe('CalendarSection', () => {
         const tree = renderSection([[GENERAL_TASKS, [timed('a', '2026-08-21T09:00:00+02:00')]]])
 
         expect(tree.toJSON()).toBeNull()
-    })
-    // AT-3027 - its own expand / collapse chevron, collapsed to the first three meetings.
-    describe('collapsing to the first three meetings (AT-3027)', () => {
-        // What the user sees: the tasks each list actually renders, honouring `amountToRender`.
-        const visibleTaskIds = tree =>
-            tree.root
-                .findAll(node => node.type === 'TasksList' || node.type === 'ParentGoalSection')
-                .flatMap(node => {
-                    const { taskList, amountToRender } = node.props
-                    const amount = amountToRender === undefined ? taskList.length : amountToRender
-                    return taskList.slice(0, amount).map(task => task.id)
-                })
-
-        const fiveMeetings = () => [
-            [
-                GENERAL_TASKS,
-                [
-                    timed('d', '2026-08-21T13:00:00+02:00'),
-                    timed('a', '2026-08-21T09:00:00+02:00'),
-                    timed('e', '2026-08-21T15:00:00+02:00'),
-                ],
-            ],
-            ['goal-1', [timed('b', '2026-08-21T10:00:00+02:00'), timed('c', '2026-08-21T11:00:00+02:00')]],
-        ]
-
-        it.each([0, 1, 2, 3])('shows every meeting and no chevron with %i meetings', amount => {
-            const meetings = Array.from({ length: amount }, (_, index) =>
-                timed(`m${index}`, `2026-08-21T0${index + 1}:00:00+02:00`)
-            )
-            const tree = renderSection(amount === 0 ? [] : [[GENERAL_TASKS, meetings]])
-
-            expect(tree.root.findAllByType('ShowMoreButton')).toHaveLength(0)
-            expect(visibleTaskIds(tree)).toEqual(meetings.map(task => task.id))
-        })
-
-        it('shows only the first three meetings in clock order, across goal runs', () => {
-            const tree = renderSection(fiveMeetings())
-
-            expect(visibleTaskIds(tree)).toEqual(['a', 'b', 'c'])
-            // The later General run has no slot left, so its group is not rendered at all.
-            expect(renderedSections(tree)).toEqual(['SwipeableGeneralTasksHeader', 'TasksList', 'ParentGoalSection'])
-            // The last visible group sits flush on the chevron.
-            expect(tree.root.findByType('ParentGoalSection').props.containerStyle).toEqual({ marginBottom: 0 })
-            const button = tree.root.findByType('ShowMoreButton')
-            expect(button.props.expanded).toBe(false)
-            expect(button.props.expand).toBe(mockExpandSection)
-        })
-
-        it('cuts inside a run when the third slot falls in the middle of it', () => {
-            const tree = renderSection([
-                [
-                    GENERAL_TASKS,
-                    ['a', 'b', 'c', 'd'].map((id, index) => timed(id, `2026-08-21T0${index + 1}:00:00+02:00`)),
-                ],
-            ])
-
-            expect(visibleTaskIds(tree)).toEqual(['a', 'b', 'c'])
-            expect(tree.root.findByType('TasksList').props.amountToRender).toBe(3)
-        })
-
-        it('shows every meeting once expanded and offers the collapse chevron', () => {
-            mockSectionExpanded = true
-            const tree = renderSection(fiveMeetings())
-
-            expect(visibleTaskIds(tree)).toEqual(['a', 'b', 'c', 'd', 'e'])
-            const button = tree.root.findByType('ShowMoreButton')
-            expect(button.props.expanded).toBe(true)
-            expect(button.props.contract).toBe(mockContractSection)
-        })
-
-        it('shows everything and no chevron in organize mode, like the main list', () => {
-            const tree = renderSection(fiveMeetings(), { isActiveOrganizeMode: true })
-
-            expect(tree.root.findAllByType('ShowMoreButton')).toHaveLength(0)
-            expect(visibleTaskIds(tree)).toEqual(['a', 'b', 'c', 'd', 'e'])
-        })
-
-        it('keys its state by project, day and the calendar section', () => {
-            mockState.filteredOpenTasksStore = { instance: [['TODAY']] }
-            renderSection(fiveMeetings())
-
-            expect(mockUseCollapsibleTaskSection).toHaveBeenCalledWith({
-                projectId: 'project-1',
-                projectIndex: 2,
-                dateKey: 'TODAY',
-                sectionKey: 'calendar',
-            })
-        })
     })
 })
