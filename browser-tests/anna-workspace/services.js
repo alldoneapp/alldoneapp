@@ -6,6 +6,8 @@ import { getWorkspaceViewport, WORKSPACE_VIEWPORT_EVENT } from '../../utils/work
 import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
 import { getAnnaHistoryWindow } from '../../functions/Assistant/annaHistoryWindow'
 export const useDispatch = () => () => {}
+// AT-3032: the composer's Templates button (assistant line) imports modules that connect() at load.
+export const connect = () => Component => Component
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
 // AT-2903 `?projects`: three member projects, one with its own assistant.

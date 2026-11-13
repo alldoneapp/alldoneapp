@@ -337,13 +337,27 @@ so an empty or failed take can never send the bare draft. No focus after a voice
 keyboard stays closed. Pinned by the AT-2929 block of `AnnaConversation.test.js` and the
 hold-to-send step of `browser-tests/anna-workspace` (`DICTATION_ONLY=1`).
 
-**Anna composer toolbar order (AT-3029).** Like the assistant line's composer: `.anna-composer-tools`
-(left) holds + then the project chip; `.anna-composer-actions` (right, `flex: none`) holds mic,
-call, send. With an empty draft the small mic hides and the AT-3025 send-slot mic takes Send's
-place, so the right group reads call, mic (`voice-and-dictation.md`). On narrow panes the chip is
-the only item that shrinks, so the right group never wraps. Offline hides the mic only. Pinned by
-the AT-3029 case in `AnnaConversation.test.js` and the order/alignment geometry (empty and typed
-draft) in `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
+**Anna composer toolbar order (AT-3029, AT-3032).** Like the assistant line's composer:
+`.anna-composer-tools` (left) holds + then **Templates**; `.anna-composer-actions` (right,
+`flex: none`) holds mic, call, send. With an empty draft the small mic hides and the AT-3025
+send-slot mic takes Send's place, so the right group reads call, mic (`voice-and-dictation.md`).
+Offline hides the mic only. Templates is the assistant line's own `AssistantTaskSearchButtonWrapper`
+(same list, same pre-configured task run), not a copy. Below a 360px composer
+(`ANNA_TEMPLATES_COMPACT_WIDTH`, measured on the form) it shows only its icon, keeping its accessible
+name, so the row fits at 320px. Anna passes it `position` (open upwards) and a window-sized
+`getPopoverViewport`. Without a viewport, any popover is clamped to `window.__alldoneWorkspaceViewport`
+and the list opened inside the workspace pane, away from its button. The same applies to any other
+popup put in the Anna chat pane: pass a viewport.
+
+**Project chip on the field edge (AT-3032).** The project chip is no longer in the toolbar. It is
+the first child of `.anna-composer-draft`, in `.anna-composer-project`, absolutely positioned on the
+field's top border (centred on it, left-aligned with the +), and first in tab order. The room it
+needs (16px slot margin above, 22px field padding below) is reserved through
+`:has(.anna-project-chip)`, so a composer without a chip (fewer than two choices) keeps the old
+geometry. It has no `z-index` on purpose: with one it painted over the Templates popup. During calls
+it stays hidden with the draft. Pinned by `AnnaConversation.test.js`,
+`annaProjectChipText.test.js` and the chip/Templates geometry in `browser-tests/anna-workspace`
+(`PROJECT_SWITCH_ONLY=1`, 1440/1024/390/320).
 
 **Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
 { font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as

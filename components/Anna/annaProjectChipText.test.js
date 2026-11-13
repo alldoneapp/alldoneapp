@@ -33,3 +33,25 @@ describe('Anna project chip text', () => {
         expect(css).toMatch(/\.anna-shell button:not\(\.anna-workspace-content \*\),[^{]*\{\s*font: inherit;/)
     })
 })
+
+// AT-3032 (follow-up): the chip moved out of the toolbar onto the field's top edge, half over it.
+describe('Anna project chip on the composer edge', () => {
+    it('centres the chip on the field border, aligned with the +', () => {
+        const slot = rule('.anna-composer-project')
+        expect(slot).toMatch(/position: absolute;/)
+        expect(slot).toMatch(/left: 12px;/)
+        expect(slot).toMatch(/transform: translateY\(-50%\);/)
+        expect(rule('.anna-composer-project:empty')).toMatch(/display: none;/)
+    })
+
+    it('reserves room above and below the edge only while a chip is shown', () => {
+        // Half the 32px chip above the field, the other half plus a gap inside its padding.
+        expect(rule('.anna-composer-slot:has(.anna-project-chip)')).toMatch(/margin-top: 16px;/)
+        expect(rule('.anna-composer-field:has(.anna-project-chip)')).toMatch(/padding-top: 22px;/)
+        expect(rule('.anna-composer-field')).toMatch(/position: relative;/)
+    })
+})
+
+it('keeps the edge chip out of the stacking order, so popups (Templates) cover it', () => {
+    expect(rule('.anna-composer-project')).not.toMatch(/^\s*z-index:/m)
+})
