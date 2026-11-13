@@ -260,7 +260,7 @@ owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace
 (`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
 
 **The header closes with the panel icon, fullscreen sits beside it (AT-3042).** The close
-control at the far right of the Anna header is `AssistantModeIcon expanded` (panel, chevron
+control (at the far right until AT-3045 put the workspace picker after it) is `AssistantModeIcon expanded` (panel, chevron
 pointing right), the counterpart to the assistant line's open button, not an X. It is the same
 `closeChat` and label ("Close assistant chat") on every device, mobile included (decided with the
 product owner). The fullscreen toggle (`maximize-2` / `minimize-2`, desktop only) moved from after
@@ -268,6 +268,14 @@ the assistant chevron on the left to directly left of it; "Open app in new tab" 
 The left group is now only avatar, name and assistant chevron. Pinned by "puts the fullscreen
 action directly left of the right-pointing collapse action" and the AT-2954 new-tab case in
 `AnnaShell.test.js`.
+
+**The workspace picker is the last header control and its chevron points right (AT-3045).** The
+"Alldone / Browser / VMs / app" `<select>` (`.anna-header-picker`) chooses what the right-hand pane
+shows, so it sits after the panel/close button at the far right of `.anna-header-right` and uses
+`chevron-right` instead of `chevron-down` (desktop and mobile alike). This overrides AT-3042's
+"close control at the far right"; the order is now open-in-new-tab, fullscreen, close, picker.
+Anna's assistant chevron on the left stays `chevron-down`. Pinned by "puts the workspace picker at
+the far right" in `AnnaShell.test.js` and the header geometry in `browser-tests/anna-workspace`.
 
 **Project switch: one project's chat on the left, the same project on the right (AT-3036).**
 Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
