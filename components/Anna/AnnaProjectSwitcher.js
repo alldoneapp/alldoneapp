@@ -12,12 +12,30 @@ import { translate } from '../../i18n/TranslationService'
 export const ANNA_PROJECT_SEARCH_THRESHOLD = 8
 const EMPTY = []
 
+// AT-3024: "Automatic" is a choice, not a project; it has no stored name.
+const choiceName = choice => (choice.isAutomatic ? translate('Automatic') : choice.name)
+
 const assistantLabel = choice => {
     const name = choice.assistant?.displayName?.trim() || translate('Assistant')
+    if (choice.isAutomatic) return `${name} · ${translate('Automatic project description')}`
     if (choice.isDefault) return `${name} · ${translate('Default project')}`
     if (choice.isProjectAssistant) return name
     return translate('%{assistantName} (default assistant)', { assistantName: name })
 }
+
+// The project's color dot; "Automatic" shows the same icon as in the add-task picker.
+const ChoiceMark = ({ choice }) =>
+    choice.isAutomatic ? (
+        <span aria-hidden="true" className="anna-project-auto-icon">
+            <Icon name="cpu" size={14} color="currentColor" />
+        </span>
+    ) : (
+        <span
+            aria-hidden="true"
+            className="anna-project-dot"
+            style={choice.color ? { background: choice.color } : undefined}
+        />
+    )
 
 /**
  * AT-2903 — the project chip in the assistant chat composer. The selected
@@ -36,7 +54,7 @@ export default function AnnaProjectSwitcher({
     const [open, setOpen] = useState(false)
     const [query, setQuery] = useState('')
     const active = choices.find(choice => choice.id === activeProjectId)
-    const ids = useMemo(() => choices.map(choice => choice.id), [choices])
+    const ids = useMemo(() => choices.filter(choice => !choice.isAutomatic).map(choice => choice.id), [choices])
     // Project assistants load on demand (AT-2386). Only the open list needs all of them.
     useProjectsData(ids, PROJECT_DATA_ASSISTANTS, { enabled: open })
 
@@ -76,11 +94,11 @@ export default function AnnaProjectSwitcher({
     const filtered = needle
         ? choices.filter(
               choice =>
-                  choice.name.toLowerCase().includes(needle) ||
+                  choiceName(choice).toLowerCase().includes(needle) ||
                   (choice.assistant?.displayName || '').toLowerCase().includes(needle)
           )
         : choices
-    const label = translate('Project: %{projectName}', { projectName: active.name })
+    const label = translate('Project: %{projectName}', { projectName: choiceName(active) })
     const title = disabled
         ? translate('Finish the call or dictation and stay online to change the project')
         : `${label} – ${translate('Choose project for this chat')}`
@@ -115,13 +133,9 @@ export default function AnnaProjectSwitcher({
                                 className={`anna-project-option${selected ? ' anna-project-option-selected' : ''}`}
                                 onClick={() => pick(choice.id)}
                             >
-                                <span
-                                    aria-hidden="true"
-                                    className="anna-project-dot"
-                                    style={choice.color ? { background: choice.color } : undefined}
-                                />
+                                <ChoiceMark choice={choice} />
                                 <span className="anna-project-option-text">
-                                    <strong>{choice.name}</strong>
+                                    <strong>{choiceName(choice)}</strong>
                                     <span>
                                         {assistantLabel(choice)}
                                         {choice.isShared && ` · ${translate('Visible to project members')}`}
@@ -159,12 +173,8 @@ export default function AnnaProjectSwitcher({
                 disabled={disabled}
                 onClick={toggle}
             >
-                <span
-                    aria-hidden="true"
-                    className="anna-project-dot"
-                    style={active.color ? { background: active.color } : undefined}
-                />
-                <span className="anna-project-chip-name">{active.name}</span>
+                <ChoiceMark choice={active} />
+                <span className="anna-project-chip-name">{choiceName(active)}</span>
                 <Icon name="chevron-down" size={14} color="currentColor" />
             </button>
         </AppPopover>
