@@ -439,6 +439,28 @@ describe('AssistantOptions greeting', () => {
         expect(JSON.stringify(tree.toJSON())).not.toContain('What can I do for you today?')
     })
 
+    // AT-3043: on a phone the greeting and the name both ellipsised ("Anna Alldo…" / "Wie kann
+    // ich helf…"). Mobile drops the greeting so the name (and the switcher's chevron) get the line.
+    it('leaves the greeting out on mobile and keeps the name, avatar and switcher', async () => {
+        mockState.smallScreenNavigation = true
+        try {
+            const plain = await renderOptions()
+            const texts = plain.root.findAllByType(Text).map(node => node.props.children)
+            expect(texts).not.toContain('How can I help?')
+            expect(texts).toContain('Assistant')
+            expect(plain.root.findByProps({ nativeID: 'rage-mode-launch-anchor' })).toBeTruthy()
+
+            const assistantSwitch = { groups: [], activeAssistantId: 'assistant-1', onSelect: jest.fn() }
+            const switched = await renderOptions({ assistantSwitch })
+            expect(switched.root.findByType('AssistantSwitchControl').props.label).toBe('Assistant')
+            expect(switched.root.findAllByType(Text).some(node => node.props.children === 'How can I help?')).toBe(
+                false
+            )
+        } finally {
+            mockState.smallScreenNavigation = false
+        }
+    })
+
     it('is translated in every supported locale', () => {
         const locales = {
             en: require('../../../../i18n/translations/en.json'),
