@@ -74,6 +74,7 @@ jest.mock('../../redux/store', () => ({
 
 // AT-3036: what the Alldone workspace shows (redux), for the workspace sync.
 let mockWorkspaceState = {}
+let mockCallStatus = 'idle'
 const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
 let mockBrowserProps
@@ -148,6 +149,7 @@ jest.mock('react-redux', () => ({
             loggedUserProjectsMap: mockProjectsMap,
             sidebarNumbers: mockSidebarNumbers,
             smallScreenNavigation: mockMobileNavigation,
+            ...mockWorkspaceState,
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
@@ -192,7 +194,7 @@ jest.mock('../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame', () => prop
 })
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: () => mockAssistant }))
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
-    useVoiceCall: () => ({ status: 'idle', voiceSeconds: 0 }),
+    useVoiceCall: () => ({ status: mockCallStatus, voiceSeconds: 0 }),
 }))
 jest.mock('../../utils/backends/firestore', () => ({
     getDb: () => ({
@@ -2091,6 +2093,146 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
         fireEvent.click(screen.getByLabelText('Line assistant: Open assistant chat'))
         expect(lastProject()).toBe('p3')
         expect(projectSwitches()).toEqual([])
+    })
+
+    // AT-3036 follow-up: the other direction. The person opens a project in the workspace and the
+    // chat follows: that project's chat, answered by that project's assistant.
+    describe('the chat follows a project opened in the workspace', () => {
+        const indexOf = { p1: 0, p2: 1, p3: 2, all: -1 }
+        // What the store looks like after a navigation in the workspace (redux is mocked here).
+        const workspaceShows = (view, project, route = 'ROOT_NOTES') => {
+            mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: indexOf[project], route }
+            view.rerender(content(1))
+        }
+        // The person's press in the workspace (the app sidebar, a list) or in the chat pane.
+        const press = target => act(() => target.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+        const pressWorkspace = () => press(screen.getByLabelText('Real workspace editor'))
+        const pressChat = () => press(screen.getByLabelText('Persistent conversation'))
+        const headerAssistant = () => document.querySelector('.anna-header-assistant').getAttribute('aria-label')
+
+        it('selects the opened project and previews its own assistant, without moving the workspace back', () => {
+            const view = render(content(1))
+            pressWorkspace()
+            workspaceShows(view, 'p2')
+            expect(lastProject()).toBe('p2')
+            // (The chip's project comes from the mocked conversation hook; only the mode is real here.)
+            expect(switcher().props.activeProjectId).not.toBe(':automatic')
+            expect(mockConversationProps.projectSwitch).toMatchObject({ projectId: 'p2', name: 'Alldone Product' })
+            expect(projectSwitches()).toEqual([])
+            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
+            view.rerender(content(1))
+            expect(headerAssistant()).toBe('Alldone CTO – Latest messages')
+        })
+
+        it('falls back to the default assistant in a project without one of its own', () => {
+            const view = render(content(1))
+            pressWorkspace()
+            workspaceShows(view, 'p3')
+            expect(lastProject()).toBe('p3')
+            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p3', switching: true })
+            view.rerender(content(1))
+            expect(headerAssistant()).toBe('Anna Alldone – Latest messages')
+        })
+
+        it('goes back to "Automatic" on All projects or the default project', () => {
+            const view = render(content(1))
+            pressWorkspace()
+            workspaceShows(view, 'p3')
+            expect(lastProject()).toBe('p3')
+            pressWorkspace()
+            workspaceShows(view, 'all', 'ROOT_TASKS')
+            expect(lastProject()).toBe('p1')
+            expect(switcher().props.activeProjectId).toBe(':automatic')
+            pressWorkspace()
+            workspaceShows(view, 'p2')
+            pressWorkspace()
+            workspaceShows(view, 'p1')
+            expect(switcher().props.activeProjectId).toBe(':automatic')
+        })
+
+        it('ignores project changes nobody made in the workspace (assistant reveal, chat links)', () => {
+            const view = render(content(1))
+            workspaceShows(view, 'p3', 'ROOT_TASKS')
+            expect(lastProject()).toBe('p1')
+            // A press in the chat (an activity row, a link in an answer) is the chat's side.
+            pressChat()
+            workspaceShows(view, 'p2', 'ROOT_TASKS')
+            expect(lastProject()).toBe('p1')
+            // A press long ago is no intent for a change now.
+            const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+            pressWorkspace()
+            now.mockReturnValue(1000 + 4001)
+            workspaceShows(view, 'p3')
+            now.mockRestore()
+            expect(lastProject()).toBe('p1')
+        })
+
+        it('takes one press as one change, so a later programmatic change stays programmatic', () => {
+            const view = render(content(1))
+            pressWorkspace()
+            workspaceShows(view, 'p3')
+            expect(lastProject()).toBe('p3')
+            workspaceShows(view, 'p2')
+            expect(lastProject()).toBe('p3')
+        })
+
+        it('does not follow into an object’s detail view, nor when assistant mode is off', () => {
+            const view = render(content(1))
+            pressWorkspace()
+            workspaceShows(view, 'p3', 'TaskDetailedView')
+            expect(lastProject()).toBe('p1')
+            act(() => setAnnaMode(false))
+            pressWorkspace()
+            workspaceShows(view, 'p2')
+            expect(lastProject()).toBe('p1')
+        })
+
+        it('keeps the latest choice of both sides, without a loop (rapid navigation)', () => {
+            const view = render(content(1))
+            // Two quick projects in the workspace: the second wins.
+            pressWorkspace()
+            workspaceShows(view, 'p2')
+            pressWorkspace()
+            workspaceShows(view, 'p3')
+            expect(lastProject()).toBe('p3')
+            expect(projectSwitches()).toEqual([])
+            // Then the chat's chip: it wins and moves the workspace, once.
+            pressChat()
+            act(() => switcher().props.onSelect('p2'))
+            expect(lastProject()).toBe('p2')
+            expect(projectSwitches()).toEqual([1])
+            // The workspace arrives there; nothing bounces back.
+            workspaceShows(view, 'p2')
+            expect(lastProject()).toBe('p2')
+            expect(projectSwitches()).toEqual([1])
+        })
+
+        it('never bounces a late workspace sync back over a newer chat choice', () => {
+            const view = render(content(1))
+            // A press in the workspace just before, then two quick picks in the chat (no chat press
+            // here: the picks are called directly, so only the sync bookkeeping protects them).
+            pressWorkspace()
+            act(() => switcher().props.onSelect('p2'))
+            act(() => switcher().props.onSelect('p3'))
+            expect(projectSwitches()).toEqual([1, 2])
+            // The workspace still passes through the first sync's project on its way.
+            workspaceShows(view, 'p2')
+            workspaceShows(view, 'p3')
+            expect(lastProject()).toBe('p3')
+            expect(projectSwitches()).toEqual([1, 2])
+        })
+
+        it('does not switch during a voice call', () => {
+            mockCallStatus = 'active'
+            try {
+                const view = render(content(1))
+                pressWorkspace()
+                workspaceShows(view, 'p2')
+                expect(lastProject()).toBe('p1')
+            } finally {
+                mockCallStatus = 'idle'
+            }
+        })
     })
 })
 
