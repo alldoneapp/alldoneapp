@@ -1,11 +1,16 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import styles, { colors } from '../../styles/global'
 import GoogleCalendar from '../../../assets/svg/GoogleCalendar'
-import { CALENDAR_TASK_INDEX, NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../../../utils/backends/openTasks'
+import {
+    CALENDAR_TASK_INDEX,
+    DATE_TASK_INDEX,
+    NOT_PARENT_GOAL_INDEX,
+    sortGoalTasksGorups,
+} from '../../../utils/backends/openTasks'
 import TasksList from './TasksList'
 import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
@@ -14,6 +19,16 @@ import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import { buildChronologicalCalendarRuns } from './calendarSectionGrouping'
 import { getTaskGroupSpacingStyle } from './taskGroupSpacing'
 import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
+import ShowMoreButton from '../../UIControls/ShowMoreButton'
+import { useIsUserEditing } from '../../../utils/editingGuard'
+import { createSectionRenderBudget } from './sectionRenderBudget'
+import useCollapsibleTaskSection from './useCollapsibleTaskSection'
+import {
+    CALENDAR_SECTION_KEY,
+    allocateSectionTaskBudget,
+    countSectionTasks,
+    shouldOfferSectionToggle,
+} from './collapsibleTaskSection'
 import {
     getCalendarConnectedProjectIds,
     getCalendarProviderUrl,
@@ -37,14 +52,33 @@ import {
  * The chronological order itself comes from `compareTasksByCalendarPlacement`, the AT-2351 rule,
  * rather than from a local sort: "(calendar day, all-day first, start time, arrival)". Reusing it
  * keeps this section, My Day and the focus-task pick from disagreeing about which meeting is next.
+ *
+ * AT-3027 - collapsed to the first `COLLAPSED_SECTION_TASK_LIMIT` meetings of that chronological
+ * list (past ones included), with its own chevron. See collapsibleTaskSection.js.
  */
-export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
+export default function CalendarSection({
+    projectId,
+    projectIndex,
+    calendarEvents,
+    dateIndex,
+    isActiveOrganizeMode,
+    instanceKey,
+}) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
     const displayedProjectSections = useSelector(state => state.filteredOpenTasksStore?.[instanceKey])
+    const dateKey = useSelector(state => state.filteredOpenTasksStore?.[instanceKey]?.[dateIndex]?.[DATE_TASK_INDEX])
+    const isUserEditing = useIsUserEditing()
+    const renderedAmountsRef = useRef({})
+    const { expanded, expand, contract } = useCollapsibleTaskSection({
+        projectId,
+        projectIndex,
+        dateKey,
+        sectionKey: CALENDAR_SECTION_KEY,
+    })
 
     const goalsPositionId = sortGoalTasksGorups(
         projectId,
@@ -63,6 +97,23 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     // something once a goal heading is on screen to tell it apart from. When it does, EVERY run
     // without a goal gets one - including the first - so the reading stays General -> goal -> General.
     const showGeneralTasksHeader = calendarRuns.some(run => run.goalId !== NOT_PARENT_GOAL_INDEX)
+
+    // The cut follows the chronological runs, so the visible meetings are the first ones of the day.
+    const runTaskLists = calendarRuns.map(run => run.taskList)
+    const showToggle = shouldOfferSectionToggle(countSectionTasks(runTaskLists), isActiveOrganizeMode)
+    const collapsed = showToggle && !expanded
+    const amounts = allocateSectionTaskBudget(runTaskLists, collapsed)
+
+    // Hold mounted runs at their last idle size while the user edits (AT-2203 rule), so a meeting
+    // synced in ahead of the one being edited cannot unmount its editor.
+    const sectionBudget = createSectionRenderBudget(isUserEditing, renderedAmountsRef)
+    const visibleCalendarRuns = []
+    calendarRuns.forEach((run, index) => {
+        const amount = sectionBudget.resolve(run.key, amounts[index] === null ? run.taskList.length : amounts[index])
+        if (sectionBudget.shouldSkip(run.key, amount, collapsed)) return
+        sectionBudget.remember(run.key, amount)
+        visibleCalendarRuns.push({ ...run, amountToRender: collapsed ? amount : undefined })
+    })
 
     const allCalendarTasks = calendarEvents.flatMap(goalTasksData => goalTasksData[1])
     const displayedProjectCalendarTasks = displayedProjectSections?.flatMap(day =>
@@ -93,9 +144,9 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                 </View>
             </View>
 
-            {calendarRuns.map(({ goalId, taskList, goalIndex, occurrence, key }, index) => {
+            {visibleCalendarRuns.map(({ goalId, taskList, goalIndex, occurrence, key, amountToRender }, index) => {
                 // Same gap below every group as the main list (MainSection), general and goal alike.
-                const spacingStyle = getTaskGroupSpacingStyle(calendarRuns.length - 1 === index)
+                const spacingStyle = getTaskGroupSpacingStyle(visibleCalendarRuns.length - 1 === index)
 
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
                     <TaskHierarchyGroup key={key} style={spacingStyle}>
@@ -115,6 +166,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                             taskList={taskList}
                             taskListIndex={CALENDAR_TASK_INDEX}
                             goalIndex={goalIndex}
+                            amountToRender={amountToRender}
                             instanceKey={instanceKey}
                         />
                     </TaskHierarchyGroup>
@@ -136,10 +188,15 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         nestedTaskListIndex={occurrence > 0 ? occurrence : undefined}
                         containerStyle={spacingStyle}
                         goalIndex={goalIndex}
+                        amountToRender={amountToRender}
                         instanceKey={instanceKey}
                     />
                 )
             })}
+
+            {showToggle && (
+                <ShowMoreButton expanded={expanded} contract={contract} expand={expand} style={{ marginBottom: 0 }} />
+            )}
         </View>
     )
 }
