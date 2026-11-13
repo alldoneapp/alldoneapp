@@ -514,16 +514,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 />
                             </div>
                             <div className="anna-composer-toolbar">
+                                {/* AT-3029: + and the project on the left; mic, call and send on the right. */}
                                 <div className="anna-composer-tools">
-                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
-                                    {dictationAvailable && (
-                                        <RambleButton
-                                            {...dictationProps}
-                                            visible={inlineMicVisible}
-                                            onPhaseChange={setDictationPhase}
-                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                        />
-                                    )}
                                     <div className="anna-composer-attachment">
                                         <AddFeedAttachButton
                                             compact
@@ -549,8 +541,17 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             }}
                                         />
                                     </div>
+                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
                                 </div>
                                 <div className="anna-composer-actions">
+                                    {dictationAvailable && (
+                                        <RambleButton
+                                            {...dictationProps}
+                                            visible={inlineMicVisible}
+                                            onPhaseChange={setDictationPhase}
+                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
+                                        />
+                                    )}
                                     <button
                                         type="button"
                                         className="anna-voice-button"

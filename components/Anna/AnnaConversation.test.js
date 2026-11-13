@@ -328,7 +328,23 @@ it('follows viewport resizing after focus without pulling a reader away from old
     }
 })
 
-it('places the shared attachment picker next to the microphone and inserts the selected file', () => {
+it('orders the toolbar as + and project on the left, then mic, call and send on the right (AT-3029)', () => {
+    render({ renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    const labels = selector =>
+        [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
+    // An empty draft shows its mic in Send's place (AT-3025), still on the right.
+    expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Dictate'])
+    type('Draft')
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
+    expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
+    // Offline hides only the mic; the rest keep their places.
+    render({ offline: true, renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Project'])
+    expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
+})
+
+it('places the shared attachment picker in the toolbar and inserts the selected file', () => {
     render()
     const tools = container.querySelector('.anna-composer-tools')
     expect(tools.querySelector('[aria-label="Select kind of file to add"]')).not.toBeNull()
@@ -336,10 +352,13 @@ it('places the shared attachment picker next to the microphone and inserts the s
     expect(mockAttachments.projectId).toBe('p1')
     mockAttachments.addAttachmentTag('plan.pdf', 'blob:plan')
     expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, expect.any(Object), 'plan.pdf', 'blob:plan')
-    // An empty draft has its mic in the send slot (AT-3025); with text it is back next to the +.
+    // The mic is never next to the + (AT-3029): an empty draft has it in the send slot (AT-3025),
+    // with text it sits on the right before the call button.
+    const actions = container.querySelector('.anna-composer-actions')
     expect(tools.querySelector('[aria-label="Dictate"]')).toBeNull()
     type('Draft')
-    expect(tools.querySelector('[aria-label="Dictate"]')).not.toBeNull()
+    expect(tools.querySelector('[aria-label="Dictate"]')).toBeNull()
+    expect(actions.querySelector('[aria-label="Dictate"][data-variant="inline"]')).not.toBeNull()
 })
 
 it.each([{ offline: true }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
@@ -2107,12 +2126,13 @@ describe('empty draft shows the mic in place of Send (AT-3025)', () => {
         expect(container.querySelectorAll('[aria-label="Dictate"]')).toHaveLength(1)
     })
 
-    it('brings Send back, and the small mic next to the +, as soon as there is text', () => {
+    it('brings Send back, and the small mic before the call button, as soon as there is text', () => {
         render()
         type('Hello')
         expect(sendButton().disabled).toBe(false)
-        expect(actions().querySelector('[aria-label="Dictate"]')).toBeNull()
-        expect(tools().querySelector('[aria-label="Dictate"]')).not.toBeNull()
+        expect(actions().querySelector('[aria-label="Dictate"][data-variant="send"]')).toBeNull()
+        expect(actions().querySelector('[aria-label="Dictate"][data-variant="inline"]')).not.toBeNull()
+        expect(tools().querySelector('[aria-label="Dictate"]')).toBeNull()
         type('   ')
         expect(sendButton()).toBeNull()
     })

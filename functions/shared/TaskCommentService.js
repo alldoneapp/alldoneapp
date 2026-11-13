@@ -50,6 +50,9 @@ class TaskCommentService {
         // A user's message that asks the thread's assistant to answer (MCP ask_assistant): the server
         // runs the assistant for it (Assistant/assistantMissedRunCatchUp.js).
         assistantRunRequest = null,
+        // When the comment stands for something that happened earlier (the email a task was created
+        // from, AT-3022), it is placed at that time in the chat. Never in the future.
+        createdAt = null,
     }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
         if (emailContinuation && !gmailData) throw new Error('Email continuation requires email metadata')
@@ -67,6 +70,7 @@ class TaskCommentService {
         const commentId = suppliedCommentId || getId()
         const commentRef = this.database.doc(`chatComments/${projectId}/tasks/${taskId}/comments/${commentId}`)
         const now = Date.now()
+        const commentCreated = Number.isFinite(createdAt) && createdAt > 0 && createdAt < now ? createdAt : now
         let notificationData = null
         let existing = false
         let updatedTaskName = null
@@ -141,7 +145,7 @@ class TaskCommentService {
                 commentText,
                 commentType: STAYWARD_COMMENT,
                 lastChangeDate: Timestamp.now(),
-                created: now,
+                created: commentCreated,
                 originalContent: commentText,
                 fromAssistant: !!fromAssistant,
                 ...(fromAssistant && requestUserId ? { requestUserId } : {}),
@@ -253,7 +257,7 @@ class TaskCommentService {
         return {
             success: true,
             commentId,
-            created: now,
+            created: commentCreated,
             commentText,
             creatorId: actorId,
             fromAssistant: !!fromAssistant,
