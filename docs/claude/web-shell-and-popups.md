@@ -331,6 +331,13 @@ the only item that shrinks, so the right group never wraps. Offline hides the mi
 the AT-3029 case in `AnnaConversation.test.js` and the order/alignment geometry (empty and typed
 draft) in `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
 
+**Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
+{ font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as
+`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The project
+chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
+a child span (`.anna-project-chip-name`, now 13px / 16px line, like the project menu rows) or raise
+the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.js`.
+
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after

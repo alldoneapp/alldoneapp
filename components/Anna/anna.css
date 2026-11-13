@@ -1863,7 +1863,6 @@
     background: var(--ad-Surface, #ffffff);
     color: var(--anna-ink, var(--ad-Text01, #04142f));
     font: inherit;
-    font-size: 12px;
     cursor: pointer;
 }
 .anna-project-chip:hover:not(:disabled) {
@@ -1880,7 +1879,12 @@
 .anna-project-chip-busy .anna-project-chip-name {
     opacity: 0.6;
 }
+/* AT-3032: the size sits on the name, not the chip. `.anna-shell button { font: inherit }`
+   outranks `.anna-project-chip`, so a size on the button never applied and the name rendered at
+   the composer's 16px. 13px matches the project menu's rows. */
 .anna-project-chip-name {
+    font-size: 13px;
+    line-height: 16px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
