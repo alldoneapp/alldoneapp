@@ -28,6 +28,8 @@ import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
+import RageModeButton from '../../../RageMode/RageModeButton'
+import AssistantModeButton from '../../../Anna/AssistantModeButton'
 import {
     ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
     ASSISTANT_COMPOSER_BOX_PADDING_TOP,
@@ -62,6 +64,9 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
 export default function AssistantOptions({
     headerControls = null,
     assistantSwitch = null,
+    // AT-3034: the project the assistant-mode sidebar continues in when entered from this line
+    // (null: "Automatic", the default project's chat).
+    assistantModeProjectId = null,
     projectOverride = null,
     assistantIdOverride = null,
     preferAssistantIdOverride = false,
@@ -299,8 +304,19 @@ export default function AssistantOptions({
             setInputCursorIndex={setInputCursorIndex}
         >
             <View testID="assistant-line-header" style={localStyles.headerRow}>
-                {headerControls ? <View style={localStyles.headerSide}>{headerControls}</View> : null}
-                <View style={localStyles.headerCenter}>
+                {/* AT-3034: assistant mode starts here, top left, and takes this line's assistant
+                    (its project's chat) into the sidebar. */}
+                <View style={localStyles.headerSide}>
+                    <AssistantModeButton
+                        inline
+                        testID="assistant-line-assistant-mode"
+                        projectId={assistantModeProjectId}
+                        assistantName={assistant.displayName}
+                        style={headerControls ? localStyles.assistantModeButton : null}
+                    />
+                    {headerControls}
+                </View>
+                <View style={[localStyles.headerCenter, headerControls && localStyles.headerCenterWide]}>
                     {/* Rage mode's Anna takes off from this avatar when the game is started from a
                         screen that also shows the assistant line (rageLaunchAnchor.js). */}
                     <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
@@ -327,6 +343,12 @@ export default function AssistantOptions({
                     <Text style={localStyles.greetingText} numberOfLines={1}>
                         {translate('How can I help?')}
                     </Text>
+                </View>
+                {/* AT-3034: rage mode is back at the top right (it is also on the Empty inbox card).
+                    Anna takes off from the avatar above (rageLaunchAnchor.js). Hidden without
+                    WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
+                <View style={localStyles.headerSideRight}>
+                    <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
                 </View>
             </View>
             <View testID="assistant-composer-row" style={localStyles.composerBox}>
@@ -440,7 +462,8 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: ASSISTANT_HEADER_GAP,
     },
-    // The edit pencil (assistant board) sits at the left edge, outside the centred line.
+    // AT-3034: the assistant-mode button (and the edit pencil on the assistant board) sits at the
+    // left edge, outside the centred line; rage mode mirrors it on the right.
     headerSide: {
         position: 'absolute',
         left: 0,
@@ -450,6 +473,24 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         zIndex: 1,
     },
+    headerSideRight: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 1,
+    },
+    assistantModeButton: {
+        marginRight: 8,
+    },
+    rageButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     headerCenter: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -458,6 +499,10 @@ const localStyles = StyleSheet.create({
         maxWidth: '100%',
         minWidth: 0,
         paddingHorizontal: 36,
+    },
+    // Two controls on the left (assistant mode + edit pencil): keep the centred line clear of both.
+    headerCenterWide: {
+        paddingHorizontal: 72,
     },
     avatarWrapper: {
         width: ASSISTANT_HEADER_HEIGHT,

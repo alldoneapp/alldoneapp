@@ -9,7 +9,6 @@ jest.mock('react-redux', () => ({
 jest.mock('./TopBarStatisticArea', () => 'TopBarStatisticArea')
 jest.mock('./NotificationArea', () => 'NotificationArea')
 jest.mock('./HomeButton', () => 'HomeButton')
-jest.mock('./AssistantModeButton', () => 'AssistantModeButton')
 jest.mock('./ConnectionStatusChip', () => 'ConnectionStatusChip')
 
 import TopBar from './TopBar'
@@ -56,4 +55,12 @@ describe('TopBar connection chip placement', () => {
         expect(tree.findAllByType('NotificationArea')).toHaveLength(1)
         expect(tree.findAllByType('TopBarStatisticArea')).toHaveLength(1)
     })
+})
+
+// AT-3034: assistant mode is entered from the assistant line, not from the header.
+it('has no assistant mode button in the desktop header', () => {
+    const tree = render({ smallScreenNavigation: false, smallScreen: false })
+
+    expect(tree.findAll(node => node.props?.testID === 'top-bar-assistant-mode')).toHaveLength(0)
+    expect(tree.findAll(node => node.props?.testID === 'assistant-line-assistant-mode')).toHaveLength(0)
 })

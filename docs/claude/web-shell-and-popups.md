@@ -229,6 +229,28 @@ toolbar's + / Templates / mic keep their own focus ring. The border width never 
 shift); the `!important` on the colour beats react-native-web's atomic class. Pinned by
 `assistantComposerOutline.test.js`.
 
+**Assistant mode is entered from the assistant line (AT-3034).** The panel button
+(`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sits at the top left of the
+assistant line's header (`AssistantOptions`, before the assistant-board edit pencil). The desktop
+top bar and the mobile header no longer carry it. The app sidebar's `DefaultAssistantButton` stays,
+so screens without an assistant line still have an entry. The line passes its project
+(`assistantModeProjectId`: the line's project, null for `AllProjectsAssistantLine`), and
+`AnnaShell.openChat({ projectId })` selects that project's daily chat in the sidebar, so whoever
+answers there takes over. null or the default project means "Automatic", and an explicit pick of
+the default project stays. It does not switch during a call, while offline, or to a project that
+`isAnnaProjectSelectable` refuses. This is per project and frontend-only (decided with the
+product owner): a second assistant picked in the line's switcher inside the same project is NOT
+carried over, because the server's daily chat answers with the project's assistant
+(`findProjectAssistantId`). `AnnaSidebarProjectContext` publishes the sidebar's project. The
+button closes the desktop sidebar only when the sidebar already shows its line's project;
+otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
+a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
+with the composer's project chip. It lists "Automatic", each project with an assistant of its own
+and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
+while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
+`AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
+`AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
@@ -308,13 +330,6 @@ place, so the right group reads call, mic (`voice-and-dictation.md`). On narrow 
 the only item that shrinks, so the right group never wraps. Offline hides the mic only. Pinned by
 the AT-3029 case in `AnnaConversation.test.js` and the order/alignment geometry (empty and typed
 draft) in `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
-
-**Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
-{ font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as
-`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The project
-chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
-a child span (`.anna-project-chip-name`, now 13px / 16px line, like the project menu rows) or raise
-the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.js`.
 
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
