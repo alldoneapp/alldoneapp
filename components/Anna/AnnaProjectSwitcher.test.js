@@ -190,6 +190,41 @@ describe('assistant variant', () => {
         ])
     })
 
+    // AT-3047: the whole name opens the picker, not only the small chevron beside it.
+    it('makes the name and the chevron one button that opens the picker', () => {
+        const onSelect = jest.fn()
+        render({ variant: 'assistant', choices: all, activeProjectId: ':automatic', onSelect, name: 'Anna Alldone' })
+        const button = trigger()
+        expect(container.querySelectorAll('button')).toHaveLength(1)
+        expect(button.type).toBe('button')
+        expect(button.querySelector('.anna-brand').textContent).toBe('Anna Alldone')
+        expect(button.querySelector('.anna-assistant-picker-chevron').getAttribute('aria-hidden')).toBe('true')
+        expect(button.querySelector('button, a, input, select, [tabindex]')).toBeNull()
+        // The accessible name contains the visible name; the title keeps the full, untruncated name.
+        expect(button.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
+        expect(button.title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
+        expect(button.getAttribute('aria-haspopup')).toBe('dialog')
+        expect(button.getAttribute('aria-expanded')).toBe('false')
+        // A press on the name toggles exactly once (no second handler on the name).
+        act(() => button.querySelector('.anna-brand').click())
+        expect(button.getAttribute('aria-expanded')).toBe('true')
+        expect(mockDispatch.mock.calls.map(([action]) => action.type)).toEqual(['show'])
+        act(() => button.querySelector('.anna-brand').click())
+        expect(button.getAttribute('aria-expanded')).toBe('false')
+        expect(mockDispatch.mock.calls.map(([action]) => action.type)).toEqual(['show', 'hide'])
+        act(() => button.click())
+        act(() => options()[1].click())
+        expect(onSelect).toHaveBeenCalledWith('product')
+    })
+
+    it('keeps the name readable while the picker is unavailable', () => {
+        render({ variant: 'assistant', choices: all, activeProjectId: ':automatic', disabled: true, name: 'Anna' })
+        expect(trigger().disabled).toBe(true)
+        expect(trigger().querySelector('.anna-brand').textContent).toBe('Anna')
+        act(() => trigger().querySelector('.anna-brand').click())
+        expect(trigger().getAttribute('aria-expanded')).toBe('false')
+    })
+
     it('is hidden with a single project and disabled during a call', () => {
         render({ variant: 'assistant', choices: [choices[0]] })
         expect(trigger()).toBeNull()

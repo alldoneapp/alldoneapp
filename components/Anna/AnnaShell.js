@@ -12,7 +12,7 @@ import {
     syncAnnaWorkspaceProject,
 } from './annaWorkspaceProjectSync'
 import useAnnaWorkspaceProjectFollow from './useAnnaWorkspaceProjectFollow'
-import AnnaProjectSwitcher from './AnnaProjectSwitcher'
+import AnnaProjectSwitcher, { canSwitchAnnaProject } from './AnnaProjectSwitcher'
 import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -1088,12 +1088,15 @@ export default function AnnaShell({ children, routeId }) {
         </div>
     )
 
+    const assistantPickerProjectId = projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId
+    // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
+    const assistantNamePicks = canSwitchAnnaProject(projectChoices, assistantPickerProjectId)
     const header = (
         <header className={`anna-header${!mobile && !chatOnly ? ' anna-header-sidebar' : ''}`}>
             <div className="anna-header-left">
                 <button
                     type="button"
-                    className="anna-header-assistant"
+                    className={`anna-header-assistant${assistantNamePicks ? ' anna-header-assistant-avatar' : ''}`}
                     title={`${headerAssistantName} – ${translate('Latest messages')}`}
                     aria-label={`${headerAssistantName} – ${translate('Latest messages')}`}
                     onClick={showLatestChat}
@@ -1101,14 +1104,16 @@ export default function AnnaShell({ children, routeId }) {
                     <span className="anna-small-avatar">
                         {photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}
                     </span>
-                    <strong className="anna-brand">{headerAssistantName}</strong>
+                    {!assistantNamePicks && <strong className="anna-brand">{headerAssistantName}</strong>}
                 </button>
                 {/* AT-3034: pick another assistant for the sidebar chat. Same state as the
-                    composer's project chip; listed by assistant instead of by project. */}
+                    composer's project chip; listed by assistant instead of by project.
+                    AT-3047: name and chevron are one button, so the whole name opens it. */}
                 <AnnaProjectSwitcher
                     variant="assistant"
+                    name={headerAssistantName}
                     choices={projectChoices}
-                    activeProjectId={projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId}
+                    activeProjectId={assistantPickerProjectId}
                     onSelect={selectProjectFromChat}
                     disabled={offline || call.status !== 'idle'}
                     busy={switching}

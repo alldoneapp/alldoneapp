@@ -1594,6 +1594,11 @@ it('keeps conversation attribution tied to its assistant when the project defaul
 it('updates the header name and photo from the current default-project assistant despite an older conversation', () => {
     const view = render(content(1))
     expect(screen.getByLabelText('Anna Alldone – Latest messages')).toBeTruthy()
+    // AT-3047: with nothing else to pick, the name stays in the latest-messages button.
+    expect(document.querySelector('.anna-assistant-picker')).toBeNull()
+    expect(screen.getByLabelText('Anna Alldone – Latest messages').querySelector('.anna-brand').textContent).toBe(
+        'Anna Alldone'
+    )
     mockDefaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL50: 'mira.png' }
     view.rerender(content(1))
     expect(screen.getByLabelText('Mira – Latest messages')).toBeTruthy()
@@ -2021,6 +2026,23 @@ describe('selected project (AT-2903)', () => {
         expect(lastProject()).toBe('p2')
         // The composer's project chip follows the same choice.
         expect(switcher().props.activeProjectId).not.toBe(':automatic')
+    })
+
+    it('opens the assistant picker from the whole name, the avatar still shows the latest messages (AT-3047)', () => {
+        setAnnaMode(true)
+        render(content(1))
+        const left = document.querySelector('.anna-header-left')
+        const picker = left.querySelector('.anna-assistant-picker')
+        // One name, inside the picker's button; the avatar's button no longer carries it.
+        expect(left.querySelectorAll('.anna-brand')).toHaveLength(1)
+        expect(picker.querySelector('.anna-brand').textContent).toBe('Anna Alldone')
+        expect(screen.getByLabelText('Anna Alldone – Latest messages').querySelector('.anna-brand')).toBeNull()
+        expect(left.querySelector('button button')).toBeNull()
+        fireEvent.click(picker.querySelector('.anna-brand'))
+        expect(picker.getAttribute('aria-expanded')).toBe('true')
+        expect(document.querySelectorAll('.anna-project-option')).toHaveLength(2)
+        fireEvent.click(picker.querySelector('.anna-brand'))
+        expect(picker.getAttribute('aria-expanded')).toBe('false')
     })
 })
 

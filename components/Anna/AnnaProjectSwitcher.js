@@ -49,6 +49,13 @@ export const getAnnaAssistantChoices = (choices = [], activeProjectId = null) =>
     )
 }
 
+/**
+ * Whether the switcher shows at all: it needs a second choice and the active one among them.
+ * AT-3047: the sidebar header asks this to decide whether the assistant's name is the picker.
+ */
+export const canSwitchAnnaProject = (choices = [], activeProjectId = null) =>
+    choices.length >= 2 && choices.some(choice => choice.id === activeProjectId)
+
 // The project's color dot; "Automatic" shows the same icon as in the add-task picker.
 const ChoiceMark = ({ choice }) =>
     choice.isAutomatic ? (
@@ -71,6 +78,9 @@ const ChoiceMark = ({ choice }) =>
  * AT-3034 — `variant="assistant"` is the same choice, offered as "who answers": a chevron beside
  * the assistant's name at the top left of the sidebar, listing assistants (see
  * `getAnnaAssistantChoices`). Picking one selects its project, exactly like the chip.
+ *
+ * AT-3047 — with `name`, the assistant variant's trigger is the assistant's name plus the
+ * chevron, one button, so the whole name opens the picker (not only the small chevron).
  */
 export default function AnnaProjectSwitcher({
     variant = 'project',
@@ -80,6 +90,7 @@ export default function AnnaProjectSwitcher({
     disabled = false,
     busy = false,
     getViewport,
+    name,
 }) {
     const dispatch = useDispatch()
     const [open, setOpen] = useState(false)
@@ -116,7 +127,7 @@ export default function AnnaProjectSwitcher({
 
     // Gate on every project, not the assistant list: who has an assistant of their own is only
     // known once the open menu has loaded them (AT-2386).
-    if (allChoices.length < 2 || !active) return null
+    if (!canSwitchAnnaProject(allChoices, activeProjectId) || !active) return null
 
     const toggle = () => {
         if (open) return close()
@@ -138,7 +149,7 @@ export default function AnnaProjectSwitcher({
         : choices
     const menuLabel = translate(byAssistant ? 'Choose assistant for this chat' : 'Choose project for this chat')
     const label = byAssistant
-        ? translate('Assistant: %{assistantName}', { assistantName: assistantName(active) })
+        ? translate('Assistant: %{assistantName}', { assistantName: name || assistantName(active) })
         : translate('Project: %{projectName}', { projectName: choiceName(active) })
     const title = disabled
         ? translate(
@@ -217,7 +228,9 @@ export default function AnnaProjectSwitcher({
             {byAssistant ? (
                 <button
                     type="button"
-                    className={`anna-pane-toggle anna-assistant-picker${busy ? ' anna-project-chip-busy' : ''}`}
+                    className={`anna-assistant-picker${name ? ' anna-assistant-picker-named' : ' anna-pane-toggle'}${
+                        busy ? ' anna-project-chip-busy' : ''
+                    }`}
                     aria-label={label}
                     aria-haspopup="dialog"
                     aria-expanded={open}
@@ -226,7 +239,10 @@ export default function AnnaProjectSwitcher({
                     disabled={disabled}
                     onClick={toggle}
                 >
-                    <Icon name="chevron-down" size={16} color="currentColor" />
+                    {name && <strong className="anna-brand">{name}</strong>}
+                    <span aria-hidden="true" className="anna-assistant-picker-chevron">
+                        <Icon name="chevron-down" size={16} color="currentColor" />
+                    </span>
                 </button>
             ) : (
                 <button

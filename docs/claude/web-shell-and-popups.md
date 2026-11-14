@@ -259,6 +259,17 @@ workspace picker (98 → 80px) so the name keeps ~72px instead of ~40px. Chosen 
 owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace/run.js`
 (`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
 
+**The whole assistant name opens the assistant picker (AT-3047).** The name and the chevron are
+one `<button>` (`AnnaProjectSwitcher variant="assistant"` with `name`, class
+`.anna-assistant-picker-named`), so a press anywhere on the name opens the same picker; before, only
+the 24px chevron did. The avatar keeps its own "Latest messages" button (`showLatestChat`) without
+the name; at 360px and less, where the avatar is hidden, that button is hidden too. With nothing
+else to pick (`canSwitchAnnaProject` false: one choice, or the active one missing) the switcher
+renders nothing and the name goes back into the avatar's button. Offline or in a call the button is
+disabled; only the chevron dims, the name stays readable. The accessible name is "Assistant:
+{name}" (contains the visible name), the title keeps the full name for a truncated one. Pinned by
+the AT-3047 cases in `AnnaProjectSwitcher.test.js` and `AnnaShell.test.js`.
+
 **The header closes with the panel icon, fullscreen sits beside it (AT-3042).** The close
 control (at the far right until AT-3045 put the workspace picker after it) is `AssistantModeIcon expanded` (panel, chevron
 pointing right), the counterpart to the assistant line's open button, not an X. It is the same

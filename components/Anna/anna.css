@@ -1958,6 +1958,50 @@
 .anna-assistant-picker:disabled {
     opacity: 0.5;
 }
+/* AT-3047: the assistant's name and the chevron are one button that opens the picker. The
+   negative margin keeps the name where it sat when it was part of the avatar's button. */
+.anna-assistant-picker.anna-assistant-picker-named {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 2px;
+    width: auto;
+    min-width: 0;
+    height: 36px;
+    margin-left: -4px;
+    padding: 0 2px 0 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--anna-ink);
+    text-align: left;
+    cursor: pointer;
+}
+.anna-assistant-picker-chevron {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 18px;
+    color: var(--anna-muted);
+}
+.anna-assistant-picker-named:not(:disabled):hover {
+    background: var(--anna-tint);
+}
+.anna-assistant-picker-named:not(:disabled):hover .anna-brand,
+.anna-assistant-picker-named:not(:disabled):hover .anna-assistant-picker-chevron {
+    color: var(--anna-accent);
+}
+/* Offline or in a call the name stays readable; only the chevron says it is unavailable. */
+.anna-assistant-picker-named:disabled {
+    opacity: 1;
+    cursor: default;
+}
+.anna-assistant-picker-named:disabled .anna-assistant-picker-chevron {
+    opacity: 0.5;
+}
+.anna-assistant-picker-named.anna-project-chip-busy .anna-brand {
+    opacity: 0.6;
+}
 .anna-header-picker {
     position: relative;
     flex: 0 1 98px;
@@ -2090,6 +2134,9 @@
     .anna-pane-toggle.anna-assistant-picker {
         width: 32px;
     }
+    .anna-assistant-picker.anna-assistant-picker-named {
+        height: 44px;
+    }
     .anna-header-picker > span {
         top: 14px;
     }
@@ -2099,6 +2146,10 @@
 }
 @media (max-width: 360px) {
     .anna-header .anna-small-avatar {
+        display: none;
+    }
+    /* AT-3047: without its name the avatar's button would be an empty focus stop. */
+    .anna-header .anna-header-assistant-avatar {
         display: none;
     }
 }
