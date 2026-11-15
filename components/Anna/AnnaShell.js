@@ -285,10 +285,9 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    // Desktop shows AnnaTopStrip in every view. In plain Alldone only while Alldone has its desktop
-    // navigation: a narrow window keeps the mobile bar, which carries the sidebar menu.
-    const showTopStrip = !mobile && (active || !smallScreenNavigation)
+    // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar; where
+    // Alldone uses mobile navigation, the strip carries the sidebar menu.
+    const showTopStrip = !mobile
     // Below the strip, Alldone is a pane of the window in plain Alldone too, so modals, popovers and
     // inline fixed overlays size and place themselves within it, as they do beside the chat.
     useWorkspaceViewportOwner(

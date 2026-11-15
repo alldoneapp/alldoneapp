@@ -217,6 +217,7 @@ jest.mock('../../redux/actions', () => ({
     hideWebSideBar: () => ({ type: 'HIDE_SIDEBAR' }),
     hideFloatPopup: () => ({ type: 'HIDE_FLOAT_POPUP' }),
     showFloatPopup: () => ({ type: 'SHOW_FLOAT_POPUP' }),
+    setShowWebSideBar: () => ({ type: 'SHOW_SIDEBAR' }),
     setTopBarWidth: width => ({ type: 'TOP_BAR_WIDTH', width }),
     hideGlobalSearchPopup: () => ({ type: 'HIDE_SEARCH' }),
     setGlobalSearchResults: results => ({ type: 'SEARCH_RESULTS', results }),
@@ -1881,14 +1882,20 @@ describe('the strip in plain Alldone (desktop)', () => {
         expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'TOP_BAR_WIDTH' }))
     })
 
-    it('leaves plain Alldone its own bar while Alldone uses mobile navigation', () => {
+    it.each(['alldone', 'split'])('carries the sidebar menu while Alldone uses mobile navigation (%s)', layout => {
         mockMobileNavigation = true
+        setAnnaLayout(layout)
+        render(content(1))
+        expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
+        mockDispatch.mockClear()
+        fireEvent.click(screen.getByLabelText('Open sidebar'))
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SHOW_SIDEBAR' })
+    })
+
+    it('offers no sidebar menu where Alldone shows its own sidebar', () => {
         setAnnaMode(false)
         render(content(1))
-        expect(document.querySelector('.anna-strip')).toBeNull()
-        expect(document.querySelector('.anna-has-strip')).toBeNull()
-        act(() => setAnnaMode(true))
-        expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
+        expect(screen.getByLabelText('Open sidebar')).toBeNull()
     })
 })
 

@@ -13,10 +13,10 @@ export default function TopBarContainer({ containerStyle }) {
     const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
     const [width, setWidth] = useState(() => Dimensions.get('window').width)
     const layout = getTopBarLayout({ width, smallScreenNavigation, isMiddleScreen, sidebarExpanded })
-    // Desktop assistant mode shows gold, search, chats and updates in the strip above both cards.
-    // A pane narrow enough for mobile navigation keeps its own bar: it carries the sidebar menu.
+    // On desktop AnnaShell's strip above Alldone (and the chat) is the top bar, also where Alldone
+    // uses mobile navigation: the strip then carries the sidebar menu.
     const inAnnaStrip = useContext(AnnaTopStripContext)
-    if (inAnnaStrip && !smallScreenNavigation) return null
+    if (inAnnaStrip) return null
 
     return (
         <View style={containerStyle} onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}>

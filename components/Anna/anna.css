@@ -2033,6 +2033,23 @@
         justify-content: flex-end;
         gap: 4px;
     }
+    .anna-strip-menu {
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: 32px;
+        height: 32px;
+        margin-right: 8px;
+        padding: 0;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--anna-muted);
+    }
+    .anna-strip-menu:hover {
+        background: var(--anna-hover);
+        color: var(--anna-accent);
+    }
     .anna-strip-switch {
         display: flex;
         gap: 2px;

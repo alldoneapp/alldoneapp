@@ -199,15 +199,14 @@ mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `Assist
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
 
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
-renders `AnnaTopStrip` above everything, in assistant mode always and in plain Alldone while
-Alldone has its desktop navigation (`!smallScreenNavigation`; a narrow window keeps the mobile bar,
-which carries the sidebar menu). It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
+renders `AnnaTopStrip` above everything, in all three views. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
 task statistics, quota/premium) on the left, the view switch in the middle (Tasks with the
 open-task count, Both, the assistant's name for chat only), `ConnectionStatusChip` and
 `NotificationArea` on the right. It reports its width through `setTopBarWidth`, which XpBar,
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
-render nothing inside the workspace, unless the pane uses mobile navigation (then that bar stays,
-with some controls twice). While the strip shows, the workspace viewport owner is on in plain
+render nothing inside the workspace, also where Alldone uses mobile navigation (a narrow window, or
+the pane beside the chat): Alldone never repeats a bar below the strip, and the strip then shows the
+sidebar menu (`setShowWebSideBar`) at its left. While the strip shows, the workspace viewport owner is on in plain
 Alldone too (`.anna-has-strip` also gives `.anna-workspace-content` its transform), so modals and
 inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: beside a visible screen
 it keeps the page (`closeChat`), from chat only and from plain Alldone it opens the open task list

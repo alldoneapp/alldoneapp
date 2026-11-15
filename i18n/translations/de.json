@@ -93,6 +93,7 @@
     "Show on screen": "Auf dem Bildschirm zeigen",
     "Assistant view": "Ansicht",
     "Only %{assistantName}": "Nur %{assistantName}",
+    "Open sidebar": "Seitenleiste öffnen",
     "Open app in assistant mode": "Im Assistenten-Modus öffnen",
     "Open app in new tab": "In neuem Tab öffnen",
     "embedded_tool_handoff_loading": "Das Tool wird in diesem Tab geöffnet…",

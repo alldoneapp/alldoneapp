@@ -27,8 +27,8 @@ const render = (state, inStrip) => {
     return tree
 }
 
-// Desktop assistant mode shows gold, search, chats and updates in AnnaShell's strip above the
-// chat and workspace cards, so the workspace must not repeat its own bar.
+// On desktop AnnaShell's strip above Alldone (and the chat) carries gold, search, chats, updates and,
+// where Alldone uses mobile navigation, the sidebar menu, so Alldone must not repeat its own bar.
 describe('TopBarContainer and the assistant strip', () => {
     it('renders its bar outside assistant mode', () => {
         const tree = render({ smallScreenNavigation: false }, false)
@@ -42,8 +42,8 @@ describe('TopBarContainer and the assistant strip', () => {
         expect(tree.toJSON()).toBeNull()
     })
 
-    it('keeps the mobile bar, which carries the sidebar menu, when the pane uses mobile navigation', () => {
+    it('leaves the bar to the strip also where Alldone uses mobile navigation', () => {
         const tree = render({ smallScreenNavigation: true }, true)
-        expect(tree.root.findAllByType('TopBarMobile')).toHaveLength(1)
+        expect(tree.toJSON()).toBeNull()
     })
 })
