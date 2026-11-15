@@ -28,6 +28,7 @@ import {
 } from '../../../ModalsManager/modalsManager'
 import useGetMessages from '../../../../hooks/Chats/useGetMessages'
 import { sortBy } from 'lodash'
+import ShowMoreButton from '../../../UIControls/ShowMoreButton'
 import { DV_TAB_NOTE_EDITOR } from '../../../../utils/TabNavigationConstants'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
@@ -59,7 +60,6 @@ import SharedHelper from '../../../../utils/SharedHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
-import CommentPopupFooter from './CommentPopupFooter'
 import useCommentPopupAutoFocus, {
     COMMENT_POPUP_FOCUS_BLUR,
     COMMENT_POPUP_FOCUS_DELAYED,
@@ -100,7 +100,6 @@ export default function RichCommentModal({
     externalAssistantId,
     initialAssistantEnabled = false,
     openedFromUnreadComment = false,
-    onOpenAllChats = null,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -476,13 +475,6 @@ export default function RichCommentModal({
         URLTrigger.processUrl(NavigationService, path)
     }
 
-    // AT-3020 — only the assistant line's Last comment popover passes this: it leads from the one
-    // thread it shows to the whole Chats list, like the "All chats" link above that card.
-    const openAllChats = () => {
-        setTimeout(() => closeModal(), 50)
-        onOpenAllChats()
-    }
-
     const nestedPopupIsOpen =
         botOptionModalIsOpen ||
         botWarningModalIsOpen ||
@@ -645,9 +637,12 @@ export default function RichCommentModal({
                                 </View>
                             )}
                         </div>
-                        <CommentPopupFooter
-                            onOpenChat={processShowMore}
-                            onOpenAllChats={onOpenAllChats ? openAllChats : null}
+                        <ShowMoreButton
+                            expand={processShowMore}
+                            contract={processShowMore}
+                            expanded={false}
+                            expandText={'open chat'}
+                            style={{ marginTop: 8 }}
                         />
                     </View>
                 </CustomScrollView>

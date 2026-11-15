@@ -57,12 +57,6 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
-**No Anna picture next to the skyline (AT-3041).** `AllProjectsEmptyInboxPicture` (the random
-Anna "projects complete" photo) renders only when `showEmptyInboxOverview` is off. The all-projects
-Open board shows the achievement card, and its skyline is that board's picture, so a second hero
-image below the city was redundant and pushed the page longer. My Day and the Done/Pending/Workflow
-boards render no card and keep Anna. Pinned in `AllProjectsEmptyInbox.test.js`.
-
 ## Per-project empty inbox — the completed sweep (AT-2492)
 
 **Clearing one project is celebrated too, and the difference from the all-projects moment is one of

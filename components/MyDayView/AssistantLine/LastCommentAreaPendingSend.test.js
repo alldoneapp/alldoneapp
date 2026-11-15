@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import LastCommentArea from './LastCommentArea'
@@ -34,9 +34,6 @@ const mockState = {
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
-
-const mockOpenChatsList = jest.fn()
-jest.mock('./openChatsList', () => ({ openChatsList: (...args) => mockOpenChatsList(...args) }))
 
 jest.mock('../../../i18n/TranslationService', () => ({
     translate: (key, params) => (params?.name ? `${key}:${params.name}` : key),
@@ -400,95 +397,6 @@ describe('LastCommentArea pending send (AT-2504)', () => {
             expect(has(tree, 'assistant-pending-send')).toBe(false)
             act(() => tree.unmount())
         })
-    })
-})
-
-// AT-3020 — "All chats" sits on the header AND in the popover a card opens, and both lead to the
-// same Chats list: the line's own project, or every project on the All projects line.
-describe('LastCommentArea "All chats"', () => {
-    beforeEach(() => {
-        resetAssistantLinePendingSends()
-        mockState.selectedProjectIndex = 0
-        setLastCommentData(null)
-        mockState.projectChatLastNotification = {}
-        lastWrapperProps = null
-        mockLastCommentProps = null
-        mockOpenChatsList.mockClear()
-    })
-
-    const pressHeaderLink = tree =>
-        act(() => tree.root.findByProps({ testID: 'assistant-line-all-chats' }).props.onPress())
-
-    it('opens the line project’s chats from the header and from the comment popover', () => {
-        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
-        const project = { id: 'project-1', index: 0 }
-        const tree = render({ projectOverride: project })
-
-        pressHeaderLink(tree)
-        act(() => mockLastCommentProps.onOpenAllChats())
-
-        expect(mockOpenChatsList.mock.calls).toEqual([[project], [project]])
-        act(() => tree.unmount())
-    })
-
-    it('opens the chats of all projects from the All projects line', () => {
-        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
-        const tree = render()
-
-        act(() => mockLastCommentProps.onOpenAllChats())
-
-        expect(mockOpenChatsList).toHaveBeenCalledWith(null)
-        act(() => tree.unmount())
-    })
-
-    it('hands the link to the popover of a message still being sent', () => {
-        begin()
-        const project = { id: 'project-1', index: 0 }
-        const tree = render({ projectOverride: project })
-
-        act(() => lastWrapperProps.onOpenAllChats())
-
-        expect(mockOpenChatsList).toHaveBeenCalledWith(project)
-        act(() => tree.unmount())
-    })
-})
-
-// AT-3034 follow-up: while the assistant-mode sidebar is open the assistant line hands its card
-// style to this area, so every branch that renders something must carry it, and a branch that
-// renders nothing leaves no card behind.
-describe('LastCommentArea container style', () => {
-    const cardStyle = { backgroundColor: '#ABCDEF', marginBottom: 24 }
-    const outerStyleOf = tree => StyleSheet.flatten(tree.root.findAllByType(View)[0].props.style)
-
-    beforeEach(() => {
-        resetAssistantLinePendingSends()
-        mockState.selectedProjectIndex = 0
-        mockState.projectChatLastNotification = {}
-        mockState.loggedUser.lastAssistantCommentDataByAssistant = {}
-        setLastCommentData(null)
-    })
-
-    it('carries the style on the loading ghost, the real comment and a pending send', () => {
-        const ghost = render({ style: cardStyle })
-        expect(outerStyleOf(ghost)).toEqual(expect.objectContaining(cardStyle))
-        act(() => ghost.unmount())
-
-        setLastCommentData({ projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' })
-        const comment = render({ style: cardStyle })
-        expect(has(comment, 'real-last-comment')).toBe(true)
-        expect(outerStyleOf(comment)).toEqual(expect.objectContaining(cardStyle))
-        act(() => comment.unmount())
-
-        begin()
-        const pending = render({ style: cardStyle })
-        expect(outerStyleOf(pending)).toEqual(expect.objectContaining(cardStyle))
-        act(() => pending.unmount())
-    })
-
-    it('renders nothing at all for an assistant without a comment of its own', () => {
-        const tree = render({ style: cardStyle, scopeToAssistant: true })
-        expect(tree.toJSON()).toBeNull()
-        act(() => tree.unmount())
     })
 })
 

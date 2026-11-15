@@ -125,16 +125,6 @@ MCP, status picker, bulk) keeps the legacy rule: completion time plus one interv
 `recurrenceOriginalDueDateWrites.test.js`, `functions/shared/recurrenceOriginalDueDate.test.js` and
 the AT-2803 blocks of `functions/Tasks/recurringTasksCloud.test.js`.
 
-The popup rows read "From original date / From current due date / From today / From custom date"
-("Ab …") and show, in grey, the NEXT occurrence each base produces, not the base date; the header
-description ends with the rhythm ("Rhythm: Weekly", via `getRecurrenceInfo`) (AT-3049). The
-preview (`getNextRecurrenceDatePreview`) and the Cloud Function run the same code,
-`functions/shared/recurrenceSchedule.js` (a factory over `moment`, so the web bundle does not pull a
-second moment copy from `functions/node_modules`). The client passes `moment.utc` plus the browser
-offset because the function runs in UTC and puts `startTime` on the base day in UTC; a local-time
-preview would name a different day near the task time. Never change one side without the other:
-`functions/shared/recurrenceSchedule.test.js` pins preview == `calculateNextRecurrenceDate`.
-
 ## A recurrence copy must carry its goal's privacy, not just its goal id
 
 `parentGoalId` and `parentGoalIsPublicFor` are one fact written as two fields: the open-task lists

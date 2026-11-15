@@ -4,7 +4,6 @@ import React, {
     useEffect,
     useImperativeHandle,
     useLayoutEffect,
-    useMemo,
     useRef,
     useState,
 } from 'react'
@@ -22,19 +21,16 @@ import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
 import useAnnaProjectSwitchNotices from './useAnnaProjectSwitchNotices'
-import useAnnaActivityNotices, { useAnnaUnreadActivityIds } from './useAnnaActivityNotices'
+import useAnnaActivityNotices from './useAnnaActivityNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
 import { getAssistantReplies, replyConfirmsProcessing } from './annaSubmissionReconciliation'
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
-import AnnaCallAudioControls, { AnnaCallActions } from './AnnaCallAudioControls'
+import AnnaCallAudioControls from './AnnaCallAudioControls'
 import VoiceCallConnecting from '../UIComponents/VoiceCallConnecting'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
-import { resolveComposerMicSlot } from '../UIControls/composerMicSlot'
-import { colors } from '../styles/global'
 import AddFeedAttachButton from '../Feeds/AddFeed/AddFeedAttachButton'
-import AssistantTaskSearchButtonWrapper from '../MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearchButtonWrapper'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
 import { isBrowserOffline } from '../../utils/connectionState'
@@ -48,26 +44,8 @@ import { groupAnnaTimeline } from './annaActivityGroups'
 import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
 import useAnnaChatScroll from './useAnnaChatScroll'
 import useAnnaFileDrop from './useAnnaFileDrop'
-import { isAnnaProjectSelectable } from './annaProjectSelection'
-import { scopeAnnaThreads } from './annaThreadScope'
 
 const MESSAGES_PER_PAGE = 50
-// AT-3032: below this composer width the Templates button drops its label (icon only, same
-// accessible name), so +, Templates, mic, call and send stay on one row on the narrowest phones.
-export const ANNA_TEMPLATES_COMPACT_WIDTH = 360
-// The Templates list (up to 520px) is wider than the chat pane, so it opens upwards over the
-// window rather than inside the pane; without a viewport it would be pushed into the workspace
-// pane (window.__alldoneWorkspaceViewport). Phones get the usual bottom sheet.
-const ANNA_TEMPLATES_POSITION = ['top', 'bottom', 'right', 'left']
-const getTemplatesViewport = () => ({
-    top: 0,
-    left: 0,
-    right: window.innerWidth,
-    bottom: window.innerHeight,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    active: true,
-})
 
 const getMessageCreator = (message, user, assistant) => {
     if (message.creatorId === user.uid && !message.fromAssistant) return user
@@ -79,40 +57,6 @@ const getMessageCreator = (message, user, assistant) => {
         photoURL: selectedCreator?.photoURL50,
         isAssistant: true,
     }
-}
-
-// AT-3036: the chat shows one project's threads; the other projects' chats of the loaded days are
-// one tap away. A jump selects that project like the project chip does, so the chat continues in
-// its daily thread and the workspace on the right follows.
-function AnnaProjectJumps({ projectIds, disabled, onOpenProject }) {
-    const projects = useSelector(state => state.loggedUserProjectsMap)
-    return (
-        <nav className="anna-project-jumps" aria-label={translate('Chats in other projects')}>
-            <span className="anna-project-jumps-label">{translate('Chats in other projects')}</span>
-            {projectIds.map(projectId => {
-                const project = projects?.[projectId]
-                const name = project?.name || translate('Project')
-                return (
-                    <button
-                        key={projectId}
-                        type="button"
-                        className="anna-project-jump"
-                        data-anna-project-id={projectId}
-                        disabled={disabled}
-                        aria-label={translate('Open the chat in %{projectName}', { projectName: name })}
-                        onClick={() => onOpenProject(projectId)}
-                    >
-                        <span
-                            className="anna-project-jump-dot"
-                            aria-hidden="true"
-                            style={project?.color ? { background: project.color } : undefined}
-                        />
-                        <span className="anna-project-jump-name">{name}</span>
-                    </button>
-                )
-            })}
-        </nav>
-    )
 }
 
 const AnnaConversation = forwardRef(function AnnaConversation(
@@ -137,17 +81,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         pageContext,
         // AT-2903: true while the selected project's chat is still being resolved.
         switching = false,
-        // AT-3036: the project being opened, for the loading state shown meanwhile.
-        switchingProjectName = '',
         renderProjectSwitcher,
         // AT-2914: the latest project chosen in the switcher ({ id, projectId, name, created }).
         projectSwitch = null,
-        // AT-3036: other projects' threads, offered as jumps; `onOpenProject(projectId)` switches there.
-        otherThreads = [],
-        onOpenProject,
-        // AT-3036: called with the project id once a project switch has ended and the new chat's
-        // messages are on screen (right before the snap to the bottom).
-        onSwitchSettled,
     },
     ref
 ) {
@@ -155,7 +91,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const viewNotice = useAnnaContextNotices(user.uid, conversation, pageContext)
     const projectNotices = useAnnaProjectSwitchNotices(user.uid, conversation, projectSwitch)
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
-    const unreadActivityIds = useAnnaUnreadActivityIds()
     const contextNotices = [...projectNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     // The draft belongs to the continuous conversation, including across midnight.
@@ -193,25 +128,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const { follow, update: updateScroll, stop: stopFollowing } = chatScroll
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
-    const composerForm = useRef(null)
-    const [compactTemplates, setCompactTemplates] = useState(false)
-    useLayoutEffect(() => {
-        const form = composerForm.current
-        if (!form) return
-        const measure = () => {
-            const width = form.getBoundingClientRect().width
-            if (width > 0) setCompactTemplates(width < ANNA_TEMPLATES_COMPACT_WIDTH)
-        }
-        measure()
-        if (typeof ResizeObserver === 'undefined') return
-        const observer = new ResizeObserver(measure)
-        observer.observe(form)
-        return () => observer.disconnect()
-    }, [])
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    // AT-3025: the second mic, drawn in the send button's place while the draft is empty.
-    const [sendSlotDictationPhase, setSendSlotDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE || sendSlotDictationPhase !== RAMBLE_PHASE_IDLE
+    const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const resumed = useRef(null)
     const mounted = useRef(true)
     // Set only when the latest transcript really reached the composer; consumed by the
@@ -404,18 +322,24 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     }, [resumeRequest, sending, switching, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
-    // AT-3036: only those of the project on screen; another project's are reached by its jump.
-    const { threads: displayedThreads, otherProjectIds } = scopeAnnaThreads({
-        conversation,
-        threads,
-        otherThreads,
-        localThreads: localMessages.map(message => message.thread),
-        canOpen: projectId => !!onOpenProject && isAnnaProjectSelectable(user, projectId),
+    const displayedThreads = [...(threads || [{ ...conversation, chatId: conversation.id }])]
+    localMessages.forEach(message => {
+        const thread = message.thread
+        if (
+            thread?.id &&
+            !displayedThreads.some(
+                item => item.projectId === thread.projectId && (item.chatId || item.id) === thread.id
+            )
+        )
+            displayedThreads.push(thread)
     })
     const isCurrentThread = thread =>
         thread.projectId === conversation.projectId && (thread.chatId || thread.id) === conversation.id
-    // AT-2903: the composer writes into the current thread, so `scopeAnnaThreads` keeps it the
-    // last section, also after switching back to a project whose chat started earlier today.
+    // AT-2903: the composer writes into the current thread, so it is always the last
+    // section, also after switching back to a project whose chat started earlier today.
+    const currentIndex = displayedThreads.findIndex(isCurrentThread)
+    if (currentIndex >= 0 && currentIndex < displayedThreads.length - 1)
+        displayedThreads.push(...displayedThreads.splice(currentIndex, 1))
     const showProject =
         new Set(displayedThreads.map(thread => thread.projectId)).size > 1 ||
         conversation.projectId !== user.defaultProjectId
@@ -434,76 +358,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     useLayoutEffect(() => {
         if (active && visible) activate()
     }, [active, visible, activate])
-    // AT-3036: a project switch (from the chat's chip or picker, a jump, or the workspace) ends at
-    // the very bottom of the new project's chat, once its messages are really on screen. The
-    // current thread reports when its messages have loaded (`threadLoaded`); the switch is keyed
-    // to the conversation it ends in, so a slower thread of an earlier, overtaken switch never
-    // scrolls. It snaps once (`activate`) and then follows like any open chat: later images or
-    // markdown keep it at the bottom until the reader scrolls up, and nothing else forces it down.
-    const conversationKey = `${conversation.projectId}/${conversation.id}`
-    const loadedThreads = useRef(new Set())
-    const switchScroll = useRef(null)
-    const switchingRef = useRef(switching)
-    switchingRef.current = switching
-    const shownProjectId = useRef(conversation.projectId)
-    const onSwitchSettledRef = useRef(onSwitchSettled)
-    onSwitchSettledRef.current = onSwitchSettled
-    const snapAfterSwitch = useCallback(() => {
-        const pending = switchScroll.current
-        if (!pending?.key || switchingRef.current || !loadedThreads.current.has(pending.key)) return
-        switchScroll.current = null
-        // The shell may focus the composer (a switch picked in the chat); the snap comes after it,
-        // so nothing the focus does moves the chat away from the bottom.
-        onSwitchSettledRef.current?.(pending.projectId)
-        activate()
-    }, [activate])
-    const threadLoaded = useCallback(
-        (key, loaded) => {
-            if (!loaded) {
-                loadedThreads.current.delete(key)
-                return
-            }
-            loadedThreads.current.add(key)
-            snapAfterSwitch()
-        },
-        [snapAfterSwitch]
-    )
-    // Runs after the threads' own layout effects, so a thread that loaded in this very commit
-    // (from the message cache) has already reported.
-    useLayoutEffect(() => {
-        if (switching) {
-            switchScroll.current = { key: null }
-            return
-        }
-        if (shownProjectId.current !== conversation.projectId) switchScroll.current = { key: null }
-        shownProjectId.current = conversation.projectId
-        if (!switchScroll.current) return
-        switchScroll.current = { key: conversationKey, projectId: conversation.projectId }
-        snapAfterSwitch()
-    }, [switching, conversation.projectId, conversationKey, snapAfterSwitch])
     // AT-2928: a file dropped anywhere on the chat pane joins the draft, under the same
     // conditions as the attach button.
     const attachmentsBlocked = voiceActive || dictationBusy || offline || !conversation.projectId
-    // Both mics (toolbar and send slot) share one wiring; only where they sit and when they show
-    // differ (AT-3025, composerMicSlot.js).
-    const dictationAvailable = !offline && !!conversation.projectId && isDictationSupported()
-    const { micInSendSlot, inlineMicVisible } = resolveComposerMicSlot({
-        enabled: dictationAvailable,
-        isEmpty: !hasText,
-        inlinePhase: dictationPhase,
-        sendSlotPhase: sendSlotDictationPhase,
-    })
-    const dictationProps = {
-        projectId: conversation.projectId,
-        targetKind: 'generic',
-        getCurrentText: () => draftRef.current,
-        onTextReady: insertDictatedText,
-        onSubmit: sendDictation,
-        getOverlayViewport: () => {
-            const pane = composer.current?.getPane()
-            return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
-        },
-    }
     const draggingFiles = useAnnaFileDrop({
         getPane: () => scroll.current?.closest('.anna-conversation') || scroll.current?.parentElement,
         canAccept: () => !attachmentsBlocked && !isBrowserOffline(),
@@ -545,38 +402,12 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                 }}
             >
                 <div className="anna-message-timeline" ref={content}>
-                    {/* AT-3036: while another project's chat opens, the previous project's
-                        messages are not shown as if they were the new chat's. */}
-                    {switching && (
-                        <div
-                            className="anna-project-switch-loading"
-                            role="status"
-                            aria-live="polite"
-                            data-testid="anna-project-switch-loading"
-                        >
-                            <span className="anna-project-switch-spinner" aria-hidden="true" />
-                            <span>
-                                {switchingProjectName
-                                    ? translate('Opening the chat in %{projectName}…', {
-                                          projectName: switchingProjectName,
-                                      })
-                                    : translate('Opening the chat…')}
-                            </span>
-                        </div>
-                    )}
-                    {!switching && hasEarlier && (
+                    {hasEarlier && (
                         <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
                             {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                         </button>
                     )}
-                    {!switching && otherProjectIds.length > 0 && (
-                        <AnnaProjectJumps
-                            projectIds={otherProjectIds}
-                            disabled={voiceActive || offline}
-                            onOpenProject={onOpenProject}
-                        />
-                    )}
-                    {(switching ? [] : displayedThreads).map(thread => (
+                    {displayedThreads.map(thread => (
                         <AnnaThreadMessages
                             key={`${thread.projectId}/${thread.chatId || thread.id}`}
                             thread={thread}
@@ -597,7 +428,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             onAcknowledge={acknowledge}
                             onWorkStateChange={onWorkStateChange}
                             onChange={messagesChanged}
-                            onLoaded={threadLoaded}
                             onLoadEarlier={preservePosition}
                             visible={visible}
                             offline={offline}
@@ -607,7 +437,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     notice.projectId === thread.projectId &&
                                     notice.chatId === (thread.chatId || thread.id)
                             )}
-                            unreadActivityIds={unreadActivityIds}
                             viewNotice={isCurrentThread(thread) ? viewNotice : null}
                             onSuggest={text => {
                                 changeDraft(text)
@@ -623,7 +452,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                     {translate('Latest messages')} ↓
                 </button>
             )}
-            <form className="anna-composer" ref={composerForm} onSubmit={send}>
+            <form className="anna-composer" onSubmit={send}>
                 {offline && (
                     <p className="anna-muted" role="status">
                         {translate(
@@ -646,11 +475,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             aria-hidden={voiceActive || undefined}
                             inert={voiceActive ? '' : undefined}
                         >
-                            {/* AT-3032: the project chip sits on the field's top edge, half over the
-                                border (anna.css). First in the DOM, so it is also first in tab order. */}
-                            <div className="anna-composer-project">
-                                {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
-                            </div>
                             <div>
                                 <AnnaChatComposer
                                     ref={composer}
@@ -666,8 +490,25 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 />
                             </div>
                             <div className="anna-composer-toolbar">
-                                {/* AT-3029/AT-3032: + and Templates on the left; mic, call and send on the right. */}
                                 <div className="anna-composer-tools">
+                                    {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
+                                    {!offline && conversation.projectId && isDictationSupported() && (
+                                        <RambleButton
+                                            projectId={conversation.projectId}
+                                            targetKind="generic"
+                                            getCurrentText={() => draftRef.current}
+                                            onTextReady={insertDictatedText}
+                                            onSubmit={sendDictation}
+                                            onPhaseChange={setDictationPhase}
+                                            getOverlayViewport={() => {
+                                                const pane = composer.current?.getPane()
+                                                return (
+                                                    pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                                )
+                                            }}
+                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
+                                        />
+                                    )}
                                     <div className="anna-composer-attachment">
                                         <AddFeedAttachButton
                                             compact
@@ -693,26 +534,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             }}
                                         />
                                     </div>
-                                    {/* The assistant line's own Templates button and modal, unchanged. */}
-                                    <div className="anna-composer-templates">
-                                        <AssistantTaskSearchButtonWrapper
-                                            preferredAssistantId={conversation.assistantId || assistant?.uid}
-                                            preferredProjectId={conversation.projectId}
-                                            compact={compactTemplates}
-                                            position={ANNA_TEMPLATES_POSITION}
-                                            getPopoverViewport={getTemplatesViewport}
-                                        />
-                                    </div>
                                 </div>
                                 <div className="anna-composer-actions">
-                                    {dictationAvailable && (
-                                        <RambleButton
-                                            {...dictationProps}
-                                            visible={inlineMicVisible}
-                                            onPhaseChange={setDictationPhase}
-                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                        />
-                                    )}
                                     <button
                                         type="button"
                                         className="anna-voice-button"
@@ -723,35 +546,63 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     >
                                         <Icon name="phone-call" size={20} color="currentColor" />
                                     </button>
-                                    {/* AT-3025: an empty draft offers the mic where Send sits. Both mics
-                                        stay mounted so a take survives the draft filling up. */}
-                                    {dictationAvailable && (
-                                        <RambleButton
-                                            {...dictationProps}
-                                            visible={micInSendSlot}
-                                            variant="send"
-                                            testID="anna-send-slot-dictation"
-                                            onPhaseChange={setSendSlotDictationPhase}
-                                            style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                            sendIdleStyle={{ backgroundColor: colors.Primary200 }}
-                                        />
-                                    )}
-                                    {!micInSendSlot && (
-                                        <button
-                                            type="submit"
-                                            className="anna-send"
-                                            disabled={offline || voiceActive || dictationBusy || switching || !hasText}
-                                            aria-label={translate('Send message')}
-                                        >
-                                            <Icon name="arrow-up" size={20} color="currentColor" />
-                                        </button>
-                                    )}
+                                    <button
+                                        type="submit"
+                                        className="anna-send"
+                                        disabled={offline || voiceActive || dictationBusy || switching || !hasText}
+                                        aria-label={translate('Send message')}
+                                    >
+                                        <Icon name="arrow-up" size={20} color="currentColor" />
+                                    </button>
                                 </div>
                             </div>
                         </div>
                         {voiceActive && !voiceConnecting && (
                             <AnnaCallAudioControls call={call} seconds={seconds}>
-                                <AnnaCallActions call={call} endLabel={voiceLabel} onEnd={toggleVoiceCall} />
+                                <button
+                                    type="button"
+                                    className="anna-voice-button"
+                                    disabled={call.status === 'ending'}
+                                    aria-label={translate(
+                                        call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
+                                    )}
+                                    aria-pressed={!!call.microphoneMuted}
+                                    onClick={call.toggleMicrophoneMuted}
+                                    onKeyDown={event => {
+                                        if (event.key !== 'Enter') return
+                                        // The shared editor cancels Enter at document level.
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        if (!event.repeat) event.currentTarget.click()
+                                    }}
+                                >
+                                    <Icon
+                                        name={call.microphoneMuted ? 'mic-off' : 'mic'}
+                                        size={20}
+                                        color="currentColor"
+                                    />
+                                </button>
+                                {call.needsAudioPlayback && (
+                                    <button
+                                        type="button"
+                                        className="anna-voice-button"
+                                        aria-label={translate('Enable call audio')}
+                                        title={translate('Enable call audio')}
+                                        onClick={call.playCallAudio}
+                                    >
+                                        <Icon name="volume-2" size={20} color="currentColor" />
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    className="anna-voice-button anna-voice-active"
+                                    aria-label={voiceLabel}
+                                    title={voiceHint}
+                                    disabled={call.status === 'ending'}
+                                    onClick={toggleVoiceCall}
+                                >
+                                    <Icon name="phone-off" size={20} color="currentColor" />
+                                </button>
                             </AnnaCallAudioControls>
                         )}
                     </div>
@@ -806,7 +657,6 @@ function AnnaThreadMessages({
     visible,
     offline,
     contextNotices,
-    unreadActivityIds,
     viewNotice = null,
     localMessages,
     onRetry,
@@ -816,7 +666,6 @@ function AnnaThreadMessages({
     onWorkStateChange,
     reducedMotion,
     showProject = false,
-    onLoaded,
 }) {
     // Earlier sections can belong to another project and its assistant (AT-2903).
     const threadAssistant = useSelector(state =>
@@ -829,11 +678,6 @@ function AnnaThreadMessages({
         showProject ? state.loggedUserProjectsMap?.[thread.projectId]?.name || '' : ''
     )
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
-    // AT-3046: an activity card names its project and actor only when they differ from this thread's.
-    const activityContext = useMemo(
-        () => ({ projectId: thread.projectId, assistantName: assistant?.displayName || '' }),
-        [thread.projectId, assistant?.displayName]
-    )
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit, annaMessageCache)
@@ -907,14 +751,6 @@ function AnnaThreadMessages({
         pendingMessage?.status,
         onChange,
     ])
-    // AT-3036: the conversation scrolls to the bottom after a project switch once this (current)
-    // thread's messages are rendered, which is now: after this commit's layout.
-    const loadedKey = `${thread.projectId}/${chatId}`
-    useLayoutEffect(() => {
-        if (!current || !onLoaded) return
-        onLoaded(loadedKey, !!messages.loaded)
-        return () => onLoaded(loadedKey, false)
-    }, [current, loadedKey, messages.loaded, onLoaded])
     const timeline = groupAnnaTimeline(
         [
             ...displayedMessages.map(message => ({
@@ -975,15 +811,7 @@ function AnnaThreadMessages({
             )}
             {timeline.map(({ message, notice, notices }) => {
                 if (notices)
-                    return (
-                        <AnnaActivityGroup
-                            key={`context-${notices[0].id}`}
-                            notices={notices}
-                            onChange={onChange}
-                            unread={!!unreadActivityIds && notices.some(item => unreadActivityIds.has(item.id))}
-                            context={activityContext}
-                        />
-                    )
+                    return <AnnaActivityGroup key={`context-${notices[0].id}`} notices={notices} onChange={onChange} />
                 if (notice)
                     return (
                         <p

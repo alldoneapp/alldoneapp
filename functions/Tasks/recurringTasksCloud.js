@@ -4,14 +4,25 @@ const { cloneDeep } = require('lodash')
 const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 const { FieldValue } = require('firebase-admin/firestore')
 
-const { createRecurrenceSchedule } = require('../shared/recurrenceSchedule')
-
 // Task recurrence constants
 const RECURRENCE_NEVER = 'never'
+const RECURRENCE_DAILY = 'daily'
+const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
+const RECURRENCE_WEEKLY = 'weekly'
+const RECURRENCE_EVERY_2_WEEKS = 'every2Weeks'
+const RECURRENCE_EVERY_3_WEEKS = 'every3Weeks'
+const RECURRENCE_MONTHLY = 'monthly'
+const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
+const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
+const RECURRENCE_ANNUALLY = 'annually'
+const RECURRENCE_CUSTOM = 'custom'
 
-// The next-occurrence arithmetic lives in shared/recurrenceSchedule.js, so the completion popup
-// previews exactly the date this function writes (AT-3049).
-const { getNextDateFromBaseDate, computeNextRecurrence } = createRecurrenceSchedule(moment)
+// Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
+function getCustomRecurrenceDays(recurrence) {
+    if (typeof recurrence !== 'string' || recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) !== 0) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
 
 const OPEN_STEP = 'open'
 
@@ -116,13 +127,112 @@ async function createRecurringTaskInCloudFunction(projectId, originalTaskId, com
 }
 
 /**
+ * Calculates the next occurrence date based on recurrence pattern
+ */
+function getNextDateFromBaseDate(baseDate, recurrence) {
+    switch (recurrence) {
+        case RECURRENCE_DAILY:
+            return baseDate.clone().add(1, 'days')
+        case RECURRENCE_EVERY_WORKDAY: {
+            const date = baseDate.clone()
+            const today = date.isoWeekday()
+            console.log('🗓️ CALCULATING EVERY_WORKDAY:', {
+                today: today,
+                dayName: ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][today],
+                currentDate: date.format('YYYY-MM-DD HH:mm:ss'),
+            })
+
+            if (today === 5) {
+                date.add(3, 'days')
+                console.log('✅ Friday detected - adding 3 days to get to Monday')
+            } else if (today === 6) {
+                date.add(2, 'days')
+                console.log('✅ Saturday detected - adding 2 days to get to Monday')
+            } else if (today === 7) {
+                date.add(1, 'days')
+                console.log('✅ Sunday detected - adding 1 day to get to Monday')
+            } else {
+                date.add(1, 'days')
+                console.log('✅ Weekday detected - adding 1 day to get to next day')
+            }
+
+            console.log('🗓️ NEXT WORKDAY CALCULATED:', {
+                nextDate: date.format('YYYY-MM-DD HH:mm:ss'),
+                nextDayName: ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][
+                    date.isoWeekday()
+                ],
+            })
+
+            return date
+        }
+        case RECURRENCE_WEEKLY:
+            return baseDate.clone().add(1, 'weeks')
+        case RECURRENCE_EVERY_2_WEEKS:
+            return baseDate.clone().add(2, 'weeks')
+        case RECURRENCE_EVERY_3_WEEKS:
+            return baseDate.clone().add(3, 'weeks')
+        case RECURRENCE_MONTHLY:
+            return baseDate.clone().add(1, 'months')
+        case RECURRENCE_EVERY_3_MONTHS:
+            return baseDate.clone().add(3, 'months')
+        case RECURRENCE_EVERY_6_MONTHS:
+            return baseDate.clone().add(6, 'months')
+        case RECURRENCE_ANNUALLY:
+            return baseDate.clone().add(1, 'years')
+        default: {
+            const customDays = getCustomRecurrenceDays(recurrence)
+            if (customDays) {
+                return baseDate.clone().add(customDays, 'days')
+            }
+            console.error('Unknown recurrence pattern:', recurrence)
+            return null
+        }
+    }
+}
+
+// Recurrences that advance by a fixed calendar unit. Skipping ahead from a stale anchor multiplies
+// the step (anchor + k * step) instead of chaining single steps, so a monthly task anchored on the
+// 31st stays on the last day of each month instead of drifting to the 28th after February.
+const FIXED_RECURRENCE_STEPS = {
+    [RECURRENCE_DAILY]: [1, 'days'],
+    [RECURRENCE_WEEKLY]: [1, 'weeks'],
+    [RECURRENCE_EVERY_2_WEEKS]: [2, 'weeks'],
+    [RECURRENCE_EVERY_3_WEEKS]: [3, 'weeks'],
+    [RECURRENCE_MONTHLY]: [1, 'months'],
+    [RECURRENCE_EVERY_3_MONTHS]: [3, 'months'],
+    [RECURRENCE_EVERY_6_MONTHS]: [6, 'months'],
+    [RECURRENCE_ANNUALLY]: [1, 'years'],
+}
+
+function getFixedRecurrenceStep(recurrence) {
+    if (FIXED_RECURRENCE_STEPS[recurrence]) return FIXED_RECURRENCE_STEPS[recurrence]
+    const customDays = getCustomRecurrenceDays(recurrence)
+    return customDays ? [customDays, 'days'] : null
+}
+
+const MAX_SKIP_AHEAD_STEPS = 100000
+
+/**
+ * AT-2803: the chosen base date is a CALENDAR DAY of the user. A timestamp alone does not name one:
+ * a due date at 00:30 in Berlin is 23:30 UTC the day before, and this function runs in UTC. When
+ * the user's offset is known the day is read in it; the time of day still comes from `startTime`
+ * exactly as before, so a series keeps the time its earlier occurrences had.
+ */
+function resolveBaseDay(timestamp, utcOffsetMinutes) {
+    if (typeof utcOffsetMinutes === 'number' && Number.isFinite(utcOffsetMinutes)) {
+        return moment(moment(timestamp).utcOffset(utcOffsetMinutes).format('YYYY-MM-DD'), 'YYYY-MM-DD')
+    }
+    return moment(timestamp)
+}
+
+/**
  * Next occurrence of a recurring task that has just been completed.
  *
  * Without `recurrenceBaseDateOverride` this is the legacy rule: the completion moment plus one
  * interval. With it (the user picked the original, the current or a custom date in the completion
  * popup) the interval is applied to that date, and when the result is not after the completion the
  * series skips ahead on its own cadence to the first occurrence that is - the next occurrence of a
- * series is never created overdue. See shared/recurrenceSchedule.js.
+ * series is never created overdue.
  *
  * @param {object} task the completed task
  * @param {number} [now]
@@ -130,28 +240,53 @@ async function createRecurringTaskInCloudFunction(projectId, originalTaskId, com
  * @param {number} [options.utcOffsetMinutes] the assignee's offset, used to read the override's day
  */
 function calculateNextRecurrenceDate(task, now = Date.now(), options = {}) {
-    const { nextDate, baseDate, baseDateOverride, startTime, skipAheadFailed } = computeNextRecurrence(
-        task,
-        now,
-        options
-    )
+    const startMoment = moment(task.startDate || task.created)
+    const startTime = task.startTime || startMoment.format('HH:mm')
+    const [hours, minutes] = startTime.split(':').map(Number)
+    const baseDateOverride =
+        typeof task.recurrenceBaseDateOverride === 'number' &&
+        Number.isFinite(task.recurrenceBaseDateOverride) &&
+        task.recurrenceBaseDateOverride > 0 &&
+        task.recurrenceBaseDateOverride < Number.MAX_SAFE_INTEGER
+            ? task.recurrenceBaseDateOverride
+            : null
 
-    if (skipAheadFailed) {
-        console.error('Failed to advance recurring task date to a future occurrence:', {
-            recurrence: task.recurrence,
-            baseDateOverride,
-            completed: task.completed,
-        })
+    // Use the selected recurrence base when present. Otherwise keep the legacy now-based behavior.
+    let baseDate = baseDateOverride ? resolveBaseDay(baseDateOverride, options.utcOffsetMinutes) : moment(now)
+    // Set the time to match the original task's scheduled time
+    baseDate = baseDate.hour(hours).minute(minutes).second(0).millisecond(0)
+
+    let nextDate = getNextDateFromBaseDate(baseDate, task.recurrence)
+
+    if (!nextDate) {
         return null
     }
-    if (!nextDate) {
-        console.error('Unknown recurrence pattern:', task.recurrence)
-        return null
+
+    if (baseDateOverride) {
+        const completedMoment = moment(task.completed || now)
+        const fixedStep = getFixedRecurrenceStep(task.recurrence)
+        let steps = 1
+        while (!nextDate.isAfter(completedMoment) && steps < MAX_SKIP_AHEAD_STEPS) {
+            steps++
+            nextDate = fixedStep
+                ? baseDate.clone().add(fixedStep[0] * steps, fixedStep[1])
+                : getNextDateFromBaseDate(nextDate, task.recurrence)
+        }
+
+        if (!nextDate.isAfter(completedMoment)) {
+            console.error('Failed to advance recurring task date to a future occurrence:', {
+                recurrence: task.recurrence,
+                baseDateOverride,
+                completed: task.completed,
+            })
+            return null
+        }
     }
 
     console.log('Calculated next recurrence date:', {
         recurrence: task.recurrence,
-        startTime,
+        originalStartDate: startMoment.format('YYYY-MM-DD HH:mm:ss'),
+        startTime: startTime,
         nextDate: nextDate.format('YYYY-MM-DD HH:mm:ss'),
         baseDate: baseDate.format('YYYY-MM-DD HH:mm:ss'),
         baseDateOverride,

@@ -107,10 +107,7 @@ jest.mock('./taskSummarizer', () => ({
     TASK_SUMMARY_MODEL_KEY: 'MODEL_GPT5_4_NANO',
 }))
 
-jest.mock('../emailThreadContinuation', () => ({
-    continueEmailThread: jest.fn(async () => null),
-    appendOriginEmailToTask: jest.fn(async () => null),
-}))
+jest.mock('../emailThreadContinuation', () => ({ continueEmailThread: jest.fn(async () => null) }))
 
 const mockCreateAndPersistTask = jest.fn()
 jest.mock('../../shared/TaskService', () => ({
@@ -189,7 +186,6 @@ describe('emailLineService', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         require('../emailThreadContinuation').continueEmailThread.mockReset().mockResolvedValue(null)
-        require('../emailThreadContinuation').appendOriginEmailToTask.mockReset().mockResolvedValue(null)
         mockDocs.clear()
         mockAuditDocs.clear()
         mockTaskDocs.clear()
@@ -236,7 +232,6 @@ describe('emailLineService', () => {
             expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
             expect(deductGold).not.toHaveBeenCalled()
             expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
-            expect(require('../emailThreadContinuation').appendOriginEmailToTask).not.toHaveBeenCalled()
         }
     )
 
@@ -273,47 +268,6 @@ describe('emailLineService', () => {
             expect.objectContaining({ note: 'concurrent email task creation reused a task' })
         )
         expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
-        expect(require('../emailThreadContinuation').appendOriginEmailToTask).not.toHaveBeenCalled()
-    })
-
-    // AT-3022: the chat of a task created from an email started with the second email of the thread.
-    test('createTask puts the email itself into the new task chat', async () => {
-        const context = {
-            threadId: 'thread',
-            subject: 'Update',
-            from: 'Client <c@example.com>',
-            snippet: 'Please confirm',
-        }
-        gmailEmailLine.getMessageContext.mockResolvedValue(context)
-        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Confirm update', totalTokens: 100 })
-        deductGold.mockResolvedValue({ success: true })
-        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 'new-task' })
-        const { appendOriginEmailToTask } = require('../emailThreadContinuation')
-        appendOriginEmailToTask.mockRejectedValueOnce(new Error('comment write failed'))
-        const result = await performEmailLineAction('u', 'p1', {
-            action: 'createTask',
-            messageIds: ['m2'],
-            userData: googleUserData,
-        })
-        // Best effort: a failed line never fails the created task.
-        expect(result).toMatchObject({ taskId: 'new-task', taskName: 'Confirm update' })
-        expect(appendOriginEmailToTask).toHaveBeenCalledTimes(1)
-        const [args] = appendOriginEmailToTask.mock.calls[0]
-        expect(args).toMatchObject({
-            userId: 'u',
-            projectId: result.projectId,
-            taskId: 'new-task',
-            context,
-            actor: expect.objectContaining({ uid: 'u' }),
-            gmailData: expect.objectContaining({
-                provider: 'google',
-                accountUserId: 'u',
-                messageId: 'm2',
-                threadId: 'thread',
-                origin: 'gmail_label_follow_up',
-            }),
-        })
-        expect(args.outgoing).toBeUndefined()
     })
 
     test('an ambiguous thread falls through to atomic separate-task creation', async () => {

@@ -15,13 +15,5 @@ import { useAllProjectsAssistantLine } from './useAllProjectsAssistantLine'
 export default function AllProjectsAssistantLine(props) {
     const assistantSwitch = useAllProjectsAssistantLine()
 
-    // AT-3034: its assistant-mode button opens the sidebar on "Automatic" (the default assistant).
-    return (
-        <AssistantLine
-            useAssistantProjectContext={false}
-            assistantSwitch={assistantSwitch}
-            assistantModeProjectId={null}
-            {...props}
-        />
-    )
+    return <AssistantLine useAssistantProjectContext={false} assistantSwitch={assistantSwitch} {...props} />
 }

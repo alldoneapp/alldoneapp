@@ -2,10 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { TouchableOpacity } from 'react-native'
 import AssistantModeButton from './AssistantModeButton'
-import AnnaChatNavigationContext, {
-    AnnaSidebarCloseContext,
-    AnnaSidebarProjectContext,
-} from './AnnaChatNavigationContext'
+import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from '../Anna/AnnaChatNavigationContext'
 import { resolveAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 
 let mockState
@@ -15,7 +12,7 @@ jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 
 beforeEach(() => {
     mockState = {
-        loggedUser: { isAnonymous: false, defaultProjectId: 'home' },
+        loggedUser: { isAnonymous: false },
         defaultAssistant: { uid: 'anna', displayName: 'Anna Alldone', photoURL50: 'anna.png' },
     }
     window.history.replaceState({}, '', '/projects/p1/notes/n1?filter=open#draft')
@@ -96,65 +93,4 @@ it.each(['anonymous', 'missing assistant'])('hides the entry point for %s', stat
     if (state === 'anonymous') mockState.loggedUser.isAnonymous = true
     else mockState.defaultAssistant = null
     expect(renderer.create(<AssistantModeButton />).toJSON()).toBeNull()
-})
-
-// AT-3034: the button lives at the top left of the assistant line and carries the line's project.
-describe('from the assistant line', () => {
-    const render = ({ projectId, sidebarProjectId = 'home', open = false, assistantName = 'Alldone CTO' } = {}) => {
-        const showChat = jest.fn()
-        const closeChat = jest.fn()
-        const component = renderer.create(
-            <AnnaChatNavigationContext.Provider value={showChat}>
-                <AnnaSidebarCloseContext.Provider value={open ? closeChat : null}>
-                    <AnnaSidebarProjectContext.Provider value={sidebarProjectId}>
-                        <AssistantModeButton
-                            inline
-                            testID="assistant-line-assistant-mode"
-                            projectId={projectId}
-                            assistantName={assistantName}
-                        />
-                    </AnnaSidebarProjectContext.Provider>
-                </AnnaSidebarCloseContext.Provider>
-            </AnnaChatNavigationContext.Provider>
-        )
-        const button = component.root.findByType(TouchableOpacity)
-        return { button, showChat, closeChat }
-    }
-
-    it("opens assistant mode on the line's project and names the line's assistant", () => {
-        const { button, showChat } = render({ projectId: 'product' })
-        expect(button.props.testID).toBe('assistant-line-assistant-mode')
-        expect(button.props.accessibilityLabel).toBe('Alldone CTO: Open assistant chat')
-        const stopPropagation = jest.fn()
-        act(() => button.props.onPress({ stopPropagation }))
-        expect(showChat).toHaveBeenCalledWith({ projectId: 'product' })
-        expect(stopPropagation).toHaveBeenCalled()
-    })
-
-    it('asks for "Automatic" from the All projects line', () => {
-        const { button, showChat } = render({ projectId: null, assistantName: '' })
-        expect(button.props.accessibilityLabel).toBe('Anna Alldone: Open assistant chat')
-        act(() => button.props.onPress())
-        expect(showChat).toHaveBeenCalledWith({ projectId: null })
-    })
-
-    it('moves an open sidebar to this line instead of closing it when it shows another project', () => {
-        const { button, showChat, closeChat } = render({ projectId: 'product', open: true })
-        expect(button.props['aria-pressed']).toBe(false)
-        act(() => button.props.onPress())
-        expect(showChat).toHaveBeenCalledWith({ projectId: 'product' })
-        expect(closeChat).not.toHaveBeenCalled()
-    })
-
-    it.each([
-        ['product', 'product'],
-        [null, 'home'],
-    ])('closes the sidebar when it already shows this line (%s)', (projectId, sidebarProjectId) => {
-        const { button, showChat, closeChat } = render({ projectId, sidebarProjectId, open: true })
-        expect(button.props['aria-pressed']).toBe(true)
-        expect(button.props.accessibilityLabel).toMatch(/Close assistant chat$/)
-        act(() => button.props.onPress())
-        expect(closeChat).toHaveBeenCalledTimes(1)
-        expect(showChat).not.toHaveBeenCalled()
-    })
 })

@@ -50,12 +50,6 @@ jest.mock(
         ({ projectId }) =>
             `wiki:${projectId}`
 )
-jest.mock(
-    '../../Items/ChatsItem',
-    () =>
-        ({ projectId }) =>
-            `chats:${projectId}`
-)
 jest.mock('../InvitePeople/InvitePeopleWrapper', () => () => 'settings')
 jest.mock(
     '../../../UIControls/ShowMoreButton',
@@ -95,19 +89,17 @@ beforeEach(() => {
 })
 
 describe('TasksBoards', () => {
-    it('lists the wiki and then the chats under the people, directly above the project settings', () => {
-        expect(rows(mount())).toEqual(['user:me', 'user:derek', 'user:luis', 'wiki:p1', 'chats:p1', 'settings'])
+    it('lists the wiki under the people, directly above the project settings', () => {
+        expect(rows(mount())).toEqual(['user:me', 'user:derek', 'user:luis', 'wiki:p1', 'settings'])
     })
 
-    it('keeps the wiki and the chats in reach when the people are cut off behind "show more"', () => {
+    it('keeps the wiki in reach when the people are cut off behind "show more"', () => {
         mockState.loggedUser.numberUsersSidebar = 2
 
-        expect(rows(mount())).toEqual(['user:me', 'user:derek', 'wiki:p1', 'chats:p1', 'show more'])
+        expect(rows(mount())).toEqual(['user:me', 'user:derek', 'wiki:p1', 'show more'])
     })
 
-    it('has no wiki and no chats row for a guest of a shared project', () => {
-        const guestRows = rows(mount({ isShared: true }))
-        expect(guestRows).not.toContain('wiki:p1')
-        expect(guestRows).not.toContain('chats:p1')
+    it('has no wiki for a guest of a shared project', () => {
+        expect(rows(mount({ isShared: true }))).not.toContain('wiki:p1')
     })
 })

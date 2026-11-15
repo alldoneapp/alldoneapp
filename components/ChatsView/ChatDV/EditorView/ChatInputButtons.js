@@ -39,8 +39,6 @@ export default function ChatInputButtons({
     objectType,
     assistantEnabled,
     onAssistantToggled,
-    setSendDictationSlot,
-    micInSendSlot,
 }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -160,8 +158,6 @@ export default function ChatInputButtons({
                     disabled={!inputText}
                     setShowRunOutGoalModal={setShowRunOutGoalModal}
                     showRunOutGoalModal={showRunOutGoalModal}
-                    setDictationSlot={setSendDictationSlot}
-                    micInSendSlot={micInSendSlot}
                 />
             </View>
         </View>

@@ -28,8 +28,6 @@ import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
-import RageModeButton from '../../../RageMode/RageModeButton'
-import AssistantModeButton from '../../../Anna/AssistantModeButton'
 import {
     ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
     ASSISTANT_COMPOSER_BOX_PADDING_TOP,
@@ -42,7 +40,6 @@ import {
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
-import { handleComposerFieldMouseDown } from '../assistantComposerFocus'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -54,20 +51,15 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
 
 /**
  * The assistant line: a compact header (avatar, the assistant's name — which is also the switcher
- * when there is more than one assistant to talk to — and, on desktop, the greeting), then one
- * composer box.
+ * when there is more than one assistant to talk to — and the greeting), then one composer box.
  * The box is a multi-line text field with a toolbar under it: + (attach) and Templates on the
  * left; mic, call and send on the right. The + and the mic belong to the text field
  * (CustomTextInput3 owns their insert/push-to-talk wiring) and are portalled into the toolbar's
- * slots through `inlineControlTargets`. While the field is empty the send button's place holds a
- * blue mic instead and the small mic hides (AT-3025, `sendSlotDictation`).
+ * slots through `inlineControlTargets`.
  */
 export default function AssistantOptions({
     headerControls = null,
     assistantSwitch = null,
-    // AT-3034: the project the assistant-mode sidebar continues in when entered from this line
-    // (null: "Automatic", the default project's chat).
-    assistantModeProjectId = null,
     projectOverride = null,
     assistantIdOverride = null,
     preferAssistantIdOverride = false,
@@ -91,9 +83,6 @@ export default function AssistantOptions({
     // has to re-render once the nodes exist.
     const [attachmentSlot, setAttachmentSlot] = useState(null)
     const [dictationSlot, setDictationSlot] = useState(null)
-    // AT-3025: where the blue mic goes while the field is empty, and whether it is there now.
-    const [sendDictationSlot, setSendDictationSlot] = useState(null)
-    const [micInSendSlot, setMicInSendSlot] = useState(false)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
@@ -255,12 +244,6 @@ export default function AssistantOptions({
         [handleSendMessage, mentionsModalActive, message]
     )
 
-    // AT-3028: the field's padding edges focus the composer too. Scoped to the field wrapper, and
-    // guarded against the + / mic that are portalled out of it (assistantComposerFocus.js).
-    const handleFieldMouseDown = useCallback(event => {
-        handleComposerFieldMouseDown(event, inputRef.current)
-    }, [])
-
     const handleKeyUp = useCallback(event => {
         if (inputRef.current?.isFocused?.() && event.key === 'Shift') {
             isShiftPressed.current = false
@@ -305,19 +288,8 @@ export default function AssistantOptions({
             setInputCursorIndex={setInputCursorIndex}
         >
             <View testID="assistant-line-header" style={localStyles.headerRow}>
-                {/* AT-3034: assistant mode starts here, top left, and takes this line's assistant
-                    (its project's chat) into the sidebar. */}
-                <View style={localStyles.headerSide}>
-                    <AssistantModeButton
-                        inline
-                        testID="assistant-line-assistant-mode"
-                        projectId={assistantModeProjectId}
-                        assistantName={assistant.displayName}
-                        style={headerControls ? localStyles.assistantModeButton : null}
-                    />
-                    {headerControls}
-                </View>
-                <View style={[localStyles.headerCenter, headerControls && localStyles.headerCenterWide]}>
+                {headerControls ? <View style={localStyles.headerSide}>{headerControls}</View> : null}
+                <View style={localStyles.headerCenter}>
                     {/* Rage mode's Anna takes off from this avatar when the game is started from a
                         screen that also shows the assistant line (rageLaunchAnchor.js). */}
                     <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
@@ -340,74 +312,53 @@ export default function AssistantOptions({
                         </Text>
                     )}
                     {/* Kept short on purpose (AT-2442): the header is a single centred line, so a
-                        longer greeting ellipsises on narrow phones. AT-3043: on mobile it is left
-                        out altogether, so the assistant's name gets the whole line instead of both
-                        being cut off. */}
-                    {!isMobile && (
-                        <Text style={localStyles.greetingText} numberOfLines={1}>
-                            {translate('How can I help?')}
-                        </Text>
-                    )}
-                </View>
-                {/* AT-3034: rage mode is back at the top right (it is also on the Empty inbox card).
-                    Anna takes off from the avatar above (rageLaunchAnchor.js). Hidden without
-                    WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
-                <View style={localStyles.headerSideRight}>
-                    <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
+                        longer greeting ellipsises on narrow phones. */}
+                    <Text style={localStyles.greetingText} numberOfLines={1}>
+                        {translate('How can I help?')}
+                    </Text>
                 </View>
             </View>
             <View testID="assistant-composer-row" style={localStyles.composerBox}>
-                {/* AT-3028 — the whole two-line field is a click target for typing: the editor
-                    fills both lines (assistantInput.css) and this wrapper hands its padding edges
-                    to the editor. The toolbar below is outside it and keeps its own clicks. */}
-                <View testID="assistant-composer-field" onMouseDown={handleFieldMouseDown}>
-                    <CustomTextInput3
-                        ref={inputRef}
-                        containerStyle={localStyles.messageInput}
-                        fixedHeight={inputLayout.height}
-                        maxHeight={composerMaxHeight}
-                        onChangeText={updateMessage}
-                        // Include the field's own vertical padding in the natural height.
-                        onContentSizeChange={(width, height) =>
-                            updateInputHeight(height + ASSISTANT_INPUT_VERTICAL_PADDING)
-                        }
-                        placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
-                        projectId={conversationProjectId}
-                        styleTheme={TASK_THEME}
-                        setMentionsModalActive={setMentionsModalActive}
-                        // In object editors an assistant selection is a command to change that
-                        // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
-                        // message content: preserve the selected assistant id in a real @-mention so
-                        // comment parsing and the assistant runtime can detect it (AT-2592).
-                        insertAssistantAsMention={true}
-                        // AT-2444: hands the live editor + caret to the drop zone above, and declares
-                        // the attachment formats. Declaring them is also what gives this composer
-                        // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
-                        setEditor={setEditor}
-                        setInputCursorIndex={setInputCursorIndex}
-                        otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
-                        keepBreakLines={true}
-                        scrollEnabled={inputLayout.scrollEnabled}
-                        showScrollIndicator={inputLayout.scrollEnabled}
-                        autoExpand={true}
-                        // Dictating is a primary way to use this composer, so the mic is pinned on
-                        // instead of waiting for hover/focus — on touch there is no hover (AT-2355).
-                        alwaysShowDictation={true}
-                        showAttachmentButton={true}
-                        inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
-                        toolbarControlStyle={localStyles.toolbarControl}
-                        sendSlotDictation={{
-                            target: sendDictationSlot,
-                            empty: !canSend,
-                            style: localStyles.sendSlotMic,
-                        }}
-                        onSendSlotDictationChange={setMicInSendSlot}
-                        // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
-                        // inserted and the message is sent. Enter's own guards still apply, since this
-                        // is the same send path the keydown listener uses.
-                        onDictationSubmit={text => text && handleSendMessage(text)}
-                    />
-                </View>
+                <CustomTextInput3
+                    ref={inputRef}
+                    containerStyle={localStyles.messageInput}
+                    fixedHeight={inputLayout.height}
+                    maxHeight={composerMaxHeight}
+                    onChangeText={updateMessage}
+                    // Include the field's own vertical padding in the natural height.
+                    onContentSizeChange={(width, height) =>
+                        updateInputHeight(height + ASSISTANT_INPUT_VERTICAL_PADDING)
+                    }
+                    placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
+                    projectId={conversationProjectId}
+                    styleTheme={TASK_THEME}
+                    setMentionsModalActive={setMentionsModalActive}
+                    // In object editors an assistant selection is a command to change that
+                    // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
+                    // message content: preserve the selected assistant id in a real @-mention so
+                    // comment parsing and the assistant runtime can detect it (AT-2592).
+                    insertAssistantAsMention={true}
+                    // AT-2444: hands the live editor + caret to the drop zone above, and declares
+                    // the attachment formats. Declaring them is also what gives this composer
+                    // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
+                    setEditor={setEditor}
+                    setInputCursorIndex={setInputCursorIndex}
+                    otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
+                    keepBreakLines={true}
+                    scrollEnabled={inputLayout.scrollEnabled}
+                    showScrollIndicator={inputLayout.scrollEnabled}
+                    autoExpand={true}
+                    // Dictating is a primary way to use this composer, so the mic is pinned on
+                    // instead of waiting for hover/focus — on touch there is no hover (AT-2355).
+                    alwaysShowDictation={true}
+                    showAttachmentButton={true}
+                    inlineControlTargets={{ attachment: attachmentSlot, dictation: dictationSlot }}
+                    toolbarControlStyle={localStyles.toolbarControl}
+                    // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
+                    // inserted and the message is sent. Enter's own guards still apply, since this
+                    // is the same send path the keydown listener uses.
+                    onDictationSubmit={text => text && handleSendMessage(text)}
+                />
                 <View testID="assistant-composer-toolbar" style={localStyles.toolbar}>
                     <View style={localStyles.toolbarSide}>
                         <View ref={setAttachmentSlot} style={localStyles.controlSlot} />
@@ -433,20 +384,15 @@ export default function AssistantOptions({
                                 skipNavigationOnThreadCreate
                                 buttonStyle={localStyles.voiceButton}
                             />
-                            <View style={localStyles.sendSlot}>
-                                <View ref={setSendDictationSlot} style={localStyles.controlSlot} />
-                                {!micInSendSlot && (
-                                    <Button
-                                        icon={'arrow-up'}
-                                        iconSize={20}
-                                        onPress={handleSendMessage}
-                                        disabled={!canSend}
-                                        buttonStyle={localStyles.sendButton}
-                                        accessibilityLabel={sendLabel}
-                                        accessible={true}
-                                    />
-                                )}
-                            </View>
+                            <Button
+                                icon={'arrow-up'}
+                                iconSize={20}
+                                onPress={handleSendMessage}
+                                disabled={!canSend}
+                                buttonStyle={localStyles.sendButton}
+                                accessibilityLabel={sendLabel}
+                                accessible={true}
+                            />
                         </View>
                     </AppPopover>
                 </View>
@@ -467,8 +413,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: ASSISTANT_HEADER_GAP,
     },
-    // AT-3034: the assistant-mode button (and the edit pencil on the assistant board) sits at the
-    // left edge, outside the centred line; rage mode mirrors it on the right.
+    // The edit pencil (assistant board) sits at the left edge, outside the centred line.
     headerSide: {
         position: 'absolute',
         left: 0,
@@ -478,24 +423,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         zIndex: 1,
     },
-    headerSideRight: {
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        zIndex: 1,
-    },
-    assistantModeButton: {
-        marginRight: 8,
-    },
-    rageButton: {
-        width: 28,
-        height: 28,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
     headerCenter: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -504,10 +431,6 @@ const localStyles = StyleSheet.create({
         maxWidth: '100%',
         minWidth: 0,
         paddingHorizontal: 36,
-    },
-    // Two controls on the left (assistant mode + edit pencil): keep the centred line clear of both.
-    headerCenterWide: {
-        paddingHorizontal: 72,
     },
     avatarWrapper: {
         width: ASSISTANT_HEADER_HEIGHT,
@@ -533,9 +456,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         borderRadius: 12,
         borderWidth: 1,
-        // AT-3031: a soft blue outline marks the assistant's input (Grey300 vanished on the grey
-        // card). The focus border and glow live in assistantInput.css.
-        borderColor: colors.UtilityBlue150,
+        borderColor: colors.Grey300,
         backgroundColor: themed.Surface,
         paddingTop: ASSISTANT_COMPOSER_BOX_PADDING_TOP,
         paddingBottom: ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
@@ -585,12 +506,6 @@ const localStyles = StyleSheet.create({
         marginLeft: 0,
         justifyContent: 'center',
     },
-    // The send button and the blue mic that replaces it while the field is empty (AT-3025).
-    sendSlot: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 4,
-    },
     sendButton: {
         width: CONTROL,
         height: CONTROL,
@@ -598,14 +513,8 @@ const localStyles = StyleSheet.create({
         borderRadius: CONTROL / 2,
         paddingHorizontal: 0,
         paddingVertical: 0,
+        marginLeft: 4,
         alignSelf: 'center',
         justifyContent: 'center',
-    },
-    // minWidth, not width: while recording the same button also carries the timer.
-    sendSlotMic: {
-        minWidth: CONTROL,
-        height: CONTROL,
-        borderRadius: CONTROL / 2,
-        paddingHorizontal: 8,
     },
 })

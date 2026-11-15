@@ -27,9 +27,6 @@ export default function LastCommentArea({
     assistantIdOverride = null,
     preferAssistantIdOverride = false,
     scopeToAssistant = false,
-    // AT-3034 follow-up: extra container style. The assistant line passes its card here while the
-    // assistant-mode sidebar is open, so the card disappears with the area when it renders nothing.
-    style = null,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -119,10 +116,6 @@ export default function LastCommentArea({
         if (assistantReplied) resolveAssistantLineSendForChat(pendingSend.chatId)
     }, [pendingSend, lastAssistantCommentData, followedProjectChatLastNotification])
 
-    // AT-3020 — the popover a Last comment card opens leads to the same Chats list as the header's
-    // "All chats" link: this line's project, or every project on the All projects line.
-    const openAllChats = () => openChatsList(projectOverride)
-
     const { commentCreator, commentProject } = getCommentData(
         project,
         currentProjectChatLastNotification,
@@ -142,7 +135,6 @@ export default function LastCommentArea({
                     compact && localStyles.compactContainer,
                     !compact && withTopMargin && localStyles.containerWithTopMargin,
                     !compact && useCardBackground && localStyles.cardContainer,
-                    style,
                 ]}
             >
                 {!compact && <LastCommentHeader project={projectOverride} commentProjectId={pendingSend.projectId} />}
@@ -153,7 +145,6 @@ export default function LastCommentArea({
                         compact={compact}
                         scopeKey={scopeKey}
                         setAModalIsOpen={setAModalIsOpen}
-                        onOpenAllChats={openAllChats}
                     />
                 </View>
             </View>
@@ -173,7 +164,6 @@ export default function LastCommentArea({
                     localStyles.container,
                     withTopMargin && localStyles.containerWithTopMargin,
                     useCardBackground && localStyles.cardContainer,
-                    style,
                 ]}
             >
                 <LastCommentHeader project={projectOverride} />
@@ -191,7 +181,6 @@ export default function LastCommentArea({
                 compact && localStyles.compactContainer,
                 !compact && withTopMargin && localStyles.containerWithTopMargin,
                 !compact && useCardBackground && localStyles.cardContainer,
-                style,
             ]}
         >
             {!compact && <LastCommentHeader project={projectOverride} commentProjectId={commentProject.id} />}
@@ -203,7 +192,6 @@ export default function LastCommentArea({
                 currentLastAssistantCommentData={currentLastAssistantCommentData}
                 compact={compact}
                 scopeKey={scopeKey}
-                onOpenAllChats={openAllChats}
             />
         </View>
     )

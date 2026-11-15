@@ -84,13 +84,13 @@
     font-size: 14px;
     font-weight: 500;
     line-height: 18px;
-    /* AT-3040: the name always stays on one line; a long name ends in an ellipsis
-       (the button's title carries the full name). */
     display: block;
-    min-width: 0;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 .anna-header-note {
     color: var(--anna-muted);
@@ -208,71 +208,16 @@
     font-size: 10px;
     white-space: nowrap;
 }
-/* AT-3046 (variant C): system notices (project switched, view opened) are thin centred dividers,
-   so they read apart from the activity cards and the messages. Text and time stay on one line. */
-.anna-project-switch-notice,
-.anna-view-notice {
-    align-items: center;
-    margin: 12px 0;
-    color: var(--anna-placeholder);
-    font-size: 11px;
-    gap: 8px;
-}
-.anna-project-switch-notice::before,
-.anna-project-switch-notice::after,
-.anna-view-notice::before,
-.anna-view-notice::after {
-    flex: 1 1 12px;
-    height: 1px;
-    background: var(--anna-border);
-    content: '';
-}
-.anna-project-switch-notice > span,
-.anna-view-notice > span {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-/* AT-3046 (variant C): every activity row is a card set off from the chat. The whole card is the
-   link (no arrow), its border turns blue on hover/focus, and the left edge is blue while the item
-   is unread and grey once it is read. Colors are Anna's tokens, so light and dark both follow. */
-.anna-activity-notice {
-    display: block;
-    margin: 8px 0;
-}
 .anna-activity-notice a {
-    position: relative;
-    display: block;
-    box-sizing: border-box;
-    width: 100%;
+    display: flex;
+    flex: 1;
     min-width: 0;
-    padding: 10px 12px 10px 14px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: var(--anna-neutral);
+    align-items: baseline;
+    gap: 6px;
     color: var(--anna-muted);
     text-decoration: none;
-    transition: border-color 0.12s ease;
 }
-.anna-activity-notice a::before {
-    position: absolute;
-    top: 10px;
-    bottom: 10px;
-    left: 0;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: var(--anna-border);
-    content: '';
-}
-.anna-activity-notice a.anna-activity-card-unread::before {
-    background: var(--anna-accent);
-}
-.anna-activity-notice a:hover,
-.anna-activity-notice a:focus-visible {
-    border-color: var(--anna-accent);
-    outline: none;
+.anna-activity-notice a:hover {
     text-decoration: none;
 }
 .anna-activity-content {
@@ -281,27 +226,12 @@
     min-width: 0;
     gap: 3px;
 }
-/* Title and time share the first line; a long title ellipsises, the time never wraps. */
-.anna-activity-head {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    gap: 8px;
-}
 .anna-activity-title {
     overflow: hidden;
     color: var(--anna-ink);
-    font-size: 13px;
     font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-.anna-activity-head > .anna-activity-title {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-.anna-activity-head > time {
-    color: var(--anna-placeholder);
 }
 .anna-activity-content > span {
     flex: none;
@@ -310,8 +240,7 @@
     display: flex;
     flex-wrap: wrap;
     min-width: 0;
-    margin-top: 3px;
-    gap: 4px 10px;
+    gap: 4px;
 }
 .anna-activity-action,
 .anna-activity-link {
@@ -338,22 +267,6 @@
     flex: 0 1 auto;
     text-overflow: ellipsis;
 }
-/* On a card the type is a small blue label at the bottom ("💬 Antwort"), not a pill (AT-3046). */
-.anna-activity-actions > span.anna-activity-action {
-    padding: 0;
-    border-radius: 0;
-    background: none;
-    color: var(--anna-accent-text);
-}
-.anna-activity-actions > .anna-activity-action[data-icon]::before {
-    margin-right: 4px;
-    /* Decorative: the label says the same. Browsers without alt text keep the first line. */
-    content: attr(data-icon);
-    content: attr(data-icon) / '';
-    font-family: alldone;
-    font-size: 11px;
-    vertical-align: -1px;
-}
 .anna-activity-link {
     gap: 3px;
     margin: 0 2px;
@@ -366,7 +279,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.anna-activity-preview {
+.anna-activity-preview,
+.anna-activity-meta {
     color: var(--anna-muted);
 }
 /* A preview hints at the message; the object holds the rest (AT-2906). */
@@ -376,13 +290,15 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
 }
-/* Only on a card from another project or actor (AT-3046), so it reads as a hint in blue. */
 .anna-activity-meta {
     overflow: hidden;
-    color: var(--anna-accent-text);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.anna-activity-notice a > :last-child {
+    flex-shrink: 0;
+    color: var(--anna-accent);
 }
 .anna-messages {
     /* The conversation scrolls vertically only (AT-2917). Wide content owns its own
@@ -878,70 +794,6 @@
 }
 .anna-composer-actions {
     flex: none;
-}
-/* AT-3038: the main app's floating call panel. It renders the Assistant Mode call controls
-   outside .anna-shell, so it carries the composer field's card and the shell's base rules
-   itself (FloatingAssistantVoiceCall.js sets the --anna-* variables). */
-.anna-floating-call {
-    box-sizing: border-box;
-    width: min(400px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 14px 12px 10px;
-    border: 1px solid var(--anna-border);
-    border-radius: 20px;
-    background: var(--anna-surface);
-    color: var(--anna-ink);
-    box-shadow: 0 8px 32px #18283f29;
-    font:
-        14px / 1.4 Roboto,
-        Arial,
-        sans-serif;
-}
-.anna-floating-call-error {
-    padding: 8px 8px 8px 16px;
-}
-.anna-floating-call * {
-    box-sizing: border-box;
-}
-.anna-floating-call button {
-    font: inherit;
-    cursor: pointer;
-}
-.anna-floating-call button:disabled {
-    opacity: 0.45;
-    cursor: default;
-}
-.anna-floating-call button:focus-visible {
-    outline: 2px solid var(--anna-accent);
-    outline-offset: 3px;
-}
-.anna-floating-call .anna-call-audio {
-    position: static;
-    padding: 0;
-}
-.anna-floating-call-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-}
-.anna-floating-call-message {
-    flex: 1;
-    min-width: 0;
-    color: var(--anna-unread);
-    font-size: 12px;
-}
-.anna-floating-call-connecting-actions {
-    justify-content: flex-end;
-}
-.anna-floating-call .anna-floating-call-cancel {
-    font-size: 12px;
-}
-.anna-floating-call-hint {
-    line-height: 16px;
 }
 @container anna-composer (max-width: 420px) {
     .anna-composer-footer-idle {
@@ -1533,91 +1385,6 @@
 .anna-fullscreen .anna-workspace {
     width: 100%;
 }
-/* AT-3036: while another project's chat opens, in place of the previous project's messages. */
-.anna-project-switch-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    min-height: 120px;
-    margin: 24px 0;
-    color: var(--anna-muted);
-    font-size: 13px;
-}
-.anna-project-switch-spinner {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--anna-border, var(--ad-hl-DFE3EA, #dfe3ea));
-    border-top-color: var(--anna-accent, #0c66ff);
-    border-radius: 50%;
-    animation: anna-project-switch-spin 0.8s linear infinite;
-}
-@keyframes anna-project-switch-spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-@media (prefers-reduced-motion: reduce) {
-    .anna-project-switch-spinner {
-        animation: none;
-    }
-}
-/* AT-3036: the other projects' chats, above this project's thread. Sizes sit on the spans:
-   `.anna-shell button { font: inherit }` outranks a single-class button rule (AT-3032). */
-.anna-project-jumps {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    margin: 8px 0;
-}
-.anna-project-jumps-label {
-    color: var(--anna-muted);
-    font-size: 12px;
-    line-height: 16px;
-}
-.anna-project-jump {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    max-width: 200px;
-    height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--anna-border, var(--ad-hl-DFE3EA, #dfe3ea));
-    border-radius: 14px;
-    background: var(--ad-Surface, #ffffff);
-    color: var(--anna-ink, var(--ad-Text01, #04142f));
-    cursor: pointer;
-}
-.anna-project-jump:hover:not(:disabled) {
-    background: var(--anna-hover, var(--ad-hl-EEF4FF, #eef4ff));
-}
-.anna-project-jump:disabled {
-    cursor: default;
-    opacity: 0.55;
-}
-.anna-project-jump:focus-visible {
-    outline: 2px solid var(--anna-accent, #0c66ff);
-    outline-offset: 2px;
-}
-.anna-project-jump-dot {
-    flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--anna-neutral, #b9c1cf);
-}
-.anna-project-jump-name {
-    font-size: 12px;
-    line-height: 16px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 .anna-date-divider {
     text-align: center;
     color: var(--anna-muted);
@@ -1950,58 +1717,6 @@
     background: var(--anna-tint);
     color: var(--anna-accent);
 }
-/* AT-3034: the chevron beside the assistant's name that picks another assistant. */
-.anna-assistant-picker {
-    width: 24px;
-    margin-left: -4px;
-}
-.anna-assistant-picker:disabled {
-    opacity: 0.5;
-}
-/* AT-3047: the assistant's name and the chevron are one button that opens the picker. The
-   negative margin keeps the name where it sat when it was part of the avatar's button. */
-.anna-assistant-picker.anna-assistant-picker-named {
-    display: flex;
-    flex: 0 1 auto;
-    align-items: center;
-    gap: 2px;
-    width: auto;
-    min-width: 0;
-    height: 36px;
-    margin-left: -4px;
-    padding: 0 2px 0 4px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--anna-ink);
-    text-align: left;
-    cursor: pointer;
-}
-.anna-assistant-picker-chevron {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 18px;
-    color: var(--anna-muted);
-}
-.anna-assistant-picker-named:not(:disabled):hover {
-    background: var(--anna-tint);
-}
-.anna-assistant-picker-named:not(:disabled):hover .anna-brand,
-.anna-assistant-picker-named:not(:disabled):hover .anna-assistant-picker-chevron {
-    color: var(--anna-accent);
-}
-/* Offline or in a call the name stays readable; only the chevron says it is unavailable. */
-.anna-assistant-picker-named:disabled {
-    opacity: 1;
-    cursor: default;
-}
-.anna-assistant-picker-named:disabled .anna-assistant-picker-chevron {
-    opacity: 0.5;
-}
-.anna-assistant-picker-named.anna-project-chip-busy .anna-brand {
-    opacity: 0.6;
-}
 .anna-header-picker {
     position: relative;
     flex: 0 1 98px;
@@ -2028,31 +1743,6 @@
     right: 7px;
     top: 10px;
     pointer-events: none;
-}
-/* AT-3040: in a narrow sidebar chat (about 410px and less) the header tightens its gaps and
-   the workspace picker so the one-line assistant name keeps room ("Anna All…", not "Ann…"). */
-.anna-header {
-    container: anna-header / inline-size;
-}
-@container anna-header (max-width: 360px) {
-    .anna-header-sidebar .anna-header-left,
-    .anna-header-sidebar .anna-header-right {
-        gap: 4px;
-    }
-    .anna-header-sidebar .anna-header-assistant {
-        gap: 6px;
-    }
-    .anna-header-sidebar .anna-header-picker {
-        flex-basis: 80px;
-    }
-    .anna-header-sidebar .anna-header-picker select {
-        width: 80px;
-        padding-right: 22px;
-        padding-left: 8px;
-    }
-    .anna-header-sidebar .anna-header-picker > span {
-        right: 5px;
-    }
 }
 .anna-shell select:focus-visible {
     outline: 2px solid var(--anna-accent);
@@ -2131,12 +1821,6 @@
     .anna-pane-toggle {
         width: 40px;
     }
-    .anna-pane-toggle.anna-assistant-picker {
-        width: 32px;
-    }
-    .anna-assistant-picker.anna-assistant-picker-named {
-        height: 44px;
-    }
     .anna-header-picker > span {
         top: 14px;
     }
@@ -2148,49 +1832,19 @@
     .anna-header .anna-small-avatar {
         display: none;
     }
-    /* AT-3047: without its name the avatar's button would be an empty focus stop. */
-    .anna-header .anna-header-assistant-avatar {
-        display: none;
-    }
 }
 
-/* AT-2903: project chip in the composer and its menu. The menu renders in
+/* AT-2903: project chip in the composer toolbar and its menu. The menu renders in
    a body portal, outside .anna-shell, so every colour carries a fallback. */
 .anna-composer-tools {
     min-width: 0;
-}
-.anna-composer-templates {
-    display: flex;
-    align-items: center;
-    flex: none;
-}
-/* AT-3032: the chip sits on the field's top edge, half above and half over the border, left-aligned
-   with the +. The slot reserves the half above, the field's padding the half below, both only while a
-   chip is shown (the switcher renders nothing with fewer than two choices). */
-.anna-composer-project {
-    position: absolute;
-    top: -1px;
-    left: 12px;
-    /* No z-index: it paints over the field's border anyway, and must stay under popups. */
-    display: flex;
-    max-width: calc(100% - 24px);
-    transform: translateY(-50%);
-}
-.anna-composer-project:empty {
-    display: none;
-}
-.anna-composer-slot:has(.anna-project-chip) {
-    margin-top: 16px;
-}
-.anna-composer-field:has(.anna-project-chip) {
-    padding-top: 22px;
 }
 .anna-project-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    max-width: 240px;
+    max-width: 220px;
     height: 32px;
     padding: 0 8px 0 10px;
     border: 1px solid var(--anna-border, var(--ad-hl-DFE3EA, #dfe3ea));
@@ -2198,6 +1852,7 @@
     background: var(--ad-Surface, #ffffff);
     color: var(--anna-ink, var(--ad-Text01, #04142f));
     font: inherit;
+    font-size: 12px;
     cursor: pointer;
 }
 .anna-project-chip:hover:not(:disabled) {
@@ -2214,12 +1869,7 @@
 .anna-project-chip-busy .anna-project-chip-name {
     opacity: 0.6;
 }
-/* AT-3032: the size sits on the name, not the chip. `.anna-shell button { font: inherit }`
-   outranks `.anna-project-chip`, so a size on the button never applied and the name rendered at
-   the composer's 16px. 13px matches the project menu's rows. */
 .anna-project-chip-name {
-    font-size: 13px;
-    line-height: 16px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2231,15 +1881,6 @@
     height: 10px;
     border-radius: 50%;
     background: var(--anna-neutral, #b9c1cf);
-}
-/* AT-3024: the "Automatic" choice's icon takes the dot's place. */
-.anna-project-auto-icon {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
 }
 .anna-project-menu {
     box-sizing: border-box;
@@ -2314,13 +1955,27 @@
     margin: 4px 8px;
     color: #536786;
 }
-/* The chip has its own row on the field's edge now (AT-3032), so it keeps its chevron everywhere and
-   only very long names are cut. The narrowest toolbar tightens its gaps instead. */
+@container anna-composer (max-width: 420px) {
+    .anna-project-chip {
+        max-width: 132px;
+    }
+}
+/* Keep a readable part of the name on the narrowest phones: the chip gives up
+   its chevron and spacing before it gives up the project name. */
 @container anna-composer (max-width: 340px) {
     .anna-composer-toolbar,
     .anna-composer-tools,
     .anna-composer-actions {
         gap: 4px;
+    }
+    .anna-project-chip {
+        flex: 0 1 auto;
+        min-width: 72px;
+        padding: 0 8px;
+        gap: 5px;
+    }
+    .anna-project-chip > :last-child {
+        display: none;
     }
 }
 /* MCP Apps views (e.g. Judy) opened from the chat: one fills the pane, the others stay mounted. */
@@ -2338,4 +1993,198 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
+}
+
+/* Desktop assistant mode (variant C): a strip across the top holds the view switch and Alldone's
+   global controls (gold, search, chats, updates); below it the chat and the workspace are two
+   cards. The chat's screen picker points at the workspace with a notch in the bezel colour, so the
+   chat visibly drives the screen, and the notch lights up with the bezel while a tool changes it. */
+.anna-strip {
+    display: none;
+}
+@media (min-width: 761px) {
+    .anna-strip {
+        flex: none;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        height: 56px;
+        padding: 0 20px 0 18px;
+        font-family: Roboto, Arial, sans-serif;
+        color: var(--anna-ink);
+    }
+    .anna-strip-left,
+    .anna-strip-right {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+    .anna-strip-right {
+        justify-content: flex-end;
+        gap: 4px;
+    }
+    .anna-strip-logo {
+        display: inline-flex;
+    }
+    .anna-strip-switch {
+        display: flex;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--anna-border);
+        border-radius: 10px;
+        background: var(--ad-Surface, #ffffff);
+    }
+    .anna-strip-switch button {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--anna-muted);
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .anna-strip-switch button:hover {
+        background: var(--anna-hover);
+        color: var(--anna-accent);
+    }
+    .anna-strip-switch button[aria-pressed='true'] {
+        background: var(--anna-tint);
+        border-color: var(--anna-focus);
+        color: var(--anna-accent);
+    }
+    .anna-strip-count {
+        display: inline-flex;
+    }
+    .anna-strip-avatar {
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: 20px;
+        height: 20px;
+        overflow: hidden;
+        border-radius: 50%;
+        background: var(--anna-tint);
+        color: var(--anna-accent);
+        font-size: 11px;
+    }
+    .anna-strip-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .anna-strip-name {
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Two cards on the shell's background. The margins sit inside the grid cells, so the divider's
+       drag maths (pointer x minus the layout's left edge) still lands on the chat column's edge. */
+    .anna-zoom-active:not(.anna-chat-only) .anna-layout {
+        grid-template-columns: minmax(0, var(--anna-chat-width, 420px)) 14px minmax(0, 1fr);
+    }
+    .anna-zoom-active .anna-conversation {
+        margin: 0 0 10px 10px;
+        border: 1px solid var(--anna-border);
+        border-radius: 14px;
+    }
+    .anna-zoom-active.anna-chat-only .anna-conversation {
+        margin-right: 10px;
+    }
+    .anna-zoom-active .anna-conversation > .anna-header {
+        border-radius: 13px 13px 0 0;
+    }
+    .anna-zoom-active:not(.anna-chat-only) .anna-stage {
+        margin: 0 10px 10px 0;
+    }
+    .anna-zoom-active .anna-divider,
+    .anna-zoom-active .anna-divider:hover,
+    .anna-zoom-active .anna-divider:focus-visible {
+        background: transparent;
+    }
+    .anna-zoom-active .anna-divider::before {
+        display: none;
+    }
+    .anna-zoom-active .anna-divider::after {
+        left: 5px;
+        opacity: 0;
+        transition:
+            opacity 150ms ease,
+            background 150ms ease;
+    }
+    .anna-zoom-active .anna-divider:hover::after,
+    .anna-zoom-active .anna-divider:focus-visible::after {
+        opacity: 1;
+    }
+    /* The notch: from the chat card's edge, at the picker's height, into the screen's bezel. */
+    .anna-zoom-active:not(.anna-chat-only) .anna-conversation::after {
+        content: '';
+        position: absolute;
+        z-index: 2;
+        top: 26px;
+        right: -16px;
+        width: 0;
+        height: 0;
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        border-left: 15px solid var(--anna-workspace-bezel-color);
+        pointer-events: none;
+        transition: border-color 200ms ease;
+    }
+    .anna-workspace-busy .anna-conversation::after {
+        border-left-color: var(--anna-accent);
+    }
+}
+.anna-screen-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 200px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--anna-border);
+    border-radius: 8px;
+    background: var(--ad-Surface, #ffffff);
+    color: var(--anna-ink);
+    font-size: 13px;
+}
+.anna-screen-picker:hover,
+.anna-screen-picker[aria-expanded='true'] {
+    border-color: var(--anna-focus);
+    color: var(--anna-accent);
+}
+.anna-screen-picker-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-screen-menu {
+    width: min(280px, calc(100vw - 24px));
+}
+.anna-screen-menu-caption {
+    padding: 2px 8px 0;
+    color: var(--ad-Text02, #4e5d78);
+    font-size: 11px;
+}
+.anna-screen-option-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--ad-Text02, #4e5d78);
+}
+.anna-project-option-selected .anna-screen-option-icon {
+    color: inherit;
+}
+.anna-screen-live {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #1d9e75;
 }

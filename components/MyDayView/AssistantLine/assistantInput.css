@@ -1,14 +1,9 @@
 /* Scope message typography to the two assistant composers; task/title inputs
    keep their existing styles. Placeholder wrapping participates in auto-expand
    instead of being clipped by the absolutely positioned Quill placeholder. */
-/* AT-3028: two lines, matching the field's resting height (ASSISTANT_INPUT_MIN_HEIGHT minus
-   ASSISTANT_INPUT_VERTICAL_PADDING in assistantInputLayout.js). Auto-expand sets the editor to
-   `height: auto`, so without this the contenteditable was one line tall and the blank line under
-   the placeholder was dead frame. Measured height is unchanged at rest (48 + 8 = the 56px minimum).
-   Pinned by assistantComposerFocus.test.js. */
 [data-testid='assistant-composer-row'] .ql-editor {
     position: relative;
-    min-height: 48px;
+    min-height: 24px;
     line-height: 24px !important;
     overflow-wrap: anywhere;
 }
@@ -34,29 +29,4 @@
     top: 0;
     left: 0;
     right: 0;
-}
-
-/* AT-3031: the composer box rests on a soft blue outline (UtilityBlue150, set in AssistantOptions.js)
-   and turns brand blue with a light glow while the editor has focus. Only the editor counts, so
-   tabbing to the + / Templates / mic keeps their own focus ring. Border width stays 1px: no layout
-   shift. The glow is a box-shadow, so it does not move the toolbar either. */
-[data-testid='assistant-composer-row'] {
-    transition:
-        border-color 150ms ease,
-        box-shadow 150ms ease;
-}
-
-[data-testid='assistant-composer-row']:has(.ql-editor:focus) {
-    border-color: #0c66ff !important;
-    box-shadow: 0 0 0 3px rgba(12, 102, 255, 0.18);
-}
-
-[data-testid='assistant-composer-row'] .ql-editor:focus-visible {
-    outline: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    [data-testid='assistant-composer-row'] {
-        transition: none;
-    }
 }

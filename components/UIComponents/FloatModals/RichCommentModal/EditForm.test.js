@@ -254,37 +254,3 @@ describe('RichCommentModal EditForm push-to-talk submit', () => {
         expect(payloads[2]).toEqual(payloads[0])
     })
 })
-
-// AT-3025: an empty comment shows a blue mic where the submit button sits.
-describe('RichCommentModal EditForm empty comment mic', () => {
-    const input = tree => tree.root.findByProps({ testID: 'comment-input' }).props
-
-    it('offers the submit slot to the input and tracks whether the comment is empty', () => {
-        const tree = renderForm(undefined)
-        expect(input(tree).sendSlotDictation).toEqual(expect.objectContaining({ target: null, empty: true }))
-
-        const node = {}
-        act(() => tree.root.findByType('SubmitButton').props.setDictationSlot(node))
-        expect(input(tree).sendSlotDictation.target).toBe(node)
-
-        act(() => input(tree).onChangeText('Looks good'))
-        expect(input(tree).sendSlotDictation.empty).toBe(false)
-        tree.unmount()
-    })
-
-    it('steps the submit button aside while the mic is in its slot', () => {
-        const tree = renderForm(undefined)
-        expect(tree.root.findByType('SubmitButton').props.micInSendSlot).toBe(false)
-        act(() => input(tree).onSendSlotDictationChange(true))
-        expect(tree.root.findByType('SubmitButton').props.micInSendSlot).toBe(true)
-        act(() => input(tree).onSendSlotDictationChange(false))
-        expect(tree.root.findByType('SubmitButton').props.micInSendSlot).toBe(false)
-        tree.unmount()
-    })
-
-    it('leaves forms without a submit button alone', () => {
-        const tree = renderForm(undefined, { hideDoneButton: true })
-        expect(input(tree).sendSlotDictation).toBeNull()
-        tree.unmount()
-    })
-})

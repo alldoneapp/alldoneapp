@@ -151,23 +151,6 @@ whole thread (`getGmailThreadLinkData`). Pinned by `emailThreadTopicStore.test.j
 conversations get their own topic" block of `serverSideGmailLabelingSync.test.js`, the sent-mail case
 in `emailThreadContinuation.test.js` and `linkedEmailActions.test.js`.
 
-## The email a task was created from opens the task's chat (AT-3022)
-
-`continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the
-email the task was created from because the task already lists it. So a task chat used to start with
-the second email. Both creation paths (the labeling run's `create_task`, via
-`addOriginEmailToCreatedGmailTasks`, and the email line's "Create task") now call
-`appendOriginEmailToTask` once the task exists. The line is sender, date and the provider snippet
-(`buildReceivedMessageText`, max 300 characters). Decided with Karsten 2026-11-13: no model summary
-and no Gold. It uses the continuation comment id (`email_<messageKey>`), so a retry never duplicates
-it. It is silent (the new task already notified) and backdated to the email's received time
-(`TaskCommentService.addComment({ createdAt })`, never in the future), so it sits above the "added
-this task" lines. Mail the owner sent appears as the owner's message (`direction: 'outgoing'`). The
-line is best effort and never fails the created task. A continued or reused task gets none. Existing
-tasks were not backfilled. Pinned by the "the email a task was created from" block of
-`emailThreadContinuation.test.js` and the AT-3022 cases in `emailLineService.test.js` and
-`serverSideGmailLabelingSync.test.js`.
-
 ## One email address can belong to several accounts, and a connected mailbox has to prove itself (AT-2483)
 
 **The inbound Anna email channel weighs two different kinds of ownership proof, and merging them

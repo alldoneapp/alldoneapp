@@ -79,23 +79,6 @@ function buildSentMessageText(normalizedMessage = {}) {
     return subject ? `Sent: ${subject}` : 'Sent an email'
 }
 
-// The line of a received email a task was created from (AT-3022): sender and date like the
-// continuation lines of later mail, then the provider's snippet instead of a model summary, so it
-// costs no Gold and never stores the full body.
-function buildReceivedMessageText(normalizedMessage = {}) {
-    const from = normalizeString(normalizedMessage.from).slice(0, 200)
-    const date = normalizeString(normalizedMessage.date).slice(0, 80)
-    const snippet = decodeSnippet(normalizedMessage.snippet)
-    const subject = normalizeString(normalizedMessage.subject)
-    const text = snippet
-        ? snippet.length > SENT_COMMENT_MAX_LENGTH
-            ? `${snippet.slice(0, SENT_COMMENT_MAX_LENGTH - 3)}...`
-            : snippet
-        : subject || 'Email received'
-    const prefix = `${from}${date ? ` (${date})` : ''}`
-    return prefix ? `${prefix}: ${text}` : text
-}
-
 async function isOwnerProjectMember(database, projectId, userId) {
     if (!projectId) return false
     const snapshot = await database.doc(`projects/${projectId}`).get()
@@ -477,7 +460,6 @@ module.exports = {
     resolveEmailThreadTopicForMessage,
     THREAD_TOPIC_CHAT_ID_PREFIX,
     appendSentMessageToThreadTopic,
-    buildReceivedMessageText,
     buildSentMessageText,
     buildThreadTopicCommentId,
     buildThreadTopicTitle,

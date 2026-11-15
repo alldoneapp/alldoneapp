@@ -97,10 +97,7 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
     addProjectRoutingReasonComment: jest.fn(() => Promise.resolve({ commentId: 'routing-comment-1' })),
 }))
 
-jest.mock('../Email/emailThreadContinuation', () => ({
-    continueEmailThread: jest.fn(async () => null),
-    appendOriginEmailToTask: jest.fn(async () => ({ commentId: 'email_origin', existing: false })),
-}))
+jest.mock('../Email/emailThreadContinuation', () => ({ continueEmailThread: jest.fn(async () => null) }))
 jest.mock('../Email/emailThreadTopicStore', () => ({
     resolveEmailThreadTopicForMessage: jest.fn(async () => null),
     appendSentMessageToThreadTopic: jest.fn(async () => ({ written: 1, commentId: 'sent-comment' })),
@@ -774,28 +771,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 commentId: 'routing-comment-1',
             },
         ])
-        // AT-3022: the email the task was created from opens the task chat, by the assistant.
-        expect(result.originEmailCommentResults).toEqual([
-            { taskId: 'task-1', projectId: 'project-1', commentId: 'email_origin' },
-        ])
-        expect(require('../Email/emailThreadContinuation').appendOriginEmailToTask).toHaveBeenCalledWith(
-            expect.objectContaining({
-                userId: 'user-1',
-                projectId: 'project-1',
-                taskId: 'task-1',
-                outgoing: false,
-                actor: { uid: 'assistant-project', displayName: 'Default Assistant', fromAssistant: true },
-                context: expect.objectContaining({ messageId: 'message-1', snippet: 'Please respond today' }),
-                gmailData: expect.objectContaining({
-                    provider: 'google',
-                    accountUserId: 'user-1',
-                    gmailEmail: 'person@example.com',
-                    messageId: 'message-1',
-                    threadId: 'thread-1',
-                    origin: 'gmail_label_follow_up',
-                }),
-            })
-        )
         expect(result.assistantResponse).toBe('Created a task with the email link.')
         expect(result.goldSpent).toBe(2)
         expect(result.estimatedNormalGoldCost).toBe(2)
@@ -1669,25 +1644,6 @@ describe('email conversations get their own topic', () => {
         })
         await run({ followUpType: 'actionable' })
         expect(topicStore.postTaskLinkInThreadTopic).not.toHaveBeenCalled()
-        expect(require('../Email/emailThreadContinuation').appendOriginEmailToTask).not.toHaveBeenCalled()
-    })
-
-    test('a failed first-email line never fails the created task', async () => {
-        const { appendOriginEmailToTask } = require('../Email/emailThreadContinuation')
-        appendOriginEmailToTask.mockRejectedValueOnce(new Error('write failed'))
-        jest.spyOn(console, 'warn').mockImplementation(() => {})
-        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
-            assistantResponse: 'Created',
-            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', task: { name: 'Send contract' } }],
-            createdChatCommentResults: [],
-        })
-        const action = await run({ followUpType: 'actionable' })
-        expect(action.status).toBe('completed')
-        expect(action.originEmailCommentResults).toEqual([])
-        expect(appendOriginEmailToTask).toHaveBeenCalledWith(
-            expect.objectContaining({ taskId: 't1', projectId: 'project-a', outgoing: false })
-        )
-        console.warn.mockRestore()
     })
 
     describe('mail the owner sent', () => {

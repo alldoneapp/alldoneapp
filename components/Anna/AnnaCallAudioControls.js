@@ -6,17 +6,7 @@ import useModalSizing from '../../hooks/useModalSizing'
 import useEscapeKey from '../../hooks/useEscapeKey'
 
 // Keep level polling local: speaking must not rerender the transcript or provider.
-// AT-3038: the main app's floating call panel reuses these controls outside AnnaShell. It passes
-// the assistant's name as `label`, and raises the settings popover above its own fixed layer
-// (`settingsZIndex`) instead of using a bottom sheet, which would open underneath the panel.
-export default function AnnaCallAudioControls({
-    call,
-    seconds = 0,
-    label = null,
-    settingsZIndex = 10000,
-    settingsUseSheet = true,
-    children,
-}) {
+export default function AnnaCallAudioControls({ call, seconds = 0, children }) {
     const [snapshot, setSnapshot] = useState({})
     const [busy, setBusy] = useState('')
     const [error, setError] = useState('')
@@ -63,7 +53,7 @@ export default function AnnaCallAudioControls({
                     <AudioLevel kind="output" snapshot={output} />
                 </div>
                 <div className="anna-call-duration">
-                    <span>{label || translate('Voice call in progress')}</span>
+                    <span>{translate('Voice call in progress')}</span>
                     <span className="anna-call-clock" role="timer">
                         {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
                     </span>
@@ -76,8 +66,7 @@ export default function AnnaCallAudioControls({
                     position={['top', 'bottom']}
                     align="start"
                     padding={8}
-                    useSheet={settingsUseSheet}
-                    containerStyle={{ zIndex: settingsZIndex }}
+                    containerStyle={{ zIndex: 10000 }}
                     content={
                         <div
                             id={settingsId}
@@ -150,54 +139,6 @@ export default function AnnaCallAudioControls({
                 </span>
             )}
         </div>
-    )
-}
-
-// Mute, "enable call audio" and hang up, shared by the Assistant Mode composer and the main
-// app's floating call panel so both calls offer the same buttons in the same order.
-export function AnnaCallActions({ call, endLabel, onEnd }) {
-    const ending = call.status === 'ending'
-    return (
-        <>
-            <button
-                type="button"
-                className="anna-voice-button"
-                disabled={ending}
-                aria-label={translate(call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call')}
-                aria-pressed={!!call.microphoneMuted}
-                onClick={() => call.toggleMicrophoneMuted()}
-                onKeyDown={event => {
-                    if (event.key !== 'Enter') return
-                    // The shared editor cancels Enter at document level.
-                    event.preventDefault()
-                    event.stopPropagation()
-                    if (!event.repeat) event.currentTarget.click()
-                }}
-            >
-                <Icon name={call.microphoneMuted ? 'mic-off' : 'mic'} size={20} color="currentColor" />
-            </button>
-            {call.needsAudioPlayback && (
-                <button
-                    type="button"
-                    className="anna-voice-button"
-                    aria-label={translate('Enable call audio')}
-                    title={translate('Enable call audio')}
-                    onClick={() => call.playCallAudio()}
-                >
-                    <Icon name="volume-2" size={20} color="currentColor" />
-                </button>
-            )}
-            <button
-                type="button"
-                className="anna-voice-button anna-voice-active"
-                aria-label={endLabel}
-                title={endLabel}
-                disabled={ending}
-                onClick={onEnd}
-            >
-                <Icon name="phone-off" size={20} color="currentColor" />
-            </button>
-        </>
     )
 }
 

@@ -73,18 +73,6 @@ data is gone. `inlineAddTaskReopen.js` is the safety net: `OpenTasksByProject` p
 leaving the board drops it. When adding a new place that renders `NewTaskSection`, keep it inside
 the board's scope. Pinned by `InlineAddTaskReopen.test.js` and `OpenTasksByDate.test.js`.
 
-**Messages and Calendar sections collapse to their first 3 tasks (AT-3027).** Each section of
-each day has its own chevron (`ShowMoreButton`), independent of the main list and of the other
-section. The limit (`collapsibleTaskSection.js`) counts tasks across goal groups/calendar runs, like
-the main list's `numberTodayTasks` budget; Calendar cuts its chronological runs, so the first
-meetings of the day stay visible (past ones included). No chevron at 0–3 tasks or in organize mode.
-State is component-local (`useCollapsibleTaskSection`), keyed by project + day + section, never
-persisted. In All projects the chevron jumps into the project like the main list; a one-shot,
-expiring module-memory request makes the pressed section arrive expanded. Both sections run their
-groups through `createSectionRenderBudget` so an incoming message/meeting cannot unmount an open
-editor. Pinned by `MessagesSection.test.js`, `CalendarSection.test.js`,
-`useCollapsibleTaskSection.test.js` and `collapsibleTaskSection.test.js`.
-
 ## Client performance telemetry
 
 Boot, page readiness, Firestore first snapshots, offline note workers and bulk task operations emit

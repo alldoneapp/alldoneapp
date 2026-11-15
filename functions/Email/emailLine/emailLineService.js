@@ -14,7 +14,7 @@ const { EmailLineAuthError, isAuthError } = require('./emailLineErrors')
 const { composeReply } = require('./replyComposer')
 const { summarizeEmailAsTaskName } = require('./taskSummarizer')
 const { getEmailIdentity, matchesEmailAccount } = require('../emailThreadIdentity')
-const { continueEmailThread, appendOriginEmailToTask } = require('../emailThreadContinuation')
+const { continueEmailThread } = require('../emailThreadContinuation')
 const { getAccessibleProjectIdsFromUserData, canAccessObject } = require('../../shared/privacyAccess')
 
 const GOLD_SOURCE_DRAFT_REPLY = 'email_draft_reply'
@@ -1050,22 +1050,6 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         })
     } catch (error) {
         console.warn('[emailLine] createTask routing comment failed:', error?.message || error)
-    }
-
-    // The email itself opens the task's chat (AT-3022); later mail of the thread is added there by
-    // continueEmailThread. Best-effort, like the routing comment.
-    try {
-        await appendOriginEmailToTask({
-            database: admin.firestore(),
-            userId,
-            projectId: targetProjectId,
-            taskId,
-            gmailData: { ...continuationData, origin: 'gmail_label_follow_up', archiveOnComplete: true },
-            context,
-            actor: { ...userData, uid: userId },
-        })
-    } catch (error) {
-        console.warn('[emailLine] createTask origin email comment failed:', error?.message || error)
     }
 
     // Remember on the audit record that this email already has a task, so the modal

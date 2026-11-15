@@ -142,16 +142,6 @@ describe('PendingAssistantCommentWrapper (AT-2523)', () => {
         act(() => tree.unmount())
     })
 
-    it('passes "All chats" on to the thread popover (AT-3020)', () => {
-        const onOpenAllChats = jest.fn()
-        const tree = render({ pending: created(), onOpenAllChats })
-
-        press(tree)
-
-        expect(mockRichCommentProps.current.onOpenAllChats).toBe(onOpenAllChats)
-        act(() => tree.unmount())
-    })
-
     describe('the window where there is no thread yet', () => {
         it('remembers the tap instead of dropping it, and says it is opening', () => {
             const tree = render()

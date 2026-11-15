@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaCallAudioControls, { AnnaCallActions } from './AnnaCallAudioControls'
+import AnnaCallAudioControls from './AnnaCallAudioControls'
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../Icon', () => () => null)
@@ -171,40 +171,4 @@ test('settings close restores focus; device switching disables selectors while c
     const trigger = container.querySelector('button[aria-label="Audio settings"]')
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(document.activeElement).toBe(trigger)
-})
-
-// AT-3038: the main app's floating call panel reuses these controls with the assistant's name.
-test('shows a caller-supplied label above the timer instead of the generic call status', () => {
-    act(() => root.render(<AnnaCallAudioControls call={call} seconds={75} label="Anna Alldone" />))
-    const duration = container.querySelector('.anna-call-duration')
-    expect(duration.textContent).toContain('Anna Alldone')
-    expect(duration.textContent).not.toContain('Voice call in progress')
-    expect(container.querySelector('[role="timer"]').textContent).toBe('1:15')
-    act(() => root.render(<AnnaCallAudioControls call={call} seconds={5} />))
-    expect(container.querySelector('.anna-call-duration').textContent).toContain('Voice call in progress')
-})
-
-test('shared call actions mute, enable audio and hang up, and lock while the call is ending', () => {
-    const onEnd = jest.fn()
-    call.toggleMicrophoneMuted = jest.fn()
-    call.playCallAudio = jest.fn()
-    call.needsAudioPlayback = true
-    const renderActions = () => act(() => root.render(<AnnaCallActions call={call} endLabel="End" onEnd={onEnd} />))
-    renderActions()
-    const button = label => container.querySelector(`button[aria-label="${label}"]`)
-    expect(button('Mute assistant call').getAttribute('aria-pressed')).toBe('false')
-    act(() => button('Mute assistant call').click())
-    act(() => button('Enable call audio').click())
-    act(() => button('End').click())
-    expect(call.toggleMicrophoneMuted).toHaveBeenCalledTimes(1)
-    expect(call.playCallAudio).toHaveBeenCalledTimes(1)
-    expect(onEnd).toHaveBeenCalledTimes(1)
-    call.microphoneMuted = true
-    call.needsAudioPlayback = false
-    call.status = 'ending'
-    renderActions()
-    expect(button('Unmute assistant call').getAttribute('aria-pressed')).toBe('true')
-    expect(button('Unmute assistant call').disabled).toBe(true)
-    expect(button('End').disabled).toBe(true)
-    expect(button('Enable call audio')).toBeNull()
 })

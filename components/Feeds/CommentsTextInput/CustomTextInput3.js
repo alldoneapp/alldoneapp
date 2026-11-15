@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Dimensions, View } from 'react-native'
 import { createPortal } from 'react-dom'
 import ReactQuill from 'react-quill-new'
@@ -52,8 +52,7 @@ import {
     placeDictationCaret,
     insertAttachmentInsideEditor,
 } from './textInputHelper'
-import RambleButton, { RAMBLE_PHASE_IDLE } from '../../UIControls/RambleButton'
-import { resolveComposerMicSlot } from '../../UIControls/composerMicSlot'
+import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
 import useDictationSubmit from './dictationSubmit'
@@ -177,13 +176,6 @@ function CustomTextInput3(
         inlineControlTargets = null,
         // Style for the + and the mic when they are rendered into `inlineControlTargets`.
         toolbarControlStyle,
-        // AT-3025: `{ target, empty, style }` — the host's send-button slot (a DOM node), whether
-        // the composer is empty, and the style that gives the mic the send button's size. While
-        // the composer is empty a blue mic is portalled into `target` and the usual mic hides; see
-        // composerMicSlot.js. Null (the default) leaves the input exactly as before.
-        sendSlotDictation = null,
-        // Called with `true` while the mic occupies the send slot, so the host hides its send button.
-        onSendSlotDictationChange,
         getMentionViewport,
     },
     ref
@@ -292,41 +284,12 @@ function CustomTextInput3(
         return () => editorElement.classList.remove('ql-editorWithDictation')
     }, [dictationEnabled, editorElement, controlsInToolbar])
 
-    // AT-3025: the blue mic in the host's send slot while the composer is empty. Both mics stay
-    // mounted and only their visibility follows the rule, so a take in progress is never cut off.
-    const [inlineDictationPhase, setInlineDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    const [sendSlotDictationPhase, setSendSlotDictationPhase] = useState(RAMBLE_PHASE_IDLE)
-    const sendSlotTarget = sendSlotDictation?.target || null
-    const sendSlotDictationEnabled = dictationEnabled && !!sendSlotTarget
-    const { micInSendSlot, inlineMicVisible } = resolveComposerMicSlot({
-        enabled: sendSlotDictationEnabled,
-        isEmpty: !!sendSlotDictation?.empty,
-        inlinePhase: inlineDictationPhase,
-        sendSlotPhase: sendSlotDictationPhase,
-    })
-    const onSendSlotDictationChangeRef = useRef(onSendSlotDictationChange)
-    onSendSlotDictationChangeRef.current = onSendSlotDictationChange
-    // Layout effect: the host swaps its send button out before the frame paints, so an empty
-    // composer never flashes the greyed-out send button first.
-    useLayoutEffect(() => {
-        onSendSlotDictationChangeRef.current?.(micInSendSlot)
-    }, [micInSendSlot])
-    useEffect(() => () => onSendSlotDictationChangeRef.current?.(false), [])
-    // An unmounted mic never reports going idle, so a phase left over from a take that was torn
-    // down (e.g. the field became read-only mid-recording) must not pin the mic in the send slot.
-    useEffect(() => {
-        if (!sendSlotDictationEnabled) setSendSlotDictationPhase(RAMBLE_PHASE_IDLE)
-        if (!dictationEnabled) setInlineDictationPhase(RAMBLE_PHASE_IDLE)
-    }, [sendSlotDictationEnabled, dictationEnabled])
-
     // Composer inputs (assistant line, chat) pin the mic on: on touch there is no hover, so the
     // activity rule below only reveals it once the field is already focused — AT-2355.
-    const dictationButtonVisible =
-        inlineMicVisible &&
-        isDictationButtonVisible({
-            alwaysShowDictation,
-            activityVisible: dictationVisible,
-        })
+    const dictationButtonVisible = isDictationButtonVisible({
+        alwaysShowDictation,
+        activityVisible: dictationVisible,
+    })
 
     useEffect(() => {
         if (!shouldTrackDictationActivity({ dictationEnabled, alwaysShowDictation }) || !containerElement) return
@@ -1668,52 +1631,10 @@ function CustomTextInput3(
             onTextReady={insertDictatedText}
             onSubmit={submitDictatedText}
             visible={dictationButtonVisible}
-            onPhaseChange={setInlineDictationPhase}
             pushToTalkHandoff={pushToTalkHandoff}
             claimBackgroundSubmit={claimDictationBackgroundSubmit ? claimBackgroundDictation : undefined}
             style={controlsInToolbar ? toolbarControlStyle : undefined}
         />
-    ) : null
-
-    // Same wiring as the usual mic (insert at the caret, hold to send), drawn as the send button.
-    const sendSlotDictationButton = sendSlotDictationEnabled ? (
-        <RambleButton
-            projectId={innerProjectId}
-            targetKind={dictationKind}
-            getCurrentText={() => textRef.current}
-            onTextReady={insertDictatedText}
-            onSubmit={submitDictatedText}
-            onPhaseChange={setSendSlotDictationPhase}
-            visible={micInSendSlot}
-            variant={'send'}
-            testID={'send-slot-dictation'}
-            claimBackgroundSubmit={claimDictationBackgroundSubmit ? claimBackgroundDictation : undefined}
-            style={sendSlotDictation.style}
-        />
-    ) : null
-
-    const inlineControls = controlsInToolbar ? (
-        <>
-            {attachmentButton &&
-                inlineControlTargets.attachment &&
-                createPortal(attachmentButton, inlineControlTargets.attachment)}
-            {dictationButton &&
-                inlineControlTargets.dictation &&
-                createPortal(dictationButton, inlineControlTargets.dictation)}
-        </>
-    ) : dictationEnabled || attachmentButtonEnabled ? (
-        <View
-            pointerEvents={'box-none'}
-            testID={'inline-input-controls'}
-            style={
-                inlineControlsStacked
-                    ? [localDictationWrapperStyle, localStackedControlsStyle]
-                    : localDictationWrapperStyle
-            }
-        >
-            {attachmentButton}
-            {dictationButton}
-        </View>
     ) : null
 
     return (
@@ -1731,10 +1652,29 @@ function CustomTextInput3(
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
             fixedChildren={
-                <>
-                    {sendSlotDictationButton && createPortal(sendSlotDictationButton, sendSlotTarget)}
-                    {inlineControls}
-                </>
+                controlsInToolbar ? (
+                    <>
+                        {attachmentButton &&
+                            inlineControlTargets.attachment &&
+                            createPortal(attachmentButton, inlineControlTargets.attachment)}
+                        {dictationButton &&
+                            inlineControlTargets.dictation &&
+                            createPortal(dictationButton, inlineControlTargets.dictation)}
+                    </>
+                ) : dictationEnabled || attachmentButtonEnabled ? (
+                    <View
+                        pointerEvents={'box-none'}
+                        testID={'inline-input-controls'}
+                        style={
+                            inlineControlsStacked
+                                ? [localDictationWrapperStyle, localStackedControlsStyle]
+                                : localDictationWrapperStyle
+                        }
+                    >
+                        {attachmentButton}
+                        {dictationButton}
+                    </View>
+                ) : null
             }
         >
             <ReactQuill

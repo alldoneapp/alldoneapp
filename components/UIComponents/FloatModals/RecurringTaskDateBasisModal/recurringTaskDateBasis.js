@@ -1,7 +1,5 @@
 import moment from 'moment'
 
-import { createRecurrenceSchedule } from '../../../../functions/shared/recurrenceSchedule'
-
 /**
  * AT-2803 - from which date is the next occurrence of a recurring task counted?
  *
@@ -23,9 +21,6 @@ import { createRecurrenceSchedule } from '../../../../functions/shared/recurrenc
  * for every offset between -11 and +11 hours when it does not. Its time of day is irrelevant, the
  * next occurrence takes its time from the task's `startTime`. When base + interval is not after
  * the completion the server skips ahead on the same cadence (`calculateNextRecurrenceDate`).
- *
- * AT-3049: each row previews the NEXT occurrence its base date produces, computed with the same
- * `computeNextRecurrence` the Cloud Function uses (functions/shared/recurrenceSchedule.js).
  *
  * Constants are inlined on purpose: TasksHelper pulls in the store and the backend, and this
  * module must stay a cheap leaf that the completion paths and their tests can import.
@@ -92,28 +87,3 @@ export const shouldShowRecurringTaskDateBasisModal = (task, now = Date.now()) =>
 
 /** The local calendar day of `timestamp`, as a timestamp at local noon. */
 export const toRecurrenceBaseDate = timestamp => moment(timestamp).hour(12).minute(0).second(0).millisecond(0).valueOf()
-
-// The Cloud Function runs in UTC: it reads the base day in the assignee's timezone, then puts the
-// task's time on it in UTC. A UTC moment plus the browser's offset reproduces that exactly, so the
-// preview names the day the created task will show, also near midnight and for a late start time.
-const { computeNextRecurrence } = createRecurrenceSchedule(moment.utc)
-
-/**
- * AT-3049: the next occurrence the server creates when the task is completed at `now` with
- * `baseDate` as the chosen base (a timestamp), or null when the recurrence is unknown. Same code as
- * `calculateNextRecurrenceDate`; the browser's timezone stands in for the assignee's stored one,
- * which is the same zone for the person completing their own task. `utcOffsetMinutes` overrides the
- * browser's offset (tests).
- */
-export const getNextRecurrenceDatePreview = (task, baseDate, now = Date.now(), utcOffsetMinutes) => {
-    if (!task || !isCalendarDate(baseDate)) return null
-    const recurrenceBaseDateOverride = toRecurrenceBaseDate(baseDate)
-    const offset =
-        typeof utcOffsetMinutes === 'number' ? utcOffsetMinutes : moment(recurrenceBaseDateOverride).utcOffset()
-    const { nextDate } = computeNextRecurrence(
-        { ...task, recurrence: getTaskRecurrenceValue(task), recurrenceBaseDateOverride, completed: now },
-        now,
-        { utcOffsetMinutes: offset }
-    )
-    return nextDate ? nextDate.valueOf() : null
-}
