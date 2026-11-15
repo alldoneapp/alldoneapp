@@ -16,8 +16,11 @@ import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import { RECURRENCE_DATE_BASIS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import { getRecurrenceInfo } from '../../../TaskListView/Utils/TasksHelper'
 import {
+    getNextRecurrenceDatePreview,
     getRecurrenceDateBasisOptions,
+    getTaskRecurrenceValue,
     RECURRENCE_BASIS_ORIGINAL,
     RECURRENCE_BASIS_SCHEDULED,
     RECURRENCE_BASIS_TODAY,
@@ -27,13 +30,18 @@ import {
 // Kept here so the completion paths (and the suites that mock this module) keep their import.
 export { getTaskRecurrenceValue, shouldShowRecurringTaskDateBasisModal } from './recurringTaskDateBasis'
 
+// AT-3049: every row names where the interval starts ("From today", ...) and previews, in grey, the
+// next occurrence that start produces - not the base date itself.
 const OPTION_PRESENTATION = {
-    [RECURRENCE_BASIS_ORIGINAL]: { icon: 'rotate-cw', text: 'Original date' },
-    [RECURRENCE_BASIS_SCHEDULED]: { icon: 'calendar-up', text: 'Current due date' },
-    [RECURRENCE_BASIS_TODAY]: { icon: 'clock', text: 'Today' },
+    [RECURRENCE_BASIS_ORIGINAL]: { icon: 'rotate-cw', text: 'From original date' },
+    [RECURRENCE_BASIS_SCHEDULED]: { icon: 'calendar-up', text: 'From current due date' },
+    [RECURRENCE_BASIS_TODAY]: { icon: 'clock', text: 'From today' },
 }
 
-function RecurrenceDateBasisOption({ icon, text, date, shortcut, onPress }) {
+const formatPreviewDate = date =>
+    moment(date).format(moment(date).isSame(moment(), 'year') ? 'ddd, D MMM' : 'ddd, D MMM YYYY')
+
+function RecurrenceDateBasisOption({ icon, text, nextDate, shortcut, onPress }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const selectOption = event => {
@@ -48,13 +56,13 @@ function RecurrenceDateBasisOption({ icon, text, date, shortcut, onPress }) {
                 <View style={localStyles.option}>
                     <View style={localStyles.optionText}>
                         <Icon name={icon} size={24} color={'#ffffff'} style={localStyles.icon} />
-                        <Text style={[styles.subtitle1, localStyles.label]}>{translate(text)}</Text>
-                        {date && (
-                            <Text style={[styles.body1, localStyles.date]}>
-                                {' • '}
-                                {moment(date).format(
-                                    moment(date).isSame(moment(), 'year') ? 'ddd, D MMM' : 'ddd, D MMM YYYY'
-                                )}
+                        <Text style={[styles.subtitle1, localStyles.label]} numberOfLines={1}>
+                            {translate(text)}
+                        </Text>
+                        {!!nextDate && (
+                            <Text style={[styles.body1, localStyles.date]} numberOfLines={1}>
+                                {'  →  '}
+                                {formatPreviewDate(nextDate)}
                             </Text>
                         )}
                     </View>
@@ -92,9 +100,15 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
     }
 
     const title = visibleCalendar ? translate('Pick date') : translate('Select recurring task date')
-    const description = visibleCalendar
-        ? translate('Select the custom base date for the next recurring task')
-        : translate('Choose the date the interval of the next recurring task is counted from')
+    const recurrenceInfo = getRecurrenceInfo(getTaskRecurrenceValue(task))
+    const rhythm = translate('Rhythm: {{rhythm}}', {
+        rhythm: translate(recurrenceInfo.large, recurrenceInfo.interpolations),
+    })
+    const description = `${
+        visibleCalendar
+            ? translate('Select the custom base date for the next recurring task')
+            : translate('Choose the date the interval of the next recurring task is counted from')
+    } ${rhythm}`
     const maxHeight = getSafeAreaModalMaxHeight(windowSize?.[1] || 600)
 
     return (
@@ -127,14 +141,14 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
                                     key={option.key}
                                     icon={OPTION_PRESENTATION[option.key].icon}
                                     text={OPTION_PRESENTATION[option.key].text}
-                                    date={option.date}
+                                    nextDate={getNextRecurrenceDatePreview(task, option.date, now)}
                                     shortcut={String(index + 1)}
                                     onPress={() => selectDate(option.date)}
                                 />
                             ))}
                             <RecurrenceDateBasisOption
                                 icon={'calendar'}
-                                text={'Custom date'}
+                                text={'From custom date'}
                                 shortcut={customShortcut}
                                 onPress={() => setVisibleCalendar(true)}
                             />
@@ -168,16 +182,21 @@ const localStyles = StyleSheet.create({
     },
     optionText: {
         flexDirection: 'row',
+        alignItems: 'center',
         flexGrow: 1,
+        flexShrink: 1,
+        minWidth: 0,
     },
     icon: {
         marginRight: 8,
     },
     label: {
         color: '#ffffff',
+        flexShrink: 1,
     },
     date: {
         color: colors.Text03,
+        flexShrink: 0,
     },
     shortcut: {
         justifyContent: 'flex-end',
