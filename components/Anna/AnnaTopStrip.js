@@ -1,31 +1,45 @@
-import React from 'react'
+import React, { useLayoutEffect, useRef } from 'react'
+import { useDispatch } from 'react-redux'
 import Icon from '../Icon'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
-import GoldArea from '../TopBar/GoldArea'
 import NotificationArea from '../TopBar/NotificationArea'
+import TopBarStatisticArea from '../TopBar/TopBarStatisticArea'
+import { setTopBarWidth } from '../../redux/actions'
 import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
 /**
- * Desktop assistant mode: one row above both cards. The view switch sits in the middle and stays
- * in the same place for "Both" and the assistant alone; "Tasks" leaves assistant mode and keeps the
- * page the workspace shows. Gold, search, chats and updates move here from Alldone's own top bar,
- * which stays hidden inside the workspace card while this row is shown (AnnaTopStripContext).
+ * Desktop: one row above Alldone and, in assistant mode, above the chat. It replaces Alldone's own
+ * top bar there (AnnaTopStripContext): XP, gold, task statistics and quota on the left, search,
+ * chats and updates on the right, and in the middle the view switch, which stays in one place in
+ * all three views. "Tasks" replaces the home button and the assistant toggle.
  */
 export default function AnnaTopStrip({ layout, assistantName, photo, openTasksAmount, onSelect }) {
+    const dispatch = useDispatch()
+    const strip = useRef(null)
+    // XpBar, TasksStatisticsArea and the connection chip size themselves from the top bar's width,
+    // which only TopBar reported until now.
+    useLayoutEffect(() => {
+        const node = strip.current
+        if (!node) return
+        const report = () => dispatch(setTopBarWidth(node.getBoundingClientRect().width))
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(report)
+        observer?.observe(node)
+        report()
+        return () => observer?.disconnect()
+    }, [dispatch])
+
     const tasksLabel = translate('%{count} open tasks today', { count: openTasksAmount })
     return (
-        <div className="anna-strip">
+        <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
             <div className="anna-strip-left">
-                <span className="anna-strip-logo" aria-hidden="true">
-                    <Icon name="logo" size={22} color={colors.Primary100} />
-                </span>
+                <TopBarStatisticArea />
             </div>
             <div className="anna-strip-switch" role="group" aria-label={translate('Assistant view')}>
                 <button
                     type="button"
-                    aria-pressed={false}
+                    aria-pressed={layout === 'alldone'}
                     title={tasksLabel}
                     data-anna-layout="alldone"
                     onClick={() => onSelect('alldone')}
@@ -68,7 +82,6 @@ export default function AnnaTopStrip({ layout, assistantName, photo, openTasksAm
             </div>
             <div className="anna-strip-right">
                 <ConnectionStatusChip />
-                <GoldArea />
                 <NotificationArea />
             </div>
         </div>

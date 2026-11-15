@@ -198,23 +198,29 @@ on the All projects line. The rage
 mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
 
-**Desktop assistant mode: strip and two cards (2026-11-15 prototype, "variant C").** Above 760px,
-while assistant mode is on, `AnnaShell` renders `AnnaTopStrip` above the layout: the view switch
-in the middle (Tasks with the open-task count, Both, the assistant's name for chat only) and
-Alldone's own gold, search, chats and updates on the right (`GoldArea`, `NotificationArea`,
-`ConnectionStatusChip`, reused as they are). `AnnaTopStripContext` makes `TopBarContainer` render
-nothing inside the workspace then, unless the pane is narrow enough for mobile navigation (that
-bar carries the sidebar menu). XP, task statistics and the quota/premium bar are not in the strip.
-The chat is a card; the workspace keeps its bezel. Tasks mirrors AT-2920: beside a visible screen
-it keeps the page (`closeChat`), from chat only it opens the open task list (`goHome`). The chat
-header keeps the assistant and `AnnaScreenPicker` (Alldone, Browser, VMs, apps; a menu built on
+**Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
+renders `AnnaTopStrip` above everything, in assistant mode always and in plain Alldone while
+Alldone has its desktop navigation (`!smallScreenNavigation`; a narrow window keeps the mobile bar,
+which carries the sidebar menu). It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
+task statistics, quota/premium) on the left, the view switch in the middle (Tasks with the
+open-task count, Both, the assistant's name for chat only), `ConnectionStatusChip` and
+`NotificationArea` on the right. It reports its width through `setTopBarWidth`, which XpBar,
+TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
+render nothing inside the workspace, unless the pane uses mobile navigation (then that bar stays,
+with some controls twice). While the strip shows, the workspace viewport owner is on in plain
+Alldone too (`.anna-has-strip` also gives `.anna-workspace-content` its transform), so modals and
+inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: beside a visible screen
+it keeps the page (`closeChat`), from chat only and from plain Alldone it opens the open task list
+(`goHome`); Both and the assistant alone, entered from plain Alldone, open the chat focused like the
+assistant button. In assistant mode the chat is a card and the workspace keeps its bezel. The chat
+header keeps the assistant and `AnnaScreenPicker` (Alldone, Browser, VMs, apps; a menu on
 `AppPopover`, sized to the chat pane) in place of the select, the expand toggle, the Home button and
 the X; a notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
 picker into the screen and turns accent with the bezel (`anna-workspace-busy`). Mobile keeps its
-header, select and X. Normal mode (`alldone`) is unchanged: the strip would need the workspace
-viewport owner active there too. The menu reuses `.anna-project-menu`, so like the project chip's
-menu it stays white in dark mode (popup scope, `dark-mode.md`). Pinned by `AnnaShell.test.js`
-(`layoutButton`, `pickScreen` helpers) and `TopBarContainer.test.js`.
+header, select and X. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
+dark card under `:root[data-theme='dark']`, because popup scope keeps light tokens there. Pinned
+by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plain Alldone") and
+`TopBarContainer.test.js`.
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative

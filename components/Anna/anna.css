@@ -2010,9 +2010,18 @@
         align-items: center;
         gap: 12px;
         height: 56px;
-        padding: 0 20px 0 18px;
+        padding: 0 20px 0 16px;
+        background: var(--anna-surface);
         font-family: Roboto, Arial, sans-serif;
         color: var(--anna-ink);
+    }
+    /* Plain Alldone: the strip sits on the app itself, edge to edge, like the top bar it replaces. */
+    .anna-has-strip.anna-fullscreen .anna-strip {
+        border-bottom: 1px solid var(--anna-border);
+    }
+    /* Below the strip, inline fixed overlays belong to Alldone's pane in plain Alldone too. */
+    .anna-has-strip .anna-workspace-content {
+        transform: translateX(0);
     }
     .anna-strip-left,
     .anna-strip-right {
@@ -2023,9 +2032,6 @@
     .anna-strip-right {
         justify-content: flex-end;
         gap: 4px;
-    }
-    .anna-strip-logo {
-        display: inline-flex;
     }
     .anna-strip-switch {
         display: flex;
@@ -2187,4 +2193,34 @@
     height: 8px;
     border-radius: 50%;
     background: #1d9e75;
+}
+
+/* The chat's menus (project chip, screen picker) render in a popover portal, where every token
+   keeps its light value (popup scope, dark-mode.md), so dark mode spells out its own card. */
+:root[data-theme='dark'] .anna-project-menu {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--ad-Popup, #1c2230);
+    box-shadow: var(--ad-PopupShadow, 0 12px 32px rgba(0, 0, 0, 0.55));
+    color: #e6eaf1;
+}
+:root[data-theme='dark'] .anna-project-search {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--ad-PopupField, #141923);
+    color: #e6eaf1;
+}
+:root[data-theme='dark'] .anna-project-option:hover,
+:root[data-theme='dark'] .anna-project-option:focus-visible {
+    background: var(--ad-PopupRaised, #252c3a);
+}
+:root[data-theme='dark'] .anna-project-option-selected {
+    color: #5aacff;
+}
+:root[data-theme='dark'] .anna-project-option-text > span,
+:root[data-theme='dark'] .anna-project-menu .anna-muted,
+:root[data-theme='dark'] .anna-screen-menu-caption,
+:root[data-theme='dark'] .anna-screen-option-icon {
+    color: #aeb8ca;
+}
+:root[data-theme='dark'] .anna-project-option-selected .anna-screen-option-icon {
+    color: inherit;
 }

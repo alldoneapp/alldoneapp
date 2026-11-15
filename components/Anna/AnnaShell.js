@@ -285,7 +285,17 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
-    useWorkspaceViewportOwner(workspaceContent, active, visibleWorkspace && surface === 'alldone')
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    // Desktop shows AnnaTopStrip in every view. In plain Alldone only while Alldone has its desktop
+    // navigation: a narrow window keeps the mobile bar, which carries the sidebar menu.
+    const showTopStrip = !mobile && (active || !smallScreenNavigation)
+    // Below the strip, Alldone is a pane of the window in plain Alldone too, so modals, popovers and
+    // inline fixed overlays size and place themselves within it, as they do beside the chat.
+    useWorkspaceViewportOwner(
+        workspaceContent,
+        active || showTopStrip,
+        active ? visibleWorkspace && surface === 'alldone' : true
+    )
     const focusChatInput = useCallback(() => {
         chatPane.current?.focus({ preventScroll: true })
         awaitingChatInputFocus.current = !chatConversation.current
@@ -421,14 +431,27 @@ export default function AnnaShell({ children, routeId }) {
         closeChat()
         navigateToHome(dispatch)
     }, [closeChat, dispatch])
-    // The desktop strip's view switch. "Tasks" leaves assistant mode the way the header did before
-    // (AT-2920): beside a visible screen it keeps that page, like the X; from the chat alone it opens
-    // the open task list, like the Home button. "Both" and the assistant alone switch the layout.
+    // The desktop strip's view switch. "Tasks" works like the header did before (AT-2920): beside a
+    // visible screen it leaves assistant mode and keeps that page, like the X; from the chat alone,
+    // and again from plain Alldone, it opens the open task list, like the Home button. "Both" and the
+    // assistant alone switch the layout; entered from plain Alldone they open the chat focused, like
+    // the assistant button.
     const selectLayout = next => {
-        if (next === 'alldone') return chatOnly ? goHome() : closeChat()
+        if (next === 'alldone') return active && !chatOnly ? closeChat() : goHome()
         if (next === layoutMode) return
         requestGeneration.current++
         followedBrowser.current = null
+        if (!active) {
+            flushSync(() => {
+                setVisited(true)
+                setMobilePane('chat')
+                setAnnaLayout(next)
+            })
+            focusAfterSwitch.current = null
+            focusChatInput()
+            chatConversation.current?.scrollToLatest()
+            return
+        }
         setAnnaLayout(next)
         setMobilePane(next === 'chat' ? 'chat' : 'workspace')
     }
@@ -1066,7 +1089,6 @@ export default function AnnaShell({ children, routeId }) {
             </div>
         </header>
     )
-    const showTopStrip = !mobile && active
     const topStrip = (
         <AnnaTopStrip
             layout={layoutMode}
@@ -1079,7 +1101,7 @@ export default function AnnaShell({ children, routeId }) {
 
     const content = (
         <div
-            className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}`}
+            className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
                 '--anna-ink': colors.Text01,

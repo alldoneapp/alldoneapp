@@ -111,6 +111,7 @@ jest.mock('./AnnaBrowserWorkspace', () => {
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 // The desktop strip reuses Alldone's top bar controls; their store wiring is not under test here.
 jest.mock('../TopBar/GoldArea', () => () => null)
+jest.mock('../TopBar/TopBarStatisticArea', () => () => null)
 jest.mock('../TopBar/NotificationArea', () => () => null)
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
 jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => {
@@ -216,6 +217,7 @@ jest.mock('../../redux/actions', () => ({
     hideWebSideBar: () => ({ type: 'HIDE_SIDEBAR' }),
     hideFloatPopup: () => ({ type: 'HIDE_FLOAT_POPUP' }),
     showFloatPopup: () => ({ type: 'SHOW_FLOAT_POPUP' }),
+    setTopBarWidth: width => ({ type: 'TOP_BAR_WIDTH', width }),
     hideGlobalSearchPopup: () => ({ type: 'HIDE_SEARCH' }),
     setGlobalSearchResults: results => ({ type: 'SEARCH_RESULTS', results }),
     navigateToAllProjectsTasks: options => ({ type: 'ALL_PROJECTS_TASKS', options }),
@@ -1838,6 +1840,56 @@ it.each(['chat-only', 'mobile'])('opens the open task list from the Home button 
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
+})
+
+describe('the strip in plain Alldone (desktop)', () => {
+    it.each(['split', 'chat'])('opens the assistant focused through the %s switch', layout => {
+        setAnnaMode(false)
+        render(content(1))
+        expect(document.querySelector('.anna-fullscreen.anna-has-strip > .anna-strip')).toBeTruthy()
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
+        const workspace = screen.getByLabelText('Real workspace editor')
+        workspace.value = 'Keep my note'
+
+        fireEvent.click(layoutButton(layout))
+
+        expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+        expect(!!document.querySelector('.anna-chat-only')).toBe(layout === 'chat')
+        expect(layoutButton(layout).getAttribute('aria-pressed')).toBe('true')
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('false')
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note')
+        expect(mockUnmounts).toBe(0)
+    })
+
+    it('opens the open task list from the Tasks switch, like the home button it replaces', () => {
+        setAnnaMode(false)
+        render(content(1))
+        mockDispatch.mockClear()
+        NavigationService.navigate.mockClear()
+        fireEvent.click(layoutButton('alldone'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
+        expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
+    })
+
+    it('reports its width for the statistics it now carries', () => {
+        setAnnaMode(false)
+        mockDispatch.mockClear()
+        render(content(1))
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'TOP_BAR_WIDTH' }))
+    })
+
+    it('leaves plain Alldone its own bar while Alldone uses mobile navigation', () => {
+        mockMobileNavigation = true
+        setAnnaMode(false)
+        render(content(1))
+        expect(document.querySelector('.anna-strip')).toBeNull()
+        expect(document.querySelector('.anna-has-strip')).toBeNull()
+        act(() => setAnnaMode(true))
+        expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
+    })
 })
 
 it('keeps the current Alldone page when the chat is left beside a visible screen (AT-2920)', () => {
