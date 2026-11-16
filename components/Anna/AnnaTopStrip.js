@@ -38,7 +38,7 @@ export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, o
     return (
         <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
             <div className="anna-strip-left">
-                <TopBarStatisticArea />
+                <TopBarStatisticArea showTasksStatistics={canSplit} />
             </div>
             <div className="anna-strip-switch" role="group" aria-label={translate('Assistant view')}>
                 <button

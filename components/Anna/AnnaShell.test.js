@@ -121,7 +121,11 @@ jest.mock('./AnnaBrowserWorkspace', () => {
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 // The desktop strip reuses Alldone's top bar controls; their store wiring is not under test here.
 jest.mock('../TopBar/GoldArea', () => () => null)
-jest.mock('../TopBar/TopBarStatisticArea', () => () => null)
+let mockStatisticProps = null
+jest.mock('../TopBar/TopBarStatisticArea', () => props => {
+    mockStatisticProps = props
+    return null
+})
 jest.mock('../TopBar/NotificationArea', () => () => null)
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
 jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => {
@@ -1948,6 +1952,7 @@ describe('the strip in plain Alldone (desktop)', () => {
             'split',
             'alldone',
         ])
+        expect(mockStatisticProps).toEqual({ showTasksStatistics: true })
     })
 })
 
@@ -1985,6 +1990,8 @@ describe('a desktop window too narrow for both', () => {
         expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
         expect(selectedSurface()).toBe('chat')
         expect(selectedSurfaceLabel()).toBe('Anna Alldone')
+        // The done-task count would run into the switch in the middle.
+        expect(mockStatisticProps).toEqual({ showTasksStatistics: false })
     })
 
     it('keeps the header row above a screen picked there; the picker or the assistant brings the chat back', () => {

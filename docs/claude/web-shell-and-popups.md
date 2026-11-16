@@ -402,7 +402,8 @@ hides. The tag lists keep reading the preference on purpose (it picks their more
 "Both" needs room for the chat (`MIN_CHAT_WIDTH`) beside Alldone at the collapsed sidebar's breakpoint
 plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
 `--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
-like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks and the assistant,
+like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks and the assistant
+and drops the done-task count (`TopBarStatisticArea showTasksStatistics`), which ran into the switch,
 and the chat comes to the front when the window shrinks from both. The layout is one card
 (`.anna-narrow .anna-layout`) whose first row is the chat header, rendered above both panes so it stays
 put; below it the chat or the screen (`anna-screen-only`, no bezel). Its picker offers the assistant
