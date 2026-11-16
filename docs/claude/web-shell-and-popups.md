@@ -390,10 +390,14 @@ renders `AnnaTopStrip` above everything, in all three views; in plain Alldone a 
 bar slot shows it there instead (2026-11-16: `AnnaStripSlotContext`; RootView's `TopBarContainer`
 claims it, so the sidebar runs up to the top as it does without AnnaShell; there the strip is a card as
 wide as the content below, with TopBar's margins (`getDesktopTopBarMargins`, the shown sidebar
-state), height, rounded bottom and theme background, `[data-anna-strip-slot]` in anna.css; detail
+state), rounded bottom and theme background (`[data-anna-strip-slot]` in anna.css), but the strip's own
+height, padding and type in every view (the switch's 13px needs `.anna-shell .anna-strip-switch button`:
+the shell's `button { font: inherit }` outside Alldone's content would win in assistant mode); detail
 views have no slot, so the strip stays above everything there). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
 first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
-`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. A render may only add a
+`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. The strip always passes
+`compact` explicitly, so Alldone's `smallScreen` flag (measured on the pane beside the chat) never
+shrinks statistics in a strip that has the room; left out, as in TopBar, the flag decides. A render may only add a
 step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
 is as wide as the step needed, so a render can never undo the previous one (an earlier version that
 checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,

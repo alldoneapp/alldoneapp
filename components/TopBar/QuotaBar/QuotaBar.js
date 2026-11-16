@@ -15,11 +15,12 @@ import Percent from './Percent'
 export const QUOTA_BAR_MOBILE = 0
 export const QUOTA_BAR_NORMAL = 1
 
-// `compact`: the icon instead of the label, as on a small screen (AnnaTopStrip when it is short of room).
-export default function QuotaBar({ size = QUOTA_BAR_NORMAL, compact = false }) {
+// `compact`: icon or label by the caller's own room (AnnaTopStrip); left out, the small-screen flag decides.
+export default function QuotaBar({ size = QUOTA_BAR_NORMAL, compact }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const smallScreen = useSelector(state => state.smallScreen) || compact
+    const smallScreenFlag = useSelector(state => state.smallScreen)
+    const smallScreen = compact ?? smallScreenFlag
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.QuotaBar')
 

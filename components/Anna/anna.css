@@ -57,6 +57,9 @@
     border-radius: 10px;
     background: var(--ad-Surface, #ffffff);
 }
+/* `.anna-shell` too: the shell's `button { font: inherit }` (outside Alldone's content) would otherwise
+   win over the 13px in assistant mode, while the App view's strip, inside that content, kept it. */
+.anna-shell .anna-strip-switch button,
 .anna-strip-switch button {
     display: flex;
     align-items: center;
@@ -2493,10 +2496,9 @@
         border-bottom: 1px solid var(--anna-border);
     }
     /* Plain Alldone: in Alldone's own top bar slot (TopBarContainer) the strip is a card as wide as
-       the content below, like the bar it replaces (TopBar and its theme). */
+       the content below, with TopBar's rounded bottom, background and shadow; its height, padding and
+       type stay those of the strip in assistant mode. */
     .anna-has-strip [data-anna-strip-slot] .anna-strip {
-        height: 48px;
-        padding: 0 24px 0 10px;
         border-bottom: 0;
         border-radius: 0 0 24px 24px;
         background: var(--ad-GraySidebar, #f7f8fa);

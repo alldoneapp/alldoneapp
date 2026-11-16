@@ -13,8 +13,11 @@ import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 // beside Alldone, where it would run into the view switch in the middle. `compact`: icons instead of
 // labels, when the strip's left side would otherwise run into the switch. `showXp`: the strip drops the
 // XP bar first when it is short of room.
-export default function TopBarStatisticArea({ showTasksStatistics = true, compact = false, showXp = true }) {
-    const smallScreen = useSelector(state => state.smallScreen)
+export default function TopBarStatisticArea({ showTasksStatistics = true, compact, showXp = true }) {
+    // AnnaTopStrip passes `compact` from its own room: there Alldone's small-screen flag, measured
+    // on the pane beside the chat, must not shrink the statistics in a strip that has the room.
+    const smallScreenFlag = useSelector(state => state.smallScreen)
+    const smallScreen = compact ?? smallScreenFlag
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
 
     return (
