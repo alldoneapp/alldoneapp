@@ -20,6 +20,9 @@ async function startDelegatedTaskWorkflow({ db, projectId, taskId, ownerId, assi
     // No client write rule exists for this collection. Subsequent workflow steps read this receipt.
     if (originConversation?.annaConversation && originConversation.objectId) {
         await db.doc(`delegatedTaskOrigins/${projectId}__${taskId}`).set({
+            // Named explicitly so a conversation's waiting tasks can be listed without parsing ids.
+            projectId,
+            taskId,
             ownerId,
             originProjectId: originConversation.projectId || projectId,
             originObjectType: originConversation.objectType || 'topics',
@@ -115,8 +118,10 @@ async function loadDelegatedTaskOrigin(db, projectId, task) {
     const snapshot = await db.doc(`delegatedTaskOrigins/${projectId}__${task.id}`).get()
     const origin = snapshot.exists ? snapshot.data() : null
     if (!origin || origin.ownerId !== task.userId) return {}
-    const { ownerId, ...destination } = origin
-    return destination
+    // Only the destination: callers spread it into run options, and the receipt also carries ids
+    // and review-notice bookkeeping.
+    const fields = ['originProjectId', 'originObjectType', 'originObjectId', 'originAssistantId']
+    return Object.fromEntries(fields.filter(field => origin[field] !== undefined).map(field => [field, origin[field]]))
 }
 
 module.exports = {

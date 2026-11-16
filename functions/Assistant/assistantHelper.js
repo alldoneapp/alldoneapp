@@ -120,6 +120,7 @@ const {
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { resolveAnnaTaskAssistant } = require('./annaTaskAssistant')
+const { MOVE_TASK_WORKFLOW_STEP_TOOL_NAME } = require('./toolSchemas')
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
@@ -286,7 +287,9 @@ const TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS = 8
 // execute_task_in_vm enabled answered that it had no access to a VM, GitLab or a deployment console,
 // in one round, without a tool search. Its schema description, which says to use it for any coding
 // or repository work, was never loaded, and the namespace it sat in only mentions "execution jobs".
-const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME, 'get_vm_job'])
+// A workflow approval ("merge it") reads like small talk, so the model would not search for the tool
+// that acts on it either (AT-2829).
+const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME, 'get_vm_job', MOVE_TASK_WORKFLOW_STEP_TOOL_NAME])
 const ASSISTANT_PROMPT_CACHE_VERSION = 'assistant-prefix-v2'
 // Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
 // and interactive-chat entry points provide their longer budget through toolRuntimeContext when
@@ -2420,6 +2423,8 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
         return true
     }
     if (toolName === 'get_vm_job' && assistantAllowedTools.includes(VM_JOB_TOOL_NAME)) return true
+    // Whoever may complete tasks may move them through their workflow; the move checks its own rules.
+    if (toolName === MOVE_TASK_WORKFLOW_STEP_TOOL_NAME && assistantAllowedTools.includes('update_task')) return true
     // The six browser tools are gated by the single `browser_automation` toggle. Being permitted
     // here only means the assistant MAY browse; whether this particular action runs is decided by
     // the allowlist and the approval policy in ./browser, which no toggle can relax.
@@ -5660,6 +5665,21 @@ async function executeToolNativelyImpl(
                 )
                 await publishWikiSourceFeed({ db, projectId: wikiProjectId, kind, sourceId, feedUser })
             },
+        })
+    }
+
+    if (toolName === MOVE_TASK_WORKFLOW_STEP_TOOL_NAME) {
+        const { executeMoveTaskWorkflowStepTool } = require('./workflowStepMoveTool')
+        const db = admin.firestore()
+        return executeMoveTaskWorkflowStepTool({
+            db,
+            args: toolArgs || {},
+            projectId,
+            assistantId,
+            requestUserId,
+            toolRuntimeContext,
+            getFeedUser: taskProjectId =>
+                getAssistantFeedUserForTool(db, taskProjectId, assistantId, requestUserId, toolRuntimeContext),
         })
     }
 
@@ -15172,6 +15192,7 @@ function buildCurrentObjectContextMessage({
     objectData,
     parentGoalData,
     chatData,
+    workflowDescription = null,
 }) {
     if (objectType === 'artifacts' && objectData) {
         const artifact = objectData
@@ -15221,11 +15242,36 @@ function buildCurrentObjectContextMessage({
     const parentGoalTitle = parentGoalData?.extendedName || parentGoalData?.name || ''
     if (parentGoalTitle) lines.push(`Parent goal title: ${parentGoalTitle}`)
     if (Object.keys(metadata).length > 0) lines.push(`Relevant task metadata: ${JSON.stringify(metadata)}`)
+    if (workflowDescription) {
+        const { formatWorkflowLine } = require('../Tasks/workflowStepMove')
+        lines.push(`Workflow of this task: ${formatWorkflowLine(workflowDescription)}`)
+        lines.push(
+            'When the user approves or redirects this task in their own words ("merge it", "looks good", "send it back"), move it with move_task_workflow_step; "next" is the step after the current one.'
+        )
+    }
 
     return lines.join('\n')
 }
 
-async function getCurrentObjectContextData(projectId, objectType, objectId) {
+// AT-2829: the steps the task runs through, so "merge it" can be matched to the next step. Best
+// effort: without it the assistant can still read the workflow through move_task_workflow_step.
+async function loadCurrentTaskWorkflowDescription(projectId, task, viewerUserId) {
+    if (!task || task.done || task.parentId || !task.userId) return null
+    try {
+        const { loadTaskWorkflow, describeTaskWorkflow } = require('../Tasks/workflowStepMove')
+        const workflow = await loadTaskWorkflow(admin.firestore(), projectId, task)
+        return describeTaskWorkflow(task, workflow, viewerUserId || null)
+    } catch (error) {
+        console.warn('Could not load the task workflow for context', {
+            projectId,
+            taskId: task.id,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+async function getCurrentObjectContextData(projectId, objectType, objectId, viewerUserId = null) {
     if (objectType === 'artifacts') {
         const [projectDoc, artifactDoc] = await Promise.all([
             admin.firestore().doc(`projects/${projectId}`).get(),
@@ -15245,6 +15291,7 @@ async function getCurrentObjectContextData(projectId, objectType, objectId) {
 
     const objectData = taskDoc.exists ? { id: taskDoc.id || objectId, ...(taskDoc.data() || {}) } : null
     let parentGoalData = null
+    const workflowDescriptionPromise = loadCurrentTaskWorkflowDescription(projectId, objectData, viewerUserId)
 
     if (objectData?.parentGoalId) {
         const parentGoalDoc = await admin.firestore().doc(`goals/${projectId}/items/${objectData.parentGoalId}`).get()
@@ -15260,6 +15307,7 @@ async function getCurrentObjectContextData(projectId, objectType, objectId) {
         projectData: projectDoc.exists ? { id: projectDoc.id || projectId, ...(projectDoc.data() || {}) } : null,
         objectData,
         parentGoalData,
+        workflowDescription: await workflowDescriptionPromise,
     }
 }
 
@@ -15345,7 +15393,7 @@ async function getOptimizedContextMessages(
 
     // Fetch the current parent object in parallel. The same formatter is reused by VM handoff,
     // keeping interactive and delegated executions grounded in one canonical task context.
-    parallelPromises.push(getCurrentObjectContextData(projectId, objectType, objectId))
+    parallelPromises.push(getCurrentObjectContextData(projectId, objectType, objectId, userId))
 
     const [commentDocs, chatData, notesContext, currentNoteContext, currentObjectContextData] =
         await Promise.all(parallelPromises)

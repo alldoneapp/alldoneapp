@@ -151,6 +151,11 @@ async function askToOpenAIBotOptimized(
             // automatic reply answers another assistant's comment (a Gmail follow-up, a delegate),
             // not a member, so it only reads the wiki (NV-45).
             allowKnowledgeCorrections,
+            // A member typed the message this run answers. Only such a turn may approve a workflow
+            // step (move_task_workflow_step, AT-2829); the tool also checks the message's author.
+            humanTurn: !automaticCommentReply,
+            // The message lock of this run, so a workflow step it approves waits for it to finish.
+            runLockId: assistantRunLockId || null,
         }
         const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })

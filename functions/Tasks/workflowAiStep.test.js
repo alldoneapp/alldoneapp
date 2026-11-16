@@ -471,6 +471,28 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('triggerMessageId')
     })
 
+    it('carries a note given with a chat approval into the run as an addition (AT-2829)', async () => {
+        seedAssignee()
+        const newTask = taskOnAiStep({
+            completed: 1000,
+            workflowAiPromptOverride: {
+                stepId: AI_STEP,
+                prompt: 'Squash the commits',
+                mode: 'append',
+                triggerMessageId: null,
+                requestedByUserId: ASSIGNEE,
+            },
+        })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            promptOverride: 'Squash the commits',
+            promptOverrideMode: 'append',
+            triggerMessageId: null,
+        })
+    })
+
     it('enqueues a creator-funded run from a project assistant workflow', async () => {
         mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
             uid: ASSISTANT,
@@ -833,6 +855,61 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
             })
         })
 
+        it('does not count the chat run that approved the move as work on the step (AT-2829)', async () => {
+            liveChatRun('approval-run')
+            const moved = taskOnAiStep({
+                completed: 1000,
+                workflowStepMove: {
+                    stepId: AI_STEP,
+                    enteredAt: 1000,
+                    runLockId: 'approval-run',
+                    actorUserId: ASSIGNEE,
+                },
+            })
+
+            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, moved)
+
+            expect(mockStore.get(`workflowAiRuns/${runId}`).status).toBe('pending')
+        })
+
+        it('still parks on other live work next to the approving chat run', async () => {
+            liveChatRun('approval-run')
+            liveChatRun('other-run')
+            const moved = taskOnAiStep({
+                completed: 1000,
+                workflowStepMove: {
+                    stepId: AI_STEP,
+                    enteredAt: 1000,
+                    runLockId: 'approval-run',
+                    actorUserId: ASSIGNEE,
+                },
+            })
+
+            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, moved)
+
+            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+                status: RUN_STATUS_AWAITING_VM,
+                awaitingAssistantRunIds: ['other-run'],
+            })
+        })
+
+        it('ignores an approval stamp left by an earlier move', async () => {
+            liveChatRun('approval-run')
+            const moved = taskOnAiStep({
+                completed: 2000,
+                workflowStepMove: {
+                    stepId: AI_STEP,
+                    enteredAt: 1000,
+                    runLockId: 'approval-run',
+                    actorUserId: ASSIGNEE,
+                },
+            })
+
+            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, moved)
+
+            expect(mockStore.get(`workflowAiRuns/${runId}`).status).toBe(RUN_STATUS_AWAITING_VM)
+        })
+
         it('parks the run behind a live VM job too', async () => {
             liveVmJob()
 
@@ -1023,6 +1100,69 @@ describe('runWorkflowAiStep', () => {
             onVmJobStarted: expect.any(Function),
         })
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
+    })
+
+    it('adds a chat approval note to the configured prompt instead of replacing it (AT-2829)', async () => {
+        await runWorkflowAiStep(RUN_ID, { ...run, promptOverride: 'Squash the commits', promptOverrideMode: 'append' })
+
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe(
+            'Summarize this task\n\nAdditional instruction from the reviewer who approved this step: Squash the commits'
+        )
+        // A composed prompt is new text, so it is posted as the run's trigger message.
+        expect(mockPostUserRequestComment).toHaveBeenCalledWith(
+            expect.objectContaining({ text: expect.stringContaining('Squash the commits') })
+        )
+    })
+
+    it('waits for the chat run that approved the step instead of skipping it (AT-2829)', async () => {
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({
+                completed: 1000,
+                workflowStepMove: {
+                    stepId: AI_STEP,
+                    enteredAt: 1000,
+                    runLockId: 'approval-run',
+                    actorUserId: ASSIGNEE,
+                },
+            })
+        )
+        mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            ownerId: 'approval-run',
+            kind: 'chat',
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+        mockStore.set('assistantRunLocks/approval-run', {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('pending')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
+
+        // Once the reply is finished, the next tick runs the step's configured prompt.
+        mockStore.delete(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`)
+        mockStore.set('assistantRunLocks/approval-run', {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'completed',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Summarize this task')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 
     it('loads an assistant-owned workflow while charging the creating project member', async () => {

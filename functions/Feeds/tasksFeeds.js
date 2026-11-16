@@ -627,7 +627,8 @@ async function createTaskMovedInWorkflowFeed(
     toStep,
     batch,
     feedUser,
-    needGenerateNotification
+    needGenerateNotification,
+    { isForward = true } = {}
 ) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
@@ -646,7 +647,7 @@ async function createTaskMovedInWorkflowFeed(
     feed.toStepUserId = toStep.userId || ''
     feed.fromStepDescription = fromStep.description
     feed.toStepDescription = toStep.description
-    feed.isForward = true
+    feed.isForward = isForward !== false
     if (task.parentId) feed.isSubtask = true
 
     taskFeedObject.isDone = toStep.isDone === true

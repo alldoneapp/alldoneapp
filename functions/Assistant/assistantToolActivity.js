@@ -130,6 +130,7 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_update_task',
         plainKey: 'assistant_activity_update_task_plain',
     },
+    move_task_workflow_step: { plainKey: 'assistant_activity_move_workflow_step' },
     create_note: {
         params: ['title'],
         subjectKey: 'assistant_activity_create_note',

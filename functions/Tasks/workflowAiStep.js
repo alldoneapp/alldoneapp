@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid')
 
 const {
     DONE_STEP,
+    OPEN_STEP,
     FEED_PUBLIC_FOR_ALL,
     STAYWARD_COMMENT,
     WORKSTREAM_ID_PREFIX,
@@ -15,6 +16,7 @@ const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/
 const { TASK_EXECUTION_MODE_DIRECT } = require('../shared/taskExecutionMode')
 const { Timestamp } = require('firebase-admin/firestore')
 const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared/delegatedTaskWorkflow')
+const { PROMPT_OVERRIDE_MODE_APPEND, getWorkflowMoverRunLockId } = require('./workflowStepMove')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
@@ -157,6 +159,16 @@ const findLiveTaskAiWork = async (projectId, taskId, now = Date.now()) => {
     return { assistantRunIds, vmCorrelationIds, isLive: assistantRunIds.length > 0 || vmCorrelationIds.length > 0 }
 }
 
+const excludeMoverRun = (liveWork, moverRunLockId) => {
+    if (!moverRunLockId || !liveWork.assistantRunIds.includes(moverRunLockId)) return liveWork
+    const assistantRunIds = liveWork.assistantRunIds.filter(id => id !== moverRunLockId)
+    return {
+        ...liveWork,
+        assistantRunIds,
+        isLive: assistantRunIds.length > 0 || liveWork.vmCorrelationIds.length > 0,
+    }
+}
+
 /**
  * Called for every task update. Enqueues one AI run when a task lands on a step whose reviewer is an
  * assistant.
@@ -256,7 +268,10 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
         actorUserId: options.actorUserId || null,
     })
     const bypassWorkflow =
-        workflowOwnerType === 'assistant' && !!promptOverride && (!isAiWorkflowStep(step) || !step.reviewerUid)
+        workflowOwnerType === 'assistant' &&
+        !!promptOverride &&
+        promptOverride.mode !== PROMPT_OVERRIDE_MODE_APPEND &&
+        (!isAiWorkflowStep(step) || !step.reviewerUid)
     if (!bypassWorkflow && (!isAiWorkflowStep(step) || !step.reviewerUid)) return null
 
     if (!payerUserId) return null
@@ -284,7 +299,13 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     // masked this, because it stays live for hours and is therefore still visible at the next tick.
     // The dispatcher keeps its own checks for work that starts during the gap and is still running.
     const now = Date.now()
-    const liveWork = await findLiveTaskAiWork(projectId, taskId, now)
+    // A chat run that moved the task here (workflowStepMove, AT-2829) is live by definition when this
+    // trigger fires. It is the approval, not work on the step: excluding it keeps "merge it" from
+    // parking the Merge step as "already being worked on" and then skipping it.
+    const liveWork = excludeMoverRun(
+        await findLiveTaskAiWork(projectId, taskId, now),
+        getWorkflowMoverRunLockId(newTask, stepId)
+    )
     // Conversation/status replies cannot perform a managed delegation's workflow step. Keep its
     // prompt queued until the conversation settles; only actual VM work may replace the prompt.
     const awaitExistingWork =
@@ -308,6 +329,9 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                     ? {
                           promptOverride: promptOverride.prompt,
                           triggerMessageId: promptOverride.triggerMessageId || null,
+                          ...(promptOverride.mode === PROMPT_OVERRIDE_MODE_APPEND
+                              ? { promptOverrideMode: PROMPT_OVERRIDE_MODE_APPEND }
+                              : {}),
                       }
                     : {}),
                 ...(awaitExistingWork
@@ -391,7 +415,9 @@ const advanceTaskFromWorkflowStep = async (projectId, taskId, task, fromStepId, 
 
 // Best-effort: the task has already moved, so a feed failure must not make the move look like it
 // failed. It only costs the activity-log entry.
-const writeMovedInWorkflowFeed = async (projectId, taskId, task, fromStep, nextStepId, workflow) => {
+// `options.feedUser` attributes a move someone else made (workflowStepMove); by default the assistant
+// whose step just ran authored it.
+const writeMovedInWorkflowFeed = async (projectId, taskId, task, fromStep, nextStepId, workflow, options = {}) => {
     try {
         const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
         const { createTaskMovedInWorkflowFeed } = require('../Feeds/tasksFeeds')
@@ -401,7 +427,7 @@ const writeMovedInWorkflowFeed = async (projectId, taskId, task, fromStep, nextS
         const projectUserIds = project.exists ? project.data().userIds || [] : []
 
         // The assistant that just ran authored the move, so the feed is attributed to it.
-        const feedUser = { uid: fromStep.reviewerUid }
+        const feedUser = options.feedUser || { uid: fromStep.reviewerUid }
         loadFeedsGlobalState(admin, admin, feedUser, { id: projectId, userIds: projectUserIds }, [], null)
 
         const movingToDone = nextStepId === DONE_STEP
@@ -414,10 +440,13 @@ const writeMovedInWorkflowFeed = async (projectId, taskId, task, fromStep, nextS
             { description: fromStep.description, userId: fromStep.reviewerUid },
             movingToDone
                 ? { description: 'Done', userId: '', isDone: true }
-                : { description: workflow[nextStepId].description, userId: workflow[nextStepId].reviewerUid },
+                : nextStepId === OPEN_STEP
+                  ? { description: 'Open', userId: task.userId }
+                  : { description: workflow[nextStepId].description, userId: workflow[nextStepId].reviewerUid },
             batch,
             feedUser,
-            true
+            true,
+            { isForward: options.isForward !== false }
         )
 
         await batch.commit()
@@ -495,10 +524,20 @@ const activateWorkflowTaskAssistant = async (projectId, taskId, assistantId) => 
  * Resolves the prompt for an AI step. The pre-config task is read live so later edits to it take
  * effect; the snapshot stored on the step is the fallback for a deleted task.
  */
-const resolveAiStepPrompt = async (projectId, step, promptOverride = null) => {
+const resolveAiStepPrompt = async (projectId, step, promptOverride = null, promptOverrideMode = null) => {
+    const hasOverride = typeof promptOverride === 'string' && !!promptOverride.trim()
+    // A note given with a chat approval ("merge it, squash the commits", AT-2829) is added to the
+    // step's own prompt: the approval must still run the configured action.
+    if (hasOverride && promptOverrideMode === PROMPT_OVERRIDE_MODE_APPEND) {
+        const configured = await resolveAiStepPrompt(projectId, step)
+        const note = promptOverride.trim()
+        return configured.trim()
+            ? `${configured}\n\nAdditional instruction from the reviewer who approved this step: ${note}`
+            : note
+    }
     // A non-empty transition-popup comment replaces the configured action for this run exactly. It
     // is intentionally not augmented with the step prompt or substituted with the step's variables.
-    if (typeof promptOverride === 'string' && promptOverride.trim()) return promptOverride
+    if (hasOverride) return promptOverride
     if (!step.aiPreConfigTaskId) return buildAiStepPrompt(step)
 
     const paths = [
@@ -581,6 +620,8 @@ const runWorkflowAiStep = async (runId, run) => {
         workflowStepId: stepId,
     })
 
+    const moverRunLockId = getWorkflowMoverRunLockId(task, stepId)
+
     if (!taskRunLock.acquired) {
         const activeKind = taskRunLock.existing && taskRunLock.existing.kind
         const activeWorkflowStepId = taskRunLock.existing && taskRunLock.existing.workflowStepId
@@ -595,7 +636,8 @@ const runWorkflowAiStep = async (runId, run) => {
             return
         }
 
-        if (isDelegatedWorkflowTask(task)) {
+        // The chat run that approved this step (AT-2829) is finishing its reply: run the step after it.
+        if (isDelegatedWorkflowTask(task) || (moverRunLockId && taskRunLock.existing?.ownerId === moverRunLockId)) {
             await deferDelegatedWorkflowForConversation(runRef, runId, run)
             return
         }
@@ -619,7 +661,14 @@ const runWorkflowAiStep = async (runId, run) => {
         // Covers both halves of the lifecycle: the chat execution before VM creation and the VM
         // after it has outlived the prompt/task lock. Message-level locks also cover older function
         // instances during a rolling deployment.
-        const existingAssistantRunIds = await findActiveAssistantRuns(projectId, taskId)
+        const activeAssistantRunIds = await findActiveAssistantRuns(projectId, taskId)
+        const existingAssistantRunIds = activeAssistantRunIds.filter(id => id !== moverRunLockId)
+        if (existingAssistantRunIds.length === 0 && activeAssistantRunIds.length > 0) {
+            // Only the approving chat run is still live; wait for it rather than skipping the step.
+            // The finally below hands the task slot back.
+            await deferDelegatedWorkflowForConversation(runRef, runId, run)
+            return
+        }
         if (existingAssistantRunIds.length > 0) {
             if (isDelegatedWorkflowTask(task)) {
                 await deferDelegatedWorkflowForConversation(runRef, runId, run)
@@ -656,8 +705,18 @@ const runWorkflowAiStep = async (runId, run) => {
             failureReason = 'step_no_longer_ai'
         } else {
             try {
-                const hasPromptOverride = typeof run.promptOverride === 'string' && !!run.promptOverride.trim()
-                const prompt = await resolveAiStepPrompt(projectId, step, run.promptOverride)
+                // An appended note builds a new prompt that must be posted like a configured one; only a
+                // replacing popup comment already sits in the thread as the trigger message.
+                const hasPromptOverride =
+                    typeof run.promptOverride === 'string' &&
+                    !!run.promptOverride.trim() &&
+                    run.promptOverrideMode !== PROMPT_OVERRIDE_MODE_APPEND
+                const prompt = await resolveAiStepPrompt(
+                    projectId,
+                    step,
+                    run.promptOverride,
+                    run.promptOverrideMode || null
+                )
                 if (!prompt.trim()) {
                     failureReason = 'empty_prompt'
                 } else {
@@ -1519,4 +1578,5 @@ module.exports = {
     retryFailedWorkflowAiRun,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,
+    writeMovedInWorkflowFeed,
 }

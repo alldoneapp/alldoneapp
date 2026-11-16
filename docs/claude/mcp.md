@@ -388,6 +388,9 @@ themselves), one handler (`mcpWorkspaceSetupTools.js`), one Tools Access key for
 - **Wiki documents**: `add_knowledge_document` takes a file of this conversation, a file of a thread
   the caller names (`threadObjectType`/`threadObjectId`, access-checked), an artifact (`artifactId`,
   its current version's text, if the user can read it) or `text`. The same tool on both surfaces.
+- **Workflow moves**: `move_task_workflow_step` runs the same handler (`Assistant/workflowStepMoveTool.js`)
+  on both surfaces. Assistants get it with the `update_task` toggle; over MCP the call counts as the
+  user's own request, while an assistant needs a turn the user typed (see `assistant-runs.md`).
 - **Skills**: `load_skill` over MCP works on the project assistant (or a named one); without a name
   it lists the skills.
 

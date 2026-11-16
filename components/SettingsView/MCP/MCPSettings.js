@@ -20,6 +20,7 @@ import { themed } from '../../../Themes/colorMode'
 const MCP_TOOL_KEYS = [
     'create_task',
     'update_task',
+    'move_task_workflow_step',
     'get_tasks',
     'get_focus_task',
     'create_note',
@@ -104,6 +105,7 @@ const MCP_TOOL_KEYS = [
 // create_assistant, update_assistant), which only MCP clients get so far
 // (functions/MCP/mcpWorkspaceSetupTools.js).
 const MCP_TOOL_LABELS = {
+    move_task_workflow_step: 'Move task through workflow',
     browser_navigate: 'Open a web page',
     browser_inspect: 'Look at a web page',
     browser_click: 'Click on a web page',

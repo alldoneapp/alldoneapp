@@ -58,6 +58,50 @@ needed. Existing assistant-owned tasks are not migrated. Coverage includes the d
 in `workflowAiStep.test.js`, completion protection in `delegatedTaskWorkflow.test.js`, task/VM
 routing in `assistantHelper.test.js`, and approval/send-back controls in the frontend tests.
 
+## Workflow steps move from chat: "merge it" (AT-2829, 2026-11-16)
+
+`move_task_workflow_step` moves a task to `next`, `back`, `done`, `open` or a named step, or (without
+`to`) reads its workflow. It is part of the `update_task` Tools Access toggle (like `get_vm_job` with
+the VM tool), never deferred behind tool search (an approval reads like small talk), and offered
+over MCP. The rules live in `functions/Tasks/workflowStepMove.js`, not in the prompt:
+
+- **Only a live human turn moves a task.** `askToOpenAIBot` sets `humanTurn` (not for automatic
+  comment replies) and the tool also checks that the trigger comment is the user's own and not from
+  an assistant. MCP counts as the user. Workflow AI steps, heartbeats, scheduled tasks, email and
+  WhatsApp runs never set it, so no unattended run can approve a human step; AI steps keep
+  advancing through the runner as before.
+- **Who:** the task owner, or the reviewer of the current human step. Only the owner moves a task off
+  Open or an AI step, and only the owner skips another member's step.
+- **Skips:** one step forward is the approval. Anything further (including Done while steps remain)
+  needs `skipSteps`, which the model sets only when the user said so; otherwise the refusal names the
+  skipped steps so the assistant can ask. `expectedStepId` refuses a move if the task moved since.
+- **Notes** become `workflowAiPromptOverride` with `mode: 'append'`: the run adds them to the step's
+  configured prompt instead of replacing it (the popup's replace mode is unchanged). The run
+  identity rule still applies: only the owner's note is used in a user workflow.
+- The task write mirrors the client movers field for field (forward, rebuild on back, Done, Open,
+  subtasks), so the `onUpdateTask` fan-out sees an ordinary move. Reopening a done task stays in the
+  app (`moveTasksFromDone` reverses statistics). Feed entries go through the generalized
+  `writeMovedInWorkflowFeed` with the acting feed user and direction.
+
+**Trap: the approving chat run is "live work" on the task.** Typed in the task's own chat, "merge it"
+lands the task on the Merge step while that chat run still holds its locks, and the AT-2222 rule
+above would park the step as `task_ai_run_already_active` and then _skip_ it. The move therefore
+stamps `workflowStepMove { stepId, enteredAt, runLockId }`; `getWorkflowMoverRunLockId` returns the
+lock only while that move is the task's latest transition. The trigger excludes that one lock from
+`findLiveTaskAiWork`, and `runWorkflowAiStep` defers (back to `pending`) instead of parking when only
+the approving run is still going, so the step runs after the reply finishes.
+
+**Anna:** when a delegated task lands on its owner's human step, `delegationReviewNotice.js`
+(onUpdateTask) posts "ready for you" with the latest assistant result, the next step and a link in
+the originating conversation, once per step entry (`lastReviewNoticeKey` on the receipt). Without a
+`taskId`, the tool in that conversation picks the one delegated task waiting for the user
+(receipts now carry `projectId`/`taskId`) or asks which one. Moves from another conversation leave
+a line in the task chat. `loadDelegatedTaskOrigin` returns only the four destination fields because
+`runWorkflowAiStep` spreads it into run options.
+
+The task chat context lists the workflow (`formatWorkflowLine`) so "next" has a meaning. Pinned by
+`functions/Tasks/workflowStepMove.test.js` and the AT-2829 cases in `workflowAiStep.test.js`.
+
 **An AI workflow step finishes when its work finishes, not when the assistant stops talking.** `execute_task_in_vm` returns as soon as the job is enqueued, so a step whose assistant dispatched a VM job would otherwise hand the task to the next reviewer while the work it asked for runs on for up to five hours. `runWorkflowAiStep` therefore parks the run as `awaiting_vm` with the dispatched correlation ids instead of advancing. The VM runner calls `resolveWorkflowAfterVmJobSettlement` after result delivery, billing/refunds, queue handoff and the terminal status write, so the parked workflow re-checks immediately without adding an Eventarc invocation for every 30-second VM heartbeat. `onUpdateWorkflowAssistantRunSecondGen` closes the pre-VM ordering window where the chat assistant lock can be the last blocker to settle. The one-minute `runWorkflowAiStepsSecondGen` poller still calls `resolveAwaitingVmRuns` as a recovery and timeout backstop; it is no longer the normal completion signal. The task move and workflow-run settlement share one Firestore transaction so a runner retry, Eventarc redelivery or an overlapping poll tick cannot advance twice. A failed or cancelled VM job still settles its parked run instead of leaving it stuck, matching how a failed assistant run behaves — but note it does **not** move the task: `finalizeWorkflowAiRun` only builds a step transition when there is no `failureReason`, so a failed step stays where it is and is handed to the requesting user by the AT-2196 reviewer hold below. `AWAITING_VM_TIMEOUT_MS` is the backstop for a job that never settles and is derived from `vmJobConfig`'s runtime + finalization budget, so raising the VM budget cannot silently leave it behind. **A VM agent can stop and ask the user a question** (`status: 'awaiting_user'`, see `vmInteraction.js`), and that interaction stays open for `VM_INTERACTION_TTL_MS` — 24h, far beyond the run budget — so `resolveAwaitingDeadline` pushes the deadline out to the job's own `interactionExpiresAt` plus a further run budget rather than abandoning a step the user can still rescue by answering. It stays bounded because each extension needs a real, unexpired interaction: a job that simply hangs is still abandoned on the original schedule. Note an unattended step whose agent asks a question simply waits — nobody is watching the thread. Check the parked run by its recorded correlation ids, never by re-querying the task for recent jobs: the jobs were started _before_ the run parked, so any time-windowed lookup misses them and advances immediately.
 
 **Whether a step's configured prompt is suppressed is decided in the task trigger, not in the dispatcher (AT-2222).** A step that lands on a task the assistant is already working on must not post its configured prompt on top of that work; the run parks as `awaiting_vm` with `awaitingSkipReason: 'task_ai_run_already_active'` and settles `skipped`, advancing the task once the live work finishes. The trap is _when_ liveness is measured. `runWorkflowAiStepsSecondGen` is a one-minute poller (a prompt run cannot live behind a 540s event trigger), so a check made there answers "is something running a minute later", not "was something running when the task arrived". A VM job lives for hours and is therefore always still visible; **a normal assistant answer is usually over inside that minute**, so the step posted its configured prompt straight after the answer the user had just read — the same logic, opposite outcome, purely because of duration. `enqueueWorkflowAiRunIfNeeded` therefore evaluates `findLiveTaskAiWork` itself — the `onUpdateTask`/`onCreateTask` fan-out is the only moment synchronous with the task landing on the step — and creates the run already parked. `runWorkflowAiStep` keeps its own checks for work that starts during the gap and is still running. Only genuinely live work blocks: a settled chat run or a terminal VM job never suppresses a step. Two things the check must **not** look at, both of which would stall every AI→AI workflow: the coarse `assistantTaskRunLocks` slot (an AI step advances the task from _inside_ its own run, so its lock is still held when the next step is enqueued — this is why detection uses the message-level `assistantRunLocks` instead, which workflow runs never write), and any time window rather than live state. Detection is task-scoped (`objectId == taskId`), so an assistant creating a task from another thread cannot park the new task behind its own run. Heartbeats and recurring assistant tasks write no lock at all and so never suppress a step — deliberate: only human-triggered work counts as "the thread is already being served".

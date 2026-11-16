@@ -29,6 +29,7 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     // Tasks
     'create_task',
     'update_task',
+    'move_task_workflow_step',
     'get_tasks',
     'get_focus_task',
     // Notes

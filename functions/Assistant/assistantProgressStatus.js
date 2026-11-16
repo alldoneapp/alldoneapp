@@ -36,6 +36,7 @@ const ACTION_PRESENTATION = {
     assistant_activity_create_task_plain: ['✅', 'Creating a task'],
     assistant_activity_update_task: ['✏️', 'Updating the task “%s”'],
     assistant_activity_update_task_plain: ['✏️', 'Updating a task'],
+    assistant_activity_move_workflow_step: ['➡️', 'Moving the task in its workflow'],
     assistant_activity_create_note: ['📝', 'Creating the note “%s”'],
     assistant_activity_create_note_plain: ['📝', 'Creating a note'],
     assistant_activity_update_note: ['✏️', 'Updating the note “%s”'],
