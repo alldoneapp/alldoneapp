@@ -114,6 +114,7 @@ const {
     DEFAULT_PROMPT,
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
+const { resolveAnnaTaskAssistant } = require('./annaTaskAssistant')
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
@@ -5273,7 +5274,11 @@ async function ensureVmJobThread({
         throw new Error('Could not resolve a project to host the VM task')
     }
 
-    const feedUser = await getAssistantFeedUserForTool(db, targetProjectId, assistantId, creatorId)
+    const responsibleAssistant = trackAssistantWork
+        ? await resolveAnnaTaskAssistant({ db, projectId, targetProjectId, assistantId, requestUserId: creatorId })
+        : { projectId, assistantId }
+    const workAssistantId = responsibleAssistant.assistantId
+    const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
     // The task title is necessarily abbreviated; the full prompt is posted as the first chat
     // entry below (readable by the user + grounds the VM agent), so the description stays empty.
@@ -5299,14 +5304,14 @@ async function ensureVmJobThread({
         {
             name: buildVmJobTaskName(objective),
             description: '',
-            userId: trackAssistantWork ? assistantId : creatorId,
+            userId: trackAssistantWork ? workAssistantId : creatorId,
             ...(trackAssistantWork
                 ? {
                       assigneeType: 'assistant',
-                      assistantId,
+                      assistantId: workAssistantId,
                       creatorId,
                       executionMode: 'direct',
-                      taskMetadata: { annaWorkspace: { ownerId: creatorId, assistantId } },
+                      taskMetadata: { annaWorkspace: { ownerId: creatorId, assistantId: workAssistantId } },
                   }
                 : {}),
             projectId: targetProjectId,
@@ -5337,7 +5342,7 @@ async function ensureVmJobThread({
             targetProjectId,
             'tasks',
             resolvedTaskId,
-            assistantId,
+            workAssistantId,
             [creatorId],
             [FEED_PUBLIC_FOR_ALL, creatorId]
         )
@@ -5372,7 +5377,7 @@ async function ensureVmJobThread({
         })
     }
 
-    return { projectId: targetProjectId, objectType: 'tasks', objectId: resolvedTaskId }
+    return { projectId: targetProjectId, objectType: 'tasks', objectId: resolvedTaskId, responsibleAssistant }
 }
 
 /**
@@ -6016,6 +6021,16 @@ async function executeToolNativelyImpl(
                     toolRuntimeContext?.annaConversation === true &&
                     toolArgs.trackAssistantWork === true &&
                     !isAssistantSuggestion
+                const responsibleAssistant = trackAssistantWork
+                    ? await resolveAnnaTaskAssistant({
+                          db,
+                          projectId,
+                          targetProjectId,
+                          assistantId,
+                          requestUserId: creatorId,
+                      })
+                    : null
+                const workAssistantId = responsibleAssistant?.assistantId || assistantId
                 const creationComment =
                     assistantId && !trackAssistantWork
                         ? `${feedUser.displayName || 'Assistant'} added this task for you. ${
@@ -6030,7 +6045,7 @@ async function executeToolNativelyImpl(
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
                         executionMode: trackAssistantWork ? 'direct' : toolArgs.executionMode,
-                        userId: trackAssistantWork ? assistantId : creatorId,
+                        userId: trackAssistantWork ? workAssistantId : creatorId,
                         assigneeType: trackAssistantWork ? 'assistant' : 'USER',
                         projectId: targetProjectId,
                         isPrivate: !!replyMessageData,
@@ -6042,9 +6057,9 @@ async function executeToolNativelyImpl(
                         // assistant (MCP) the requesting user stays the creator.
                         creatorId: isAssistantSuggestion && assistantId ? assistantId : creatorId,
                         suggestedBy: null,
-                        assistantId: trackAssistantWork ? assistantId : '',
+                        assistantId: trackAssistantWork ? workAssistantId : '',
                         taskMetadata: trackAssistantWork
-                            ? { annaWorkspace: { ownerId: creatorId, assistantId } }
+                            ? { annaWorkspace: { ownerId: creatorId, assistantId: workAssistantId } }
                             : null,
                     },
                     {
@@ -6241,6 +6256,20 @@ async function executeToolNativelyImpl(
                     taskOrigin,
                     suggested: false,
                     commentId: taskCommentResult?.commentId || null,
+                    ...(responsibleAssistant
+                        ? {
+                              responsibleAssistant,
+                              ...(workAssistantId !== assistantId
+                                  ? {
+                                        handoffInstruction:
+                                            'This task is assigned to the destination project assistant. ' +
+                                            'Delegate further work to that assistant using this existing task; ' +
+                                            'do not create another task. execute_task_in_vm with target_task_id ' +
+                                            'uses the responsible assistant and its instructions.',
+                                    }
+                                  : {}),
+                          }
+                        : {}),
                     projectSelection: {
                         source: createTaskProjectSelection.source,
                         reasoning: projectRoutingReasoning,
@@ -10854,6 +10883,36 @@ async function executeToolNativelyImpl(
                     ? 'tasks'
                     : toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = toolRuntimeContext?.annaConversation ? '' : toolRuntimeContext?.objectId || ''
+                let responsibleAssistant = { projectId, assistantId }
+                let responsibleAssistantData = null
+
+                const resolveWorkAssistant = async (selectedAssistant, assignedAssistantId) => {
+                    if (!toolRuntimeContext?.annaConversation) return
+                    responsibleAssistant =
+                        selectedAssistant ||
+                        (await resolveAnnaTaskAssistant({
+                            db: admin.firestore(),
+                            projectId,
+                            targetProjectId: effectiveProjectId,
+                            assistantId,
+                            requestUserId,
+                            assignedAssistantId,
+                        }))
+                    if (
+                        responsibleAssistant.assistantId !== assistantId ||
+                        responsibleAssistant.projectId !== projectId
+                    ) {
+                        const resolved = await resolveCurrentAssistantDocForToolExecution(
+                            responsibleAssistant.projectId,
+                            responsibleAssistant.assistantId,
+                            requestUserId
+                        )
+                        responsibleAssistantData = resolved?.assistant
+                        if (!responsibleAssistantData?.allowedTools?.includes(VM_JOB_TOOL_NAME)) {
+                            throw new Error('The responsible project assistant does not have VM execution enabled.')
+                        }
+                    }
+                }
 
                 const requestedTargetTaskId =
                     typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
@@ -10894,6 +10953,7 @@ async function executeToolNativelyImpl(
                     }
                     effectiveObjectType = continuation.objectType
                     effectiveObjectId = continuation.objectId
+                    await resolveWorkAssistant()
                     console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Continuing earlier VM run in existing thread', {
                         projectId: effectiveProjectId,
                         objectType: effectiveObjectType,
@@ -10925,6 +10985,7 @@ async function executeToolNativelyImpl(
                     effectiveProjectId = target.projectId
                     effectiveObjectType = target.objectType
                     effectiveObjectId = target.objectId
+                    await resolveWorkAssistant(null, target.assignedAssistantId)
 
                     // Existing tasks do not necessarily have a chat yet. Create it with the task's
                     // visibility before startVmJob reads that chat to address status notifications.
@@ -10933,7 +10994,7 @@ async function executeToolNativelyImpl(
                         effectiveProjectId,
                         effectiveObjectType,
                         effectiveObjectId,
-                        assistantId,
+                        responsibleAssistant.assistantId,
                         [requestUserId],
                         target.isPublicFor
                     )
@@ -10969,6 +11030,7 @@ async function executeToolNativelyImpl(
                     effectiveProjectId = hostThread.projectId
                     effectiveObjectType = hostThread.objectType
                     effectiveObjectId = hostThread.objectId
+                    await resolveWorkAssistant(hostThread.responsibleAssistant)
                     console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Created host task for contextless VM job', {
                         projectId: effectiveProjectId,
                         objectId: effectiveObjectId,
@@ -10982,10 +11044,11 @@ async function executeToolNativelyImpl(
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
                 let threadContext = await buildVmThreadContext({
                     projectId: effectiveProjectId,
-                    assistantProjectId: projectId,
+                    assistantProjectId: responsibleAssistant.projectId,
                     objectType: effectiveObjectType,
                     objectId: effectiveObjectId,
-                    assistantId,
+                    assistantId: responsibleAssistant.assistantId,
+                    assistantPersona: responsibleAssistantData,
                     requestUserId,
                     userTimezoneOffset: toolRuntimeContext?.userTimezoneOffset ?? null,
                     language: toolRuntimeContext?.language || '',
@@ -11027,7 +11090,7 @@ async function executeToolNativelyImpl(
                     projectId: effectiveProjectId,
                     objectType: effectiveObjectType,
                     objectId: effectiveObjectId,
-                    assistantId,
+                    assistantId: responsibleAssistant.assistantId,
                     requestUserId,
                     requestText,
                     triggerChannel: toolRuntimeContext?.sourceChannel === 'whatsapp' ? 'whatsapp' : '',
@@ -13196,6 +13259,7 @@ async function buildVmThreadContext({
     objectType = 'tasks',
     objectId,
     assistantId,
+    assistantPersona = null,
     requestUserId,
     userTimezoneOffset = null,
     language = '',
@@ -13255,11 +13319,9 @@ async function buildVmThreadContext({
     // than the settings-editing framing of getAssistantSettingsContextMessage.
     if (opts.assistantPersona && assistantId) {
         try {
-            const resolved = await resolveCurrentAssistantDocForToolExecution(
-                assistantProjectId,
-                assistantId,
-                requestUserId
-            )
+            const resolved = assistantPersona
+                ? { assistant: assistantPersona }
+                : await resolveCurrentAssistantDocForToolExecution(assistantProjectId, assistantId, requestUserId)
             const assistant = resolved?.assistant || {}
             const personaLines = ['Assistant persona (act as this assistant):']
             if (assistant.displayName) personaLines.push(`- Name: ${assistant.displayName}`)

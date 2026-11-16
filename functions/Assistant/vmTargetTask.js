@@ -45,6 +45,9 @@ async function resolveVmTargetTask({ db, projectId, targetProjectId, preferredPr
             objectType: 'tasks',
             objectId: normalizedTaskId,
             isPublicFor: Array.isArray(task.isPublicFor) ? task.isPublicFor : [],
+            ...(task.assistantId || (task.assigneeType === 'assistant' && task.userId)
+                ? { assignedAssistantId: task.assistantId || task.userId }
+                : {}),
         }
     }
 

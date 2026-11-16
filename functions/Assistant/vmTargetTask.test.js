@@ -40,6 +40,13 @@ function makeDb({ user = { projectIds: [PROJECT_ID] }, projectUserIds = [USER_ID
 }
 
 describe('resolveVmTargetTask', () => {
+    it('returns an existing thread assistant after checking task access', async () => {
+        const db = makeDb({ task: { isPublicFor: [0], assistantId: 'designer' } })
+        await expect(
+            resolveVmTargetTask({ db, projectId: PROJECT_ID, taskId: TASK_ID, requestUserId: USER_ID })
+        ).resolves.toMatchObject({ ok: true, assignedAssistantId: 'designer' })
+    })
+
     it('selects an existing public task without requiring a previous VM session', async () => {
         const db = makeDb({ task: { name: 'Fix toolbar', isPublicFor: [0] } })
 

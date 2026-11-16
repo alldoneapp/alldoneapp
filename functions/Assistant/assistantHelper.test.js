@@ -5777,6 +5777,50 @@ describe('assistant task assignment and attribution', () => {
         expect(addAssistantTaskComment).not.toHaveBeenCalled()
     })
 
+    test('assigns work routed from Anna to the project assistant and returns the handoff', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn(),
+            getUserProjects: jest.fn(async () => [{ id: 'product', name: 'Alldone Product' }]),
+        }))
+        const docs = {
+            'user-1': { defaultProjectId: 'project-1' },
+            'users/user-1': { defaultProjectId: 'project-1' },
+            product: { name: 'Alldone Product', userIds: ['user-1'], assistantId: 'cto' },
+            'projects/product': { name: 'Alldone Product', userIds: ['user-1'], assistantId: 'cto' },
+            'assistants/product/items/cto': { displayName: 'Alldone CTO' },
+            'assistants/project-1/items/assistant-1': { displayName: 'Anna' },
+        }
+        mockDocGet.mockImplementation(function () {
+            return Promise.resolve({ exists: !!docs[this.path], data: () => docs[this.path] })
+        })
+        mockFirestoreGetAll.mockImplementation(async (...refs) =>
+            refs.map(ref => ({ id: ref.path.split('/').pop(), exists: !!docs[ref.path], data: () => docs[ref.path] }))
+        )
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+
+        const result = await executeToolNatively(
+            'create_task',
+            { name: 'Remove the Chat button border', projectId: 'product', trackAssistantWork: true },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+
+        expect(result.task).toMatchObject({
+            userId: 'cto',
+            userIds: ['cto'],
+            assistantId: 'cto',
+            currentReviewerId: 'cto',
+            creatorId: 'user-1',
+            assigneeType: 'assistant',
+            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'cto' } },
+        })
+        expect(result.responsibleAssistant).toEqual({ projectId: 'product', assistantId: 'cto' })
+        expect(result.handoffInstruction).toContain('using this existing task')
+    })
+
     test('reports failure if the assistant attribution comment cannot be saved', async () => {
         addAssistantTaskComment.mockResolvedValueOnce(null)
 
@@ -9402,6 +9446,115 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(startVmJobSpy).not.toHaveBeenCalled()
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
+
+    test.each(['enabled', 'disabled', 'absent'])(
+        'routes an Anna VM to the destination assistant, whose VM access is %s',
+        async availability => {
+            resolveTargetTaskSpy.mockResolvedValue({
+                ok: true,
+                projectId: 'product',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                isPublicFor: [0, 'user-1'],
+            })
+            const product = {
+                name: 'Alldone Product',
+                userIds: ['user-1'],
+                ...(availability !== 'absent' ? { assistantId: 'cto' } : {}),
+            }
+            const docs = {
+                'user-1': { defaultProjectId: 'project-1' },
+                'users/user-1': { defaultProjectId: 'project-1' },
+                product,
+                'projects/product': product,
+                'items/product/tasks/task-1': { name: 'Remove Chat border', isPublicFor: [0, 'user-1'] },
+                'assistants/product/items/cto': {
+                    displayName: 'Alldone CTO',
+                    instructions: 'Follow the CTO engineering instructions.',
+                    allowedTools: availability === 'enabled' ? ['execute_task_in_vm'] : [],
+                },
+                'assistants/project-1/items/assistant-1': {
+                    displayName: 'Anna',
+                    instructions: 'Follow the personal assistant instructions.',
+                },
+            }
+            mockDocGet.mockImplementation(function () {
+                return Promise.resolve({ exists: !!docs[this.path], data: () => docs[this.path] })
+            })
+            mockFirestoreGetAll.mockImplementation(async (...refs) =>
+                refs.map(ref => ({
+                    id: ref.path.split('/').pop(),
+                    exists: !!docs[ref.path],
+                    data: () => docs[ref.path],
+                }))
+            )
+            mockCollectionGet.mockResolvedValue({ docs: [] })
+            const result = await executeToolNatively(
+                'execute_task_in_vm',
+                {
+                    objective: 'Remove the Chat button border',
+                    task_type: 'prototype',
+                    target_task_id: 'task-1',
+                    target_project_id: 'product',
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'Please remove the Chat button border' },
+                {
+                    annaConversation: true,
+                    projectId: 'project-1',
+                    objectType: 'topics',
+                    objectId: 'anna-daily-chat',
+                    assistantId: 'assistant-1',
+                }
+            )
+
+            if (availability === 'disabled') {
+                expect(result).toMatchObject({
+                    success: false,
+                    message: expect.stringContaining('VM execution enabled'),
+                })
+                expect(startVmJobSpy).not.toHaveBeenCalled()
+                expect(ensureChatExistsSpy).not.toHaveBeenCalled()
+            } else {
+                const expectedAssistant = availability === 'enabled' ? 'cto' : 'assistant-1'
+                expect(result.success).toBe(true)
+                expect(ensureChatExistsSpy).toHaveBeenCalledWith(
+                    'product',
+                    'tasks',
+                    'task-1',
+                    expectedAssistant,
+                    ['user-1'],
+                    [0, 'user-1']
+                )
+                expect(startVmJobSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        projectId: 'product',
+                        objectId: 'task-1',
+                        assistantId: expectedAssistant,
+                        requestUserId: 'user-1',
+                        originProjectId: 'project-1',
+                        originObjectId: 'anna-daily-chat',
+                        originAssistantId: 'assistant-1',
+                    })
+                )
+                const context = startVmJobSpy.mock.calls[0][0].threadContext
+                expect(context).toContain(
+                    availability === 'enabled'
+                        ? 'Follow the CTO engineering instructions.'
+                        : 'Follow the personal assistant instructions.'
+                )
+                expect(context).not.toContain(
+                    availability === 'enabled'
+                        ? 'Follow the personal assistant instructions.'
+                        : 'Follow the CTO engineering instructions.'
+                )
+            }
+            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+            mockFirestoreGetAll.mockReset()
+        }
+    )
 
     test('keeps Anna work on an existing task and leaves the daily conversation as its origin', async () => {
         await executeToolNatively(
