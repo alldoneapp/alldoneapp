@@ -531,6 +531,19 @@ AT-3047). Pinned by "the compact phone chat header (AT-3056)" in `AnnaShell.test
 `annaPhoneHeader.test.js` and the AT-3056 case in `AnnaProjectSwitcher.test.js`. Not verified in a
 real browser at 320/360/390/430px yet.
 
+**Both phone header pickers look alike and show their chevron (AT-3056 follow-up, 2026-11-16).**
+Decided with the product owner: the avatar alone did not read as a picker, and the screen picker's
+bordered box did not match it. The avatar picker shows the avatar and the 16px down-chevron
+(`.anna-assistant-picker-chevron`, `aria-hidden`); the screen picker shows the chosen view's icon on
+a 32px disc in the avatar's tint (`--anna-tint`) and the same chevron (both classes on its span).
+One rule gives both the same box: borderless, transparent, 44px high, `min-width: 44px`, 8px
+radius, tinted on hover with an accent chevron, and the accent focus ring with a 3px offset (the
+shell's for the button, `:has(select:focus-visible)` for the select). The chevron is part of the
+affordance; do not drop it to save width. The avatar alone (nothing else to pick, "Latest
+messages") stays a round 44px button without chevron. Desktop is unchanged. Pinned by "gives the
+assistant picker and the screen picker one shared look" in `annaPhoneHeader.test.js` and the chevron
+cases in `AnnaShell.test.js` and `AnnaProjectSwitcher.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
