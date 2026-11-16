@@ -37,7 +37,7 @@ import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUser
 import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
 import AssistantModeButton from './AssistantModeButton'
 import AnnaViewSwitch, { AnnaViewSwitchContext } from './AnnaViewSwitch'
-import { AnnaAppShownContext } from './AnnaTopStripContext'
+import { AnnaAppShownContext, AnnaStripSlotContext } from './AnnaTopStripContext'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
@@ -2250,6 +2250,39 @@ it('keeps the chat when the view switch in the strip is used', () => {
     render(content(1))
     fireEvent.click(layoutButton('chat'))
     expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+})
+
+it('puts the strip in Alldone’s top bar slot in plain Alldone, and above everything otherwise', () => {
+    // Stands in for TopBarContainer on Alldone's root screen.
+    const TopBarSlot = () => {
+        const slot = React.useContext(AnnaStripSlotContext)
+        React.useLayoutEffect(() => slot?.claim(), [slot?.claim])
+        return slot ? <div data-testid="top-bar-slot">{slot.strip}</div> : null
+    }
+    const strip = () => document.querySelector('[data-testid="anna-top-strip"]')
+    setAnnaMode(false)
+    const view = render(
+        <AnnaShell routeId={1}>
+            <TopBarSlot />
+        </AnnaShell>
+    )
+    expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
+    expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+
+    // A detail view has no top bar slot: the strip goes back above everything.
+    view.rerender(<AnnaShell routeId={2} />)
+    expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
+
+    // In assistant mode the strip spans the window above the chat and Alldone.
+    view.rerender(
+        <AnnaShell routeId={1}>
+            <TopBarSlot />
+        </AnnaShell>
+    )
+    expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+    act(() => setAnnaMode(true))
+    expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
+    expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
 })
 
 it('tells the top bar whether Alldone is on screen, so it marks Chats or Updates only then', () => {

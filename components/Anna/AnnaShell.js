@@ -24,7 +24,12 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs, { isActiveVmJob } from './useAnnaVmJobs'
 import AnnaTopStrip from './AnnaTopStrip'
-import AnnaTopStripContext, { ANNA_PHONE_QUERY, AnnaAppShownContext, isAnnaPhoneWindow } from './AnnaTopStripContext'
+import AnnaTopStripContext, {
+    ANNA_PHONE_QUERY,
+    AnnaAppShownContext,
+    AnnaStripSlotContext,
+    isAnnaPhoneWindow,
+} from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaFocusTask from './AnnaFocusTask'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
@@ -380,8 +385,16 @@ export default function AnnaShell({ children, routeId }) {
     // A phone's chat only layout always shows the chat.
     const frontPane = !active ? null : chatOnly && mobile ? 'chat' : singlePane ? mobilePane : null
     const visibleWorkspace = active && frontPane !== 'chat'
-    // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar.
+    // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar. In plain
+    // Alldone, a screen with a top bar slot (RootView's TopBarContainer) shows the strip there, right of
+    // the sidebar, which then runs up to the top; screens without one keep it above everything.
     const showTopStrip = !mobile
+    const stripInApp = !active && showTopStrip
+    const [stripSlotClaims, setStripSlotClaims] = useState(0)
+    const claimStripSlot = useCallback(() => {
+        setStripSlotClaims(claims => claims + 1)
+        return () => setStripSlotClaims(claims => claims - 1)
+    }, [])
     // Below the strip, Alldone is a pane of the window in plain Alldone too, so modals, popovers and
     // inline fixed overlays size and place themselves within it, as they do beside the chat.
     useWorkspaceViewportOwner(
@@ -1375,7 +1388,7 @@ export default function AnnaShell({ children, routeId }) {
                     {header}
                 </>
             )}
-            {showTopStrip && topStrip}
+            {showTopStrip && !(stripInApp && stripSlotClaims > 0) && topStrip}
             <main className="anna-layout" ref={layout}>
                 {oneCard && active && header}
                 <section
@@ -1700,13 +1713,17 @@ export default function AnnaShell({ children, routeId }) {
                     <AnnaSidebarProjectContext.Provider value={projectSelection.projectId}>
                         <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
                             <AnnaTopStripContext.Provider value={showTopStrip}>
-                                <AnnaViewSwitchContext.Provider value={phoneViewSwitch}>
-                                    <AnnaAppShownContext.Provider
-                                        value={!active || (visibleWorkspace && surface === 'alldone')}
-                                    >
-                                        {content}
-                                    </AnnaAppShownContext.Provider>
-                                </AnnaViewSwitchContext.Provider>
+                                <AnnaStripSlotContext.Provider
+                                    value={stripInApp ? { strip: topStrip, claim: claimStripSlot } : null}
+                                >
+                                    <AnnaViewSwitchContext.Provider value={phoneViewSwitch}>
+                                        <AnnaAppShownContext.Provider
+                                            value={!active || (visibleWorkspace && surface === 'alldone')}
+                                        >
+                                            {content}
+                                        </AnnaAppShownContext.Provider>
+                                    </AnnaViewSwitchContext.Provider>
+                                </AnnaStripSlotContext.Provider>
                             </AnnaTopStripContext.Provider>
                         </AnnaWorkspaceNavigationContext.Provider>
                     </AnnaSidebarProjectContext.Provider>
