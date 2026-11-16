@@ -16,9 +16,8 @@ const {
     normalizeModelKey, // For model normalization and backward compatibility
     getOpenTasksContextMessage,
     getOptimizedContextMessages,
-    getMessageTextForTokenCounting,
-    extractImageUrlsFromMessageContent,
 } = require('./assistantHelper')
+const { buildToolUserContext } = require('./toolUserContext')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { resolveUserTimezoneOffset, getUserLocalDayBounds } = require('./contextTimestampHelper')
@@ -480,17 +479,7 @@ async function generatePreConfigTaskResult(
             trackWorkflowProgress: objectType === 'tasks' && allowedTools.includes('compact_thread_context'),
             resumeScheduledWorkflow: options?.resumeScheduledWorkflow === true,
         }
-        const latestUserMessage = contextMessages
-            .slice()
-            .reverse()
-            .find(message => message[0] === 'user')
-        const userContext = latestUserMessage
-            ? {
-                  message: getMessageTextForTokenCounting(latestUserMessage[1]),
-                  content: latestUserMessage[1],
-                  currentMessageImageUrls: extractImageUrlsFromMessageContent(latestUserMessage[1]),
-              }
-            : null
+        const userContext = buildToolUserContext(contextMessages)
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
         const step3Start = Date.now()

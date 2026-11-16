@@ -2,7 +2,13 @@
  * Unit tests for the VM host-task title derivation used when execute_task_in_vm is invoked
  * outside any conversation and a fresh task must be created to host the job.
  */
-const { buildVmJobTaskName, buildVmJobTaskDescription } = require('./vmHostTaskHelper')
+const {
+    buildVmJobTaskName,
+    buildVmJobTaskDescription,
+    shouldPostVmRequestToHostThread,
+    buildVmHostRequestText,
+    buildVmHostRequestCommentId,
+} = require('./vmHostTaskHelper')
 
 describe('buildVmJobTaskName', () => {
     it('uses the objective as the title when short', () => {
@@ -318,5 +324,79 @@ describe('assistantHelper wires VM job collection through the shared helper', ()
         expect(source).toMatch(
             /startsVmJobInCurrentThread\(\s*startedVmJobResults,\s*\{ projectId, objectId \},\s*runtimeContextForTools.vmSettledThreads\s*\)/
         )
+    })
+})
+
+describe('shouldPostVmRequestToHostThread', () => {
+    const task = { projectId: 'product', objectId: 'task-1' }
+
+    it('posts when the run goes into another existing thread', () => {
+        const dailyChat = { projectId: 'privat', objectId: 'anna-daily' }
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: dailyChat })).toBe(true)
+    })
+
+    it('posts when the caller has no thread of its own (a delegate)', () => {
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: {} })).toBe(true)
+        expect(shouldPostVmRequestToHostThread({ host: task })).toBe(true)
+    })
+
+    it('does not post into the thread the user is typing in: their message is already there', () => {
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: { ...task } })).toBe(false)
+    })
+
+    it('treats the same object id in another project as another thread', () => {
+        const sameIdElsewhere = { projectId: 'privat', objectId: 'task-1' }
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: sameIdElsewhere })).toBe(true)
+    })
+
+    it('does not post when the tool created the host task (it starts with the request)', () => {
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: {}, createdHostThread: true })).toBe(false)
+    })
+
+    it('does not post for a workflow step, which posts its own prompt', () => {
+        expect(shouldPostVmRequestToHostThread({ host: task, currentThread: {}, workflowOwnsTask: true })).toBe(false)
+    })
+
+    it('does not post without a host thread', () => {
+        expect(shouldPostVmRequestToHostThread({ host: { projectId: 'product', objectId: '' } })).toBe(false)
+    })
+})
+
+describe('buildVmHostRequestText', () => {
+    it('is the host-task brief plus the assistant that passed it on', () => {
+        expect(
+            buildVmHostRequestText({
+                objective: 'Merge MR !874 and verify the production deploy.',
+                originatingRequestText: 'Please do that now',
+                relayedBy: 'Anna Alldone',
+            })
+        ).toBe(
+            'Merge MR !874 and verify the production deploy.\n\n' +
+                '**Original request:** Please do that now\n\n' +
+                '**Passed on by:** Anna Alldone'
+        )
+    })
+
+    it('leaves out the relay line when the assistant name is unknown', () => {
+        expect(buildVmHostRequestText({ objective: 'Fix it', deliverable: 'An MR', relayedBy: '  ' })).toBe(
+            'Fix it\n\n**Deliverable:** An MR'
+        )
+    })
+
+    it('is empty when there is nothing to post', () => {
+        expect(buildVmHostRequestText({ relayedBy: 'Anna Alldone' })).toBe('')
+        expect(buildVmHostRequestText()).toBe('')
+    })
+})
+
+describe('buildVmHostRequestCommentId', () => {
+    it('keys the request on the message being answered, so a retry rewrites it', () => {
+        expect(buildVmHostRequestCommentId('-P6aRbHicLmwLZ9JSM2-')).toBe('vm-request--P6aRbHicLmwLZ9JSM2-')
+        expect(buildVmHostRequestCommentId('a/b')).toBe('vm-request-a_b')
+    })
+
+    it('leaves the id to postUserRequestComment without a message id', () => {
+        expect(buildVmHostRequestCommentId('')).toBeUndefined()
+        expect(buildVmHostRequestCommentId(undefined)).toBeUndefined()
     })
 })

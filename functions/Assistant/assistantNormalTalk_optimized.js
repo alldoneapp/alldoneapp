@@ -13,7 +13,7 @@ const {
     getMessageTextForTokenCounting,
 } = require('./assistantHelper')
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
-const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
+const { buildToolUserContext } = require('./toolUserContext')
 const { runAutomaticThreadCompaction } = require('./automaticThreadCompaction')
 const { resolveThreadAssistantModel } = require('./threadAssistantModel')
 const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
@@ -228,15 +228,9 @@ async function askToOpenAIBotOptimized(
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
 
-        // Extract user context for tools
-        const userContext = messages?.find(msg => msg[0] === 'user')
-        const userContextForTools = userContext
-            ? {
-                  message: getMessageTextForTokenCounting(userContext[1]),
-                  content: userContext[1],
-                  currentMessageImageUrls: extractImageUrlsFromMessageContent(userContext[1]),
-              }
-            : null
+        // The message being answered is the LATEST user entry; the first one is the oldest in the
+        // window (see toolUserContext.js).
+        const userContextForTools = buildToolUserContext(messages)
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()

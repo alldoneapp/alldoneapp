@@ -127,6 +127,9 @@ const {
     collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
     startsVmJobInCurrentThread,
+    shouldPostVmRequestToHostThread,
+    buildVmHostRequestText,
+    buildVmHostRequestCommentId,
     VM_JOB_TOOL_NAME,
 } = require('./vmHostTaskHelper')
 const {
@@ -11095,16 +11098,19 @@ async function executeToolNativelyImpl(
                     })
                 }
 
-                // When we host the job in a freshly-created task, the originating request (the
-                // user's message text + any attached images) is posted as the task's first chat
-                // entry inside ensureVmJobThread — so buildVmThreadContext's normal
-                // conversation/attachment slices ground the VM agent just like an in-thread job.
-                if (!effectiveObjectId) {
-                    const originatingRequestText = typeof userContext?.message === 'string' ? userContext.message : ''
-                    const originatingImageUrls = normalizeCreateTaskImageUrls(
-                        userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
-                    )
+                // The user's message this run answers (text + attached images). It is posted into
+                // whatever thread hosts the job unless that thread already has it, so the thread
+                // records who asked and buildVmThreadContext grounds the VM agent with it.
+                const originatingRequestText = typeof userContext?.message === 'string' ? userContext.message : ''
+                const originatingImageUrls = normalizeCreateTaskImageUrls(
+                    userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
+                )
+                const createdHostThread = !effectiveObjectId
 
+                // When we host the job in a freshly-created task, the originating request is posted
+                // as the task's first chat entry inside ensureVmJobThread — so buildVmThreadContext's
+                // normal conversation/attachment slices ground the VM agent just like an in-thread job.
+                if (!effectiveObjectId) {
                     const hostThread = await ensureVmJobThread({
                         db: admin.firestore(),
                         objective: toolArgs.objective,
@@ -11146,6 +11152,51 @@ async function executeToolNativelyImpl(
                         taskId: effectiveObjectId,
                     })
                     if (managed) return managed
+                }
+
+                // A run sent into another existing thread (continuing an earlier VM run, or a task
+                // named by target_task_id) brings its request along, authored by the requesting user
+                // like a fresh host task's first entry. It carries no assistantRunRequest, so the
+                // thread's assistant does not answer it as well. Best-effort: the work still runs.
+                if (
+                    shouldPostVmRequestToHostThread({
+                        host: { projectId: effectiveProjectId, objectId: effectiveObjectId },
+                        currentThread: {
+                            projectId: toolRuntimeContext?.projectId || projectId,
+                            objectId: toolRuntimeContext?.objectId,
+                        },
+                        createdHostThread,
+                        workflowOwnsTask: workflowOwnsTask(),
+                    })
+                ) {
+                    try {
+                        const relayingAssistant = await resolveCurrentAssistantDocForToolExecution(
+                            toolRuntimeContext?.projectId || projectId,
+                            assistantId,
+                            requestUserId
+                        ).catch(() => null)
+                        await postUserRequestComment({
+                            projectId: effectiveProjectId,
+                            objectType: effectiveObjectType,
+                            objectId: effectiveObjectId,
+                            creatorId: requestUserId,
+                            text: buildVmHostRequestText({
+                                objective: toolArgs.objective,
+                                deliverable: toolArgs.deliverable,
+                                originatingRequestText,
+                                relayedBy: relayingAssistant?.assistant?.displayName || '',
+                            }),
+                            imageUrls: originatingImageUrls,
+                            commentId: buildVmHostRequestCommentId(toolRuntimeContext?.messageId),
+                        })
+                    } catch (error) {
+                        console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed posting the request to the host thread', {
+                            projectId: effectiveProjectId,
+                            objectType: effectiveObjectType,
+                            objectId: effectiveObjectId,
+                            error: error.message,
+                        })
+                    }
                 }
 
                 // Forward the same thread context the in-chat assistant has (user/project

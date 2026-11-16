@@ -2,6 +2,46 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
+## A VM run sent into another task brings its request along; tools quote the latest message (2026-11-16)
+
+Two bugs showed on the crown-only Premium task (Alldone Product, MR !874). Alldone CTO answered
+twice more in the task chat, once checking a screen size and once merging and deploying, with no
+message there that asked for either. Karsten had asked Anna in the Privat daily chat. Anna sent both
+into the task with `execute_task_in_vm` and `continue_in_object_id`. Only the path that **creates**
+a host task posted the request (`ensureVmJobThread`). Continuing an earlier run or naming a task
+with `target_task_id` put the instruction only in the `vmJobs` payload. The VM also said it could
+not see the screenshot, because the screenshot never reached the thread `buildVmThreadContext`
+reads.
+
+The dispatch now posts the request first when the host thread is not the caller's own conversation
+(`shouldPostVmRequestToHostThread` in `vmHostTaskHelper.js`). It does not post when the tool
+created the task (that path already posts it), when the run is in the thread the user is typing in,
+or when a workflow step owns the task (the step posts its own prompt). The comment is written with
+`postUserRequestComment`, in the requesting user's name, with their images. The text is the brief
+(objective, deliverable, original request) and a `**Passed on by:**` line naming the calling
+assistant. The originating chat is neither named nor linked, because the task can be visible to
+people who cannot see that chat, and chat titles can be private. The comment has no
+`assistantRunRequest`, so the task's assistant does not answer it as well (see the AT-2848 section
+below). Its id is `vm-request-<messageId>`: a dispatch the same answer retries after a failed launch
+rewrites that comment instead of adding a second one. Posting is best-effort; a failure is logged
+and the work still starts. The request is posted before the VM launches, so a launch that fails for
+good leaves the request without an answer. A newly created host task behaves the same way.
+
+The first brief on that task also said `Original request: [Sent at 19:19:46] merge it` while asking
+not to merge. That was a four-hour-old message about another MR. `assistantNormalTalk_optimized.js`
+built `userContext` from `messages.find(role === 'user')`, but `getOptimizedContextMessages` returns
+the conversation oldest first and ends with the triggering message. So it took the oldest user turn
+in the window, plus that turn's images. `userContext` is what tools quote: the VM brief, the request
+`create_task` seeds into a delegated task, `get_chat_attachment`'s file matching and the user words
+`vmRunOverrideGuard` accepts. `toolUserContext.js` (`buildToolUserContext`) now takes the **latest**
+user entry for both the interactive and the pre-configured task path. Its `message` drops the
+mentioned-notes context that `noteContextHelper` appends (the shared
+`MENTIONED_NOTES_CONTEXT_HEADER`): note text is not the user's words, and it must not vouch for a VM
+override. `content` keeps the notes for tool-loop continuations. The email bridge still reads its
+first user entry; an email run has a single prompt. Coverage: `toolUserContext.test.js`,
+`vmJobHostTask.test.js`, and the `the request of a run sent into another existing thread` block of
+`assistantHelper.test.js`.
+
 ## Anna work routed to another project uses that project's assistant (2026-11-16)
 
 AT-3060 was created from Anna's daily conversation in Privat and routed to Alldone Product,

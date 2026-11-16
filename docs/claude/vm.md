@@ -80,7 +80,8 @@ team to bake in Node and avoid cold downloads; this is not required for the star
 - **Caveat**: E2B snapshot persistence is beta ([E2B #884](https://github.com/e2b-dev/E2B/issues/884)). **Validation checklist (run against your E2B account — cannot be unit-tested):** (1) trigger a build (connect a repo, run a VM task or press Rebuild) and confirm `projects/{projectId}.vmGolden.status` flips `building → ready` with a `snapshotId`; (2) run a fresh cold job and confirm the log line `creating sandbox … fromGolden:true` and that `node_modules` is present without an install; (3) change the lockfile and confirm the next cold job enqueues a rebuild while still running; (4) delete the snapshot in the E2B dashboard and confirm a cold job falls back to the managed template and re-enqueues a build.
 
 **VM dispatch and dependent steps (AT-2896):** `execute_task_in_vm` starts asynchronous work;
-`continue_in_object_id` queues a new job on the existing sandbox. `vmDispatchGuard.js` reuses one
+`continue_in_object_id` queues a new job on the existing sandbox. A run sent into another existing
+thread first posts its request there (`assistant-runs.md`, 2026-11-16). `vmDispatchGuard.js` reuses one
 dispatch per host thread and user request, including model-authored retries after completion. The
 state belongs to the invocation, so a later user request can still start a follow-up. `get_vm_job`
 comes with the VM capability and waits at most 30 seconds without starting work; it checks job

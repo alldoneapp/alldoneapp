@@ -8,6 +8,7 @@ const { getNoteDelta } = require('../QuillHelper')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { deltaToMarkdown } = require('./deltaToMarkdown')
 const { buildNoteUrl } = require('./noteLinkHelper')
+const { MENTIONED_NOTES_CONTEXT_HEADER } = require('./toolUserContext')
 
 function resolveNoteContextUrl(projectId, noteId, url = null, baseUrl = getBaseUrl()) {
     return url || buildNoteUrl(projectId, noteId, baseUrl)
@@ -279,7 +280,8 @@ async function fetchMentionedNotesContext(commentText, userId, fallbackProjectId
     // Format each note with URL first, then title + content
     const formattedNotes = accessibleNotes.map(note => `${note.url}\n${note.content}`).join('\n\n')
 
-    return `\n\nHere are the mentioned notes in full - no need to use a tool to get the menioned notes:\n${formattedNotes}`
+    // toolUserContext strips everything from this header on, so the notes never pass for the user's words.
+    return `\n\n${MENTIONED_NOTES_CONTEXT_HEADER}\n${formattedNotes}`
 }
 
 module.exports = {

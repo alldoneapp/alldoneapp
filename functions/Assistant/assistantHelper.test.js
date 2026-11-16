@@ -9353,6 +9353,127 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
+    describe('the request of a run sent into another existing thread (2026-11-16)', () => {
+        const SCREENSHOT = 'https://firebasestorage.googleapis.com/v0/b/x/o/premium.png'
+        const latestRequest = {
+            message: '[Sent at 2026-11-16 23:10:22 UTC+1] i still see premium [Image]',
+            content: [
+                { type: 'text', text: '[Sent at 2026-11-16 23:10:22 UTC+1] i still see premium' },
+                { type: 'image_url', image_url: { url: SCREENSHOT } },
+            ],
+            currentMessageImageUrls: [SCREENSHOT],
+        }
+        const dailyChat = () => ({
+            projectId: 'origin-project',
+            objectType: 'topics',
+            objectId: 'daily-chat',
+            messageId: 'msg-1',
+        })
+        const requestComments = () =>
+            mockDocSet.mock.calls
+                .map(([data], index) => ({ path: mockDocSet.mock.contexts[index]?.path || '', data }))
+                .filter(({ path }) => path.startsWith('chatComments/'))
+        const continueTask = (runtime, userContext = latestRequest) =>
+            executeToolNatively(
+                'execute_task_in_vm',
+                {
+                    objective: 'Check which header variant still shows "Premium".',
+                    task_type: 'prototype',
+                    continue_in_object_id: 'task-1',
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                userContext,
+                runtime
+            )
+
+        beforeEach(() => {
+            resolveContinuationSpy.mockResolvedValue({ ok: true, objectType: 'tasks', objectId: 'task-1' })
+        })
+
+        // clearAllMocks keeps implementations; later tests expect writes to succeed.
+        afterEach(() => mockDocSet.mockImplementation(async () => {}))
+
+        test('posts it into the task, in the user’s name, before the VM starts', async () => {
+            mockDocGet.mockImplementation(async function () {
+                return this?.path === 'assistants/origin-project/items/assistant-1'
+                    ? { exists: true, data: () => ({ displayName: 'Anna Alldone' }) }
+                    : { exists: false, data: () => ({}) }
+            })
+            let requestsWhenVmStarted = null
+            startVmJobSpy.mockImplementation(async () => {
+                requestsWhenVmStarted = requestComments().length
+                return { success: true, correlationId: 'vm-2', hostProjectId: 'project-1', hostObjectId: 'task-1' }
+            })
+
+            await continueTask(dailyChat())
+
+            const requests = requestComments()
+            expect(requests).toHaveLength(1)
+            expect(requestsWhenVmStarted).toBe(1)
+            const [{ path, data }] = requests
+            expect(path).toBe('chatComments/project-1/tasks/task-1/comments/vm-request-msg-1')
+            expect(data).toMatchObject({ creatorId: 'user-1', fromAssistant: false })
+            // A server-written turn: the task's own assistant must not answer it as well.
+            expect(data.assistantRunRequest).toBeUndefined()
+            expect(data.commentText).toContain('Check which header variant still shows "Premium".')
+            expect(data.commentText).toContain(
+                '**Original request:** [Sent at 2026-11-16 23:10:22 UTC+1] i still see premium [Image]'
+            )
+            expect(data.commentText).toContain('**Passed on by:** Anna Alldone')
+            expect(data.mediaContext).toEqual([expect.objectContaining({ storageUrl: SCREENSHOT })])
+        })
+
+        test('does not repeat the user’s message in the thread they are typing in', async () => {
+            await continueTask({ projectId: 'project-1', objectType: 'tasks', objectId: 'task-1', messageId: 'msg-1' })
+
+            expect(startVmJobSpy).toHaveBeenCalled()
+            expect(requestComments()).toHaveLength(0)
+        })
+
+        test('rewrites the one request when the same answer retries a failed dispatch', async () => {
+            startVmJobSpy
+                .mockResolvedValueOnce({ success: false, message: 'agent must be one of: claude, codex.' })
+                .mockResolvedValueOnce({ success: true, correlationId: 'vm-3', hostObjectId: 'task-1' })
+            const runtime = dailyChat()
+
+            await continueTask(runtime)
+            await continueTask(runtime)
+
+            expect(startVmJobSpy).toHaveBeenCalledTimes(2)
+            expect(new Set(requestComments().map(({ path }) => path))).toEqual(
+                new Set(['chatComments/project-1/tasks/task-1/comments/vm-request-msg-1'])
+            )
+        })
+
+        test('leaves a workflow step’s own prompt alone', async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Run the review step', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                latestRequest,
+                { onVmJobStarted: jest.fn(), workflowTaskId: 'task-1', workflowTaskProjectId: 'project-1' }
+            )
+
+            expect(startVmJobSpy).toHaveBeenCalled()
+            expect(requestComments()).toHaveLength(0)
+        })
+
+        test('still starts the work when posting the request fails', async () => {
+            mockDocSet.mockImplementation(async function () {
+                if (this?.path?.startsWith('chatComments/')) throw new Error('Firestore unavailable')
+            })
+
+            const result = await continueTask(dailyChat())
+
+            expect(result).toMatchObject({ success: true })
+            expect(startVmJobSpy).toHaveBeenCalled()
+        })
+    })
+
     test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
         const onVmJobStarted = jest.fn()
         startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })

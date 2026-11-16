@@ -132,6 +132,45 @@ function isVmJobHostedInThread(job, currentThread) {
 }
 
 /**
+ * Whether execute_task_in_vm must post the request into the thread that hosts the run.
+ *
+ * A run hosted in a task the tool just created already starts with the request (ensureVmJobThread),
+ * and a run in the conversation the user is typing in already has their message. A run the caller
+ * sends into ANOTHER existing thread (continue_in_object_id, target_task_id, typically from Anna's
+ * daily chat into a delegated task) had nothing: the task chat showed the assistant's answers with
+ * no message that asked for them, and the VM could not see a screenshot sent with the request
+ * (2026-11-16, the crown-only Premium badge task). A workflow step posts its own prompt.
+ */
+function shouldPostVmRequestToHostThread({ host, currentThread, createdHostThread = false, workflowOwnsTask = false }) {
+    if (createdHostThread || workflowOwnsTask) return false
+    if (!host?.objectId) return false
+    return !isVmJobHostedInThread(host, currentThread)
+}
+
+/**
+ * The request comment for a run sent into an existing thread: the same brief as a fresh host task,
+ * plus the assistant that passed it on, so the thread says who asked for the work and through whom.
+ * The originating chat itself is not named or linked: the host task can be visible to people who
+ * cannot see that chat, and its title can be private.
+ */
+function buildVmHostRequestText({ objective, deliverable, originatingRequestText, relayedBy } = {}) {
+    const brief = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
+    if (!brief) return ''
+    const via = typeof relayedBy === 'string' ? relayedBy.trim() : ''
+    return via ? `${brief}\n\n**Passed on by:** ${via}` : brief
+}
+
+/**
+ * Comment id for that request. Keyed on the message the caller is answering, so a retried dispatch
+ * in the same answer (corrected arguments after a failed launch, a replayed run) rewrites the one
+ * request instead of posting it again. Without a message id every call gets a fresh comment.
+ */
+function buildVmHostRequestCommentId(messageId) {
+    const id = typeof messageId === 'string' ? messageId.trim().replace(/\//g, '_') : ''
+    return id ? `vm-request-${id}` : undefined
+}
+
+/**
  * Guarantee the user gets a way into the thread where a VM job is actually running.
  *
  * The assistant is asked to include the link (the tool result says so), but a dispatched job the
@@ -191,6 +230,9 @@ module.exports = {
     collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
     startsVmJobInCurrentThread,
+    shouldPostVmRequestToHostThread,
+    buildVmHostRequestText,
+    buildVmHostRequestCommentId,
     VM_JOB_TOOL_NAME,
     VM_JOB_TASK_NAME_MAX,
     VM_SESSION_OBJECTIVE_MAX,
