@@ -447,7 +447,9 @@ microtask between React's capture and bubble listeners, so the menu, search, cha
 never get the click; jsdom runs no microtask there, so only a browser shows this)
 and which plain Alldone shows anyway; in place of its Home button it carries `AnnaViewSwitch` with icons
 only (the assistant's photo, App's check circle with the count), handed down through
-`AnnaViewSwitchContext`. On a narrow phone `getCenterLeft` moves the switch left until it clears
+`AnnaViewSwitchContext`; `TopBarContainer` takes this phone bar whenever that context is there, also
+between 612 and 760px where a collapsed sidebar still keeps Alldone's desktop navigation (no desktop
+TopBar with XP bar and Home there). On a narrow phone `getCenterLeft` moves the switch left until it clears
 search, chats and updates, and Gold shrinks. The second line is the chat header, the same three cells
 as on desktop (assistant with name, focus task, a native select at the far right with Chat,
 Browser, VMs and apps and a downward chevron); no close control and no Home button any more. While

@@ -6,6 +6,7 @@ import TopBar from './TopBar'
 import TopBarMobile from './TopBarMobile/TopBarMobile'
 import { getDesktopTopBarMargins, getTopBarLayout } from './topBarLayout'
 import AnnaTopStripContext, { AnnaStripSlotContext } from '../Anna/AnnaTopStripContext'
+import { AnnaViewSwitchContext } from '../Anna/AnnaViewSwitch'
 import { selectSidebarExpanded } from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
 export default function TopBarContainer({ containerStyle }) {
@@ -23,6 +24,7 @@ export default function TopBarContainer({ containerStyle }) {
     // In its slot the strip is a card as wide as the content below, like TopBar: the same margins,
     // clear of a collapsed sidebar too (the shown state, not the stored preference).
     const shownSidebarExpanded = useSelector(selectSidebarExpanded)
+    const viewSwitch = useContext(AnnaViewSwitchContext)
     if (inAnnaStrip) {
         if (!stripSlot) return null
         return (
@@ -38,9 +40,13 @@ export default function TopBarContainer({ containerStyle }) {
         )
     }
 
+    // Inside AnnaShell in its phone layout (a window up to 760px) Alldone always takes its phone bar,
+    // which carries the Anna | App switch and leaves the XP bar to its second row, even where its
+    // own navigation is still the desktop one (a collapsed sidebar keeps it down to 612px).
+    const phoneLayout = !!viewSwitch
     return (
         <View style={containerStyle} onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}>
-            {layout.compact ? (
+            {layout.compact || phoneLayout ? (
                 <View style={[layout.margins, !smallScreenNavigation && localStyles.tabletHeader]}>
                     <TopBarMobile compact={layout.compactStatistics} showMenu={smallScreenNavigation} />
                 </View>

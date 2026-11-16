@@ -2,6 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 import AnnaTopStripContext, { AnnaStripSlotContext } from '../Anna/AnnaTopStripContext'
+import { AnnaViewSwitchContext } from '../Anna/AnnaViewSwitch'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
@@ -67,5 +68,25 @@ describe('TopBarContainer and the assistant strip', () => {
         const collapsed = render({ smallScreenNavigation: false, loggedUser: { sidebarExpanded: false } }, true, slot)
         // Plus the collapsed sidebar's 56px, which floats over the content.
         expect(parseFloat(flatStyle(collapsed.root.findByType('strip-element').parent).marginLeft)).toBe(160)
+    })
+
+    // AnnaShell's phone layout (up to 760px) hands down the Anna | App switch; Alldone then takes its
+    // phone bar even where its navigation is still the desktop one, so no XP bar crowds the row.
+    it('takes the phone bar in AnnaShell’s phone layout, also with desktop navigation', () => {
+        useSelector.mockImplementation(selector =>
+            selector({ loggedUser: { sidebarExpanded: false }, isMiddleScreen: false, smallScreenNavigation: false })
+        )
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <AnnaTopStripContext.Provider value={false}>
+                    <AnnaViewSwitchContext.Provider value={{ layout: 'alldone', onSelect: () => {} }}>
+                        <TopBarContainer />
+                    </AnnaViewSwitchContext.Provider>
+                </AnnaTopStripContext.Provider>
+            )
+        })
+        expect(tree.root.findAllByType('TopBar')).toHaveLength(0)
+        expect(tree.root.findByType('TopBarMobile').props.showMenu).toBe(false)
     })
 })
