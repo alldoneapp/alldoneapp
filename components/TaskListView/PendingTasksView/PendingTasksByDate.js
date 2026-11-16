@@ -7,6 +7,7 @@ import DateHeader from '../Header/DateHeader'
 import SendToSection from './SentToSection'
 import TasksHelper from '../Utils/TasksHelper'
 import { taskMatchHashtagFilters } from '../../HashtagFilters/FilterHelpers/FilterTasks'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 
 export default function PendingTasksByDate({
     tasksByStep,
@@ -28,7 +29,10 @@ export default function PendingTasksByDate({
     const getStepData = (tasks, stepId) => {
         const assigneeId = tasks[0].userId
         const assignee = TasksHelper.getTaskOwner(assigneeId, projectId)
-        return { currentStep: assignee?.workflow?.[projectId]?.[stepId], assignee }
+        return {
+            currentStep: getDelegatedTaskWorkflow(assignee?.workflow?.[projectId] || {}, tasks[0])[stepId],
+            assignee,
+        }
     }
 
     return (

@@ -58,6 +58,7 @@ export default function OriginallyFromSection({
             <WorkflowHeader
                 projectId={projectId}
                 assignee={owner}
+                task={taskByGoalsList[0][1][0]}
                 reviewer={currentUser}
                 currentStepId={currentStepId}
                 workflowDirectionText={translate('from')}

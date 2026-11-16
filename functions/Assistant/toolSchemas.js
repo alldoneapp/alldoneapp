@@ -108,7 +108,7 @@ const toolSchemas = {
                     trackAssistantWork: {
                         type: 'boolean',
                         description:
-                            "Only in the Anna workspace: true to track substantial work explicitly delegated to the assistant. Assigns work routed to another project to that project's own assistant when available; otherwise keeps the current assistant. The response identifies responsibleAssistant. Keep progress in the existing task comments and delegate further work to the responsible assistant. Leave false for tasks the user will do and for quick questions or small edits.",
+                            "True to track substantial work explicitly delegated to the assistant. The requesting user owns the task; the responsible project assistant executes its step in the user's saved workflow, with human review before completion. Follow the returned delegation status and handoffInstruction: workflow_managed starts work through the workflow, so do not separately delegate or launch a VM; needs_workflow_choice requires offering workflow configuration or explicit direct execution. Use executionMode direct only when the user explicitly requests independent assistant ownership or bypassing the workflow. Leave false for tasks the user will do and for quick questions or small edits.",
                     },
                     parentGoalProjectId: {
                         type: 'string',

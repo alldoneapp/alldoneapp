@@ -11,6 +11,9 @@ const { clearUserTaskInFocusIfMatch } = require('../Users/usersFirestore')
 
 const deleteSubtasks = async (projectId, subtaskIds) => {
     const promises = []
+    if (task.taskMetadata?.delegation) {
+        promises.push(admin.firestore().doc(`delegatedTaskOrigins/${projectId}__${taskId}`).delete())
+    }
     subtaskIds.forEach(taskId => {
         promises.push(deleteTask(projectId, taskId, admin))
     })

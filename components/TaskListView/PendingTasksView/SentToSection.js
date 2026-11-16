@@ -19,6 +19,7 @@ export default function SendToSection({ taskList, subtaskByTask, projectId, curr
                 projectId={projectId}
                 currentStepId={currentStepId}
                 workflowDirectionText={translate('sent to')}
+                task={taskList[0]}
             />
             {taskList.map(task => {
                 const subtaskList = subtaskByTask[task.id] ? subtaskByTask[task.id] : []

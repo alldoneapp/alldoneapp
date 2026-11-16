@@ -21,6 +21,16 @@ describe('getWorkflowStepReviewerPhotoURL', () => {
         expect(getUserPresentationData).toHaveBeenCalledWith('assistant-1')
     })
 
+    it('shows the human owner for the task-specific final review step', () => {
+        const task = {
+            userId: 'owner',
+            executionMode: 'workflow',
+            taskMetadata: { delegation: { ownerId: 'owner', requiresReview: true } },
+        }
+        getWorkflowStepReviewerPhotoURL(owner('assistant-1'), PROJECT_ID, '~delegation-review', task)
+        expect(getUserPresentationData).toHaveBeenCalledWith('owner')
+    })
+
     it('returns no photo instead of throwing when the step cannot be resolved', () => {
         const cases = [
             [undefined, 'no task owner'],

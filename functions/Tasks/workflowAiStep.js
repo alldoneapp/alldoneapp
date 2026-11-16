@@ -14,6 +14,7 @@ const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('..
 const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/vmThreadQueue')
 const { TASK_EXECUTION_MODE_DIRECT } = require('../shared/taskExecutionMode')
 const { Timestamp } = require('firebase-admin/firestore')
+const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared/delegatedTaskWorkflow')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
@@ -107,13 +108,17 @@ const getWorkflowOwnerRef = (projectId, ownerType, ownerId) =>
         ? admin.firestore().doc(`assistants/${projectId}/items/${ownerId}`)
         : admin.firestore().doc(`users/${ownerId}`)
 
-const loadRunWorkflow = async run => {
+const loadRunWorkflow = async (run, task) => {
     if (run.bypassWorkflow) return buildDirectFallbackWorkflow(run)
 
     const workflowOwnerType = run.workflowOwnerType || 'user'
     const workflowOwnerId = run.workflowOwnerId || run.assigneeUserId
     const owner = await getWorkflowOwnerRef(run.projectId, workflowOwnerType, workflowOwnerId).get()
-    return getWorkflow(owner.exists ? owner.data() : null, run.projectId)
+    if (!task) {
+        const snapshot = await admin.firestore().doc(`items/${run.projectId}/tasks/${run.taskId}`).get()
+        task = snapshot.exists ? snapshot.data() : null
+    }
+    return withDelegationReviewStep(getWorkflow(owner.exists ? owner.data() : null, run.projectId), task)
 }
 
 const buildRunId = (projectId, taskId, stepId, enteredAt) => `${projectId}__${taskId}__${stepId}__${enteredAt}`
@@ -240,7 +245,7 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     const workflowOwner = await getWorkflowOwnerRef(projectId, workflowOwnerType, workflowOwnerId).get()
     if (!workflowOwner.exists) return null
 
-    const step = getWorkflow(workflowOwner.data(), projectId)[stepId]
+    const step = withDelegationReviewStep(getWorkflow(workflowOwner.data(), projectId), newTask)[stepId]
 
     const { payerUserId, promptOverride } = resolveWorkflowRunIdentity({
         workflowOwnerType,
@@ -280,6 +285,10 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     // The dispatcher keeps its own checks for work that starts during the gap and is still running.
     const now = Date.now()
     const liveWork = await findLiveTaskAiWork(projectId, taskId, now)
+    // Conversation/status replies cannot perform a managed delegation's workflow step. Keep its
+    // prompt queued until the conversation settles; only actual VM work may replace the prompt.
+    const awaitExistingWork =
+        liveWork.isLive && (!isDelegatedWorkflowTask(newTask) || liveWork.vmCorrelationIds.length > 0)
 
     try {
         await admin
@@ -301,7 +310,7 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                           triggerMessageId: promptOverride.triggerMessageId || null,
                       }
                     : {}),
-                ...(liveWork.isLive
+                ...(awaitExistingWork
                     ? buildAwaitingExecutionFields({
                           assistantRunIds: liveWork.assistantRunIds,
                           vmCorrelationIds: liveWork.vmCorrelationIds,
@@ -311,9 +320,9 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                     : { status: RUN_STATUS_PENDING }),
                 createdAt: now,
             })
-        const status = liveWork.isLive ? RUN_STATUS_AWAITING_VM : RUN_STATUS_PENDING
+        const status = awaitExistingWork ? RUN_STATUS_AWAITING_VM : RUN_STATUS_PENDING
         await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, status)
-        if (liveWork.isLive) {
+        if (awaitExistingWork) {
             console.log('[workflowAiStep] Task already has live AI work, holding the step prompt', {
                 runId,
                 taskId,
@@ -510,6 +519,11 @@ const resolveAiStepPrompt = async (projectId, step, promptOverride = null) => {
     return buildAiStepPrompt(step)
 }
 
+const deferDelegatedWorkflowForConversation = async (runRef, runId, run) => {
+    await runRef.set({ status: RUN_STATUS_PENDING, leaseOwner: null, leaseExpiresAt: 0 }, { merge: true })
+    await setTaskWorkflowAiStatus(run.projectId, run.taskId, runId, run.stepId, RUN_STATUS_PENDING)
+}
+
 /**
  * Runs one queued AI step: executes the assistant against the task in its own chat, then moves the
  * task on.
@@ -553,7 +567,7 @@ const runWorkflowAiStep = async (runId, run) => {
     }
 
     const [workflow, payer] = await Promise.all([
-        loadRunWorkflow(run),
+        loadRunWorkflow(run, task),
         admin.firestore().doc(`users/${payerUserId}`).get(),
     ])
     const step = workflow[stepId]
@@ -581,6 +595,11 @@ const runWorkflowAiStep = async (runId, run) => {
             return
         }
 
+        if (isDelegatedWorkflowTask(task)) {
+            await deferDelegatedWorkflowForConversation(runRef, runId, run)
+            return
+        }
+
         // The chat run owns this AI step even before execute_task_in_vm has created a VM record.
         // Park on the assistant execution first; if it dispatches a VM, the resolver seamlessly
         // switches to waiting on that job after the chat run itself settles.
@@ -602,6 +621,10 @@ const runWorkflowAiStep = async (runId, run) => {
         // instances during a rolling deployment.
         const existingAssistantRunIds = await findActiveAssistantRuns(projectId, taskId)
         if (existingAssistantRunIds.length > 0) {
+            if (isDelegatedWorkflowTask(task)) {
+                await deferDelegatedWorkflowForConversation(runRef, runId, run)
+                return
+            }
             await parkWorkflowAiRunForExecution(
                 runRef,
                 runId,
@@ -659,6 +682,8 @@ const runWorkflowAiStep = async (runId, run) => {
                             : await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt)
 
                     const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
+                    const { loadDelegatedTaskOrigin } = require('../Assistant/annaTaskDelegation')
+                    const origin = await loadDelegatedTaskOrigin(admin.firestore(), projectId, task)
                     await generatePreConfigTaskResult(
                         // The workflow task records the project member who created it and pays the Gold.
                         payerUserId,
@@ -687,6 +712,7 @@ const runWorkflowAiStep = async (runId, run) => {
                             // spend the Gold. Send every schema instead of deferring them behind
                             // hosted tool search.
                             disableToolSearch: true,
+                            ...origin,
                             onVmJobStarted: async job => {
                                 // A tool can explicitly target another task/project. Its work
                                 // must not complete this task's workflow step.

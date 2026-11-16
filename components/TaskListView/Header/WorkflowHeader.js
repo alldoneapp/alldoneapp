@@ -20,6 +20,7 @@ import FillLine from './FillLine'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import URLsTasks, { URL_PROJECT_USER_TASKS_OPEN } from '../../../URLSystem/Tasks/URLsTasks'
 import NavigationService from '../../../utils/NavigationService'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 
 export default function WorkflowHeader({
     projectId,
@@ -28,11 +29,12 @@ export default function WorkflowHeader({
     reviewer,
     containerStyle,
     workflowDirectionText,
+    task,
 }) {
     const dispatch = useDispatch()
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
 
-    const projectWorkflow = assignee.workflow[projectId]
+    const projectWorkflow = getDelegatedTaskWorkflow(assignee.workflow?.[projectId] || {}, task)
     const currentStep = projectWorkflow[currentStepId]
 
     // A step reviewer can be an assistant, which has no task board to navigate to.
@@ -65,7 +67,12 @@ export default function WorkflowHeader({
         <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.centeredRow}>
                 <Avatar reviewerPhotoURL={assignee.photoURL} />
-                <WorkflowStepsAvatars projectId={projectId} currentStepId={currentStepId} assignee={assignee} />
+                <WorkflowStepsAvatars
+                    projectId={projectId}
+                    currentStepId={currentStepId}
+                    assignee={assignee}
+                    task={task}
+                />
                 <Line width={4} />
                 <Icon style={{ marginLeft: -2 }} name="square-checked-gray" color={colors.Text03} size={20} />
                 <TouchableOpacity

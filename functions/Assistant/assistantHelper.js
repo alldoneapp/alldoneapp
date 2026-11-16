@@ -28,6 +28,11 @@ const { encodeOrdinaryText, sanitizeAssistantResponseText } = require('./assista
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 const { getAccessibleProjectIdsFromUserData, getDelegationScopeProjectIdsFromUserData } = require('./projectScope')
 const { isProjectMemberData, filterMemberProjectIds } = require('../shared/privacyAccess')
+const {
+    buildDelegatedTaskFields,
+    startDelegatedTaskWorkflow,
+    getDelegatedTaskExecution,
+} = require('./annaTaskDelegation')
 
 async function isUserProjectMember(db, userId, projectId) {
     const projectDoc = await db
@@ -4894,6 +4899,14 @@ async function executeDelegatedAssistantRequest({
             : null
     const delegatedToolRuntimeContext = {
         automaticCommentReply: callerToolRuntimeContext?.automaticCommentReply === true,
+        ...(callerToolRuntimeContext?.onVmJobStarted
+            ? {
+                  onVmJobStarted: callerToolRuntimeContext.onVmJobStarted,
+                  workflowTaskProjectId:
+                      callerToolRuntimeContext.workflowTaskProjectId || callerToolRuntimeContext.projectId,
+                  workflowTaskId: callerToolRuntimeContext.workflowTaskId || callerToolRuntimeContext.objectId,
+              }
+            : {}),
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
@@ -5257,6 +5270,7 @@ async function ensureVmJobThread({
     originatingRequestText = '',
     originatingImageUrls = [],
     trackAssistantWork = false,
+    originConversation,
     projectId,
     assistantId,
     creatorId,
@@ -5304,16 +5318,8 @@ async function ensureVmJobThread({
         {
             name: buildVmJobTaskName(objective),
             description: '',
-            userId: trackAssistantWork ? workAssistantId : creatorId,
-            ...(trackAssistantWork
-                ? {
-                      assigneeType: 'assistant',
-                      assistantId: workAssistantId,
-                      creatorId,
-                      executionMode: 'direct',
-                      taskMetadata: { annaWorkspace: { ownerId: creatorId, assistantId: workAssistantId } },
-                  }
-                : {}),
+            userId: creatorId,
+            ...(trackAssistantWork ? { ...buildDelegatedTaskFields(creatorId, workAssistantId), creatorId } : {}),
             projectId: targetProjectId,
             isPrivate: false,
             feedUser,
@@ -5370,6 +5376,7 @@ async function ensureVmJobThread({
             imageUrls: originatingImageUrls,
         })
     } catch (error) {
+        if (trackAssistantWork) throw error
         console.warn('🖥️ VM JOB: Failed posting request comment to host task', {
             projectId: targetProjectId,
             taskId: resolvedTaskId,
@@ -5377,7 +5384,23 @@ async function ensureVmJobThread({
         })
     }
 
-    return { projectId: targetProjectId, objectType: 'tasks', objectId: resolvedTaskId, responsibleAssistant }
+    const delegation = trackAssistantWork
+        ? await startDelegatedTaskWorkflow({
+              db,
+              projectId: targetProjectId,
+              taskId: resolvedTaskId,
+              ownerId: creatorId,
+              assistantId: workAssistantId,
+              originConversation,
+          })
+        : null
+    return {
+        projectId: targetProjectId,
+        objectType: 'tasks',
+        objectId: resolvedTaskId,
+        responsibleAssistant,
+        delegation,
+    }
 }
 
 /**
@@ -6018,9 +6041,7 @@ async function executeToolNativelyImpl(
                 const replyMessageData = buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
                 const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
                 const trackAssistantWork =
-                    toolRuntimeContext?.annaConversation === true &&
-                    toolArgs.trackAssistantWork === true &&
-                    !isAssistantSuggestion
+                    !!assistantId && toolArgs.trackAssistantWork === true && !isAssistantSuggestion
                 const responsibleAssistant = trackAssistantWork
                     ? await resolveAnnaTaskAssistant({
                           db,
@@ -6044,9 +6065,9 @@ async function executeToolNativelyImpl(
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
-                        executionMode: trackAssistantWork ? 'direct' : toolArgs.executionMode,
-                        userId: trackAssistantWork ? workAssistantId : creatorId,
-                        assigneeType: trackAssistantWork ? 'assistant' : 'USER',
+                        executionMode: toolArgs.executionMode,
+                        userId: creatorId,
+                        assigneeType: 'USER',
                         projectId: targetProjectId,
                         isPrivate: !!replyMessageData,
                         ...parentGoalFields,
@@ -6057,10 +6078,11 @@ async function executeToolNativelyImpl(
                         // assistant (MCP) the requesting user stays the creator.
                         creatorId: isAssistantSuggestion && assistantId ? assistantId : creatorId,
                         suggestedBy: null,
-                        assistantId: trackAssistantWork ? workAssistantId : '',
-                        taskMetadata: trackAssistantWork
-                            ? { annaWorkspace: { ownerId: creatorId, assistantId: workAssistantId } }
-                            : null,
+                        assistantId: '',
+                        taskMetadata: null,
+                        ...(trackAssistantWork
+                            ? buildDelegatedTaskFields(creatorId, workAssistantId, toolArgs.executionMode)
+                            : {}),
                     },
                     {
                         userId: creatorId,
@@ -6229,7 +6251,8 @@ async function executeToolNativelyImpl(
                         assistantId,
                         comment: creationComment,
                         requestUserId: creatorId,
-                        suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
+                        suppressAssistantReply:
+                            trackAssistantWork || toolRuntimeContext?.automaticCommentReply === true,
                     })
                     if (!taskCommentResult) {
                         throw new Error('Task was created, but its assistant comment could not be added')
@@ -6246,28 +6269,62 @@ async function executeToolNativelyImpl(
                     })
                 }
 
+                let delegation = null
+                if (trackAssistantWork && toolArgs.executionMode !== 'direct') {
+                    const { ensureChatExists } = require('./assistantStatusHelper')
+                    await ensureChatExists(
+                        resolvedProjectId,
+                        'tasks',
+                        resolvedTaskId,
+                        workAssistantId,
+                        [creatorId],
+                        result.task?.isPublicFor || [FEED_PUBLIC_FOR_ALL, creatorId]
+                    )
+                    await postUserRequestComment({
+                        projectId: resolvedProjectId,
+                        objectType: 'tasks',
+                        objectId: resolvedTaskId,
+                        creatorId,
+                        text: userContext?.message || toolArgs.description || toolArgs.name,
+                        imageUrls: toolArgs.images,
+                    })
+                    delegation = await startDelegatedTaskWorkflow({
+                        db,
+                        projectId: resolvedProjectId,
+                        taskId: resolvedTaskId,
+                        ownerId: creatorId,
+                        assistantId: workAssistantId,
+                        originConversation: { ...toolRuntimeContext, projectId, assistantId },
+                    })
+                }
+
                 return {
                     success: true,
                     taskId: resolvedTaskId,
                     projectId: resolvedProjectId,
                     projectName: targetProjectName,
                     message: result.message,
-                    task: result.task,
+                    task: delegation?.task || result.task,
                     taskOrigin,
                     suggested: false,
                     commentId: taskCommentResult?.commentId || null,
                     ...(responsibleAssistant
                         ? {
                               responsibleAssistant,
-                              ...(workAssistantId !== assistantId
+                              ...(delegation
                                   ? {
-                                        handoffInstruction:
-                                            'This task is assigned to the destination project assistant. ' +
-                                            'Delegate further work to that assistant using this existing task; ' +
-                                            'do not create another task. execute_task_in_vm with target_task_id ' +
-                                            'uses the responsible assistant and its instructions.',
+                                        delegation: { status: delegation.status },
+                                        handoffInstruction: delegation.handoffInstruction,
                                     }
-                                  : {}),
+                                  : workAssistantId !== assistantId
+                                    ? {
+                                          handoffInstruction:
+                                              'This direct task is assigned to the destination project assistant. ' +
+                                              'Delegate further work to that assistant using this existing task; ' +
+                                              'do not create another task. execute_task_in_vm with target_task_id ' +
+                                              'uses the responsible assistant and its instructions.',
+                                      }
+                                    : {}),
                           }
                         : {}),
                     projectSelection: {
@@ -10885,6 +10942,10 @@ async function executeToolNativelyImpl(
                 let effectiveObjectId = toolRuntimeContext?.annaConversation ? '' : toolRuntimeContext?.objectId || ''
                 let responsibleAssistant = { projectId, assistantId }
                 let responsibleAssistantData = null
+                const workflowOwnsTask = () =>
+                    !!toolRuntimeContext?.onVmJobStarted &&
+                    (toolRuntimeContext.workflowTaskId || toolRuntimeContext.objectId) === effectiveObjectId &&
+                    (toolRuntimeContext.workflowTaskProjectId || toolRuntimeContext.projectId) === effectiveProjectId
 
                 const resolveWorkAssistant = async (selectedAssistant, assignedAssistantId) => {
                     if (!toolRuntimeContext?.annaConversation) return
@@ -10985,6 +11046,14 @@ async function executeToolNativelyImpl(
                     effectiveProjectId = target.projectId
                     effectiveObjectType = target.objectType
                     effectiveObjectId = target.objectId
+                    if (!workflowOwnsTask()) {
+                        const managed = await getDelegatedTaskExecution({
+                            db: admin.firestore(),
+                            projectId: effectiveProjectId,
+                            taskId: effectiveObjectId,
+                        })
+                        if (managed) return managed
+                    }
                     await resolveWorkAssistant(null, target.assignedAssistantId)
 
                     // Existing tasks do not necessarily have a chat yet. Create it with the task's
@@ -11022,7 +11091,8 @@ async function executeToolNativelyImpl(
                         deliverable: toolArgs.deliverable,
                         originatingRequestText,
                         originatingImageUrls,
-                        trackAssistantWork: toolRuntimeContext?.annaConversation === true,
+                        trackAssistantWork: !!assistantId,
+                        originConversation: { ...toolRuntimeContext, projectId, assistantId },
                         projectId,
                         assistantId,
                         creatorId,
@@ -11030,6 +11100,16 @@ async function executeToolNativelyImpl(
                     effectiveProjectId = hostThread.projectId
                     effectiveObjectType = hostThread.objectType
                     effectiveObjectId = hostThread.objectId
+                    if (hostThread.delegation) {
+                        return {
+                            success: true,
+                            projectId: effectiveProjectId,
+                            taskId: effectiveObjectId,
+                            status: hostThread.delegation.status,
+                            message: hostThread.delegation.handoffInstruction,
+                            responsibleAssistant: hostThread.responsibleAssistant,
+                        }
+                    }
                     await resolveWorkAssistant(hostThread.responsibleAssistant)
                     console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Created host task for contextless VM job', {
                         projectId: effectiveProjectId,
@@ -11037,6 +11117,15 @@ async function executeToolNativelyImpl(
                         hasOriginatingText: !!originatingRequestText,
                         originatingImageCount: originatingImageUrls.length,
                     })
+                }
+
+                if (effectiveObjectType === 'tasks' && !requestedTargetTaskId && !workflowOwnsTask()) {
+                    const managed = await getDelegatedTaskExecution({
+                        db: admin.firestore(),
+                        projectId: effectiveProjectId,
+                        taskId: effectiveObjectId,
+                    })
+                    if (managed) return managed
                 }
 
                 // Forward the same thread context the in-chat assistant has (user/project
@@ -11059,8 +11148,14 @@ async function executeToolNativelyImpl(
                     return ''
                 })
 
-                if (toolRuntimeContext?.annaConversation && effectiveObjectType === 'tasks') {
-                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished. For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
+                if (
+                    (toolRuntimeContext?.annaConversation || toolRuntimeContext?.onVmJobStarted) &&
+                    effectiveObjectType === 'tasks'
+                ) {
+                    const completionInstruction = workflowOwnsTask()
+                        ? 'Its workflow manages completion and human review: report the result and leave the task open.'
+                        : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.'
+                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. ${completionInstruction} For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
                 }
 
                 // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/

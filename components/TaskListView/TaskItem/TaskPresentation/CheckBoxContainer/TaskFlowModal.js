@@ -9,6 +9,7 @@ import SuggestedModal from '../../../../Suggeted/SuggestedModal'
 import WorkflowObserverModal from '../../../../UIComponents/FloatModals/WorkflowObserverModal/WorkflowObserverModal'
 import { WORKSTREAM_ID_PREFIX } from '../../../../Workstreams/WorkstreamHelper'
 import TasksHelper from '../../../Utils/TasksHelper'
+import { getDelegatedTaskWorkflow } from '../../../../../utils/delegatedTaskWorkflow'
 
 export default function TaskFlowModal({
     task,
@@ -38,12 +39,9 @@ export default function TaskFlowModal({
     const ownerIsWorkstream = task.userId.startsWith(WORKSTREAM_ID_PREFIX)
     const taskOwner = ownerIsWorkstream ? loggedUser : TasksHelper.getTaskOwner(task.userId, projectId)
     const isNonTeamMember = !!taskOwner.recorderUserId
+    const workflow = getDelegatedTaskWorkflow(taskOwner.workflow?.[projectId] || {}, task)
 
-    const showWorkflowPopup =
-        !task.isPrivate &&
-        taskOwner.workflow &&
-        taskOwner.workflow[projectId] &&
-        !isEmpty(taskOwner.workflow[projectId])
+    const showWorkflowPopup = !task.isPrivate && !isEmpty(workflow)
 
     return isSuggested ? (
         <SuggestedModal
@@ -56,7 +54,7 @@ export default function TaskFlowModal({
         />
     ) : isObservedTask && !isToReviewTask ? (
         <WorkflowObserverModal
-            workflow={taskOwner.workflow && taskOwner.workflow[projectId] ? taskOwner.workflow[projectId] : {}}
+            workflow={workflow}
             projectId={projectId}
             task={task}
             hidePopover={hidePopover}
@@ -68,7 +66,7 @@ export default function TaskFlowModal({
         />
     ) : showWorkflowPopup ? (
         <WorkflowModal
-            workflow={taskOwner.workflow[projectId]}
+            workflow={workflow}
             projectId={projectId}
             task={task}
             hidePopover={hidePopover}

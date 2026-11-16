@@ -5733,7 +5733,7 @@ describe('assistant task assignment and attribution', () => {
         })
     })
 
-    test('keeps work explicitly delegated to Anna assigned to the assistant', async () => {
+    test('keeps delegated work user-owned and offers a choice when no assistant step exists', async () => {
         const result = await executeToolNatively(
             'create_task',
             {
@@ -5751,16 +5751,46 @@ describe('assistant task assignment and attribution', () => {
         )
 
         expect(result.task).toMatchObject({
+            userId: 'user-1',
+            currentReviewerId: 'user-1',
+            assigneeType: 'USER',
+            executionMode: 'workflow',
+            suggestedBy: null,
+            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' } },
+        })
+        expect(result.delegation.status).toBe('needs_workflow_choice')
+        expect(result.handoffInstruction).toContain('Offer to configure')
+        expect(addAssistantTaskComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                comment: 'You asked me to research the client before your meeting.',
+                suppressAssistantReply: true,
+            })
+        )
+    })
+
+    test('supports explicit direct assistant ownership for independent work', async () => {
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Investigate maintenance options',
+                projectId: 'project-1',
+                trackAssistantWork: true,
+                executionMode: 'direct',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+        expect(result.task).toMatchObject({
             userId: 'assistant-1',
             currentReviewerId: 'assistant-1',
             assigneeType: 'assistant',
             executionMode: 'direct',
-            suggestedBy: null,
-            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' } },
         })
-        expect(addAssistantTaskComment).toHaveBeenCalledWith(
-            expect.objectContaining({ comment: 'You asked me to research the client before your meeting.' })
-        )
+        expect(result.delegation).toBeUndefined()
+        expect(result.task.taskMetadata.delegation).toBeUndefined()
     })
 
     test('preserves user-authored MCP task creation without an assistant identity', async () => {
@@ -5777,7 +5807,7 @@ describe('assistant task assignment and attribution', () => {
         expect(addAssistantTaskComment).not.toHaveBeenCalled()
     })
 
-    test('assigns work routed from Anna to the project assistant and returns the handoff', async () => {
+    test('keeps cross-project ownership with the user and selects the destination assistant for execution', async () => {
         ProjectService.mockImplementation(() => ({
             initialize: jest.fn(),
             getUserProjects: jest.fn(async () => [{ id: 'product', name: 'Alldone Product' }]),
@@ -5809,16 +5839,16 @@ describe('assistant task assignment and attribution', () => {
         )
 
         expect(result.task).toMatchObject({
-            userId: 'cto',
-            userIds: ['cto'],
+            userId: 'user-1',
+            userIds: ['user-1'],
             assistantId: 'cto',
-            currentReviewerId: 'cto',
+            currentReviewerId: 'user-1',
             creatorId: 'user-1',
-            assigneeType: 'assistant',
+            assigneeType: 'USER',
             taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'cto' } },
         })
         expect(result.responsibleAssistant).toEqual({ projectId: 'product', assistantId: 'cto' })
-        expect(result.handoffInstruction).toContain('using this existing task')
+        expect(result.handoffInstruction).toContain('this existing task')
     })
 
     test('reports failure if the assistant attribution comment cannot be saved', async () => {
@@ -9583,10 +9613,10 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
-    test('creates an assistant-owned task instead of running new Anna work inside the daily chat', async () => {
+    test('creates user-owned work and offers a workflow choice without launching a VM from the daily chat', async () => {
         mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
         mockCreateAndPersistTask.mockResolvedValueOnce({ success: true, taskId: 'new-host', projectId: 'project-1' })
-        await executeToolNatively(
+        const result = await executeToolNatively(
             'execute_task_in_vm',
             { objective: 'Research launch options', task_type: 'research' },
             'project-1',
@@ -9603,20 +9633,46 @@ describe('execute_task_in_vm existing task routing', () => {
         )
         expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
             expect.objectContaining({
-                userId: 'assistant-1',
+                userId: 'user-1',
                 creatorId: 'user-1',
-                assigneeType: 'assistant',
-                executionMode: 'direct',
+                assigneeType: 'USER',
+                executionMode: 'workflow',
             }),
             expect.anything()
         )
-        expect(startVmJobSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                objectType: 'tasks',
-                objectId: 'new-host',
-                originObjectId: 'AnnaChat20261007user-1',
+        expect(result).toMatchObject({ success: true, taskId: 'new-host', status: 'needs_workflow_choice' })
+        expect(startVmJobSpy).not.toHaveBeenCalled()
+    })
+
+    test('joins an existing delegated workflow instead of dispatching a duplicate VM', async () => {
+        mockDocGet.mockImplementation(function () {
+            return Promise.resolve({
+                exists: true,
+                data: () => ({
+                    name: 'Fix login',
+                    userId: 'user-1',
+                    assistantId: 'assistant-1',
+                    currentReviewerId: 'assistant-1',
+                    stepHistory: ['Open', 'implement'],
+                    executionMode: 'workflow',
+                    taskMetadata: {
+                        delegation: { ownerId: 'user-1', assistantId: 'assistant-1', requiresReview: true },
+                    },
+                }),
             })
+        })
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Fix login', task_type: 'prototype', target_task_id: 'task-1' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
         )
+        expect(result).toMatchObject({ success: true, taskId: 'task-1', status: 'workflow_managed' })
+        expect(startVmJobSpy).not.toHaveBeenCalled()
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
     // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if

@@ -121,7 +121,7 @@ export default function Tags({
             currentReviewerEstimation = estimations[currentStepId] || 0
 
             if (isPending) {
-                reviwerPhotoURL = getWorkflowStepReviewerPhotoURL(taskOwner, projectId, currentStepId)
+                reviwerPhotoURL = getWorkflowStepReviewerPhotoURL(taskOwner, projectId, currentStepId, task)
             }
         }
         if (isObservedTask) observerEstimation = estimationsByObserverIds[currentUserId] || 0

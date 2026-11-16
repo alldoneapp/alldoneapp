@@ -11,6 +11,7 @@ import { chronoEntriesOrder } from '../../../utils/HelperFunctions'
 import { useDispatch, useSelector } from 'react-redux'
 import { WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import { translate } from '../../../i18n/TranslationService'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 
 const WorkflowPicker = ({ projectId, task, disabled }) => {
     const [visiblePopover, setVisiblePopover] = useState(false)
@@ -57,7 +58,7 @@ const WorkflowPicker = ({ projectId, task, disabled }) => {
             taskOwner.workflow = {}
         }
 
-        return taskOwner.workflow[projectId] ? taskOwner.workflow[projectId] : {}
+        return getDelegatedTaskWorkflow(taskOwner.workflow[projectId] || {}, task)
     }
 
     const showPopover = () => {

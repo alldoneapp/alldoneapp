@@ -1,6 +1,7 @@
 import { findIndex } from 'lodash'
 import momentTz from 'moment-timezone'
 import moment from 'moment'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 import { getDefaultProfilePhotoURL } from '../../../utils/defaultProfilePhotos'
 
 import SearchHelper from '../../../utils/SearchHelper'
@@ -632,7 +633,7 @@ export const getUserWorkflow = (projectId, userId, task) => {
         ? TasksHelper.getTaskOwner(userId, projectId)
         : TasksHelper.getUserInProject(projectId, userId)
     const workflow = user?.workflow?.[projectId] || null
-    return workflow
+    return getDelegatedTaskWorkflow(workflow, task)
 }
 
 export const filterContactsByPrivacy = (contacts, loggedUser) => {

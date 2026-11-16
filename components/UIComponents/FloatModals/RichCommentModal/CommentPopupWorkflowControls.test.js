@@ -12,6 +12,7 @@ import {
     moveTasksFromOpen,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { colors } from '../../../styles/global'
+import { getDelegatedTaskWorkflow } from '../../../../utils/delegatedTaskWorkflow'
 
 jest.mock('uuid/v4', () => () => 'popup-workflow-action')
 jest.mock('../../../../redux/store', () => ({ dispatch: jest.fn() }))
@@ -65,6 +66,41 @@ describe('CommentPopupWorkflowControls', () => {
         moveTasksFromDone.mockResolvedValue(undefined)
         moveTasksFromMiddleOfWorkflow.mockResolvedValue(undefined)
         moveTasksFromOpen.mockResolvedValue(undefined)
+    })
+
+    it('lets the owner approve delegated work or send the same task back to the assistant', async () => {
+        const delegatedTask = {
+            ...task,
+            userId: 'owner',
+            currentReviewerId: 'owner',
+            executionMode: 'workflow',
+            stepHistory: [-1, 'implement', '~delegation-review'],
+            taskMetadata: { delegation: { ownerId: 'owner', requiresReview: true } },
+        }
+        const delegatedWorkflow = getDelegatedTaskWorkflow(
+            { implement: { description: 'CTO implementation', reviewerUid: 'cto', reviewerType: 'assistant' } },
+            delegatedTask
+        )
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={delegatedTask} workflow={delegatedWorkflow} />
+        )
+        const buttons = tree.root.findByType('MainButtons')
+        expect(buttons.props.forwardStepName).toBe('Done')
+        expect(buttons.props.backwardStepName).toBe('CTO implementation')
+        expect(getCommentPopupWorkflowTargets(delegatedTask, delegatedWorkflow)).toMatchObject({
+            backwardStepId: 'implement',
+            forwardStepId: -2,
+        })
+        await act(async () => buttons.props.onDonePress('BACKWARD'))
+        expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledWith(
+            'project-1',
+            delegatedTask,
+            'implement',
+            null,
+            null,
+            delegatedTask.estimations,
+            expect.any(String)
+        )
     })
 
     it('shows the established forward/back controls for a task on a workflow step', () => {

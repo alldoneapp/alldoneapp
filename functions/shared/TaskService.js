@@ -710,6 +710,31 @@ class TaskService {
             throw new Error('Current task object is required for updates')
         }
 
+        const {
+            DELEGATION_REVIEW_STEP,
+            isDelegatedWorkflowTask,
+            withDelegationReviewStep,
+        } = require('./delegatedTaskWorkflow')
+        if (completed === true && executionMode !== 'direct' && isDelegatedWorkflowTask(currentTask)) {
+            const stepId = currentTask.stepHistory?.at(-1)
+            let canComplete = currentTask.currentReviewerId === currentTask.userId && stepId === DELEGATION_REVIEW_STEP
+            if (!canComplete && currentTask.currentReviewerId === currentTask.userId && this.options.database) {
+                const owner = await this.options.database.doc(`users/${currentTask.userId}`).get()
+                const workflow = withDelegationReviewStep(
+                    owner.exists ? owner.data()?.workflow?.[projectId] || {} : {},
+                    currentTask
+                )
+                const { getSortedWorkflowStepIds } = require('../Tasks/workflowStepHelper')
+                const lastStepId = getSortedWorkflowStepIds(workflow).at(-1)
+                canComplete = !!lastStepId && stepId === lastStepId && workflow[lastStepId].reviewerType !== 'assistant'
+            }
+            if (!canComplete) {
+                throw new Error(
+                    'This delegated task must finish its workflow and return for human review before it can be completed. Report the result in its comments and leave it open.'
+                )
+            }
+        }
+
         // Build update object with only provided fields
         const updateData = {}
         const changes = []
@@ -818,6 +843,10 @@ class TaskService {
             updateData.done = isCompleted
             updateData.inDone = isCompleted
             if (isCompleted) {
+                if (isDelegatedWorkflowTask(currentTask)) {
+                    updateData.userIds = [currentTask.userId]
+                    updateData.workflowAiPromptOverride = null
+                }
                 updateData.completed = currentTimestamp
                 updateData.completedDate = currentTimestamp
                 updateData.completedTime = new Date().toTimeString().substring(0, 5)

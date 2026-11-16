@@ -13,7 +13,7 @@ flagged project default, then a valid configured project/global assistant. The s
 is retained within its own project; projects without an available assistant retain the caller.
 Cross-project resolution checks membership against the project document.
 
-Both `create_task` tracking and automatic VM host-task creation persist that assignment. The
+Both `create_task` tracking and automatic VM host-task creation persist that execution identity. The
 creation response identifies `responsibleAssistant` and tells the caller to delegate further work
 on the existing task. An Anna VM targeted at a task resolves the destination assistant before
 creating its chat (preserving a valid assistant already selected on that task), checks that
@@ -23,6 +23,40 @@ still belong to the requesting human; completion notifications still return to t
 conversation as Anna. Explicit delegated VM calls outside Anna mode retain their chosen assistant.
 Regression coverage is in `annaTaskAssistant.test.js` and the assignment/VM-routing cases of
 `assistantHelper.test.js`.
+
+## Delegated work stays user-owned and returns for review (2026-11-16)
+
+`trackAssistantWork: true` now creates a user-owned task with the responsible project assistant
+on `assistantId`, rather than forcing assistant ownership and `executionMode: direct`.
+`annaTaskDelegation.js` seeds the original request in the task conversation before starting the
+requester's saved project workflow. A usable step for the responsible assistant must exist; the
+task starts at the **first** saved step, preserving any human or AI prerequisites. If no such step
+exists, it stays Open and the tool returns `needs_workflow_choice`: offer workflow configuration
+or explicit direct execution on this same task. No saved workflow is edited.
+
+`functions/shared/delegatedTaskWorkflow.js` is shared with the frontend. For tasks carrying
+`taskMetadata.delegation` it adds a task-specific `~delegation-review` step at the end, unless the
+saved workflow already ends with the human owner. The normal workflow runner, task row, status
+picker, chat controls, avatars and waiting-board headers all resolve this same effective workflow.
+The owner can approve through the normal forward-to-Done action or send the same task back.
+`TaskService` refuses completion before the final human review. Explicit `executionMode: direct`
+remains available for independent assistant-owned tasks and deliberate workflow bypasses.
+
+The workflow owns execution: `create_task` returns `workflow_managed` and tells the coordinator
+not to launch additional work. `execute_task_in_vm` joins an existing delegated workflow rather
+than starting a second VM; only the workflow's server runtime can dispatch its VM job. Contextless
+VM requests create the same user-owned workflow task, and return the handoff or missing-workflow
+choice. The existing deterministic run IDs and VM settlement transaction keep retries single and
+wait for the VM before advancing to review. Delegates inside a workflow inherit its VM handoff.
+Task-chat replies on managed delegations leave the actual workflow prompt queued rather than
+substituting for it: asking for status must not skip the work and send an empty result to review.
+
+Anna's originating conversation is recorded in the server-only `delegatedTaskOrigins` collection,
+not trusted from client-editable task metadata. Workflow VM jobs use that receipt for result
+notifications. Task deletion removes the receipt. No credentials, indexes or rules deployment is
+needed. Existing assistant-owned tasks are not migrated. Coverage includes the delegated lifecycle
+in `workflowAiStep.test.js`, completion protection in `delegatedTaskWorkflow.test.js`, task/VM
+routing in `assistantHelper.test.js`, and approval/send-back controls in the frontend tests.
 
 **An AI workflow step finishes when its work finishes, not when the assistant stops talking.** `execute_task_in_vm` returns as soon as the job is enqueued, so a step whose assistant dispatched a VM job would otherwise hand the task to the next reviewer while the work it asked for runs on for up to five hours. `runWorkflowAiStep` therefore parks the run as `awaiting_vm` with the dispatched correlation ids instead of advancing. The VM runner calls `resolveWorkflowAfterVmJobSettlement` after result delivery, billing/refunds, queue handoff and the terminal status write, so the parked workflow re-checks immediately without adding an Eventarc invocation for every 30-second VM heartbeat. `onUpdateWorkflowAssistantRunSecondGen` closes the pre-VM ordering window where the chat assistant lock can be the last blocker to settle. The one-minute `runWorkflowAiStepsSecondGen` poller still calls `resolveAwaitingVmRuns` as a recovery and timeout backstop; it is no longer the normal completion signal. The task move and workflow-run settlement share one Firestore transaction so a runner retry, Eventarc redelivery or an overlapping poll tick cannot advance twice. A failed or cancelled VM job still settles its parked run instead of leaving it stuck, matching how a failed assistant run behaves — but note it does **not** move the task: `finalizeWorkflowAiRun` only builds a step transition when there is no `failureReason`, so a failed step stays where it is and is handed to the requesting user by the AT-2196 reviewer hold below. `AWAITING_VM_TIMEOUT_MS` is the backstop for a job that never settles and is derived from `vmJobConfig`'s runtime + finalization budget, so raising the VM budget cannot silently leave it behind. **A VM agent can stop and ask the user a question** (`status: 'awaiting_user'`, see `vmInteraction.js`), and that interaction stays open for `VM_INTERACTION_TTL_MS` — 24h, far beyond the run budget — so `resolveAwaitingDeadline` pushes the deadline out to the job's own `interactionExpiresAt` plus a further run budget rather than abandoning a step the user can still rescue by answering. It stays bounded because each extension needs a real, unexpired interaction: a job that simply hangs is still abandoned on the original schedule. Note an unattended step whose agent asks a question simply waits — nobody is watching the thread. Check the parked run by its recorded correlation ids, never by re-querying the task for recent jobs: the jobs were started _before_ the run parked, so any time-windowed lookup misses them and advances immediately.
 

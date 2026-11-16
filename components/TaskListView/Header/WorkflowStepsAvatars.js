@@ -4,9 +4,10 @@ import Line from '../../Line'
 import Avatar from '../../Avatar'
 import { chronoEntriesOrder } from '../../../utils/HelperFunctions'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 
-export default function WorkflowStepsAvatars({ projectId, currentStepId, assignee }) {
-    const projectWorkflow = assignee.workflow[projectId]
+export default function WorkflowStepsAvatars({ projectId, currentStepId, assignee, task }) {
+    const projectWorkflow = getDelegatedTaskWorkflow(assignee.workflow?.[projectId] || {}, task)
     const steps = Object.entries(projectWorkflow).sort(chronoEntriesOrder)
 
     return (

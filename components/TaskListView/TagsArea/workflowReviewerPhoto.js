@@ -1,4 +1,5 @@
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
+import { getDelegatedTaskWorkflow } from '../../../utils/delegatedTaskWorkflow'
 
 // The avatar shown on a pending task's estimation tag is the reviewer of the step the task is
 // currently sitting on. That reviewer is not necessarily a project user: a step can point at an
@@ -6,7 +7,8 @@ import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper
 // from the workflow while tasks still reference its id. getUserPresentationData resolves users and
 // assistants alike and degrades to an unknown-user avatar, so it is the only safe lookup here — a
 // users-only lookup returns null for an assistant step and crashes the whole task list.
-export const getWorkflowStepReviewerPhotoURL = (taskOwner, projectId, stepId) => {
-    const reviewerUid = taskOwner?.workflow?.[projectId]?.[stepId]?.reviewerUid || ''
+export const getWorkflowStepReviewerPhotoURL = (taskOwner, projectId, stepId, task) => {
+    const reviewerUid =
+        getDelegatedTaskWorkflow(taskOwner?.workflow?.[projectId] || {}, task)[stepId]?.reviewerUid || ''
     return reviewerUid ? getUserPresentationData(reviewerUid).photoURL : undefined
 }
