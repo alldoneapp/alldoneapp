@@ -2491,24 +2491,40 @@
         border-left-color: var(--anna-accent);
     }
 
-    /* A window too narrow for both (AnnaShell's `narrow`) shows one card at a time, as a phone does.
-       The screen alone keeps its bezel; the chat stays mounted behind it. With the chat in front,
-       the hidden screen is laid out at its full width already. */
-    .anna-zoom-active.anna-screen-only .anna-layout {
-        grid-template-columns: minmax(0, 1fr);
+    /* A window too narrow for both (AnnaShell's `narrow`) shows one card, as a phone does: the chat
+       header's row on top, which stays, and below it the chat or the screen picked in that row. The
+       other one stays mounted behind it, laid out at the same size. */
+    .anna-zoom-active.anna-narrow .anna-layout {
+        display: flex;
+        flex-direction: column;
+        margin: 0 10px 10px;
+        border: 1px solid var(--anna-border);
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--ad-Surface, #ffffff);
     }
-    .anna-screen-only .anna-conversation,
-    .anna-screen-only .anna-divider {
+    .anna-zoom-active.anna-narrow .anna-conversation,
+    .anna-zoom-active.anna-narrow .anna-stage {
+        flex: 1;
+        min-height: 0;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+    }
+    .anna-zoom-active.anna-narrow .anna-stage > .anna-workspace {
+        padding-inline: 0;
+    }
+    .anna-zoom-active.anna-narrow.anna-chat-only .anna-stage,
+    .anna-zoom-active.anna-narrow.anna-screen-only .anna-conversation {
         position: absolute;
         inset: 0;
+        width: auto;
         visibility: hidden;
         pointer-events: none;
     }
-    .anna-zoom-active.anna-screen-only .anna-stage {
-        margin-left: 10px;
-    }
-    .anna-narrow.anna-chat-only .anna-stage {
-        width: 100%;
+    .anna-narrow .anna-divider,
+    .anna-narrow .anna-conversation::after {
+        display: none;
     }
 }
 .anna-screen-picker {
@@ -2543,6 +2559,13 @@
     padding: 2px 8px 0;
     color: var(--ad-Text02, #4e5d78);
     font-size: 11px;
+}
+.anna-screen-photo {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
 }
 .anna-screen-option-icon {
     display: inline-flex;

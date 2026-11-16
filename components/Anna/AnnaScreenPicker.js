@@ -12,7 +12,8 @@ const EMPTY = []
  * Desktop assistant mode: chooses what the screen beside the chat shows (Alldone, the shared
  * browser, the VMs or an app the chat opened). It sits in the chat's header, where the workspace
  * picker was, and the chat card points at the screen from here in the bezel's colour, so the chat
- * visibly drives what is on it. Mobile keeps the native select, which also returns to the chat.
+ * visibly drives what is on it. In a window too narrow for both, AnnaShell offers the assistant in
+ * place of Alldone (an option with a `photo`). Mobile keeps the native select.
  */
 export default function AnnaScreenPicker({ options = EMPTY, value, label, onSelect, getViewport }) {
     const dispatch = useDispatch()
@@ -44,6 +45,13 @@ export default function AnnaScreenPicker({ options = EMPTY, value, label, onSele
         onSelect?.(next)
     }
     const title = translate('Show on screen')
+    const optionIcon = (option, size) =>
+        option?.photo ? (
+            <img className="anna-screen-photo" src={option.photo} alt="" />
+        ) : (
+            <Icon name={option?.icon || 'monitor'} size={size} color="currentColor" />
+        )
+    const selectedOption = options.find(option => option.value === value)
 
     const menu = (
         <div className="anna-project-menu anna-screen-menu" role="dialog" aria-label={title}>
@@ -60,7 +68,7 @@ export default function AnnaScreenPicker({ options = EMPTY, value, label, onSele
                                 onClick={() => pick(option.value)}
                             >
                                 <span className="anna-screen-option-icon" aria-hidden="true">
-                                    <Icon name={option.icon} size={16} color="currentColor" />
+                                    {optionIcon(option, 16)}
                                 </span>
                                 <span className="anna-project-option-text">
                                     <strong>{option.label}</strong>
@@ -104,7 +112,11 @@ export default function AnnaScreenPicker({ options = EMPTY, value, label, onSele
                 data-surface={value}
                 onClick={toggle}
             >
-                <Icon name="monitor" size={16} color="currentColor" />
+                {selectedOption?.photo ? (
+                    optionIcon(selectedOption, 16)
+                ) : (
+                    <Icon name="monitor" size={16} color="currentColor" />
+                )}
                 <span className="anna-screen-picker-label">{label}</span>
                 <Icon name="chevron-down" size={14} color="currentColor" />
             </button>

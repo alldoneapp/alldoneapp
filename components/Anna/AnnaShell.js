@@ -1143,6 +1143,15 @@ export default function AnnaShell({ children, routeId }) {
         },
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
+    // A window too narrow for both shows one card, and the strip's Tasks already shows Alldone: there
+    // the picker switches between the assistant and its screens, and the header row stays on top.
+    const pickerOptions = narrow
+        ? [
+              { value: 'chat', label: headerAssistantName, icon: 'assistant', photo },
+              ...screenOptions.filter(option => option.value !== 'alldone'),
+          ]
+        : screenOptions
+    const pickerValue = narrow && !visibleWorkspace ? 'chat' : vmSurface ? 'vms' : surface
 
     const pendingNotice = pending && (
         <div className="anna-pending" role="status">
@@ -1225,10 +1234,12 @@ export default function AnnaShell({ children, routeId }) {
             <div className="anna-header-right">
                 {!mobile && (
                     <AnnaScreenPicker
-                        options={screenOptions}
-                        value={vmSurface ? 'vms' : surface}
-                        label={vmSurface ? translate('VMs') : surfaceLabel}
-                        onSelect={selectSurface}
+                        options={pickerOptions}
+                        value={pickerValue}
+                        label={
+                            pickerValue === 'chat' ? headerAssistantName : vmSurface ? translate('VMs') : surfaceLabel
+                        }
+                        onSelect={next => (next === 'chat' ? backToChat() : selectSurface(next))}
                         getViewport={() => rectViewport(chatPane.current?.getBoundingClientRect?.())}
                     />
                 )}
@@ -1318,6 +1329,7 @@ export default function AnnaShell({ children, routeId }) {
             {mobile && active && header}
             {showTopStrip && topStrip}
             <main className="anna-layout" ref={layout}>
+                {narrow && active && header}
                 <section
                     className="anna-conversation"
                     ref={chatPane}
@@ -1326,7 +1338,7 @@ export default function AnnaShell({ children, routeId }) {
                     aria-hidden={!active || (!chatOnly && singlePane && mobilePane !== 'chat')}
                     inert={!active || (!chatOnly && singlePane && mobilePane !== 'chat') ? '' : undefined}
                 >
-                    {!mobile && header}
+                    {!mobile && !narrow && header}
                     {active && !visibleWorkspace && pendingNotice}
                     {active && !visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">

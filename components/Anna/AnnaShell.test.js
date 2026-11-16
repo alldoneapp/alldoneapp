@@ -1981,24 +1981,39 @@ describe('a desktop window too narrow for both', () => {
         expect(stage().getAttribute('aria-hidden')).toBe('true')
         expect(chatPane().getAttribute('aria-hidden')).toBe('false')
         expect(window.location.search).toContain('assistant=1')
+        // Tasks already shows Alldone, so the picker switches between the assistant and its screens.
+        expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
+        expect(selectedSurface()).toBe('chat')
+        expect(selectedSurfaceLabel()).toBe('Anna Alldone')
     })
 
-    it('shows a screen picked in the chat alone, and the assistant brings the chat back', () => {
+    it('keeps the header row above a screen picked there; the picker or the assistant brings the chat back', () => {
         setAnnaLayout('split')
         render(content(1))
         chooseSurface('browser')
         expect(shell().contains('anna-screen-only')).toBe(true)
+        // The row sits on top of the card, outside the chat it hides.
+        const header = document.querySelector('.anna-layout > .anna-header')
+        expect(header).toBeTruthy()
+        expect(chatPane().contains(header)).toBe(false)
         expect(stage().getAttribute('aria-hidden')).toBe('false')
         expect(chatPane().getAttribute('aria-hidden')).toBe('true')
+        expect(selectedSurface()).toBe('browser')
         // Another screen than Alldone is neither of the two views the switch offers.
         expect(layoutButton('chat').getAttribute('aria-pressed')).toBe('false')
         expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('false')
 
-        fireEvent.click(layoutButton('chat'))
+        pickScreen('chat')
         expect(shell().contains('anna-chat-only')).toBe(true)
         expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+        expect(selectedSurface()).toBe('chat')
+
+        chooseSurface('vms')
+        expect(shell().contains('anna-screen-only')).toBe(true)
+        expect(document.querySelector('.anna-layout > .anna-header')).toBe(header)
+        fireEvent.click(layoutButton('chat'))
+        expect(shell().contains('anna-chat-only')).toBe(true)
         expect(window.location.search).toContain('assistant=1')
-        expect(selectedSurface()).toBe('browser')
     })
 
     it('opens the open task list from Tasks while the chat is in front', () => {
@@ -2010,17 +2025,17 @@ describe('a desktop window too narrow for both', () => {
         expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
     })
 
-    it('shows Alldone alone, keeping its page, when Alldone is picked in the chat', () => {
+    it('shows Alldone alone from Tasks, keeping its page, while a screen is in front', () => {
         setAnnaLayout('split')
         render(content(1))
         chooseSurface('browser')
-        fireEvent.click(layoutButton('chat'))
         mockDispatch.mockClear()
         NavigationService.navigate.mockClear()
-        pickScreen('alldone')
+        fireEvent.click(layoutButton('alldone'))
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
         expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
         expect(mockDispatch).not.toHaveBeenCalledWith(HOME_NAVIGATION)
+        expect(NavigationService.navigate).not.toHaveBeenCalledWith('Root')
     })
 
     it('brings the chat to the front when the window shrinks, and both back when it widens', () => {

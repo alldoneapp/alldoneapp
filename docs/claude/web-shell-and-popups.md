@@ -403,9 +403,12 @@ hides. The tag lists keep reading the preference on purpose (it picks their more
 plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
 `--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
 like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks and the assistant,
-the chat comes to the front when the window shrinks from both, a screen picked in the chat shows alone
-in its bezel (`anna-screen-only`), the assistant button brings the chat back and keeps the split
-layout, so both return when the window widens; picking Alldone in the chat shows plain Alldone.
+and the chat comes to the front when the window shrinks from both. The layout is one card
+(`.anna-narrow .anna-layout`) whose first row is the chat header, rendered above both panes so it stays
+put; below it the chat or the screen (`anna-screen-only`, no bezel). Its picker offers the assistant
+(`chat`, with the photo) in place of Alldone, which Tasks shows, then Browser, VMs and apps. The
+assistant, in the picker or the strip, brings the chat back and keeps the split layout, so both
+return when the window widens (2026-11-16).
 While the strip shows, the workspace viewport owner is on in plain
 Alldone too (`.anna-has-strip` also gives `.anna-workspace-content` its transform), so modals and
 inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: beside a visible screen
