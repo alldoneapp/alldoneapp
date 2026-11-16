@@ -11866,6 +11866,77 @@ describe('Anna VM message order', () => {
             'The VM is unavailable. Please try again later.',
         ])
     })
+
+    // AT-3061 (2026-11-16): the VM finished its work but never settled, Anna read its progress,
+    // completed the task and answered, and the answer was discarded as a handoff acknowledgement.
+    describe('when the VM has not settled', () => {
+        const functionCalls = (...calls) => [
+            ...calls.map(([name, args], index) => ({
+                type: 'response.output_item.done',
+                item: {
+                    id: `${name}-item-${index}`,
+                    type: 'function_call',
+                    call_id: `${name}-call-${index}`,
+                    name,
+                    arguments: JSON.stringify(args),
+                },
+            })),
+            { type: 'response.completed', response: { output: [] } },
+        ]
+        beforeEach(() => {
+            wait.mockImplementation(async () => ({
+                success: true,
+                correlationId: 'vm-1',
+                status: 'running',
+                settled: false,
+                hostProjectId: 'presentation-project',
+                hostObjectId: 'presentation-task',
+                output: 'Working… The PDF looks ready.',
+            }))
+            mockFirestoreGetAll.mockResolvedValue([
+                {
+                    exists: true,
+                    id: 'presentation-assistant',
+                    data: () => ({ allowedTools: ['execute_task_in_vm', 'get_weather'] }),
+                },
+                { exists: false },
+            ])
+        })
+
+        test('further work opens a separate Anna follow-up instead of discarding the answer', async () => {
+            mockResponsesCreate
+                .mockResolvedValueOnce(functionCalls(['get_vm_job', { correlationId: 'vm-1', waitSeconds: 30 }]))
+                .mockResolvedValueOnce(functionCalls(['get_weather', {}]))
+                .mockResolvedValueOnce(textResponse(summary))
+
+            expect(await run()).toBe(summary)
+            expect(wait).toHaveBeenCalledTimes(1)
+            const ordered = messages().sort((a, b) => a.created - b.created)
+            expect(ordered.map(doc => doc.commentText)).toEqual([intro, 'VM running', summary])
+            expect(ordered[0]).toMatchObject({ vmHandoff: true, originalContent: intro, isLoading: false })
+            expect(ordered[2]).toMatchObject({ isLoading: false, fromAssistant: true })
+            expect(ordered[2].vmHandoff).toBeUndefined()
+        })
+
+        test('tools of one batch share a single follow-up message', async () => {
+            mockResponsesCreate
+                .mockResolvedValueOnce(functionCalls(['get_weather', {}], ['get_weather', {}]))
+                .mockResolvedValueOnce(textResponse(summary))
+
+            expect(await run()).toBe(summary)
+            expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running', summary])
+        })
+
+        test('only waiting on the VM keeps the turn a handoff', async () => {
+            mockResponsesCreate
+                .mockResolvedValueOnce(functionCalls(['get_vm_job', { correlationId: 'vm-1', waitSeconds: 30 }]))
+                .mockResolvedValueOnce(textResponse('The VM is still working.'))
+
+            expect(await run()).toBe(intro)
+            expect(wait).toHaveBeenCalledTimes(1)
+            expect(messages().map(doc => doc.commentText)).toEqual([intro, 'VM running'])
+        })
+    })
 })
 
 describe('goal, milestone and OKR tools', () => {

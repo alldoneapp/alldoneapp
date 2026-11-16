@@ -93,6 +93,12 @@ const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
 const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
 const VM_INTERACTIVE_EXECUTION_MODES = ['plan_first', 'interactive']
+// Claude Code tools that schedule later work in the same session. A run is finished only when the
+// agent's session ends, and a pending wakeup or cron keeps it open after the agent has written its
+// final answer: on 2026-11-16 (AT-3061) a `ScheduleWakeup` fallback kept a finished merge-and-deploy
+// run "running", so its result, the origin-chat note and the workflow never arrived. A VM run waits
+// in the foreground or on a background command that ends.
+const VM_CLAUDE_DISALLOWED_TOOLS = ['ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger']
 const RUNTIME_MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
@@ -1789,7 +1795,8 @@ function buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort) {
     const resumeFlag = isResume ? '--continue ' : ''
     const modelFlag = agentModel ? `--model ${agentModel} ` : ''
     const effortFlag = agentReasoningEffort ? `--effort ${agentReasoningEffort} ` : ''
-    return `claude ${resumeFlag}${modelFlag}${effortFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
+    const disallowedFlag = `--disallowedTools ${shellQuoteArg(VM_CLAUDE_DISALLOWED_TOOLS.join(','))} `
+    return `claude ${resumeFlag}${modelFlag}${effortFlag}${disallowedFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
 }
 
 const CODEX_VM_PROXY_PROVIDER = 'alldone_vm_proxy'
@@ -2296,6 +2303,7 @@ function buildVmAgentBridgeInput({
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
         input.additionalDirectories = writableRoots
         input.settingSources = ['user', 'project', 'local']
+        input.disallowedTools = [...VM_CLAUDE_DISALLOWED_TOOLS]
         // Approval strictness + the context the policy needs to tell a feature-branch push apart
         // from a push that lands on the protected base branch. The allowlist carries the user's
         // "Allow for this run" grants and is reset whenever a new job starts.
@@ -5311,6 +5319,7 @@ module.exports = {
         formatVmInteractionAnswers,
         buildVmBridgeTurnPrompt,
         buildVmAgentBridgeInput,
+        VM_CLAUDE_DISALLOWED_TOOLS,
         renderVmInteractionStatus,
         buildSandboxCommandEnv,
         buildVmRuntimeSetupCommand,

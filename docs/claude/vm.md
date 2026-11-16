@@ -99,3 +99,20 @@ are a fallback for publication failures. Matching paths and SHA-256 hashes reuse
 artifact version, avoiding a second upload/version for unchanged output. VM agents return findings
 without repeating output paths, attachment listings or artifact links that the host adds itself.
 Ship both the Functions package (assistant entry points and MCP) and the rebuilt `vm-job-runner`.
+
+**A run ends only when its agent session ends; Anna's follow-up does not wait for that (AT-3061,
+2026-11-16).** The third run on AT-3061 merged and deployed MR !874 and wrote its final report, but
+the Claude agent had called `ScheduleWakeup` as a fallback while it waited for the pipeline. The
+pending wakeup kept the SDK session open, so the bridge never emitted `alldone.completed`: the task
+chat kept the progress log, the origin chat got no "✅ The VM task you requested finished" note,
+and the job never settled. Claude runs therefore get `VM_CLAUDE_DISALLOWED_TOOLS`
+(`ScheduleWakeup`, `CronCreate`, `CronDelete`, `CronList`, `RemoteTrigger`), as `--disallowedTools`
+on the automatic CLI path and as the SDK's `disallowedTools` through the bridge input
+(`vmAgentBridge.test.js` runs the real bridge against a stub SDK). Meanwhile Anna, waiting with
+`get_vm_job`, read the report from the running job's progress text, completed the task, and
+answered; because no wait had returned `settled`, `storeChunks` treated the turn as a plain handoff
+and discarded the answer. Now any tool after the handoff other than `execute_task_in_vm`,
+`get_vm_job` and `compact_thread_context` (`VM_HANDOFF_WAIT_TOOLS`) opens the follow-up message
+first. Concurrent tools of one batch share a single opening, and a follow-up is never treated as an
+in-thread handoff reply, so it notifies. A turn that only waits and then writes text still ends as
+the introduction.

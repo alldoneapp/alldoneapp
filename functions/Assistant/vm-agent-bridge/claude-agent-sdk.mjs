@@ -37,6 +37,10 @@ const options = {
     permissionMode: input.permissionMode,
     allowDangerouslySkipPermissions: input.permissionMode === 'bypassPermissions',
     settingSources: Array.isArray(input.settingSources) ? input.settingSources : ['user', 'project', 'local'],
+    // Tools that schedule later work keep the session (and so the run) open after the final answer.
+    ...(Array.isArray(input.disallowedTools) && input.disallowedTools.length
+        ? { disallowedTools: input.disallowedTools }
+        : {}),
     ...(sessionId ? { resume: sessionId } : {}),
 }
 // Under bypassPermissions the SDK approves every tool before consulting canUseTool and warns

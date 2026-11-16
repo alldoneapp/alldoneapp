@@ -293,6 +293,9 @@ const TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS = 8
 // A workflow approval ("merge it") reads like small talk, so the model would not search for the tool
 // that acts on it either (AT-2829).
 const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME, 'get_vm_job', MOVE_TASK_WORKFLOW_STEP_TOOL_NAME])
+// Tools that only dispatch or wait on a VM (or manage context) keep a turn a plain VM handoff.
+// Any other tool after the handoff opens Anna's follow-up message.
+const VM_HANDOFF_WAIT_TOOLS = new Set([VM_JOB_TOOL_NAME, 'get_vm_job', COMPACT_THREAD_CONTEXT_TOOL_KEY])
 const ASSISTANT_PROMPT_CACHE_VERSION = 'assistant-prefix-v2'
 // Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
 // and interactive-chat entry points provide their longer budget through toolRuntimeContext when
@@ -11712,28 +11715,37 @@ async function storeChunks(
             commentText = ''
             answerContent = ''
         }
-        const openVmFollowup = async () => {
-            if (!vmHandoffFrozen) return
-            await commentUpdateWriteChain
-            if (updateTimeout) clearTimeout(updateTimeout)
-            updateTimeout = null
-            pendingUpdate = null
-            ;({ commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId))
-            comment.isLoading = true
-            comment.isThinking = false
-            if (assistantRun) comment.assistantRun = { ...assistantRun, status: 'running' }
-            commentRef = admin
-                .firestore()
-                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
-            committed = false
-            vmHandoffFrozen = false
-            vmFollowupStarted = true
-            commentText = ''
-            answerContent = ''
-            runtimeContextForTools.assistantCommentId = commentId
-            await ensureCommitted()
-            if (assistantRunLockRef)
-                await recordAssistantRunComment(assistantRunLockRef, { projectId, objectType, objectId, commentId })
+        // Tools of one batch can run concurrently, and each may open the follow-up. They share
+        // the one opening in flight, so a turn never starts two follow-up messages.
+        let vmFollowupOpening = null
+        const openVmFollowup = () => {
+            if (!vmHandoffFrozen) return vmFollowupOpening || Promise.resolve()
+            if (vmFollowupOpening) return vmFollowupOpening
+            vmFollowupOpening = (async () => {
+                await commentUpdateWriteChain
+                if (updateTimeout) clearTimeout(updateTimeout)
+                updateTimeout = null
+                pendingUpdate = null
+                ;({ commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId))
+                comment.isLoading = true
+                comment.isThinking = false
+                if (assistantRun) comment.assistantRun = { ...assistantRun, status: 'running' }
+                commentRef = admin
+                    .firestore()
+                    .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+                committed = false
+                vmHandoffFrozen = false
+                vmFollowupStarted = true
+                commentText = ''
+                answerContent = ''
+                runtimeContextForTools.assistantCommentId = commentId
+                await ensureCommitted()
+                if (assistantRunLockRef)
+                    await recordAssistantRunComment(assistantRunLockRef, { projectId, objectType, objectId, commentId })
+            })().finally(() => {
+                vmFollowupOpening = null
+            })
+            return vmFollowupOpening
         }
         runtimeContextForTools.onVmResult = openVmFollowup
         runtimeContextForTools.onVmLaunchFailed = openVmFollowup
@@ -12060,6 +12072,12 @@ async function storeChunks(
                                     )
                                         throw new Error(`Tool not permitted: ${toolName}`)
                                     await throwIfCancelled(true)
+                                    // Other work after a VM handoff (completing the task the VM
+                                    // reported, drafting the email it prepared, …) is a follow-up the
+                                    // user has to see. Open it now rather than only on a settled
+                                    // get_vm_job: a job that never settles in this turn would
+                                    // otherwise discard the reply as a handoff acknowledgement.
+                                    if (!VM_HANDOFF_WAIT_TOOLS.has(toolName)) await openVmFollowup()
                                     const toolResult = await executeWithCompactionRepair(
                                         runtimeContextForTools,
                                         toolName,
@@ -12672,11 +12690,14 @@ async function storeChunks(
         // failure/cancellation, or a question it needs answered. Notifying for the hand-off too
         // would show a red badge whose content is a spinner. The comment, the chat preview and the
         // last-assistant-comment data below are still written, so the thread reads normally.
-        const isVmHandoffReply = startsVmJobInCurrentThread(
-            startedVmJobResults,
-            { projectId, objectId },
-            runtimeContextForTools.vmSettledThreads
-        )
+        // A follow-up message (opened by a settled result or by further work) is not a hand-off.
+        const isVmHandoffReply =
+            !vmFollowupStarted &&
+            startsVmJobInCurrentThread(
+                startedVmJobResults,
+                { projectId, objectId },
+                runtimeContextForTools.vmSettledThreads
+            )
         if (isVmHandoffReply) {
             console.log('🖥️ VM JOB: Skipping notifications for the in-thread VM hand-off reply', {
                 projectId,

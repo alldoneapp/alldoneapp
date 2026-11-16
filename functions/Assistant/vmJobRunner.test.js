@@ -347,6 +347,39 @@ describe('VM runner prompt', () => {
         expect(command).not.toContain('claude-opus-5')
     })
 
+    // A pending wakeup kept a finished run open (AT-3061): automatic runs must not schedule one.
+    test.each([false, true])('blocks scheduling tools in automatic Claude runs (resume: %s)', isResume => {
+        const command = __private__.buildClaudeRunCommand(isResume, 'opus', 'high')
+        expect(command).toContain("--disallowedTools 'ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger' -p ")
+    })
+
+    test('blocks scheduling tools for the Claude bridge but sends Codex no such list', () => {
+        const base = {
+            pendingWebhook: {},
+            workdir: '/repo',
+            prompt: 'Merge it',
+            agentCredentials: { mode: 'subscription' },
+        }
+        const claude = __private__.buildVmAgentBridgeInput({
+            ...base,
+            vmJob: { agent: 'claude', executionMode: 'interactive' },
+            runDetails: { model: 'opus', effort: 'high' },
+        })
+        const codex = __private__.buildVmAgentBridgeInput({
+            ...base,
+            vmJob: { agent: 'codex', executionMode: 'interactive' },
+            runDetails: { model: 'gpt-6.1-sol', effort: 'medium' },
+        })
+        expect(claude.disallowedTools).toEqual([
+            'ScheduleWakeup',
+            'CronCreate',
+            'CronDelete',
+            'CronList',
+            'RemoteTrigger',
+        ])
+        expect(codex).not.toHaveProperty('disallowedTools')
+    })
+
     test('resolveAgentRunDetails restores a previously observed concrete model', () => {
         expect(
             __private__.resolveAgentRunDetails({
