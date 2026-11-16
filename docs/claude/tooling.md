@@ -12,7 +12,12 @@ the October 2026 fixes, including CVE-2026-111497.
 images and `.gitlab-ci.yml`'s fallback image, and the two Cloud Run images
 (`functions/Assistant/cloud-run-job/Dockerfile`, rebuilt by the `deploy:cloud:runner:*` jobs, and
 `functions/Assistant/browser-worker/Dockerfile`, which only `browser-worker/deploy.sh` rebuilds:
-the pipeline never does). Commit `3d943fde71` is the pattern. Wait until Docker Hub has the
+the pipeline never does). Also bump `functions/Assistant/vmNodeRuntime.js`, which shares the
+Node bootstrap between E2B template builds, golden builds and every VM invocation (including
+resumed sessions). Rebuild `functions/e2b-template` in each E2B team to bake it in; the startup
+check upgrades older templates/snapshots in place until then. Goldens record `nodeVersion`, so a
+Node bump triggers their background rebuild even if the repo lockfile is unchanged. Deploy the
+VM runner and `runGoldenBuild` together. Commit `3d943fde71` is the pattern. Wait until Docker Hub has the
 `-alpine` and `-bookworm-slim` tags before pushing.
 
 The Firebase Functions themselves are Google's to patch: every function in both projects has

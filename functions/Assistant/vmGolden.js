@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { VM_AGENT_TEMPLATES, createAgentSandbox } = require('./vmTemplates')
+const { VM_NODE_VERSION, VM_NODE_PREFIX, ensureVmNodeRuntime } = require('./vmNodeRuntime')
 
 // ---------------------------------------------------------------------------
 // Per-project "golden" E2B template.
@@ -129,6 +130,7 @@ async function createGoldenSnapshot(sandboxId, name, e2bApiKey) {
 // otherwise auto-detect by lockfile. Returns the detected package manager label.
 async function runGoldenInstall(sandbox, setupCommand) {
     const script = `set -e
+export PATH="${VM_NODE_PREFIX}/bin:$PATH"
 cd ${REPO_DIR}
 if [ -n "$SETUP_COMMAND" ]; then
   echo "GOLDEN_PM=custom"
@@ -361,13 +363,22 @@ async function maybeTriggerGoldenRebuild({ projectId, requestUserId, project, cu
         const g = (project && project.vmGolden) || {}
         const missing = !g.snapshotId || g.status !== 'ready'
         const outdated = isGoldenOnOutdatedBase(g)
+        const outdatedNode = g.nodeVersion !== VM_NODE_VERSION
         const drifted = !!currentLockfileHash && (!g.lockfileHash || g.lockfileHash !== currentLockfileHash)
-        if (!force && !missing && !outdated && !drifted) {
+        if (!force && !missing && !outdated && !outdatedNode && !drifted) {
             touchGoldenUsage(projectId)
             return { triggered: false }
         }
 
-        const reason = force ? 'broken' : missing ? 'missing' : outdated ? 'outdated_base' : 'drift'
+        const reason = force
+            ? 'broken'
+            : missing
+              ? 'missing'
+              : outdated
+                ? 'outdated_base'
+                : outdatedNode
+                  ? 'outdated_node'
+                  : 'drift'
         const { claimed, buildId } = await claimGoldenRebuildLease(projectId, requestUserId, reason)
         if (!claimed) return { triggered: false, reason: 'locked' }
         try {
@@ -447,6 +458,7 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
             allowInternetAccess: true,
         })
         sandbox = created.sandbox
+        await ensureVmNodeRuntime(sandbox)
         await setupGitRepo(sandbox, gitContext, correlationId)
         const { packageManager } = await runGoldenInstall(sandbox, (g.setupCommand || '').trim())
         const { lockfile, lockfileHash } = await readGoldenLockfileHash(sandbox)
@@ -462,6 +474,7 @@ async function runGoldenBuild({ buildId, projectId, requestUserId }) {
             packageManager,
             baseTemplate: created.template,
             baseTemplateFallback: created.fellBack,
+            nodeVersion: VM_NODE_VERSION,
             status: 'ready',
             rebuildState: 'idle',
             rebuildLeaseOwner: null,

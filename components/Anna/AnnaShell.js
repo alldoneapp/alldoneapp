@@ -1271,42 +1271,27 @@ export default function AnnaShell({ children, routeId }) {
     const assistantPickerProjectId = projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId
     // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
     const assistantNamePicks = canSwitchAnnaProject(projectChoices, assistantPickerProjectId)
-    // AT-3056: on a phone the row's sides stay narrow so the focus task gets the room: the assistant
-    // is only its avatar (labels and titles keep the full name), the screen picker an icon. With
-    // another assistant to pick, the avatar itself opens the picker (no name, no chevron); otherwise it
-    // stays the "Latest messages" button.
-    const avatar = (
-        <span className="anna-small-avatar">{photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}</span>
-    )
-    const avatarPicks = mobile && assistantNamePicks
-    const pickerShown =
-        pickerOptions.find(option => option.value === pickerValue) ||
-        screenOptions.find(option => option.value === pickerValue)
-    const pickerShownLabel = pickerShown?.label || (vmSurface ? translate('VMs') : surfaceLabel)
     const header = (
-        <header className={`anna-header anna-header-sidebar${mobile ? ' anna-header-phone' : ''}`}>
+        <header className="anna-header anna-header-sidebar">
             <div className="anna-header-left">
-                {!avatarPicks && (
-                    <button
-                        type="button"
-                        className={`anna-header-assistant${assistantNamePicks ? ' anna-header-assistant-avatar' : ''}`}
-                        title={`${headerAssistantName} – ${translate('Latest messages')}`}
-                        aria-label={`${headerAssistantName} – ${translate('Latest messages')}`}
-                        onClick={showLatestChat}
-                    >
-                        {avatar}
-                        {!assistantNamePicks && !mobile && (
-                            <strong className="anna-brand">{headerAssistantName}</strong>
-                        )}
-                    </button>
-                )}
-                {/* AT-3034: pick another assistant for the sidebar chat, listed by assistant.
-                    AT-3055: the only project/assistant switch in assistant mode; the composer has no chip.
+                <button
+                    type="button"
+                    className={`anna-header-assistant${assistantNamePicks ? ' anna-header-assistant-avatar' : ''}`}
+                    title={`${headerAssistantName} – ${translate('Latest messages')}`}
+                    aria-label={`${headerAssistantName} – ${translate('Latest messages')}`}
+                    onClick={showLatestChat}
+                >
+                    <span className="anna-small-avatar">
+                        {photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}
+                    </span>
+                    {!assistantNamePicks && <strong className="anna-brand">{headerAssistantName}</strong>}
+                </button>
+                {/* AT-3034: pick another assistant for the sidebar chat. Same state as the
+                    composer's project chip; listed by assistant instead of by project.
                     AT-3047: name and chevron are one button, so the whole name opens it. */}
                 <AnnaProjectSwitcher
                     variant="assistant"
                     name={headerAssistantName}
-                    avatar={mobile ? avatar : undefined}
                     choices={projectChoices}
                     activeProjectId={assistantPickerProjectId}
                     onSelect={selectProjectFromChat}
@@ -1349,14 +1334,7 @@ export default function AnnaShell({ children, routeId }) {
                 {mobile && (
                     // The phone's screen picker, at the far right (AT-3045): the assistant and its
                     // screens; Alldone is App in the switch, and leaving the chat is App too.
-                    // AT-3056: it shows the chosen view's icon; the native select lies over it,
-                    // transparent, so a tap still opens the system list with every label.
-                    // AT-3056 follow-up: laid out like the assistant picker on the left: a round mark (the
-                    // view's icon where the left has the avatar) and the same 16px down-chevron.
-                    <label className="anna-header-picker" title={pickerShownLabel}>
-                        <span aria-hidden="true" className="anna-header-picker-icon">
-                            <Icon name={pickerShown?.icon || 'monitor'} size={18} color="currentColor" />
-                        </span>
+                    <label className="anna-header-picker">
                         <select
                             aria-label={translate('Workspace')}
                             value={pickerValue}
@@ -1376,8 +1354,8 @@ export default function AnnaShell({ children, routeId }) {
                                 </option>
                             ))}
                         </select>
-                        <span aria-hidden="true" className="anna-header-picker-chevron anna-assistant-picker-chevron">
-                            <Icon name="chevron-down" size={16} color="currentColor" />
+                        <span aria-hidden="true">
+                            <Icon name="chevron-down" size={14} color="currentColor" />
                         </span>
                     </label>
                 )}
@@ -1511,6 +1489,23 @@ export default function AnnaShell({ children, routeId }) {
                                                 : ''
                                         }
                                         projectSwitch={projectSwitch}
+                                        renderProjectSwitcher={({ disabled }) => (
+                                            <AnnaProjectSwitcher
+                                                choices={projectChoices}
+                                                activeProjectId={
+                                                    projectSelection.isAutomatic
+                                                        ? ANNA_AUTOMATIC_PROJECT
+                                                        : activeProjectId
+                                                }
+                                                onSelect={selectProjectFromChat}
+                                                disabled={disabled || call.status !== 'idle'}
+                                                busy={switching}
+                                                getViewport={() => {
+                                                    const pane = chatPane.current?.getBoundingClientRect?.()
+                                                    return pane && { ...pane.toJSON(), active: true }
+                                                }}
+                                            />
+                                        )}
                                     />
                                 </AnnaAppPaneContext.Provider>
                             )}

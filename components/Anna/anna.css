@@ -141,8 +141,7 @@
     min-width: 0;
 }
 .anna-focus-task,
-.anna-focus-get,
-.anna-focus-empty-inbox {
+.anna-focus-get {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -177,50 +176,6 @@
 .anna-focus-task > div,
 .anna-focus-get > div {
     flex: none;
-}
-/* AT-3057: nothing is left for today (Empty Inbox), so the middle of the header celebrates instead
-   of offering the pick. A status, not a control: no hover, no cursor. It pops in once when it
-   appears; the icon gets a short extra bounce. Colours come from the theme tokens, so light and
-   dark mode both get a green pill with readable text. */
-.anna-focus-empty-inbox {
-    border: 1px solid var(--anna-success-border, #7beac5);
-    background: var(--anna-success-tint, #eafff8);
-    color: var(--anna-ink);
-    font-weight: 500;
-    animation: anna-empty-inbox-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.anna-focus-empty-inbox-icon {
-    display: inline-flex;
-    flex: none;
-    color: var(--anna-success, #07a873);
-    animation: anna-empty-inbox-check 700ms 180ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-@keyframes anna-empty-inbox-in {
-    from {
-        opacity: 0;
-        transform: scale(0.85);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-@keyframes anna-empty-inbox-check {
-    0% {
-        transform: scale(0.4) rotate(-20deg);
-    }
-    60% {
-        transform: scale(1.25) rotate(8deg);
-    }
-    100% {
-        transform: scale(1) rotate(0deg);
-    }
-}
-@media (prefers-reduced-motion: reduce) {
-    .anna-focus-empty-inbox,
-    .anna-focus-empty-inbox-icon {
-        animation: none;
-    }
 }
 .anna-focus-task-name {
     min-width: 0;
@@ -2301,148 +2256,6 @@
     }
 }
 
-/* AT-3056: the phone's chat header (`.anna-header-phone`, only while AnnaShell lays out for a phone)
-   gives the focus task the room. The sides take what they need, no more: the assistant is only its
-   avatar (a 44px button; with another assistant to pick, the avatar and a down-chevron open the
-   picker), the screen picker the chosen view's icon with the same chevron. The middle takes the
-   rest. Desktop and the sidebar chat keep `.anna-header-sidebar`'s centred layout and the
-   assistant's name. */
-.anna-header.anna-header-phone {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-}
-.anna-header-phone .anna-header-left {
-    gap: 0;
-}
-.anna-header-phone .anna-header-assistant,
-.anna-header-phone .anna-assistant-picker.anna-assistant-picker-avatar {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    margin: 0 0 0 -6px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--anna-ink);
-    cursor: pointer;
-}
-/* The avatar is all there is, so it shows on the narrowest phones too (the ≤360px rule above hides
-   it next to a visible name). */
-.anna-header-phone .anna-header-left .anna-small-avatar {
-    display: grid;
-    width: 32px;
-    height: 32px;
-}
-/* Offline or in a call the picker is unavailable; the avatar stays recognisable. */
-.anna-header-phone .anna-header-left .anna-assistant-picker-avatar:disabled {
-    opacity: 0.6;
-    cursor: default;
-}
-.anna-header-phone .anna-assistant-picker-avatar.anna-project-chip-busy .anna-small-avatar {
-    opacity: 0.6;
-}
-.anna-header-phone .anna-focus-task,
-.anna-header-phone .anna-focus-get,
-.anna-header-phone .anna-focus-empty-inbox {
-    max-width: 100%;
-    gap: 5px;
-    padding: 0 10px;
-}
-.anna-header-phone .anna-focus-task-project {
-    max-width: min(96px, 30%);
-}
-/* The icon and chevron show the choice; the native select lies over the whole control,
-   transparent, so a tap anywhere opens the system list and screen readers meet the select. Its box
-   is the shared phone selector below, the same as the assistant picker's on the left. */
-.anna-header-phone .anna-header-picker {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-}
-.anna-header-phone .anna-header-picker select {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    border: 0;
-    opacity: 0;
-    /* iOS zooms into a focused select under 16px. */
-    font-size: 16px;
-}
-.anna-header-phone .anna-header-picker > span {
-    position: static;
-    display: grid;
-    place-items: center;
-    pointer-events: none;
-}
-.anna-header-phone .anna-header-picker:has(select:focus-visible) {
-    outline: 2px solid var(--anna-accent);
-    outline-offset: 3px;
-}
-/* AT-3056 follow-up: the two pickers of the phone header look alike, so both read as "tap to choose":
-   a round 32px mark (the assistant's avatar on the left, the chosen view's icon on a tinted disc on
-   the right), then the same muted 16px down-chevron; no border, 44px high, a tinted background on
-   hover, the accent focus ring (the shell's for the button, `:has(select:focus-visible)` for the
-   select). The avatar alone (nothing else to pick, "Latest messages") keeps its round 44px button. */
-.anna-header-phone .anna-header-left .anna-assistant-picker-avatar,
-.anna-header-phone .anna-header-right .anna-header-picker {
-    gap: 2px;
-    width: auto;
-    min-width: 44px;
-    height: 44px;
-    padding: 0 4px 0 6px;
-    border: 0;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--anna-ink);
-    cursor: pointer;
-}
-.anna-header-phone .anna-header-right .anna-header-picker {
-    margin-right: -4px;
-}
-.anna-header-phone .anna-header-right .anna-header-picker > .anna-header-picker-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--anna-tint);
-}
-.anna-header-phone .anna-header-left .anna-assistant-picker-chevron,
-.anna-header-phone .anna-header-right .anna-assistant-picker-chevron {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 18px;
-    color: var(--anna-muted);
-}
-.anna-header-phone .anna-header-left .anna-assistant-picker-avatar:not(:disabled):hover,
-.anna-header-phone .anna-header-right .anna-header-picker:hover {
-    background: var(--anna-tint);
-}
-.anna-header-phone .anna-header-left .anna-assistant-picker-avatar:not(:disabled):hover .anna-assistant-picker-chevron,
-.anna-header-phone .anna-header-right .anna-header-picker:hover .anna-assistant-picker-chevron {
-    color: var(--anna-accent);
-}
-/* A header up to 480px wide inside its padding (phones up to about 512px): the focus task's project
-   is only its color dot; the link's label and title still name the project. */
-@container anna-header (max-width: 480px) {
-    .anna-header-phone .anna-focus-task-project {
-        max-width: none;
-        height: auto;
-        padding: 0;
-        border: 0;
-        background: transparent;
-    }
-    .anna-header-phone .anna-focus-task-project-name {
-        display: none;
-    }
-}
-
 /* AT-2903: project chip in the composer and its menu. The menu renders in
    a body portal, outside .anna-shell, so every colour carries a fallback. */
 .anna-composer-tools {
@@ -2453,8 +2266,27 @@
     align-items: center;
     flex: none;
 }
-/* AT-3055: the composer has no project chip any more (it sat on the field's top edge since AT-3032);
-   the assistant picker at the top of the sidebar is the only switch. No slot, no reserved room. */
+/* AT-3032: the chip sits on the field's top edge, half above and half over the border, left-aligned
+   with the +. The slot reserves the half above, the field's padding the half below, both only while a
+   chip is shown (the switcher renders nothing with fewer than two choices). */
+.anna-composer-project {
+    position: absolute;
+    top: -1px;
+    left: 12px;
+    /* No z-index: it paints over the field's border anyway, and must stay under popups. */
+    display: flex;
+    max-width: calc(100% - 24px);
+    transform: translateY(-50%);
+}
+.anna-composer-project:empty {
+    display: none;
+}
+.anna-composer-slot:has(.anna-project-chip) {
+    margin-top: 16px;
+}
+.anna-composer-field:has(.anna-project-chip) {
+    padding-top: 22px;
+}
 .anna-project-chip {
     display: inline-flex;
     align-items: center;
@@ -2765,9 +2597,6 @@
         display: none;
     }
 }
-/* AT-3060: borderless like the phone header's pickers (AT-3056 follow-up): transparent at rest, an
-   8px radius, tinted with an accent label and chevron on hover and while the menu is open. The
-   keyboard focus ring is the shell's `button:focus-visible` outline, so no outline shows at rest. */
 .anna-screen-picker {
     display: inline-flex;
     align-items: center;
@@ -2776,15 +2605,15 @@
     max-width: 200px;
     height: 36px;
     padding: 0 10px;
-    border: 0;
+    border: 1px solid var(--anna-border);
     border-radius: 8px;
-    background: transparent;
+    background: var(--ad-Surface, #ffffff);
     color: var(--anna-ink);
     font-size: 13px;
 }
 .anna-screen-picker:hover,
 .anna-screen-picker[aria-expanded='true'] {
-    background: var(--anna-tint);
+    border-color: var(--anna-focus);
     color: var(--anna-accent);
 }
 .anna-screen-picker-label {

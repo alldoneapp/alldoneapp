@@ -69,8 +69,7 @@ run `askToOpenAIBot` for the comment's author on the heartbeat 25-minute budget,
 What keeps it from answering twice or answering the wrong thing: the request must name the comment's
 **current** location, so a comment copied with its thread into another project or object does not get
 a second answer at its new address. A thread that has **any newer comment** is skipped, since that
-message's run (or its own catch-up) carries this one in its history (for a server-started request only
-a newer **user** comment counts, see below). The assistant switched off
+message's run (or its own catch-up) carries this one in its history. The assistant switched off
 (`isAssistantEnabled === false`), a webhook task, a deleted comment or thread, failing the callable's
 own `assertObjectAccess`, or a comment older than 24h all skip without taking the lock. Server-written
 user turns (WhatsApp daily topic, VM host requests, workflow step prompts) never carry the field, so
@@ -80,24 +79,6 @@ behaviour. Pinned by `functions/Assistant/assistantMissedRunCatchUp.test.js` (in
 `utils/backends/Chats/chatsComments.outbox.test.js`. `generatePreConfigTaskResultSecondGen` has no
 catch-up: its requests carry task-completion semantics a server rerun would have to reproduce.
 
-**Server-started requests and why a check did not run (AT-3059, 2026-11-16).** MCP `ask_assistant`
-has no client run at all: it marks its request `startOnServer: true`. Such a request is enqueued with
-no grace period, by the tool and by the comment trigger alike (same deterministic task id, so the one
-that comes second is a duplicate instead of turning the start into a 90s wait), and its "superseded"
-rule ignores newer **assistant** comments: with no client run, nothing else can have answered it,
-while goal routing, VM status lines and heartbeats regularly land seconds after a question asked in a
-fresh task. Client requests keep "any newer comment" (an answer whose run took no lock must not be
-answered twice). Because the task runs once (`maxAttempts: 1`), a check that ends without a lock is
-final for that message: it records why on the question, `assistantRunSkipped: {reason, at, detail?}`
-(`assistant_disabled`, `no_assistant`, `no_access`, `superseded`, `too_old`, `missing`,
-`not_requested`, or `error` when resolving or taking the lock threw). `update`, never `set`, so a
-deleted question is not recreated. A run lock always wins over the record. Reproducer: 2026-11-16, a
-task created by MCP `create_task` (`isAssistantEnabled: false`, `assistantId: ''`), question
-`-P6_Xvj8Jl2ODTMwJnrk`; the queued check ran 14s later and returned 204 in 0.68s with no lock ever
-written, and `ask_assistant` reported `starting` forever. Known gap left to the AT-2922 gate:
-`threadRunGate.isAssistantRunRequestPending` does not read `assistantRunSkipped`, so a skipped question
-still holds other members' next message for up to `PENDING_RUN_GRACE_MS` (150s).
-
 ## One assistant turn at a time per thread (AT-2922)
 
 A message that asks the assistant for an answer is **held on this device** while the previous
@@ -106,26 +87,9 @@ answer is complete, so the history always reads question, answer, question, answ
 the comment outbox already stored messages in order, but every send started its own `askToBot` at
 once: two runs worked in parallel, the second never saw the first answer, and the answers could
 land in either order. "Complete" includes every tool round **and a VM job the answer started in
-that same thread** (product decision: the next message waits for the VM too, but **only for a VM
-in the same object**). Other conversations are never blocked, and a message that does not ask the
-assistant (assistant off, webhook task) is never held.
-
-**A VM handed off to another object does not hold the thread (AT-3058).** After a VM handoff the
-model keeps the `askToBotSecondGen` request open, polling `get_vm_job` (`waitSeconds: 30`) to
-write its follow-up summary, so the local run of signal 1 below held the next message for the
-whole VM run (~6 min in the 16 Nov 2026 Anna report, where the VM ran in a new task), while a
-second device, seeing only signals 2/3, sent at once. Now `onVmHandoff` stamps the handoff comment
-with `vmHandoffInThread` (the VM host from `execute_task_in_vm` compared with the thread), and the
-gate stops counting a local run whose **newest answer** (`assistantRun.triggerMessageId` = the
-request id) is a completed handoff with `vmHandoffInThread: false`. The decision is per request
-id, so a late completion only settles its own run, and it sticks after the handoff scrolls out of
-the 5-comment window; a newer answer of the same run (the `openVmFollowup` comment, `running` for a
-few seconds) makes it count again until the request settles. The fix sits in the gate, so Anna and
-task/topic chats get it without caller changes. A handoff with `vmHandoffInThread: true` holds
-every device until an answer follows it (the VM status comment, which `startVmJob` writes only
-after the handoff) or 150 s pass. A handoff without the flag (older server) changes nothing.
-Accepted trade-off: the first request's follow-up summary can land after the answer to the next
-message; it is its own message.
+that thread** (product decision: the next message waits for the VM too). Other conversations are
+never blocked, and a message that does not ask the assistant (assistant off, webhook task) is
+never held.
 
 `utils/backends/Chats/threadRunGate.js` decides "still processing" from three signals, because
 each covers a gap the others cannot see: runs this tab started (`beginThreadRun`/`settleThreadRun`,
@@ -159,14 +123,11 @@ comment text; it is a `prominent dark` note on its own line between the header a
 outside the fade on the two (AT-3037, `Comment.test.js`, `browser-tests/at3037`). A failed
 delivery drops `threadGateCleared`/`forceSend`, so a retry waits for its turn again. Out of scope:
 WhatsApp (its inbound queue is already serial per user), voice calls and pre-configured prompt
-buttons (their runs still hold chat messages in the thread). By design a VM job hosted in a
-**different** thread (Anna's contextless dispatch creates its own task) does not hold the
-conversation that started it (AT-3058, above). In Anna a job already dispatched no longer marks the
-next message "queued" by itself; the gate decides. Pinned by `threadRunGate.test.js`, the `one
-assistant turn at a time per thread` block of `chatsComments.outbox.test.js`, the AT-2922 cases in
-`commentOutbox.test.js`, `AnnaConversation.test.js` (AT-3058 block), `MessageSendStatus.test.js`,
-`useGetMessages.pending.test.js` and the `vmHandoffInThread` assertions in
-`functions/Assistant/assistantHelper.test.js`.
+buttons (their runs still hold chat messages in the thread). Known limit: a VM job hosted in a
+**different** thread (a contextless dispatch creates its own task) is not visible to the
+conversation that started it. Pinned by `threadRunGate.test.js`, the `one assistant turn at a time
+per thread` block of `chatsComments.outbox.test.js`, the AT-2922 cases in `commentOutbox.test.js`,
+`AnnaConversation.test.js`, `MessageSendStatus.test.js` and `useGetMessages.pending.test.js`.
 
 ## A thread can pin its own assistant model (AT-2502)
 

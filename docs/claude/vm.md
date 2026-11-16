@@ -8,6 +8,19 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 
 VM agent templates and CLI updates: the runner starts from our sized templates `alldone-claude-4gb` / `alldone-codex-4gb` (E2B's managed `claude` / `codex` plus memory; see the 4 GB bullet below). Before every invocation, including resumed sessions, it checks the active CLI against the matching npm `latest` version and prepends `/home/user/.local/bin` to `PATH`. A current, working CLI is reused; missing, stale, or older launchers are replaced under a per-agent process lock. Template names live only in `vmTemplates.js`; there is no env override.
 
+**VM Node is owned by us, independently of the Cloud Run controller.**
+`vmNodeRuntime.js` pins Node 22.23.5 (keep it aligned with `.nvmrc`); its shared
+bootstrap installs the official, checksum-verified Linux distribution under
+`/home/user/.local`, validates Node and npm 10, and keeps it first in login/agent shell PATHs.
+The template builder, golden builder (before dependency installation), and runner (before
+every invocation, including resumes and managed-template fallbacks) all run it. A runtime
+download/verification failure stops startup. Existing paused sessions upgrade in place on
+their next run, preserving their work; already-running agents are not interrupted.
+Goldens store `nodeVersion`; old/missing versions trigger a background rebuild even without
+lockfile drift. Old goldens stay usable while rebuilding because startup patches them first.
+Deploy the VM runner image and `runGoldenBuild` together. Rebuild both E2B templates in every
+team to bake in Node and avoid cold downloads; this is not required for the startup fix.
+
 - The tool hands long-running, open-ended work to a Claude Code agent in an ephemeral **E2B** sandbox and posts the result back into the chat. Flow: `assistantHelper.js` dispatch → `functions/Assistant/vmJob.js` (`startVmJob`: validate, gold charge, write `pendingWebhooks` + `vmJobs` docs, post status comment, enqueue) → `runVmJob` (`onTaskDispatched` in `index.js`) → `functions/Assistant/vmJobRunner.js` (E2B sandbox + headless `claude -p`, streams progress, posts result, refunds gold on failure). Reuses the existing `pendingWebhooks` async-job collection.
 - **Concurrency and provider rate safety**: `functions/Assistant/vmJobConfig.js` is the shared source of truth for the ten per-user admission slots and the ten concurrent Cloud Tasks worker dispatches. An eleventh in-flight job for the same user is rejected before Gold is charged or a task is enqueued; jobs waiting behind the ten-worker global limit remain queued by Cloud Tasks. Worker starts are throttled to one per second so cold sandbox creation also stays within [E2B Hobby's documented limits](https://e2b.dev/docs/billing) (`1/sec` creation, 20 concurrent sandboxes). Deploy `runVmJob` after changing these values so Firebase updates the managed task queue.
 - It is **enabled by default** — it is part of `DEFAULT_ALLOWED_TOOLS` (`toolOptions.js`), so a new assistant can spend Gold on a VM run without the owner opting in. It was opt-in originally; commit `f9a1e20b0` ("Enable VM tasks by default") moved it into the default set. It can still be switched off per assistant in the Tools Access UI. Only `mcp_servers` is currently in `OPT_IN_ONLY_TOOLS`.

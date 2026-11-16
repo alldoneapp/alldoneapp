@@ -13,6 +13,7 @@ const {
 const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
 const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
 const { VM_AGENT_TEMPLATES, createAgentSandbox } = require('./vmTemplates')
+const { ensureVmNodeRuntime } = require('./vmNodeRuntime')
 const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const {
@@ -2240,6 +2241,7 @@ async function prepareVmAgentBridge(sandbox, agent, onActivity, header) {
 
     if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Preparing the Claude Agent SDK…`)
     const installCommand = [
+        `export PATH=${shellQuoteArg(`${AGENT_CLI_NPM_PREFIX}/bin`)}:$PATH`,
         `mkdir -p ${shellQuoteArg(VM_AGENT_BRIDGE_DIR)}`,
         `test -f ${shellQuoteArg(
             `${VM_AGENT_BRIDGE_DIR}/node_modules/@anthropic-ai/claude-agent-sdk/package.json`
@@ -3744,6 +3746,7 @@ async function runAgentInSandbox(
     try {
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         await prepareVmRuntimeDirectories(sandbox)
+        await ensureVmNodeRuntime(sandbox)
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         const executionMode = vmJob.executionMode || 'automatic'
         const usesAgentBridge = VM_INTERACTIVE_EXECUTION_MODES.includes(executionMode)

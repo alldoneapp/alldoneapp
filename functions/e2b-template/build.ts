@@ -3,8 +3,8 @@
  *
  * E2B fixes a sandbox's RAM and vCPU count when its template is built, and its managed
  * `claude` / `codex` templates come with 1 GB, which OOM-kills dependency installs and builds.
- * Each sized template is the managed one unchanged, plus memory. The agent CLIs are still kept
- * current at runtime by the runner, so these templates never need a rebuild for a CLI release.
+ * Each sized template adds memory and the repository's patched Node runtime. Agent CLIs are
+ * kept current at runtime; Node security releases need a template rebuild to avoid cold installs.
  *
  * Names and sizes come from ../Assistant/vmTemplates.js, the same module the runner reads.
  * Build them in EVERY E2B team the functions use (staging and production keys may differ)
@@ -20,6 +20,9 @@
 import 'dotenv/config'
 import { Template } from 'e2b'
 import vmTemplates from '../Assistant/vmTemplates.js'
+import vmNodeRuntime from '../Assistant/vmNodeRuntime.js'
+
+const { buildVmNodeRuntimeCommand, VM_NODE_PREFIX } = vmNodeRuntime
 
 const { VM_AGENT_TEMPLATES, VM_SANDBOX_MEMORY_MB, VM_SANDBOX_CPU_COUNT } = vmTemplates as {
     VM_AGENT_TEMPLATES: Record<string, { sized: string; managed: string }>
@@ -49,7 +52,11 @@ for (const agent of agents) {
 
 for (const agent of agents) {
     const { sized, managed } = VM_AGENT_TEMPLATES[agent]
-    const template = Template().fromTemplate(managed).runCmd(CLI_CHECKS[agent])
+    const template = Template()
+        .fromTemplate(managed)
+        // Keep the baked runtime writable by the same user that runs VM jobs.
+        .runCmd(buildVmNodeRuntimeCommand(), { user: 'user' })
+        .runCmd(`export PATH=${VM_NODE_PREFIX}/bin:$PATH && ${CLI_CHECKS[agent]}`, { user: 'user' })
 
     console.log(
         `🏗️  Building "${sized}" from managed "${managed}" (${VM_SANDBOX_CPU_COUNT} vCPU / ${VM_SANDBOX_MEMORY_MB} MB)…`

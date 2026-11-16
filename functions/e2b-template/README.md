@@ -7,9 +7,20 @@ agent's sized template; names and sizes live in
 
 **Why they exist.** E2B fixes a sandbox's RAM and vCPU count when its template is built;
 `Sandbox.create` cannot change them. E2B's managed `claude` / `codex` templates have 1 GB, which
-OOM-kills dependency installs and builds. Each sized template is the managed one unchanged
-(`fromTemplate`), built with 2 vCPU / 4 GB. The runner keeps the agent CLIs current at runtime, so
-a CLI release needs no rebuild.
+OOM-kills dependency installs and builds. Each sized template starts from the managed one
+(`fromTemplate`), adds the repository's pinned Node runtime, and is built with 2 vCPU / 4 GB.
+The runner keeps the agent CLIs current at runtime, so a CLI release needs no rebuild.
+
+**Node updates.** `../Assistant/vmNodeRuntime.js` pins Node 22.23.5, matching the repository's
+`.nvmrc`. Its shared bootstrap downloads the official Linux archive, verifies its SHA-256,
+and installs Node/npm/npx under `/home/user/.local` without sudo. It also puts that runtime
+first in agent commands and login shells. The same bootstrap runs before **every** agent
+invocation (including resumed sessions and managed-template fallbacks) and before golden
+dependency installs. A failed download or validation stops startup rather than using old Node.
+Rebuild these templates after a Node security bump to avoid downloads on new sandboxes.
+Goldens record `nodeVersion`; an old or missing version triggers a background rebuild on the
+next cold repo job. The startup check upgrades an old golden before its cached dependencies
+are used, so rebuilding does not delay jobs or discard paused-session work.
 
 **Fallback.** If a sized template is missing in the E2B team behind the key in use, the runner
 logs `sized E2B template missing` and starts from the managed 1 GB template, so jobs keep working.
@@ -41,7 +52,9 @@ E2B_API_KEY=e2b_*** npm run build -- codex   # one agent
 ```
 
 Rebuilding under the same name replaces the template for new sandboxes; running and paused
-sandboxes keep the build they started from. Nothing needs to be configured afterwards.
+sandboxes keep the build they started from. The runner's Node check upgrades them on their next
+invocation. Deploy the VM runner and `runGoldenBuild` with this code; the template rebuild is an
+optimization, not a prerequisite for updating existing sessions.
 
 ## Legacy Cloud Tasks IAM grants
 

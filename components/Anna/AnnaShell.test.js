@@ -39,7 +39,6 @@ import AssistantModeButton from './AssistantModeButton'
 import AnnaViewSwitch, { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import { AnnaAppShownContext, AnnaStripSlotContext } from './AnnaTopStripContext'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
-import { getIconGlyph } from '../Icon'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -199,21 +198,6 @@ jest.mock('react-redux', () => ({
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
-// AT-3055: the real switcher, recording the props of each instance by variant. Since the composer
-// lost its project chip, the assistant picker at the top left is the only one Anna renders.
-let mockSwitcherProps = {}
-jest.mock('./AnnaProjectSwitcher', () => {
-    const actual = jest.requireActual('./AnnaProjectSwitcher')
-    const Switcher = actual.default
-    return {
-        ...actual,
-        __esModule: true,
-        default: props => {
-            mockSwitcherProps[props.variant || 'project'] = props
-            return <Switcher {...props} />
-        },
-    }
-})
 jest.mock('./AnnaConversation', () => {
     const React = require('react')
     return {
@@ -807,7 +791,6 @@ beforeEach(() => {
     mockUnmounts = 0
     mockBrowserProps = null
     mockConversationProps = null
-    mockSwitcherProps = {}
     mockTransactionState = {}
     mockTakeoverProps = null
     mockTakeoverMounts = 0
@@ -965,11 +948,8 @@ it('gives the phone Alldone’s bar with the Anna | App icons on top and the cha
             'anna-header-right',
         ])
         expect(header.querySelector('.anna-view-switch-icons')).toBeNull()
-        // The assistant stays on the left, the focus task sits in the middle; the switch has icons only.
-        // AT-3056: on a phone the assistant is only its avatar; the label keeps the full name.
-        expect(header.classList.contains('anna-header-phone')).toBe(true)
-        expect(header.querySelector('.anna-header-left .anna-brand')).toBeNull()
-        expect(screen.getByLabelText('Anna Alldone – Latest messages').closest('.anna-header-left')).toBeTruthy()
+        // The name stays on the left, the focus task sits in the middle; the switch has icons only.
+        expect(header.querySelector('.anna-header-left').textContent).toContain('Anna Alldone')
         expect(header.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
         expect(phoneSwitch('chat').getAttribute('aria-pressed')).toBe('true')
         expect(phoneSwitch('chat').textContent).toBe('A')
@@ -987,182 +967,11 @@ it('gives the phone Alldone’s bar with the Anna | App icons on top and the cha
         expect(selectedSurface()).toBe('chat')
         expect(selectedSurfaceLabel()).toBe('Chat')
         // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
-        expect(picker.querySelector('.anna-header-picker-chevron').getAttribute('aria-hidden')).toBe('true')
-        expect(picker.querySelector('.anna-header-picker-chevron').textContent).toBe('\ue930')
+        expect(picker.querySelector(':scope > span[aria-hidden="true"]').textContent).toBe('\ue930')
     } finally {
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
-})
-
-// AT-3056: the phone's second line gives the focus task the room. The assistant shows only as its
-// avatar (the labels keep the full name; with another assistant to pick, the avatar opens the picker)
-// and the screen picker by the chosen view's icon over a transparent native select; desktop keeps
-// the name, its picker and the screen menu.
-describe('the compact phone chat header (AT-3056)', () => {
-    const withPhone = (phone, run) => {
-        const originalMatchMedia = window.matchMedia
-        window.matchMedia = () => ({ matches: phone, addEventListener: jest.fn(), removeEventListener: jest.fn() })
-        try {
-            run()
-        } finally {
-            if (originalMatchMedia) window.matchMedia = originalMatchMedia
-            else delete window.matchMedia
-        }
-    }
-    const pickerIcon = () => document.querySelector('.anna-header-picker-icon')
-    const select = () => document.querySelector('.anna-header-picker select')
-    const left = () => document.querySelector('.anna-header-left')
-    // Two assistants to choose from: "Automatic" (Anna) and Alldone Product's own (Alldone CTO).
-    const withSecondAssistant = run => {
-        Object.assign(mockUser, { defaultProjectId: 'p1', projectIds: ['p1', 'p2'] })
-        mockProjectsMap = {
-            p1: { id: 'p1', name: 'Home', userIds: ['u1'] },
-            p2: { id: 'p2', name: 'Alldone Product', userIds: ['u1'], assistantId: 'cto' },
-        }
-        mockExtraAssistants = { p2: [{ uid: 'cto', displayName: 'Alldone CTO' }] }
-        try {
-            run()
-        } finally {
-            delete mockUser.defaultProjectId
-            delete mockUser.projectIds
-        }
-    }
-
-    it('shows only the avatar with a down-chevron, which opens the assistant picker', () => {
-        withPhone(true, () =>
-            withSecondAssistant(() => {
-                setAnnaMode(true)
-                render(content(1))
-                expect(document.querySelector('.anna-header').classList.contains('anna-header-phone')).toBe(true)
-                // One control on the left: the avatar and its down-chevron. No name, no second
-                // avatar button. The chevron says it is a picker (AT-3056 follow-up).
-                expect(left().querySelectorAll('button')).toHaveLength(1)
-                expect(left().querySelector('.anna-brand')).toBeNull()
-                const avatar = left().querySelector('button.anna-assistant-picker.anna-assistant-picker-avatar')
-                expect([...avatar.children].map(node => node.className)).toEqual([
-                    'anna-small-avatar',
-                    'anna-assistant-picker-chevron',
-                ])
-                expect(avatar.querySelector('.anna-small-avatar').textContent).toBe('A')
-                const chevron = avatar.querySelector('.anna-assistant-picker-chevron')
-                expect(chevron.getAttribute('aria-hidden')).toBe('true')
-                expect(chevron.textContent).toBe(getIconGlyph('chevron-down'))
-                expect(avatar.classList.contains('anna-assistant-picker-named')).toBe(false)
-                // The full name stays in the accessible name and the tooltip.
-                expect(avatar.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
-                expect(avatar.title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
-                expect(avatar.getAttribute('aria-haspopup')).toBe('dialog')
-                expect(mockSwitcherProps.assistant.name).toBe('Anna Alldone')
-                // A tap on the avatar opens the same picker, and a pick switches the chat.
-                fireEvent.click(avatar)
-                expect(avatar.getAttribute('aria-expanded')).toBe('true')
-                const rows = [...document.querySelectorAll('.anna-project-option')]
-                expect(rows.map(row => row.querySelector('strong').textContent)).toEqual([
-                    'Anna Alldone',
-                    'Alldone CTO',
-                ])
-                fireEvent.click(rows[1])
-                expect(useAnnaConversation.mock.calls.at(-1)[1].projectId).toBe('p2')
-                // The focus task keeps its cell in the middle.
-                expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
-            })
-        )
-    })
-
-    it('keeps the avatar visible but unavailable during a call', () => {
-        withPhone(true, () =>
-            withSecondAssistant(() => {
-                mockCallStatus = 'connected'
-                try {
-                    render(content(1))
-                    const avatar = left().querySelector('.anna-assistant-picker-avatar')
-                    expect(avatar.disabled).toBe(true)
-                    expect(avatar.querySelector('.anna-small-avatar')).toBeTruthy()
-                    expect(avatar.title).toBe('Finish the call and stay online to change the assistant')
-                } finally {
-                    mockCallStatus = 'idle'
-                }
-            })
-        )
-    })
-
-    it('shows only the avatar with nothing else to pick, labelled with the full name', () => {
-        withPhone(true, () => {
-            mockDefaultAssistant = { uid: 'anna', displayName: 'Maximiliane Alexandra von Hohenzollern' }
-            render(content(1))
-            expect(left().querySelectorAll('button')).toHaveLength(1)
-            const button = screen.getByLabelText('Maximiliane Alexandra von Hohenzollern – Latest messages')
-            expect(button.title).toBe('Maximiliane Alexandra von Hohenzollern – Latest messages')
-            expect(button.querySelector('.anna-brand')).toBeNull()
-            // Not a picker, so no chevron: it shows the latest messages.
-            expect(button.textContent).toBe('M')
-            expect(document.querySelector('.anna-assistant-picker')).toBeNull()
-            expect(document.querySelector('.anna-header-left .anna-assistant-picker-chevron')).toBeNull()
-        })
-    })
-
-    it('shows the chosen view as an icon and keeps every choice in the native select', () => {
-        withPhone(true, () => {
-            render(content(1))
-            const picker = document.querySelector('.anna-header-picker')
-            expect(picker.closest('.anna-header-right').lastElementChild).toBe(picker)
-            expect(select().getAttribute('aria-label')).toBe('Workspace')
-            expect(pickerIcon().getAttribute('aria-hidden')).toBe('true')
-            expect(pickerIcon().textContent).toBe(getIconGlyph('message-circle'))
-            expect(picker.title).toBe('Chat')
-            // No visible text beside the icons: the labels live in the select's options.
-            expect([...picker.children].filter(node => node.tagName === 'SPAN').map(node => node.textContent)).toEqual([
-                getIconGlyph('message-circle'),
-                getIconGlyph('chevron-down'),
-            ])
-            // AT-3056 follow-up: the same chevron as the assistant picker on the left (class and size).
-            const chevron = picker.querySelector('.anna-header-picker-chevron')
-            expect(chevron.classList.contains('anna-assistant-picker-chevron')).toBe(true)
-            expect(chevron.querySelector('[style]').style.fontSize).toBe('16px')
-            expect([...select().options].map(option => option.textContent)).toEqual(['Chat', 'Browser', 'VMs'])
-
-            choose(select(), 'browser')
-            expect(select().value).toBe('browser')
-            expect(pickerIcon().textContent).toBe(getIconGlyph('globe'))
-            expect(document.querySelector('.anna-header-picker').title).toBe('Browser')
-
-            choose(select(), 'vms')
-            expect(pickerIcon().textContent).toBe(getIconGlyph('terminal'))
-
-            choose(select(), 'chat')
-            expect(select().value).toBe('chat')
-            expect(document.querySelector('.anna-mobile-chat')).toBeTruthy()
-            expect(pickerIcon().textContent).toBe(getIconGlyph('message-circle'))
-        })
-    })
-
-    it('leaves the desktop header as it was', () => {
-        withPhone(false, () =>
-            withSecondAssistant(() => {
-                setAnnaMode(true)
-                render(content(1))
-                const header = document.querySelector('.anna-header')
-                expect(header.classList.contains('anna-header-phone')).toBe(false)
-                expect(mockSwitcherProps.assistant.avatar).toBeUndefined()
-                // AT-3047: the avatar shows the latest messages, the name with its chevron picks.
-                expect(screen.getByLabelText('Anna Alldone – Latest messages')).toBeTruthy()
-                const picker = left().querySelector('.anna-assistant-picker.anna-assistant-picker-named')
-                expect(picker.querySelector('.anna-brand').textContent).toBe('Anna Alldone')
-                expect(picker.querySelector('.anna-assistant-picker-chevron')).toBeTruthy()
-                expect(left().querySelector('.anna-assistant-picker-avatar')).toBeNull()
-                expect(document.querySelector('.anna-header-picker')).toBeNull()
-                expect(screenPicker()).toBeTruthy()
-            })
-        )
-    })
-
-    it('keeps the desktop name when there is nothing else to pick', () => {
-        withPhone(false, () => {
-            render(content(1))
-            expect(document.querySelector('.anna-header-left .anna-brand').textContent).toBe('Anna Alldone')
-        })
-    })
 })
 
 it('leaves the chat on a phone once the top bar’s own controls have acted, but not for its switch', async () => {
@@ -2551,9 +2360,9 @@ describe('selected project (AT-2903)', () => {
         delete mockUser.defaultProjectId
         delete mockUser.projectIds
     })
-    const switcher = () => ({ props: mockSwitcherProps.assistant })
+    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
 
-    it('offers the projects in the assistant picker and continues the chat in the chosen one', () => {
+    it('offers the projects in the composer and continues the chat in the chosen one', () => {
         const view = render(content(1))
         expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
         // AT-3024: the chip starts on "Automatic", which continues the default project's chat.
@@ -2618,24 +2427,9 @@ describe('selected project (AT-2903)', () => {
     })
 
     it('cannot switch project during a voice call', () => {
-        const view = render(content(1))
-        expect(switcher().props.disabled).toBe(false)
-        mockCallStatus = 'connected'
-        try {
-            view.rerender(content(1))
-            expect(switcher().props.disabled).toBe(true)
-        } finally {
-            mockCallStatus = 'idle'
-        }
-    })
-
-    it('offers the switch only at the top, never in the composer (AT-3055)', () => {
         render(content(1))
-        expect(mockConversationProps.renderProjectSwitcher).toBeUndefined()
-        expect(Object.keys(mockSwitcherProps)).toEqual(['assistant'])
-        expect(document.querySelectorAll('.anna-header-left .anna-assistant-picker')).toHaveLength(1)
-        // Routing is unchanged: the chat keeps the project the picker resolves to.
-        expect(mockConversationProps.conversation).toBeTruthy()
+        expect(switcher().props.disabled).toBe(false)
+        expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
     })
 
     // AT-3034: assistant mode is entered from the assistant line, which hands over its project so
@@ -2764,7 +2558,7 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
         delete mockUser.defaultProjectId
         delete mockUser.projectIds
     })
-    const switcher = () => ({ props: mockSwitcherProps.assistant })
+    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
     const lastProject = () => useAnnaConversation.mock.calls.at(-1)[1].projectId
     const projectSwitches = () =>
         mockDispatch.mock.calls
@@ -2772,7 +2566,7 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             .filter(Boolean)
             .map(action => action.index)
 
-    it('moves the workspace when the assistant picker’s list picks a project, keeping the view', () => {
+    it('moves the workspace when the composer’s project chip picks a project, keeping the view', () => {
         render(content(1))
         act(() => switcher().props.onSelect('p3'))
         expect(lastProject()).toBe('p3')

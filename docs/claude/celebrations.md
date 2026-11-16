@@ -372,23 +372,3 @@ so the signal cannot decide visibility or remove a goal that has its own Today r
 deleting, reassigning, re-goaling, goal-level postpone, non-Today lists, filters, organize mode and
 reduced motion keep their existing immediate/static behavior. Completion and task-postpone events
 share the in-memory goal-task-exit channel; no Redux or persistence state is added.
-
-## Assistant mode header: Empty Inbox instead of "Get a focus task" (AT-3057)
-
-With no focus task, the middle of the assistant-mode header (`AnnaFocusTask`) offered "Get a focus
-task" even when nothing was left for today, i.e. it asked for more work at the moment the day was
-done. It now shows a compact green status pill ("Empty inbox for today – well done!", the
-all-projects congrats as its label) when `selectTodayInboxState` (`utils/Tasks/todayInboxState.js`)
-says EMPTY. **That decision never comes from the missing focus task.** It reads `sidebarNumbers`,
-the unfiltered today+overdue count behind the Home badge and `useReachEmptyInbox`, so future tasks
-do not keep today open and board filters / the selected project cannot fake an empty inbox. EMPTY
-needs proof that the count is complete: no `loading` key (initial store `{ loading: true }`, a
-project still loading, and `{ loading: false }` after `clearSidebarTasksAmount` all count as
-UNKNOWN) and an entry for every project in `loggedUserProjects` (a rebuilt watcher keeps the
-previous, smaller project list's numbers until it reports). UNKNOWN behaves like OPEN. A set focus
-id whose task has not loaded yet also keeps the old UI; an open focus task always wins. The pill is
-purely local CSS (a pop-in, none under reduced motion): it does **not** claim the once-per-day
-celebration marker or throw confetti, which stay with the boards (`celebrateNewDay`). A listener
-that errors leaves its project loading forever, so the failure mode is the old button, never a
-false celebration. Pinned by `AnnaFocusTask.test.js` (the AT-3057 block) and
-`utils/Tasks/todayInboxState.test.js`.

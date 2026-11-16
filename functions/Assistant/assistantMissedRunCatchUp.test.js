@@ -54,10 +54,6 @@ function createDb(p = params, objectData = object, commentData = comment) {
             return snapshot(refPath)
         },
         set: async (data, options) => write({ path: refPath }, data, options),
-        update: async data => {
-            if (!docs.has(refPath)) throw Object.assign(new Error(`No document to update: ${refPath}`), { code: 5 })
-            docs.set(refPath, { ...docs.get(refPath), ...data })
-        },
     })
     const db = {
         docs,
@@ -139,17 +135,6 @@ describe('catching up a user message whose assistant run never started', () => {
             await expect(enqueueMissedAssistantRunCheck(params, comment, { queue, now })).rejects.toThrow(
                 'queue unavailable'
             )
-        })
-
-        test('starts a request only the server runs (MCP ask_assistant) at once, without the grace period', async () => {
-            const queue = { enqueue: jest.fn().mockResolvedValue() }
-            const serverStarted = { ...comment, assistantRunRequest: { ...request, startOnServer: true } }
-            await enqueueMissedAssistantRunCheck(params, serverStarted, { queue, now })
-            // Same task id as the client-request check, so the trigger and the tool start it once.
-            const [, options] = queue.enqueue.mock.calls[0]
-            expect(options.scheduleDelaySeconds).toBe(0)
-            await enqueueMissedAssistantRunCheck(params, comment, { queue, now })
-            expect(queue.enqueue.mock.calls[1][1].id).toBe(options.id)
         })
 
         test('rejects unsupported object types', () => {
@@ -278,85 +263,13 @@ describe('catching up a user message whose assistant run never started', () => {
                     db.docs.set(getObjectDocPath('project', 'topics', 'chat'), { ...object, assistantId: '' })
                 },
             ],
-        ])('does not answer when there is %s, and says why on the question', async (_, change) => {
+        ])('does not answer when there is %s', async (_, change) => {
             const db = createDb()
             change(db)
             const askToBot = jest.fn()
-            const result = await runMissedAssistantRun(params, { db, askToBot, now })
-            expect(result).toHaveProperty('skipped')
+            expect(await runMissedAssistantRun(params, { db, askToBot, now })).toHaveProperty('skipped')
             expect(askToBot).not.toHaveBeenCalled()
             expect(db.docs.has(lockPath(params))).toBe(false)
-            // The task runs once: whoever waits for the answer (MCP ask_assistant) reads this.
-            const question = db.docs.get(`${commentsPath(params)}/message`)
-            if (question) expect(question.assistantRunSkipped).toEqual({ reason: result.skipped, at: NOW })
-        })
-
-        test('never recreates a deleted question to say why', async () => {
-            const db = createDb()
-            db.docs.delete(`${commentsPath(params)}/message`)
-            expect(await runMissedAssistantRun(params, { db, askToBot: jest.fn(), now })).toEqual({
-                skipped: 'missing',
-            })
-            expect(db.docs.has(`${commentsPath(params)}/message`)).toBe(false)
-        })
-
-        test('a check that fails before taking the lock says so on the question', async () => {
-            const db = createDb()
-            const doc = db.doc
-            db.doc = refPath => {
-                const ref = doc(refPath)
-                if (refPath === 'users/human') ref.get = async () => Promise.reject(new Error('deadline exceeded'))
-                return ref
-            }
-            await expect(runMissedAssistantRun(params, { db, askToBot: jest.fn(), now })).rejects.toThrow(
-                'deadline exceeded'
-            )
-            expect(db.docs.get(`${commentsPath(params)}/message`).assistantRunSkipped).toEqual({
-                reason: 'error',
-                at: NOW,
-                detail: 'deadline exceeded',
-            })
-            expect(db.docs.has(lockPath(params))).toBe(false)
-        })
-
-        describe('a later automatic assistant comment (goal routing, VM status) in the thread', () => {
-            const addAutomaticComment = db =>
-                db.docs.set(`${commentsPath(params)}/goal-routing`, {
-                    created: NOW - 1000,
-                    fromAssistant: true,
-                    creatorId: 'routing-assistant',
-                })
-
-            test('does not swallow a request only the server runs', async () => {
-                const db = createDb(params, object, {
-                    ...comment,
-                    assistantRunRequest: { ...request, startOnServer: true },
-                })
-                addAutomaticComment(db)
-                const askToBot = jest.fn()
-                expect(await runMissedAssistantRun(params, { db, askToBot, now })).toEqual({ caughtUp: true })
-                expect(askToBot).toHaveBeenCalledTimes(1)
-            })
-
-            test('still ends a client request, whose run may have answered without a lock', async () => {
-                const db = createDb()
-                addAutomaticComment(db)
-                const askToBot = jest.fn()
-                expect(await runMissedAssistantRun(params, { db, askToBot, now })).toEqual({ skipped: 'superseded' })
-                expect(askToBot).not.toHaveBeenCalled()
-            })
-
-            test('a later user message behind it still supersedes a server request', async () => {
-                const db = createDb(params, object, {
-                    ...comment,
-                    assistantRunRequest: { ...request, startOnServer: true },
-                })
-                db.docs.set(`${commentsPath(params)}/user-later`, { created: NOW - 2000, creatorId: 'follower' })
-                addAutomaticComment(db)
-                const askToBot = jest.fn()
-                expect(await runMissedAssistantRun(params, { db, askToBot, now })).toEqual({ skipped: 'superseded' })
-                expect(askToBot).not.toHaveBeenCalled()
-            })
         })
 
         test('leaves webhook tasks to their own flow', async () => {

@@ -10,8 +10,6 @@ import {
     getReleasedMessageCreated,
     isAssistantRunRequestPending,
     isCommentStillProcessing,
-    isInThreadVmHandoffStarting,
-    isRunHandedOffElsewhere,
 } from './threadRunGate'
 
 const NOW = 10 * 24 * 60 * 60 * 1000
@@ -113,75 +111,6 @@ describe('evaluateThreadBusy', () => {
     })
 })
 
-// AT-3058: the request stays open while the model waits for the VM it handed off. Only a VM in the
-// SAME thread may hold the next message; one hosted in another task must not.
-const handoff = ({ runId = 'question-1', inThread, at = NOW - 1000, ...rest } = {}) => ({
-    id: `handoff-${runId}`,
-    fromAssistant: true,
-    vmHandoff: true,
-    ...(inThread === undefined ? {} : { vmHandoffInThread: inThread }),
-    assistantRun: { kind: 'chat', status: 'completed', triggerMessageId: runId, completedAt: at },
-    created: at - 20000,
-    ...rest,
-})
-const vmStatus = (status, created = NOW - 500) => ({
-    id: 'vm-status',
-    isLoading: status !== 'completed',
-    assistantRun: { kind: 'vm_job', runId: 'vm-1', status },
-    created,
-    lastChangeDate: created,
-})
-
-describe('a request handed off to a VM (AT-3058)', () => {
-    it('is handed off once its newest answer is a completed handoff to a VM in another object', () => {
-        expect(isRunHandedOffElsewhere('question-1', [handoff({ inThread: false })])).toBe(true)
-    })
-
-    it('is still running when the VM is in this thread, or the server did not say where it is', () => {
-        expect(isRunHandedOffElsewhere('question-1', [handoff({ inThread: true })])).toBe(false)
-        expect(isRunHandedOffElsewhere('question-1', [handoff()])).toBe(false)
-    })
-
-    it('only counts the answer to its own request', () => {
-        expect(isRunHandedOffElsewhere('question-2', [handoff({ inThread: false })])).toBe(false)
-    })
-
-    it('holds again while its follow-up summary is written, and keeps the decision once out of view', () => {
-        const followup = {
-            id: 'followup',
-            fromAssistant: true,
-            assistantRun: { kind: 'chat', status: 'running', triggerMessageId: 'question-1' },
-            created: NOW,
-        }
-        expect(isRunHandedOffElsewhere('question-1', [handoff({ inThread: false }), followup], true)).toBe(false)
-        expect(isRunHandedOffElsewhere('question-1', [], true)).toBe(true)
-        expect(isRunHandedOffElsewhere('question-1', [], false)).toBe(false)
-    })
-
-    it('a handoff to a VM in this thread holds until the VM status comment exists, on every device', () => {
-        expect(isInThreadVmHandoffStarting([handoff({ inThread: true })], NOW)).toBe(true)
-        expect(isInThreadVmHandoffStarting([handoff({ inThread: true }), vmStatus('running')], NOW)).toBe(false)
-        expect(evaluateThreadBusy({ now: NOW, comments: [handoff({ inThread: true })] })).toBe(true)
-        expect(evaluateThreadBusy({ now: NOW, comments: [handoff({ inThread: true }), vmStatus('running')] })).toBe(
-            true
-        )
-        expect(evaluateThreadBusy({ now: NOW, comments: [handoff({ inThread: true }), vmStatus('completed')] })).toBe(
-            false
-        )
-    })
-
-    it('a handoff to a VM elsewhere, an old handoff and an expired one do not hold the thread', () => {
-        expect(evaluateThreadBusy({ now: NOW, comments: [handoff({ inThread: false })] })).toBe(false)
-        expect(evaluateThreadBusy({ now: NOW, comments: [handoff()] })).toBe(false)
-        expect(
-            evaluateThreadBusy({
-                now: NOW,
-                comments: [handoff({ inThread: true, at: NOW - PENDING_RUN_GRACE_MS - 1 })],
-            })
-        ).toBe(false)
-    })
-})
-
 describe('the date a released message gets', () => {
     it('is after the answer it waited for, even when that answer is dated ahead of this clock', () => {
         expect(getReleasedMessageCreated({ comments: [{ created: NOW + 5000 }], now: NOW, waited: true })).toBe(
@@ -271,58 +200,6 @@ describe('waitForThreadIdle', () => {
         snapshot([{ ...vm, isLoading: false, assistantRun: { kind: 'vm_job', status: 'completed' } }])
         await Promise.resolve()
         expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle', waited: true }))
-    })
-
-    it('does not wait for a VM this tab’s request handed off to another task (AT-3058)', async () => {
-        const result = jest.fn()
-        const onQueued = jest.fn()
-        gate.beginThreadRun(thread, 'question-1')
-        gate.waitForThreadIdle(thread, { onQueued, excludeId: 'next' }).then(result)
-        snapshot([{ id: 'question-1', assistantRunRequest: thread, created: NOW - 30000 }])
-        await Promise.resolve()
-        expect(result).not.toHaveBeenCalled()
-        // The request is still open (the model polls the VM), but its answer is a finished handoff.
-        snapshot([
-            { id: 'question-1', assistantRunRequest: thread, created: NOW - 30000 },
-            handoff({ inThread: false }),
-        ])
-        await Promise.resolve()
-        expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle' }))
-        // The decision sticks once the watcher is gone, so the next message is not shown as queued.
-        expect(gate.isThreadBusyLocally(thread)).toBe(false)
-    })
-
-    it('keeps waiting for a VM this tab’s request started in the same thread (AT-3058)', async () => {
-        const result = jest.fn()
-        gate.beginThreadRun(thread, 'question-1')
-        gate.waitForThreadIdle(thread).then(result)
-        snapshot([handoff({ inThread: true })])
-        now += 1000
-        jest.advanceTimersByTime(1000)
-        snapshot([handoff({ inThread: true }), vmStatus('running', now)])
-        await Promise.resolve()
-        expect(result).not.toHaveBeenCalled()
-        // The request ends (the summary is written) while the VM status still reads running.
-        gate.settleThreadRun(thread, 'question-1')
-        await Promise.resolve()
-        expect(result).not.toHaveBeenCalled()
-        snapshot([handoff({ inThread: true }), vmStatus('completed', now)])
-        await Promise.resolve()
-        expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle', waited: true }))
-    })
-
-    it('a stale completion settles only its own request, never a newer one (AT-3058)', async () => {
-        const result = jest.fn()
-        gate.beginThreadRun(thread, 'question-1')
-        gate.beginThreadRun(thread, 'question-2')
-        gate.waitForThreadIdle(thread).then(result)
-        snapshot([handoff({ inThread: false })])
-        gate.settleThreadRun(thread, 'question-1')
-        await Promise.resolve()
-        expect(result).not.toHaveBeenCalled()
-        gate.settleThreadRun(thread, 'question-2')
-        await Promise.resolve()
-        expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle' }))
     })
 
     it('never blocks another conversation', async () => {

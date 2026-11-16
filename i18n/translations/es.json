@@ -100,7 +100,6 @@
     "Open focus task in %{projectName}: %{taskName}": "Abrir tarea de enfoque en %{projectName}: %{taskName}",
     "Open focus task: %{taskName}": "Abrir tarea de enfoque: %{taskName}",
     "No open task for today": "No hay tareas abiertas para hoy",
-    "Empty inbox for today – well done!": "Bandeja de entrada vacía por hoy: ¡bien hecho!",
     "The focus task could not be picked. Please try again.": "No se pudo elegir la tarea de enfoque. Inténtalo de nuevo.",
     "Open app in assistant mode": "Abrir en modo asistente",
     "Open app in new tab": "Abrir en una pestaña nueva",

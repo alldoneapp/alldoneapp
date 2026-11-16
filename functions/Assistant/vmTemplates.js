@@ -3,7 +3,7 @@
 // E2B fixes a sandbox's RAM and vCPU count when its template is BUILT; Sandbox.create cannot
 // change them. E2B's managed `claude` / `codex` templates come with 1 GB, which OOM-kills
 // dependency installs and builds. So each agent has a sized template of our own, built FROM the
-// managed one (functions/e2b-template/build.ts), that adds only memory. The managed template is
+// managed one (functions/e2b-template/build.ts), with memory and patched Node. The managed template is
 // the fallback when the sized one does not exist in the E2B team behind the key in use, so a
 // missing build degrades to the old size instead of failing every VM job.
 //

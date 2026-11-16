@@ -383,21 +383,6 @@ themselves), one handler (`mcpWorkspaceSetupTools.js`), one Tools Access key for
   (`enqueueMissedAssistantRunCheck` with `delaySeconds: 0`), so the run is the ordinary one: the
   assistant's model and tools, the user's Gold, the per-message run lock. It waits for that lock to
   settle (at most 120s) and returns the answer, or the thread and `waitForCommentId` to keep waiting.
-  Like the app's bot button (`BotButtonWrapper.enableAssistant`), asking in a task or an existing topic
-  first switches the thread's assistant on and, if the thread has none (or a deleted one), sets the
-  assistant being asked, in a transaction; the result says `assistantSwitchedOn`. Without that the
-  catch-up skipped every question in a task made by `create_task` (`isAssistantEnabled: false`) and the
-  tool said `starting` forever (AT-3059). The assistant is the named `assistantId`, else the thread's,
-  else the project's; each must exist in the project or the global pool. A named one answers that
-  question only (it travels in `assistantRunRequest`); the thread keeps its own. Access is checked
-  before anything is written: the task or topic must pass `canAccessObject` (a topic named by
-  `chatTitle` too, so someone else's private topic is never written to), a webhook task is refused,
-  and waiting via `waitForCommentId` re-checks the thread. A run the server does not start comes back
-  as `status: 'not_started'` with `reason` and `error` (read from `assistantRunSkipped` on the
-  question, see `assistant-runs.md`), never as endless `starting`; a run lock always wins over that
-  record. Pinned by `MCP/mcpAskAssistant.test.js`, which runs the real catch-up against the fake
-  Firestore with only the model call stubbed (so it proves the run starts and its answer is returned,
-  not what a real model answers).
 - **Wiki documents**: `add_knowledge_document` takes a file of this conversation, a file of a thread
   the caller names (`threadObjectType`/`threadObjectId`, access-checked), an artifact (`artifactId`,
   its current version's text, if the user can read it) or `text`. The same tool on both surfaces.

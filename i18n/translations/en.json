@@ -100,7 +100,6 @@
     "Open focus task in %{projectName}: %{taskName}": "Open focus task in %{projectName}: %{taskName}",
     "Open focus task: %{taskName}": "Open focus task: %{taskName}",
     "No open task for today": "No open task for today",
-    "Empty inbox for today – well done!": "Empty inbox for today – well done!",
     "The focus task could not be picked. Please try again.": "The focus task could not be picked. Please try again.",
     "Open app in assistant mode": "Open in assistant mode",
     "Open app in new tab": "Open in new tab",

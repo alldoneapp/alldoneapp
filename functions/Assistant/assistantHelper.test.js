@@ -11464,8 +11464,6 @@ describe('Anna VM message order', () => {
         const ordered = messages().sort((a, b) => a.created - b.created)
         expect(ordered.map(doc => doc.commentText)).toEqual([intro, 'VM produced the PDF.', summary])
         expect(ordered[0]).toMatchObject({ vmHandoff: true, originalContent: intro, isLoading: false })
-        // AT-3058: the VM runs in this very task, so the next message in it stays queued.
-        expect(ordered[0].vmHandoffInThread).toBe(true)
         expect(ordered[2]).toMatchObject({ isLoading: false, fromAssistant: true })
         expect(ordered[2].created).toBeGreaterThan(ordered[1].created)
     })
@@ -11516,10 +11514,7 @@ describe('Anna VM message order', () => {
         try {
             const answer = await run({ target_task_id: 'other-task', target_project_id: 'other-project' })
             expect(answer).toBe(`${intro}\n\nFollow it here: ${hostUrl}`)
-            // AT-3058: a VM in another task does not hold this thread's next message.
-            expect(messages()).toEqual([
-                expect.objectContaining({ commentText: answer, vmHandoff: true, vmHandoffInThread: false }),
-            ])
+            expect(messages()).toEqual([expect.objectContaining({ commentText: answer, vmHandoff: true })])
             expect(start).toHaveBeenCalledTimes(1)
             expect(mockDocUpdate.mock.calls.filter(([data]) => data['commentsData.amount'])).toHaveLength(1)
         } finally {

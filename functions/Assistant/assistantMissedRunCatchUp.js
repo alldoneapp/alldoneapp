@@ -61,25 +61,13 @@ function isMissedRunCandidate(comment, { projectId, objectType, objectId }) {
 
 const isMissedAssistantRunTask = data => data?.kind === MISSED_RUN_TASK_KIND
 
-// A request no client of the sender will start (MCP ask_assistant, AT-3059): the server is its only
-// runner, so there is no grace period to wait for, and no client run whose answer could be a newer
-// assistant comment in the thread.
-const isServerStartedRequest = comment => comment?.assistantRunRequest?.startOnServer === true
-
-// Newest comments the check looks through for a later user message, for a server-started request.
-// Automatic assistant comments (goal routing, VM status, heartbeats) can land right after a question
-// asked in a fresh task and must not make it look answered.
-const SUPERSEDED_LOOKBACK = 20
-
-// Why a check did not start the run, kept on the question for whoever waits for its answer
-// (MCP ask_assistant reads it; a run lock always wins over it). Bounded and best effort.
-const MAX_SKIP_DETAIL_LENGTH = 300
-
 // `delaySeconds: 0` starts the run at once, for a message whose sender asked the server to answer it
-// (MCP ask_assistant). The comment trigger enqueues the same task id at once too for such a request,
-// so whichever of the two comes first starts it and the other is a duplicate, never a 90s wait.
-async function enqueueMissedAssistantRunCheck(params, comment, { queue, now = Date.now, delaySeconds } = {}) {
-    if (delaySeconds === undefined) delaySeconds = isServerStartedRequest(comment) ? 0 : MISSED_RUN_GRACE_SECONDS
+// (MCP ask_assistant); the trigger's later check of the same message then finds the task already exists.
+async function enqueueMissedAssistantRunCheck(
+    params,
+    comment,
+    { queue, now = Date.now, delaySeconds = MISSED_RUN_GRACE_SECONDS } = {}
+) {
     const { projectId, objectType, objectId, commentId } = params
     if (!projectId || !objectId || !commentId || !COMMENT_OBJECT_TYPES.has(objectType)) return { skipped: true }
     if (!isMissedRunCandidate(comment, params) || !isFreshComment(comment, now())) return { skipped: true }
@@ -101,48 +89,13 @@ async function enqueueMissedAssistantRunCheck(params, comment, { queue, now = Da
     }
 }
 
-// Any newer comment counts for a request a client was meant to start, as before: an answer whose run
-// took no lock must not be answered twice. For a server-started request only a newer user message
-// counts, since nothing else can have answered it.
-function isSuperseded(newestDocs, commentId, serverStarted) {
-    for (const doc of (serverStarted ? newestDocs : newestDocs.slice(0, 1)) || []) {
-        if (doc.id === commentId) return false
-        if (!serverStarted || (doc.data() || {}).fromAssistant !== true) return true
-    }
-    return false
-}
-
-// Only an existing comment is marked: `update` never creates a deleted question again.
-async function recordSkippedRun(db, { projectId, objectType, objectId, commentId }, reason, now, detail = '') {
-    try {
-        await db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`).update({
-            assistantRunSkipped: {
-                reason,
-                at: now,
-                ...(detail ? { detail: String(detail).slice(0, MAX_SKIP_DETAIL_LENGTH) } : {}),
-            },
-        })
-    } catch (error) {
-        if (reason !== 'missing') {
-            console.warn('[assistantMissedRun] Could not record why the run did not start', {
-                projectId,
-                objectType,
-                objectId,
-                commentId,
-                reason,
-                error: error?.message,
-            })
-        }
-    }
-}
-
 async function resolveMissedRun(db, params, now) {
     const { projectId, objectType, objectId, commentId } = params
     const commentsPath = `chatComments/${projectId}/${objectType}/${objectId}/comments`
     const [objectDoc, commentDoc, newestSnapshot] = await Promise.all([
         db.doc(getObjectDocPath(projectId, objectType, objectId)).get(),
         db.doc(`${commentsPath}/${commentId}`).get(),
-        db.collection(commentsPath).orderBy('created', 'desc').limit(SUPERSEDED_LOOKBACK).get(),
+        db.collection(commentsPath).orderBy('created', 'desc').limit(1).get(),
     ])
     if (!objectDoc.exists || !commentDoc.exists) return { skipped: 'missing' }
     const object = objectDoc.data() || {}
@@ -154,7 +107,8 @@ async function resolveMissedRun(db, params, now) {
     }
     // A later message in the thread replaces this one: either its own run answered with this message
     // in its history, or it is caught up itself and answers both at once.
-    if (isSuperseded(newestSnapshot.docs, commentId, isServerStartedRequest(comment))) return { skipped: 'superseded' }
+    const newestId = newestSnapshot.docs[0]?.id
+    if (newestId && newestId !== commentId) return { skipped: 'superseded' }
 
     const assistantId =
         comment.assistantRunRequest.assistantId || (objectType === 'assistants' ? objectId : object.assistantId)
@@ -199,32 +153,21 @@ async function runMissedAssistantRun(params, { db = admin.firestore(), askToBot,
     const lockId = buildAssistantRunLockId({ projectId, objectType, objectId, messageId: commentId })
     if ((await db.doc(`assistantRunLocks/${lockId}`).get()).exists) return { alreadyStarted: true }
 
-    // The task runs once (maxAttempts: 1), so a check that ends without a lock is final for this
-    // message. Saying why on the question is what lets a waiting caller stop waiting.
-    let resolution
-    let lock
-    try {
-        resolution = await resolveMissedRun(db, location, now())
-        if (!resolution.run) {
-            await recordSkippedRun(db, location, resolution.skipped, now())
-            return { skipped: resolution.skipped }
-        }
-        // Failed and cancelled runs are final here: the user saw them, and a cancel is a decision.
-        lock = await acquireAssistantRunLock(db, {
-            projectId,
-            objectType,
-            objectId,
-            messageId: commentId,
-            userId: resolution.run.userId,
-            assistantId: resolution.run.assistantId,
-            retryFailed: false,
-        })
-    } catch (error) {
-        await recordSkippedRun(db, location, 'error', now(), error?.message || error)
-        throw error
-    }
-    if (!lock.acquired) return { alreadyStarted: true }
+    const resolution = await resolveMissedRun(db, location, now())
+    if (!resolution.run) return { skipped: resolution.skipped }
     const { userId, assistantId, isPublicFor, followerIds, language, ageMs } = resolution.run
+
+    // Failed and cancelled runs are final here: the user saw them, and a cancel is a decision.
+    const lock = await acquireAssistantRunLock(db, {
+        projectId,
+        objectType,
+        objectId,
+        messageId: commentId,
+        userId,
+        assistantId,
+        retryFailed: false,
+    })
+    if (!lock.acquired) return { alreadyStarted: true }
 
     console.warn('[assistantMissedRun] The sender never started the assistant run; starting it from the server', {
         projectId,
