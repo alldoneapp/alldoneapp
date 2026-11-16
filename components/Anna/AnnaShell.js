@@ -386,8 +386,8 @@ export default function AnnaShell({ children, routeId }) {
     const frontPane = !active ? null : chatOnly && mobile ? 'chat' : singlePane ? mobilePane : null
     const visibleWorkspace = active && frontPane !== 'chat'
     // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar. In plain
-    // Alldone, a screen with a top bar slot (RootView's TopBarContainer) shows the strip there, right of
-    // the sidebar, which then runs up to the top; screens without one keep it above everything.
+    // Alldone, a screen with a top bar slot (AnnaStripSlot: RootView and the detail views) shows the
+    // strip there, right of the sidebar, which then runs up to the top; others keep it above everything.
     const showTopStrip = !mobile
     const stripInApp = !active && showTopStrip
     const [stripSlotClaims, setStripSlotClaims] = useState(0)

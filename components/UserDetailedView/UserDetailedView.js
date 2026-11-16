@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from './Header/BackButton'
@@ -163,118 +164,127 @@ const UserDetailedView = ({ navigation }) => {
         <View style={localStyles.container}>
             <LoadingData />
 
-            {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
+            {((!loggedUser.isAnonymous && !mobile) || (mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
-            {!!user && (
-                <View style={{ flex: 1 }}>
-                    {!mobile && !isMiddleScreen && accessGranted && (
-                        <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
-                            <BackButton user={user} projectIndex={projectIndex} constant={URL_PEOPLE_DETAILS} />
-                        </View>
-                    )}
+            <TopBarColumn>
+                {!!user && (
+                    <View style={{ flex: 1 }}>
+                        {!mobile && !isMiddleScreen && accessGranted && (
+                            <View
+                                style={[
+                                    localStyles.backButton,
+                                    overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                                ]}
+                            >
+                                <BackButton user={user} projectIndex={projectIndex} constant={URL_PEOPLE_DETAILS} />
+                            </View>
+                        )}
 
-                    <CustomView
-                        ref={scrollViewRef}
-                        style={[
-                            localStyles.scrollPanel,
-                            mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,
-                            overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
-                        ]}
-                    >
-                        <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
-                            {(!isFullscreen || selectedTab !== DV_TAB_USER_NOTE) && (
-                                <Header
-                                    contact={user}
-                                    project={project}
-                                    isFullscreen={isFullscreen}
-                                    setFullscreen={setFullscreen}
-                                />
-                            )}
-                            <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
-                                    <View style={mobile ? localStyles.navigationBar : undefined}>
-                                        <NavigationBar taskDetail isSecondary tabs={navigationTabs} />
-                                    </View>
+                        <CustomView
+                            ref={scrollViewRef}
+                            style={[
+                                localStyles.scrollPanel,
+                                mobile
+                                    ? localStyles.scrollPanelMobile
+                                    : isMiddleScreen && localStyles.scrollPanelTablet,
+                                overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                            ]}
+                        >
+                            <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
+                                {(!isFullscreen || selectedTab !== DV_TAB_USER_NOTE) && (
+                                    <Header
+                                        contact={user}
+                                        project={project}
+                                        isFullscreen={isFullscreen}
+                                        setFullscreen={setFullscreen}
+                                    />
                                 )}
-                                {(() => {
-                                    switch (selectedTab) {
-                                        case DV_TAB_USER_UPDATES:
-                                            return (
-                                                <RootViewFeedsUser
-                                                    user={user}
-                                                    userId={user.uid}
-                                                    projectId={projectId}
-                                                />
-                                            )
-                                        case DV_TAB_USER_WORKFLOW:
-                                            return <WorkflowView user={user} projectIndex={projectIndex} />
-                                        case DV_TAB_USER_PROPERTIES:
-                                            return <UserProperties user={user} project={project} />
-                                        case DV_TAB_USER_PROFILE:
-                                            return (
-                                                <UserProfileDv
-                                                    projectIndex={project.index}
-                                                    projectId={project.id}
-                                                    user={user}
-                                                />
-                                            )
-                                        case DV_TAB_USER_STATISTICS:
-                                            return <StatisticsView projectId={project.id} userId={user.uid} />
-                                        case DV_TAB_USER_BACKLINKS:
-                                            return (
-                                                <BacklinksView
-                                                    project={project}
-                                                    linkedParentObject={linkedParentObject}
-                                                    externalStyle={{ marginHorizontal: 0 }}
-                                                />
-                                            )
-                                        case DV_TAB_USER_CHAT:
-                                            return (
-                                                <ChatBoard
-                                                    chat={{ id: user.uid, type: 'contacts' }}
-                                                    projectId={project.id}
-                                                    chatTitle={user.displayName}
-                                                    assistantId={user.assistantId}
-                                                    objectType={'users'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                />
-                                            )
-                                        case DV_TAB_USER_NOTE:
-                                            return (
-                                                <>
-                                                    {!isFullscreen && !loggedUser.isAnonymous && (
-                                                        <AssistantMemoryPanel
-                                                            projectId={projectId}
-                                                            userId={user.uid}
-                                                            loggedUserId={loggedUser.uid}
-                                                        />
-                                                    )}
-                                                    <NoteIntegration
+                                <View style={{ flex: 1 }}>
+                                    {!isFullscreen && (
+                                        <View style={mobile ? localStyles.navigationBar : undefined}>
+                                            <NavigationBar taskDetail isSecondary tabs={navigationTabs} />
+                                        </View>
+                                    )}
+                                    {(() => {
+                                        switch (selectedTab) {
+                                            case DV_TAB_USER_UPDATES:
+                                                return (
+                                                    <RootViewFeedsUser
+                                                        user={user}
+                                                        userId={user.uid}
+                                                        projectId={projectId}
+                                                    />
+                                                )
+                                            case DV_TAB_USER_WORKFLOW:
+                                                return <WorkflowView user={user} projectIndex={projectIndex} />
+                                            case DV_TAB_USER_PROPERTIES:
+                                                return <UserProperties user={user} project={project} />
+                                            case DV_TAB_USER_PROFILE:
+                                                return (
+                                                    <UserProfileDv
+                                                        projectIndex={project.index}
+                                                        projectId={project.id}
+                                                        user={user}
+                                                    />
+                                                )
+                                            case DV_TAB_USER_STATISTICS:
+                                                return <StatisticsView projectId={project.id} userId={user.uid} />
+                                            case DV_TAB_USER_BACKLINKS:
+                                                return (
+                                                    <BacklinksView
                                                         project={project}
-                                                        noteId={user.noteIdsByProject[projectId]}
-                                                        objectId={user.uid}
-                                                        objectName={user.displayName}
-                                                        objectPrivacy={user.isPublicFor}
+                                                        linkedParentObject={linkedParentObject}
+                                                        externalStyle={{ marginHorizontal: 0 }}
+                                                    />
+                                                )
+                                            case DV_TAB_USER_CHAT:
+                                                return (
+                                                    <ChatBoard
+                                                        chat={{ id: user.uid, type: 'contacts' }}
+                                                        projectId={project.id}
+                                                        chatTitle={user.displayName}
+                                                        assistantId={user.assistantId}
+                                                        objectType={'users'}
                                                         isFullscreen={isFullscreen}
                                                         setFullscreen={setFullscreen}
-                                                        objectType="users"
-                                                        object={user}
-                                                        hideCreateNoteSection={hideCreateNoteSection}
-                                                        creatorId={user.uid}
                                                     />
-                                                </>
-                                            )
-                                    }
-                                })()}
+                                                )
+                                            case DV_TAB_USER_NOTE:
+                                                return (
+                                                    <>
+                                                        {!isFullscreen && !loggedUser.isAnonymous && (
+                                                            <AssistantMemoryPanel
+                                                                projectId={projectId}
+                                                                userId={user.uid}
+                                                                loggedUserId={loggedUser.uid}
+                                                            />
+                                                        )}
+                                                        <NoteIntegration
+                                                            project={project}
+                                                            noteId={user.noteIdsByProject[projectId]}
+                                                            objectId={user.uid}
+                                                            objectName={user.displayName}
+                                                            objectPrivacy={user.isPublicFor}
+                                                            isFullscreen={isFullscreen}
+                                                            setFullscreen={setFullscreen}
+                                                            objectType="users"
+                                                            object={user}
+                                                            hideCreateNoteSection={hideCreateNoteSection}
+                                                            creatorId={user.uid}
+                                                        />
+                                                    </>
+                                                )
+                                        }
+                                    })()}
+                                </View>
                             </View>
-                        </View>
-                    </CustomView>
-                    <DragModalsContainer />
-                </View>
-            )}
+                        </CustomView>
+                        <DragModalsContainer />
+                    </View>
+                )}
+            </TopBarColumn>
 
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />

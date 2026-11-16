@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import SettingsHeader from './Header/SettingsHeader'
 import BackButton from './Header/BackButton'
@@ -63,6 +64,8 @@ const SettingsView = ({ navigation }) => {
     const selectedTab = useSelector(state => state.selectedNavItem)
     const settingsScrollToTopToken = useSelector(state => state.settingsScrollToTopToken)
     const mobile = useSelector(state => state.smallScreenNavigation)
+    // Phones: the sidebar the top bar's menu button opens, as in RootView.
+    const showWebSideBar = useSelector(state => state.showWebSideBar)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const showProjectInvitationPopup = useSelector(state => state.showProjectInvitationPopup.visible)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -136,9 +139,9 @@ const SettingsView = ({ navigation }) => {
     return (
         <View style={localStyles.container}>
             {showProjectInvitationPopup && <ProjectInvitationPopup navigation={navigation} />}
-            {!mobile ? <CustomSideMenu navigation={navigation} isWeb /> : null}
+            {(!mobile || showWebSideBar.visible) && <CustomSideMenu navigation={navigation} isWeb />}
 
-            <View style={{ flex: 1 }}>
+            <TopBarColumn>
                 {!mobile && !isMiddleScreen && (
                     <View
                         style={[
@@ -208,7 +211,7 @@ const SettingsView = ({ navigation }) => {
                     </View>
                 </CustomScrollView>
                 <DragModalsContainer />
-            </View>
+            </TopBarColumn>
             <LoadingData />
         </View>
     )

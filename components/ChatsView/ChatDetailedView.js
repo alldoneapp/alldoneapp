@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import Header from './ChatDV/Header'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE, DV_TAB_CHAT_PROPERTIES } from '../../utils/TabNavigationConstants'
@@ -122,73 +123,75 @@ const ChatDetailedView = ({ navigation }) => {
         <View style={localStyles.container}>
             <LoadingData />
 
-            {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
+            {((!loggedUser.isAnonymous && !mobile) || (mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
-            <CustomView
-                ref={scrollRef}
-                style={[
-                    localStyles.scrollPanel,
-                    mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,
-                    overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
-                ]}
-            >
-                <View style={{ flexDirection: 'column', flex: 1 }}>
-                    <Header
-                        navigation={navigation}
-                        projectId={projectId}
-                        chat={chat}
-                        assistantId={assistantId}
-                        setAssistantId={setAssistantId}
-                        isFullscreen={isFullscreen}
-                        setFullscreen={setFullscreen}
-                    />
+            <TopBarColumn>
+                <CustomView
+                    ref={scrollRef}
+                    style={[
+                        localStyles.scrollPanel,
+                        mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,
+                        overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                    ]}
+                >
+                    <View style={{ flexDirection: 'column', flex: 1 }}>
+                        <Header
+                            navigation={navigation}
+                            projectId={projectId}
+                            chat={chat}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
+                            isFullscreen={isFullscreen}
+                            setFullscreen={setFullscreen}
+                        />
 
-                    <View style={{ flex: 1 }}>
-                        {!isFullscreen && accessGranted && (
-                            <View style={mobile ? localStyles.navigationBar : undefined}>
-                                <NavigationBar isSecondary tabs={navigationTabs} />
-                            </View>
-                        )}
+                        <View style={{ flex: 1 }}>
+                            {!isFullscreen && accessGranted && (
+                                <View style={mobile ? localStyles.navigationBar : undefined}>
+                                    <NavigationBar isSecondary tabs={navigationTabs} />
+                                </View>
+                            )}
 
-                        {(() => {
-                            switch (selectedTab) {
-                                case DV_TAB_CHAT_BOARD:
-                                    return (
-                                        <ChatBoard
-                                            chat={chat}
-                                            projectId={projectId}
-                                            chatTitle={chat?.title}
-                                            members={chat?.usersFollowing}
-                                            assistantId={assistantId}
-                                            setAssistantId={setAssistantId}
-                                            objectType={'chats'}
-                                            isFullscreen={isFullscreen}
-                                            setFullscreen={setFullscreen}
-                                        />
-                                    )
-                                case DV_TAB_CHAT_PROPERTIES:
-                                    return <PropertiesView chat={chat} projectId={projectId} />
-                                case DV_TAB_CHAT_NOTE:
-                                    return (
-                                        <NoteIntegration
-                                            project={{ id: projectId }}
-                                            noteId={chat?.noteId}
-                                            objectId={chat.id}
-                                            objectName={chat.title}
-                                            objectPrivacy={chat.isPublicFor}
-                                            isFullscreen={isFullscreen}
-                                            setFullscreen={setFullscreen}
-                                            objectType="topics"
-                                            object={chat}
-                                            creatorId={chat.creatorId}
-                                        />
-                                    )
-                            }
-                        })()}
+                            {(() => {
+                                switch (selectedTab) {
+                                    case DV_TAB_CHAT_BOARD:
+                                        return (
+                                            <ChatBoard
+                                                chat={chat}
+                                                projectId={projectId}
+                                                chatTitle={chat?.title}
+                                                members={chat?.usersFollowing}
+                                                assistantId={assistantId}
+                                                setAssistantId={setAssistantId}
+                                                objectType={'chats'}
+                                                isFullscreen={isFullscreen}
+                                                setFullscreen={setFullscreen}
+                                            />
+                                        )
+                                    case DV_TAB_CHAT_PROPERTIES:
+                                        return <PropertiesView chat={chat} projectId={projectId} />
+                                    case DV_TAB_CHAT_NOTE:
+                                        return (
+                                            <NoteIntegration
+                                                project={{ id: projectId }}
+                                                noteId={chat?.noteId}
+                                                objectId={chat.id}
+                                                objectName={chat.title}
+                                                objectPrivacy={chat.isPublicFor}
+                                                isFullscreen={isFullscreen}
+                                                setFullscreen={setFullscreen}
+                                                objectType="topics"
+                                                object={chat}
+                                                creatorId={chat.creatorId}
+                                            />
+                                        )
+                                }
+                            })()}
+                        </View>
                     </View>
-                </View>
-            </CustomView>
+                </CustomView>
+            </TopBarColumn>
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />
         </View>

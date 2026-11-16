@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
@@ -147,105 +148,114 @@ const ContactDetailedView = ({ navigation }) => {
     return (
         <View style={localStyles.container}>
             <LoadingData />
-            {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
+            {((!loggedUser.isAnonymous && !mobile) || (mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
-            {!!contact && (
-                <View style={{ flex: 1 }}>
-                    {!mobile && !isMiddleScreen && accessGranted && (
-                        <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
-                            <BackButton user={contact} projectIndex={projectIndex} constant={URL_CONTACT_DETAILS} />
-                        </View>
-                    )}
-
-                    <CustomView
-                        ref={scrollRef}
-                        style={[
-                            localStyles.scrollPanel,
-                            mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,
-                            overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
-                        ]}
-                    >
-                        <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
-                            {(!isFullscreen || selectedTab !== DV_TAB_CONTACT_NOTE) && (
-                                <Header
-                                    contact={contact}
-                                    disabled={!loggedUserCanUpdateObject}
-                                    isFullscreen={isFullscreen}
-                                    setFullscreen={setFullscreen}
-                                    projectId={projectId}
-                                />
-                            )}
-                            <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
-                                    <View style={mobile ? localStyles.navigationBar : undefined}>
-                                        <NavigationBar taskDetail isSecondary tabs={navigationTabs} />
-                                    </View>
-                                )}
-                                {(() => {
-                                    switch (selectedTab) {
-                                        case DV_TAB_CONTACT_PROPERTIES:
-                                            return (
-                                                <ContactProperties
-                                                    projectId={project.id}
-                                                    project={project}
-                                                    user={contact}
-                                                    projectIndex={projectIndex}
-                                                />
-                                            )
-                                        case DV_TAB_CONTACT_UPDATES:
-                                            return (
-                                                <RootViewFeedsContact
-                                                    contact={contact}
-                                                    contactId={contact.uid}
-                                                    projectId={projectId}
-                                                />
-                                            )
-                                        case DV_TAB_CONTACT_BACKLINKS:
-                                            return (
-                                                <BacklinksView
-                                                    project={project}
-                                                    linkedParentObject={linkedParentObject}
-                                                    externalStyle={{ marginHorizontal: 0 }}
-                                                />
-                                            )
-                                        case DV_TAB_CONTACT_CHAT:
-                                            return (
-                                                <ChatBoard
-                                                    chat={{ id: contact.uid, type: 'contacts' }}
-                                                    projectId={project.id}
-                                                    chatTitle={contact.displayName}
-                                                    assistantId={contact.assistantId}
-                                                    parentObject={contact}
-                                                    objectType={'contacts'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                />
-                                            )
-                                        case DV_TAB_CONTACT_NOTE:
-                                            return (
-                                                <NoteIntegration
-                                                    project={project}
-                                                    noteId={contact.noteId}
-                                                    objectId={contact.uid}
-                                                    objectName={contact.displayName}
-                                                    objectPrivacy={contact.isPublicFor}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                    objectType="contacts"
-                                                    hideCreateNoteSection={hideCreateNoteSection}
-                                                    object={contact}
-                                                    creatorId={contact.recorderUserId}
-                                                />
-                                            )
-                                    }
-                                })()}
+            <TopBarColumn>
+                {!!contact && (
+                    <View style={{ flex: 1 }}>
+                        {!mobile && !isMiddleScreen && accessGranted && (
+                            <View
+                                style={[
+                                    localStyles.backButton,
+                                    overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                                ]}
+                            >
+                                <BackButton user={contact} projectIndex={projectIndex} constant={URL_CONTACT_DETAILS} />
                             </View>
-                        </View>
-                    </CustomView>
-                </View>
-            )}
+                        )}
+
+                        <CustomView
+                            ref={scrollRef}
+                            style={[
+                                localStyles.scrollPanel,
+                                mobile
+                                    ? localStyles.scrollPanelMobile
+                                    : isMiddleScreen && localStyles.scrollPanelTablet,
+                                overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                            ]}
+                        >
+                            <View style={{ flexDirection: 'column', backgroundColor: themed.Surface, flex: 1 }}>
+                                {(!isFullscreen || selectedTab !== DV_TAB_CONTACT_NOTE) && (
+                                    <Header
+                                        contact={contact}
+                                        disabled={!loggedUserCanUpdateObject}
+                                        isFullscreen={isFullscreen}
+                                        setFullscreen={setFullscreen}
+                                        projectId={projectId}
+                                    />
+                                )}
+                                <View style={{ flex: 1 }}>
+                                    {!isFullscreen && (
+                                        <View style={mobile ? localStyles.navigationBar : undefined}>
+                                            <NavigationBar taskDetail isSecondary tabs={navigationTabs} />
+                                        </View>
+                                    )}
+                                    {(() => {
+                                        switch (selectedTab) {
+                                            case DV_TAB_CONTACT_PROPERTIES:
+                                                return (
+                                                    <ContactProperties
+                                                        projectId={project.id}
+                                                        project={project}
+                                                        user={contact}
+                                                        projectIndex={projectIndex}
+                                                    />
+                                                )
+                                            case DV_TAB_CONTACT_UPDATES:
+                                                return (
+                                                    <RootViewFeedsContact
+                                                        contact={contact}
+                                                        contactId={contact.uid}
+                                                        projectId={projectId}
+                                                    />
+                                                )
+                                            case DV_TAB_CONTACT_BACKLINKS:
+                                                return (
+                                                    <BacklinksView
+                                                        project={project}
+                                                        linkedParentObject={linkedParentObject}
+                                                        externalStyle={{ marginHorizontal: 0 }}
+                                                    />
+                                                )
+                                            case DV_TAB_CONTACT_CHAT:
+                                                return (
+                                                    <ChatBoard
+                                                        chat={{ id: contact.uid, type: 'contacts' }}
+                                                        projectId={project.id}
+                                                        chatTitle={contact.displayName}
+                                                        assistantId={contact.assistantId}
+                                                        parentObject={contact}
+                                                        objectType={'contacts'}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                    />
+                                                )
+                                            case DV_TAB_CONTACT_NOTE:
+                                                return (
+                                                    <NoteIntegration
+                                                        project={project}
+                                                        noteId={contact.noteId}
+                                                        objectId={contact.uid}
+                                                        objectName={contact.displayName}
+                                                        objectPrivacy={contact.isPublicFor}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                        objectType="contacts"
+                                                        hideCreateNoteSection={hideCreateNoteSection}
+                                                        object={contact}
+                                                        creatorId={contact.recorderUserId}
+                                                    />
+                                                )
+                                        }
+                                    })()}
+                                </View>
+                            </View>
+                        </CustomView>
+                    </View>
+                )}
+            </TopBarColumn>
 
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />

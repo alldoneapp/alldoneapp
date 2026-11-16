@@ -392,8 +392,15 @@ claims it, so the sidebar runs up to the top as it does without AnnaShell; there
 wide as the content below, with TopBar's margins (`getDesktopTopBarMargins`, the shown sidebar
 state) and rounded bottom (`[data-anna-strip-slot]` in anna.css), but the strip's own height,
 padding, type and background (TopBar's `GraySidebar`, also in assistant mode) in every view (the switch's 13px needs `.anna-shell .anna-strip-switch button`:
-the shell's `button { font: inherit }` outside Alldone's content would win in assistant mode); detail
-views have no slot, so the strip stays above everything there). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
+the shell's `button { font: inherit }` outside Alldone's content would win in assistant mode); the
+detail views (Task, Goal, Note, Contact, User, Project, Skill, Assistant, Chat, Settings, Admin) wrap
+the column right of their sidebar in `TopBarColumn`, which renders `TopBarContainer` there inside
+AnnaShell (the strip's slot, `AnnaStripSlot`, on desktop; the phone bar in AnnaShell's phone layout,
+whose menu button opens the sidebar, so the detail views render `CustomSideMenu` on phones while
+`showWebSideBar.visible`, as RootView does; outside AnnaShell, on shared links, no bar). Its tree
+is the same with or without the bar, so switching views never remounts the screen and their absolute
+back buttons stay at the top of the content, below the bar; a screen without a slot, such as
+PrivateResource, keeps the strip above everything). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
 first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
 `TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. The strip always passes
 `compact` explicitly, so Alldone's `smallScreen` flag (measured on the pane beside the chat) never

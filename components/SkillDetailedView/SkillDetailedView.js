@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import {
     resetFloatPopup,
     setNavigationRoute,
@@ -99,13 +100,13 @@ export default function SkillDetailedView({ navigation }) {
     }, [projectId, skillId])
 
     const showLoggedUserSideMenu =
-        (!isAnonymous && !smallScreenNavigation) || (isAnonymous && smallScreenNavigation && showWebSideBar.visible)
+        (!isAnonymous && !smallScreenNavigation) || (smallScreenNavigation && showWebSideBar.visible)
     const showAnonymousUserSideMenu = !smallScreenNavigation && isAnonymous
 
     return (
         <View style={localStyles.container}>
             {showLoggedUserSideMenu && <CustomSideMenu navigation={navigation} isWeb />}
-            {skill && <DvContainer projectId={projectId} />}
+            <TopBarColumn>{skill && <DvContainer projectId={projectId} />}</TopBarColumn>
             {showAnonymousUserSideMenu && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />
         </View>

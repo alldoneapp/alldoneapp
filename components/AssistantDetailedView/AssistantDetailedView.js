@@ -6,6 +6,7 @@ import v4 from 'uuid/v4'
 import Header from './Header/Header'
 import BackButton from './Header/BackButton'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import {
     navigateToAllProjectsTasks,
@@ -54,6 +55,8 @@ export default function AssistantDetailedView({ navigation }) {
     const dispatch = useDispatch()
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    // Phones: the sidebar the top bar's menu button opens, as in RootView.
+    const showWebSideBar = useSelector(state => state.showWebSideBar)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUser = useSelector(state => state.loggedUser)
     const administratorUserId = useSelector(state => state.administratorUser.uid)
@@ -156,114 +159,119 @@ export default function AssistantDetailedView({ navigation }) {
 
     return (
         <View style={localStyles.container}>
-            {!smallScreenNavigation ? <CustomSideMenu navigation={navigation} isWeb /> : null}
-            {!!assistant && !!projectOriginId && (
-                <View style={{ flex: 1 }}>
-                    {!smallScreenNavigation && !isMiddleScreen && <BackButton assistant={assistant} />}
+            {(!smallScreenNavigation || showWebSideBar.visible) && <CustomSideMenu navigation={navigation} isWeb />}
+            <TopBarColumn>
+                {!!assistant && !!projectOriginId && (
+                    <View style={{ flex: 1 }}>
+                        {!smallScreenNavigation && !isMiddleScreen && <BackButton assistant={assistant} />}
 
-                    <CustomView
-                        ref={scrollRef}
-                        style={[
-                            localStyles.scrollPanel,
-                            smallScreenNavigation
-                                ? localStyles.scrollPanelMobile
-                                : isMiddleScreen && localStyles.scrollPanelTablet,
-                            overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
-                        ]}
-                    >
-                        <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
-                            {(!isFullscreen || selectedNavItem !== DV_TAB_ASSISTANT_NOTE) && (
-                                <Header
-                                    isGlobalAsisstant={isGlobalAsisstant}
-                                    projectId={projectOriginId}
-                                    projectDetailedId={projectId}
-                                    assistant={assistant}
-                                    navigation={navigation}
-                                    isFullscreen={isFullscreen}
-                                    setFullscreen={setFullscreen}
-                                />
-                            )}
-                            <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
-                                    <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
-                                        <NavigationBar
-                                            taskDetail
-                                            isSecondary
-                                            tabs={navigationTabs}
-                                            style={{ height: 56 }}
-                                        />
-                                    </View>
+                        <CustomView
+                            ref={scrollRef}
+                            style={[
+                                localStyles.scrollPanel,
+                                smallScreenNavigation
+                                    ? localStyles.scrollPanelMobile
+                                    : isMiddleScreen && localStyles.scrollPanelTablet,
+                                overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                            ]}
+                        >
+                            <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
+                                {(!isFullscreen || selectedNavItem !== DV_TAB_ASSISTANT_NOTE) && (
+                                    <Header
+                                        isGlobalAsisstant={isGlobalAsisstant}
+                                        projectId={projectOriginId}
+                                        projectDetailedId={projectId}
+                                        assistant={assistant}
+                                        navigation={navigation}
+                                        isFullscreen={isFullscreen}
+                                        setFullscreen={setFullscreen}
+                                    />
                                 )}
+                                <View style={{ flex: 1 }}>
+                                    {!isFullscreen && (
+                                        <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
+                                            <NavigationBar
+                                                taskDetail
+                                                isSecondary
+                                                tabs={navigationTabs}
+                                                style={{ height: 56 }}
+                                            />
+                                        </View>
+                                    )}
 
-                                {(() => {
-                                    switch (selectedNavItem) {
-                                        case DV_TAB_ASSISTANT_CUSTOMIZATIONS:
-                                            return (
-                                                <AssistantCustomizations
-                                                    projectDetailedId={projectId}
-                                                    projectId={projectOriginId}
-                                                    assistant={assistant}
-                                                    isGlobalAsisstant={isGlobalAsisstant}
-                                                    isInGlobalProject={isInGlobalProject}
-                                                    isAdmin={loggedUser.uid === administratorUserId}
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_WORKFLOW:
-                                            return (
-                                                <WorkflowView
-                                                    user={assistant}
-                                                    projectIndex={project.index}
-                                                    projectId={projectId}
-                                                    ownerType="assistant"
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_BACKLINKS:
-                                            return (
-                                                <BacklinksView
-                                                    project={project}
-                                                    linkedParentObject={linkedParentObject}
-                                                    externalStyle={{ marginHorizontal: 0 }}
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_NOTE:
-                                            return (
-                                                <NoteIntegration
-                                                    project={project}
-                                                    noteId={assistant.noteIdsByProject[projectId]}
-                                                    objectId={assistant.uid}
-                                                    objectName={assistant.displayName}
-                                                    objectPrivacy={[FEED_PUBLIC_FOR_ALL]}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                    objectType="assistants"
-                                                    object={assistant}
-                                                    creatorId={assistant.creatorId}
-                                                    isInGlobalProject={isInGlobalProject}
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_CHAT:
-                                            return (
-                                                <ChatBoard
-                                                    chat={{ id: assistant.uid, type: 'assistants' }}
-                                                    projectId={project.id}
-                                                    chatTitle={assistant.displayName}
-                                                    assistantId={assistant.uid}
-                                                    objectType={'assistants'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_UPDATES:
-                                            return (
-                                                <RootViewFeedsAssistant projectId={project.id} assistant={assistant} />
-                                            )
-                                    }
-                                })()}
+                                    {(() => {
+                                        switch (selectedNavItem) {
+                                            case DV_TAB_ASSISTANT_CUSTOMIZATIONS:
+                                                return (
+                                                    <AssistantCustomizations
+                                                        projectDetailedId={projectId}
+                                                        projectId={projectOriginId}
+                                                        assistant={assistant}
+                                                        isGlobalAsisstant={isGlobalAsisstant}
+                                                        isInGlobalProject={isInGlobalProject}
+                                                        isAdmin={loggedUser.uid === administratorUserId}
+                                                    />
+                                                )
+                                            case DV_TAB_ASSISTANT_WORKFLOW:
+                                                return (
+                                                    <WorkflowView
+                                                        user={assistant}
+                                                        projectIndex={project.index}
+                                                        projectId={projectId}
+                                                        ownerType="assistant"
+                                                    />
+                                                )
+                                            case DV_TAB_ASSISTANT_BACKLINKS:
+                                                return (
+                                                    <BacklinksView
+                                                        project={project}
+                                                        linkedParentObject={linkedParentObject}
+                                                        externalStyle={{ marginHorizontal: 0 }}
+                                                    />
+                                                )
+                                            case DV_TAB_ASSISTANT_NOTE:
+                                                return (
+                                                    <NoteIntegration
+                                                        project={project}
+                                                        noteId={assistant.noteIdsByProject[projectId]}
+                                                        objectId={assistant.uid}
+                                                        objectName={assistant.displayName}
+                                                        objectPrivacy={[FEED_PUBLIC_FOR_ALL]}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                        objectType="assistants"
+                                                        object={assistant}
+                                                        creatorId={assistant.creatorId}
+                                                        isInGlobalProject={isInGlobalProject}
+                                                    />
+                                                )
+                                            case DV_TAB_ASSISTANT_CHAT:
+                                                return (
+                                                    <ChatBoard
+                                                        chat={{ id: assistant.uid, type: 'assistants' }}
+                                                        projectId={project.id}
+                                                        chatTitle={assistant.displayName}
+                                                        assistantId={assistant.uid}
+                                                        objectType={'assistants'}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                    />
+                                                )
+                                            case DV_TAB_ASSISTANT_UPDATES:
+                                                return (
+                                                    <RootViewFeedsAssistant
+                                                        projectId={project.id}
+                                                        assistant={assistant}
+                                                    />
+                                                )
+                                        }
+                                    })()}
+                                </View>
                             </View>
-                        </View>
-                    </CustomView>
-                </View>
-            )}
+                        </CustomView>
+                    </View>
+                )}
+            </TopBarColumn>
             <LoadingData />
         </View>
     )

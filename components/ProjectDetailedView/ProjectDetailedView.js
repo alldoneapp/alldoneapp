@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from './Header/BackButton'
@@ -110,11 +111,11 @@ const ProjectDetailedView = ({ navigation }) => {
         <View style={localStyles.container}>
             <LoadingData />
 
-            {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
+            {((!loggedUser.isAnonymous && !mobile) || (mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
-            <View style={{ flex: 1 }}>
+            <TopBarColumn>
                 {!mobile && !isMiddleScreen && accessGranted && (
                     <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                         <BackButton project={project} />
@@ -176,7 +177,7 @@ const ProjectDetailedView = ({ navigation }) => {
                         </View>
                     </View>
                 </CustomScrollView>
-            </View>
+            </TopBarColumn>
 
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
         </View>

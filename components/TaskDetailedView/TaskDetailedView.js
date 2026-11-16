@@ -20,6 +20,7 @@ import PropertiesView from './Properties/PropertiesView'
 import SubtasksView from './SubtasksView/SubtasksView'
 import WorkflowEstimation from './Estimations/WorkflowEstimation'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import Backend from '../../utils/BackendBridge'
 import BackButton from './Header/BackButton'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
@@ -271,10 +272,8 @@ const TaskDetailedView = ({ navigation }) => {
         <View style={localStyles.container} onLayout={onLayout}>
             <LoadingData />
             {((!loggedUser.isAnonymous && !smallScreenNavigation) ||
-                (loggedUser.isAnonymous && smallScreenNavigation && showWebSideBar.visible)) && (
-                <CustomSideMenu navigation={navigation} isWeb />
-            )}
-            <View style={{ flex: 1 }}>
+                (smallScreenNavigation && showWebSideBar.visible)) && <CustomSideMenu navigation={navigation} isWeb />}
+            <TopBarColumn>
                 {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
                     <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                         <BackButton projectId={projectId} task={task} />
@@ -376,7 +375,7 @@ const TaskDetailedView = ({ navigation }) => {
                         </View>
                     )}
                 </CustomView>
-            </View>
+            </TopBarColumn>
 
             {!smallScreenNavigation && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />

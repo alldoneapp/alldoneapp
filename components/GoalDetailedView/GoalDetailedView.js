@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
@@ -186,109 +187,113 @@ export default function GoalDetailedView({ navigation }) {
         <View style={localStyles.container}>
             <LoadingData />
             {((!loggedUser.isAnonymous && !smallScreenNavigation) ||
-                (loggedUser.isAnonymous && smallScreenNavigation && showWebSideBar.visible)) && (
-                <CustomSideMenu navigation={navigation} isWeb />
-            )}
+                (smallScreenNavigation && showWebSideBar.visible)) && <CustomSideMenu navigation={navigation} isWeb />}
 
-            {goal && (
-                <View style={{ flex: 1 }}>
-                    {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
-                        <BackButton projectId={projectId} goal={goal} />
-                    )}
+            <TopBarColumn>
+                {goal && (
+                    <View style={{ flex: 1 }}>
+                        {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
+                            <BackButton projectId={projectId} goal={goal} />
+                        )}
 
-                    <CustomView
-                        ref={scrollRef}
-                        style={[
-                            localStyles.scrollPanel,
-                            smallScreenNavigation
-                                ? localStyles.scrollPanelMobile
-                                : isMiddleScreen && localStyles.scrollPanelTablet,
-                            overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
-                        ]}
-                    >
-                        <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
-                            {(!isFullscreen || selectedNavItem !== DV_TAB_GOAL_NOTE) && (
-                                <Header
-                                    projectIndex={projectIndex}
-                                    goal={goal}
-                                    projectId={projectId}
-                                    accessGranted={accessGranted}
-                                    navigation={navigation}
-                                    isFullscreen={isFullscreen}
-                                    setFullscreen={setFullscreen}
-                                />
-                            )}
-                            <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
-                                    <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
-                                        <NavigationBar
-                                            taskDetail
-                                            isSecondary
-                                            tabs={navigationTabs}
-                                            style={{ height: 56 }}
-                                        />
-                                    </View>
+                        <CustomView
+                            ref={scrollRef}
+                            style={[
+                                localStyles.scrollPanel,
+                                smallScreenNavigation
+                                    ? localStyles.scrollPanelMobile
+                                    : isMiddleScreen && localStyles.scrollPanelTablet,
+                                overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
+                            ]}
+                        >
+                            <View style={{ backgroundColor: themed.Surface, flex: 1 }}>
+                                {(!isFullscreen || selectedNavItem !== DV_TAB_GOAL_NOTE) && (
+                                    <Header
+                                        projectIndex={projectIndex}
+                                        goal={goal}
+                                        projectId={projectId}
+                                        accessGranted={accessGranted}
+                                        navigation={navigation}
+                                        isFullscreen={isFullscreen}
+                                        setFullscreen={setFullscreen}
+                                    />
                                 )}
-                                {(() => {
-                                    switch (selectedNavItem) {
-                                        case DV_TAB_GOAL_PROPERTIES:
-                                            return (
-                                                <GoalProperties
-                                                    projectId={projectId}
-                                                    goal={goal}
-                                                    accessGranted={accessGranted}
-                                                />
-                                            )
-                                        case DV_TAB_GOAL_LINKED_TASKS:
-                                            return <GoalTasksView projectId={projectId} goal={goal} />
-                                        case DV_TAB_GOAL_UPDATES:
-                                            return (
-                                                <RootViewFeedsGoal projectId={projectId} goal={goal} goalId={goalId} />
-                                            )
-                                        case DV_TAB_GOAL_BACKLINKS:
-                                            return (
-                                                <BacklinksView
-                                                    project={project}
-                                                    linkedParentObject={linkedParentObject}
-                                                    externalStyle={{ marginHorizontal: 0 }}
-                                                />
-                                            )
-                                        case DV_TAB_GOAL_CHAT:
-                                            return (
-                                                <ChatBoard
-                                                    chat={{ id: goal.id, type: 'goals' }}
-                                                    projectId={project.id}
-                                                    chatTitle={goal.name}
-                                                    assistantId={goal.assistantId}
-                                                    objectType={'goals'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                />
-                                            )
-                                        case DV_TAB_GOAL_NOTE:
-                                            return (
-                                                <NoteIntegration
-                                                    project={project}
-                                                    noteId={goal.noteId}
-                                                    objectId={goalId}
-                                                    objectName={goal.extendedName}
-                                                    objectPrivacy={goal.isPublicFor}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
-                                                    objectType="goals"
-                                                    hideCreateNoteSection={hideCreateNoteSection}
-                                                    object={goal}
-                                                    creatorId={goal.creatorId}
-                                                />
-                                            )
-                                    }
-                                })()}
+                                <View style={{ flex: 1 }}>
+                                    {!isFullscreen && (
+                                        <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
+                                            <NavigationBar
+                                                taskDetail
+                                                isSecondary
+                                                tabs={navigationTabs}
+                                                style={{ height: 56 }}
+                                            />
+                                        </View>
+                                    )}
+                                    {(() => {
+                                        switch (selectedNavItem) {
+                                            case DV_TAB_GOAL_PROPERTIES:
+                                                return (
+                                                    <GoalProperties
+                                                        projectId={projectId}
+                                                        goal={goal}
+                                                        accessGranted={accessGranted}
+                                                    />
+                                                )
+                                            case DV_TAB_GOAL_LINKED_TASKS:
+                                                return <GoalTasksView projectId={projectId} goal={goal} />
+                                            case DV_TAB_GOAL_UPDATES:
+                                                return (
+                                                    <RootViewFeedsGoal
+                                                        projectId={projectId}
+                                                        goal={goal}
+                                                        goalId={goalId}
+                                                    />
+                                                )
+                                            case DV_TAB_GOAL_BACKLINKS:
+                                                return (
+                                                    <BacklinksView
+                                                        project={project}
+                                                        linkedParentObject={linkedParentObject}
+                                                        externalStyle={{ marginHorizontal: 0 }}
+                                                    />
+                                                )
+                                            case DV_TAB_GOAL_CHAT:
+                                                return (
+                                                    <ChatBoard
+                                                        chat={{ id: goal.id, type: 'goals' }}
+                                                        projectId={project.id}
+                                                        chatTitle={goal.name}
+                                                        assistantId={goal.assistantId}
+                                                        objectType={'goals'}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                    />
+                                                )
+                                            case DV_TAB_GOAL_NOTE:
+                                                return (
+                                                    <NoteIntegration
+                                                        project={project}
+                                                        noteId={goal.noteId}
+                                                        objectId={goalId}
+                                                        objectName={goal.extendedName}
+                                                        objectPrivacy={goal.isPublicFor}
+                                                        isFullscreen={isFullscreen}
+                                                        setFullscreen={setFullscreen}
+                                                        objectType="goals"
+                                                        hideCreateNoteSection={hideCreateNoteSection}
+                                                        object={goal}
+                                                        creatorId={goal.creatorId}
+                                                    />
+                                                )
+                                        }
+                                    })()}
+                                </View>
                             </View>
-                        </View>
-                    </CustomView>
-                    <DragModalsContainer />
-                </View>
-            )}
+                        </CustomView>
+                        <DragModalsContainer />
+                    </View>
+                )}
+            </TopBarColumn>
 
             {!smallScreenNavigation && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             {showSwipeDueDatePopup && <DueDateSinglePopup />}

@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import CustomSideMenu from '../../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../../TopBar/TopBarColumn'
 import Backend from '../../../utils/BackendBridge'
 import LoadingData from '../../UIComponents/LoadingData'
 
@@ -114,13 +115,20 @@ export default function NotesDetailedView({ navigation }) {
         <View style={localStyles.container}>
             <LoadingData />
 
-            {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
+            {((!loggedUser.isAnonymous && !mobile) || (mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
-            {note && (
-                <DvContainer navigation={navigation} projectId={projectId} note={note} updateObjectState={setNote} />
-            )}
+            <TopBarColumn>
+                {note && (
+                    <DvContainer
+                        navigation={navigation}
+                        projectId={projectId}
+                        note={note}
+                        updateObjectState={setNote}
+                    />
+                )}
+            </TopBarColumn>
 
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />

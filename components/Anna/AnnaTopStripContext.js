@@ -11,10 +11,11 @@ export const isAnnaPhoneWindow = () =>
 // (responsiveLayout.js), because no bar is left to open a mobile sidebar from.
 const AnnaTopStripContext = createContext(false)
 
-// Plain Alldone on desktop: the strip to render in Alldone's own top bar slot (TopBarContainer), right
-// of the sidebar, which then runs up to the top as it does outside AnnaShell. A screen that renders it
-// calls `claim` (and the returned release on unmount); while nothing claims it, as on detail views,
-// AnnaShell keeps the strip above everything. Null in assistant mode and on phones.
+// Plain Alldone on desktop: the strip to render in Alldone's own top bar slot (AnnaStripSlot, in
+// RootView's TopBarContainer and the detail views' TopBarColumn), right of the sidebar, which then
+// runs up to the top as it does outside AnnaShell. A screen that renders it calls `claim` (and the
+// returned release on unmount); while nothing claims it, AnnaShell keeps the strip above everything.
+// Null in assistant mode and on phones.
 export const AnnaStripSlotContext = createContext(null)
 
 // Whether Alldone itself is on screen: false in assistant mode while the chat or another screen is

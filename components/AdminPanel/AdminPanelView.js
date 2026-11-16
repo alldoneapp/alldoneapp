@@ -19,6 +19,7 @@ import {
 } from '../../utils/TabNavigationConstants'
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import TopBarColumn from '../TopBar/TopBarColumn'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import store from '../../redux/store'
 import UserCustomizations from './UserCustomizations/UserCustomizations'
@@ -36,6 +37,8 @@ export default function AdminPanelView({ navigation }) {
     const dispatch = useDispatch()
     const selectedTab = useSelector(state => state.selectedNavItem)
     const mobile = useSelector(state => state.smallScreenNavigation)
+    // Phones: the sidebar the top bar's menu button opens, as in RootView.
+    const showWebSideBar = useSelector(state => state.showWebSideBar)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
@@ -62,9 +65,9 @@ export default function AdminPanelView({ navigation }) {
 
     return (
         <View style={localStyles.container}>
-            {!mobile ? <CustomSideMenu navigation={navigation} isWeb /> : null}
+            {(!mobile || showWebSideBar.visible) && <CustomSideMenu navigation={navigation} isWeb />}
 
-            <View style={{ flex: 1 }}>
+            <TopBarColumn>
                 {!mobile && !isMiddleScreen && (
                     <View
                         style={[
@@ -100,7 +103,7 @@ export default function AdminPanelView({ navigation }) {
                         })()}
                     </View>
                 </CustomScrollView>
-            </View>
+            </TopBarColumn>
             <LoadingData />
         </View>
     )

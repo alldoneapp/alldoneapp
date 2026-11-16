@@ -59,6 +59,12 @@ jest.mock('./Properties/PropertiesView', () => mockView('PropertiesView'))
 jest.mock('./SubtasksView/SubtasksView', () => mockView('SubtasksView'))
 jest.mock('./Estimations/WorkflowEstimation', () => mockView('WorkflowEstimation'))
 jest.mock('../SidebarMenu/CustomSideMenu', () => mockView('CustomSideMenu'))
+jest.mock(
+    '../TopBar/TopBarColumn',
+    () =>
+        ({ children }) =>
+            children
+)
 jest.mock('./Header/BackButton', () => mockView('BackButton'))
 jest.mock('../UIComponents/LoadingData', () => mockView('LoadingData'))
 jest.mock('../Feeds/RootViewFeedsTask', () => mockView('RootViewFeedsTask'))
