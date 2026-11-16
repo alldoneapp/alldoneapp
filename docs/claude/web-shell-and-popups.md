@@ -409,7 +409,8 @@ is the same with or without the bar, so switching views never remounts the scree
 back buttons stay at the top of the content, below the bar; a screen without a slot, such as
 PrivateResource, keeps the strip above everything). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
 first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
-`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. The strip always passes
+`TasksStatisticsArea`, `QuotaBar`; `PremiumBar` is the crown alone at every size since 2026-11-16,
+so `compact` only narrows its gap), then the done-task count. The strip always passes
 `compact` explicitly, so Alldone's `smallScreen` flag (measured on the pane beside the chat) never
 shrinks statistics in a strip that has the room; left out, as in TopBar, the flag decides. A render may only add a
 step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
