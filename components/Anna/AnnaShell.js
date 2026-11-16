@@ -1236,10 +1236,11 @@ export default function AnnaShell({ children, routeId }) {
                 />
             </div>
             {/* Desktop: the user's focus task, or a button to pick one, in the middle of the row; not in
-                Both, where Alldone beside the chat already shows it. */}
-            {!mobile && !(active && !chatOnly && !singlePane) && (
+                Both, where Alldone beside the chat already shows it. The cell stays even when empty, or
+                the screen picker would slide into the middle column. */}
+            {!mobile && (
                 <div className="anna-header-center">
-                    <AnnaFocusTask onOpen={openInApp} />
+                    {!(active && !chatOnly && !singlePane) && <AnnaFocusTask onOpen={openInApp} />}
                 </div>
             )}
             {mobile && (

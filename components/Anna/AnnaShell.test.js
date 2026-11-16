@@ -867,6 +867,12 @@ it('keeps only the assistant and the screen picker in the desktop chat header; t
     expect(document.querySelector('.anna-header-tasks')).toBeNull()
     // Beside Alldone the focus task is on screen already; the chat alone shows it in the middle of the row.
     expect(document.querySelector('[data-testid="anna-focus-task"]')).toBeNull()
+    // The empty middle cell still holds its column, so the picker stays at the right end of the grid.
+    expect([...document.querySelector('.anna-header').children].map(cell => cell.className)).toEqual([
+        'anna-header-left',
+        'anna-header-center',
+        'anna-header-right',
+    ])
     hideWorkspace()
     expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
     showWorkspace()
