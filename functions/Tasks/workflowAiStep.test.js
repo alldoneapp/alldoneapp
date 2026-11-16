@@ -249,6 +249,26 @@ describe('user-owned delegated work', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(ASSIGNEE)
     })
 
+    it("starts a task created by create_task, whose history still says 'Open' (AT-3065)", async () => {
+        seedAssignee({ [AI_STEP]: aiStep() })
+        // The shape TaskModelBuilder wrote for assistant and MCP tasks until 2026-11-17.
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, { ...openTask(), stepHistory: ['Open'] })
+
+        expect(await start()).toMatchObject({
+            status: 'workflow_managed',
+            task: { currentReviewerId: ASSISTANT, stepHistory: [-1, AI_STEP] },
+        })
+        expect([...mockStore.keys()].filter(path => path.startsWith('workflowAiRuns/'))).toHaveLength(1)
+    })
+
+    it('reports a task that is neither Open nor in its workflow instead of claiming it started', async () => {
+        seedAssignee({ [AI_STEP]: aiStep() })
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, { ...openTask(), stepHistory: ['deleted-step'] })
+
+        expect(await start()).toMatchObject({ status: 'task_changed' })
+        expect([...mockStore.keys()].some(path => path.startsWith('workflowAiRuns/'))).toBe(false)
+    })
+
     it('starts with an earlier human prerequisite instead of skipping straight to the assistant', async () => {
         seedAssignee({
             prerequisite: { reviewerUid: HUMAN_REVIEWER, sortIndex: 0 },

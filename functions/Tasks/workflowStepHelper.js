@@ -3,11 +3,17 @@
 // Cloud Functions cannot import from outside functions/, so the small amount of AI-workflow-step
 // logic shared with the client is duplicated here. Keep the two in sync.
 
-const { DONE_STEP } = require('../Utils/HelperFunctionsCloud')
+const { DONE_STEP, OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 
 const REVIEWER_TYPE_ASSISTANT = 'assistant'
 
 const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER_TYPE_ASSISTANT
+
+// Tasks created through TaskService (assistants, MCP) started with stepHistory ['Open'] until
+// 2026-11-17, while the app and every workflow path use OPEN_STEP (-1). Both mean Open; existing
+// tasks keep the old value, so anything that asks "is this task Open" must accept either.
+const LEGACY_OPEN_STEP = 'Open'
+const isOpenStepId = stepId => stepId === OPEN_STEP || stepId === LEGACY_OPEN_STEP
 
 // Legacy steps are ordered by their chronological push IDs. Once a workflow is reordered, each
 // step receives a sortIndex. Missing sortIndex values (including newly-added steps) remain last.
@@ -95,7 +101,9 @@ const buildAiStepPrompt = (step, promptOverride) => {
 }
 
 module.exports = {
+    LEGACY_OPEN_STEP,
     REVIEWER_TYPE_ASSISTANT,
+    isOpenStepId,
     isAiWorkflowStep,
     getSortedWorkflowStepIds,
     getNextWorkflowStepId,

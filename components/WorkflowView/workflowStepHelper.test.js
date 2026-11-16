@@ -1,4 +1,10 @@
-import { buildWorkflowAiPromptOverride, getNextWorkflowStep, isNextWorkflowStepAi } from './workflowStepHelper'
+import {
+    buildWorkflowAiPromptOverride,
+    getNextWorkflowStep,
+    isNextWorkflowStepAi,
+    isOpenStepId,
+} from './workflowStepHelper'
+import { OPEN_STEP } from '../TaskListView/Utils/TasksHelper'
 import { getWorkflowSortIndexUpdates, getWorkflowStepsIdsSorted } from '../../utils/workflowOrder'
 
 const workflow = {
@@ -76,5 +82,14 @@ describe('workflow AI prompt overrides', () => {
 
     test.each(['', '   ', null, undefined])('keeps the configured prompt for an empty %p comment', comment => {
         expect(buildWorkflowAiPromptOverride(workflow, '2026-02', comment, 'comment-1')).toBeNull()
+    })
+})
+
+describe('isOpenStepId (AT-3065)', () => {
+    test("accepts the app's OPEN_STEP and the 'Open' that server-created tasks carry", () => {
+        expect(isOpenStepId(OPEN_STEP)).toBe(true)
+        expect(isOpenStepId('Open')).toBe(true)
+        expect(isOpenStepId('step-1')).toBe(false)
+        expect(isOpenStepId(-2)).toBe(false)
     })
 })

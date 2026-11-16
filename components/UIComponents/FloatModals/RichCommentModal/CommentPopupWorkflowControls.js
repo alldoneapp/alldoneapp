@@ -12,6 +12,7 @@ import {
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import { taskUsesWorkflowOutsideSteps } from './commentPopupWorkflowState'
+import { isOpenStepId } from '../../../WorkflowView/workflowStepHelper'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
 import { getWorkflowStepName } from '../../../WorkflowModal/workflowNavigation'
@@ -97,7 +98,8 @@ export const getCommentPopupWorkflowTargets = (task, workflow) => {
         // Not standing on a step. Either the task has not entered the workflow yet (`OPEN_STEP`,
         // which is what every task is created with) or it stands on a step that no longer exists,
         // which stays unrepresentable exactly as it was before.
-        const isOpenTask = stepHistory.length === 0 || lastStepId === OPEN_STEP
+        // A task created by an assistant or MCP may still say 'Open' instead of OPEN_STEP (AT-3065).
+        const isOpenTask = stepHistory.length === 0 || isOpenStepId(lastStepId)
         if (!isOpenTask) return null
         // An assistant workflow task is BORN into the workflow, so it is offered its steps
         // regardless of the flags below — that is the AT-2146 behaviour and it stays untouched.

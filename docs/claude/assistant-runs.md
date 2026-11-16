@@ -98,6 +98,15 @@ needed. Existing assistant-owned tasks are not migrated. Coverage includes the d
 in `workflowAiStep.test.js`, completion protection in `delegatedTaskWorkflow.test.js`, task/VM
 routing in `assistantHelper.test.js`, and approval/send-back controls in the frontend tests.
 
+**Open has two spellings (AT-3065, 2026-11-17).** `TaskModelBuilder` (every task created by an
+assistant or over MCP) wrote `stepHistory: ['Open']` until 2026-11-17, while the app and the
+workflow use `OPEN_STEP` (-1). The delegation start read `['Open']` as "not Open", moved nothing and
+still answered `workflow_managed`, so Anna announced work that never started. New tasks start with
+`[-1]`; existing ones keep `'Open'`, so test for Open with `isOpenStepId` (server
+`Tasks/workflowStepHelper.js`, client `WorkflowView/workflowStepHelper.js`), never `=== OPEN_STEP`.
+UIs that compare step _indexes_ work only by coincidence (`indexOf('Open')` is -1). A task that is
+neither Open nor in the workflow now returns `task_changed` instead of a false `workflow_managed`.
+
 ## Workflow steps move from chat: "merge it" (AT-2829, 2026-11-16)
 
 `move_task_workflow_step` moves a task to `next`, `back`, `done`, `open` or a named step, or (without

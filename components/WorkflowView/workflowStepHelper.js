@@ -12,6 +12,14 @@ import { getWorkflowStepsIdsSorted } from '../../utils/workflowOrder'
 
 export const REVIEWER_TYPE_ASSISTANT = 'assistant'
 
+// Tasks created by assistants or MCP before 2026-11-17 start with stepHistory ['Open'] instead of
+// OPEN_STEP (-1). Both mean Open (AT-3065). Mirrors isOpenStepId on the server. OPEN_STEP lives in
+// TasksHelper, which this small module must not import (tasksFirestore imports it); the test pins
+// the two together.
+const OPEN_STEP_ID = -1
+export const LEGACY_OPEN_STEP_ID = 'Open'
+export const isOpenStepId = stepId => stepId === OPEN_STEP_ID || stepId === LEGACY_OPEN_STEP_ID
+
 export const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER_TYPE_ASSISTANT
 
 // Returns the step selected by the workflow's default forward action. Open tasks enter the first

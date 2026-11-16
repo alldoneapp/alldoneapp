@@ -29,7 +29,7 @@
 const admin = require('firebase-admin')
 
 const { OPEN_STEP, DONE_STEP } = require('../Utils/HelperFunctionsCloud')
-const { getSortedWorkflowStepIds, isAiWorkflowStep } = require('./workflowStepHelper')
+const { getSortedWorkflowStepIds, isAiWorkflowStep, isOpenStepId } = require('./workflowStepHelper')
 const { withDelegationReviewStep } = require('../shared/delegatedTaskWorkflow')
 const { buildLastEditorVia } = require('../shared/mcpActor')
 
@@ -42,7 +42,11 @@ const PROMPT_OVERRIDE_MODE_APPEND = 'append'
 
 const toPublicStepId = stepId => (stepId === OPEN_STEP ? OPEN_ID : stepId === DONE_STEP ? DONE_ID : stepId)
 
-const getStepHistory = task => (Array.isArray(task?.stepHistory) ? task.stepHistory : [])
+// Normalized: a legacy 'Open' entry (tasks created by assistants or MCP) reads as OPEN_STEP.
+const getStepHistory = task =>
+    (Array.isArray(task?.stepHistory) ? task.stepHistory : []).map(stepId =>
+        isOpenStepId(stepId) ? OPEN_STEP : stepId
+    )
 
 /** Where the task stands: OPEN_STEP, DONE_STEP or a workflow step id. */
 const getTaskPosition = task => {

@@ -53,3 +53,19 @@ describe('TaskModelBuilder parent goal privacy', () => {
         expect(resolveParentGoalIsPublicFor(null, ['user-1'])).toBeNull()
     })
 })
+
+// AT-3065: tasks built here started with stepHistory ['Open'], which the workflow did not read as
+// Open, so a delegated task never entered its workflow. The step history uses OPEN_STEP (-1) like
+// tasks created in the app; the estimations keep their 'Open' key, which TaskService normalizes.
+describe('TaskModelBuilder workflow position', () => {
+    it("starts a task at the workflow's Open step", () => {
+        const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
+        const task = createTaskObject(baseParams)
+        expect(task.stepHistory).toEqual([OPEN_STEP])
+        expect(task.estimations).toEqual({ Open: 0 })
+    })
+
+    it('keeps a step history the caller passes', () => {
+        expect(createTaskObject({ ...baseParams, stepHistory: [-1, 'step-1'] }).stepHistory).toEqual([-1, 'step-1'])
+    })
+})

@@ -1,5 +1,5 @@
 const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
-const { getSortedWorkflowStepIds, isAiWorkflowStep } = require('../Tasks/workflowStepHelper')
+const { getSortedWorkflowStepIds, isAiWorkflowStep, isOpenStepId } = require('../Tasks/workflowStepHelper')
 const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared/delegatedTaskWorkflow')
 
 const buildDelegatedTaskFields = (ownerId, assistantId, executionMode) => ({
@@ -54,7 +54,12 @@ async function startDelegatedTaskWorkflow({ db, projectId, taskId, ownerId, assi
         if (!snapshot.exists) throw new Error('The delegated task no longer exists')
         const task = { id: taskId, ...snapshot.data() }
         if (!isDelegatedWorkflowTask(task) || task.userId !== ownerId || task.done) return { task, changed: true }
-        if (task.stepHistory?.length > 1 || task.stepHistory?.[0] !== OPEN_STEP) return { task }
+        const history = Array.isArray(task.stepHistory) ? task.stepHistory : []
+        // Already in its workflow: the workflow is handling it.
+        if (history.length > 1) return { task }
+        // Neither Open nor in the workflow: say so instead of reporting a start that never happened.
+        // AT-3065 was created with ['Open'] and silently stayed Open while Anna was told otherwise.
+        if (history.length === 1 && !isOpenStepId(history[0])) return { task, changed: true }
         const workflow = withDelegationReviewStep(savedWorkflow, task)
         const stepId = getSortedWorkflowStepIds(workflow)[0]
         const reviewerId = workflow[stepId].reviewerUid

@@ -12,6 +12,10 @@
 
 // Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
+// The step history uses the workflow's OPEN_STEP (-1), like tasks created in the app. It used the
+// 'Open' estimations key above until 2026-11-17, which the workflow did not recognise as Open
+// (AT-3065); estimations keep 'Open', which TaskService normalizes for the feeds.
+const OPEN_STEP_ID = -1
 const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
 const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
@@ -166,7 +170,7 @@ function buildTaskObject({
         isPublicFor: finalIsPublicFor,
 
         // Workflow and steps
-        stepHistory: stepHistory || [OPEN_STEP],
+        stepHistory: stepHistory || [OPEN_STEP_ID],
         estimations: finalEstimations,
 
         // Dates and timing

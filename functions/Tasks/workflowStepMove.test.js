@@ -345,6 +345,15 @@ describe('moveTaskWorkflowStep', () => {
         expect(storedTask().stepHistory).toEqual([-1, IMPLEMENT, REVIEW, MERGE])
     })
 
+    it("starts a task whose history still says 'Open' (created by an assistant or MCP, AT-3065)", async () => {
+        seed(taskAt(-1, { stepHistory: ['Open'] }))
+
+        const result = await move()
+
+        expect(result).toMatchObject({ success: true, from: { id: 'open' }, to: { label: 'Implement' } })
+        expect(storedTask()).toMatchObject({ stepHistory: [-1, IMPLEMENT], currentReviewerId: CTO })
+    })
+
     it('changes nothing when the move is not allowed', async () => {
         seed(taskAt(REVIEW))
 

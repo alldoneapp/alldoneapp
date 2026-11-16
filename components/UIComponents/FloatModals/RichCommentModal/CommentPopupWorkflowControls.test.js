@@ -495,6 +495,10 @@ describe('CommentPopupWorkflowControls', () => {
         expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: false, stepHistory: [-1] }, workflow)).toEqual(
             openTargets
         )
+        // AT-3065 — tasks created by assistants or MCP said 'Open' instead of -1 and got no controls.
+        expect(
+            getCommentPopupWorkflowTargets({ ...task, workflowTask: false, stepHistory: ['Open'] }, workflow)
+        ).toEqual(openTargets)
     })
 
     it('does not show workflow controls for a workflow without steps or a task on a deleted step', () => {
