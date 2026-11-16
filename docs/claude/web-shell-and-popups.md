@@ -390,8 +390,8 @@ renders `AnnaTopStrip` above everything, in all three views; in plain Alldone a 
 bar slot shows it there instead (2026-11-16: `AnnaStripSlotContext`; RootView's `TopBarContainer`
 claims it, so the sidebar runs up to the top as it does without AnnaShell; there the strip is a card as
 wide as the content below, with TopBar's margins (`getDesktopTopBarMargins`, the shown sidebar
-state), rounded bottom and theme background (`[data-anna-strip-slot]` in anna.css), but the strip's own
-height, padding and type in every view (the switch's 13px needs `.anna-shell .anna-strip-switch button`:
+state) and rounded bottom (`[data-anna-strip-slot]` in anna.css), but the strip's own height,
+padding, type and background (TopBar's `GraySidebar`, also in assistant mode) in every view (the switch's 13px needs `.anna-shell .anna-strip-switch button`:
 the shell's `button { font: inherit }` outside Alldone's content would win in assistant mode); detail
 views have no slot, so the strip stays above everything there). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
 first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,

@@ -2487,7 +2487,8 @@
         gap: 12px;
         height: 56px;
         padding: 0 20px 0 16px;
-        background: var(--anna-surface);
+        /* The App view's top bar colour (TopBar's theme) in every view. */
+        background: var(--ad-GraySidebar, #f5f5f5);
         font-family: Roboto, Arial, sans-serif;
         color: var(--anna-ink);
     }
@@ -2501,7 +2502,6 @@
     .anna-has-strip [data-anna-strip-slot] .anna-strip {
         border-bottom: 0;
         border-radius: 0 0 24px 24px;
-        background: var(--ad-GraySidebar, #f7f8fa);
         box-shadow: 0 0 6px rgba(4, 20, 47, 0.24);
     }
     /* Below the strip, inline fixed overlays belong to Alldone's pane in plain Alldone too. */
