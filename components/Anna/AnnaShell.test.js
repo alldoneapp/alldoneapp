@@ -3063,6 +3063,18 @@ describe('opening an activity row (AT-2906)', () => {
         expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(['/projects/p1/notes/b/editor'])
     })
 
+    // 2026-11-16: in a desktop window too narrow for Both, a card opens the App view, as a link in
+    // Alldone does, instead of the screen in the chat's card below the chat's row.
+    it('opens the App view in a desktop window too narrow for both', async () => {
+        window.innerWidth = 1000
+        const [row] = renderRows(['/projects/p1/notes/n1/editor'])
+        await act(async () => row.click())
+        expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/p1/notes/n1/editor')
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(document.querySelector('.anna-screen-only')).toBeNull()
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
+    })
+
     it('waits for a navigation still in progress so the later click lands last', async () => {
         const firstRoute = deferred()
         URLTrigger.processUrl.mockImplementationOnce(() => firstRoute.promise)

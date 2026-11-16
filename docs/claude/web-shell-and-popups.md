@@ -547,7 +547,10 @@ object (`/projects/{p}/chats/{id}/chat`), never to the followed chats inbox. On 
 (`data-anna-activity-link`) `AnnaShell` runs `resolveAnnaActivityPath` (one read-only `get`):
 a chat object is rewritten to its task/goal/note/contact, and a deleted object, a lost access or
 a project this session cannot select shows an inline error instead of the router's silent
-fallback to "All projects". Offline/transient errors do not block. Navigations are serialised
+fallback to "All projects". Where it opens: beside the chat (Both) where that fits; in a desktop
+window too narrow for Both it leaves assistant mode for the App view (`leaveChatForApp`, as a link in
+Alldone would), not the screen in the chat's card below the chat's row (2026-11-16); phones show
+Alldone in front under its own bar as before. Offline/transient errors do not block. Navigations are serialised
 (the later of two quick clicks lands last), which is why `processUrlAsLoggedIn` now awaits the
 route handler. The crash behind the report: `TasksHelper.getUserInProject` answers `undefined`
 (not null) for a project whose members are still loading, `processURLProjectsUserChats` tested

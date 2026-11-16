@@ -378,6 +378,9 @@ export default function AnnaShell({ children, routeId }) {
     // or the other, like a phone does: `mobilePane` says which. The strip then offers App and the
     // assistant only, and Both returns by itself once the window is wide enough again.
     const narrow = !mobile && !splitFits
+    // Read by `present` after its navigation, which may finish after a resize.
+    const narrowRef = useRef(narrow)
+    narrowRef.current = narrow
     // One card on desktop: a narrow window, and Anna only, where a screen picked in the chat's row
     // shows in that card below the row instead of opening Both.
     const oneCard = narrow || (chatOnly && !mobile)
@@ -976,7 +979,11 @@ export default function AnnaShell({ children, routeId }) {
                 }
                 if (generation !== requestGeneration.current) return
                 setSurface('alldone')
-                if (presentation.manual) {
+                if (presentation.manual && narrowRef.current) {
+                    // A desktop window too narrow for Both: the clicked card opens in the App view, as
+                    // a link in Alldone does, not in the chat's card below the chat's row.
+                    leaveChatForApp()
+                } else if (presentation.manual) {
                     setAnnaLayout('split')
                     setMobilePane('workspace')
                 }
@@ -988,7 +995,7 @@ export default function AnnaShell({ children, routeId }) {
                 acknowledge(presentation, 'failed')
             }
         },
-        [acknowledge, visibleWorkspace]
+        [acknowledge, visibleWorkspace, leaveChatForApp]
     )
 
     useEffect(() => {
