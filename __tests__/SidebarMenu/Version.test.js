@@ -52,6 +52,31 @@ describe('Version component', () => {
         })
     })
 
+    // A local emulator has no `info/version` record, so there is no release number to show.
+    describe('without a version record', () => {
+        it('says local instead of a made-up version', () => {
+            // One stable object: react-redux re-renders forever on a fresh one per call (see above).
+            const localState = { ...store.getState(), alldoneVersion: { major: 0, minor: 1, patch: 0, missing: true } }
+            store.getState = jest.fn(() => localState)
+            const { container } = render(
+                <Provider store={store}>
+                    <Version />
+                </Provider>
+            )
+            expect(container.textContent).toContain('Alldone.app · local')
+            expect(container.textContent).not.toContain('v0.1')
+        })
+
+        it('shows the release number when there is one', () => {
+            const { container } = render(
+                <Provider store={store}>
+                    <Version />
+                </Provider>
+            )
+            expect(container.textContent).toContain('Alldone.app v5.3')
+        })
+    })
+
     describe('Clicking the resfresh button works', () => {
         it('test', () => {
             const { getByTestId } = render(

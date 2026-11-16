@@ -15,10 +15,7 @@ exports[`Version component Version snapshot test should render correctly 1`] = `
       }
     }
   >
-    Alldone.app v
-    5
-    .
-    3
+    Alldone.app v5.3
   </div>
   <div
     className="css-view-g5y9jx"

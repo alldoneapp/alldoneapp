@@ -2,6 +2,7 @@ import {
     findWorkspaceObject,
     scrollWorkspaceContainer,
     scrollWorkspaceObject,
+    workspaceContentTop,
     workspaceObjectRect,
 } from './annaWorkspaceRevealTargets'
 const change = { type: 'task', projectId: 'p1', objectId: 't1' }
@@ -59,6 +60,18 @@ it('scrolls an offscreen row within Alldone and leaves an already visible row in
     nativeScroll.mockClear()
     expect(scrollWorkspaceObject(row, root)).toEqual([])
     expect(nativeScroll).not.toHaveBeenCalled()
+})
+it('centres a row that is already in view when asked to (the header’s focus task)', () => {
+    row.getBoundingClientRect = () => bounds(440, 500, 520, 60)
+    // 500 - 80 - (560 - 60) / 2 = 170 below the scroller's top edge.
+    expect(scrollWorkspaceObject(row, root, false, { center: true })).toEqual([scroller])
+    expect(nativeScroll).toHaveBeenCalledWith({ top: 170, left: 0, behavior: 'smooth' })
+})
+it('places a row in its scroller’s content, which scrolling does not change', () => {
+    expect(workspaceContentTop(row, root)).toBe(1320)
+    scroller.scrollTop = 300
+    row.getBoundingClientRect = () => bounds(440, 1100, 520, 60)
+    expect(workspaceContentTop(row, root)).toBe(1320)
 })
 it('honors reduced motion, and plans nested scrolling without double-counting the inner movement', () => {
     root.style.overflowY = 'auto'

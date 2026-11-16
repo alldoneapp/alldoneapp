@@ -13,6 +13,7 @@ import {
     setAnalyticsConsent,
 } from '../../../../utils/analytics/analytics'
 
+// The cookie settings: the same choice as the consent dialog, which the sidebar's footer used to open.
 export default function AnalyticsConsent() {
     const [consent, setConsent] = useState(getAnalyticsConsent())
 
@@ -30,9 +31,7 @@ export default function AnalyticsConsent() {
             <View style={[localStyles.settingRowSection, localStyles.settingRowLeft]}>
                 <Icon name={'lock'} size={24} color={colors.Text03} style={{ marginHorizontal: 8 }} />
                 <View style={localStyles.copy}>
-                    <Text style={[styles.subtitle2, { color: colors.Text03 }]}>
-                        {translate('Analytics and privacy')}
-                    </Text>
+                    <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Cookie settings')}</Text>
                     <Text style={[styles.caption2, { color: colors.Text03 }]}>
                         {consent === ANALYTICS_CONSENT_GRANTED
                             ? translate('Analytics enabled')

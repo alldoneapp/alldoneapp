@@ -3657,14 +3657,12 @@ export async function createFollowUpBacklinksToNotes(projectId, taskId, oldTaskI
     batch.commit()
 }
 
+// No `info/version` record: only the deploy jobs write it (production on master, staging on develop),
+// so a local emulator never has one. `missing` lets the sidebar say "local" instead of a made-up 0.1.
+const MISSING_ALLDONE_VERSION = { major: 0, minor: 1, patch: 0, missing: true }
+
 export async function getAllDoneVersion() {
-    return (
-        (await db.collection('info').doc('version').get()).data() ?? {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        }
-    )
+    return (await db.collection('info').doc('version').get()).data() ?? { ...MISSING_ALLDONE_VERSION }
 }
 
 export async function watchAllDoneVersion(callback) {
@@ -3672,13 +3670,7 @@ export async function watchAllDoneVersion(callback) {
         .collection('info')
         .doc('version')
         .onSnapshot(function (version) {
-            callback(
-                version.data() ?? {
-                    major: 0,
-                    minor: 1,
-                    patch: 0,
-                }
-            )
+            callback(version.data() ?? { ...MISSING_ALLDONE_VERSION })
         })
     versionUnsub = unsub
 }

@@ -69,6 +69,8 @@ export function storeVersion() {
             major: version.major,
             minor: version.minor,
             patch: version.patch,
+            // No version record (a local emulator): the sidebar says "local" (Version.js).
+            ...(version.missing ? { missing: true } : {}),
         }
         updateVersion(versionNumbers)
     })

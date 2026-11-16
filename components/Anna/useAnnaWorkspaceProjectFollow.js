@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import { getAnnaWorkspaceProjectKey } from './annaWorkspaceProjectSync'
 
-// AT-3036 follow-up — when the person opens a project in the Alldone workspace (right) while
-// assistant mode is on, the chat (left) follows: `follow(workspaceKey)` is called and picks that
-// project's chat, and with it the assistant that answers there.
+// AT-3036 follow-up — when the person opens a project in the Alldone workspace (right), the chat
+// (left) follows: `follow(workspaceKey)` is called and picks that project's chat, and with it the
+// assistant that answers there. Also in the App view (2026-11-16): the view switch in the top bar
+// names that assistant, so it changes with the project, and Anna opens the chat it names.
 //
 // Only the person's own navigation counts. The workspace also changes project for other reasons,
 // none of which may move the chat:
@@ -17,7 +18,7 @@ import { getAnnaWorkspaceProjectKey } from './annaWorkspaceProjectSync'
 // on the chat side closes it again, so the latest of both sides wins.
 export const ANNA_WORKSPACE_INTENT_MS = 4000
 
-export default function useAnnaWorkspaceProjectFollow({ active, isChatSide, follow }) {
+export default function useAnnaWorkspaceProjectFollow({ isChatSide, follow }) {
     const workspaceKey = useSelector(getAnnaWorkspaceProjectKey)
     const intentAt = useRef(0)
     const expected = useRef(null)
@@ -51,8 +52,8 @@ export default function useAnnaWorkspaceProjectFollow({ active, isChatSide, foll
         const byUser = intentAt.current > 0 && now - intentAt.current <= ANNA_WORKSPACE_INTENT_MS
         // One press, one follow: a later programmatic change in the same window stays programmatic.
         intentAt.current = 0
-        if (active && byUser) followRef.current?.(workspaceKey)
-    }, [workspaceKey, active])
+        if (byUser) followRef.current?.(workspaceKey)
+    }, [workspaceKey])
 
     // The chat moved the workspace: that change is the chat's, not the person's in the workspace.
     const expectSync = useCallback(key => {

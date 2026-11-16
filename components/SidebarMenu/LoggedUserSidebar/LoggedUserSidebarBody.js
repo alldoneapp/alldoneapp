@@ -6,7 +6,6 @@ import AllProjects from '../AllProjects/AllProjects'
 import AddProject from '../../AddNewProject/AddProject'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes/index'
-import HelpItem from '../HelpItem'
 import ActiveProjectsList from '../ActiveProjectsList'
 import GuideProjects from '../GuideProjects'
 import SharedProjectsList from '../SharedProjectsList'
@@ -45,7 +44,6 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             <ArchivedProjects navigation={navigation} />
             {showTemplatesArea && <TemplateProjects navigation={navigation} scrollToBottom={scrollToBottom} />}
             <SharedProjectsList navigation={navigation} />
-            <HelpItem />
             <SettingsItem />
             <FooterArea expanded={expanded} />
         </CustomScrollView>

@@ -6,9 +6,6 @@ import styles from '../styles/global'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { translate } from '../../i18n/TranslationService'
-import { openAnalyticsConsentSettings } from '../../utils/analytics/analytics'
-
-import { themed } from '../../Themes/colorMode'
 
 export default function ImpressumLink() {
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -27,39 +24,24 @@ export default function ImpressumLink() {
         window.open(`https://alldone.app/terms`, '_blank')
     }
 
+    const links = [
+        [translate('Impressum'), goToImprint],
+        [translate('Privacy'), goToPrivacy],
+        [translate('Terms'), goToTerms],
+    ]
+
+    // The links wrap onto a second line where the sidebar is too narrow for them; gaps instead of
+    // dots, which would dangle at a line's end. Before, one clipped line cut the last link off. The
+    // cookie settings live in Settings > Customizations (AnalyticsConsent).
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity onPress={goToImprint}>
-                <View style={localStyles.link}>
+            {links.map(([label, onPress]) => (
+                <TouchableOpacity key={label} onPress={onPress} style={localStyles.link}>
                     <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
-                        {translate('Impressum')}
+                        {label}
                     </Text>
-                </View>
-            </TouchableOpacity>
-            <View style={[localStyles.separator, theme.separator]} />
-            <TouchableOpacity onPress={goToPrivacy}>
-                <View style={localStyles.link}>
-                    <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
-                        {translate('Privacy')}
-                    </Text>
-                </View>
-            </TouchableOpacity>
-            <View style={[localStyles.separator, theme.separator]} />
-            <TouchableOpacity onPress={goToTerms}>
-                <View style={localStyles.link}>
-                    <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
-                        {translate('Terms')}
-                    </Text>
-                </View>
-            </TouchableOpacity>
-            <View style={[localStyles.separator, theme.separator]} />
-            <TouchableOpacity onPress={openAnalyticsConsentSettings}>
-                <View style={localStyles.link}>
-                    <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
-                        {translate('Cookie settings')}
-                    </Text>
-                </View>
-            </TouchableOpacity>
+                </TouchableOpacity>
+            ))}
         </View>
     )
 }
@@ -67,30 +49,19 @@ export default function ImpressumLink() {
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         width: '100%',
         paddingHorizontal: 24,
+        paddingBottom: 16,
         alignItems: 'center',
-        maxHeight: 30,
-        flexWrap: 'nowrap',
-        overflow: 'hidden',
+        columnGap: 16,
     },
     link: {
-        height: 48,
-        alignItems: 'center',
-        flexDirection: 'row',
+        paddingVertical: 4,
     },
     text: {
         ...styles.body2,
         color: '#FFFFFF',
-        opacity: 0.4,
-        flexWrap: 'nowrap',
-    },
-    separator: {
-        marginHorizontal: 8,
-        width: 4,
-        height: 4,
-        borderRadius: 50,
-        backgroundColor: themed.Surface,
         opacity: 0.4,
     },
 })

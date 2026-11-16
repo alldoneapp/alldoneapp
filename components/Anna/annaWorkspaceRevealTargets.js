@@ -36,21 +36,22 @@ export function findWorkspaceObject(root, change) {
     )
 }
 
+const scrollsVertically = node =>
+    /(auto|scroll)/.test(window.getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight
+
 // Scroll only inside Alldone. scrollIntoView would also move the outer shell or
-// the conversation, and jump immediately when a row is already in view.
-export function scrollWorkspaceObject(node, root, reducedMotion = false) {
+// the conversation, and jump immediately when a row is already in view. A row
+// already in view stays where it is, unless `center` asks for it in the middle
+// (the header's focus task, which the person asked to see).
+export function scrollWorkspaceObject(node, root, reducedMotion = false, { center = false } = {}) {
     const scrolling = []
     const original = node.getBoundingClientRect()
     let offset = 0
     for (let parent = node.parentElement; parent && root.contains(parent); parent = parent.parentElement) {
-        if (
-            !/(auto|scroll)/.test(window.getComputedStyle(parent).overflowY) ||
-            parent.scrollHeight <= parent.clientHeight
-        )
-            continue
+        if (!scrollsVertically(parent)) continue
         const box = { top: original.top - offset, bottom: original.bottom - offset, height: original.height }
         const pane = parent.getBoundingClientRect()
-        if (box.top >= pane.top + 32 && box.bottom <= pane.bottom - 16) continue
+        if (!center && box.top >= pane.top + 32 && box.bottom <= pane.bottom - 16) continue
         const target = parent.scrollTop + box.top - pane.top - Math.max(32, (parent.clientHeight - box.height) / 2)
         const top = Math.max(0, Math.min(parent.scrollHeight - parent.clientHeight, target))
         if (Math.abs(top - parent.scrollTop) > 1) {
@@ -60,6 +61,16 @@ export function scrollWorkspaceObject(node, root, reducedMotion = false) {
         }
     }
     return scrolling
+}
+
+// Where the row sits in the content of its nearest scroller inside Alldone: unlike its place on
+// screen, scrolling does not change it, so a change means the content above it moved.
+export function workspaceContentTop(node, root) {
+    const top = node.getBoundingClientRect().top
+    for (let parent = node.parentElement; parent && root.contains(parent); parent = parent.parentElement) {
+        if (scrollsVertically(parent)) return top - parent.getBoundingClientRect().top + parent.scrollTop
+    }
+    return top
 }
 
 export function workspaceObjectRect(node, root) {

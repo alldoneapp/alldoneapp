@@ -1382,7 +1382,8 @@ it('holds assistant navigation during browser control until Open is clicked', as
 it.each([false, true])('navigates from the sidebar logo without touching the chat when chat is %s', active => {
     render(content(1, true))
     if (!active) closeAssistant()
-    const logo = screen.getByLabelText('Alldone.app')
+    // The sidebar's logo; the strip shows its own where it spans the window.
+    const logo = [...document.querySelectorAll('[aria-label="Alldone.app"]')].find(node => !node.closest('.anna-strip'))
     // The sidebar header has no assistant toggle any more: the strip's Anna | Both | App switches.
     expect(logo.parentElement.querySelector('[aria-expanded]')).toBeNull()
     expect(logo.parentElement.textContent).not.toContain('Anna Alldone')
@@ -2141,6 +2142,16 @@ it('lets strip actions run as they are in plain Alldone', () => {
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
 })
 
+it('keeps the chosen view when the strip’s logo opens All projects', () => {
+    setAnnaLayout('chat')
+    render(content(1))
+    NavigationService.navigate.mockClear()
+    fireEvent.click(document.querySelector('.anna-strip-logo'))
+    expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    expect(layoutButton('chat').getAttribute('aria-pressed')).toBe('true')
+})
+
 it('keeps the chat when the view switch in the strip is used', () => {
     setAnnaLayout('split')
     render(content(1))
@@ -2164,10 +2175,13 @@ it('puts the strip in Alldone’s top bar slot in plain Alldone, and above every
     )
     expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
     expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+    // Beside the sidebar, whose logo is right there, the strip has none of its own.
+    expect(strip().querySelector('.anna-strip-logo')).toBeNull()
 
-    // A detail view has no top bar slot: the strip goes back above everything.
+    // A screen without a top bar slot: the strip goes back above everything, with the logo.
     view.rerender(<AnnaShell routeId={2} />)
     expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
+    expect(strip().querySelector('.anna-strip-logo')).toBeTruthy()
 
     // In assistant mode the strip spans the window above the chat and Alldone.
     view.rerender(
@@ -2179,6 +2193,7 @@ it('puts the strip in Alldone’s top bar slot in plain Alldone, and above every
     act(() => setAnnaMode(true))
     expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
     expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
+    expect(strip().querySelector('.anna-strip-logo')).toBeTruthy()
 })
 
 // Leaving the chat moves the strip into Alldone's top bar slot, which remounts it; the browser
@@ -2699,15 +2714,32 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             expect(lastProject()).toBe('p3')
         })
 
-        it('does not follow into an object’s detail view, nor when assistant mode is off', () => {
+        it('does not follow into an object’s detail view', () => {
             const view = render(content(1))
             pressWorkspace()
             workspaceShows(view, 'p3', 'TaskDetailedView')
             expect(lastProject()).toBe('p1')
-            act(() => setAnnaMode(false))
+        })
+
+        // 2026-11-16: in the App view too, so the view switch in the top bar names the project's
+        // assistant (its chat is not loaded there) and Anna opens the chat it names.
+        it('follows in the App view, where the view switch names the project’s assistant', () => {
+            setAnnaMode(false)
+            const view = render(content(1))
+            const chatButton = () => layoutButton('chat').getAttribute('aria-label')
+            expect(chatButton()).toBe('Only Anna Alldone')
             pressWorkspace()
             workspaceShows(view, 'p2')
+            expect(lastProject()).toBe('p2')
+            useAnnaConversation.mockReturnValue({ ...state, conversation: null, activeProjectId: 'p2' })
+            view.rerender(content(1))
+            expect(chatButton()).toBe('Only Alldone CTO')
+            pressWorkspace()
+            workspaceShows(view, 'all', 'ROOT_TASKS')
             expect(lastProject()).toBe('p1')
+            useAnnaConversation.mockReturnValue({ ...state, conversation: null, activeProjectId: 'p1' })
+            view.rerender(content(1))
+            expect(chatButton()).toBe('Only Anna Alldone')
         })
 
         it('keeps the latest choice of both sides, without a loop (rapid navigation)', () => {

@@ -2,11 +2,11 @@
 
 exports[`ImpressumLink component ImpressumLink snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexWrap-tzz3ar r-maxHeight-1dlgt49 r-overflow-1udh08x r-paddingInline-cxgwc0 r-width-13qz1uu"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-columnGap-zo7nv5 r-flexDirection-18u37iz r-flexWrap-1w6e6rj r-paddingBottom-1l7z4oj r-paddingInline-cxgwc0 r-width-13qz1uu"
   dir={null}
 >
   <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-paddingBlock-cnw61z"
     dir={null}
     onClick={[Function]}
     onContextMenu={[Function]}
@@ -19,35 +19,20 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     tabIndex="0"
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
-        style={
-          {
-            "color": "var(--ad-Text03)",
-            "opacity": 0.4,
-          }
+      className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
+      dir="auto"
+      style={
+        {
+          "color": "var(--ad-Text03)",
+          "opacity": 0.4,
         }
-      >
-        Impressum
-      </div>
+      }
+    >
+      Impressum
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-Text03)",
-        "opacity": 0.4,
-      }
-    }
-  />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-paddingBlock-cnw61z"
     dir={null}
     onClick={[Function]}
     onContextMenu={[Function]}
@@ -60,35 +45,20 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     tabIndex="0"
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
-        style={
-          {
-            "color": "var(--ad-Text03)",
-            "opacity": 0.4,
-          }
+      className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
+      dir="auto"
+      style={
+        {
+          "color": "var(--ad-Text03)",
+          "opacity": 0.4,
         }
-      >
-        Privacy
-      </div>
+      }
+    >
+      Privacy
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-Text03)",
-        "opacity": 0.4,
-      }
-    }
-  />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-paddingBlock-cnw61z"
     dir={null}
     onClick={[Function]}
     onContextMenu={[Function]}
@@ -101,62 +71,16 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     tabIndex="0"
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
-        style={
-          {
-            "color": "var(--ad-Text03)",
-            "opacity": 0.4,
-          }
+      className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
+      dir="auto"
+      style={
+        {
+          "color": "var(--ad-Text03)",
+          "opacity": 0.4,
         }
-      >
-        Terms
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-Text03)",
-        "opacity": 0.4,
       }
-    }
-  />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
-    onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
-    style={
-      {
-        "transitionDuration": "0s",
-      }
-    }
-    tabIndex="0"
-  >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
     >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
-        style={
-          {
-            "color": "var(--ad-Text03)",
-            "opacity": 0.4,
-          }
-        }
-      >
-        Cookie settings
-      </div>
+      Terms
     </div>
   </div>
 </div>

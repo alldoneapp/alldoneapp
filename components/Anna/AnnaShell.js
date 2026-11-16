@@ -233,12 +233,14 @@ export default function AnnaShell({ children, routeId }) {
     // While the selected project's chat resolves, preview the assistant that will answer there.
     const assistant = (switching ? activeChoice?.assistant : resolvedAssistant) || resolvedAssistant || NO_ASSISTANT
     const assistantName = assistant.displayName?.trim() || translate('Assistant')
-    // The header names whoever answers next: the current default assistant in the
-    // default project, the selected project's assistant everywhere else.
+    // The header and the view switch name whoever answers next: the current default assistant in the
+    // default project, the selected project's assistant everywhere else. Until that project's chat is
+    // loaded (it loads only in assistant mode), the project's own assistant stands in for it.
+    const projectChatLoaded = !!conversation && !switching
     const headerAssistant =
         !activeProjectId || activeProjectId === user.defaultProjectId
             ? defaultAssistant
-            : (switching ? activeChoice?.assistant : resolvedAssistant) || activeChoice?.assistant || defaultAssistant
+            : (projectChatLoaded ? resolvedAssistant : null) || activeChoice?.assistant || defaultAssistant
     const headerAssistantName = headerAssistant.displayName?.trim() || translate('Assistant')
     // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
     const [projectSwitch, setProjectSwitch] = useState(null)
@@ -252,7 +254,6 @@ export default function AnnaShell({ children, routeId }) {
     // focus the composer once that project's chat is on screen. Any other selection drops it.
     const chatSwitchFocus = useRef(null)
     const { expectSync: expectWorkspaceSync } = useAnnaWorkspaceProjectFollow({
-        active,
         isChatSide: target => !!target && (!!chatPane.current?.contains(target) || !!target.closest?.('.anna-header')),
         follow: workspaceKey => followWorkspace.current?.(workspaceKey),
     })
@@ -412,7 +413,7 @@ export default function AnnaShell({ children, routeId }) {
         chatConversation.current?.focusInput()
     }, [])
     // AT-3036 follow-up: after a project switch picked in the chat sidebar (composer chip, assistant
-    // picker at the top left, "Chats in other projects"), the composer takes focus once the new
+    // picker at the top left), the composer takes focus once the new
     // project's chat is loaded and on screen, so the person can type right away; the draft stays.
     // Desktop only (decided with the product owner): on a phone the keyboard would cover the chat
     // that just opened. Switches from the workspace or an assistant line never focus here, the
@@ -1369,8 +1370,12 @@ export default function AnnaShell({ children, routeId }) {
               onSelect: selectLayout,
           }
         : null
+    // Above everything the strip spans the window; in Alldone's top bar slot it sits right of the
+    // sidebar, whose logo is beside it.
+    const stripAboveEverything = showTopStrip && !(stripInApp && stripSlotClaims > 0)
     const topStrip = (
         <AnnaTopStrip
+            showLogo={stripAboveEverything}
             layout={shownLayout}
             canSplit={splitFits}
             assistantName={headerAssistantName}
@@ -1400,7 +1405,7 @@ export default function AnnaShell({ children, routeId }) {
                     {header}
                 </>
             )}
-            {showTopStrip && !(stripInApp && stripSlotClaims > 0) && topStrip}
+            {stripAboveEverything && topStrip}
             <main className="anna-layout" ref={layout}>
                 {oneCard && active && header}
                 <section

@@ -81,40 +81,6 @@ const getMessageCreator = (message, user, assistant) => {
     }
 }
 
-// AT-3036: the chat shows one project's threads; the other projects' chats of the loaded days are
-// one tap away. A jump selects that project like the project chip does, so the chat continues in
-// its daily thread and the workspace on the right follows.
-function AnnaProjectJumps({ projectIds, disabled, onOpenProject }) {
-    const projects = useSelector(state => state.loggedUserProjectsMap)
-    return (
-        <nav className="anna-project-jumps" aria-label={translate('Chats in other projects')}>
-            <span className="anna-project-jumps-label">{translate('Chats in other projects')}</span>
-            {projectIds.map(projectId => {
-                const project = projects?.[projectId]
-                const name = project?.name || translate('Project')
-                return (
-                    <button
-                        key={projectId}
-                        type="button"
-                        className="anna-project-jump"
-                        data-anna-project-id={projectId}
-                        disabled={disabled}
-                        aria-label={translate('Open the chat in %{projectName}', { projectName: name })}
-                        onClick={() => onOpenProject(projectId)}
-                    >
-                        <span
-                            className="anna-project-jump-dot"
-                            aria-hidden="true"
-                            style={project?.color ? { background: project.color } : undefined}
-                        />
-                        <span className="anna-project-jump-name">{name}</span>
-                    </button>
-                )
-            })}
-        </nav>
-    )
-}
-
 const AnnaConversation = forwardRef(function AnnaConversation(
     {
         conversation,
@@ -404,8 +370,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     }, [resumeRequest, sending, switching, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
-    // AT-3036: only those of the project on screen; another project's are reached by its jump.
-    const { threads: displayedThreads, otherProjectIds } = scopeAnnaThreads({
+    // AT-3036: only those of the project on screen; another project's are reached through the project
+    // picker (the "Chats in other projects" row is gone, 2026-11-16).
+    const { threads: displayedThreads } = scopeAnnaThreads({
         conversation,
         threads,
         otherThreads,
@@ -568,13 +535,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
                             {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                         </button>
-                    )}
-                    {!switching && otherProjectIds.length > 0 && (
-                        <AnnaProjectJumps
-                            projectIds={otherProjectIds}
-                            disabled={voiceActive || offline}
-                            onOpenProject={onOpenProject}
-                        />
                     )}
                     {(switching ? [] : displayedThreads).map(thread => (
                         <AnnaThreadMessages

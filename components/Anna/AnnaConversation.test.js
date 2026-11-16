@@ -1918,11 +1918,6 @@ describe('selected project (AT-2903)', () => {
     })
 
     const user = { uid: 'u1', gold: 100, defaultProjectId: 'p1', projectIds: ['p1', 'p2', 'p3'] }
-    const jumps = () =>
-        [...container.querySelectorAll('.anna-project-jump')].map(button => [
-            button.dataset.annaProjectId,
-            button.textContent,
-        ])
 
     // AT-3036: each project has its own daily thread, and the chat shows only the one it writes to.
     it('shows only the chat of the project it continues in, never the previous project’s below it', () => {
@@ -1958,44 +1953,21 @@ describe('selected project (AT-2903)', () => {
         ])
     })
 
-    it('offers the other projects’ chats as jumps, latest first, and opens one through the picker (AT-3036)', () => {
-        const onOpenProject = jest.fn()
-        mockActivityState.loggedUserProjectsMap.p3 = { id: 'p3', name: 'Steercom', color: '#ff0000' }
-        render({
-            threads: [threads[1]],
-            otherThreads: [
-                threads[0],
-                { projectId: 'p3', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 5 },
-                // Not selectable (an archived or foreign project): no jump that would fail.
-                { projectId: 'gone', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 9 },
-            ],
-            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
-            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
-            user,
-            onOpenProject,
-        })
-        expect(jumps()).toEqual([
-            ['p3', 'Steercom'],
-            ['p1', 'Home'],
-        ])
-        expect(container.querySelector('.anna-project-jump').getAttribute('aria-label')).toBe(
-            'Open the chat in %{projectName}'.replace('%{projectName}', 'Steercom')
-        )
-        act(() => container.querySelector('.anna-project-jump').click())
-        expect(onOpenProject).toHaveBeenCalledWith('p3')
-        // No jumps offline or during a call.
+    // 2026-11-16: the row of jumps to the other projects' chats is gone; the project picker reaches them.
+    it('offers no row of other projects’ chats', () => {
         render({
             threads: [threads[1]],
             otherThreads: [threads[0]],
             conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
             user,
-            onOpenProject,
-            offline: true,
+            onOpenProject: jest.fn(),
         })
-        expect(container.querySelector('.anna-project-jump').disabled).toBe(true)
+        expect(container.querySelector('.anna-project-jumps')).toBeNull()
+        expect(container.textContent).not.toContain('Chats in other projects')
     })
 
-    it('keeps a failed message of another project out of this chat and offers its project instead (AT-3036)', async () => {
+    it('keeps a failed message of another project out of this chat, and shows it back in its project (AT-3036)', async () => {
         runHttpsCallableFunction.mockRejectedValueOnce(new Error('Offline'))
         const onOpenProject = jest.fn()
         render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
@@ -2004,7 +1976,6 @@ describe('selected project (AT-2903)', () => {
         expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
         render({ user, onOpenProject, conversation: { projectId: 'p1', id: 'anna_u1', assistantId: 'a1' } })
         expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(false)
-        expect(jumps()).toEqual([['p2', 'Alldone Product']])
         // Back in its project, the message and its Retry are still there.
         render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
         expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
@@ -2431,8 +2402,7 @@ describe('project switch loading and scroll (AT-3036)', () => {
         expect(loading().getAttribute('role')).toBe('status')
         expect(loading().textContent).toBe('Opening the chat in Steercom…')
         expect(text()).not.toContain('Home project message')
-        // Nothing of the old project to act on meanwhile: no earlier days, no jumps.
-        expect(container.querySelector('.anna-project-jumps')).toBeNull()
+        // Nothing of the old project to act on meanwhile.
         expect(container.querySelector('.anna-send').disabled).toBe(true)
         await submit()
         expect(createObjectMessage).not.toHaveBeenCalled()

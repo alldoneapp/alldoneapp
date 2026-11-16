@@ -297,12 +297,13 @@ and the chat read as one transcript while the backend wrote elsewhere. The hook 
 loaded history by the project on screen (`conversation.projectId`): `threads` (that project's days)
 and `otherThreads`. `scopeAnnaThreads` (`annaThreadScope.js`) does the same for pending/failed sends,
 so another project's failed message is reached through its project, not shown here. The other
-projects appear as one row of jump buttons ("Chats in other projects", latest first, only
-`isAnnaProjectSelectable` ones) that select the project like the chip does. While a switch
+projects' chats are reached through the project picker; a row of jump buttons to them ("Chats in
+other projects") was removed on 2026-11-16 (`scopeAnnaThreads` still reports `otherProjectIds`,
+which nothing renders now). While a switch
 resolves, the previous chat stays and sending waits (`switching`, unchanged). "Earlier days" pages
 the shared registry three threads at a time, so `loadEarlier` keeps paging until the visible
 project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (composer
-chip, assistant picker at the top left, a jump) also moves the Alldone workspace:
+chip, assistant picker at the top left) also moves the Alldone workspace:
 `syncAnnaWorkspaceProject` (`annaWorkspaceProjectSync.js`) dispatches the header project picker's
 batch (`switchProject`, own board or All goals, active type), keeps the root tab (wiki falls back
 to tasks on All projects), leaves an object's detail view of the old project for the root list,
@@ -311,12 +312,18 @@ and the default project; from any other project it opens All projects. Entering 
 an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits in the workspace's
 project. An app or VM on the right stays on screen; the Alldone view under it moves. Pinned by
 `annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
-`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`.
+`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`. The other
+direction, the chat following a project the person opens in the workspace
+(`useAnnaWorkspaceProjectFollow`), also runs in the App view (2026-11-16): the view switch in the
+top bar names the chat's assistant, so it changes with the project (All projects: the default
+assistant; a project with its own assistant: that one), and Anna opens the chat it names. The chat
+loads only in assistant mode, so until then `headerAssistant` takes the project's own assistant
+(`activeChoice`) instead of the unloaded conversation's.
 
 **A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
 (the selected project's chat is still resolving, from either side), `AnnaConversation` shows a
 `role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
-the timeline: the previous project's messages, its "Earlier days" button and the project jumps
+the timeline: the previous project's messages and its "Earlier days" button
 are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
 (draft kept) and sending stays held exactly as before. Once the switch ends, the current thread
 reports through `onLoaded` when its messages are loaded and rendered (a layout effect, so after
@@ -411,7 +418,13 @@ checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It 
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
 (`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
-`NotificationArea` on the right. In assistant mode a click on anything left or right of the switch
+`NotificationArea` on the right. Where the strip spans the window (assistant mode, and screens
+without a top bar slot) it starts with Alldone's logo (`showLogo`, `.anna-strip-logo`), at the 16px
+inset where the sidebar shows its logo in the App view, so the logo stays put across views; like the
+sidebar's it opens All projects (`navigateToHome`), but in the view the person chose: unlike the rest
+of the strip's left side it does not leave the chat (Anna stays Anna; the chat follows All projects
+like any project the person opens). In the slot it has none: the sidebar's is beside it
+(2026-11-16). In assistant mode a click on anything left or right of the switch
 first leaves the chat for the app (`leaveChatFromStrip` through `onLeaveChat`, on click capture), so XP,
 gold, statistics, search, chats and updates act in plain Alldone; it queues no focus move, so the
 search field keeps the focus its popup gives it. Leaving moves the strip into Alldone's top bar slot,
@@ -477,9 +490,13 @@ back in the assistant, the view still mounted behind the chat is not where the u
 (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a task link, at most
 400px wide. A click leaves the chat for the app's open task list (`goHome`, like App from the chat) and
 scrolls the list to the task once its row is there (`scrollToTaskWhenShown` in
-`annaFocusTaskScroll.js`: up to 4s, with the reveal's `findWorkspaceObject` and
+`annaFocusTaskScroll.js`: up to 8s, with the reveal's `findWorkspaceObject` and
 `scrollWorkspaceObject`, so only Alldone scrolls; on a phone the assistant line pushes the task below
-the fold). The link's own target is the task, for a modified click (a new tab); it carries
+the fold). It centres the row even when it is already in view (`center: true`; the reveal leaves a
+visible row alone, which on production left the focus task low on the screen, 2026-11-16), and keeps
+it centred while sections above it still load: it re-centres whenever the row's place in its
+scroller's content (`workspaceContentTop`, which scrolling does not change) moves, until that has held
+still for 1s (at most 5s), and stops at once when the person scrolls, clicks or types in Alldone. The link's own target is the task, for a modified click (a new tab); it carries
 `data-anna-open-in-app`, which `interceptLink` skips, so it never opens on the screen below the chat's row. With none (or a stale or done one) it offers
 "Get a focus task", which runs `pickNewFocusTask` in `tasksFirestore.js`:
 the same `findAndSetNewFocusedTask` pick as after completing the focus task, under `awaitWriteAck`,

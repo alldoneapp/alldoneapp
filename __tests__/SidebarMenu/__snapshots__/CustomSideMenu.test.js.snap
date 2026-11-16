@@ -408,53 +408,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                     }
                   }
                 >
-                  
-                </div>
-              </div>
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-paddingLeft-1937ghh"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            onMouseEnter={[Function]}
-            onMouseLeave={[Function]}
-            style={
-              {
-                "backgroundColor": "rgba(0,0,0,0.00)",
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx"
-                dir={null}
-                style={
-                  {
-                    "marginRight": "10px",
-                    "opacity": 0.64,
-                  }
-                }
-              >
-                <div
-                  className="css-text-146c3p1"
-                  dir="auto"
-                  style={
-                    {
-                      "color": "var(--ad-Text04)",
-                      "fontFamily": "alldone",
-                      "fontSize": "22px",
-                      "opacity": 1,
-                    }
-                  }
-                >
                   
                 </div>
               </div>
@@ -949,53 +902,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                     }
                   }
                 >
-                  
-                </div>
-              </div>
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-paddingLeft-1937ghh"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            onMouseEnter={[Function]}
-            onMouseLeave={[Function]}
-            style={
-              {
-                "backgroundColor": "rgba(0,0,0,0.00)",
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx"
-                dir={null}
-                style={
-                  {
-                    "marginRight": "10px",
-                    "opacity": 0.64,
-                  }
-                }
-              >
-                <div
-                  className="css-text-146c3p1"
-                  dir="auto"
-                  style={
-                    {
-                      "color": "var(--ad-Text04)",
-                      "fontFamily": "alldone",
-                      "fontSize": "22px",
-                      "opacity": 1,
-                    }
-                  }
-                >
                   
                 </div>
               </div>
@@ -1444,53 +1350,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-paddingLeft-1937ghh"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            onMouseEnter={[Function]}
-            onMouseLeave={[Function]}
-            style={
-              {
-                "backgroundColor": "rgba(0,0,0,0.00)",
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx"
-                dir={null}
-                style={
-                  {
-                    "marginRight": "10px",
-                    "opacity": 0.64,
-                  }
-                }
-              >
-                <div
-                  className="css-text-146c3p1"
-                  dir="auto"
-                  style={
-                    {
-                      "color": "var(--ad-Text04)",
-                      "fontFamily": "alldone",
-                      "fontSize": "22px",
-                      "opacity": 1,
-                    }
-                  }
-                >
-                  
                 </div>
               </div>
             </div>

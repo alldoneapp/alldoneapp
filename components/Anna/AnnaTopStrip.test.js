@@ -7,6 +7,14 @@ jest.mock('react-redux', () => ({ useDispatch: () => jest.fn() }))
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
 jest.mock('../TopBar/NotificationArea', () => () => null)
 jest.mock('./AnnaViewSwitch', () => () => null)
+jest.mock('../Icon', () => () => null)
+const mockNavigateToHome = jest.fn()
+jest.mock(
+    '../../utils/navigateToHome',
+    () =>
+        (...args) =>
+            mockNavigateToHome(...args)
+)
 let mockStatistics = null
 jest.mock('../TopBar/TopBarStatisticArea', () => props => {
     mockStatistics = props
@@ -98,5 +106,37 @@ describe('the strip’s statistics when short of room', () => {
         render()
         render()
         expect(mockStatistics.showXp).toBe(false)
+    })
+})
+
+// Where the strip spans the window, it starts with Alldone's logo, which opens All projects like the
+// sidebar's, in the view the person chose; in Alldone's top bar slot the sidebar's logo is beside it.
+describe('the strip’s logo', () => {
+    const logo = () => container.querySelector('.anna-strip-logo')
+    const renderWith = props =>
+        act(() =>
+            root.render(<AnnaTopStrip layout="alldone" canSplit assistantName="Anna" onSelect={() => {}} {...props} />)
+        )
+
+    it('shows only where the strip spans the window, and opens All projects', () => {
+        room = 1000
+        renderWith({})
+        expect(logo()).toBeNull()
+        renderWith({ showLogo: true })
+        expect(logo().getAttribute('aria-label')).toBe('Alldone.app')
+        act(() => logo().click())
+        expect(mockNavigateToHome).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the view: unlike the rest of the left side, it does not leave the chat', () => {
+        room = 1000
+        const onLeaveChat = jest.fn()
+        renderWith({ showLogo: true, onLeaveChat })
+        act(() => logo().click())
+        expect(mockNavigateToHome).toHaveBeenCalled()
+        expect(onLeaveChat).not.toHaveBeenCalled()
+        // Anything else on the left still leaves it.
+        act(() => logo().parentElement.click())
+        expect(onLeaveChat).toHaveBeenCalledTimes(1)
     })
 })

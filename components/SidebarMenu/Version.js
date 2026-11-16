@@ -7,6 +7,7 @@ import Icon from '../Icon'
 import { deleteCacheAndRefresh } from '../../utils/Observers'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
+import { translate } from '../../i18n/TranslationService'
 
 export default function Version() {
     const showSideBarVersionRefresher = useSelector(state => state.showSideBarVersionRefresher)
@@ -19,7 +20,10 @@ export default function Version() {
     return (
         <View style={localstyle.container}>
             <Text style={[localstyle.text, theme.text]} numberOfLines={1}>
-                Alldone.app v{alldoneVersion.major}.{alldoneVersion.minor}
+                {/* Without a version record (a local emulator) there is no release number to show. */}
+                {alldoneVersion.missing
+                    ? `Alldone.app · ${translate('Local version')}`
+                    : `Alldone.app v${alldoneVersion.major}.${alldoneVersion.minor}`}
             </Text>
             {showSideBarVersionRefresher & !alldoneNewVersion.isMandatory ? (
                 <View style={{ flex: 1 }}>
