@@ -31,15 +31,15 @@ function runGuard(version, args = [], javaVersion = 'openjdk version "17.0.12"')
     return { exitCode, errors: errors.join('\n') }
 }
 
-test.each(['20.20.2', '22.22.1', '22.23.2', '22.23.3', '24.22.1', 'invalid'])(
+test.each(['20.20.2', '22.22.1', '22.23.2', '22.23.3', '22.23.4', '24.22.1', 'invalid'])(
     'rejects unsupported or unpatched Node %s before running repository commands',
     version => {
         expect(runGuard(version)).toMatchObject({ exitCode: 1 })
-        expect(runGuard(version).errors).toContain('22.23.4 or newer within Node 22')
+        expect(runGuard(version).errors).toContain('22.23.5 or newer within Node 22')
     }
 )
 
-test.each(['22.23.4', '22.23.5', '22.24.0'])(
+test.each(['22.23.5', '22.23.6', '22.24.0'])(
     'allows the patched Node 22 release and later security updates: %s',
     version => {
         expect(runGuard(version).exitCode).toBeNull()
@@ -47,7 +47,7 @@ test.each(['22.23.4', '22.23.5', '22.24.0'])(
 )
 
 test('the security floor preserves the Java guard used by Firestore emulators', () => {
-    expect(runGuard('22.23.4', ['--java']).exitCode).toBeNull()
-    expect(runGuard('22.23.4', ['--java'], 'java version "1.8.0_402"')).toMatchObject({ exitCode: 1 })
-    expect(runGuard('22.23.4', ['--java'], 'java version "1.8.0_402"').errors).toContain('Java 11+')
+    expect(runGuard('22.23.5', ['--java']).exitCode).toBeNull()
+    expect(runGuard('22.23.5', ['--java'], 'java version "1.8.0_402"')).toMatchObject({ exitCode: 1 })
+    expect(runGuard('22.23.5', ['--java'], 'java version "1.8.0_402"').errors).toContain('Java 11+')
 })

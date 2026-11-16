@@ -36,7 +36,7 @@ npm run build-web-webpack    # Build for web production (webpack 5 — see web-b
 npm run format-code          # Format with Prettier
 ```
 
-**Required versions**: Node 22.23.4 or newer within Node 22 (repo-wide, `.nvmrc`, also
+**Required versions**: Node 22.23.5 or newer within Node 22 (repo-wide, `.nvmrc`, also
 `cloudflare/email-worker/`), npm 10, firebase-tools 13.29.3. The whole repo runs on Node 22; the
 Expo/Metro era is over. `react-native` imports resolve to `react-native-web` in webpack and Jest;
 do not restore native tooling. Details: `docs/claude/tooling.md`.

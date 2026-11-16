@@ -2,11 +2,35 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
-**Required versions**: Node 22.23.4 or newer within Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
-The minimum includes the October 2026 security fixes, including CVE-2026-111497.
-Keep local pins and CI/runner Docker images on a patched Node 22 release. Firebase's
-`nodejs22` runtime is managed separately; verify the actual base-image version in
-Cloud Run logs instead of treating the major-version setting as proof of patching.
+**Required versions**: Node 22.23.5 or newer within Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
+The minimum includes the 2026-11-11 security release (HTTPS/llhttp, HTTP/2 and TLS fixes) and
+the October 2026 fixes, including CVE-2026-111497.
+
+**A Node security release, step by step.** Everything we pin is ours to bump: `.nvmrc` (root,
+`web-bundler/`, `cloudflare/email-worker/`), the `engines` floors (root, `web-bundler/`,
+`browser-worker/`, both lockfiles), `ci/check-runtime.js` with its test, the `ci/Dockerfile_*`
+images and `.gitlab-ci.yml`'s fallback image, and the two Cloud Run images
+(`functions/Assistant/cloud-run-job/Dockerfile`, rebuilt by the `deploy:cloud:runner:*` jobs, and
+`functions/Assistant/browser-worker/Dockerfile`, which only `browser-worker/deploy.sh` rebuilds:
+the pipeline never does). Commit `3d943fde71` is the pattern. Wait until Docker Hub has the
+`-alpine` and `-bookworm-slim` tags before pushing.
+
+The Firebase Functions themselves are Google's to patch: every function in both projects has
+`buildConfig.automaticUpdatePolicy` (the Cloud Functions v2 default), so Google swaps the
+`nodejs22` base image in without a redeploy, after its own testing period. Do not treat that as
+proof of a version. Check what is published and what is running:
+
+```bash
+gcloud artifacts docker tags list us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22 --format='value(tag)' | sort | tail -5
+gcloud logging read 'resource.type="cloud_run_revision" AND labels."run.googleapis.com/base_image_versions":*' --project alldonealeph --freshness=6h --limit 50 --format='value(labels."run.googleapis.com/base_image_versions")' | sort | uniq -c
+```
+
+The tag carries the Node version (`nodejs22_20261022_22_23_4_RC01` is Node 22.23.4). In October
+Google published its image two days after Node's release, and production was still running that
+image three weeks later while newer 22.23.4 rebuilds already existed. On 2026-11-13, two days after
+22.23.5, Google had no 22.23.5 image yet. Our functions run behind Cloud Run's front end, which
+terminates HTTPS and HTTP/2, so the server-side TLS/HTTP/2 CVEs in such releases mostly do not
+reach them.
 `npm run dev` and `npm run emulators` run `ci/prepare-local-emulators.js` before
 startup. It adds an SDK-version guard to the pinned CLI's local Functions runtime:
 SDK 7 removed `functions.config()`, which CLI 13 otherwise calls before every

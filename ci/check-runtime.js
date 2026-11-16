@@ -5,9 +5,10 @@
 const { spawnSync } = require('child_process')
 
 const REQUIRED_NODE_MAJOR = 22
-// CVE-2026-111497 and the other October 2026 Node.js security fixes.
+// The 2026-11-11 Node.js security release (22.23.5: HTTPS/llhttp, HTTP/2 and TLS fixes),
+// on top of the October floor for CVE-2026-111497.
 const MINIMUM_NODE_MINOR = 23
-const MINIMUM_NODE_PATCH = 4
+const MINIMUM_NODE_PATCH = 5
 const MINIMUM_JAVA_MAJOR = 11
 
 const isSupportedNodeVersion = version => {
