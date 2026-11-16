@@ -61,6 +61,7 @@ export const ACTION_EMOJI = {
     assistant_activity_create_task_plain: '✅',
     assistant_activity_update_task: '✏️',
     assistant_activity_update_task_plain: '✏️',
+    assistant_activity_move_workflow_step: '➡️',
     assistant_activity_create_note: '📝',
     assistant_activity_create_note_plain: '📝',
     assistant_activity_update_note: '✏️',
