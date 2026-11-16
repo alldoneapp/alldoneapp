@@ -2566,7 +2566,7 @@
     /* A window too narrow for both (AnnaShell's `narrow`) shows one card, as a phone does: the chat
        header's row on top, which stays, and below it the chat or the screen picked in that row. The
        other one stays mounted behind it, laid out at the same size. */
-    .anna-zoom-active.anna-narrow .anna-layout {
+    .anna-zoom-active.anna-one-card .anna-layout {
         display: flex;
         flex-direction: column;
         margin: 0 10px 10px;
@@ -2575,27 +2575,27 @@
         overflow: hidden;
         background: var(--ad-Surface, #ffffff);
     }
-    .anna-zoom-active.anna-narrow .anna-conversation,
-    .anna-zoom-active.anna-narrow .anna-stage {
+    .anna-zoom-active.anna-one-card .anna-conversation,
+    .anna-zoom-active.anna-one-card .anna-stage {
         flex: 1;
         min-height: 0;
         margin: 0;
         border: 0;
         border-radius: 0;
     }
-    .anna-zoom-active.anna-narrow .anna-stage > .anna-workspace {
+    .anna-zoom-active.anna-one-card .anna-stage > .anna-workspace {
         padding-inline: 0;
     }
-    .anna-zoom-active.anna-narrow.anna-chat-only .anna-stage,
-    .anna-zoom-active.anna-narrow.anna-screen-only .anna-conversation {
+    .anna-zoom-active.anna-one-card.anna-chat-only .anna-stage,
+    .anna-zoom-active.anna-one-card.anna-screen-only .anna-conversation {
         position: absolute;
         inset: 0;
         width: auto;
         visibility: hidden;
         pointer-events: none;
     }
-    .anna-narrow .anna-divider,
-    .anna-narrow .anna-conversation::after {
+    .anna-one-card .anna-divider,
+    .anna-one-card .anna-conversation::after {
         display: none;
     }
 }
@@ -2631,13 +2631,6 @@
     padding: 2px 8px 0;
     color: var(--ad-Text02, #4e5d78);
     font-size: 11px;
-}
-.anna-screen-photo {
-    flex: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    object-fit: cover;
 }
 .anna-screen-option-icon {
     display: inline-flex;

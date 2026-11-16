@@ -245,7 +245,7 @@ carried over, because the server's daily chat answers with the project's assista
 button closes the desktop sidebar only when the sidebar already shows its line's project;
 otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
 a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
-with the composer's project chip. It lists "Automatic", each project with an assistant of its own
+with the composer's project chip. It lists "Automatic" (labelled "All projects" since 2026-11-16), each project with an assistant of its own
 and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
 while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
@@ -405,12 +405,14 @@ hides. The tag lists keep reading the preference on purpose (it picks their more
 "Both" needs room for the chat (`MIN_CHAT_WIDTH`) beside Alldone at the collapsed sidebar's breakpoint
 plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
 `--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
-like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks and the assistant
+like a phone (`narrow`, `singlePane`, `mobilePane`; Anna only on a wide window is the same one card,
+`oneCard`/`anna-one-card`, so a screen picked there shows below the row and never opens Both, and
+entering Anna only always brings the chat to the front; `frontPane` says which is in front): the strip offers only Tasks and the assistant
 and drops the done-task count (`TopBarStatisticArea showTasksStatistics`), which ran into the switch,
 and the chat comes to the front when the window shrinks from both. The layout is one card
-(`.anna-narrow .anna-layout`) whose first row is the chat header, rendered above both panes so it stays
+(`.anna-one-card .anna-layout`) whose first row is the chat header, rendered above both panes so it stays
 put; below it the chat or the screen (`anna-screen-only`, no bezel). Its picker offers "Chat"
-(`chat`, with the assistant's photo) in place of Alldone, which Tasks shows, then Browser, VMs and apps. The
+(`chat`, a chat bubble, also on the button: the row shows the assistant already) in place of Alldone (as it does whenever the chat is alone, Anna only on a wide window too: `chatPicker`), which Tasks shows, then Browser, VMs and apps. The
 assistant, in the picker or the strip, brings the chat back and keeps the split layout, so both
 return when the window widens (2026-11-16).
 While the strip shows, the workspace viewport owner is on in plain

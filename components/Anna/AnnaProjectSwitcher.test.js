@@ -122,22 +122,23 @@ it('filters a long list and picks the first match on Enter', () => {
     expect(onSelect).toHaveBeenCalledWith('p5')
 })
 
-it('shows Automatic as the start and lets the default project be picked on its own (AT-3024)', () => {
+it('starts on the automatic choice, "All projects", and lets the default project be picked on its own (AT-3024)', () => {
     const automatic = { ...choices[0], id: ':automatic', name: '', isDefault: false, isAutomatic: true }
     const onSelect = jest.fn()
     render({ choices: [automatic, ...choices], activeProjectId: ':automatic', onSelect })
-    expect(chip().textContent).toBe('Automatic')
-    expect(chip().getAttribute('aria-label')).toBe('Project: Automatic')
+    // The automatic choice reads "All projects".
+    expect(chip().textContent).toBe('All projects')
+    expect(chip().getAttribute('aria-label')).toBe('Project: All projects')
     // "Automatic" is not a project: its project data is never requested.
     expect(useProjectsData).toHaveBeenLastCalledWith(['home', 'product', 'team'], 'assistants', { enabled: false })
     act(() => chip().click())
     expect(options().map(option => option.textContent)).toEqual([
-        'AutomaticAnna · Automatic project description',
+        'All projectsAnna · Automatic project description',
         'HomeAnna · Default project',
         'Alldone ProductAlldone CTO · Visible to project members',
         'Alldone TeamAnna (default assistant)',
     ])
-    expect(container.querySelector('[aria-selected="true"]').textContent).toContain('Automatic')
+    expect(container.querySelector('[aria-selected="true"]').textContent).toContain('All projects')
     act(() => options()[1].click())
     expect(onSelect).toHaveBeenCalledWith('home')
 })

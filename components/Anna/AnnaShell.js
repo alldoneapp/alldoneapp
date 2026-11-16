@@ -372,8 +372,14 @@ export default function AnnaShell({ children, routeId }) {
     // or the other, like a phone does: `mobilePane` says which. The strip then offers App and the
     // assistant only, and Both returns by itself once the window is wide enough again.
     const narrow = !mobile && !splitFits
-    const singlePane = mobile || narrow
-    const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !singlePane)
+    // One card on desktop: a narrow window, and Anna only, where a screen picked in the chat's row
+    // shows in that card below the row instead of opening Both.
+    const oneCard = narrow || (chatOnly && !mobile)
+    const singlePane = mobile || oneCard
+    // What is in front of a single pane: the chat or the screen (`mobilePane`); null beside each other.
+    // A phone's chat only layout always shows the chat.
+    const frontPane = !active ? null : chatOnly && mobile ? 'chat' : singlePane ? mobilePane : null
+    const visibleWorkspace = active && frontPane !== 'chat'
     // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar.
     const showTopStrip = !mobile
     // Below the strip, Alldone is a pane of the window in plain Alldone too, so modals, popovers and
@@ -436,6 +442,13 @@ export default function AnnaShell({ children, routeId }) {
             document.removeEventListener('keydown', drop, true)
         }
     }, [])
+    // A screen comes forward: beside the chat (Both), or in front of it on a single pane. Anna only on
+    // desktop keeps its one card, so the screen shows there below the chat's row.
+    const keepsOneCard = chatOnly && !mobile
+    const bringScreenForward = useCallback(() => {
+        if (!keepsOneCard) setAnnaLayout('split')
+        setMobilePane('workspace')
+    }, [keepsOneCard])
     const selectSurface = nextSurface => {
         if (singlePane && nextSurface === 'alldone') {
             // Choosing Alldone over the app must not bring the app back as a window.
@@ -447,8 +460,7 @@ export default function AnnaShell({ children, routeId }) {
         if (singlePane) focusAfterSwitch.current = 'workspace'
         const vm = vmJobs.find(job => job.id === lastVmId.current) || vmJobs[0]
         setSurface(nextSurface === 'vms' && vm ? `vm:${vm.id}` : nextSurface)
-        setAnnaLayout('split')
-        setMobilePane('workspace')
+        bringScreenForward()
     }
     const selectVm = runId => {
         if (runId === selectedVmId) return
@@ -470,10 +482,9 @@ export default function AnnaShell({ children, routeId }) {
             setSurface(`app:${view.viewId}`)
             if (auto && singlePane) return
             if (singlePane) focusAfterSwitch.current = 'workspace'
-            setAnnaLayout('split')
-            setMobilePane('workspace')
+            bringScreenForward()
         },
-        [singlePane]
+        [singlePane, bringScreenForward]
     )
     // The view's own "show in chat" button: close the pane and show Alldone again. The view stays
     // mounted, so its card reopens it as it was.
@@ -602,7 +613,7 @@ export default function AnnaShell({ children, routeId }) {
     // front and keeps the layout, so Both comes back when the window widens.
     const selectLayout = next => {
         if (next === 'alldone') return visibleWorkspace ? closeChat() : goHome()
-        if (next === 'chat' && singlePane && active && !chatOnly) return backToChat()
+        if (next === 'chat' && active && frontPane === 'workspace') return backToChat()
         // Phones enter the assistant like its line in the task list does: the chat in front, typing.
         if (next === 'chat' && !active && mobile) return openChat()
         if (next === layoutMode) return
@@ -708,6 +719,12 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('workspace')
         setAnnaLayout('split')
     }, [active, visibleWorkspace, surface])
+    // Anna only starts with the chat in front, however it was entered (the switch, a link, Back).
+    const previousLayout = useRef(layoutMode)
+    useLayoutEffect(() => {
+        if (layoutMode === 'chat' && previousLayout.current !== 'chat') setMobilePane('chat')
+        previousLayout.current = layoutMode
+    }, [layoutMode])
     // Shrinking the window from both to one shows the chat; the picker and App reach the rest.
     const showedBoth = useRef(!singlePane)
     useEffect(() => {
@@ -1130,8 +1147,9 @@ export default function AnnaShell({ children, routeId }) {
     }
     const photo = headerAssistant.photoURL50 || headerAssistant.photoURL300 || headerAssistant.photoURL
     const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
+    // What the user looks at, for the assistant; in Anna only, a screen picked in its card counts too.
     const chatPageContext =
-        !active || chatOnly
+        !active || (chatOnly && !visibleWorkspace)
             ? null
             : surface === 'browser'
               ? {
@@ -1178,21 +1196,21 @@ export default function AnnaShell({ children, routeId }) {
         },
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
-    // One card at a time (a narrow window, a phone), with App already showing Alldone: there the
-    // picker switches between the chat ("Chat", with the assistant's photo) and its screens, and the
-    // header row stays on top.
+    // The chat alone (Anna only on desktop, or one card at a time in a narrow window or on a phone),
+    // with App already showing Alldone: there the picker switches between the chat ("Chat", a chat
+    // bubble rather than the assistant's photo, which the row shows already) and its screens. Only
+    // beside the screen (Both) it chooses what that screen shows, Alldone included.
     const pickerOptions = singlePane
         ? [
-              { value: 'chat', label: translate('Chat'), icon: 'assistant', photo },
+              { value: 'chat', label: translate('Chat'), icon: 'message-circle', buttonIcon: 'message-circle' },
               ...screenOptions.filter(option => option.value !== 'alldone'),
           ]
         : screenOptions
     const pickerValue = singlePane && !visibleWorkspace ? 'chat' : vmSurface ? 'vms' : surface
     // What is in front, for the view switch: the chat, Alldone (plain, or alone on a single pane),
     // both, or another screen (null).
-    const chatInFront = active && (chatOnly || (singlePane && mobilePane === 'chat'))
-    const screenInFront = active && !chatOnly && singlePane && mobilePane !== 'chat'
-    const shownLayout = chatInFront ? 'chat' : screenInFront ? (surface === 'alldone' ? 'alldone' : null) : layoutMode
+    const shownLayout =
+        frontPane === 'chat' ? 'chat' : frontPane ? (surface === 'alldone' ? 'alldone' : null) : layoutMode
 
     const pendingNotice = pending && (
         <div className="anna-pending" role="status">
@@ -1314,8 +1332,8 @@ export default function AnnaShell({ children, routeId }) {
     // The desktop layout classes: the chat alone (chat only, or a narrow window with the chat in
     // front), the screen alone (a narrow window with the screen in front), both, or plain Alldone.
     // Phones lay out their single pane through `anna-mobile-*`.
-    const chatAlone = active && (chatOnly || (narrow && mobilePane === 'chat'))
-    const screenAlone = active && !chatOnly && narrow && mobilePane !== 'chat'
+    const chatAlone = active && (oneCard ? mobilePane === 'chat' : chatOnly)
+    const screenAlone = active && oneCard && mobilePane !== 'chat'
     // Alldone's own phone bar carries the same switch as the chat header (TopBarMobile).
     const phoneViewSwitch = mobile
         ? {
@@ -1340,7 +1358,7 @@ export default function AnnaShell({ children, routeId }) {
 
     const content = (
         <div
-            className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${narrow ? ' anna-narrow' : ''}`}
+            className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${oneCard ? ' anna-one-card' : ''}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
                 ...ANNA_THEME_VARIABLES,
@@ -1359,16 +1377,16 @@ export default function AnnaShell({ children, routeId }) {
             )}
             {showTopStrip && topStrip}
             <main className="anna-layout" ref={layout}>
-                {narrow && active && header}
+                {oneCard && active && header}
                 <section
                     className="anna-conversation"
                     ref={chatPane}
                     tabIndex={-1}
                     aria-label={translate('Conversation with %{assistantName}', { assistantName })}
-                    aria-hidden={!active || (!chatOnly && singlePane && mobilePane !== 'chat')}
-                    inert={!active || (!chatOnly && singlePane && mobilePane !== 'chat') ? '' : undefined}
+                    aria-hidden={!active || frontPane === 'workspace'}
+                    inert={!active || frontPane === 'workspace' ? '' : undefined}
                 >
-                    {!mobile && !narrow && header}
+                    {!mobile && !oneCard && header}
                     {active && !visibleWorkspace && pendingNotice}
                     {active && !visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">
@@ -1420,7 +1438,7 @@ export default function AnnaShell({ children, routeId }) {
                                         onResumeHandled={id =>
                                             setResumeRequest(current => (current?.id === id ? null : current))
                                         }
-                                        visible={active && (chatOnly || !singlePane || mobilePane === 'chat')}
+                                        visible={active && frontPane !== 'workspace'}
                                         active={active}
                                         onExpand={() => setMobilePane('chat')}
                                         onSendingChange={setTextBusy}

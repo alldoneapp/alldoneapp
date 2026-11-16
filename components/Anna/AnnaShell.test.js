@@ -1974,7 +1974,9 @@ it.each(['browser', 'vm:vm1'])('keeps the hidden %s workspace when returning to 
     hideWorkspace()
     fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
     expect(document.querySelector('.anna-chat-only')).toBeTruthy()
-    expect(selectedSurface()).toBe(surface.startsWith('vm:') ? 'vms' : surface)
+    // With the chat alone the picker shows the chat; the hidden screen keeps its selection.
+    expect(selectedSurface()).toBe('chat')
+    expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
     expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('true')
     expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
     expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
@@ -2124,7 +2126,7 @@ describe('a desktop window too narrow for both', () => {
     it('shows the chat alone and offers Tasks and the assistant only', () => {
         setAnnaLayout('split')
         render(content(1))
-        expect(shell().contains('anna-narrow')).toBe(true)
+        expect(shell().contains('anna-one-card')).toBe(true)
         expect(shell().contains('anna-chat-only')).toBe(true)
         expect([...document.querySelectorAll('.anna-strip-switch button')].map(b => b.dataset.annaLayout)).toEqual([
             'chat',
@@ -2200,7 +2202,7 @@ describe('a desktop window too narrow for both', () => {
         setAnnaLayout('split')
         render(content(1))
         chooseSurface('browser')
-        expect(shell().contains('anna-narrow')).toBe(false)
+        expect(shell().contains('anna-one-card')).toBe(false)
         expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
 
         resizeTo(1000)
@@ -2303,6 +2305,47 @@ it('leaves a link marked to open in the app to its own handler', async () => {
     expect(onClick).toHaveBeenCalled()
     expect(URLTrigger.processUrl).not.toHaveBeenCalled()
     expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+})
+
+// Anna only on a wide window is one card too: a screen picked in the chat's row shows in that card
+// below the row, and never opens Both.
+describe('Anna only on a wide window', () => {
+    const shell = () => document.querySelector('.anna-shell').classList
+
+    it('shows a picked browser or VMs in its card and keeps Anna only', () => {
+        setAnnaLayout('chat')
+        render(content(1))
+        expect(shell().contains('anna-one-card')).toBe(true)
+        expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
+        chooseSurface('browser')
+        expect(window.location.search).toContain('assistant=chat')
+        expect(shell().contains('anna-screen-only')).toBe(true)
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
+        expect(document.querySelector('.anna-conversation').getAttribute('aria-hidden')).toBe('true')
+        expect(document.querySelector('.anna-layout > .anna-header')).toBeTruthy()
+        expect(layoutButton('split').getAttribute('aria-pressed')).toBe('false')
+        chooseSurface('vms')
+        expect(window.location.search).toContain('assistant=chat')
+        expect(selectedSurface()).toBe('vms')
+
+        // "Chat" in the row, or Anna in the strip, brings the chat back.
+        pickScreen('chat')
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+        chooseSurface('browser')
+        fireEvent.click(layoutButton('chat'))
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(window.location.search).toContain('assistant=chat')
+    })
+
+    it('starts with the chat in front when entered with a screen beside the chat', () => {
+        render(content(1))
+        chooseSurface('browser')
+        act(() => setAnnaLayout('chat'))
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('true')
+        expect(selectedSurface()).toBe('chat')
+    })
 })
 
 it('keeps the current Alldone page when the chat is left beside a visible screen (AT-2920)', () => {

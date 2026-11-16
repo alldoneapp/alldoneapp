@@ -12,8 +12,9 @@ import { translate } from '../../i18n/TranslationService'
 export const ANNA_PROJECT_SEARCH_THRESHOLD = 8
 const EMPTY = []
 
-// AT-3024: "Automatic" is a choice, not a project; it has no stored name.
-const choiceName = choice => (choice.isAutomatic ? translate('Automatic') : choice.name)
+// AT-3024: the automatic choice is not a project and has no stored name. It reads "All projects"
+// (2026-11-16, was "Automatic"): the assistant answers across all of them and picks the project.
+const choiceName = choice => (choice.isAutomatic ? translate('All projects') : choice.name)
 
 const assistantLabel = choice => {
     const name = choice.assistant?.displayName?.trim() || translate('Assistant')
