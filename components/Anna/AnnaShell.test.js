@@ -36,6 +36,8 @@ import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUserSidebarHeader'
 import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
 import AssistantModeButton from './AssistantModeButton'
+import AnnaViewSwitch, { AnnaViewSwitchContext } from './AnnaViewSwitch'
+import { AnnaAppShownContext } from './AnnaTopStripContext'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -121,6 +123,22 @@ jest.mock('./AnnaBrowserWorkspace', () => {
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 // The desktop strip reuses Alldone's top bar controls; their store wiring is not under test here.
 jest.mock('../TopBar/GoldArea', () => () => null)
+let mockPhoneBarPresses = 0
+// Alldone's phone bar, which AnnaShell shows above the chat on phones: the Anna | App switch it
+// carries there, and a button standing in for search, chats and updates.
+jest.mock('../TopBar/TopBarMobile/TopBarMobile', () => {
+    const React = require('react')
+    const { default: Switch, AnnaViewSwitchContext: SwitchContext } = require('./AnnaViewSwitch')
+    return () => {
+        const viewSwitch = React.useContext(SwitchContext)
+        return (
+            <div data-testid="shell-top-bar-mobile">
+                {viewSwitch && <Switch {...viewSwitch} iconsOnly />}
+                <button type="button" aria-label="Phone bar search" onClick={() => mockPhoneBarPresses++} />
+            </div>
+        )
+    }
+})
 // A button, so the tests that click the shell's first link still find their own.
 jest.mock('./AnnaFocusTask', () => ({ onOpen }) => (
     <button type="button" data-testid="anna-focus-task" onClick={() => onOpen('/projects/p1/tasks/t1/properties')} />
@@ -279,9 +297,19 @@ const assistantToggle = () => document.querySelector('[role="button"][aria-expan
 const WorkspaceNavigationFixture = () => (
     <button aria-label="Show Alldone with chat" onClick={React.useContext(AnnaWorkspaceNavigationContext)} />
 )
+// Stands in for Alldone's phone bar (TopBarMobile), which carries the Anna | App switch on phones.
+const PhoneBarFixture = () => {
+    const viewSwitch = React.useContext(AnnaViewSwitchContext)
+    return viewSwitch ? (
+        <div data-testid="phone-bar">
+            <AnnaViewSwitch {...viewSwitch} iconsOnly />
+        </div>
+    ) : null
+}
 const content = (id, withSidebar = false) => (
     <AnnaShell routeId={id}>
         <WorkspaceNavigationFixture />
+        <PhoneBarFixture />
         <AssistantModeButton inline />
         {withSidebar && sidebarHeader()}
         <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
@@ -322,8 +350,14 @@ const screenOptionLabel = value => {
     return label
 }
 const layoutButton = layout => document.querySelector(`.anna-strip [data-anna-layout="${layout}"]`)
+// Phones: the switch in the bar above the chat, or in Alldone's own bar while Alldone is in front.
+const phoneSwitch = layout =>
+    document.querySelector(`.anna-phone-bar [data-anna-layout="${layout}"]`) ||
+    document.querySelector(`[data-testid="phone-bar"] [data-anna-layout="${layout}"]`)
 const chooseSurface = value => {
     const target = value.startsWith('vm:') ? 'vms' : value
+    // The phone picker has no Alldone: App in the switch shows it.
+    if (!screenPicker() && target === 'alldone') return fireEvent.click(phoneSwitch('alldone'))
     if (screenPicker()) pickScreen(target)
     else choose(document.querySelector('.anna-header-picker select'), target)
     if (value.startsWith('vm:')) {
@@ -331,13 +365,18 @@ const chooseSurface = value => {
         act(() => screen.getByLabelText(job.title).focus())
     }
 }
-const showChat = () => choose(document.querySelector('.anna-header-picker select'), 'chat')
+const showChat = () => {
+    const select = document.querySelector('.anna-header-picker select')
+    if (select) choose(select, 'chat')
+    else fireEvent.click(phoneSwitch('chat'))
+}
 const showWorkspace = () => fireEvent.click(layoutButton('split'))
 const hideWorkspace = () => fireEvent.click(layoutButton('chat'))
 const showAlldoneWorkspace = () => fireEvent.click(screen.getByLabelText('Show Alldone with chat'))
 const closeAssistant = () => {
-    const taskButton = document.querySelector('.anna-header-tasks')
-    if (taskButton) fireEvent.click(taskButton)
+    // Phones: App in the switch (from the chat in front it opens the task list, AT-2920).
+    const appSwitch = phoneSwitch('alldone')
+    if (appSwitch) fireEvent.click(appSwitch)
     else {
         showAlldoneWorkspace()
         fireEvent.click(screen.getByLabelText('Anna Alldone: Close assistant chat'))
@@ -890,7 +929,7 @@ it('keeps only the assistant and the screen picker in the desktop chat header; t
     expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
 })
 
-it('puts the workspace picker at the far right with a right-pointing chevron on mobile (AT-3042, AT-3045)', () => {
+it('gives the phone Alldone’s bar with the Anna | App icons on top and the chat header as second line', () => {
     const originalMatchMedia = window.matchMedia
     mockMobileNavigation = true
     window.matchMedia = () => ({
@@ -899,20 +938,103 @@ it('puts the workspace picker at the far right with a right-pointing chevron on 
         removeEventListener: jest.fn(),
     })
     try {
+        mockSidebarNumbers = { p1: { u1: 4 } }
         render(content(1))
-        const right = document.querySelector('.anna-header-right')
-        const picker = document.querySelector('.anna-header-picker')
-        const close = screen.getByLabelText('Close assistant chat')
-        expect(picker.parentElement).toBe(right)
+        const header = document.querySelector('.anna-header')
+        // First line: Alldone's phone bar with the switch; second line: the chat header.
+        expect(document.querySelector('.anna-phone-bar').nextElementSibling).toBe(header)
+        expect(phoneSwitch('chat').closest('.anna-phone-bar')).toBeTruthy()
+        expect([...header.children].map(cell => cell.className)).toEqual([
+            'anna-header-left',
+            'anna-header-center',
+            'anna-header-right',
+        ])
+        expect(header.querySelector('.anna-view-switch-icons')).toBeNull()
+        // The name stays on the left, the focus task sits in the middle; the switch has icons only.
+        expect(header.querySelector('.anna-header-left').textContent).toContain('Anna Alldone')
+        expect(header.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
+        expect(phoneSwitch('chat').getAttribute('aria-pressed')).toBe('true')
+        expect(phoneSwitch('chat').textContent).toBe('A')
+        expect(phoneSwitch('alldone').getAttribute('aria-label')).toBe('App')
+        expect(phoneSwitch('alldone').querySelector('.anna-strip-count').textContent).toBe('4')
+        expect(document.querySelector('[data-anna-layout="split"]')).toBeNull()
+        // No close control and no Home button any more: App leaves the chat.
+        expect(screen.getByLabelText('Close assistant chat')).toBeNull()
+        expect(document.querySelector('.anna-header-tasks')).toBeNull()
+        // The picker at the far right: the assistant and its screens, with a downward chevron.
+        const right = header.querySelector('.anna-header-right')
+        const picker = right.querySelector('.anna-header-picker')
         expect(right.lastElementChild).toBe(picker)
-        expect(picker.previousElementSibling).toBe(close)
-        // The phone keeps Home with the count in the middle, not the focus task.
-        expect(document.querySelector('[data-testid="anna-focus-task"]')).toBeNull()
-        // The counterpart to the assistant line's panel button: panel glyph, chevron pointing right.
-        expect(close.querySelector('svg path:last-child').getAttribute('d')).toBe('m13 8 4 4-4 4')
+        expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
+        expect(selectedSurface()).toBe('chat')
+        expect(selectedSurfaceLabel()).toBe('Anna Alldone')
         // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
-        const chevron = picker.querySelector(':scope > span[aria-hidden="true"]')
-        expect(chevron.textContent).toBe('\ue932')
+        expect(picker.querySelector(':scope > span[aria-hidden="true"]').textContent).toBe('\ue930')
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('leaves the chat on a phone once the top bar’s own controls have acted, but not for its switch', async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    try {
+        render(content(1))
+        fireEvent.click(phoneSwitch('chat'))
+        expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
+        mockPhoneBarPresses = 0
+        fireEvent.click(screen.getByLabelText('Phone bar search'))
+        // The control acted while its bar was still there (the menu opens the sidebar this way) ...
+        expect(mockPhoneBarPresses).toBe(1)
+        // ... and only then the chat gives way to the app.
+        await act(async () => new Promise(resolve => setTimeout(resolve, 0)))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(window.location.search).not.toContain('assistant')
+        expect(document.querySelector('.anna-phone-bar')).toBeNull()
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('shows Alldone in front on a phone under its own bar, whose switch brings the chat back', () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    try {
+        render(content(1))
+        const chat = screen.getByLabelText('Persistent conversation')
+        chat.value = 'Keep my draft'
+        showAlldoneWorkspace()
+        expect(document.querySelector('.anna-mobile-workspace')).toBeTruthy()
+        // One bar: Alldone's own, which carries the switch, instead of the shell's bar and chat header.
+        expect(document.querySelector('.anna-header')).toBeNull()
+        expect(document.querySelector('.anna-phone-bar')).toBeNull()
+        expect(phoneSwitch('alldone').closest('[data-testid="phone-bar"]')).toBeTruthy()
+        expect(phoneSwitch('alldone').getAttribute('aria-pressed')).toBe('true')
+        fireEvent.click(phoneSwitch('chat'))
+        expect(document.querySelector('.anna-mobile-chat')).toBeTruthy()
+        expect(document.querySelector('.anna-header')).toBeTruthy()
+        expect(window.location.search).toContain('assistant=1')
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my draft')
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('enters the assistant on a phone from App with the chat in front, like the assistant line', () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    try {
+        setAnnaMode(false)
+        render(content(1))
+        expect(phoneSwitch('alldone').getAttribute('aria-pressed')).toBe('true')
+        fireEvent.click(phoneSwitch('chat'))
+        expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
+        expect(window.location.search).toContain('assistant=1')
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
     } finally {
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
@@ -924,50 +1046,44 @@ it.each([
     ['desktop', 'chat-only'],
     ['mobile', 'chat'],
     ['mobile', 'browser'],
-])(
-    'closes Anna through the Tasks switch (desktop) or the header X (mobile) on %s from %s without losing drafts or the current page',
-    (device, start) => {
-        const originalMatchMedia = window.matchMedia
-        mockMobileNavigation = device === 'mobile'
-        window.matchMedia = () => ({
-            matches: mockMobileNavigation,
-            addEventListener: jest.fn(),
-            removeEventListener: jest.fn(),
-        })
-        try {
-            window.history.replaceState({}, '', '/projects/p1/notes/n1?assistant=1&filter=open#draft')
-            render(content(1))
-            const editor = screen.getByLabelText('Real workspace editor')
-            const chat = screen.getByLabelText('Persistent conversation')
-            editor.value = 'Keep my workspace draft'
-            chat.value = 'Keep my unsent message'
-            if (start === 'chat-only') act(() => setAnnaLayout('chat'))
-            else if (start === 'browser') chooseSurface('browser')
+])('closes Anna through App on %s from %s without losing drafts or the current page', (device, start) => {
+    const originalMatchMedia = window.matchMedia
+    mockMobileNavigation = device === 'mobile'
+    window.matchMedia = () => ({
+        matches: mockMobileNavigation,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        window.history.replaceState({}, '', '/projects/p1/notes/n1?assistant=1&filter=open#draft')
+        render(content(1))
+        const editor = screen.getByLabelText('Real workspace editor')
+        const chat = screen.getByLabelText('Persistent conversation')
+        editor.value = 'Keep my workspace draft'
+        chat.value = 'Keep my unsent message'
+        if (start === 'chat-only') act(() => setAnnaLayout('chat'))
+        else if (start === 'browser') chooseSurface('browser')
 
-            const close = device === 'desktop' ? layoutButton('alldone') : screen.getByLabelText('Close assistant chat')
-            // AT-3045: on a phone only the workspace picker follows the close control.
-            if (device === 'mobile')
-                expect(close.nextElementSibling).toBe(document.querySelector('.anna-header-picker'))
-            fireEvent.click(close)
+        const close = device === 'desktop' ? layoutButton('alldone') : phoneSwitch('alldone')
+        fireEvent.click(close)
 
-            expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
-            expect(window.location.pathname).toBe('/projects/p1/notes/n1')
-            expect(window.location.search).toBe('?filter=open')
-            expect(window.location.hash).toBe('#draft')
-            expect(screen.getByLabelText('Real workspace editor')).toBe(editor)
-            expect(editor.value).toBe('Keep my workspace draft')
-            expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(window.location.pathname).toBe('/projects/p1/notes/n1')
+        expect(window.location.search).toBe('?filter=open')
+        expect(window.location.hash).toBe('#draft')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(editor)
+        expect(editor.value).toBe('Keep my workspace draft')
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
 
-            act(() => setAnnaMode(true))
-            expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
-            expect(chat.value).toBe('Keep my unsent message')
-            expect(mockUnmounts).toBe(0)
-        } finally {
-            if (originalMatchMedia) window.matchMedia = originalMatchMedia
-            else delete window.matchMedia
-        }
+        act(() => setAnnaMode(true))
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my unsent message')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
     }
-)
+})
 
 it('shows surface selection without manual Alldone control switches', () => {
     render(content(1))
@@ -1351,9 +1467,8 @@ it.each([
                 opens ? 'm13 8 4 4-4 4' : 'm16 8-4 4 4 4'
             )
             if (opens) {
-                // Desktop leaves assistant mode through the strip's Tasks switch, mobile through the X.
-                if (device === 'mobile')
-                    expect(screen.getByLabelText('Close assistant chat').closest('.anna-header-right')).toBeTruthy()
+                // Both leave assistant mode through App: in the strip on desktop, in the top bar on phones.
+                if (device === 'mobile') expect(phoneSwitch('alldone').closest('.anna-phone-bar')).toBeTruthy()
                 else expect(layoutButton('alldone').closest('.anna-strip')).toBeTruthy()
                 expect(document.querySelector('.anna-header-left').firstElementChild).toBe(
                     screen.getByLabelText('Anna Alldone – Latest messages')
@@ -1426,7 +1541,12 @@ it.each([
         fireEvent.click(screen.getByText('Familie'))
         expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(start !== 'fullscreen'))
         expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
-        expect(selectedSurface()).toBe('alldone')
+        // A phone shows Alldone under its own bar, with App pressed, instead of the chat header.
+        if (device === 'desktop') expect(selectedSurface()).toBe('alldone')
+        else {
+            expect(document.querySelector('.anna-header')).toBeNull()
+            expect(document.querySelector('.anna-phone-bar')).toBeNull()
+        }
         expect(mockDispatch).toHaveBeenLastCalledWith(expect.arrayContaining([{ type: 'PROJECT', index: 1 }]))
         if (device === 'mobile') {
             expect(document.querySelector('.anna-mobile-workspace')).toBeTruthy()
@@ -1502,19 +1622,21 @@ it('switches mobile browser, VM and chat through the top dropdown without losing
     ]
     try {
         render(content(1))
-        const selector = document.querySelector('.anna-header-picker select')
+        // The picker is in the chat header, which gives way to Alldone's own bar while Alldone is in front.
+        const selector = () => document.querySelector('.anna-header-picker select')
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'My unsent chat message'
         showAlldoneWorkspace()
         const finishBrowser = startBrowserActivity()
-        expect(selector.value).toBe('browser')
+        expect(selector().value).toBe('browser')
         finishBrowser('completed')
-        expect(selector.value).toBe('alldone')
+        expect(selector()).toBeNull()
+        expect(phoneSwitch('alldone').getAttribute('aria-pressed')).toBe('true')
         expect(document.querySelector('.anna-fullscreen')).toBeNull()
         const finishNext = startBrowserActivity('answer2', 'brun_2')
         chooseSurface('vm:vm2')
         finishNext('completed')
-        expect(selector.value).toBe('vms')
+        expect(selector().value).toBe('vms')
         expect(screen.getByLabelText('Review plan').getAttribute('aria-current')).toBe('true')
         expect(
             [...document.querySelectorAll('.anna-vm-surface [data-active]')].every(
@@ -1528,12 +1650,12 @@ it('switches mobile browser, VM and chat through the top dropdown without losing
         chooseSurface('vms')
         expect(screen.getByLabelText('Review plan').getAttribute('aria-current')).toBe('true')
         chooseSurface('browser')
-        expect(selector.value).toBe('browser')
+        expect(selector().value).toBe('browser')
         expect(document.activeElement).toBe(screen.getByLabelText('Alldone workspace'))
         expect(chat.closest('section').hasAttribute('inert')).toBe(true)
-        expect([...selector.options].map(option => option.textContent)).toEqual([
-            'Back to chat',
-            'Alldone',
+        // The assistant in place of "Back to chat" and of Alldone, which App shows.
+        expect([...selector().options].map(option => option.textContent)).toEqual([
+            'Anna Alldone',
             'Browser',
             'VMs (2)',
         ])
@@ -1791,7 +1913,6 @@ it.each([
     ['desktop', 'vm:vm1'],
     ['desktop', 'chat-only'],
     ['mobile', 'chat'],
-    ['mobile', 'workspace'],
     ['mobile', 'browser'],
     ['mobile', 'vms'],
     ['mobile', 'chat-only'],
@@ -1825,8 +1946,11 @@ it.each([
         expect(document.activeElement).toBe(chat)
         expect(shell.classList.contains('anna-chat-only')).toBe(start === 'chat-only')
         const restoresAlldone = device === 'desktop' && start !== 'chat-only'
-        expect(selectedSurface()).toBe(device === 'mobile' ? '' : restoresAlldone ? 'alldone' : surface)
-        expect(selectedSurfaceLabel()).toBe(restoresAlldone ? 'Alldone' : surfaceLabel)
+        // A phone's picker shows the assistant while the chat is in front.
+        expect(selectedSurface()).toBe(device === 'mobile' ? 'chat' : restoresAlldone ? 'alldone' : surface)
+        expect(selectedSurfaceLabel()).toBe(
+            device === 'mobile' ? 'Anna Alldone' : restoresAlldone ? 'Alldone' : surfaceLabel
+        )
         if (restoresAlldone) {
             expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
             expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
@@ -1898,7 +2022,7 @@ const HOME_NAVIGATION = [
     { type: 'ALL_PROJECTS_TASKS', options: { taskViewToggleSection: 'Open', taskViewToggleIndex: 0 } },
 ]
 
-it.each(['chat-only', 'mobile'])('opens the open task list from the Home button (%s, AT-2920)', layout => {
+it.each(['chat-only', 'mobile'])('opens the open task list from App with the chat in front (%s, AT-2920)', layout => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = () => ({
         matches: layout === 'mobile',
@@ -1912,8 +2036,8 @@ it.each(['chat-only', 'mobile'])('opens the open task list from the Home button 
         workspace.value = 'Keep my note'
         mockDispatch.mockClear()
         NavigationService.navigate.mockClear()
-        // Desktop: the strip's Tasks switch takes the Home button's place in chat-only mode.
-        const home = layout === 'mobile' ? document.querySelector('.anna-header-tasks') : layoutButton('alldone')
+        // App takes the Home button's place: in the strip on desktop, in the top bar on phones.
+        const home = layout === 'mobile' ? phoneSwitch('alldone') : layoutButton('alldone')
         expect(home).toBeTruthy()
         fireEvent.click(home)
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
@@ -2129,16 +2253,39 @@ it('keeps the chat when the view switch in the strip is used', () => {
     expect(document.querySelector('.anna-chat-only')).toBeTruthy()
 })
 
-it('opens the focus task in the app itself, leaving the chat like App', () => {
+it('tells the top bar whether Alldone is on screen, so it marks Chats or Updates only then', () => {
+    const AppShown = () => <output data-testid="app-shown">{String(React.useContext(AnnaAppShownContext))}</output>
+    const appShown = () => document.querySelector('[data-testid="app-shown"]').textContent
+    render(
+        <AnnaShell routeId={1}>
+            <AppShown />
+        </AnnaShell>
+    )
+    expect(appShown()).toBe('true')
+    act(() => setAnnaLayout('chat'))
+    expect(appShown()).toBe('false')
+    act(() => setAnnaLayout('split'))
+    chooseSurface('browser')
+    expect(appShown()).toBe('false')
+    chooseSurface('alldone')
+    expect(appShown()).toBe('true')
+    act(() => setAnnaMode(false))
+    expect(appShown()).toBe('true')
+})
+
+it('shows the focus task in the app’s open task list, leaving the chat like App', () => {
     setAnnaLayout('chat')
     render(content(1))
     mockDispatch.mockClear()
+    NavigationService.navigate.mockClear()
     fireEvent.click(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]'))
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     expect(window.location.search).not.toContain('assistant')
     expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
-    expect(URLTrigger.processUrl).toHaveBeenCalledTimes(1)
-    expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/p1/tasks/t1/properties')
+    // The list, where the focus task leads, not the task's own page.
+    expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
+    expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
+    expect(URLTrigger.processUrl).not.toHaveBeenCalled()
 })
 
 it('leaves a link marked to open in the app to its own handler', async () => {
@@ -3279,25 +3426,18 @@ describe('leaving assistant mode returns the app in the pane to its embed window
             else delete window.matchMedia
         })
 
-        it('opens the app in its window again when the chat is closed', () => {
+        it('opens the app in its window again when App leaves the chat beside it', () => {
             render(content(1))
             act(() => openInAnnaAppPane(storyBuilder))
-            fireEvent.click(screen.getByLabelText('Close assistant chat'))
+            fireEvent.click(phoneSwitch('alldone'))
             expect(iframeWindow).toHaveBeenCalledWith(storyBuilder)
         })
 
-        it('returns nothing when Alldone is chosen in the picker', () => {
+        it('returns nothing when App leaves the chat in front for the task list', () => {
             render(content(1))
             act(() => openInAnnaAppPane(storyBuilder))
-            chooseSurface('alldone')
-            expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
-            expect(iframeWindow).not.toHaveBeenCalled()
-        })
-
-        it('returns nothing when the Home button leaves for the task list', () => {
-            render(content(1))
-            act(() => openInAnnaAppPane(storyBuilder))
-            fireEvent.click(document.querySelector('.anna-header-tasks'))
+            showChat()
+            fireEvent.click(phoneSwitch('alldone'))
             expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
             expect(iframeWindow).not.toHaveBeenCalled()
         })

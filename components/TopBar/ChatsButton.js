@@ -14,14 +14,19 @@ import {
 import NavigationService from '../../utils/NavigationService'
 import store from '../../redux/store'
 import { getChatsButtonBadge } from './chatsButtonHelper'
-import { isChatsViewActive, SELECTED_TOP_BAR_ICON_COLOR, selectedTopBarButtonStyle } from './topBarNavSelection'
+import {
+    isChatsViewActive,
+    SELECTED_TOP_BAR_ICON_COLOR,
+    selectedTopBarButtonStyle,
+    useTopBarViewSelected,
+} from './topBarNavSelection'
 
 export default function ChatsButton({ color, style, onNavigate }) {
     const dispatch = useDispatch()
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const activeChatData = useSelector(state => state.activeChatData)
-    const selected = useSelector(isChatsViewActive)
+    const selected = useTopBarViewSelected(isChatsViewActive)
     let projectChatNotifications = useSelector(state => state.projectChatNotifications)
 
     projectChatNotifications = resetNotificationsWhenUserHasAnActiveChat(projectChatNotifications, activeChatData)

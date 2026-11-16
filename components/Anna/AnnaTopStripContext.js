@@ -11,4 +11,8 @@ export const isAnnaPhoneWindow = () =>
 // (responsiveLayout.js), because no bar is left to open a mobile sidebar from.
 const AnnaTopStripContext = createContext(false)
 
+// Whether Alldone itself is on screen: false in assistant mode while the chat or another screen is
+// in front, where the views behind it are not what the user looks at (topBarNavSelection.js).
+export const AnnaAppShownContext = createContext(true)
+
 export default AnnaTopStripContext

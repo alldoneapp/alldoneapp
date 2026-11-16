@@ -1,4 +1,7 @@
+import { useContext } from 'react'
+import { useSelector } from 'react-redux'
 import { DV_TAB_ROOT_CHATS, DV_TAB_ROOT_UPDATES } from '../../utils/TabNavigationConstants'
+import { AnnaAppShownContext } from '../Anna/AnnaTopStripContext'
 import { colors } from '../styles/global'
 
 import { adaptiveColor } from '../../Themes/colorMode'
@@ -21,3 +24,11 @@ export const selectedTopBarButtonStyle = {
 export const isUpdatesViewActive = state => state.route === DV_TAB_ROOT_UPDATES
 
 export const isChatsViewActive = state => state.route === DV_TAB_ROOT_CHATS
+
+// Selected only while Alldone is on screen: back in the assistant (the chat in front), the Chats or
+// Updates view still mounted behind it is not where the user is.
+export const useTopBarViewSelected = isViewActive => {
+    const appShown = useContext(AnnaAppShownContext)
+    const viewActive = useSelector(isViewActive)
+    return appShown && viewActive
+}

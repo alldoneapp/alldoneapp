@@ -8,11 +8,12 @@ import { translate } from '../../i18n/TranslationService'
 const NOTICE_MS = 4000
 
 /**
- * Desktop assistant mode: the middle of the chat header's row. It shows the user's focus task
- * (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a link that
- * `onOpen` opens in the app itself, leaving the chat like the strip's App; AnnaShell's link
- * interception skips it (`data-anna-open-in-app`), and a modified click still opens a new tab. With
- * no focus task it offers to pick one, the same pick as after completing the focus task.
+ * Assistant mode: the middle of the chat header's row. It shows the user's focus task
+ * (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`). A click calls
+ * `onOpen`: AnnaShell leaves the chat for the app's open task list, where the focus task leads.
+ * The link's own target is the task, for a modified click (a new tab); AnnaShell's link
+ * interception skips it (`data-anna-open-in-app`). With no focus task it offers to pick one, the
+ * same pick as after completing the focus task.
  */
 export default function AnnaFocusTask({ onOpen }) {
     const userId = useSelector(state => state.loggedUser.uid)

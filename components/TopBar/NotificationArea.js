@@ -15,7 +15,12 @@ import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { ALL_PROJECTS_INDEX } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
 import NavigationService from '../../utils/NavigationService'
-import { isUpdatesViewActive, SELECTED_TOP_BAR_ICON_COLOR, selectedTopBarButtonStyle } from './topBarNavSelection'
+import {
+    isUpdatesViewActive,
+    SELECTED_TOP_BAR_ICON_COLOR,
+    selectedTopBarButtonStyle,
+    useTopBarViewSelected,
+} from './topBarNavSelection'
 import ChatsButton from './ChatsButton'
 
 export default function NotificationArea() {
@@ -24,7 +29,7 @@ export default function NotificationArea() {
     const themeName = useSelector(state => state.loggedUser.themeName)
     const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
-    const updatesSelected = useSelector(isUpdatesViewActive)
+    const updatesSelected = useTopBarViewSelected(isUpdatesViewActive)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
     const theme = getTheme(Themes, themeName, 'TopBar.NotificationArea')

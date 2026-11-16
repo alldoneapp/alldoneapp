@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useContext, useRef, useEffect, useState } from 'react'
 import { Animated, ScrollView, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -13,15 +13,28 @@ import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE, barWidth } from '../../XpBar/XpBar'
 import HomeButton, { HOME_BUTTON_WIDTH } from '../HomeButton'
+import AnnaViewSwitch, {
+    ANNA_VIEW_SWITCH_HEIGHT,
+    ANNA_VIEW_SWITCH_WIDTH,
+    AnnaViewSwitchContext,
+} from '../../Anna/AnnaViewSwitch'
 
 const SECONDARY_BAR_MOBILE = 36
 const TOP_ROW_PADDING = 16
 const HOME_BUTTON_GAP = 8
 
-// AT-3044: the left group (menu + Gold) must stop short of the absolutely centred Home button, so
-// a long balance on a narrow phone shrinks instead of sliding under it.
-export const getLeftAreaMaxWidth = rowWidth =>
-    rowWidth > 0 ? Math.max(0, rowWidth / 2 - HOME_BUTTON_WIDTH / 2 - TOP_ROW_PADDING - HOME_BUTTON_GAP) : undefined
+// Where the absolutely placed middle control (the Home button, or the assistant's view switch that
+// replaces it inside AnnaShell) starts: centred, unless the buttons on the right (`rightWidth`) need
+// the room on a narrow phone; then it moves left until it clears them.
+export const getCenterLeft = (rowWidth, centerWidth = HOME_BUTTON_WIDTH, rightWidth = 0) =>
+    Math.min(rowWidth / 2 - centerWidth / 2, rowWidth - TOP_ROW_PADDING - rightWidth - HOME_BUTTON_GAP - centerWidth)
+
+// AT-3044: the left group (menu + Gold) must stop short of the middle control, so a long balance on
+// a narrow phone shrinks instead of sliding under it.
+export const getLeftAreaMaxWidth = (rowWidth, centerWidth = HOME_BUTTON_WIDTH, rightWidth = 0) =>
+    rowWidth > 0
+        ? Math.max(0, getCenterLeft(rowWidth, centerWidth, rightWidth) - TOP_ROW_PADDING - HOME_BUTTON_GAP)
+        : undefined
 
 export default function TopBarMobile({ compact: compactOverride, showMenu = true }) {
     const dispatch = useDispatch()
@@ -33,7 +46,13 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
     const compact = compactOverride ?? reallySmallScreenNavigation
     const height = useRef(new Animated.Value(0)).current
     const [rowWidth, setRowWidth] = useState(0)
-    const leftAreaMaxWidth = getLeftAreaMaxWidth(rowWidth)
+    const [rightWidth, setRightWidth] = useState(0)
+    // Inside AnnaShell on a phone: the Anna | App switch in the middle, in place of the Home button.
+    const viewSwitch = useContext(AnnaViewSwitchContext)
+    const centerWidth = viewSwitch ? ANNA_VIEW_SWITCH_WIDTH : HOME_BUTTON_WIDTH
+    const leftAreaMaxWidth = getLeftAreaMaxWidth(rowWidth, centerWidth, rightWidth)
+    const centerPosition =
+        rowWidth > 0 ? { left: getCenterLeft(rowWidth, centerWidth, rightWidth), marginLeft: 0 } : null
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile')
 
@@ -82,16 +101,33 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
                 >
                     <TopBarMobileStatisticArea expandSecondaryBar={expandSecondaryBar} showMenu={showMenu} />
                 </View>
-                <View style={localStyles.notificationArea}>
+                <View
+                    testID="top-bar-mobile-right"
+                    style={localStyles.notificationArea}
+                    onLayout={({ nativeEvent }) => setRightWidth(nativeEvent.layout.width)}
+                >
                     {!isAnonymous && (
                         <MobileNotificationArea expandSecondaryBar={expandSecondaryBar} compact={compact} />
                     )}
                 </View>
-                <HomeButton
-                    color={theme.homeIcon}
-                    style={localStyles.homeButton}
-                    expandSecondaryBar={expandSecondaryBar}
-                />
+                {viewSwitch ? (
+                    <View style={[localStyles.viewSwitch, centerPosition]} testID="top-bar-mobile-view-switch">
+                        <AnnaViewSwitch
+                            {...viewSwitch}
+                            iconsOnly
+                            onSelect={next => {
+                                if (expandedNavPicker) expandSecondaryBar()
+                                viewSwitch.onSelect(next)
+                            }}
+                        />
+                    </View>
+                ) : (
+                    <HomeButton
+                        color={theme.homeIcon}
+                        style={[localStyles.homeButton, centerPosition]}
+                        expandSecondaryBar={expandSecondaryBar}
+                    />
+                )}
             </View>
 
             {!isAnonymous && (
@@ -145,6 +181,12 @@ const localStyles = StyleSheet.create({
         left: '50%',
         marginLeft: -HOME_BUTTON_WIDTH / 2,
         top: 14,
+    },
+    viewSwitch: {
+        position: 'absolute',
+        left: '50%',
+        marginLeft: -ANNA_VIEW_SWITCH_WIDTH / 2,
+        top: (56 - ANNA_VIEW_SWITCH_HEIGHT) / 2,
     },
     itemsContainerMobile: {
         flexDirection: 'row',

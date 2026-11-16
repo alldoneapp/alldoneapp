@@ -48,6 +48,84 @@
     gap: inherit;
     min-width: 0;
 }
+/* The view switch (AnnaViewSwitch): in the desktop strip and, icons only, on phones. */
+.anna-strip-switch {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--anna-border);
+    border-radius: 10px;
+    background: var(--ad-Surface, #ffffff);
+}
+.anna-strip-switch button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--anna-muted);
+    font-size: 13px;
+    white-space: nowrap;
+}
+.anna-strip-switch button:hover {
+    background: var(--anna-hover);
+    color: var(--anna-accent);
+}
+.anna-strip-switch button[aria-pressed='true'] {
+    background: var(--anna-tint);
+    border-color: var(--anna-focus);
+    color: var(--anna-accent);
+}
+.anna-strip-count {
+    display: inline-flex;
+}
+.anna-strip-avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--anna-tint);
+    color: var(--anna-accent);
+    font-size: 11px;
+}
+.anna-strip-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.anna-strip-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Phones: the same switch with icons only, in the chat header and in Alldone's own phone bar
+   (TopBarMobile, which centres it at ANNA_VIEW_SWITCH_WIDTH and keeps it clear of search, chats
+   and updates on a 375px phone). */
+.anna-view-switch-icons {
+    padding: 2px;
+}
+.anna-view-switch-icons button {
+    position: relative;
+    justify-content: center;
+    width: 34px;
+    padding: 0;
+}
+.anna-view-switch-icons .anna-strip-avatar {
+    width: 24px;
+    height: 24px;
+}
+.anna-view-switch-icons .anna-strip-count {
+    position: absolute;
+    top: -6px;
+    right: -2px;
+    pointer-events: none;
+}
 /* Desktop: the assistant on the left, the focus task (AnnaFocusTask) in the middle, the screen
    picker on the right. The sides keep their content and share the rest equally, so the middle stays
    centred while there is room; it is the one that shrinks, down to its icon. */
@@ -2428,62 +2506,6 @@
         justify-content: flex-end;
         gap: 4px;
     }
-    .anna-strip-switch {
-        display: flex;
-        gap: 2px;
-        padding: 3px;
-        border: 1px solid var(--anna-border);
-        border-radius: 10px;
-        background: var(--ad-Surface, #ffffff);
-    }
-    .anna-strip-switch button {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 32px;
-        padding: 0 12px;
-        border: 1px solid transparent;
-        border-radius: 7px;
-        background: transparent;
-        color: var(--anna-muted);
-        font-size: 13px;
-        white-space: nowrap;
-    }
-    .anna-strip-switch button:hover {
-        background: var(--anna-hover);
-        color: var(--anna-accent);
-    }
-    .anna-strip-switch button[aria-pressed='true'] {
-        background: var(--anna-tint);
-        border-color: var(--anna-focus);
-        color: var(--anna-accent);
-    }
-    .anna-strip-count {
-        display: inline-flex;
-    }
-    .anna-strip-avatar {
-        display: grid;
-        place-items: center;
-        flex: none;
-        width: 20px;
-        height: 20px;
-        overflow: hidden;
-        border-radius: 50%;
-        background: var(--anna-tint);
-        color: var(--anna-accent);
-        font-size: 11px;
-    }
-    .anna-strip-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    .anna-strip-name {
-        max-width: 160px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
     /* Two cards on the shell's background. The margins sit inside the grid cells, so the divider's
        drag maths (pointer x minus the layout's left edge) still lands on the chat column's edge. */
     .anna-zoom-active:not(.anna-chat-only) .anna-layout {

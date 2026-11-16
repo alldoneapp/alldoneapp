@@ -40,8 +40,19 @@ jest.mock('../../../Themes/Themes', () => ({
     getTheme: () => ({ container: {}, itemsContainerMobile: {}, homeIcon: 'black' }),
 }))
 jest.mock('../Themes', () => ({ Themes: {} }))
+jest.mock('../../Anna/AnnaViewSwitch', () => {
+    const React = require('react')
+    return {
+        __esModule: true,
+        default: 'AnnaViewSwitch',
+        AnnaViewSwitchContext: React.createContext(null),
+        ANNA_VIEW_SWITCH_WIDTH: 76,
+        ANNA_VIEW_SWITCH_HEIGHT: 38,
+    }
+})
 
-import TopBarMobile, { getLeftAreaMaxWidth } from './TopBarMobile'
+import TopBarMobile, { getCenterLeft, getLeftAreaMaxWidth } from './TopBarMobile'
+import { AnnaViewSwitchContext } from '../../Anna/AnnaViewSwitch'
 
 describe('TopBarMobile connection health', () => {
     beforeEach(() => {
@@ -98,5 +109,47 @@ describe('TopBarMobile connection health', () => {
         [40, 0],
     ])('getLeftAreaMaxWidth(%s) is %s', (width, expected) => {
         expect(getLeftAreaMaxWidth(width)).toBe(expected)
+    })
+
+    // Inside AnnaShell on a phone the Anna | App switch takes the Home button's place.
+    describe('with the assistant switch', () => {
+        const onSelect = jest.fn()
+        const viewSwitch = { layout: 'alldone', assistantName: 'Anna', photo: '', openTasksAmount: 3, onSelect }
+        const render = () =>
+            renderer.create(
+                <AnnaViewSwitchContext.Provider value={viewSwitch}>
+                    <TopBarMobile />
+                </AnnaViewSwitchContext.Provider>
+            )
+        const layout = (component, testID, width) =>
+            act(() => component.root.findByProps({ testID }).props.onLayout({ nativeEvent: { layout: { width } } }))
+        const leftOf = node => Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean)).left
+
+        it('shows the switch, icons only, instead of the Home button', () => {
+            const component = render()
+            expect(component.root.findAllByType('HomeButton')).toHaveLength(0)
+            const switchNode = component.root.findByType('AnnaViewSwitch')
+            expect(switchNode.props).toEqual(expect.objectContaining({ layout: 'alldone', iconsOnly: true }))
+            act(() => switchNode.props.onSelect('chat'))
+            expect(onSelect).toHaveBeenCalledWith('chat')
+        })
+
+        it('stays centred where there is room, and moves left of the right-hand buttons on a narrow phone', () => {
+            const component = render()
+            layout(component, 'top-bar-mobile', 375)
+            layout(component, 'top-bar-mobile-right', 124)
+            // 375 / 2 - 76 / 2: centred, 9px clear of the buttons that start at 375 - 16 - 124.
+            expect(leftOf(component.root.findByProps({ testID: 'top-bar-mobile-view-switch' }))).toBe(149.5)
+            layout(component, 'top-bar-mobile', 320)
+            // 320 - 16 - 124 - 8 - 76: 8px clear of them; the left group shrinks to make room.
+            expect(leftOf(component.root.findByProps({ testID: 'top-bar-mobile-view-switch' }))).toBe(96)
+            const leftArea = component.root.findByProps({ testID: 'top-bar-mobile-left' })
+            expect(Object.assign({}, ...[leftArea.props.style].flat(Infinity).filter(Boolean)).maxWidth).toBe(72)
+        })
+    })
+
+    it('getCenterLeft keeps the Home button centred unless the right-hand buttons need the room', () => {
+        expect(getCenterLeft(375, 40, 124)).toBe(167.5)
+        expect(getCenterLeft(300, 40, 124)).toBe(112)
     })
 })

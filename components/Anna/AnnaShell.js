@@ -13,7 +13,6 @@ import {
 } from './annaWorkspaceProjectSync'
 import useAnnaWorkspaceProjectFollow from './useAnnaWorkspaceProjectFollow'
 import AnnaProjectSwitcher, { canSwitchAnnaProject } from './AnnaProjectSwitcher'
-import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
 import AnnaConversation from './AnnaConversation'
@@ -25,9 +24,11 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs, { isActiveVmJob } from './useAnnaVmJobs'
 import AnnaTopStrip from './AnnaTopStrip'
-import AnnaTopStripContext, { ANNA_PHONE_QUERY, isAnnaPhoneWindow } from './AnnaTopStripContext'
+import AnnaTopStripContext, { ANNA_PHONE_QUERY, AnnaAppShownContext, isAnnaPhoneWindow } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaFocusTask from './AnnaFocusTask'
+import TopBarMobile from '../TopBar/TopBarMobile/TopBarMobile'
+import { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext, {
     AnnaSidebarCloseContext,
@@ -37,7 +38,6 @@ import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
 import { getAnnaTargetErrorMessage, resolveAnnaActivityPath } from './annaActivityNavigation'
-import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
 import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
@@ -575,16 +575,12 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(false)
     }, [])
-    // The focus task in the header: like the strip's App, it leaves the chat for the app itself, and
-    // opens the task there instead of on the screen beside the chat.
-    const openInApp = useCallback(
-        path => {
-            appOnExit.current = null
-            closeChat()
-            URLTrigger.processUrl(NavigationService.createNavigationProp(), path)
-        },
-        [closeChat]
-    )
+    // The phone bar above the chat is Alldone's own: everything but the switch acts in the app. It
+    // leaves the chat only after the control's own handler: leaving at once would swap this bar for
+    // Alldone's before the click reaches the control, so the menu would never open the sidebar.
+    const leaveChatFromPhoneBar = event => {
+        if (!event.target.closest?.('.anna-strip-switch')) setTimeout(leaveChatForApp, 0)
+    }
     // The desktop strip's view switch. "App" works like the header did before (AT-2920): beside a
     // visible screen it leaves assistant mode and keeps that page, like the X; from the chat alone,
     // and again from plain Alldone, it opens the open task list, like the Home button. "Both" and the
@@ -593,7 +589,9 @@ export default function AnnaShell({ children, routeId }) {
     // front and keeps the layout, so Both comes back when the window widens.
     const selectLayout = next => {
         if (next === 'alldone') return visibleWorkspace ? closeChat() : goHome()
-        if (next === 'chat' && narrow && active && !chatOnly) return backToChat()
+        if (next === 'chat' && singlePane && active && !chatOnly) return backToChat()
+        // Phones enter the assistant like its line in the task list does: the chat in front, typing.
+        if (next === 'chat' && !active && mobile) return openChat()
         if (next === layoutMode) return
         requestGeneration.current++
         followedBrowser.current = null
@@ -1167,15 +1165,20 @@ export default function AnnaShell({ children, routeId }) {
         },
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
-    // A window too narrow for both shows one card, and the strip's App already shows Alldone: there
-    // the picker switches between the assistant and its screens, and the header row stays on top.
-    const pickerOptions = narrow
+    // One card at a time (a narrow window, a phone), with App already showing Alldone: there the
+    // picker switches between the assistant and its screens, and the header row stays on top.
+    const pickerOptions = singlePane
         ? [
               { value: 'chat', label: headerAssistantName, icon: 'assistant', photo },
               ...screenOptions.filter(option => option.value !== 'alldone'),
           ]
         : screenOptions
-    const pickerValue = narrow && !visibleWorkspace ? 'chat' : vmSurface ? 'vms' : surface
+    const pickerValue = singlePane && !visibleWorkspace ? 'chat' : vmSurface ? 'vms' : surface
+    // What is in front, for the view switch: the chat, Alldone (plain, or alone on a single pane),
+    // both, or another screen (null).
+    const chatInFront = active && (chatOnly || (singlePane && mobilePane === 'chat'))
+    const screenInFront = active && !chatOnly && singlePane && mobilePane !== 'chat'
+    const shownLayout = chatInFront ? 'chat' : screenInFront ? (surface === 'alldone' ? 'alldone' : null) : layoutMode
 
     const pendingNotice = pending && (
         <div className="anna-pending" role="status">
@@ -1204,7 +1207,7 @@ export default function AnnaShell({ children, routeId }) {
     // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
     const assistantNamePicks = canSwitchAnnaProject(projectChoices, assistantPickerProjectId)
     const header = (
-        <header className={`anna-header${!mobile ? ' anna-header-sidebar' : ''}`}>
+        <header className="anna-header anna-header-sidebar">
             <div className="anna-header-left">
                 <button
                     type="button"
@@ -1235,35 +1238,13 @@ export default function AnnaShell({ children, routeId }) {
                     }
                 />
             </div>
-            {/* Desktop: the user's focus task, or a button to pick one, in the middle of the row; not in
-                Both, where Alldone beside the chat already shows it. The cell stays even when empty, or
-                the screen picker would slide into the middle column. */}
-            {!mobile && (
-                <div className="anna-header-center">
-                    {!(active && !chatOnly && !singlePane) && <AnnaFocusTask onOpen={openInApp} />}
-                </div>
-            )}
-            {mobile && (
-                <button
-                    type="button"
-                    className="anna-header-tasks"
-                    aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
-                    title={translate('%{count} open tasks today', { count: openTasksAmount })}
-                    onClick={goHome}
-                >
-                    <span aria-hidden="true" className="anna-task-icon">
-                        <Icon name="home" size={24} color="currentColor" />
-                        <span className="anna-open-tasks-badge">
-                            <AmountTag
-                                feedAmount={openTasksAmount}
-                                isFollowedButton={false}
-                                showFullAmount={true}
-                                style={{ backgroundColor: colors.Primary100 }}
-                            />
-                        </span>
-                    </span>
-                </button>
-            )}
+            {/* The user's focus task, or a button to pick one, in the middle of the row; not in Both,
+                where Alldone beside the chat already shows it. The cell stays even when empty, or the
+                screen picker would slide into the middle column. */}
+            <div className="anna-header-center">
+                {/* A click leaves the chat for the open task list, where the focus task leads. */}
+                {!(active && !chatOnly && !singlePane) && <AnnaFocusTask onOpen={goHome} />}
+            </div>
             <div className="anna-header-right">
                 {!mobile && (
                     <AnnaScreenPicker
@@ -1289,56 +1270,51 @@ export default function AnnaShell({ children, routeId }) {
                     </button>
                 )}
                 {mobile && (
-                    <>
-                        {/* AT-3042: the counterpart to the assistant line's panel button (chevron
-                            pointing right) closes the chat instead of an X. */}
-                        <button
-                            type="button"
-                            className="anna-pane-toggle anna-header-close"
-                            aria-label={translate('Close assistant chat')}
-                            title={translate('Close assistant chat')}
-                            onClick={closeChat}
+                    // The phone's screen picker, at the far right (AT-3045): the assistant and its
+                    // screens; Alldone is App in the switch, and leaving the chat is App too.
+                    <label className="anna-header-picker">
+                        <select
+                            aria-label={translate('Workspace')}
+                            value={pickerValue}
+                            onChange={event => {
+                                if (event.target.value === 'chat') backToChat()
+                                else selectSurface(event.target.value)
+                            }}
                         >
-                            <AssistantModeIcon expanded color="currentColor" />
-                        </button>
-                        {/* AT-3045: the workspace picker chooses the pane shown, so it sits at the far
-                            right and its chevron points right. */}
-                        <label className="anna-header-picker">
-                            <select
-                                aria-label={translate('Workspace')}
-                                value={!visibleWorkspace ? '' : vmSurface ? 'vms' : surface}
-                                onChange={event => {
-                                    if (event.target.value === 'chat') backToChat()
-                                    else selectSurface(event.target.value)
-                                }}
-                            >
-                                {!visibleWorkspace && (
-                                    // A mobile selection opens that pane, including when reopening the same surface.
-                                    <option value="" disabled hidden>
-                                        {vmSurface ? translate('VMs') : surfaceLabel}
-                                    </option>
-                                )}
-                                {visibleWorkspace && <option value="chat">{translate('Back to chat')}</option>}
-                                {screenOptions.map(option => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <span aria-hidden="true">
-                                <Icon name="chevron-right" size={14} color="currentColor" />
-                            </span>
-                        </label>
-                    </>
+                            {!pickerOptions.some(option => option.value === pickerValue) && (
+                                <option value={pickerValue} disabled hidden>
+                                    {vmSurface ? translate('VMs') : surfaceLabel}
+                                </option>
+                            )}
+                            {pickerOptions.map(option => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span aria-hidden="true">
+                            <Icon name="chevron-down" size={14} color="currentColor" />
+                        </span>
+                    </label>
                 )}
             </div>
         </header>
     )
-    // What the window shows: the chat alone (chat only, or a narrow window with the chat in front),
-    // the screen alone (a narrow window with the screen in front), both, or plain Alldone.
+    // The desktop layout classes: the chat alone (chat only, or a narrow window with the chat in
+    // front), the screen alone (a narrow window with the screen in front), both, or plain Alldone.
+    // Phones lay out their single pane through `anna-mobile-*`.
     const chatAlone = active && (chatOnly || (narrow && mobilePane === 'chat'))
     const screenAlone = active && !chatOnly && narrow && mobilePane !== 'chat'
-    const shownLayout = chatAlone ? 'chat' : screenAlone ? (surface === 'alldone' ? 'alldone' : null) : layoutMode
+    // Alldone's own phone bar carries the same switch as the chat header (TopBarMobile).
+    const phoneViewSwitch = mobile
+        ? {
+              layout: shownLayout,
+              assistantName: headerAssistantName,
+              photo,
+              openTasksAmount,
+              onSelect: selectLayout,
+          }
+        : null
     const topStrip = (
         <AnnaTopStrip
             layout={shownLayout}
@@ -1360,7 +1336,16 @@ export default function AnnaShell({ children, routeId }) {
             }}
             onClickCapture={interceptLink}
         >
-            {mobile && active && header}
+            {/* Phones show Alldone's own bar on top in every view, with the Anna | App switch, and the
+                chat header as the second line. With Alldone in front, Alldone's bar is already there. */}
+            {mobile && active && !(visibleWorkspace && surface === 'alldone') && (
+                <>
+                    <div className="anna-phone-bar" onClickCapture={leaveChatFromPhoneBar}>
+                        <TopBarMobile />
+                    </div>
+                    {header}
+                </>
+            )}
             {showTopStrip && topStrip}
             <main className="anna-layout" ref={layout}>
                 {narrow && active && header}
@@ -1685,7 +1670,15 @@ export default function AnnaShell({ children, routeId }) {
                 <AnnaSidebarCloseContext.Provider value={active && !chatOnly && !mobile ? closeChat : null}>
                     <AnnaSidebarProjectContext.Provider value={projectSelection.projectId}>
                         <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
-                            <AnnaTopStripContext.Provider value={showTopStrip}>{content}</AnnaTopStripContext.Provider>
+                            <AnnaTopStripContext.Provider value={showTopStrip}>
+                                <AnnaViewSwitchContext.Provider value={phoneViewSwitch}>
+                                    <AnnaAppShownContext.Provider
+                                        value={!active || (visibleWorkspace && surface === 'alldone')}
+                                    >
+                                        {content}
+                                    </AnnaAppShownContext.Provider>
+                                </AnnaViewSwitchContext.Provider>
+                            </AnnaTopStripContext.Provider>
                         </AnnaWorkspaceNavigationContext.Provider>
                     </AnnaSidebarProjectContext.Provider>
                 </AnnaSidebarCloseContext.Provider>

@@ -387,7 +387,7 @@ leaves no empty box. The assistant board's edit pencil stays visible. Loading sh
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
 renders `AnnaTopStrip` above everything, in all three views. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
-(the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
+(`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
 `NotificationArea` on the right. In assistant mode a click on anything left or right of the switch
 first leaves the chat for the app (`leaveChatForApp` through `onLeaveChat`, on click capture), so XP,
@@ -426,13 +426,28 @@ middle (only while the chat shows alone: in Both, Alldone beside it shows the fo
 select, AT-3042's fullscreen toggle and close control and the Home button: the strip's views do their
 work (merged with master on 2026-11-16; the AT-3042/AT-3045 notes above now describe the phone
 header). A notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
-picker into the screen and turns accent with the bezel (`anna-workspace-busy`). The phone keeps its
-header: Home with the count, the panel-icon close control and the select at the far right, built
-from the same `screenOptions` as the menu. `AnnaFocusTask` (2026-11-16) shows the user's focus task
+picker into the screen and turns accent with the bezel (`anna-workspace-busy`). Phones (2026-11-16) mirror the desktop narrow window: the first line is Alldone's
+own phone bar (`TopBarMobile`), which AnnaShell renders above the chat in assistant mode
+(`.anna-phone-bar`; a click on anything but the switch leaves the chat once the control has acted,
+`leaveChatFromPhoneBar` on a `setTimeout`: leaving at once swaps this bar for Alldone's in the
+microtask between React's capture and bubble listeners, so the menu, search, chats or updates would
+never get the click; jsdom runs no microtask there, so only a browser shows this)
+and which plain Alldone shows anyway; in place of its Home button it carries `AnnaViewSwitch` with icons
+only (the assistant's photo, App's check circle with the count), handed down through
+`AnnaViewSwitchContext`. On a narrow phone `getCenterLeft` moves the switch left until it clears
+search, chats and updates, and Gold shrinks. The second line is the chat header, the same three cells
+as on desktop (assistant with name, focus task, a native select at the far right with the assistant,
+Browser, VMs and apps and a downward chevron); no close control and no Home button any more. While
+Alldone is in front in assistant mode (a link from the chat), only Alldone's own bar shows, App
+pressed; the assistant there brings the chat back (`backToChat`). From plain Alldone the assistant
+opens the chat like the assistant line (`openChat`), and App with the chat in front opens the task
+list (`goHome`, AT-2920). The top bar marks Chats or Updates as the current view only while Alldone is on
+screen (`useTopBarViewSelected` in `topBarNavSelection.js`, fed by AnnaShell's `AnnaAppShownContext`):
+back in the assistant, the view still mounted behind the chat is not where the user is. `AnnaFocusTask` (2026-11-16) shows the user's focus task
 (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a task link, at most
-400px wide. A click opens the task in the app itself and leaves the chat like App (`openInApp`; the
-link carries `data-anna-open-in-app`, which `interceptLink` skips, so it never opens on the screen
-below the chat's row); a modified click opens a new tab. With none (or a stale or done one) it offers
+400px wide. A click leaves the chat for the app's open task list, where the focus task leads (`goHome`, like
+App from the chat). The link's own target is the task, for a modified click (a new tab); it carries
+`data-anna-open-in-app`, which `interceptLink` skips, so it never opens on the screen below the chat's row. With none (or a stale or done one) it offers
 "Get a focus task", which runs `pickNewFocusTask` in `tasksFirestore.js`:
 the same `findAndSetNewFocusedTask` pick as after completing the focus task, under `awaitWriteAck`,
 starting in the focus or default project. Only tasks due today count, so it can answer "No open task
