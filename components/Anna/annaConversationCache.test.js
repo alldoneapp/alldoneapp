@@ -84,3 +84,31 @@ it('ignores corrupt or unavailable storage without breaking normal chat startup'
     expect(() => save()).not.toThrow()
     expect(readAnnaConversationCache('u1', user)).toBeNull()
 })
+
+it('restores the selected project from saved history instead of waiting for the last-open chat', () => {
+    const projectThread = { ...threads.at(-1), projectId: 'p2', assistantId: 'a2' }
+    save({ threads: [...threads, projectThread] })
+    const restored = readAnnaConversationCache('u1', user, 'p2')
+    expect(restored.conversation).toMatchObject({
+        projectId: 'p2',
+        id: projectThread.chatId,
+        assistantId: 'a2',
+        annaOwnerId: 'u1',
+        creatorId: 'u1',
+        type: 'topics',
+    })
+    expect(restored.conversation.annaPresentation).toBeUndefined()
+    expect(restored.threads).toContainEqual(projectThread)
+    expect(readAnnaConversationCache('u1', { ...user, projectIds: ['p1'] }, 'p2').conversation.projectId).toBe('p1')
+})
+
+it('does not invent a project chat from incomplete or out-of-window history', () => {
+    save({
+        threads: [
+            ...threads,
+            { ...threads.at(-1), projectId: 'p2' },
+            { ...threads[0], projectId: 'p2', assistantId: 'a2' },
+        ],
+    })
+    expect(readAnnaConversationCache('u1', user, 'p2').conversation.projectId).toBe('p1')
+})

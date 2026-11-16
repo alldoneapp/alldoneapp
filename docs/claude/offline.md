@@ -122,6 +122,18 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   Its flush re-invokes the watcher's handler with a synthetic snapshot whose
   `docChanges()` is empty (buffered changes must not double-count) — pinned by
   `cachedSnapshotGate.test.js`.
+- **Assistant mode opens the selected project's saved chat first (2026-11-16).**
+  `annaConversationCache` restores a project's recent thread from the shared history
+  index, rather than assuming the last-open conversation belongs to the selected project.
+  `useAnnaConversation` selects it synchronously, including on offline project switches;
+  `annaMessageCache` supplies the saved messages while normal listeners and callables
+  refresh them. If the small index has no matching thread, a read with `source: 'cache'`
+  probes today's deterministic chat id without waiting for the cross-device private
+  pointer or a callable. Cache misses stay unknown; a late local read cannot replace
+  an already resolved chat. Local restoration carries display fields only, and sending
+  still awaits `resolveConversation` for the authoritative project/day. A chat never
+  saved on this device still needs its first online load. Pinned by
+  `annaConversationCache.test.js` and `useAnnaConversation.test.js`.
 - **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
   `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
   live in web-bundler's own package). It precaches the app shell (hashed chunks,

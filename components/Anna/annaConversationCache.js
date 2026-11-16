@@ -17,7 +17,35 @@ const referenceFor = thread => ({
     dateKey: thread.dateKey || thread.annaDateKey || '',
 })
 
-export const readAnnaConversationCache = (userId, user) => {
+// The saved history index already identifies each project's private daily chat.
+// Restore only its display data; sending still resolves the authoritative thread.
+export const selectAnnaCachedConversation = (state, userId, projectId, user = {}) => {
+    if (state.conversation?.projectId === projectId) return state.conversation
+    const projects = new Set([user.defaultProjectId, ...(user.projectIds || [])])
+    if (!projects.has(projectId) || user.isAnonymous) return null
+    const window = getAnnaHistoryWindow(user)
+    const thread = (state.threads || [])
+        .filter(
+            thread =>
+                thread.projectId === projectId &&
+                validThread(thread, userId) &&
+                validId(thread.assistantId) &&
+                isRecentAnnaThread(thread, window)
+        )
+        .sort((a, b) => (b.dateKey || '').localeCompare(a.dateKey || '') || (b.created || 0) - (a.created || 0))[0]
+    return thread
+        ? {
+              ...referenceFor(thread),
+              id: thread.chatId,
+              annaOwnerId: userId,
+              creatorId: userId,
+              type: 'topics',
+              isPublicFor: [0],
+          }
+        : null
+}
+
+export const readAnnaConversationCache = (userId, user, projectId = null) => {
     if (!userId || user.isAnonymous || !user.defaultProjectId) return null
     try {
         const cached = JSON.parse(localStorage.getItem(keyFor(userId, user.defaultProjectId)) || 'null')
@@ -43,7 +71,8 @@ export const readAnnaConversationCache = (userId, user) => {
         const threads = recentThreads.slice(-MAX_THREADS)
         const oldest = threads[0]
         return {
-            conversation,
+            conversation:
+                selectAnnaCachedConversation({ conversation, threads }, userId, projectId, user) || conversation,
             threads,
             // An older app may have cached more threads. Start pagination at the
             // retained boundary so trimming that cache never skips history.

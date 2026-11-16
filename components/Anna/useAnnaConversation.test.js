@@ -10,10 +10,12 @@ const mockSnapshots = new Map()
 const mockErrors = new Map()
 const mockData = new Map()
 const mockPendingSnapshots = new Set()
+const mockCacheRead = jest.fn()
 jest.mock('../../utils/backends/firestore', () => ({
     runHttpsCallableFunction: jest.fn(),
     getDb: () => ({
         doc: path => ({
+            get: options => mockCacheRead(path, options),
             onSnapshot: (...args) => {
                 const [callback, error] = typeof args[0] === 'function' ? args : args.slice(1)
                 mockSnapshots.set(path, callback)
@@ -55,6 +57,7 @@ const day = (id, rollover, projectId = 'p1') => ({
 })
 function Harness(props) {
     result = useAnnaConversation(props.userId || 'u1', props)
+    props.onRender?.(result)
     return null
 }
 const render = async props => act(async () => root.render(<Harness {...props} />))
@@ -67,6 +70,7 @@ beforeEach(() => {
     mockConnectionState = ''
     mockData.clear()
     mockPendingSnapshots.clear()
+    mockCacheRead.mockReset().mockResolvedValue({ exists: false })
     container = document.createElement('div')
     root = createRoot(container)
 })
@@ -306,6 +310,180 @@ it('restores recent days before any Firestore snapshot or callable responds', as
     expect(result.conversation.id).toBe(stored.chatId)
     expect(result.threads.map(thread => thread.chatId)).toEqual([stored.chatId])
     expect(result.historyLoaded).toBe(false)
+})
+
+const seedProjectHistory = () => {
+    seedColdStart()
+    const cached = readAnnaConversationCache('u1', user)
+    const projectThread = { ...stored, projectId: 'p2', assistantId: 'a2', created: 200 }
+    saveAnnaConversationCache('u1', 'p1', { ...cached, threads: [...cached.threads, projectThread] })
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    mockPendingSnapshots.add(`chatObjects/p2/chats/${stored.chatId}`)
+    return projectThread
+}
+
+it('opens the selected cached project on the first render while both network requests are pending', async () => {
+    seedProjectHistory()
+    runHttpsCallableFunction.mockReturnValue(new Promise(() => {}))
+    const renders = []
+    await render({
+        enabled: true,
+        user: { ...user, projectIds: ['p1', 'p2'] },
+        projectId: 'p2',
+        onRender: value => renders.push(value),
+    })
+    expect(renders[0]).toMatchObject({ loading: false, switching: false, conversation: { projectId: 'p2' } })
+    expect(result.conversation).toMatchObject({ projectId: 'p2', id: stored.chatId, assistantId: 'a2' })
+    expect(result.threads.map(thread => thread.projectId)).toEqual(['p2'])
+    expect(mockSnapshots.has(`chatObjects/p2/chats/${stored.chatId}`)).toBe(true)
+})
+
+it('switches between saved project chats offline and refreshes the selected one on reconnect', async () => {
+    seedProjectHistory()
+    const account = { ...user, projectIds: ['p1', 'p2'] }
+    mockConnectionState = 'offline'
+    await render({ enabled: true, user: account })
+    const renders = []
+    await render({ enabled: true, user: account, projectId: 'p2', onRender: value => renders.push(value) })
+    expect(renders.every(value => value.conversation.projectId === 'p2' && !value.switching)).toBe(true)
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    runHttpsCallableFunction.mockImplementation(async (name, payload) =>
+        payload.historyOnly
+            ? { threads: [{ ...stored, projectId: 'p2', assistantId: 'a2' }], nextBefore: null }
+            : {
+                  ...stored,
+                  projectId: 'p2',
+                  assistantId: 'a2',
+                  conversation: {
+                      ...storedChat,
+                      projectId: 'p2',
+                      id: stored.chatId,
+                      assistantId: 'a2',
+                      title: 'Synced',
+                  },
+                  nextRolloverAt: Date.now() + 86400000,
+              }
+    )
+    mockConnectionState = 'online'
+    await render({ enabled: true, user: account, projectId: 'p2' })
+    expect(result.conversation.title).toBe('Synced')
+    expect(result.switching).toBe(false)
+    expect(runHttpsCallableFunction).toHaveBeenCalledWith('getAnnaConversationSecondGen', {
+        includeHistory: false,
+        projectId: 'p2',
+    })
+})
+
+it('finds the selected daily chat in the Firestore cache without waiting for a pointer or callable', async () => {
+    mockConnectionState = 'offline'
+    const account = { ...user, projectIds: ['p1', 'p2'] }
+    const path = `chatObjects/p2/chats/${stored.chatId}`
+    mockPendingSnapshots.add(path)
+    mockCacheRead.mockResolvedValue({
+        exists: true,
+        data: () => ({ ...storedChat, assistantId: 'a2', annaPresentation: { id: 'stale-action' } }),
+    })
+    await render({ enabled: true, user: account, projectId: 'p2' })
+    expect(mockCacheRead).toHaveBeenCalledWith(path, { source: 'cache' })
+    expect(result.conversation).toMatchObject({ projectId: 'p2', id: stored.chatId, assistantId: 'a2' })
+    expect(result.conversation.annaPresentation).toBeUndefined()
+    expect(result).toMatchObject({ loading: false, switching: false })
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('does not replace a server-resolved chat with a local read completing in the same turn', async () => {
+    const cached = deferred()
+    const online = deferred()
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    mockCacheRead.mockReturnValue(cached.promise)
+    runHttpsCallableFunction.mockImplementation((name, payload) =>
+        payload.historyOnly ? Promise.resolve({ threads: [], nextBefore: null }) : online.promise
+    )
+    await render({ enabled: true, user })
+    await act(async () => {
+        online.resolve({
+            ...stored,
+            conversation: { ...storedChat, projectId: 'p1', id: stored.chatId, title: 'Authoritative' },
+            nextRolloverAt: Date.now() + 86400000,
+        })
+        cached.resolve({ exists: true, data: () => ({ ...storedChat, assistantId: 'old-assistant' }) })
+    })
+    expect(result.conversation).toMatchObject({ title: 'Authoritative', assistantId: 'a1' })
+})
+
+it('does not restore or re-probe a local chat after its listener rejects access', async () => {
+    seedStoredChat()
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    const cached = deferred()
+    mockCacheRead.mockReturnValue(cached.promise)
+    await render({ enabled: false, user })
+    await act(async () => {
+        mockErrors.get(`chatObjects/p1/chats/${stored.chatId}`)(
+            Object.assign(new Error('Permission denied'), { code: 'permission-denied' })
+        )
+        cached.resolve({ exists: true, data: () => storedChat })
+    })
+    expect(result.conversation).toBeNull()
+    expect(result.threads).toEqual([])
+    expect(mockCacheRead).toHaveBeenCalledTimes(1)
+})
+
+it('ignores the previous projects listener while opening the selected chat from the Firestore cache', async () => {
+    seedStoredChat()
+    mockConnectionState = 'offline'
+    const account = { ...user, projectIds: ['p1', 'p2'] }
+    await render({ enabled: true, user: account })
+    const previous = mockSnapshots.get(`chatObjects/p1/chats/${stored.chatId}`)
+    const cached = deferred()
+    mockCacheRead.mockReturnValue(cached.promise)
+    mockPendingSnapshots.add(`chatObjects/p2/chats/${stored.chatId}`)
+    await render({ enabled: true, user: account, projectId: 'p2' })
+    await act(async () => {
+        previous({ exists: false, data: () => undefined, metadata: { fromCache: false } })
+        cached.resolve({ exists: true, data: () => ({ ...storedChat, assistantId: 'a2' }) })
+    })
+    expect(result.conversation).toMatchObject({ projectId: 'p2', assistantId: 'a2' })
+    expect(result.error).toBe('')
+    expect(result.otherThreads.map(thread => thread.projectId)).toContain('p1')
+})
+
+it('ignores a late cache read after switching projects and refuses another owners cached chat', async () => {
+    mockConnectionState = 'offline'
+    const pending = deferred()
+    mockCacheRead.mockReturnValueOnce(pending.promise).mockResolvedValue({
+        exists: true,
+        data: () => ({ ...storedChat, annaOwnerId: 'someone-else' }),
+    })
+    const account = { ...user, projectIds: ['p1', 'p2'] }
+    await render({ enabled: true, user: account })
+    await render({ enabled: true, user: account, projectId: 'p2' })
+    await act(async () => pending.resolve({ exists: true, data: () => storedChat }))
+    expect(result.conversation).toBeNull()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('keeps sends waiting for the server while the selected cached chat is already visible', async () => {
+    seedProjectHistory()
+    const pending = deferred()
+    runHttpsCallableFunction.mockImplementation((name, payload) =>
+        payload.historyOnly ? Promise.resolve({ threads: [], nextBefore: null }) : pending.promise
+    )
+    await render({ enabled: true, user: { ...user, projectIds: ['p1', 'p2'] }, projectId: 'p2' })
+    let target
+    let send
+    act(() => {
+        send = result.resolveConversation().then(value => {
+            target = value
+        })
+    })
+    expect(result.conversation.projectId).toBe('p2')
+    expect(result.switching).toBe(false)
+    expect(target).toBeUndefined()
+    await act(async () => {
+        pending.resolve(day('authoritative-today', Date.now() + 86400000, 'p2'))
+        await send
+    })
+    expect(target).toMatchObject({ projectId: 'p2', id: 'authoritative-today' })
 })
 
 it('opens cached history offline without invoking functions and refreshes on reconnect', async () => {

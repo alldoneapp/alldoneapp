@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { getDb, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { subscribePageVisible } from '../../utils/appResume'
@@ -8,6 +8,7 @@ import {
     clearAnnaConversationCache,
     readAnnaConversationCache,
     saveAnnaConversationCache,
+    selectAnnaCachedConversation,
 } from './annaConversationCache'
 
 const threadKey = thread => `${thread.projectId}/${thread.chatId || thread.id}`
@@ -41,6 +42,8 @@ const initialState = (scope, cached, historyDay) => ({
 const MAX_EARLIER_PAGES = 8
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const accessDenied = error => ['permission-denied', 'unauthenticated'].some(code => error?.code?.endsWith(code))
+const isOwnedConversation = (chat, userId) =>
+    chat?.annaOwnerId === userId && chat?.creatorId === userId && chat?.type === 'topics'
 
 export default function useAnnaConversation(
     userId,
@@ -64,12 +67,17 @@ export default function useAnnaConversation(
     unavailableRef.current = onProjectUnavailable
     const historyWindow = getAnnaHistoryWindow(user)
     const [state, setState] = useState(() =>
-        initialState(scope, readAnnaConversationCache(userId, user), historyWindow.today)
+        initialState(scope, readAnnaConversationCache(userId, user, activeProjectId), historyWindow.today)
+    )
+    const selectedConversation = useMemo(
+        () => (state.scope === scope ? selectAnnaCachedConversation(state, userId, activeProjectId, user) : null),
+        [state, scope, userId, activeProjectId, user]
     )
     const [reference, setReference] = useState(null)
     const activeReference = reference?.scope === scope ? reference : null
     const generation = useRef(0)
     const historyGeneration = useRef(0)
+    const cacheReadVersion = useRef(0)
     const flight = useRef(null)
     const historyFlight = useRef(null)
     const nextRollover = useRef(0)
@@ -103,6 +111,7 @@ export default function useAnnaConversation(
                         return null
                     }
                     if (!current()) return { ...result, id: result.chatId }
+                    cacheReadVersion.current++
                     nextRollover.current = result.nextRolloverAt || Date.now() + 30000
                     setReference({ ...result, scope })
                     setState(previous => ({
@@ -125,12 +134,15 @@ export default function useAnnaConversation(
                     return { ...result, id: result.chatId }
                 })
                 .catch(error => {
+                    if (current() && accessDenied(error)) cacheReadVersion.current++
                     if (current() && otherProject && error.code !== 'offline') {
                         // Losing one selected project must not wipe the shared history.
                         unavailableRef.current?.(target, error.message || '')
                     } else if (current()) {
                         const denied = accessDenied(error)
-                        if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
+                        if (denied) {
+                            clearAnnaConversationCache(userId, user.defaultProjectId)
+                        }
                         setState(previous => ({
                             ...previous,
                             loading: false,
@@ -206,7 +218,7 @@ export default function useAnnaConversation(
         flight.current = null
         historyFlight.current = null
         nextRollover.current = 0
-        const cached = readAnnaConversationCache(userId, user)
+        const cached = readAnnaConversationCache(userId, user, activeProjectId)
         setReference(cached ? { ...threadReference(cached.conversation), scope } : null)
         setState(initialState(scope, cached, historyWindow.today))
         return () => {
@@ -216,6 +228,24 @@ export default function useAnnaConversation(
             historyFlight.current = null
         }
     }, [scope])
+
+    // Select the saved project immediately, including offline. Its message cache can
+    // paint before either the chat listener or the background callable responds.
+    useEffect(() => {
+        if (!selectedConversation) return
+        setReference(previous =>
+            previous?.scope === scope &&
+            previous.projectId === selectedConversation.projectId &&
+            previous.chatId === selectedConversation.id
+                ? previous
+                : { ...threadReference(selectedConversation), scope }
+        )
+        setState(previous =>
+            previous.scope !== scope || previous.conversation === selectedConversation
+                ? previous
+                : { ...previous, conversation: selectedConversation, loading: false, error: '' }
+        )
+    }, [scope, selectedConversation])
 
     useEffect(() => {
         if (state.scope === scope && state.conversation)
@@ -260,6 +290,65 @@ export default function useAnnaConversation(
         }
     }, [scope, userId, user.defaultProjectId, user.isAnonymous, activeReference, activeProjectId])
 
+    // The private pointer names only the last project opened on any device. A daily
+    // chat already in this browser's Firestore cache needs no pointer or server lookup.
+    // Probe on project entry, never again because an access error cleared the chat.
+    useEffect(() => {
+        if (
+            selectedConversation ||
+            !validId(userId) ||
+            user.isAnonymous ||
+            !validId(activeProjectId) ||
+            ![user.defaultProjectId, ...(user.projectIds || [])].includes(activeProjectId)
+        )
+            return
+        let cancelled = false
+        const version = cacheReadVersion.current
+        const chatId = `AnnaChat${historyWindow.today}${userId}`
+        getDb()
+            .doc(`chatObjects/${activeProjectId}/chats/${chatId}`)
+            .get({ source: 'cache' })
+            .then(snapshot => {
+                if (
+                    cancelled ||
+                    cacheReadVersion.current !== version ||
+                    scopeRef.current !== scope ||
+                    activeProjectRef.current !== activeProjectId
+                )
+                    return
+                const chat = snapshot.exists ? snapshot.data() : null
+                if (!isOwnedConversation(chat, userId) || !validId(chat.assistantId)) return
+                const conversation = {
+                    ...threadReference(
+                        { ...chat, projectId: activeProjectId, id: chatId, dateKey: historyWindow.today },
+                        chat.created
+                    ),
+                    id: chatId,
+                    annaOwnerId: userId,
+                    creatorId: userId,
+                    type: 'topics',
+                    isPublicFor: chat.isPublicFor,
+                }
+                setState(previous =>
+                    previous.scope !== scope || previous.conversation?.projectId === activeProjectId
+                        ? previous
+                        : {
+                              ...previous,
+                              conversation,
+                              loading: false,
+                              error: '',
+                              threads: mergeThreads(previous.threads, [threadReference(conversation, chat.created)]),
+                          }
+                )
+            })
+            .catch(() => {
+                // A cache miss is unknown. Normal online setup remains the fallback.
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [scope, userId, activeProjectId, historyWindow.today, user.isAnonymous])
+
     useEffect(() => {
         if (!enabled || !userId) return
         const refresh = () => {
@@ -296,16 +385,17 @@ export default function useAnnaConversation(
             .onSnapshot(
                 { includeMetadataChanges: true },
                 snapshot => {
-                    if (cancelled || scopeRef.current !== scope) return
+                    if (
+                        cancelled ||
+                        scopeRef.current !== scope ||
+                        (activeProjectRef.current && activeProjectRef.current !== activeReference.projectId)
+                    )
+                        return
                     // A cache miss is unknown, not proof that the conversation was deleted.
                     if (!snapshot.exists && snapshot.metadata?.fromCache) return
+                    cacheReadVersion.current++
                     const chat = snapshot.data()
-                    if (
-                        !snapshot.exists ||
-                        chat?.annaOwnerId !== userId ||
-                        chat?.creatorId !== userId ||
-                        chat?.type !== 'topics'
-                    ) {
+                    if (!snapshot.exists || !isOwnedConversation(chat, userId)) {
                         clearAnnaConversationCache(userId, user.defaultProjectId)
                         setState(previous => ({
                             ...previous,
@@ -331,9 +421,16 @@ export default function useAnnaConversation(
                     }))
                 },
                 error => {
-                    if (!cancelled && scopeRef.current === scope) {
+                    if (
+                        !cancelled &&
+                        scopeRef.current === scope &&
+                        (!activeProjectRef.current || activeProjectRef.current === activeReference.projectId)
+                    ) {
                         const denied = accessDenied(error)
-                        if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
+                        if (denied) {
+                            cacheReadVersion.current++
+                            clearAnnaConversationCache(userId, user.defaultProjectId)
+                        }
                         setState(previous => ({
                             ...previous,
                             loading: false,
@@ -390,17 +487,22 @@ export default function useAnnaConversation(
     // project it continues in. A project switch therefore starts visibly in that project's chat
     // (today's thread, reused if it exists), instead of appending it under the previous project's
     // messages. The other projects' threads stay loaded and are offered as jumps (`otherThreads`).
-    // While a switch resolves, the previous project's chat stays on screen and sending waits.
-    const visibleProjectId = visibleState.conversation?.projectId || null
+    // A saved project chat opens immediately; an uncached one keeps the switch pending.
+    // Sends always resolve their destination through the server, even with a saved view.
+    const displayedState =
+        selectedConversation && selectedConversation !== visibleState.conversation
+            ? { ...visibleState, conversation: selectedConversation, loading: false, error: '' }
+            : visibleState
+    const visibleProjectId = displayedState.conversation?.projectId || null
     return {
-        ...visibleState,
+        ...displayedState,
         activeProjectId,
         // The previous project's chat stays visible until the selected one is ready.
-        switching: !!visibleState.conversation && visibleState.conversation.projectId !== activeProjectId,
+        switching: !!displayedState.conversation && displayedState.conversation.projectId !== activeProjectId,
         threads: visibleProjectId ? shownThreads.filter(thread => thread.projectId === visibleProjectId) : shownThreads,
         otherThreads: visibleProjectId ? shownThreads.filter(thread => thread.projectId !== visibleProjectId) : [],
         offline,
-        loading: !offline && (state.scope === scope ? state.loading : true),
+        loading: !offline && displayedState.loading,
         resolveConversation,
         loadEarlier,
         retry: () => Promise.all([resolveConversation(), loadHistory()]).catch(() => {}),

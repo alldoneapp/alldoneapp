@@ -321,7 +321,7 @@ loads only in assistant mode, so until then `headerAssistant` takes the project'
 (`activeChoice`) instead of the unloaded conversation's.
 
 **A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
-(the selected project's chat is still resolving, from either side), `AnnaConversation` shows a
+(the selected project's chat is still resolving and has no local copy, from either side), `AnnaConversation` shows a
 `role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
 the timeline: the previous project's messages and its "Earlier days" button
 are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
@@ -335,6 +335,10 @@ images/markdown keep it at the bottom through the ResizeObserver), and a reader 
 not pulled down again. A new day in the same project is not a switch and does not force a scroll.
 Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.test.js` and the
 loading-name case in `AnnaShell.test.js`.
+As of 2026-11-16 a selected project already present in the local history index opens immediately,
+including offline, and syncs in the background (`selectAnnaCachedConversation`). A missing index
+entry also probes today's Firestore document with `source: 'cache'`; it never creates a thread.
+`resolveConversation` still validates every send independently. See `offline.md`.
 
 **A switch picked in the chat ends with the composer focused (AT-3036 follow-up).** A project
 picked in the chat sidebar (composer chip, assistant picker at the top left, "Chats in other
