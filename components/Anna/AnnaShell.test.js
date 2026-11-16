@@ -121,12 +121,26 @@ jest.mock('./AnnaBrowserWorkspace', () => {
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 // The desktop strip reuses Alldone's top bar controls; their store wiring is not under test here.
 jest.mock('../TopBar/GoldArea', () => () => null)
+// A button, so the tests that click the shell's first link still find their own.
+jest.mock('./AnnaFocusTask', () => ({ onOpen }) => (
+    <button type="button" data-testid="anna-focus-task" onClick={() => onOpen('/projects/p1/tasks/t1/properties')} />
+))
 let mockStatisticProps = null
 jest.mock('../TopBar/TopBarStatisticArea', () => props => {
     mockStatisticProps = props
     return null
 })
-jest.mock('../TopBar/NotificationArea', () => () => null)
+// Stands in for search, chats and updates; its click opens something the app owns.
+let mockStripActionLayout = null
+jest.mock('../TopBar/NotificationArea', () => () => (
+    <button
+        type="button"
+        data-testid="strip-search"
+        onClick={() => {
+            mockStripActionLayout = new URLSearchParams(global.location.search).get('assistant')
+        }}
+    />
+))
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
 jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => {
     mockTakeoverProps = props
@@ -851,6 +865,12 @@ it('keeps only the assistant and the screen picker in the desktop chat header; t
     expect(document.querySelector('.anna-header-expand')).toBeNull()
     expect(document.querySelector('.anna-header-picker')).toBeNull()
     expect(document.querySelector('.anna-header-tasks')).toBeNull()
+    // Beside Alldone the focus task is on screen already; the chat alone shows it in the middle of the row.
+    expect(document.querySelector('[data-testid="anna-focus-task"]')).toBeNull()
+    hideWorkspace()
+    expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
+    showWorkspace()
+    expect(document.querySelector('[data-testid="anna-focus-task"]')).toBeNull()
     expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
     expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
 
@@ -880,6 +900,8 @@ it('puts the workspace picker at the far right with a right-pointing chevron on 
         expect(picker.parentElement).toBe(right)
         expect(right.lastElementChild).toBe(picker)
         expect(picker.previousElementSibling).toBe(close)
+        // The phone keeps Home with the count in the middle, not the focus task.
+        expect(document.querySelector('[data-testid="anna-focus-task"]')).toBeNull()
         // The counterpart to the assistant line's panel button: panel glyph, chevron pointing right.
         expect(close.querySelector('svg path:last-child').getAttribute('d')).toBe('m13 8 4 4-4 4')
         // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
@@ -1990,6 +2012,7 @@ describe('a desktop window too narrow for both', () => {
         expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
         expect(selectedSurface()).toBe('chat')
         expect(selectedSurfaceLabel()).toBe('Anna Alldone')
+        expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
         // The done-task count would run into the switch in the middle.
         expect(mockStatisticProps).toEqual({ showTasksStatistics: false })
     })
@@ -2064,6 +2087,68 @@ describe('a desktop window too narrow for both', () => {
         expect(selectedSurface()).toBe('browser')
         expect(stage().getAttribute('aria-hidden')).toBe('false')
     })
+})
+
+it.each(['split', 'chat'])(
+    'leaves the chat (%s) for the app before a strip action such as search runs, without moving focus',
+    layout => {
+        setAnnaLayout(layout)
+        render(content(1))
+        mockStripActionLayout = 'unset'
+        const search = document.querySelector('.anna-strip-right [data-testid="strip-search"]')
+        act(() => search.focus())
+        fireEvent.click(search)
+        // The action already runs in plain Alldone, so a route it opens carries no assistant layout.
+        expect(mockStripActionLayout).toBeNull()
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(document.activeElement).toBe(search)
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+    }
+)
+
+it('lets strip actions run as they are in plain Alldone', () => {
+    setAnnaMode(false)
+    render(content(1))
+    mockStripActionLayout = 'unset'
+    fireEvent.click(document.querySelector('[data-testid="strip-search"]'))
+    expect(mockStripActionLayout).toBeNull()
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+})
+
+it('keeps the chat when the view switch in the strip is used', () => {
+    setAnnaLayout('split')
+    render(content(1))
+    fireEvent.click(layoutButton('chat'))
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+})
+
+it('opens the focus task in the app itself, leaving the chat like App', () => {
+    setAnnaLayout('chat')
+    render(content(1))
+    mockDispatch.mockClear()
+    fireEvent.click(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]'))
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(window.location.search).not.toContain('assistant')
+    expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
+    expect(URLTrigger.processUrl).toHaveBeenCalledTimes(1)
+    expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/p1/tasks/t1/properties')
+})
+
+it('leaves a link marked to open in the app to its own handler', async () => {
+    setAnnaLayout('split')
+    const onClick = jest.fn(event => event.preventDefault())
+    render(
+        <AnnaShell>
+            <a href="/projects/p1/tasks/t1/properties" data-anna-open-in-app="" onClick={onClick}>
+                Focus
+            </a>
+        </AnnaShell>
+    )
+    await act(async () => testContainer.querySelector('a[data-anna-open-in-app]').click())
+    expect(onClick).toHaveBeenCalled()
+    expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+    expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
 })
 
 it('keeps the current Alldone page when the chat is left beside a visible screen (AT-2920)', () => {

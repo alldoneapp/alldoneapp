@@ -14,12 +14,22 @@ import { translate } from '../../i18n/TranslationService'
  * top bar there (AnnaTopStripContext; Alldone keeps its desktop sidebar below it): XP, gold, task
  * statistics and quota on the left, search, chats and updates on the right, and in the middle the
  * view switch, which stays in one place in all views. Its order follows the cards: the assistant
- * (chat on the left), Both, Tasks (Alldone on the right). "Tasks" replaces the home button and the
- * assistant toggle. Where the window is too narrow for Alldone beside the chat (`canSplit`), the
- * switch offers only Tasks and the assistant. `layout` is what the window shows: null while it
- * shows another screen than Alldone alone.
+ * (chat on the left), Both, App (Alldone on the right). "App" replaces the home button and the
+ * assistant toggle and still shows the open-task count. Where the window is too narrow for Alldone beside the chat (`canSplit`), the
+ * switch offers only App and the assistant. `layout` is what the window shows: null while it
+ * shows another screen than Alldone alone. In assistant mode a click on anything left or right of
+ * the switch (XP, gold, statistics, search, chats, updates) first leaves the chat for the app
+ * (`onLeaveChat`), and then does what it always does there.
  */
-export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, openTasksAmount, onSelect }) {
+export default function AnnaTopStrip({
+    layout,
+    canSplit,
+    assistantName,
+    photo,
+    openTasksAmount,
+    onSelect,
+    onLeaveChat,
+}) {
     const dispatch = useDispatch()
     const strip = useRef(null)
     // XpBar, TasksStatisticsArea and the connection chip size themselves from the top bar's width,
@@ -37,7 +47,7 @@ export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, o
     const tasksLabel = translate('%{count} open tasks today', { count: openTasksAmount })
     return (
         <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
-            <div className="anna-strip-left">
+            <div className="anna-strip-left" onClickCapture={onLeaveChat}>
                 <TopBarStatisticArea showTasksStatistics={canSplit} />
             </div>
             <div className="anna-strip-switch" role="group" aria-label={translate('Assistant view')}>
@@ -73,7 +83,7 @@ export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, o
                     onClick={() => onSelect('alldone')}
                 >
                     <Icon name="check-circle" size={16} color="currentColor" />
-                    <span>{translate('Tasks')}</span>
+                    <span>{translate('App')}</span>
                     {openTasksAmount > 0 && (
                         <span className="anna-strip-count" aria-label={tasksLabel}>
                             <AmountTag
@@ -86,7 +96,7 @@ export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, o
                     )}
                 </button>
             </div>
-            <div className="anna-strip-right">
+            <div className="anna-strip-right" onClickCapture={onLeaveChat}>
                 <ConnectionStatusChip />
                 <NotificationArea />
             </div>

@@ -27,6 +27,7 @@ import useAnnaVmJobs, { isActiveVmJob } from './useAnnaVmJobs'
 import AnnaTopStrip from './AnnaTopStrip'
 import AnnaTopStripContext, { ANNA_PHONE_QUERY, isAnnaPhoneWindow } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
+import AnnaFocusTask from './AnnaFocusTask'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext, {
     AnnaSidebarCloseContext,
@@ -367,7 +368,7 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     // A desktop window too narrow for Alldone beside the chat (with its collapsed sidebar) shows one
-    // or the other, like a phone does: `mobilePane` says which. The strip then offers Tasks and the
+    // or the other, like a phone does: `mobilePane` says which. The strip then offers App and the
     // assistant only, and Both returns by itself once the window is wide enough again.
     const narrow = !mobile && !splitFits
     const singlePane = mobile || narrow
@@ -563,7 +564,28 @@ export default function AnnaShell({ children, routeId }) {
         closeChat()
         navigateToHome(dispatch)
     }, [closeChat, dispatch])
-    // The desktop strip's view switch. "Tasks" works like the header did before (AT-2920): beside a
+    // The strip's statistics, search, chats and updates belong to the app: a click on them in
+    // assistant mode leaves the chat first, like App, but keeps the focus where their own action puts
+    // it (the search field, a popup), so no focus move is queued here.
+    const leaveChatForApp = useCallback(() => {
+        appOnExit.current = null
+        requestGeneration.current++
+        followedBrowser.current = null
+        setSurface('alldone')
+        setMobilePane('chat')
+        setAnnaMode(false)
+    }, [])
+    // The focus task in the header: like the strip's App, it leaves the chat for the app itself, and
+    // opens the task there instead of on the screen beside the chat.
+    const openInApp = useCallback(
+        path => {
+            appOnExit.current = null
+            closeChat()
+            URLTrigger.processUrl(NavigationService.createNavigationProp(), path)
+        },
+        [closeChat]
+    )
+    // The desktop strip's view switch. "App" works like the header did before (AT-2920): beside a
     // visible screen it leaves assistant mode and keeps that page, like the X; from the chat alone,
     // and again from plain Alldone, it opens the open task list, like the Home button. "Both" and the
     // assistant alone switch the layout; entered from plain Alldone they open the chat focused, like
@@ -675,7 +697,7 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('workspace')
         setAnnaLayout('split')
     }, [active, visibleWorkspace, surface])
-    // Shrinking the window from both to one shows the chat; the picker and Tasks reach the rest.
+    // Shrinking the window from both to one shows the chat; the picker and App reach the rest.
     const showedBoth = useRef(!singlePane)
     useEffect(() => {
         if (narrow && showedBoth.current) setMobilePane('chat')
@@ -1081,6 +1103,8 @@ export default function AnnaShell({ children, routeId }) {
         )
             return
         const anchor = event.target.closest?.('a[href]')
+        // The focus task in the header opens in the app itself (AnnaFocusTask), not on the screen.
+        if (anchor?.hasAttribute('data-anna-open-in-app')) return
         const path = anchor && resolveAnnaLink(anchor.href, window.location.origin)
         if (!path) return
         event.preventDefault()
@@ -1143,7 +1167,7 @@ export default function AnnaShell({ children, routeId }) {
         },
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
-    // A window too narrow for both shows one card, and the strip's Tasks already shows Alldone: there
+    // A window too narrow for both shows one card, and the strip's App already shows Alldone: there
     // the picker switches between the assistant and its screens, and the header row stays on top.
     const pickerOptions = narrow
         ? [
@@ -1173,7 +1197,8 @@ export default function AnnaShell({ children, routeId }) {
 
     // Desktop: the view switch, the home count and leaving assistant mode live in the top strip
     // (AnnaTopStrip), so the chat's header keeps who answers (AT-3047: the name picks another
-    // assistant) and what the screen shows (AnnaScreenPicker). Mobile keeps its own header controls:
+    // assistant), the focus task in the middle (AnnaFocusTask) and what the screen shows
+    // (AnnaScreenPicker). Mobile keeps its own header controls:
     // the home count, the close control (AT-3042) and the native picker at the far right (AT-3045).
     const assistantPickerProjectId = projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId
     // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
@@ -1210,6 +1235,13 @@ export default function AnnaShell({ children, routeId }) {
                     }
                 />
             </div>
+            {/* Desktop: the user's focus task, or a button to pick one, in the middle of the row; not in
+                Both, where Alldone beside the chat already shows it. */}
+            {!mobile && !(active && !chatOnly && !singlePane) && (
+                <div className="anna-header-center">
+                    <AnnaFocusTask onOpen={openInApp} />
+                </div>
+            )}
             {mobile && (
                 <button
                     type="button"
@@ -1314,6 +1346,7 @@ export default function AnnaShell({ children, routeId }) {
             photo={photo}
             openTasksAmount={openTasksAmount}
             onSelect={selectLayout}
+            onLeaveChat={active ? leaveChatForApp : undefined}
         />
     )
 

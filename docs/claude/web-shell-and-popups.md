@@ -387,9 +387,12 @@ leaves no empty box. The assistant board's edit pencil stays visible. Loading sh
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
 renders `AnnaTopStrip` above everything, in all three views. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
-(the assistant's name for chat only, Both, Tasks with a check-circle icon and the open-task count;
-2026-11-16), `ConnectionStatusChip` and
-`NotificationArea` on the right. It reports its width through `setTopBarWidth`, which XpBar,
+(the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
+2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
+`NotificationArea` on the right. In assistant mode a click on anything left or right of the switch
+first leaves the chat for the app (`leaveChatForApp` through `onLeaveChat`, on click capture), so XP,
+gold, statistics, search, chats and updates act in plain Alldone; it queues no focus move, so the
+search field keeps the focus its popup gives it. It reports its width through `setTopBarWidth`, which XpBar,
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
 render nothing inside the workspace: Alldone never repeats a bar below the strip. With no bar left to
 open a mobile sidebar from, Alldone below the strip never uses mobile navigation either
@@ -416,14 +419,25 @@ inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: besid
 it keeps the page (`closeChat`), from chat only and from plain Alldone it opens the open task list
 (`goHome`); Both and the assistant alone, entered from plain Alldone, open the chat focused like the
 assistant button. In assistant mode the chat is a card and the workspace keeps its bezel. The
-desktop chat header keeps the assistant (with AT-3047's name picker) and `AnnaScreenPicker`
+desktop chat header keeps the assistant (with AT-3047's name picker), `AnnaFocusTask` in the
+middle (only while the chat shows alone: in Both, Alldone beside it shows the focus task) and
+`AnnaScreenPicker`
 (Alldone, Browser, VMs, apps; a menu on `AppPopover`, sized to the chat pane) in place of AT-3045's
 select, AT-3042's fullscreen toggle and close control and the Home button: the strip's views do their
 work (merged with master on 2026-11-16; the AT-3042/AT-3045 notes above now describe the phone
 header). A notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
 picker into the screen and turns accent with the bezel (`anna-workspace-busy`). The phone keeps its
 header: Home with the count, the panel-icon close control and the select at the far right, built
-from the same `screenOptions` as the menu. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
+from the same `screenOptions` as the menu. `AnnaFocusTask` (2026-11-16) shows the user's focus task
+(`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a task link, at most
+400px wide. A click opens the task in the app itself and leaves the chat like App (`openInApp`; the
+link carries `data-anna-open-in-app`, which `interceptLink` skips, so it never opens on the screen
+below the chat's row); a modified click opens a new tab. With none (or a stale or done one) it offers
+"Get a focus task", which runs `pickNewFocusTask` in `tasksFirestore.js`:
+the same `findAndSetNewFocusedTask` pick as after completing the focus task, under `awaitWriteAck`,
+starting in the focus or default project. Only tasks due today count, so it can answer "No open task
+for today". The header grid gives the sides `minmax(max-content, 1fr)`, so the middle stays centred
+and is the part that shrinks. Pinned by `AnnaFocusTask.test.js`. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
 dark card under `:root[data-theme='dark']`, because popup scope keeps light tokens there. Pinned
 by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plain Alldone", "a desktop
 window too narrow for both"; the file runs at a 1440px window), `TopBarContainer.test.js`,

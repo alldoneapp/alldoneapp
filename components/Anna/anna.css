@@ -48,8 +48,58 @@
     gap: inherit;
     min-width: 0;
 }
+/* Desktop: the assistant on the left, the focus task (AnnaFocusTask) in the middle, the screen
+   picker on the right. The sides keep their content and share the rest equally, so the middle stays
+   centred while there is room; it is the one that shrinks, down to its icon. */
 .anna-header-sidebar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+.anna-header-center {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+.anna-focus-task,
+.anna-focus-get {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: min(100%, 400px);
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 16px;
+    font-family: Roboto, Arial, sans-serif;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.anna-focus-task {
+    border: 1px solid var(--anna-border);
+    background: var(--anna-tint);
+    color: var(--anna-ink);
+    text-decoration: none;
+}
+.anna-focus-get {
+    border: 1px dashed var(--anna-border);
+    background: transparent;
+    color: var(--anna-muted);
+}
+.anna-focus-task:hover,
+.anna-focus-get:hover:not(:disabled) {
+    border-color: var(--anna-focus);
+    color: var(--anna-accent);
+}
+.anna-focus-get:disabled {
+    cursor: progress;
+}
+.anna-focus-task > div,
+.anna-focus-get > div {
+    flex: none;
+}
+.anna-focus-task-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .anna-header-right {
     justify-content: flex-end;

@@ -4563,6 +4563,16 @@ async function finishWorkflowFocusHandoff(projectId, task, focusHandoff) {
     )
 }
 
+/**
+ * Assistant mode's "Get a focus task" (AnnaFocusTask) when the user has none: the same pick as after
+ * completing or postponing the focus task (an imminent calendar event first, then today's tasks in
+ * display order, starting in `projectId`, then the other projects). Resolves true when a task was
+ * put in focus and false when no open task is left for today.
+ */
+export async function pickNewFocusTask(projectId, userId) {
+    return await awaitWriteAck(findAndSetNewFocusedTask(projectId, userId), 'focus task pick')
+}
+
 async function findAndSetNewFocusedTask(
     currentProjectId,
     userId,
