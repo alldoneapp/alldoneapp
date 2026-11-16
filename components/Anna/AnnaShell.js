@@ -27,6 +27,7 @@ import AnnaTopStrip from './AnnaTopStrip'
 import AnnaTopStripContext, { ANNA_PHONE_QUERY, AnnaAppShownContext, isAnnaPhoneWindow } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaFocusTask from './AnnaFocusTask'
+import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
 import TopBarMobile from '../TopBar/TopBarMobile/TopBarMobile'
 import { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
@@ -581,6 +582,18 @@ export default function AnnaShell({ children, routeId }) {
     const leaveChatFromPhoneBar = event => {
         if (!event.target.closest?.('.anna-strip-switch')) setTimeout(leaveChatForApp, 0)
     }
+    // The focus task in the chat header: like App from the chat, it leaves for the open task list
+    // (AT-2920), and then scrolls the list to the task once its row is there.
+    const focusTaskScroll = useRef(null)
+    useEffect(() => () => focusTaskScroll.current?.(), [])
+    const showFocusTask = useCallback(
+        target => {
+            goHome()
+            focusTaskScroll.current?.()
+            focusTaskScroll.current = scrollToTaskWhenShown(workspaceContent.current, target)
+        },
+        [goHome]
+    )
     // The desktop strip's view switch. "App" works like the header did before (AT-2920): beside a
     // visible screen it leaves assistant mode and keeps that page, like the X; from the chat alone,
     // and again from plain Alldone, it opens the open task list, like the Home button. "Both" and the
@@ -1166,10 +1179,11 @@ export default function AnnaShell({ children, routeId }) {
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
     // One card at a time (a narrow window, a phone), with App already showing Alldone: there the
-    // picker switches between the assistant and its screens, and the header row stays on top.
+    // picker switches between the chat ("Chat", with the assistant's photo) and its screens, and the
+    // header row stays on top.
     const pickerOptions = singlePane
         ? [
-              { value: 'chat', label: headerAssistantName, icon: 'assistant', photo },
+              { value: 'chat', label: translate('Chat'), icon: 'assistant', photo },
               ...screenOptions.filter(option => option.value !== 'alldone'),
           ]
         : screenOptions
@@ -1242,17 +1256,14 @@ export default function AnnaShell({ children, routeId }) {
                 where Alldone beside the chat already shows it. The cell stays even when empty, or the
                 screen picker would slide into the middle column. */}
             <div className="anna-header-center">
-                {/* A click leaves the chat for the open task list, where the focus task leads. */}
-                {!(active && !chatOnly && !singlePane) && <AnnaFocusTask onOpen={goHome} />}
+                {!(active && !chatOnly && !singlePane) && <AnnaFocusTask onOpen={showFocusTask} />}
             </div>
             <div className="anna-header-right">
                 {!mobile && (
                     <AnnaScreenPicker
                         options={pickerOptions}
                         value={pickerValue}
-                        label={
-                            pickerValue === 'chat' ? headerAssistantName : vmSurface ? translate('VMs') : surfaceLabel
-                        }
+                        label={pickerValue === 'chat' ? translate('Chat') : vmSurface ? translate('VMs') : surfaceLabel}
                         onSelect={next => (next === 'chat' ? backToChat() : selectSurface(next))}
                         getViewport={() => rectViewport(chatPane.current?.getBoundingClientRect?.())}
                     />

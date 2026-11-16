@@ -38,6 +38,7 @@ import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
 import AssistantModeButton from './AssistantModeButton'
 import AnnaViewSwitch, { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import { AnnaAppShownContext } from './AnnaTopStripContext'
+import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -141,8 +142,10 @@ jest.mock('../TopBar/TopBarMobile/TopBarMobile', () => {
 })
 // A button, so the tests that click the shell's first link still find their own.
 jest.mock('./AnnaFocusTask', () => ({ onOpen }) => (
-    <button type="button" data-testid="anna-focus-task" onClick={() => onOpen('/projects/p1/tasks/t1/properties')} />
+    <button type="button" data-testid="anna-focus-task" onClick={() => onOpen({ taskId: 't1', projectId: 'p1' })} />
 ))
+const mockCancelFocusScroll = jest.fn()
+jest.mock('./annaFocusTaskScroll', () => ({ scrollToTaskWhenShown: jest.fn(() => mockCancelFocusScroll) }))
 let mockStatisticProps = null
 jest.mock('../TopBar/TopBarStatisticArea', () => props => {
     mockStatisticProps = props
@@ -967,7 +970,7 @@ it('gives the phone Alldone’s bar with the Anna | App icons on top and the cha
         expect(right.lastElementChild).toBe(picker)
         expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
         expect(selectedSurface()).toBe('chat')
-        expect(selectedSurfaceLabel()).toBe('Anna Alldone')
+        expect(selectedSurfaceLabel()).toBe('Chat')
         // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
         expect(picker.querySelector(':scope > span[aria-hidden="true"]').textContent).toBe('\ue930')
     } finally {
@@ -1653,12 +1656,8 @@ it('switches mobile browser, VM and chat through the top dropdown without losing
         expect(selector().value).toBe('browser')
         expect(document.activeElement).toBe(screen.getByLabelText('Alldone workspace'))
         expect(chat.closest('section').hasAttribute('inert')).toBe(true)
-        // The assistant in place of "Back to chat" and of Alldone, which App shows.
-        expect([...selector().options].map(option => option.textContent)).toEqual([
-            'Anna Alldone',
-            'Browser',
-            'VMs (2)',
-        ])
+        // The chat in place of "Back to chat" and of Alldone, which App shows.
+        expect([...selector().options].map(option => option.textContent)).toEqual(['Chat', 'Browser', 'VMs (2)'])
         expect(document.querySelectorAll('.anna-header')).toHaveLength(1)
         expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
         showChat()
@@ -1948,9 +1947,7 @@ it.each([
         const restoresAlldone = device === 'desktop' && start !== 'chat-only'
         // A phone's picker shows the assistant while the chat is in front.
         expect(selectedSurface()).toBe(device === 'mobile' ? 'chat' : restoresAlldone ? 'alldone' : surface)
-        expect(selectedSurfaceLabel()).toBe(
-            device === 'mobile' ? 'Anna Alldone' : restoresAlldone ? 'Alldone' : surfaceLabel
-        )
+        expect(selectedSurfaceLabel()).toBe(device === 'mobile' ? 'Chat' : restoresAlldone ? 'Alldone' : surfaceLabel)
         if (restoresAlldone) {
             expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
             expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
@@ -2141,7 +2138,7 @@ describe('a desktop window too narrow for both', () => {
         // Tasks already shows Alldone, so the picker switches between the assistant and its screens.
         expect(screenOptionValues()).toEqual(['chat', 'browser', 'vms'])
         expect(selectedSurface()).toBe('chat')
-        expect(selectedSurfaceLabel()).toBe('Anna Alldone')
+        expect(selectedSurfaceLabel()).toBe('Chat')
         expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
         // The done-task count would run into the switch in the middle.
         expect(mockStatisticProps).toEqual({ showTasksStatistics: false })
@@ -2282,10 +2279,14 @@ it('shows the focus task in the app’s open task list, leaving the chat like Ap
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     expect(window.location.search).not.toContain('assistant')
     expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
-    // The list, where the focus task leads, not the task's own page.
+    // The list, not the task's own page, scrolled to the task once its row is there.
     expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
     expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
     expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+    expect(scrollToTaskWhenShown).toHaveBeenCalledWith(document.querySelector('.anna-workspace-content'), {
+        taskId: 't1',
+        projectId: 'p1',
+    })
 })
 
 it('leaves a link marked to open in the app to its own handler', async () => {

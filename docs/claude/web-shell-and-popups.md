@@ -409,8 +409,8 @@ like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks
 and drops the done-task count (`TopBarStatisticArea showTasksStatistics`), which ran into the switch,
 and the chat comes to the front when the window shrinks from both. The layout is one card
 (`.anna-narrow .anna-layout`) whose first row is the chat header, rendered above both panes so it stays
-put; below it the chat or the screen (`anna-screen-only`, no bezel). Its picker offers the assistant
-(`chat`, with the photo) in place of Alldone, which Tasks shows, then Browser, VMs and apps. The
+put; below it the chat or the screen (`anna-screen-only`, no bezel). Its picker offers "Chat"
+(`chat`, with the assistant's photo) in place of Alldone, which Tasks shows, then Browser, VMs and apps. The
 assistant, in the picker or the strip, brings the chat back and keeps the split layout, so both
 return when the window widens (2026-11-16).
 While the strip shows, the workspace viewport owner is on in plain
@@ -436,7 +436,7 @@ and which plain Alldone shows anyway; in place of its Home button it carries `An
 only (the assistant's photo, App's check circle with the count), handed down through
 `AnnaViewSwitchContext`. On a narrow phone `getCenterLeft` moves the switch left until it clears
 search, chats and updates, and Gold shrinks. The second line is the chat header, the same three cells
-as on desktop (assistant with name, focus task, a native select at the far right with the assistant,
+as on desktop (assistant with name, focus task, a native select at the far right with Chat,
 Browser, VMs and apps and a downward chevron); no close control and no Home button any more. While
 Alldone is in front in assistant mode (a link from the chat), only Alldone's own bar shows, App
 pressed; the assistant there brings the chat back (`backToChat`). From plain Alldone the assistant
@@ -445,8 +445,11 @@ list (`goHome`, AT-2920). The top bar marks Chats or Updates as the current view
 screen (`useTopBarViewSelected` in `topBarNavSelection.js`, fed by AnnaShell's `AnnaAppShownContext`):
 back in the assistant, the view still mounted behind the chat is not where the user is. `AnnaFocusTask` (2026-11-16) shows the user's focus task
 (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a task link, at most
-400px wide. A click leaves the chat for the app's open task list, where the focus task leads (`goHome`, like
-App from the chat). The link's own target is the task, for a modified click (a new tab); it carries
+400px wide. A click leaves the chat for the app's open task list (`goHome`, like App from the chat) and
+scrolls the list to the task once its row is there (`scrollToTaskWhenShown` in
+`annaFocusTaskScroll.js`: up to 4s, with the reveal's `findWorkspaceObject` and
+`scrollWorkspaceObject`, so only Alldone scrolls; on a phone the assistant line pushes the task below
+the fold). The link's own target is the task, for a modified click (a new tab); it carries
 `data-anna-open-in-app`, which `interceptLink` skips, so it never opens on the screen below the chat's row. With none (or a stale or done one) it offers
 "Get a focus task", which runs `pickNewFocusTask` in `tasksFirestore.js`:
 the same `findAndSetNewFocusedTask` pick as after completing the focus task, under `awaitWriteAck`,

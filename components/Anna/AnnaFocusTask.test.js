@@ -43,7 +43,7 @@ afterEach(() => {
 })
 
 describe('the focus task in the assistant header', () => {
-    it('links the focus task by its plain name and opens it in the app itself', () => {
+    it('links the focus task by its plain name and hands it to the shell on a click', () => {
         render({
             loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'p1' },
             taskInFocus: { id: 't1', name: 'Call **Ben** about the offer', done: false },
@@ -59,7 +59,7 @@ describe('the focus task in the assistant header', () => {
         const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
         act(() => link.dispatchEvent(click))
         expect(click.defaultPrevented).toBe(true)
-        expect(onOpen).toHaveBeenCalledWith('/projects/p1/tasks/t1/properties')
+        expect(onOpen).toHaveBeenCalledWith({ taskId: 't1', projectId: 'p1' })
 
         // A modified click keeps the browser's own handling (a new tab).
         onOpen.mockClear()

@@ -10,7 +10,8 @@ const NOTICE_MS = 4000
 /**
  * Assistant mode: the middle of the chat header's row. It shows the user's focus task
  * (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`). A click calls
- * `onOpen`: AnnaShell leaves the chat for the app's open task list, where the focus task leads.
+ * `onOpen({ taskId, projectId })`: AnnaShell leaves the chat for the app's open task list and
+ * scrolls it to the task.
  * The link's own target is the task, for a modified click (a new tab); AnnaShell's link
  * interception skips it (`data-anna-open-in-app`). With no focus task it offers to pick one, the
  * same pick as after completing the focus task.
@@ -45,7 +46,7 @@ export default function AnnaFocusTask({ onOpen }) {
         const open = event => {
             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
             event.preventDefault()
-            onOpen?.(path)
+            onOpen?.({ taskId: focused.id, projectId: focusProjectId })
         }
         return (
             <a
