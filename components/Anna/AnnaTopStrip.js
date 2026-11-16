@@ -17,6 +17,9 @@ import AnnaViewSwitch from './AnnaViewSwitch'
  * the switch (XP, gold, statistics, search, chats, updates) first leaves the chat for the app
  * (`onLeaveChat`), and then does what it always does there.
  */
+// How many things the statistics can give up when short of room (see `squeeze`).
+const STATISTICS_STEPS = 3
+
 export default function AnnaTopStrip({
     layout,
     canSplit,
@@ -40,28 +43,38 @@ export default function AnnaTopStrip({
         return () => observer?.disconnect()
     }, [dispatch])
 
-    // The labelled statistics need more room than the left side has in a narrow strip (for example
-    // the card above the content in plain Alldone): there they show icons, as on a small screen, and
-    // their labels return once the side is as wide as they needed.
+    // The statistics need more room than the left side has in a narrow strip (for example the card
+    // above the content in plain Alldone). Each step gives some up until they fit: first the XP bar,
+    // then the labels (icons instead, as on a small screen), then the done-task count. A step is taken
+    // back once the side is as wide as the statistics needed before it.
     const left = useRef(null)
-    const labelledWidth = useRef(0)
-    const [compactStatistics, setCompactStatistics] = useState(false)
-    const checkStatistics = () => {
+    const neededWidth = useRef([])
+    const [squeeze, setSqueeze] = useState(0)
+    // After a render the statistics may only give more up (they overflow). A change of the side's own
+    // size (ResizeObserver) starts taking steps back, one per render while the next one fits, and
+    // stops at the first that does not; a render alone never undoes the one before it.
+    const squeezeNow = useRef(squeeze)
+    squeezeNow.current = squeeze
+    const relaxing = useRef(false)
+    const checkStatistics = sizeChanged => {
         const node = left.current
         if (!node) return
+        const step = squeezeNow.current
         const room = node.clientWidth
-        setCompactStatistics(compact => {
-            if (!compact && node.scrollWidth > room + 1) {
-                labelledWidth.current = node.scrollWidth
-                return true
-            }
-            return compact && room < labelledWidth.current
-        })
+        if (sizeChanged) relaxing.current = true
+        let next = step
+        if (step < STATISTICS_STEPS && node.scrollWidth > room + 1) {
+            neededWidth.current[step] = node.scrollWidth
+            relaxing.current = false
+            next = step + 1
+        } else if (relaxing.current && step > 0 && room >= neededWidth.current[step - 1]) next = step - 1
+        else relaxing.current = false
+        if (next !== step) setSqueeze(next)
     }
-    useLayoutEffect(checkStatistics)
+    useLayoutEffect(() => checkStatistics(false))
     useLayoutEffect(() => {
         if (!left.current || typeof ResizeObserver === 'undefined') return
-        const observer = new ResizeObserver(checkStatistics)
+        const observer = new ResizeObserver(() => checkStatistics(true))
         observer.observe(left.current)
         return () => observer.disconnect()
     }, [])
@@ -69,7 +82,11 @@ export default function AnnaTopStrip({
     return (
         <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
             <div className="anna-strip-left" ref={left} onClickCapture={onLeaveChat}>
-                <TopBarStatisticArea showTasksStatistics={canSplit} compact={compactStatistics} />
+                <TopBarStatisticArea
+                    showXp={squeeze < 1}
+                    compact={squeeze >= 2}
+                    showTasksStatistics={canSplit && squeeze < 3}
+                />
             </div>
             <AnnaViewSwitch
                 layout={layout}

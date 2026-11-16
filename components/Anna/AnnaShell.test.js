@@ -1999,7 +1999,7 @@ describe('the strip in plain Alldone (desktop)', () => {
             'split',
             'alldone',
         ])
-        expect(mockStatisticProps).toEqual({ showTasksStatistics: true, compact: false })
+        expect(mockStatisticProps).toEqual({ showXp: true, compact: false, showTasksStatistics: true })
     })
 })
 
@@ -2039,7 +2039,7 @@ describe('a desktop window too narrow for both', () => {
         expect(selectedSurfaceLabel()).toBe('Chat')
         expect(document.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
         // The done-task count would run into the switch in the middle.
-        expect(mockStatisticProps).toEqual({ showTasksStatistics: false, compact: false })
+        expect(mockStatisticProps).toEqual({ showXp: true, compact: false, showTasksStatistics: false })
     })
 
     it('keeps the header row above a screen picked there; the picker or the assistant brings the chat back', () => {

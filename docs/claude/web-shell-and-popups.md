@@ -391,9 +391,12 @@ bar slot shows it there instead (2026-11-16: `AnnaStripSlotContext`; RootView's 
 claims it, so the sidebar runs up to the top as it does without AnnaShell; there the strip is a card as
 wide as the content below, with TopBar's margins (`getDesktopTopBarMargins`, the shown sidebar
 state), height, rounded bottom and theme background, `[data-anna-strip-slot]` in anna.css; detail
-views have no slot, so the strip stays above everything there). When the strip's left side overflows
-(a narrow card), its statistics show icons instead of labels (`compact` on `TopBarStatisticArea`,
-`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`) until the side is as wide as the labels needed. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
+views have no slot, so the strip stays above everything there). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
+first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
+`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. A render may only add a
+step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
+is as wide as the step needed, so a render can never undo the previous one (an earlier version that
+checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
 (`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and

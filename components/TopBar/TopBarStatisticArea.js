@@ -11,18 +11,20 @@ import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 
 // `showTasksStatistics`: AnnaTopStrip drops the done-task count in a window too narrow for the chat
 // beside Alldone, where it would run into the view switch in the middle. `compact`: icons instead of
-// labels, when the strip's left side would otherwise run into the switch.
-export default function TopBarStatisticArea({ showTasksStatistics = true, compact = false }) {
+// labels, when the strip's left side would otherwise run into the switch. `showXp`: the strip drops the
+// XP bar first when it is short of room.
+export default function TopBarStatisticArea({ showTasksStatistics = true, compact = false, showXp = true }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
 
     return (
         <View style={localStyles.statisticArea}>
-            {smallScreen ? (
-                <XpBar key={'karma-bar-tablet'} size={XP_BAR_TABLET} compact />
-            ) : (
-                <XpBar key={'karma-bar-desktop'} compact />
-            )}
+            {showXp &&
+                (smallScreen ? (
+                    <XpBar key={'karma-bar-tablet'} size={XP_BAR_TABLET} compact />
+                ) : (
+                    <XpBar key={'karma-bar-desktop'} compact />
+                ))}
             <GoldArea containerStyle={{ marginRight: smallScreen ? 4 : 8 }} />
             {showTasksStatistics && <TasksStatisticsArea compact={compact} />}
             {premiumStatus === PLAN_STATUS_PREMIUM ? <PremiumBar compact={compact} /> : <QuotaBar compact={compact} />}
