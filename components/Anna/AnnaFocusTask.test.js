@@ -22,14 +22,17 @@ const render = state => {
                 inFocusTaskProjectId: '',
                 ...state.loggedUser,
             },
-            loggedUserProjects: [{ id: 'first' }],
+            loggedUserProjects: state.projects ?? [{ id: 'first' }],
             loggedUserProjectsMap: state.projectsMap ?? {},
             taskInFocus: state.taskInFocus ?? null,
+            sidebarNumbers: state.sidebarNumbers,
         })
     )
     act(() => root.render(<AnnaFocusTask onOpen={onOpen} />))
 }
 const button = () => container.querySelector('button.anna-focus-get')
+const celebration = () => container.querySelector('.anna-focus-empty-inbox')
+const focusLink = () => container.querySelector('a.anna-focus-task')
 
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
@@ -138,5 +141,111 @@ describe('the focus task in the assistant header', () => {
         expect(container.querySelector('[role="status"]').textContent).toBe(
             'The focus task could not be picked. Please try again.'
         )
+    })
+})
+
+// AT-3057: with nothing left for today the header celebrates instead of offering the pick.
+describe('the empty inbox in the assistant header', () => {
+    // Loaded counts (no `loading` key) with an entry for every project of the user.
+    const EMPTY = { first: {}, second: { u1: 0, someoneElse: 4 } }
+    const PROJECTS = [{ id: 'first' }, { id: 'second' }]
+
+    it('keeps the pick button while a task is due today (non-empty inbox)', () => {
+        render({ projects: PROJECTS, sidebarNumbers: { first: { u1: 2 }, second: {} } })
+        expect(button().textContent).toBe('Get a focus task')
+        expect(celebration()).toBeNull()
+    })
+
+    it('celebrates instead of offering the pick when today is genuinely empty', () => {
+        render({ projects: PROJECTS, sidebarNumbers: EMPTY })
+        expect(button()).toBeNull()
+        expect(focusLink()).toBeNull()
+        const status = celebration()
+        expect(status.getAttribute('role')).toBe('status')
+        expect(status.textContent).toBe('Empty inbox for today – well done!')
+        expect(status.getAttribute('aria-label')).toBe(
+            'Congrats - you have reached empty inbox across all your projects.'
+        )
+        expect(status.querySelector('[data-icon="check-circle"]')).toBeTruthy()
+        // It is not a way to get more work.
+        expect(status.querySelector('button, a')).toBeNull()
+    })
+
+    it('never mistakes loading or incomplete counts for an empty inbox', () => {
+        // The initial store, a project still loading, a torn-down count, no count at all.
+        for (const sidebarNumbers of [
+            { loading: true },
+            { ...EMPTY, loading: true },
+            { loading: false },
+            undefined,
+            // The counts still describe an older, smaller project list.
+            { first: {} },
+        ]) {
+            render({ projects: PROJECTS, sidebarNumbers })
+            expect(celebration()).toBeNull()
+            expect(button().textContent).toBe('Get a focus task')
+        }
+        // No projects loaded yet either.
+        render({ projects: [], sidebarNumbers: {} })
+        expect(celebration()).toBeNull()
+        expect(button()).toBeTruthy()
+    })
+
+    it('does not celebrate while the focus task is set but not loaded yet', () => {
+        render({
+            projects: PROJECTS,
+            sidebarNumbers: EMPTY,
+            loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'first' },
+        })
+        expect(celebration()).toBeNull()
+        expect(button()).toBeTruthy()
+    })
+
+    it('keeps showing an open focus task even when the today count is zero', () => {
+        render({
+            projects: PROJECTS,
+            sidebarNumbers: EMPTY,
+            loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'first' },
+            taskInFocus: { id: 't1', name: 'Call Ben', done: false },
+        })
+        expect(focusLink()).toBeTruthy()
+        expect(celebration()).toBeNull()
+    })
+
+    it('follows the transitions: loading → empty → a task appears → focused → done → empty', () => {
+        render({ projects: PROJECTS, sidebarNumbers: { loading: true } })
+        expect(button()).toBeTruthy()
+
+        render({ projects: PROJECTS, sidebarNumbers: EMPTY })
+        expect(celebration()).toBeTruthy()
+        expect(button()).toBeNull()
+
+        // A task due today arrives: the normal pick is back at once.
+        render({ projects: PROJECTS, sidebarNumbers: { ...EMPTY, second: { u1: 1 } } })
+        expect(celebration()).toBeNull()
+        expect(button().textContent).toBe('Get a focus task')
+
+        // It is picked: the focus task shows as before.
+        render({
+            projects: PROJECTS,
+            sidebarNumbers: { ...EMPTY, second: { u1: 1 } },
+            loggedUser: { inFocusTaskId: 't9', inFocusTaskProjectId: 'second' },
+            taskInFocus: { id: 't9', name: 'Last one', done: false },
+        })
+        expect(focusLink().textContent).toContain('Last one')
+        expect(celebration()).toBeNull()
+
+        // Completed, and it was the last one for today: celebrate, even before the focus is cleared.
+        render({
+            projects: PROJECTS,
+            sidebarNumbers: EMPTY,
+            loggedUser: { inFocusTaskId: 't9', inFocusTaskProjectId: 'second' },
+            taskInFocus: { id: 't9', name: 'Last one', done: true },
+        })
+        expect(focusLink()).toBeNull()
+        expect(celebration()).toBeTruthy()
+
+        render({ projects: PROJECTS, sidebarNumbers: EMPTY })
+        expect(celebration()).toBeTruthy()
     })
 })

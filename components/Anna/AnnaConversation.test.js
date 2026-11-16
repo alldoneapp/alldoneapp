@@ -141,9 +141,36 @@ jest.mock('../Feeds/Utils/HelperFunctions', () => ({
     STAYWARD_COMMENT: 'stayward',
     updateNewAttachmentsData: jest.fn(),
 }))
+// What the AT-2922 thread gate's listeners see (AT-3058). null = no listener, as in most tests.
+let mockGateComments = null
+const mockGateListeners = new Set()
+const mockEmitGateComments = comments => {
+    mockGateComments = comments
+    const snapshot = {
+        metadata: { fromCache: false },
+        forEach: fn => mockGateComments.forEach(({ id, ...data }) => fn({ id, data: () => data })),
+    }
+    mockGateListeners.forEach(listener => listener(snapshot))
+}
 jest.mock('../../utils/backends/firestore', () => ({
     getId: jest.fn(() => 'm1'),
-    getDb: () => ({ doc: () => ({ update: mockContextUpdate, set: mockContextSet }) }),
+    getDb: () => ({
+        doc: () => ({ update: mockContextUpdate, set: mockContextSet }),
+        collection: () => {
+            if (!mockGateComments) throw new Error('No thread listener in this test')
+            const query = {
+                orderBy: () => query,
+                limit: () => query,
+                where: () => query,
+                onSnapshot: (_options, next) => {
+                    mockGateListeners.add(next)
+                    mockEmitGateComments(mockGateComments)
+                    return () => mockGateListeners.delete(next)
+                },
+            }
+            return query
+        },
+    }),
     runHttpsCallableFunction: jest.fn(),
 }))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
@@ -224,6 +251,8 @@ beforeEach(() => {
     commentOutbox.read.mockReturnValue(null)
     setAnnaWorkspaceContext(null)
     threadRunGate.reset()
+    mockGateComments = null
+    mockGateListeners.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -341,7 +370,7 @@ it('follows viewport resizing after focus without pulling a reader away from old
 })
 
 it('orders the toolbar as + and Templates on the left, then mic, call and send on the right (AT-3029, AT-3032)', () => {
-    render({ renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    render()
     const labels = selector =>
         [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
@@ -351,39 +380,25 @@ it('orders the toolbar as + and Templates on the left, then mic, call and send o
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
     // Offline hides only the mic; the rest keep their places.
-    render({ offline: true, renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    render({ offline: true })
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
 })
 
-describe('project chip on the field edge and Templates beside the + (AT-3032)', () => {
-    const project = () => <button type="button" aria-label="Project" />
-
-    it('renders the project chip above the editor, out of the toolbar, first in tab order', () => {
-        render({ renderProjectSwitcher: project })
-        const slot = container.querySelector('.anna-composer-draft > .anna-composer-project')
-        expect(slot.querySelector('[aria-label="Project"]')).not.toBeNull()
-        expect(container.querySelector('.anna-composer-toolbar [aria-label="Project"]')).toBeNull()
-        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
-        expect(buttonsAndEditor[0].getAttribute('aria-label')).toBe('Project')
-        expect(buttonsAndEditor[1].tagName).toBe('TEXTAREA')
-    })
-
-    it('leaves the slot empty when there is no project to choose', () => {
-        render({ renderProjectSwitcher: () => null })
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+describe('no project chip in the composer (AT-3055) and Templates beside the + (AT-3032)', () => {
+    it('shows no project chip: the editor is the first control of the draft', () => {
         render()
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+        expect(container.querySelector('.anna-composer-project')).toBeNull()
+        expect(container.querySelector('.anna-project-chip')).toBeNull()
+        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
+        expect(buttonsAndEditor[0].tagName).toBe('TEXTAREA')
     })
 
-    it('still disables the chip during dictation, calls and offline', () => {
-        const renderProjectSwitcher = jest.fn(project)
+    it('ignores a project switcher handed in by an older caller', () => {
+        const renderProjectSwitcher = jest.fn(() => <button type="button" className="anna-project-chip" />)
         render({ renderProjectSwitcher })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ renderProjectSwitcher, offline: true })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
-        render({ renderProjectSwitcher, call: { status: 'connected' } })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
+        expect(renderProjectSwitcher).not.toHaveBeenCalled()
+        expect(container.querySelector('.anna-project-chip')).toBeNull()
     })
 
     it('opens the assistant line Templates for the chat’s project and assistant', () => {
@@ -1310,6 +1325,66 @@ it('queues a second message until the first assistant run has settled and keeps 
     expect(container.querySelector('textarea').value).toBe('Still writing a third')
 })
 
+describe('a first request that handed its work to a VM (AT-3058)', () => {
+    const handoff = inThread => ({
+        id: 'handoff',
+        fromAssistant: true,
+        vmHandoff: true,
+        vmHandoffInThread: inThread,
+        assistantRun: { kind: 'chat', status: 'completed', triggerMessageId: 'first', completedAt: Date.now() },
+        created: Date.now(),
+    })
+    const sendTwo = async () => {
+        const first = deferred()
+        createObjectMessage.mockResolvedValueOnce('first').mockResolvedValueOnce('second')
+        getId.mockReturnValueOnce('first').mockReturnValueOnce('second')
+        runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(Promise.resolve({}))
+        mockGateComments = []
+        render()
+        type('Empty Inbox feiern')
+        await submit()
+        return first
+    }
+
+    it('answers the next message at once when the VM runs in another task', async () => {
+        const first = await sendTwo()
+        // The request stays open while the model polls the VM; its answer is a finished handoff.
+        await act(async () => mockEmitGateComments([handoff(false)]))
+        type('Layout rechts')
+        await submit()
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(createObjectMessage).toHaveBeenCalledTimes(2)
+        expect(container.querySelector('.anna-message-queued')).toBeNull()
+        await act(async () => first.resolve({}))
+    })
+
+    it('keeps the next message queued while the VM runs in this same conversation', async () => {
+        const first = await sendTwo()
+        const vm = {
+            id: 'vm-status',
+            isLoading: true,
+            assistantRun: { kind: 'vm_job', runId: 'vm-1', status: 'running' },
+            created: Date.now() + 1,
+        }
+        await act(async () => mockEmitGateComments([handoff(true), vm]))
+        type('Layout rechts')
+        await submit()
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+        expect(container.querySelector('.anna-message-queued').textContent).toContain('Layout rechts')
+        await act(async () => first.resolve({}))
+        // The request settled, but the VM in this conversation is still running.
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+        await act(async () =>
+            mockEmitGateComments([
+                handoff(true),
+                { ...vm, isLoading: false, assistantRun: { ...vm.assistantRun, status: 'completed' } },
+            ])
+        )
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(container.querySelector('.anna-message-queued')).toBeNull()
+    })
+})
+
 it('dispatches the next queued message after a failed run, and lets a queued message be sent now or removed (AT-2922)', async () => {
     const first = deferred()
     const third = deferred()
@@ -1991,17 +2066,14 @@ describe('selected project (AT-2903)', () => {
     })
 
     it('holds sending and calls until the selected project’s chat is ready, keeping the draft', async () => {
-        const renderProjectSwitcher = jest.fn(() => <span data-testid="project-chip" />)
-        render({ switching: true, renderProjectSwitcher })
+        render({ switching: true })
         type('For the product project')
         expect(container.querySelector('.anna-send').disabled).toBe(true)
         expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(true)
         await submit()
         expect(createObjectMessage).not.toHaveBeenCalled()
         expect(container.querySelector('textarea').value).toBe('For the product project')
-        expect(container.querySelector('.anna-composer-project [data-testid="project-chip"]')).not.toBeNull()
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ switching: false, renderProjectSwitcher })
+        render({ switching: false })
         expect(container.querySelector('.anna-send').disabled).toBe(false)
     })
 })

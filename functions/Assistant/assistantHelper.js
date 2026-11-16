@@ -11189,7 +11189,14 @@ async function executeToolNativelyImpl(
                     userContext?.message || userContext?.content
                 )
 
-                await toolRuntimeContext?.onVmHandoff?.({ message: toolArgs.handoff_message })
+                await toolRuntimeContext?.onVmHandoff?.({
+                    message: toolArgs.handoff_message,
+                    host: {
+                        projectId: effectiveProjectId,
+                        objectType: effectiveObjectType,
+                        objectId: effectiveObjectId,
+                    },
+                })
                 const { startVmJob } = require('./vmJob')
                 const vmResult = await startVmJob({
                     objective: toolArgs.objective,
@@ -11592,8 +11599,16 @@ async function storeChunks(
 
         // The introduction is a finished message, not the stream that later becomes the
         // result. Keep it immutable while the VM runs, then open a new Anna follow-up.
-        runtimeContextForTools.onVmHandoff = async ({ message } = {}) => {
+        runtimeContextForTools.onVmHandoff = async ({ message, host } = {}) => {
             if (vmHandoffFrozen) return
+            // AT-3058: the client thread gate stops waiting for this request once its answer is a
+            // handoff to a VM in ANOTHER object; a VM in this very thread keeps the next message
+            // queued. Unknown host = this thread, the conservative answer.
+            const vmHandoffInThread =
+                !host?.objectId ||
+                (host.projectId === projectId &&
+                    (host.objectType || 'tasks') === (objectType || 'tasks') &&
+                    host.objectId === objectId)
             await ensureCommitted()
             vmHandoffFrozen = true
             if (updateTimeout) clearTimeout(updateTimeout)
@@ -11621,6 +11636,7 @@ async function storeChunks(
                     ? { assistantRun: { ...assistantRun, status: 'completed', completedAt: Date.now() } }
                     : {}),
                 vmHandoff: true,
+                vmHandoffInThread,
             })
             await Promise.all([
                 admin

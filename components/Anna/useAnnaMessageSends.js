@@ -145,9 +145,13 @@ export default function useAnnaMessageSends({
         job.stopConfirming?.()
         // Anything ahead of it in this tab, or an answer already running in its thread, makes it
         // wait. The wait itself happens in turn below; this only decides what the user sees now.
+        // A job already dispatched is the gate's to judge: its request may stay open for a VM it
+        // handed off to another task, which no longer holds this thread (AT-3058).
         const queued =
             !job.locallySaved &&
-            ([...jobs.current.values()].some(other => other !== job && other.running && other.userId === job.userId) ||
+            ([...jobs.current.values()].some(
+                other => other !== job && other.running && !other.dispatched && other.userId === job.userId
+            ) ||
                 (job.thread?.id && threadRunGate.isThreadBusyLocally(threadOf(job.thread))))
         job.running = true
         job.dispatched = false

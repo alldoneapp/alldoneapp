@@ -36,8 +36,9 @@ const projectLabel = choice => {
 /**
  * The assistant variant lists who can answer, not every project: "Automatic" (the default
  * assistant) and each project with an assistant of its own. A project the default assistant
- * answers in, and the explicit default project, are project choices that would only repeat the
- * default assistant, so they stay in the composer's chip (and are listed here only while active).
+ * answers in, and the explicit default project, would only repeat the default assistant, so they
+ * are listed only while active (e.g. reached from the assistant line or a jump to another chat).
+ * AT-3055: the composer's project chip is gone; this picker is the only switch in assistant mode.
  */
 export const getAnnaAssistantChoices = (choices = [], activeProjectId = null) => {
     const hasAutomatic = choices.some(choice => choice.isAutomatic)
@@ -72,7 +73,8 @@ const ChoiceMark = ({ choice }) =>
     )
 
 /**
- * AT-2903 — the project chip in the assistant chat composer. The selected
+ * AT-2903 — the project chip (default `variant="project"`), formerly in the assistant chat
+ * composer; AT-3055 removed it from there and nothing renders this variant now. The selected
  * project decides which daily chat the next message goes to, and with it which
  * assistant answers. Opens inside the chat pane, like the attachment menu.
  *
@@ -82,6 +84,10 @@ const ChoiceMark = ({ choice }) =>
  *
  * AT-3047 — with `name`, the assistant variant's trigger is the assistant's name plus the
  * chevron, one button, so the whole name opens the picker (not only the small chevron).
+ *
+ * AT-3056 — with `avatar` (phones), the trigger is the assistant's avatar with the down-chevron, a
+ * 44px-high button without the name, so the focus task beside it keeps the room. The chevron says it
+ * is a picker (AT-3056 follow-up). The accessible label and the title still carry the full `name`.
  */
 export default function AnnaProjectSwitcher({
     variant = 'project',
@@ -92,6 +98,7 @@ export default function AnnaProjectSwitcher({
     busy = false,
     getViewport,
     name,
+    avatar,
 }) {
     const dispatch = useDispatch()
     const [open, setOpen] = useState(false)
@@ -229,9 +236,13 @@ export default function AnnaProjectSwitcher({
             {byAssistant ? (
                 <button
                     type="button"
-                    className={`anna-assistant-picker${name ? ' anna-assistant-picker-named' : ' anna-pane-toggle'}${
-                        busy ? ' anna-project-chip-busy' : ''
-                    }`}
+                    className={`anna-assistant-picker${
+                        avatar
+                            ? ' anna-assistant-picker-avatar'
+                            : name
+                              ? ' anna-assistant-picker-named'
+                              : ' anna-pane-toggle'
+                    }${busy ? ' anna-project-chip-busy' : ''}`}
                     aria-label={label}
                     aria-haspopup="dialog"
                     aria-expanded={open}
@@ -240,7 +251,7 @@ export default function AnnaProjectSwitcher({
                     disabled={disabled}
                     onClick={toggle}
                 >
-                    {name && <strong className="anna-brand">{name}</strong>}
+                    {avatar || (name && <strong className="anna-brand">{name}</strong>)}
                     <span aria-hidden="true" className="anna-assistant-picker-chevron">
                         <Icon name="chevron-down" size={16} color="currentColor" />
                     </span>

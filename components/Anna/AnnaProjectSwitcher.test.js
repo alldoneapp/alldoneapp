@@ -218,6 +218,34 @@ describe('assistant variant', () => {
         expect(onSelect).toHaveBeenCalledWith('product')
     })
 
+    // AT-3056: on a phone the trigger is the avatar (no name) with the down-chevron that says it is
+    // a picker (follow-up); label and title keep the full name.
+    it('uses the avatar and the chevron as the trigger, labelled with the full name', () => {
+        const onSelect = jest.fn()
+        render({
+            variant: 'assistant',
+            choices: all,
+            activeProjectId: ':automatic',
+            onSelect,
+            name: 'Anna Alldone',
+            avatar: <span className="anna-small-avatar">A</span>,
+        })
+        expect(container.querySelectorAll('button')).toHaveLength(1)
+        const button = trigger()
+        expect(button.classList.contains('anna-assistant-picker-avatar')).toBe(true)
+        expect(button.classList.contains('anna-assistant-picker-named')).toBe(false)
+        expect(button.querySelector('.anna-small-avatar').textContent).toBe('A')
+        expect(button.querySelector('.anna-brand')).toBeNull()
+        expect(button.lastElementChild.className).toBe('anna-assistant-picker-chevron')
+        expect(button.lastElementChild.getAttribute('aria-hidden')).toBe('true')
+        expect(button.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
+        expect(button.title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
+        act(() => button.querySelector('.anna-small-avatar').click())
+        expect(button.getAttribute('aria-expanded')).toBe('true')
+        act(() => options()[1].click())
+        expect(onSelect).toHaveBeenCalledWith('product')
+    })
+
     it('keeps the name readable while the picker is unavailable', () => {
         render({ variant: 'assistant', choices: all, activeProjectId: ':automatic', disabled: true, name: 'Anna' })
         expect(trigger().disabled).toBe(true)

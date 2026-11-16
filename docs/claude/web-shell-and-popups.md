@@ -245,8 +245,8 @@ carried over, because the server's daily chat answers with the project's assista
 (`findProjectAssistantId`). `AnnaSidebarProjectContext` publishes the sidebar's project. The
 button closes the desktop sidebar only when the sidebar already shows its line's project;
 otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
-a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
-with the composer's project chip. It lists "Automatic" (labelled "All projects" since 2026-11-16), each project with an assistant of its own
+a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. Since AT-3055 it is
+the only project/assistant switch in assistant mode (the composer's project chip is gone). It lists "Automatic" (labelled "All projects" since 2026-11-16), each project with an assistant of its own
 and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
 while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
@@ -302,8 +302,8 @@ other projects") was removed on 2026-11-16 (`scopeAnnaThreads` still reports `ot
 which nothing renders now). While a switch
 resolves, the previous chat stays and sending waits (`switching`, unchanged). "Earlier days" pages
 the shared registry three threads at a time, so `loadEarlier` keeps paging until the visible
-project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (composer
-chip, assistant picker at the top left) also moves the Alldone workspace:
+project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (the
+assistant picker at the top left; the composer chip until AT-3055) also moves the Alldone workspace:
 `syncAnnaWorkspaceProject` (`annaWorkspaceProjectSync.js`) dispatches the header project picker's
 batch (`switchProject`, own board or All goals, active type), keeps the root tab (wiki falls back
 to tasks on All projects), leaves an object's detail view of the old project for the root list,
@@ -341,8 +341,8 @@ entry also probes today's Firestore document with `source: 'cache'`; it never cr
 `resolveConversation` still validates every send independently. See `offline.md`.
 
 **A switch picked in the chat ends with the composer focused (AT-3036 follow-up).** A project
-picked in the chat sidebar (composer chip, assistant picker at the top left, "Chats in other
-projects") goes through `AnnaShell.selectProjectFromChat`. It remembers the target
+picked in the chat sidebar (assistant picker at the top left, "Chats in other
+projects"; the composer chip until AT-3055) goes through `AnnaShell.selectProjectFromChat`. It remembers the target
 (`chatSwitchFocus`), and the composer takes focus when the switch has ended. The conversation reports
 that through `onSwitchSettled(projectId)` from the same point as the snap to the bottom (messages
 loaded and rendered, cached and empty chats included), right before the snap. A pick that keeps
@@ -413,7 +413,8 @@ is the same with or without the bar, so switching views never remounts the scree
 back buttons stay at the top of the content, below the bar; a screen without a slot, such as
 PrivateResource, keeps the strip above everything). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
 first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
-`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`), then the done-task count. The strip always passes
+`TasksStatisticsArea`, `QuotaBar`; `PremiumBar` is the crown alone at every size since 2026-11-16,
+so `compact` only narrows its gap), then the done-task count. The strip always passes
 `compact` explicitly, so Alldone's `smallScreen` flag (measured on the pane beside the chat) never
 shrinks statistics in a strip that has the room; left out, as in TopBar, the flag decides. A render may only add a
 step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
@@ -513,6 +514,48 @@ by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plai
 window too narrow for both"; the file runs at a 1440px window), `TopBarContainer.test.js`,
 `responsiveLayout.test.js` and `UseCollapsibleSidebar.test.js`. `browser-tests/anna-workspace` still
 expects both side by side at 1024px.
+
+**The phone's chat header gives the focus task the room (AT-3056).** On a phone (`mobile`, the
+`(max-width: 760px)` query) the chat header carries `.anna-header-phone`, and its grid is
+`auto minmax(0, 1fr) auto` instead of `.anna-header-sidebar`'s centred
+`minmax(max-content, 1fr) …`: the sides take what they need and the focus task takes the rest (pill
+`max-width: 100%`). The assistant on the left is only its avatar, a 44px button (decided with the
+product owner on 2026-11-16, replacing a first version with the first name): with another assistant
+to pick (`canSwitchAnnaProject`) the avatar is the picker's trigger (`AnnaProjectSwitcher`
+`avatar` prop, class `.anna-assistant-picker-avatar`, no name, no chevron; label "Assistant: {full
+name}", title with the full name; disabled offline or in a call), and the "Latest messages" button
+is not rendered on phones; otherwise the avatar stays that button, labelled with the full name. The
+avatar shows on every phone width (`.anna-header-phone .anna-header-left .anna-small-avatar`
+overrides the ≤360px rule that hides it beside a name). The native
+screen select is a 52x44 box showing the chosen view's icon (`pickerOptions`' `icon`: chat bubble,
+globe, terminal, box) and a chevron, with the select transparent over all of it, so a tap opens
+the system list with every label; its `aria-label` stays "Workspace" and the label's `title` names
+the view. Up to 480px header content width the focus task's project is only its colour dot; the
+link's label and title still name it. Desktop and the sidebar chat are unchanged (name picker,
+AT-3047). Pinned by "the compact phone chat header (AT-3056)" in `AnnaShell.test.js`,
+`annaPhoneHeader.test.js` and the AT-3056 case in `AnnaProjectSwitcher.test.js`. Not verified in a
+real browser at 320/360/390/430px yet.
+
+**Both phone header pickers look alike and show their chevron (AT-3056 follow-up, 2026-11-16).**
+Decided with the product owner: the avatar alone did not read as a picker, and the screen picker's
+bordered box did not match it. The avatar picker shows the avatar and the 16px down-chevron
+(`.anna-assistant-picker-chevron`, `aria-hidden`); the screen picker shows the chosen view's icon on
+a 32px disc in the avatar's tint (`--anna-tint`) and the same chevron (both classes on its span).
+One rule gives both the same box: borderless, transparent, 44px high, `min-width: 44px`, 8px
+radius, tinted on hover with an accent chevron, and the accent focus ring with a 3px offset (the
+shell's for the button, `:has(select:focus-visible)` for the select). The chevron is part of the
+affordance; do not drop it to save width. The avatar alone (nothing else to pick, "Latest
+messages") stays a round 44px button without chevron. Desktop is unchanged. Pinned by "gives the
+assistant picker and the screen picker one shared look" in `annaPhoneHeader.test.js` and the chevron
+cases in `AnnaShell.test.js` and `AnnaProjectSwitcher.test.js`.
+
+**The desktop screen picker is borderless too (AT-3060, 2026-11-16).** The chat header's
+`AnnaScreenPicker` button (`.anna-screen-picker`: icon, label such as "Chat", down-chevron) lost
+its 1px `--anna-border` outline and white surface to match the phone pickers above: transparent at
+rest, 8px radius, `--anna-tint` background with accent label and chevron on hover and while its menu
+is open (`aria-expanded`). Keyboard focus keeps the shell's `button:focus-visible` accent ring; do
+not give the button a resting border or outline back. Its 36px height, label and menu are
+unchanged. Pinned by `annaScreenPickerStyle.test.js`.
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
@@ -620,20 +663,23 @@ name, so the row fits at 320px. Anna passes it `position` (open upwards) and a w
 and the list opened inside the workspace pane, away from its button. The same applies to any other
 popup put in the Anna chat pane: pass a viewport.
 
-**Project chip on the field edge (AT-3032).** The project chip is no longer in the toolbar. It is
-the first child of `.anna-composer-draft`, in `.anna-composer-project`, absolutely positioned on the
-field's top border (centred on it, left-aligned with the +), and first in tab order. The room it
-needs (16px slot margin above, 22px field padding below) is reserved through
-`:has(.anna-project-chip)`, so a composer without a chip (fewer than two choices) keeps the old
-geometry. It has no `z-index` on purpose: with one it painted over the Templates popup. During calls
-it stays hidden with the draft. Pinned by `AnnaConversation.test.js`,
-`annaProjectChipText.test.js` and the chip/Templates geometry in `browser-tests/anna-workspace`
-(`PROJECT_SWITCH_ONLY=1`, 1440/1024/390/320).
+**No project chip in the Anna composer (AT-3055, 2026-11-16).** The composer used to carry a
+project chip (AT-2903; on the field's top edge since AT-3032). The product owner removed it:
+"Dont show the project tag in the assistant mode chat input field. Its enough to just select the
+assistant at the top." `AnnaShell` no longer passes `renderProjectSwitcher`, `AnnaConversation` has
+no `.anna-composer-project` slot, and the CSS that reserved room for the chip is gone, so the field
+keeps its chip-less geometry at every width. The assistant picker at the top left is the only
+switch, with the same state and `selectProjectFromChat`. Accepted consequence: a project the
+default assistant answers in can no longer be picked in the chat (the picker lists assistants);
+it is still reached from the assistant line, a jump to another project's chat or the workspace.
+The project variant of `AnnaProjectSwitcher` (and `.anna-project-chip` CSS) is unused but kept.
+Pinned by the AT-3055 cases in `AnnaConversation.test.js`, `AnnaShell.test.js` and
+`annaProjectChipText.test.js`, and by `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
 
 **Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
 { font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as
-`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The project
-chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
+`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The (since
+AT-3055 removed) composer project chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
 a child span (`.anna-project-chip-name`, now 13px / 16px line, like the project menu rows) or raise
 the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.js`.
 
@@ -641,7 +687,7 @@ the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
 newer messages. Re-opening the same view keeps its original time. A project picked in the
-composer's switcher becomes a local "Switched to project: …" entry
+assistant picker (formerly also the composer's chip) becomes a local "Switched to project: …" entry
 (`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to (since
 AT-3036 that thread is shown alone), and re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
