@@ -3,26 +3,19 @@
 // A message that asks the assistant for an answer is held while the previous answer in the same
 // thread is still being produced, and is only written into the thread once that answer is
 // complete. "Complete" means the whole run, including tool rounds, and also a VM job the run
-// started in that SAME thread (product decision: a queued message waits for that VM too). A VM
-// the run handed off to another object (a new or existing task) does not hold this thread
-// (AT-3058): the next message is answered at once and, if it needs a VM, gets its own. Other
+// started in that thread (product decision: a queued message waits for the VM too). Other
 // conversations are never blocked: everything here is keyed by thread.
 //
 // Three signals say "still processing", and each covers a gap the others cannot see:
 //
 // 1. Runs this tab started itself (`beginThreadRun`/`settleThreadRun`). They cover the seconds
 //    between sending a request and the server creating the assistant's comment (cold start).
-//    The request stays open while the model waits for a VM it handed off, so a run whose newest
-//    answer is a completed handoff to a VM in another object stops counting (AT-3058); a newer
-//    answer of that run (its follow-up summary) makes it count again until it settles.
 // 2. A comment in the thread that is still being written: a chat run's comment while its
 //    `assistantRun.status` is live, and a VM status comment while its job is queued, running,
 //    waiting for the user or being cancelled. This is what makes other tabs, other devices and
 //    other members' runs count.
 // 3. A user message that recorded an assistant run request (`assistantRunRequest`) and has no
 //    answer after it yet. That is the cold-start gap of a run another tab or device started.
-//    Likewise a handoff to a VM in this thread with no answer after it yet: the handoff is
-//    written before the VM's status comment exists (AT-3058).
 //
 // Every signal expires, so a crashed run or a lost listener can delay a message but never strand
 // it: the comment watchdog settles a stuck chat run after ~61 minutes, and the bounds below sit
@@ -72,40 +65,6 @@ export const isCommentStillProcessing = (comment, now) => {
 
 const isAnswer = comment => comment?.fromAssistant === true || !!comment?.assistantRun
 
-// AT-3058 — the server records on the handoff comment whether the VM runs in this very thread
-// (`vmHandoffInThread`). Both checks below need the flag set explicitly, so a handoff written by
-// an older server changes nothing: this tab still waits for its request to settle.
-const handoffTime = comment =>
-    toMillis(comment?.assistantRun?.completedAt) || toMillis(comment?.lastChangeDate) || toMillis(comment?.created)
-
-export const isVmHandoffElsewhere = comment =>
-    comment?.vmHandoff === true && comment.vmHandoffInThread === false && comment.assistantRun?.status === 'completed'
-
-// Whether this tab's run `runId` has been handed off to a VM in another object: decided by the
-// newest answer to that request (`assistantRun.triggerMessageId`). Without one in view (not yet
-// written, or scrolled out of the recent window) the previous decision stands.
-export const isRunHandedOffElsewhere = (runId, comments, previous = false) => {
-    let newest = null
-    for (const comment of comments || []) {
-        if (!runId || comment?.assistantRun?.triggerMessageId !== runId) continue
-        if (!newest || toMillis(comment.created) > toMillis(newest.created)) newest = comment
-    }
-    return newest ? isVmHandoffElsewhere(newest) : previous
-}
-
-// A handoff to a VM in this thread, before the VM's status comment (or a follow-up) exists.
-export const isInThreadVmHandoffStarting = (comments, now, excludeId = null) => {
-    const others = (comments || []).filter(comment => comment && comment.id !== excludeId)
-    return others.some(handoff => {
-        if (handoff.vmHandoff !== true || handoff.vmHandoffInThread !== true) return false
-        const handedOffAt = handoffTime(handoff)
-        if (!handedOffAt || now - handedOffAt >= PENDING_RUN_GRACE_MS) return false
-        return !others.some(
-            comment => comment.id !== handoff.id && isAnswer(comment) && toMillis(comment.created) >= handedOffAt
-        )
-    })
-}
-
 export const isAssistantRunRequestPending = (comments, now, settledIds = new Set(), excludeId = null) => {
     const newest = [...(comments || [])]
         .filter(comment => comment && comment.id !== excludeId)
@@ -118,8 +77,7 @@ export const isAssistantRunRequestPending = (comments, now, settledIds = new Set
 export const evaluateThreadBusy = ({ localRuns = [], comments = [], now, settledIds, excludeId = null }) =>
     localRuns.some(startedAt => now - startedAt < LOCAL_RUN_STALE_MS) ||
     comments.some(comment => comment?.id !== excludeId && isCommentStillProcessing(comment, now)) ||
-    isAssistantRunRequestPending(comments, now, settledIds, excludeId) ||
-    isInThreadVmHandoffStarting(comments, now, excludeId)
+    isAssistantRunRequestPending(comments, now, settledIds, excludeId)
 
 // The released message must sort after everything already in the thread, whatever the device
 // clocks say: the answer it waited for was timestamped by the server.
@@ -170,24 +128,14 @@ export const createThreadRunGate = ({
     setTimer = (fn, ms) => setInterval(fn, ms),
     clearTimer = id => clearInterval(id),
 } = {}) => {
-    const localRuns = new Map() // key -> Map(runId -> { startedAt, handedOff })
+    const localRuns = new Map() // key -> Map(runId -> startedAt)
     const settledIds = new Set()
     const watchers = new Map() // key -> { state, refs, stop, listeners }
     const pokes = new Set()
     const poke = () => pokes.forEach(fn => fn())
 
+    const runsFor = key => [...(localRuns.get(key)?.values() || [])]
     const commentsOf = state => [...(state?.recent || []), ...(state?.live || [])]
-    // Runs of this tab that still hold the thread, given what the thread shows right now.
-    const runsFor = (key, comments) => {
-        const runs = localRuns.get(key)
-        if (!runs) return []
-        const holding = []
-        runs.forEach((run, runId) => {
-            run.handedOff = isRunHandedOffElsewhere(runId, comments, run.handedOff)
-            if (!run.handedOff) holding.push(run.startedAt)
-        })
-        return holding
-    }
 
     const acquire = (thread, key, listener) => {
         let watcher = watchers.get(key)
@@ -220,7 +168,7 @@ export const createThreadRunGate = ({
         if (!thread?.objectId || !runId) return
         const key = getThreadRunKey(thread)
         if (!localRuns.has(key)) localRuns.set(key, new Map())
-        localRuns.get(key).set(runId, { startedAt: now(), handedOff: false })
+        localRuns.get(key).set(runId, now())
         poke()
     }
 
@@ -239,11 +187,11 @@ export const createThreadRunGate = ({
 
     const isThreadBusyLocally = thread => {
         const key = getThreadRunKey(thread)
-        const comments = commentsOf(watchers.get(key)?.state)
+        const current = now()
         return evaluateThreadBusy({
-            localRuns: runsFor(key, comments),
-            comments,
-            now: now(),
+            localRuns: runsFor(key),
+            comments: commentsOf(watchers.get(key)?.state),
+            now: current,
             settledIds,
         })
     }
@@ -298,7 +246,7 @@ export const createThreadRunGate = ({
                 if (shouldCancel()) return finish(resolve, result('cancelled'))
                 if (shouldRelease()) return finish(resolve, result('released'))
                 const busy = evaluateThreadBusy({
-                    localRuns: runsFor(key, comments),
+                    localRuns: runsFor(key),
                     comments,
                     now: current,
                     settledIds,

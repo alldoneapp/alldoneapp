@@ -1,7 +1,7 @@
 'use strict'
 
 // A small in-memory Firestore for unit tests of server services that take `db` as a parameter:
-// doc/collection reads and writes, equality and range `where` filters, dotted-path updates,
+// doc/collection reads and writes, equality and range `where` filters, `orderBy`/`limit`, dotted-path updates,
 // deletes, batches and auto ids. Not a test file itself (no `.test.js`), shared by suites.
 
 const clone = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
@@ -40,6 +40,9 @@ function createFakeFirestore(initial = {}) {
     const docRef = path => ({
         path,
         id: path.split('/').pop(),
+        get firestore() {
+            return db
+        },
         get: async () => snapshotOf(path),
         set: async (data, options) => {
             record('set', path, data)
@@ -75,15 +78,28 @@ function createFakeFirestore(initial = {}) {
         }
     }
 
-    const query = (path, filters = []) => ({
-        where: (field, op, value) => query(path, [...filters, { field, op, value }]),
+    // `orderBy` keeps only documents that have the field, as Firestore does.
+    const query = (path, filters = [], order = null, max = null) => ({
+        where: (field, op, value) => query(path, [...filters, { field, op, value }], order, max),
+        orderBy: (field, direction = 'asc') => query(path, filters, { field, direction }, max),
+        limit: count => query(path, filters, order, count),
         get: async () => {
             const prefix = `${path}/`
-            const matching = [...docs.keys()].filter(key => {
+            let matching = [...docs.keys()].filter(key => {
                 if (!key.startsWith(prefix) || key.slice(prefix.length).includes('/')) return false
                 const data = docs.get(key)
+                if (order && data[order.field] === undefined) return false
                 return filters.every(filter => compare(data[filter.field], filter.op, filter.value))
             })
+            if (order) {
+                const sign = order.direction === 'desc' ? -1 : 1
+                matching.sort((a, b) => {
+                    const left = docs.get(a)[order.field]
+                    const right = docs.get(b)[order.field]
+                    return left === right ? 0 : left < right ? -sign : sign
+                })
+            }
+            if (max !== null) matching = matching.slice(0, max)
             return { size: matching.length, empty: matching.length === 0, docs: matching.map(snapshotOf) }
         },
     })

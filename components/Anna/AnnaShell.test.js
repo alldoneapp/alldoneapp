@@ -1029,25 +1029,19 @@ describe('the compact phone chat header (AT-3056)', () => {
         }
     }
 
-    it('shows only the avatar with a down-chevron, which opens the assistant picker', () => {
+    it('shows only the avatar, which opens the assistant picker', () => {
         withPhone(true, () =>
             withSecondAssistant(() => {
                 setAnnaMode(true)
                 render(content(1))
                 expect(document.querySelector('.anna-header').classList.contains('anna-header-phone')).toBe(true)
-                // One control on the left: the avatar and its down-chevron. No name, no second
-                // avatar button. The chevron says it is a picker (AT-3056 follow-up).
+                // One control on the left: the avatar. No name, no chevron, no second avatar button.
                 expect(left().querySelectorAll('button')).toHaveLength(1)
                 expect(left().querySelector('.anna-brand')).toBeNull()
+                expect(left().querySelector('.anna-assistant-picker-chevron')).toBeNull()
+                expect(left().textContent).toBe('A')
                 const avatar = left().querySelector('button.anna-assistant-picker.anna-assistant-picker-avatar')
-                expect([...avatar.children].map(node => node.className)).toEqual([
-                    'anna-small-avatar',
-                    'anna-assistant-picker-chevron',
-                ])
-                expect(avatar.querySelector('.anna-small-avatar').textContent).toBe('A')
-                const chevron = avatar.querySelector('.anna-assistant-picker-chevron')
-                expect(chevron.getAttribute('aria-hidden')).toBe('true')
-                expect(chevron.textContent).toBe(getIconGlyph('chevron-down'))
+                expect(avatar.querySelector('.anna-small-avatar')).toBeTruthy()
                 expect(avatar.classList.contains('anna-assistant-picker-named')).toBe(false)
                 // The full name stays in the accessible name and the tooltip.
                 expect(avatar.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
@@ -1095,10 +1089,8 @@ describe('the compact phone chat header (AT-3056)', () => {
             const button = screen.getByLabelText('Maximiliane Alexandra von Hohenzollern – Latest messages')
             expect(button.title).toBe('Maximiliane Alexandra von Hohenzollern – Latest messages')
             expect(button.querySelector('.anna-brand')).toBeNull()
-            // Not a picker, so no chevron: it shows the latest messages.
             expect(button.textContent).toBe('M')
             expect(document.querySelector('.anna-assistant-picker')).toBeNull()
-            expect(document.querySelector('.anna-header-left .anna-assistant-picker-chevron')).toBeNull()
         })
     })
 
@@ -1116,10 +1108,6 @@ describe('the compact phone chat header (AT-3056)', () => {
                 getIconGlyph('message-circle'),
                 getIconGlyph('chevron-down'),
             ])
-            // AT-3056 follow-up: the same chevron as the assistant picker on the left (class and size).
-            const chevron = picker.querySelector('.anna-header-picker-chevron')
-            expect(chevron.classList.contains('anna-assistant-picker-chevron')).toBe(true)
-            expect(chevron.querySelector('[style]').style.fontSize).toBe('16px')
             expect([...select().options].map(option => option.textContent)).toEqual(['Chat', 'Browser', 'VMs'])
 
             choose(select(), 'browser')
