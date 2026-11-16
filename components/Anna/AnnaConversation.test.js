@@ -141,9 +141,36 @@ jest.mock('../Feeds/Utils/HelperFunctions', () => ({
     STAYWARD_COMMENT: 'stayward',
     updateNewAttachmentsData: jest.fn(),
 }))
+// What the AT-2922 thread gate's listeners see (AT-3058). null = no listener, as in most tests.
+let mockGateComments = null
+const mockGateListeners = new Set()
+const mockEmitGateComments = comments => {
+    mockGateComments = comments
+    const snapshot = {
+        metadata: { fromCache: false },
+        forEach: fn => mockGateComments.forEach(({ id, ...data }) => fn({ id, data: () => data })),
+    }
+    mockGateListeners.forEach(listener => listener(snapshot))
+}
 jest.mock('../../utils/backends/firestore', () => ({
     getId: jest.fn(() => 'm1'),
-    getDb: () => ({ doc: () => ({ update: mockContextUpdate, set: mockContextSet }) }),
+    getDb: () => ({
+        doc: () => ({ update: mockContextUpdate, set: mockContextSet }),
+        collection: () => {
+            if (!mockGateComments) throw new Error('No thread listener in this test')
+            const query = {
+                orderBy: () => query,
+                limit: () => query,
+                where: () => query,
+                onSnapshot: (_options, next) => {
+                    mockGateListeners.add(next)
+                    mockEmitGateComments(mockGateComments)
+                    return () => mockGateListeners.delete(next)
+                },
+            }
+            return query
+        },
+    }),
     runHttpsCallableFunction: jest.fn(),
 }))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
@@ -224,6 +251,8 @@ beforeEach(() => {
     commentOutbox.read.mockReturnValue(null)
     setAnnaWorkspaceContext(null)
     threadRunGate.reset()
+    mockGateComments = null
+    mockGateListeners.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -1294,6 +1323,66 @@ it('queues a second message until the first assistant run has settled and keeps 
     await act(async () => second.resolve({}))
     expect(onSendingChange).toHaveBeenLastCalledWith(false)
     expect(container.querySelector('textarea').value).toBe('Still writing a third')
+})
+
+describe('a first request that handed its work to a VM (AT-3058)', () => {
+    const handoff = inThread => ({
+        id: 'handoff',
+        fromAssistant: true,
+        vmHandoff: true,
+        vmHandoffInThread: inThread,
+        assistantRun: { kind: 'chat', status: 'completed', triggerMessageId: 'first', completedAt: Date.now() },
+        created: Date.now(),
+    })
+    const sendTwo = async () => {
+        const first = deferred()
+        createObjectMessage.mockResolvedValueOnce('first').mockResolvedValueOnce('second')
+        getId.mockReturnValueOnce('first').mockReturnValueOnce('second')
+        runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(Promise.resolve({}))
+        mockGateComments = []
+        render()
+        type('Empty Inbox feiern')
+        await submit()
+        return first
+    }
+
+    it('answers the next message at once when the VM runs in another task', async () => {
+        const first = await sendTwo()
+        // The request stays open while the model polls the VM; its answer is a finished handoff.
+        await act(async () => mockEmitGateComments([handoff(false)]))
+        type('Layout rechts')
+        await submit()
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(createObjectMessage).toHaveBeenCalledTimes(2)
+        expect(container.querySelector('.anna-message-queued')).toBeNull()
+        await act(async () => first.resolve({}))
+    })
+
+    it('keeps the next message queued while the VM runs in this same conversation', async () => {
+        const first = await sendTwo()
+        const vm = {
+            id: 'vm-status',
+            isLoading: true,
+            assistantRun: { kind: 'vm_job', runId: 'vm-1', status: 'running' },
+            created: Date.now() + 1,
+        }
+        await act(async () => mockEmitGateComments([handoff(true), vm]))
+        type('Layout rechts')
+        await submit()
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+        expect(container.querySelector('.anna-message-queued').textContent).toContain('Layout rechts')
+        await act(async () => first.resolve({}))
+        // The request settled, but the VM in this conversation is still running.
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+        await act(async () =>
+            mockEmitGateComments([
+                handoff(true),
+                { ...vm, isLoading: false, assistantRun: { ...vm.assistantRun, status: 'completed' } },
+            ])
+        )
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(container.querySelector('.anna-message-queued')).toBeNull()
+    })
 })
 
 it('dispatches the next queued message after a failed run, and lets a queued message be sent now or removed (AT-2922)', async () => {

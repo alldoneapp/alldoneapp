@@ -85,9 +85,9 @@ const ChoiceMark = ({ choice }) =>
  * AT-3047 — with `name`, the assistant variant's trigger is the assistant's name plus the
  * chevron, one button, so the whole name opens the picker (not only the small chevron).
  *
- * AT-3056 — with `avatar` (phones), the trigger is the assistant's avatar with the down-chevron, a
- * 44px-high button without the name, so the focus task beside it keeps the room. The chevron says it
- * is a picker (AT-3056 follow-up). The accessible label and the title still carry the full `name`.
+ * AT-3056 — with `avatar` (phones), the trigger is only the assistant's avatar, a 44px button
+ * without name or chevron, so the focus task beside it keeps the room. The accessible label and the
+ * title still carry the full `name`.
  */
 export default function AnnaProjectSwitcher({
     variant = 'project',
@@ -251,10 +251,14 @@ export default function AnnaProjectSwitcher({
                     disabled={disabled}
                     onClick={toggle}
                 >
-                    {avatar || (name && <strong className="anna-brand">{name}</strong>)}
-                    <span aria-hidden="true" className="anna-assistant-picker-chevron">
-                        <Icon name="chevron-down" size={16} color="currentColor" />
-                    </span>
+                    {avatar || (
+                        <>
+                            {name && <strong className="anna-brand">{name}</strong>}
+                            <span aria-hidden="true" className="anna-assistant-picker-chevron">
+                                <Icon name="chevron-down" size={16} color="currentColor" />
+                            </span>
+                        </>
+                    )}
                 </button>
             ) : (
                 <button

@@ -67,6 +67,16 @@ jest.mock('../../../functions/Utils/parseTextUtils', () => ({
 }))
 
 let docs, commits, rejectCommit, loseAcknowledgement
+// What the thread gate's listeners see (AT-3058). null = no listener, as in most tests here.
+let gateComments, gateListeners
+const emitGateComments = comments => {
+    gateComments = comments
+    const snapshot = {
+        metadata: { fromCache: false },
+        forEach: fn => gateComments.forEach(({ id, ...data }) => fn({ id, data: () => data })),
+    }
+    gateListeners.forEach(listener => listener(snapshot))
+}
 
 it('preserves the optimistic ID and creation time supplied by Anna in the outbox and stored comment', async () => {
     const created = Date.now() - 60000
@@ -102,6 +112,8 @@ beforeEach(() => {
     commits = []
     rejectCommit = null
     loseAcknowledgement = false
+    gateComments = null
+    gateListeners = new Set()
     getChatMeta.mockResolvedValue(null)
     getTaskData.mockResolvedValue({
         isPublicFor: [0],
@@ -112,6 +124,20 @@ beforeEach(() => {
     })
     const db = {
         doc: path => ({ path, get: async () => ({ data: () => ({ usersFollowing: ['u'] }) }) }),
+        collection: () => {
+            if (!gateComments) throw new Error('No thread listener in this test')
+            const query = {
+                orderBy: () => query,
+                limit: () => query,
+                where: () => query,
+                onSnapshot: (_options, next) => {
+                    gateListeners.add(next)
+                    emitGateComments(gateComments)
+                    return () => gateListeners.delete(next)
+                },
+            }
+            return query
+        },
         runTransaction: async callback => {
             const writes = []
             const result = await callback({
@@ -441,6 +467,70 @@ describe('one assistant turn at a time per thread', () => {
         expect(docs.get('chatComments/p/tasks/t/comments/second').created).toBeGreaterThan(
             docs.get('chatComments/p/tasks/t/comments/first').created
         )
+    })
+
+    // AT-3058: the first request stays open while the model polls a VM it handed off.
+    const handoffTo = (inThread, runId = 'first') => ({
+        id: `handoff-${runId}`,
+        fromAssistant: true,
+        vmHandoff: true,
+        vmHandoffInThread: inThread,
+        assistantRun: { kind: 'chat', status: 'completed', triggerMessageId: runId, completedAt: Date.now() },
+        created: Date.now(),
+    })
+
+    it('answers the next message at once when the first one handed its VM to another task (AT-3058)', async () => {
+        const firstRun = deferred()
+        runHttpsCallableFunction.mockReturnValueOnce(firstRun.promise).mockResolvedValue({})
+        gateComments = []
+        await ask('First', 'first')
+        await ask('Second', 'second')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        await settle()
+        expect(commentOutbox.read('u', 'second').status).toBe('queued')
+
+        emitGateComments([handoffTo(false)])
+        await flushing
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+        expect(docs.has('chatComments/p/tasks/t/comments/second')).toBe(true)
+        expect(commentOutbox.list('u')).toHaveLength(0)
+        firstRun.resolve({})
+    })
+
+    it('keeps the next message queued while the VM runs in this same task (AT-3058)', async () => {
+        const firstRun = deferred()
+        runHttpsCallableFunction.mockReturnValueOnce(firstRun.promise).mockResolvedValue({})
+        gateComments = []
+        await ask('First', 'first')
+        await ask('Second', 'second')
+        goOnline()
+        const flushing = commentOutbox.flush()
+        await settle()
+        await settle()
+        const vm = {
+            id: 'vm-status',
+            isLoading: true,
+            assistantRun: { kind: 'vm_job', runId: 'vm-1', status: 'running' },
+            created: Date.now() + 1,
+        }
+        emitGateComments([handoffTo(true), vm])
+        await settle()
+        expect(commentOutbox.read('u', 'second').status).toBe('queued')
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first'])
+
+        // The first request ends, but the VM in this task still runs.
+        firstRun.resolve({})
+        await settle()
+        await settle()
+        expect(commentOutbox.read('u', 'second').status).toBe('queued')
+        emitGateComments([
+            handoffTo(true),
+            { ...vm, isLoading: false, assistantRun: { ...vm.assistantRun, status: 'completed' } },
+        ])
+        await flushing
+        expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
     })
 
     it('a failed answer releases the queue as well', async () => {
