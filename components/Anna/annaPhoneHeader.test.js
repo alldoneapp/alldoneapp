@@ -22,9 +22,12 @@ describe('the phone chat header (AT-3056)', () => {
         )
         // The phone rule comes after the desktop one, so it wins at the same specificity.
         expect(css.indexOf('.anna-header.anna-header-phone {')).toBeGreaterThan(css.indexOf('.anna-header-sidebar {'))
-        expect(rule('.anna-header-phone .anna-focus-task,\n.anna-header-phone .anna-focus-get')).toMatch(
-            /max-width:\s*100%;/
-        )
+        // AT-3057: the Empty Inbox pill that replaces the pick button gets the same room.
+        expect(
+            rule(
+                '.anna-header-phone .anna-focus-task,\n.anna-header-phone .anna-focus-get,\n.anna-header-phone .anna-focus-empty-inbox'
+            )
+        ).toMatch(/max-width:\s*100%;/)
     })
 
     it('makes the assistant a 44px avatar button that shows on every phone width', () => {
