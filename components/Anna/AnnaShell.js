@@ -1351,6 +1351,8 @@ export default function AnnaShell({ children, routeId }) {
                     // screens; Alldone is App in the switch, and leaving the chat is App too.
                     // AT-3056: it shows the chosen view's icon; the native select lies over it,
                     // transparent, so a tap still opens the system list with every label.
+                    // AT-3056 follow-up: laid out like the assistant picker on the left: a round mark (the
+                    // view's icon where the left has the avatar) and the same 16px down-chevron.
                     <label className="anna-header-picker" title={pickerShownLabel}>
                         <span aria-hidden="true" className="anna-header-picker-icon">
                             <Icon name={pickerShown?.icon || 'monitor'} size={18} color="currentColor" />
@@ -1374,8 +1376,8 @@ export default function AnnaShell({ children, routeId }) {
                                 </option>
                             ))}
                         </select>
-                        <span aria-hidden="true" className="anna-header-picker-chevron">
-                            <Icon name="chevron-down" size={14} color="currentColor" />
+                        <span aria-hidden="true" className="anna-header-picker-chevron anna-assistant-picker-chevron">
+                            <Icon name="chevron-down" size={16} color="currentColor" />
                         </span>
                     </label>
                 )}
