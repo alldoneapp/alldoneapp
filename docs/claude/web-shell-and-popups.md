@@ -514,17 +514,22 @@ expects both side by side at 1024px.
 `(max-width: 760px)` query) the chat header carries `.anna-header-phone`, and its grid is
 `auto minmax(0, 1fr) auto` instead of `.anna-header-sidebar`'s centred
 `minmax(max-content, 1fr) …`: the sides take what they need and the focus task takes the rest (pill
-`max-width: 100%`). The assistant shows by its short name (`getAnnaShortName` in `annaShortName.js`:
-the first word, or the first two when the first has one or two letters; cut off at 88px, 64px for a
-header content width of 360px or less). The avatar button's label and title and the name picker's label
-("Assistant: {full name}") keep the full name (`AnnaProjectSwitcher` `shortName` prop). The native
+`max-width: 100%`). The assistant on the left is only its avatar, a 44px button (decided with the
+product owner on 2026-11-16, replacing a first version with the first name): with another assistant
+to pick (`canSwitchAnnaProject`) the avatar is the picker's trigger (`AnnaProjectSwitcher`
+`avatar` prop, class `.anna-assistant-picker-avatar`, no name, no chevron; label "Assistant: {full
+name}", title with the full name; disabled offline or in a call), and the "Latest messages" button
+is not rendered on phones; otherwise the avatar stays that button, labelled with the full name. The
+avatar shows on every phone width (`.anna-header-phone .anna-header-left .anna-small-avatar`
+overrides the ≤360px rule that hides it beside a name). The native
 screen select is a 52x44 box showing the chosen view's icon (`pickerOptions`' `icon`: chat bubble,
 globe, terminal, box) and a chevron, with the select transparent over all of it, so a tap opens
 the system list with every label; its `aria-label` stays "Workspace" and the label's `title` names
 the view. Up to 480px header content width the focus task's project is only its colour dot; the
-link's label and title still name it. Desktop and the sidebar chat are unchanged. Pinned by "the compact phone chat header (AT-3056)"
-in `AnnaShell.test.js`, `annaPhoneHeader.test.js`, `annaShortName.test.js` and the AT-3056 case
-in `AnnaProjectSwitcher.test.js`. Not verified in a real browser at 320/360/390/430px yet.
+link's label and title still name it. Desktop and the sidebar chat are unchanged (name picker,
+AT-3047). Pinned by "the compact phone chat header (AT-3056)" in `AnnaShell.test.js`,
+`annaPhoneHeader.test.js` and the AT-3056 case in `AnnaProjectSwitcher.test.js`. Not verified in a
+real browser at 320/360/390/430px yet.
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative

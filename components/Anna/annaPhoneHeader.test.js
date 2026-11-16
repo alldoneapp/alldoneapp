@@ -27,11 +27,26 @@ describe('the phone chat header (AT-3056)', () => {
         )
     })
 
-    it('caps the short assistant name, tighter on the narrowest phones', () => {
-        expect(rule('.anna-header-phone .anna-brand')).toMatch(/max-width:\s*88px;/)
-        expect(rule('.anna-header-phone .anna-brand', container(360))).toMatch(/max-width:\s*64px;/)
-        // The name itself still ends in an ellipsis on one line (AT-3040).
-        expect(rule('.anna-brand')).toMatch(/text-overflow:\s*ellipsis;/)
+    it('makes the assistant a 44px avatar button that shows on every phone width', () => {
+        const button = rule(
+            '.anna-header-phone .anna-header-assistant,\n.anna-header-phone .anna-assistant-picker.anna-assistant-picker-avatar'
+        )
+        expect(button).toMatch(/width:\s*44px;/)
+        expect(button).toMatch(/min-width:\s*44px;/)
+        expect(button).toMatch(/height:\s*44px;/)
+        expect(button).toMatch(/flex:\s*none;/)
+        // The ≤360px rule hides the avatar next to a visible name; on a phone it is all there is.
+        const avatar = rule('.anna-header-phone .anna-header-left .anna-small-avatar')
+        expect(avatar).toMatch(/display:\s*grid;/)
+        expect(css.indexOf('.anna-header-phone .anna-header-left .anna-small-avatar {')).toBeGreaterThan(
+            css.indexOf('.anna-header .anna-small-avatar {')
+        )
+        // No name rules for phones any more.
+        expect(css).not.toMatch(/\.anna-header-phone \.anna-brand/)
+        // Disabled (offline, in a call): beats the shell's 0.45 for disabled buttons, stays recognisable.
+        expect(rule('.anna-header-phone .anna-header-left .anna-assistant-picker-avatar:disabled')).toMatch(
+            /opacity:\s*0\.6;/
+        )
     })
 
     it('makes the screen picker a 52x44 icon box with the native select over all of it', () => {

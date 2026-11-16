@@ -85,8 +85,9 @@ const ChoiceMark = ({ choice }) =>
  * AT-3047 — with `name`, the assistant variant's trigger is the assistant's name plus the
  * chevron, one button, so the whole name opens the picker (not only the small chevron).
  *
- * AT-3056 — `shortName` (phones) is what the button shows; the accessible label and the title keep
- * the full `name`, which contains the short one.
+ * AT-3056 — with `avatar` (phones), the trigger is only the assistant's avatar, a 44px button
+ * without name or chevron, so the focus task beside it keeps the room. The accessible label and the
+ * title still carry the full `name`.
  */
 export default function AnnaProjectSwitcher({
     variant = 'project',
@@ -97,7 +98,7 @@ export default function AnnaProjectSwitcher({
     busy = false,
     getViewport,
     name,
-    shortName,
+    avatar,
 }) {
     const dispatch = useDispatch()
     const [open, setOpen] = useState(false)
@@ -235,9 +236,13 @@ export default function AnnaProjectSwitcher({
             {byAssistant ? (
                 <button
                     type="button"
-                    className={`anna-assistant-picker${name ? ' anna-assistant-picker-named' : ' anna-pane-toggle'}${
-                        busy ? ' anna-project-chip-busy' : ''
-                    }`}
+                    className={`anna-assistant-picker${
+                        avatar
+                            ? ' anna-assistant-picker-avatar'
+                            : name
+                              ? ' anna-assistant-picker-named'
+                              : ' anna-pane-toggle'
+                    }${busy ? ' anna-project-chip-busy' : ''}`}
                     aria-label={label}
                     aria-haspopup="dialog"
                     aria-expanded={open}
@@ -246,10 +251,14 @@ export default function AnnaProjectSwitcher({
                     disabled={disabled}
                     onClick={toggle}
                 >
-                    {name && <strong className="anna-brand">{shortName || name}</strong>}
-                    <span aria-hidden="true" className="anna-assistant-picker-chevron">
-                        <Icon name="chevron-down" size={16} color="currentColor" />
-                    </span>
+                    {avatar || (
+                        <>
+                            {name && <strong className="anna-brand">{name}</strong>}
+                            <span aria-hidden="true" className="anna-assistant-picker-chevron">
+                                <Icon name="chevron-down" size={16} color="currentColor" />
+                            </span>
+                        </>
+                    )}
                 </button>
             ) : (
                 <button

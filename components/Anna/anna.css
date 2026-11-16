@@ -2257,15 +2257,50 @@
 }
 
 /* AT-3056: the phone's chat header (`.anna-header-phone`, only while AnnaShell lays out for a phone)
-   gives the focus task the room. The sides take what they need, no more: the assistant by its short
-   name (getAnnaShortName, cut off beyond 88px, 64px up to about 392px), the screen picker as
-   the chosen view's icon. The middle takes the rest. Desktop and the sidebar chat keep
-   `.anna-header-sidebar`'s centred layout. */
+   gives the focus task the room. The sides take what they need, no more: the assistant is only its
+   avatar (a 44px button; it opens the assistant picker when there is another to pick), the screen
+   picker the chosen view's icon. The middle takes the rest. Desktop and the sidebar chat keep
+   `.anna-header-sidebar`'s centred layout and the assistant's name. */
 .anna-header.anna-header-phone {
     grid-template-columns: auto minmax(0, 1fr) auto;
 }
-.anna-header-phone .anna-brand {
-    max-width: 88px;
+.anna-header-phone .anna-header-left {
+    gap: 0;
+}
+.anna-header-phone .anna-header-assistant,
+.anna-header-phone .anna-assistant-picker.anna-assistant-picker-avatar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    margin: 0 0 0 -6px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--anna-ink);
+    cursor: pointer;
+}
+/* The avatar is all there is, so it shows on the narrowest phones too (the ≤360px rule above hides
+   it next to a visible name). */
+.anna-header-phone .anna-header-left .anna-small-avatar {
+    display: grid;
+    width: 32px;
+    height: 32px;
+}
+.anna-header-phone .anna-assistant-picker-avatar:not(:disabled):hover .anna-small-avatar {
+    box-shadow: 0 0 0 2px var(--anna-focus);
+}
+/* Offline or in a call the picker is unavailable; the avatar stays recognisable. */
+.anna-header-phone .anna-header-left .anna-assistant-picker-avatar:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+.anna-header-phone .anna-assistant-picker-avatar.anna-project-chip-busy .anna-small-avatar {
+    opacity: 0.6;
 }
 .anna-header-phone .anna-focus-task,
 .anna-header-phone .anna-focus-get {
@@ -2327,11 +2362,6 @@
     }
     .anna-header-phone .anna-focus-task-project-name {
         display: none;
-    }
-}
-@container anna-header (max-width: 360px) {
-    .anna-header-phone .anna-brand {
-        max-width: 64px;
     }
 }
 

@@ -218,20 +218,30 @@ describe('assistant variant', () => {
         expect(onSelect).toHaveBeenCalledWith('product')
     })
 
-    // AT-3056: on a phone the button shows the short name; label and title keep the full one.
-    it('shows a short name but labels the button with the full name', () => {
+    // AT-3056: on a phone the trigger is only the avatar; label and title keep the full name.
+    it('uses only the avatar as the trigger, labelled with the full name', () => {
+        const onSelect = jest.fn()
         render({
             variant: 'assistant',
             choices: all,
             activeProjectId: ':automatic',
+            onSelect,
             name: 'Anna Alldone',
-            shortName: 'Anna',
+            avatar: <span className="anna-small-avatar">A</span>,
         })
-        expect(trigger().querySelector('.anna-brand').textContent).toBe('Anna')
-        expect(trigger().getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
-        expect(trigger().title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
-        act(() => trigger().querySelector('.anna-brand').click())
-        expect(trigger().getAttribute('aria-expanded')).toBe('true')
+        expect(container.querySelectorAll('button')).toHaveLength(1)
+        const button = trigger()
+        expect(button.classList.contains('anna-assistant-picker-avatar')).toBe(true)
+        expect(button.classList.contains('anna-assistant-picker-named')).toBe(false)
+        expect(button.textContent).toBe('A')
+        expect(button.querySelector('.anna-brand')).toBeNull()
+        expect(button.querySelector('.anna-assistant-picker-chevron')).toBeNull()
+        expect(button.getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
+        expect(button.title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
+        act(() => button.querySelector('.anna-small-avatar').click())
+        expect(button.getAttribute('aria-expanded')).toBe('true')
+        act(() => options()[1].click())
+        expect(onSelect).toHaveBeenCalledWith('product')
     })
 
     it('keeps the name readable while the picker is unavailable', () => {
