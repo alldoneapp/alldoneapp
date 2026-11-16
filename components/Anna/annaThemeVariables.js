@@ -19,4 +19,8 @@ export const ANNA_THEME_VARIABLES = {
     '--anna-bezel': colors.Grey400,
     '--anna-focus': colors.UtilityBlue150,
     '--anna-surface': colors.Grey100,
+    // AT-3057: the Empty Inbox celebration in the header: a green pill, tinted in dark mode.
+    '--anna-success': colors.UtilityGreen300,
+    '--anna-success-tint': colors.UtilityGreen100,
+    '--anna-success-border': colors.UtilityGreen150,
 }

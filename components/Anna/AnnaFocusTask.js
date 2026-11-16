@@ -4,6 +4,7 @@ import Icon from '../Icon'
 import { pickNewFocusTask } from '../../utils/backends/Tasks/tasksFirestore'
 import { annaActivityPreview } from './annaActivityText'
 import { translate } from '../../i18n/TranslationService'
+import { selectTodayInboxState, TODAY_INBOX_EMPTY } from '../../utils/Tasks/todayInboxState'
 
 const NOTICE_MS = 4000
 
@@ -17,6 +18,12 @@ const NOTICE_MS = 4000
  * The link's own target is the task, for a modified click (a new tab); AnnaShell's link
  * interception skips it (`data-anna-open-in-app`). With no focus task it offers to pick one, the
  * same pick as after completing the focus task.
+ *
+ * AT-3057: when nothing is left for today across all projects (Empty Inbox), it celebrates that
+ * instead of asking for more work. The decision comes from the authoritative today count
+ * (`selectTodayInboxState`), never from the missing focus task: while that count is loading or
+ * incomplete, or while a focus task id is set but its task is not loaded yet, the header keeps its
+ * normal behaviour. As soon as a task is due today again the pick button is back.
  */
 export default function AnnaFocusTask({ onOpen }) {
     const userId = useSelector(state => state.loggedUser.uid)
@@ -26,6 +33,7 @@ export default function AnnaFocusTask({ onOpen }) {
     const firstProjectId = useSelector(state => state.loggedUserProjects?.[0]?.id)
     const task = useSelector(state => state.taskInFocus)
     const project = useSelector(state => (focusProjectId ? state.loggedUserProjectsMap?.[focusProjectId] : null))
+    const todayInbox = useSelector(selectTodayInboxState)
     const [busy, setBusy] = useState(false)
     const [notice, setNotice] = useState('')
     const mounted = useRef(true)
@@ -76,6 +84,20 @@ export default function AnnaFocusTask({ onOpen }) {
                 )}
                 <span className="anna-focus-task-name">{name}</span>
             </a>
+        )
+    }
+
+    // A focus id whose task has not arrived yet is unresolved, not "no focus task": keep the old UI.
+    const focusSettled = !focusTaskId || (task?.id === focusTaskId && !!task.done)
+    if (todayInbox === TODAY_INBOX_EMPTY && focusSettled) {
+        const label = translate('Congrats - you have reached empty inbox across all your projects')
+        return (
+            <div className="anna-focus-empty-inbox" role="status" aria-label={label} title={label}>
+                <span className="anna-focus-empty-inbox-icon" aria-hidden="true">
+                    <Icon name="check-circle" size={16} color="currentColor" />
+                </span>
+                <span className="anna-focus-task-name">{translate('Empty inbox for today – well done!')}</span>
+            </div>
         )
     }
 

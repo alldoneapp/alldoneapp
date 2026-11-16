@@ -100,6 +100,7 @@
     "Open focus task in %{projectName}: %{taskName}": "Fokus-Aufgabe in %{projectName} öffnen: %{taskName}",
     "Open focus task: %{taskName}": "Fokus-Aufgabe öffnen: %{taskName}",
     "No open task for today": "Keine offene Aufgabe für heute",
+    "Empty inbox for today – well done!": "Empty Inbox für heute – super gemacht!",
     "The focus task could not be picked. Please try again.": "Die Fokus-Aufgabe konnte nicht gewählt werden. Bitte versuche es noch einmal.",
     "Open app in assistant mode": "Im Assistenten-Modus öffnen",
     "Open app in new tab": "In neuem Tab öffnen",
