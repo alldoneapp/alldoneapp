@@ -182,6 +182,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* The focus task's project as a tag after the focus icon: at most 140px and 40% of the pill, so the
+   task's name keeps most of the room; a longer name ends in an ellipsis. */
+.anna-focus-task-project {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    max-width: min(140px, 40%);
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--anna-border);
+    border-radius: 11px;
+    background: var(--ad-Surface, #ffffff);
+    color: var(--anna-muted);
+    font-size: 12px;
+}
+.anna-focus-task-project .anna-project-dot {
+    width: 8px;
+    height: 8px;
+}
+.anna-focus-task-project-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .anna-header-right {
     justify-content: flex-end;
 }

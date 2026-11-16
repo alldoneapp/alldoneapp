@@ -488,7 +488,8 @@ list (`goHome`, AT-2920). The top bar marks Chats or Updates as the current view
 screen (`useTopBarViewSelected` in `topBarNavSelection.js`, fed by AnnaShell's `AnnaAppShownContext`):
 back in the assistant, the view still mounted behind the chat is not where the user is. `AnnaFocusTask` (2026-11-16) shows the user's focus task
 (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`) as a task link, at most
-400px wide. A click leaves the chat for the app's open task list (`goHome`, like App from the chat) and
+400px wide: the focus icon, then a tag of the task's project (color dot and name, at most 140px and 40% of
+the pill, ellipsis beyond; 2026-11-16; none while the project is not in `loggedUserProjectsMap`). A click leaves the chat for the app's open task list (`goHome`, like App from the chat) and
 scrolls the list to the task once its row is there (`scrollToTaskWhenShown` in
 `annaFocusTaskScroll.js`: up to 8s, with the reveal's `findWorkspaceObject` and
 `scrollWorkspaceObject`, so only Alldone scrolls; on a phone the assistant line pushes the task below

@@ -97,6 +97,7 @@
     "Only %{assistantName}": "Only %{assistantName}",
     "App": "App",
     "Get a focus task": "Get a focus task",
+    "Open focus task in %{projectName}: %{taskName}": "Open focus task in %{projectName}: %{taskName}",
     "Open focus task: %{taskName}": "Open focus task: %{taskName}",
     "No open task for today": "No open task for today",
     "The focus task could not be picked. Please try again.": "The focus task could not be picked. Please try again.",

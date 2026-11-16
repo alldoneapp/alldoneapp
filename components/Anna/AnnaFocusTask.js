@@ -9,7 +9,9 @@ const NOTICE_MS = 4000
 
 /**
  * Assistant mode: the middle of the chat header's row. It shows the user's focus task
- * (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`). A click calls
+ * (`loggedUser.inFocusTaskId`, read through InFocusTaskWatcher's `taskInFocus`): the focus icon, a
+ * tag of its project (color dot and name, cut off at a maximum width in anna.css), the task's name.
+ * A click calls
  * `onOpen({ taskId, projectId })`: AnnaShell leaves the chat for the app's open task list and
  * scrolls it to the task.
  * The link's own target is the task, for a modified click (a new tab); AnnaShell's link
@@ -23,6 +25,7 @@ export default function AnnaFocusTask({ onOpen }) {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const firstProjectId = useSelector(state => state.loggedUserProjects?.[0]?.id)
     const task = useSelector(state => state.taskInFocus)
+    const project = useSelector(state => (focusProjectId ? state.loggedUserProjectsMap?.[focusProjectId] : null))
     const [busy, setBusy] = useState(false)
     const [notice, setNotice] = useState('')
     const mounted = useRef(true)
@@ -41,7 +44,10 @@ export default function AnnaFocusTask({ onOpen }) {
     const focused = focusTaskId && focusProjectId && task?.id === focusTaskId && !task.done ? task : null
     if (focused) {
         const name = annaActivityPreview(focused.name || '', 160) || translate('Task')
-        const label = translate('Open focus task: %{taskName}', { taskName: name })
+        const projectName = project?.name?.trim() || ''
+        const label = projectName
+            ? translate('Open focus task in %{projectName}: %{taskName}', { projectName, taskName: name })
+            : translate('Open focus task: %{taskName}', { taskName: name })
         const path = `/projects/${focusProjectId}/tasks/${focused.id}/properties`
         const open = event => {
             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -58,6 +64,16 @@ export default function AnnaFocusTask({ onOpen }) {
                 onClick={open}
             >
                 <Icon name="crosshair" size={16} color="currentColor" />
+                {!!projectName && (
+                    <span className="anna-focus-task-project">
+                        <span
+                            aria-hidden="true"
+                            className="anna-project-dot"
+                            style={project.color ? { background: project.color } : undefined}
+                        />
+                        <span className="anna-focus-task-project-name">{projectName}</span>
+                    </span>
+                )}
                 <span className="anna-focus-task-name">{name}</span>
             </a>
         )

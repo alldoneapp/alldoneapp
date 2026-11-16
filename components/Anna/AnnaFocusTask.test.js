@@ -23,6 +23,7 @@ const render = state => {
                 ...state.loggedUser,
             },
             loggedUserProjects: [{ id: 'first' }],
+            loggedUserProjectsMap: state.projectsMap ?? {},
             taskInFocus: state.taskInFocus ?? null,
         })
     )
@@ -67,6 +68,35 @@ describe('the focus task in the assistant header', () => {
         newTab.preventDefault = jest.fn()
         act(() => link.dispatchEvent(newTab))
         expect(onOpen).not.toHaveBeenCalled()
+    })
+
+    it('shows the focus icon, then a tag of the task’s project, named in the label too', () => {
+        render({
+            loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'p1' },
+            taskInFocus: { id: 't1', name: 'Call Ben', done: false },
+            projectsMap: { p1: { id: 'p1', name: 'JTL Software - Project Juno', color: '#ff7a00' } },
+        })
+        const link = container.querySelector('a.anna-focus-task')
+        expect([...link.children].map(child => child.className || child.dataset.icon)).toEqual([
+            'crosshair',
+            'anna-focus-task-project',
+            'anna-focus-task-name',
+        ])
+        const tag = link.querySelector('.anna-focus-task-project')
+        expect(tag.textContent).toBe('JTL Software - Project Juno')
+        expect(tag.querySelector('.anna-project-dot').style.background).toBe('rgb(255, 122, 0)')
+        expect(link.getAttribute('aria-label')).toBe('Open focus task in JTL Software - Project Juno: Call Ben')
+    })
+
+    it('shows no tag while the project is not known yet', () => {
+        render({
+            loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'p1' },
+            taskInFocus: { id: 't1', name: 'Call Ben', done: false },
+        })
+        expect(container.querySelector('.anna-focus-task-project')).toBeNull()
+        expect(container.querySelector('a.anna-focus-task').getAttribute('aria-label')).toBe(
+            'Open focus task: Call Ben'
+        )
     })
 
     it('offers to pick one when there is none, a stale one, or a done one', () => {
