@@ -2765,6 +2765,9 @@
         display: none;
     }
 }
+/* AT-3060: borderless like the phone header's pickers (AT-3056 follow-up): transparent at rest, an
+   8px radius, tinted with an accent label and chevron on hover and while the menu is open. The
+   keyboard focus ring is the shell's `button:focus-visible` outline, so no outline shows at rest. */
 .anna-screen-picker {
     display: inline-flex;
     align-items: center;
@@ -2773,15 +2776,15 @@
     max-width: 200px;
     height: 36px;
     padding: 0 10px;
-    border: 1px solid var(--anna-border);
+    border: 0;
     border-radius: 8px;
-    background: var(--ad-Surface, #ffffff);
+    background: transparent;
     color: var(--anna-ink);
     font-size: 13px;
 }
 .anna-screen-picker:hover,
 .anna-screen-picker[aria-expanded='true'] {
-    border-color: var(--anna-focus);
+    background: var(--anna-tint);
     color: var(--anna-accent);
 }
 .anna-screen-picker-label {

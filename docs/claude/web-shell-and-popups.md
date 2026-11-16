@@ -544,6 +544,14 @@ messages") stays a round 44px button without chevron. Desktop is unchanged. Pinn
 assistant picker and the screen picker one shared look" in `annaPhoneHeader.test.js` and the chevron
 cases in `AnnaShell.test.js` and `AnnaProjectSwitcher.test.js`.
 
+**The desktop screen picker is borderless too (AT-3060, 2026-11-16).** The chat header's
+`AnnaScreenPicker` button (`.anna-screen-picker`: icon, label such as "Chat", down-chevron) lost
+its 1px `--anna-border` outline and white surface to match the phone pickers above: transparent at
+rest, 8px radius, `--anna-tint` background with accent label and chevron on hover and while its menu
+is open (`aria-expanded`). Keyboard focus keeps the shell's `button:focus-visible` accent ring; do
+not give the button a resting border or outline back. Its 36px height, label and menu are
+unchanged. Pinned by `annaScreenPickerStyle.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
