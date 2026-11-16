@@ -6,6 +6,7 @@ import { setWebSideBarLayout } from '../../redux/actions'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes/index'
+import CollapseButton from './ProjectFolding/Common/CollapseButton'
 import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import LoggedUserSidebar from './LoggedUserSidebar/LoggedUserSidebar'
 import AnonymousUserSidebar from './AnonymousUserSidebar/AnonymousUserSidebar'
@@ -66,6 +67,7 @@ export default function CustomSideMenu({ navigation }) {
                         navigation={navigation}
                     />
                 )}
+                <CollapseButton targetWidth={floatingWidth} />
             </Animated.View>
         </>
     )
@@ -73,13 +75,13 @@ export default function CustomSideMenu({ navigation }) {
 
 const styles = StyleSheet.create({
     container: {
-        height: '100%',
+        height: 'calc(100% - 56px)',
         width: SIDEBAR_MENU_WIDTH,
         zIndex: 10,
         overflow: 'hidden',
     },
     floatingContainer: {
-        height: '100%',
+        height: 'calc(100% - 56px)',
         position: 'absolute',
         zIndex: 10,
         boxShadow: '0px -16px 16px rgba(0,0,0,0.56)',
@@ -87,7 +89,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     overlayContainer: {
-        height: '100%',
+        height: 'calc(100% - 56px)',
         position: 'absolute',
         left: 0,
         zIndex: 100,

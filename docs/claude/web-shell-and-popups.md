@@ -403,9 +403,8 @@ open a mobile sidebar from, Alldone below the strip never uses mobile navigation
 which keeps `smallScreenNavigation` false and sets `sidebarCompact` where the pane is at most
 `SCREEN_BREAKPOINT_NAV` wide. There the sidebar shows collapsed and floats open on hover whatever the
 stored preference says: read the shown state through `selectSidebarExpanded` (`UseCollapsibleSidebar.js`;
-the sidebar's hover, the detail views' back buttons, AddProject), never write it. The sidebar has no
-expand/collapse button any more (2026-11-16, `CollapseButton` removed): the stored preference
-(`loggedUser.sidebarExpanded`) stays as it is and is no longer changed from the app. The tag lists keep reading the preference on purpose (it picks their more compact layout).
+the sidebar's hover, the detail views' back buttons, AddProject), never write it, and `CollapseButton`
+hides. The tag lists keep reading the preference on purpose (it picks their more compact layout).
 "Both" needs room for the chat (`MIN_CHAT_WIDTH`) beside Alldone at the collapsed sidebar's breakpoint
 plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
 `--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
