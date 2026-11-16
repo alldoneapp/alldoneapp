@@ -13,7 +13,6 @@ import {
 } from '../../../redux/actions'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
-import DefaultAssistantButton from '../DefaultAssistantButton'
 
 export default function LoggedUserSidebarHeader({ navigation, expanded, scrollView }) {
     const dispatch = useDispatch()
@@ -60,7 +59,6 @@ export default function LoggedUserSidebarHeader({ navigation, expanded, scrollVi
                 <Icon size={24} name={'logo'} color={theme.logoColor} />
                 {expanded && <Icon style={styles.logoText} size={24} name={'logo-name'} color={theme.logoNameColor} />}
             </TouchableOpacity>
-            {expanded && <DefaultAssistantButton />}
         </View>
     )
 }
@@ -75,7 +73,7 @@ const styles = StyleSheet.create({
         maxHeight: 72,
         paddingBottom: 24,
         paddingLeft: 24,
-        // Keep the assistant toggle inset from the sidebar edge.
+        // Matches the left inset of the logo.
         paddingRight: 16,
         alignItems: 'center',
         justifyContent: 'space-between',

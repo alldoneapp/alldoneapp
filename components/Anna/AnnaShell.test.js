@@ -296,7 +296,6 @@ const conversation = { id: 'anna_u1', projectId: 'p1', assistantId: 'a1' }
 const state = { conversation, loading: false, error: '', retry: jest.fn() }
 const scrollView = { current: { scrollTo: jest.fn() } }
 const sidebarHeader = () => <LoggedUserSidebarHeader expanded navigation={NavigationService} scrollView={scrollView} />
-const assistantToggle = () => document.querySelector('[role="button"][aria-expanded]')
 const WorkspaceNavigationFixture = () => (
     <button aria-label="Show Alldone with chat" onClick={React.useContext(AnnaWorkspaceNavigationContext)} />
 )
@@ -381,8 +380,9 @@ const closeAssistant = () => {
     const appSwitch = phoneSwitch('alldone')
     if (appSwitch) fireEvent.click(appSwitch)
     else {
+        // Desktop: App in the strip beside a visible screen leaves the chat and keeps the page.
         showAlldoneWorkspace()
-        fireEvent.click(screen.getByLabelText('Anna Alldone: Close assistant chat'))
+        fireEvent.click(layoutButton('alldone'))
     }
 }
 
@@ -390,9 +390,7 @@ it.each(
     [false, true].flatMap(mobile =>
         [
             ['top bar', 'first open'],
-            ['sidebar', 'first open'],
             ['top bar', 'reopen'],
-            ['sidebar', 'reopen'],
             ['top bar', 'workspace'],
         ]
             .filter(([, start]) => mobile || start !== 'workspace')
@@ -411,8 +409,7 @@ it.each(
         const previousChat = screen.getByLabelText('Persistent conversation')
         if (previousChat) previousChat.value = 'Keep my chat draft'
         mockScrollToLatest.mockClear()
-        const button =
-            entry === 'sidebar' ? assistantToggle() : document.querySelector('[data-testid="top-bar-assistant-mode"]')
+        const button = document.querySelector('[data-testid="top-bar-assistant-mode"]')
         act(() => {
             button.click()
             // Assert before React flushes work at the end of act: focus must
@@ -461,14 +458,12 @@ it.each([
     }
 })
 
-it.each(['top bar', 'sidebar'])('scrolls on every deactivate/reactivate cycle via the %s', entry => {
+it('scrolls on every deactivate/reactivate cycle via the top bar', () => {
     setAnnaMode(false)
     render(content(1, true))
     for (let cycle = 0; cycle < 3; cycle++) {
         mockScrollToLatest.mockClear()
-        fireEvent.click(
-            entry === 'sidebar' ? assistantToggle() : document.querySelector('[data-testid="top-bar-assistant-mode"]')
-        )
+        fireEvent.click(document.querySelector('[data-testid="top-bar-assistant-mode"]'))
         expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
         expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
         closeAssistant()
@@ -1384,13 +1379,12 @@ it('holds assistant navigation during browser control until Open is clicked', as
     )
 })
 
-it.each([false, true])('keeps the logo navigation separate from the chat toggle when chat is %s', active => {
+it.each([false, true])('navigates from the sidebar logo without touching the chat when chat is %s', active => {
     render(content(1, true))
     if (!active) closeAssistant()
     const logo = screen.getByLabelText('Alldone.app')
-    const toggle = assistantToggle()
-    expect(logo.parentElement).toBe(toggle.parentElement)
-    expect(logo.contains(toggle)).toBe(false)
+    // The sidebar header has no assistant toggle any more: the strip's Anna | Both | App switches.
+    expect(logo.parentElement.querySelector('[aria-expanded]')).toBeNull()
     expect(logo.parentElement.textContent).not.toContain('Anna Alldone')
 
     mockDispatch.mockClear()
@@ -1398,7 +1392,7 @@ it.each([false, true])('keeps the logo navigation separate from the chat toggle 
     scrollView.current.scrollTo.mockClear()
     fireEvent.click(logo)
 
-    expect(toggle.getAttribute('aria-expanded')).toBe(String(active))
+    expect(!!document.querySelector('.anna-zoom-active')).toBe(active)
     expect(scrollView.current.scrollTo).toHaveBeenCalledWith({ x: 0, y: 0, animated: true })
     expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
     expect(mockDispatch).toHaveBeenCalledWith([
@@ -1408,104 +1402,6 @@ it.each([false, true])('keeps the logo navigation separate from the chat toggle 
         { type: 'RESET_NOTES_AMOUNTS' },
         { type: 'ALL_PROJECTS_TASKS', options: undefined },
     ])
-})
-
-it.each([false, true])(
-    'keeps the sidebar panel avatar-free and its label in sync with the selected assistant when chat is %s',
-    active => {
-        mockDefaultAssistant = { ...mockDefaultAssistant, photoURL50: 'anna.png' }
-        const view = render(content(1, true))
-        if (!active) closeAssistant()
-        expect(assistantToggle().querySelector('img')).toBeNull()
-
-        mockDefaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL300: 'mira.png' }
-        view.rerender(content(1, true))
-
-        expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(active))
-        expect(assistantToggle().getAttribute('aria-label')).toBe(
-            `Mira: ${active ? 'Close assistant chat' : 'Open assistant chat'}`
-        )
-        expect(assistantToggle().querySelector('img')).toBeNull()
-    }
-)
-
-it.each([
-    ['mobile', 'alldone'],
-    ['mobile', 'workspace'],
-    ['mobile', 'chat'],
-    ['mobile', 'chat-only'],
-    ['desktop', 'alldone'],
-    ['desktop', 'workspace'],
-    ['desktop', 'chat'],
-    ['desktop', 'chat-only'],
-    ['desktop', 'browser'],
-    ['desktop', 'vm:vm1'],
-])('toggles the chat and opens Home from the default assistant sidebar button on %s from %s', (device, start) => {
-    const originalMatchMedia = window.matchMedia
-    mockMobileNavigation = device === 'mobile'
-    window.matchMedia = () => ({
-        matches: mockMobileNavigation,
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-    })
-    try {
-        mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
-        render(content(1, true))
-        const chat = screen.getByLabelText('Persistent conversation')
-        chat.value = 'Keep my chat draft'
-        if (start === 'alldone') closeAssistant()
-        else if (start === 'workspace') showAlldoneWorkspace()
-        else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
-        else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
-        // Setup may leave through the Home button, which navigates on its own (AT-2920).
-        NavigationService.navigate.mockClear()
-
-        for (const opens of [start === 'alldone', start !== 'alldone']) {
-            fireEvent.click(assistantToggle())
-            expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(opens))
-            expect(assistantToggle().getAttribute('aria-label')).toBe(
-                `Anna Alldone: ${opens ? 'Close assistant chat' : 'Open assistant chat'}`
-            )
-            expect(assistantToggle().querySelector('svg path:last-child').getAttribute('d')).toBe(
-                opens ? 'm13 8 4 4-4 4' : 'm16 8-4 4 4 4'
-            )
-            if (opens) {
-                // Both leave assistant mode through App: in the strip on desktop, in the top bar on phones.
-                if (device === 'mobile') expect(phoneSwitch('alldone').closest('.anna-phone-bar')).toBeTruthy()
-                else expect(layoutButton('alldone').closest('.anna-strip')).toBeTruthy()
-                expect(document.querySelector('.anna-header-left').firstElementChild).toBe(
-                    screen.getByLabelText('Anna Alldone – Latest messages')
-                )
-            }
-            expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe(
-                String(!opens)
-            )
-            expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe(
-                String(opens && device === 'mobile')
-            )
-            if (opens) {
-                expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
-                expect(document.activeElement).toBe(chat)
-                if (device === 'desktop') expect(selectedSurface()).toBe('alldone')
-            } else expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
-            expect(mockDispatch).toHaveBeenLastCalledWith([
-                { type: 'HIDE_FLOAT_POPUP' },
-                { type: 'HIDE_SEARCH' },
-                { type: 'SEARCH_RESULTS', results: null },
-                { type: 'ALL_PROJECTS_TASKS', options: { taskViewToggleSection: 'Open', taskViewToggleIndex: 0 } },
-            ])
-            expect(NavigationService.navigate).toHaveBeenLastCalledWith('Root')
-        }
-        expect(NavigationService.navigate).toHaveBeenCalledTimes(2)
-        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
-        expect(chat.value).toBe('Keep my chat draft')
-        expect(mockUnmounts).toBe(0)
-        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
-        if (device === 'mobile') expect(mockDispatch).toHaveBeenCalledWith({ type: 'HIDE_SIDEBAR' })
-    } finally {
-        if (originalMatchMedia) window.matchMedia = originalMatchMedia
-        else delete window.matchMedia
-    }
 })
 
 it.each([
@@ -1542,7 +1438,7 @@ it.each([
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
 
         fireEvent.click(screen.getByText('Familie'))
-        expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(start !== 'fullscreen'))
+        expect(!!document.querySelector('.anna-zoom-active')).toBe(start !== 'fullscreen')
         expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
         // A phone shows Alldone under its own bar, with App pressed, instead of the chat header.
         if (device === 'desktop') expect(selectedSurface()).toBe('alldone')

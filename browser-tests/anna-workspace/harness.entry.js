@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
 import AssistantModeButton from '../../components/Anna/AssistantModeButton'
-import DefaultAssistantButton from '../../components/SidebarMenu/DefaultAssistantButton'
 import AnnaChatNavigationContext from '../../components/Anna/AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from '../../components/Anna/AnnaWorkspaceNavigationContext'
 import { restoreAnnaLayout, setAnnaMode } from '../../utils/annaMode'
@@ -170,11 +169,6 @@ function AssistantEntryFixture() {
     const buttons = (
         <>
             <AssistantModeButton inline />
-            {trackFocus && (
-                <div data-testid="sidebar-assistant-entry">
-                    <DefaultAssistantButton />
-                </div>
-            )}
         </>
     )
     if (!trackFocus) return buttons

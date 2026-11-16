@@ -232,8 +232,9 @@ shift); the `!important` on the colour beats react-native-web's atomic class. Pi
 **Assistant mode is entered from the assistant line (AT-3034).** The panel button
 (`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sits at the top left of the
 assistant line's header (`AssistantOptions`, before the assistant-board edit pencil). The desktop
-top bar and the mobile header no longer carry it. The app sidebar's `DefaultAssistantButton` stays,
-so screens without an assistant line still have an entry. The line passes its project
+top bar and the mobile header no longer carry it. The app sidebar's `DefaultAssistantButton` was
+removed on 2026-11-16: the strip's (desktop) and the phone bar's Anna | App switch are the entry on
+every screen. The line passes its project
 (`assistantModeProjectId`: the line's project, null for `AllProjectsAssistantLine`), and
 `AnnaShell.openChat({ projectId })` selects that project's daily chat in the sidebar, so whoever
 answers there takes over. null or the default project means "Automatic", and an explicit pick of
