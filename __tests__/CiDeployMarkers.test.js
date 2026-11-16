@@ -22,13 +22,40 @@ const RULES_REF = `refs/tags/deployed/${RULES}`
 
 const hasTool = tool => spawnSync('sh', ['-c', `command -v ${tool}`]).status === 0
 
+// Git runs `git maintenance run --auto --detach` after every commit and fetch (and a push into the
+// bare remote runs `gc --auto` there): background repacks that went on writing into the fixture's
+// repositories while the test moved on. On CI that failed a commit with "could not parse HEAD" and
+// the cleanup with ENOTEMPTY (2026-11-16, twice). Every git here, the script's included, runs
+// without them.
+const NO_BACKGROUND_GIT = {
+    GIT_CONFIG_COUNT: '4',
+    GIT_CONFIG_KEY_0: 'maintenance.auto',
+    GIT_CONFIG_VALUE_0: 'false',
+    GIT_CONFIG_KEY_1: 'gc.auto',
+    GIT_CONFIG_VALUE_1: '0',
+    GIT_CONFIG_KEY_2: 'receive.autogc',
+    GIT_CONFIG_VALUE_2: 'false',
+    GIT_CONFIG_KEY_3: 'maintenance.autoDetach',
+    GIT_CONFIG_VALUE_3: 'false',
+}
+const GIT_ENV = { ...process.env, ...NO_BACKGROUND_GIT }
+
 function makeFixture() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-markers-'))
     const remote = path.join(dir, 'remote.git')
     const work = path.join(dir, 'work')
     const git = (cwd, ...args) =>
-        execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+        execFileSync('git', ['-C', cwd, ...args], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: GIT_ENV,
+        }).trim()
     git(dir, 'init', '-q', '--bare', remote)
+    // A push hands the bare remote's receive-pack a clean environment (no GIT_CONFIG_*), so the remote
+    // keeps the same settings in its own config.
+    for (let i = 0; i < Number(NO_BACKGROUND_GIT.GIT_CONFIG_COUNT); i++) {
+        git(remote, 'config', NO_BACKGROUND_GIT[`GIT_CONFIG_KEY_${i}`], NO_BACKGROUND_GIT[`GIT_CONFIG_VALUE_${i}`])
+    }
     git(dir, 'init', '-q', '-b', 'master', work)
     git(work, 'remote', 'add', 'origin', remote)
     const commit = (file, content, message = 'change') => {
@@ -52,6 +79,7 @@ function makeFixture() {
     const env = (overrides = {}) => ({
         PATH: process.env.PATH,
         HOME: process.env.HOME,
+        ...NO_BACKGROUND_GIT,
         CI_PROJECT_DIR: work,
         CI_DEFAULT_BRANCH: 'master',
         CI_COMMIT_BRANCH: 'master',
@@ -277,7 +305,9 @@ describe('marker plumbing', () => {
         const head = f.git(f.work, 'rev-parse', 'HEAD')
 
         const shallow = path.join(f.dir, 'shallow')
-        execFileSync('git', ['clone', '-q', '--depth', '50', '--branch', 'master', `file://${f.remote}`, shallow])
+        execFileSync('git', ['clone', '-q', '--depth', '50', '--branch', 'master', `file://${f.remote}`, shallow], {
+            env: GIT_ENV,
+        })
         expect(f.git(shallow, 'rev-parse', '--is-shallow-repository')).toBe('true')
         const result = f.hasChanges(RULES, head, { CI_PROJECT_DIR: shallow })
         expect(result.all).toContain(`changed since marker base ${c0}`)
