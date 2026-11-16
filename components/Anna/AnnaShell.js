@@ -32,6 +32,7 @@ import AnnaTopStripContext, {
 } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaFocusTask from './AnnaFocusTask'
+import { getAnnaShortName } from './annaShortName'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
 import TopBarMobile from '../TopBar/TopBarMobile/TopBarMobile'
 import { AnnaViewSwitchContext } from './AnnaViewSwitch'
@@ -1271,8 +1272,17 @@ export default function AnnaShell({ children, routeId }) {
     const assistantPickerProjectId = projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId
     // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
     const assistantNamePicks = canSwitchAnnaProject(projectChoices, assistantPickerProjectId)
+    // AT-3056: on a phone the row's sides stay narrow so the focus task gets the room: the assistant
+    // by its short name (the labels and titles keep the full one), the screen picker as an icon.
+    const shownAssistantName = mobile
+        ? getAnnaShortName(headerAssistantName) || headerAssistantName
+        : headerAssistantName
+    const pickerShown =
+        pickerOptions.find(option => option.value === pickerValue) ||
+        screenOptions.find(option => option.value === pickerValue)
+    const pickerShownLabel = pickerShown?.label || (vmSurface ? translate('VMs') : surfaceLabel)
     const header = (
-        <header className="anna-header anna-header-sidebar">
+        <header className={`anna-header anna-header-sidebar${mobile ? ' anna-header-phone' : ''}`}>
             <div className="anna-header-left">
                 <button
                     type="button"
@@ -1284,7 +1294,7 @@ export default function AnnaShell({ children, routeId }) {
                     <span className="anna-small-avatar">
                         {photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}
                     </span>
-                    {!assistantNamePicks && <strong className="anna-brand">{headerAssistantName}</strong>}
+                    {!assistantNamePicks && <strong className="anna-brand">{shownAssistantName}</strong>}
                 </button>
                 {/* AT-3034: pick another assistant for the sidebar chat, listed by assistant.
                     AT-3055: the only project/assistant switch in assistant mode; the composer has no chip.
@@ -1292,6 +1302,7 @@ export default function AnnaShell({ children, routeId }) {
                 <AnnaProjectSwitcher
                     variant="assistant"
                     name={headerAssistantName}
+                    shortName={mobile ? shownAssistantName : undefined}
                     choices={projectChoices}
                     activeProjectId={assistantPickerProjectId}
                     onSelect={selectProjectFromChat}
@@ -1334,7 +1345,12 @@ export default function AnnaShell({ children, routeId }) {
                 {mobile && (
                     // The phone's screen picker, at the far right (AT-3045): the assistant and its
                     // screens; Alldone is App in the switch, and leaving the chat is App too.
-                    <label className="anna-header-picker">
+                    // AT-3056: it shows the chosen view's icon; the native select lies over it,
+                    // transparent, so a tap still opens the system list with every label.
+                    <label className="anna-header-picker" title={pickerShownLabel}>
+                        <span aria-hidden="true" className="anna-header-picker-icon">
+                            <Icon name={pickerShown?.icon || 'monitor'} size={18} color="currentColor" />
+                        </span>
                         <select
                             aria-label={translate('Workspace')}
                             value={pickerValue}
@@ -1354,7 +1370,7 @@ export default function AnnaShell({ children, routeId }) {
                                 </option>
                             ))}
                         </select>
-                        <span aria-hidden="true">
+                        <span aria-hidden="true" className="anna-header-picker-chevron">
                             <Icon name="chevron-down" size={14} color="currentColor" />
                         </span>
                     </label>

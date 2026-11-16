@@ -84,6 +84,9 @@ const ChoiceMark = ({ choice }) =>
  *
  * AT-3047 — with `name`, the assistant variant's trigger is the assistant's name plus the
  * chevron, one button, so the whole name opens the picker (not only the small chevron).
+ *
+ * AT-3056 — `shortName` (phones) is what the button shows; the accessible label and the title keep
+ * the full `name`, which contains the short one.
  */
 export default function AnnaProjectSwitcher({
     variant = 'project',
@@ -94,6 +97,7 @@ export default function AnnaProjectSwitcher({
     busy = false,
     getViewport,
     name,
+    shortName,
 }) {
     const dispatch = useDispatch()
     const [open, setOpen] = useState(false)
@@ -242,7 +246,7 @@ export default function AnnaProjectSwitcher({
                     disabled={disabled}
                     onClick={toggle}
                 >
-                    {name && <strong className="anna-brand">{name}</strong>}
+                    {name && <strong className="anna-brand">{shortName || name}</strong>}
                     <span aria-hidden="true" className="anna-assistant-picker-chevron">
                         <Icon name="chevron-down" size={16} color="currentColor" />
                     </span>

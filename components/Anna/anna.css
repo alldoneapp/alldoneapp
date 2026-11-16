@@ -2256,6 +2256,85 @@
     }
 }
 
+/* AT-3056: the phone's chat header (`.anna-header-phone`, only while AnnaShell lays out for a phone)
+   gives the focus task the room. The sides take what they need, no more: the assistant by its short
+   name (getAnnaShortName, cut off beyond 88px, 64px up to about 392px), the screen picker as
+   the chosen view's icon. The middle takes the rest. Desktop and the sidebar chat keep
+   `.anna-header-sidebar`'s centred layout. */
+.anna-header.anna-header-phone {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.anna-header-phone .anna-brand {
+    max-width: 88px;
+}
+.anna-header-phone .anna-focus-task,
+.anna-header-phone .anna-focus-get {
+    max-width: 100%;
+    gap: 5px;
+    padding: 0 10px;
+}
+.anna-header-phone .anna-focus-task-project {
+    max-width: min(96px, 30%);
+}
+/* The icon and chevron show the choice; the native select lies over the whole 52x44 box,
+   transparent, so a tap anywhere opens the system list and screen readers meet the select. */
+.anna-header-phone .anna-header-picker {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    width: 52px;
+    height: 44px;
+    border: 1px solid var(--anna-border);
+    border-radius: 7px;
+    background: var(--ad-Surface, #ffffff);
+    color: var(--anna-ink);
+}
+.anna-header-phone .anna-header-picker select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    /* iOS zooms into a focused select under 16px. */
+    font-size: 16px;
+}
+.anna-header-phone .anna-header-picker > span {
+    position: static;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+}
+.anna-header-phone .anna-header-picker > .anna-header-picker-chevron {
+    color: var(--anna-muted);
+}
+.anna-header-phone .anna-header-picker:has(select:focus-visible) {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 2px;
+}
+/* A header up to 480px wide inside its padding (phones up to about 512px): the focus task's project
+   is only its color dot; the link's label and title still name the project. */
+@container anna-header (max-width: 480px) {
+    .anna-header-phone .anna-focus-task-project {
+        max-width: none;
+        height: auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+    .anna-header-phone .anna-focus-task-project-name {
+        display: none;
+    }
+}
+@container anna-header (max-width: 360px) {
+    .anna-header-phone .anna-brand {
+        max-width: 64px;
+    }
+}
+
 /* AT-2903: project chip in the composer and its menu. The menu renders in
    a body portal, outside .anna-shell, so every colour carries a fallback. */
 .anna-composer-tools {

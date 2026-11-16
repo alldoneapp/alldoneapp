@@ -39,6 +39,7 @@ import AssistantModeButton from './AssistantModeButton'
 import AnnaViewSwitch, { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import { AnnaAppShownContext, AnnaStripSlotContext } from './AnnaTopStripContext'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
+import { getIconGlyph } from '../Icon'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -965,7 +966,10 @@ it('gives the phone Alldone’s bar with the Anna | App icons on top and the cha
         ])
         expect(header.querySelector('.anna-view-switch-icons')).toBeNull()
         // The name stays on the left, the focus task sits in the middle; the switch has icons only.
-        expect(header.querySelector('.anna-header-left').textContent).toContain('Anna Alldone')
+        // AT-3056: on a phone the name is the short one; the label keeps the full name.
+        expect(header.classList.contains('anna-header-phone')).toBe(true)
+        expect(header.querySelector('.anna-header-left .anna-brand').textContent).toBe('Anna')
+        expect(screen.getByLabelText('Anna Alldone – Latest messages').closest('.anna-header-left')).toBeTruthy()
         expect(header.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
         expect(phoneSwitch('chat').getAttribute('aria-pressed')).toBe('true')
         expect(phoneSwitch('chat').textContent).toBe('A')
@@ -983,11 +987,90 @@ it('gives the phone Alldone’s bar with the Anna | App icons on top and the cha
         expect(selectedSurface()).toBe('chat')
         expect(selectedSurfaceLabel()).toBe('Chat')
         // Icon glyphs: chevron-right is U+E932, chevron-down U+E930.
-        expect(picker.querySelector(':scope > span[aria-hidden="true"]').textContent).toBe('\ue930')
+        expect(picker.querySelector('.anna-header-picker-chevron').getAttribute('aria-hidden')).toBe('true')
+        expect(picker.querySelector('.anna-header-picker-chevron').textContent).toBe('\ue930')
     } finally {
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
+})
+
+// AT-3056: the phone's second line gives the focus task the room. The assistant shows by its short
+// name (the labels keep the full one) and the screen picker by the chosen view's icon over a
+// transparent native select; desktop keeps the full name and its own picker.
+describe('the compact phone chat header (AT-3056)', () => {
+    const withPhone = (phone, run) => {
+        const originalMatchMedia = window.matchMedia
+        window.matchMedia = () => ({ matches: phone, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+        try {
+            run()
+        } finally {
+            if (originalMatchMedia) window.matchMedia = originalMatchMedia
+            else delete window.matchMedia
+        }
+    }
+    const pickerIcon = () => document.querySelector('.anna-header-picker-icon')
+    const select = () => document.querySelector('.anna-header-picker select')
+
+    it('shows the short assistant name and keeps the full one in the labels', () => {
+        withPhone(true, () => {
+            mockDefaultAssistant = { uid: 'anna', displayName: 'Maximiliane Alexandra von Hohenzollern' }
+            render(content(1))
+            const header = document.querySelector('.anna-header')
+            expect(header.classList.contains('anna-header-phone')).toBe(true)
+            const button = screen.getByLabelText('Maximiliane Alexandra von Hohenzollern – Latest messages')
+            expect(button.title).toBe('Maximiliane Alexandra von Hohenzollern – Latest messages')
+            expect(button.querySelector('.anna-brand').textContent).toBe('Maximiliane')
+            // The name picker (when there is another assistant) gets the same pair.
+            expect(mockSwitcherProps.assistant.name).toBe('Maximiliane Alexandra von Hohenzollern')
+            expect(mockSwitcherProps.assistant.shortName).toBe('Maximiliane')
+            // The focus task keeps its cell in the middle.
+            expect(header.querySelector('.anna-header-center [data-testid="anna-focus-task"]')).toBeTruthy()
+        })
+    })
+
+    it('shows the chosen view as an icon and keeps every choice in the native select', () => {
+        withPhone(true, () => {
+            render(content(1))
+            const picker = document.querySelector('.anna-header-picker')
+            expect(picker.closest('.anna-header-right').lastElementChild).toBe(picker)
+            expect(select().getAttribute('aria-label')).toBe('Workspace')
+            expect(pickerIcon().getAttribute('aria-hidden')).toBe('true')
+            expect(pickerIcon().textContent).toBe(getIconGlyph('message-circle'))
+            expect(picker.title).toBe('Chat')
+            // No visible text beside the icons: the labels live in the select's options.
+            expect([...picker.children].filter(node => node.tagName === 'SPAN').map(node => node.textContent)).toEqual([
+                getIconGlyph('message-circle'),
+                getIconGlyph('chevron-down'),
+            ])
+            expect([...select().options].map(option => option.textContent)).toEqual(['Chat', 'Browser', 'VMs'])
+
+            choose(select(), 'browser')
+            expect(select().value).toBe('browser')
+            expect(pickerIcon().textContent).toBe(getIconGlyph('globe'))
+            expect(document.querySelector('.anna-header-picker').title).toBe('Browser')
+
+            choose(select(), 'vms')
+            expect(pickerIcon().textContent).toBe(getIconGlyph('terminal'))
+
+            choose(select(), 'chat')
+            expect(select().value).toBe('chat')
+            expect(document.querySelector('.anna-mobile-chat')).toBeTruthy()
+            expect(pickerIcon().textContent).toBe(getIconGlyph('message-circle'))
+        })
+    })
+
+    it('leaves the desktop header as it was', () => {
+        withPhone(false, () => {
+            render(content(1))
+            const header = document.querySelector('.anna-header')
+            expect(header.classList.contains('anna-header-phone')).toBe(false)
+            expect(header.querySelector('.anna-brand').textContent).toBe('Anna Alldone')
+            expect(mockSwitcherProps.assistant.shortName).toBeUndefined()
+            expect(document.querySelector('.anna-header-picker')).toBeNull()
+            expect(screenPicker()).toBeTruthy()
+        })
+    })
 })
 
 it('leaves the chat on a phone once the top bar’s own controls have acted, but not for its switch', async () => {

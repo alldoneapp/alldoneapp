@@ -218,6 +218,22 @@ describe('assistant variant', () => {
         expect(onSelect).toHaveBeenCalledWith('product')
     })
 
+    // AT-3056: on a phone the button shows the short name; label and title keep the full one.
+    it('shows a short name but labels the button with the full name', () => {
+        render({
+            variant: 'assistant',
+            choices: all,
+            activeProjectId: ':automatic',
+            name: 'Anna Alldone',
+            shortName: 'Anna',
+        })
+        expect(trigger().querySelector('.anna-brand').textContent).toBe('Anna')
+        expect(trigger().getAttribute('aria-label')).toBe('Assistant: Anna Alldone')
+        expect(trigger().title).toBe('Assistant: Anna Alldone – Choose assistant for this chat')
+        act(() => trigger().querySelector('.anna-brand').click())
+        expect(trigger().getAttribute('aria-expanded')).toBe('true')
+    })
+
     it('keeps the name readable while the picker is unavailable', () => {
         render({ variant: 'assistant', choices: all, activeProjectId: ':automatic', disabled: true, name: 'Anna' })
         expect(trigger().disabled).toBe(true)

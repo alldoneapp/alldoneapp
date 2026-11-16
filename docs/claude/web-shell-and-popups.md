@@ -510,6 +510,22 @@ window too narrow for both"; the file runs at a 1440px window), `TopBarContainer
 `responsiveLayout.test.js` and `UseCollapsibleSidebar.test.js`. `browser-tests/anna-workspace` still
 expects both side by side at 1024px.
 
+**The phone's chat header gives the focus task the room (AT-3056).** On a phone (`mobile`, the
+`(max-width: 760px)` query) the chat header carries `.anna-header-phone`, and its grid is
+`auto minmax(0, 1fr) auto` instead of `.anna-header-sidebar`'s centred
+`minmax(max-content, 1fr) …`: the sides take what they need and the focus task takes the rest (pill
+`max-width: 100%`). The assistant shows by its short name (`getAnnaShortName` in `annaShortName.js`:
+the first word, or the first two when the first has one or two letters; cut off at 88px, 64px for a
+header content width of 360px or less). The avatar button's label and title and the name picker's label
+("Assistant: {full name}") keep the full name (`AnnaProjectSwitcher` `shortName` prop). The native
+screen select is a 52x44 box showing the chosen view's icon (`pickerOptions`' `icon`: chat bubble,
+globe, terminal, box) and a chevron, with the select transparent over all of it, so a tap opens
+the system list with every label; its `aria-label` stays "Workspace" and the label's `title` names
+the view. Up to 480px header content width the focus task's project is only its colour dot; the
+link's label and title still name it. Desktop and the sidebar chat are unchanged. Pinned by "the compact phone chat header (AT-3056)"
+in `AnnaShell.test.js`, `annaPhoneHeader.test.js`, `annaShortName.test.js` and the AT-3056 case
+in `AnnaProjectSwitcher.test.js`. Not verified in a real browser at 320/360/390/430px yet.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
