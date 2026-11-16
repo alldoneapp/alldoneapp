@@ -36,8 +36,9 @@ const projectLabel = choice => {
 /**
  * The assistant variant lists who can answer, not every project: "Automatic" (the default
  * assistant) and each project with an assistant of its own. A project the default assistant
- * answers in, and the explicit default project, are project choices that would only repeat the
- * default assistant, so they stay in the composer's chip (and are listed here only while active).
+ * answers in, and the explicit default project, would only repeat the default assistant, so they
+ * are listed only while active (e.g. reached from the assistant line or a jump to another chat).
+ * AT-3055: the composer's project chip is gone; this picker is the only switch in assistant mode.
  */
 export const getAnnaAssistantChoices = (choices = [], activeProjectId = null) => {
     const hasAutomatic = choices.some(choice => choice.isAutomatic)
@@ -72,7 +73,8 @@ const ChoiceMark = ({ choice }) =>
     )
 
 /**
- * AT-2903 — the project chip in the assistant chat composer. The selected
+ * AT-2903 — the project chip (default `variant="project"`), formerly in the assistant chat
+ * composer; AT-3055 removed it from there and nothing renders this variant now. The selected
  * project decides which daily chat the next message goes to, and with it which
  * assistant answers. Opens inside the chat pane, like the attachment menu.
  *

@@ -245,8 +245,8 @@ carried over, because the server's daily chat answers with the project's assista
 (`findProjectAssistantId`). `AnnaSidebarProjectContext` publishes the sidebar's project. The
 button closes the desktop sidebar only when the sidebar already shows its line's project;
 otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
-a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
-with the composer's project chip. It lists "Automatic" (labelled "All projects" since 2026-11-16), each project with an assistant of its own
+a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. Since AT-3055 it is
+the only project/assistant switch in assistant mode (the composer's project chip is gone). It lists "Automatic" (labelled "All projects" since 2026-11-16), each project with an assistant of its own
 and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
 while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
 `AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
@@ -302,8 +302,8 @@ other projects") was removed on 2026-11-16 (`scopeAnnaThreads` still reports `ot
 which nothing renders now). While a switch
 resolves, the previous chat stays and sending waits (`switching`, unchanged). "Earlier days" pages
 the shared registry three threads at a time, so `loadEarlier` keeps paging until the visible
-project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (composer
-chip, assistant picker at the top left) also moves the Alldone workspace:
+project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (the
+assistant picker at the top left; the composer chip until AT-3055) also moves the Alldone workspace:
 `syncAnnaWorkspaceProject` (`annaWorkspaceProjectSync.js`) dispatches the header project picker's
 batch (`switchProject`, own board or All goals, active type), keeps the root tab (wiki falls back
 to tasks on All projects), leaves an object's detail view of the old project for the root list,
@@ -337,8 +337,8 @@ Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.tes
 loading-name case in `AnnaShell.test.js`.
 
 **A switch picked in the chat ends with the composer focused (AT-3036 follow-up).** A project
-picked in the chat sidebar (composer chip, assistant picker at the top left, "Chats in other
-projects") goes through `AnnaShell.selectProjectFromChat`. It remembers the target
+picked in the chat sidebar (assistant picker at the top left, "Chats in other
+projects"; the composer chip until AT-3055) goes through `AnnaShell.selectProjectFromChat`. It remembers the target
 (`chatSwitchFocus`), and the composer takes focus when the switch has ended. The conversation reports
 that through `onSwitchSettled(projectId)` from the same point as the snap to the bottom (messages
 loaded and rendered, cached and empty chats included), right before the snap. A pick that keeps
@@ -616,20 +616,23 @@ name, so the row fits at 320px. Anna passes it `position` (open upwards) and a w
 and the list opened inside the workspace pane, away from its button. The same applies to any other
 popup put in the Anna chat pane: pass a viewport.
 
-**Project chip on the field edge (AT-3032).** The project chip is no longer in the toolbar. It is
-the first child of `.anna-composer-draft`, in `.anna-composer-project`, absolutely positioned on the
-field's top border (centred on it, left-aligned with the +), and first in tab order. The room it
-needs (16px slot margin above, 22px field padding below) is reserved through
-`:has(.anna-project-chip)`, so a composer without a chip (fewer than two choices) keeps the old
-geometry. It has no `z-index` on purpose: with one it painted over the Templates popup. During calls
-it stays hidden with the draft. Pinned by `AnnaConversation.test.js`,
-`annaProjectChipText.test.js` and the chip/Templates geometry in `browser-tests/anna-workspace`
-(`PROJECT_SWITCH_ONLY=1`, 1440/1024/390/320).
+**No project chip in the Anna composer (AT-3055, 2026-11-16).** The composer used to carry a
+project chip (AT-2903; on the field's top edge since AT-3032). The product owner removed it:
+"Dont show the project tag in the assistant mode chat input field. Its enough to just select the
+assistant at the top." `AnnaShell` no longer passes `renderProjectSwitcher`, `AnnaConversation` has
+no `.anna-composer-project` slot, and the CSS that reserved room for the chip is gone, so the field
+keeps its chip-less geometry at every width. The assistant picker at the top left is the only
+switch, with the same state and `selectProjectFromChat`. Accepted consequence: a project the
+default assistant answers in can no longer be picked in the chat (the picker lists assistants);
+it is still reached from the assistant line, a jump to another project's chat or the workspace.
+The project variant of `AnnaProjectSwitcher` (and `.anna-project-chip` CSS) is unused but kept.
+Pinned by the AT-3055 cases in `AnnaConversation.test.js`, `AnnaShell.test.js` and
+`annaProjectChipText.test.js`, and by `browser-tests/anna-workspace` (`PROJECT_SWITCH_ONLY=1`).
 
 **Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
 { font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as
-`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The project
-chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
+`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The (since
+AT-3055 removed) composer project chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
 a child span (`.anna-project-chip-name`, now 13px / 16px line, like the project menu rows) or raise
 the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.js`.
 
@@ -637,7 +640,7 @@ the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
 newer messages. Re-opening the same view keeps its original time. A project picked in the
-composer's switcher becomes a local "Switched to project: …" entry
+assistant picker (formerly also the composer's chip) becomes a local "Switched to project: …" entry
 (`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to (since
 AT-3036 that thread is shown alone), and re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.

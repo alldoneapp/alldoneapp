@@ -105,7 +105,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         switching = false,
         // AT-3036: the project being opened, for the loading state shown meanwhile.
         switchingProjectName = '',
-        renderProjectSwitcher,
         // AT-2914: the latest project chosen in the switcher ({ id, projectId, name, created }).
         projectSwitch = null,
         // AT-3036: other projects' threads, offered as jumps; `onOpenProject(projectId)` switches there.
@@ -606,11 +605,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             aria-hidden={voiceActive || undefined}
                             inert={voiceActive ? '' : undefined}
                         >
-                            {/* AT-3032: the project chip sits on the field's top edge, half over the
-                                border (anna.css). First in the DOM, so it is also first in tab order. */}
-                            <div className="anna-composer-project">
-                                {renderProjectSwitcher?.({ disabled: voiceActive || dictationBusy || offline })}
-                            </div>
+                            {/* AT-3055: no project chip here. The assistant picker at the top of the
+                                sidebar already chooses who answers, and with it the project. */}
                             <div>
                                 <AnnaChatComposer
                                     ref={composer}

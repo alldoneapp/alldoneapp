@@ -1286,8 +1286,8 @@ export default function AnnaShell({ children, routeId }) {
                     </span>
                     {!assistantNamePicks && <strong className="anna-brand">{headerAssistantName}</strong>}
                 </button>
-                {/* AT-3034: pick another assistant for the sidebar chat. Same state as the
-                    composer's project chip; listed by assistant instead of by project.
+                {/* AT-3034: pick another assistant for the sidebar chat, listed by assistant.
+                    AT-3055: the only project/assistant switch in assistant mode; the composer has no chip.
                     AT-3047: name and chevron are one button, so the whole name opens it. */}
                 <AnnaProjectSwitcher
                     variant="assistant"
@@ -1489,23 +1489,6 @@ export default function AnnaShell({ children, routeId }) {
                                                 : ''
                                         }
                                         projectSwitch={projectSwitch}
-                                        renderProjectSwitcher={({ disabled }) => (
-                                            <AnnaProjectSwitcher
-                                                choices={projectChoices}
-                                                activeProjectId={
-                                                    projectSelection.isAutomatic
-                                                        ? ANNA_AUTOMATIC_PROJECT
-                                                        : activeProjectId
-                                                }
-                                                onSelect={selectProjectFromChat}
-                                                disabled={disabled || call.status !== 'idle'}
-                                                busy={switching}
-                                                getViewport={() => {
-                                                    const pane = chatPane.current?.getBoundingClientRect?.()
-                                                    return pane && { ...pane.toJSON(), active: true }
-                                                }}
-                                            />
-                                        )}
                                     />
                                 </AnnaAppPaneContext.Provider>
                             )}

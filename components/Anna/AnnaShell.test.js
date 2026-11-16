@@ -198,6 +198,21 @@ jest.mock('react-redux', () => ({
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
+// AT-3055: the real switcher, recording the props of each instance by variant. Since the composer
+// lost its project chip, the assistant picker at the top left is the only one Anna renders.
+let mockSwitcherProps = {}
+jest.mock('./AnnaProjectSwitcher', () => {
+    const actual = jest.requireActual('./AnnaProjectSwitcher')
+    const Switcher = actual.default
+    return {
+        ...actual,
+        __esModule: true,
+        default: props => {
+            mockSwitcherProps[props.variant || 'project'] = props
+            return <Switcher {...props} />
+        },
+    }
+})
 jest.mock('./AnnaConversation', () => {
     const React = require('react')
     return {
@@ -791,6 +806,7 @@ beforeEach(() => {
     mockUnmounts = 0
     mockBrowserProps = null
     mockConversationProps = null
+    mockSwitcherProps = {}
     mockTransactionState = {}
     mockTakeoverProps = null
     mockTakeoverMounts = 0
@@ -2360,9 +2376,9 @@ describe('selected project (AT-2903)', () => {
         delete mockUser.defaultProjectId
         delete mockUser.projectIds
     })
-    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
+    const switcher = () => ({ props: mockSwitcherProps.assistant })
 
-    it('offers the projects in the composer and continues the chat in the chosen one', () => {
+    it('offers the projects in the assistant picker and continues the chat in the chosen one', () => {
         const view = render(content(1))
         expect(useAnnaConversation).toHaveBeenLastCalledWith('u1', expect.objectContaining({ projectId: 'p1' }))
         // AT-3024: the chip starts on "Automatic", which continues the default project's chat.
@@ -2427,9 +2443,24 @@ describe('selected project (AT-2903)', () => {
     })
 
     it('cannot switch project during a voice call', () => {
-        render(content(1))
+        const view = render(content(1))
         expect(switcher().props.disabled).toBe(false)
-        expect(mockConversationProps.renderProjectSwitcher({ disabled: true }).props.disabled).toBe(true)
+        mockCallStatus = 'connected'
+        try {
+            view.rerender(content(1))
+            expect(switcher().props.disabled).toBe(true)
+        } finally {
+            mockCallStatus = 'idle'
+        }
+    })
+
+    it('offers the switch only at the top, never in the composer (AT-3055)', () => {
+        render(content(1))
+        expect(mockConversationProps.renderProjectSwitcher).toBeUndefined()
+        expect(Object.keys(mockSwitcherProps)).toEqual(['assistant'])
+        expect(document.querySelectorAll('.anna-header-left .anna-assistant-picker')).toHaveLength(1)
+        // Routing is unchanged: the chat keeps the project the picker resolves to.
+        expect(mockConversationProps.conversation).toBeTruthy()
     })
 
     // AT-3034: assistant mode is entered from the assistant line, which hands over its project so
@@ -2558,7 +2589,7 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
         delete mockUser.defaultProjectId
         delete mockUser.projectIds
     })
-    const switcher = () => mockConversationProps.renderProjectSwitcher({ disabled: false })
+    const switcher = () => ({ props: mockSwitcherProps.assistant })
     const lastProject = () => useAnnaConversation.mock.calls.at(-1)[1].projectId
     const projectSwitches = () =>
         mockDispatch.mock.calls
@@ -2566,7 +2597,7 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             .filter(Boolean)
             .map(action => action.index)
 
-    it('moves the workspace when the composer’s project chip picks a project, keeping the view', () => {
+    it('moves the workspace when the assistant picker’s list picks a project, keeping the view', () => {
         render(content(1))
         act(() => switcher().props.onSelect('p3'))
         expect(lastProject()).toBe('p3')

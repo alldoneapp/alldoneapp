@@ -341,7 +341,7 @@ it('follows viewport resizing after focus without pulling a reader away from old
 })
 
 it('orders the toolbar as + and Templates on the left, then mic, call and send on the right (AT-3029, AT-3032)', () => {
-    render({ renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    render()
     const labels = selector =>
         [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
@@ -351,39 +351,25 @@ it('orders the toolbar as + and Templates on the left, then mic, call and send o
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
     // Offline hides only the mic; the rest keep their places.
-    render({ offline: true, renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    render({ offline: true })
     expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
 })
 
-describe('project chip on the field edge and Templates beside the + (AT-3032)', () => {
-    const project = () => <button type="button" aria-label="Project" />
-
-    it('renders the project chip above the editor, out of the toolbar, first in tab order', () => {
-        render({ renderProjectSwitcher: project })
-        const slot = container.querySelector('.anna-composer-draft > .anna-composer-project')
-        expect(slot.querySelector('[aria-label="Project"]')).not.toBeNull()
-        expect(container.querySelector('.anna-composer-toolbar [aria-label="Project"]')).toBeNull()
-        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
-        expect(buttonsAndEditor[0].getAttribute('aria-label')).toBe('Project')
-        expect(buttonsAndEditor[1].tagName).toBe('TEXTAREA')
-    })
-
-    it('leaves the slot empty when there is no project to choose', () => {
-        render({ renderProjectSwitcher: () => null })
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+describe('no project chip in the composer (AT-3055) and Templates beside the + (AT-3032)', () => {
+    it('shows no project chip: the editor is the first control of the draft', () => {
         render()
-        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+        expect(container.querySelector('.anna-composer-project')).toBeNull()
+        expect(container.querySelector('.anna-project-chip')).toBeNull()
+        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
+        expect(buttonsAndEditor[0].tagName).toBe('TEXTAREA')
     })
 
-    it('still disables the chip during dictation, calls and offline', () => {
-        const renderProjectSwitcher = jest.fn(project)
+    it('ignores a project switcher handed in by an older caller', () => {
+        const renderProjectSwitcher = jest.fn(() => <button type="button" className="anna-project-chip" />)
         render({ renderProjectSwitcher })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ renderProjectSwitcher, offline: true })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
-        render({ renderProjectSwitcher, call: { status: 'connected' } })
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
+        expect(renderProjectSwitcher).not.toHaveBeenCalled()
+        expect(container.querySelector('.anna-project-chip')).toBeNull()
     })
 
     it('opens the assistant line Templates for the chat’s project and assistant', () => {
@@ -1991,17 +1977,14 @@ describe('selected project (AT-2903)', () => {
     })
 
     it('holds sending and calls until the selected project’s chat is ready, keeping the draft', async () => {
-        const renderProjectSwitcher = jest.fn(() => <span data-testid="project-chip" />)
-        render({ switching: true, renderProjectSwitcher })
+        render({ switching: true })
         type('For the product project')
         expect(container.querySelector('.anna-send').disabled).toBe(true)
         expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(true)
         await submit()
         expect(createObjectMessage).not.toHaveBeenCalled()
         expect(container.querySelector('textarea').value).toBe('For the product project')
-        expect(container.querySelector('.anna-composer-project [data-testid="project-chip"]')).not.toBeNull()
-        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
-        render({ switching: false, renderProjectSwitcher })
+        render({ switching: false })
         expect(container.querySelector('.anna-send').disabled).toBe(false)
     })
 })
