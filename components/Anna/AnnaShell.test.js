@@ -2181,6 +2181,35 @@ it('puts the strip in Alldone’s top bar slot in plain Alldone, and above every
     expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
 })
 
+// Leaving the chat moves the strip into Alldone's top bar slot, which remounts it; the browser
+// re-renders between the click's capture and bubble phases, so the strip must stay put until the
+// click has reached search, chats or updates, or they would only switch views.
+it('keeps the strip in place for a strip click that leaves the chat, then moves it into the slot', async () => {
+    const TopBarSlot = () => {
+        const slot = React.useContext(AnnaStripSlotContext)
+        React.useLayoutEffect(() => slot?.claim(), [slot?.claim])
+        return slot ? <div data-testid="top-bar-slot">{slot.strip}</div> : null
+    }
+    const strip = () => document.querySelector('[data-testid="anna-top-strip"]')
+    setAnnaLayout('chat')
+    render(
+        <AnnaShell routeId={1}>
+            <TopBarSlot />
+        </AnnaShell>
+    )
+    const before = strip()
+    expect(before.closest('[data-testid="top-bar-slot"]')).toBeNull()
+    mockStripActionLayout = 'unset'
+    fireEvent.click(document.querySelector('.anna-strip-right [data-testid="strip-search"]'))
+    // The action runs in plain Alldone, on the very strip that was clicked.
+    expect(mockStripActionLayout).toBeNull()
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(strip()).toBe(before)
+    await act(async () => new Promise(resolve => setTimeout(resolve, 0)))
+    expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+    expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
+})
+
 it('tells the top bar whether Alldone is on screen, so it marks Chats or Updates only then', () => {
     const AppShown = () => <output data-testid="app-shown">{String(React.useContext(AnnaAppShownContext))}</output>
     const appShown = () => document.querySelector('[data-testid="app-shown"]').textContent

@@ -412,9 +412,13 @@ task statistics, quota/premium) on the left, the view switch in the middle, in t
 (`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
 `NotificationArea` on the right. In assistant mode a click on anything left or right of the switch
-first leaves the chat for the app (`leaveChatForApp` through `onLeaveChat`, on click capture), so XP,
+first leaves the chat for the app (`leaveChatFromStrip` through `onLeaveChat`, on click capture), so XP,
 gold, statistics, search, chats and updates act in plain Alldone; it queues no focus move, so the
-search field keeps the focus its popup gives it. It reports its width through `setTopBarWidth`, which XpBar,
+search field keeps the focus its popup gives it. Leaving moves the strip into Alldone's top bar slot,
+which remounts it, and the browser re-renders between the click's capture and bubble phases, so the
+strip is held in place (`stripHeld`, released on a `setTimeout`) until the click has reached the
+control; without that hold the controls only switched views (2026-11-16). jsdom's `fireEvent` does
+not re-render between the phases: the test checks that the clicked strip is still the same element. It reports its width through `setTopBarWidth`, which XpBar,
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
 render nothing inside the workspace: Alldone never repeats a bar below the strip. With no bar left to
 open a mobile sidebar from, Alldone below the strip never uses mobile navigation either

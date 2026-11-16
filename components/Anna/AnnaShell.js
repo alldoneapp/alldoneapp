@@ -389,7 +389,11 @@ export default function AnnaShell({ children, routeId }) {
     // Alldone, a screen with a top bar slot (AnnaStripSlot: RootView and the detail views) shows the
     // strip there, right of the sidebar, which then runs up to the top; others keep it above everything.
     const showTopStrip = !mobile
-    const stripInApp = !active && showTopStrip
+    // A click on the strip that leaves the chat (leaveChatFromStrip) keeps the strip where it is until
+    // the click is over: moving it into the slot remounts it, and the browser re-renders between the
+    // click's capture and bubble phases, so search, chats or updates would never get their click.
+    const [stripHeld, setStripHeld] = useState(false)
+    const stripInApp = !active && showTopStrip && !stripHeld
     const [stripSlotClaims, setStripSlotClaims] = useState(0)
     const claimStripSlot = useCallback(() => {
         setStripSlotClaims(claims => claims + 1)
@@ -600,6 +604,14 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(false)
     }, [])
+    // Desktop: the strip leaves the chat before the control acts, so what it opens (search, chats,
+    // updates, the profile) opens in plain Alldone, and holds the strip in place until the click has
+    // reached the control (`stripHeld`); then the strip moves into Alldone's top bar slot.
+    const leaveChatFromStrip = useCallback(() => {
+        setStripHeld(true)
+        leaveChatForApp()
+        setTimeout(() => setStripHeld(false), 0)
+    }, [leaveChatForApp])
     // The phone bar above the chat is Alldone's own: everything but the switch acts in the app. It
     // leaves the chat only after the control's own handler: leaving at once would swap this bar for
     // Alldone's before the click reaches the control, so the menu would never open the sidebar.
@@ -1365,7 +1377,7 @@ export default function AnnaShell({ children, routeId }) {
             photo={photo}
             openTasksAmount={openTasksAmount}
             onSelect={selectLayout}
-            onLeaveChat={active ? leaveChatForApp : undefined}
+            onLeaveChat={active ? leaveChatFromStrip : undefined}
         />
     )
 
