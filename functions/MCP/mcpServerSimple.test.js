@@ -190,9 +190,16 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
             { jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'claude-code' } } },
             { headers: {} }
         )
-        expect(response.result.instructions).toContain(SYSTEM_OF_RECORD_INSTRUCTIONS)
-        expect(response.result.instructions).toMatch(/system of record/)
-        expect(response.result.instructions).toMatch(/AUTHENTICATION REQUIRED/)
+        expect(response.result.instructions).toBe(SYSTEM_OF_RECORD_INSTRUCTIONS)
+        expect(response.result.instructions.length).toBeLessThanOrEqual(512)
+        expect(response.result.instructions).toMatch(/^Alldone is the user's system of record\./)
+        expect(response.result.instructions).toMatch(/OAuth required/)
+
+        const res = { set: jest.fn().mockReturnThis(), json: jest.fn() }
+        await server.handleHTTP({ method: 'GET', headers: {} }, res)
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ result: expect.objectContaining({ instructions: response.result.instructions }) })
+        )
 
         const served = new Set((await listTools()).map(tool => tool.name))
         for (const name of SYSTEM_OF_RECORD_TOOL_NAMES) {

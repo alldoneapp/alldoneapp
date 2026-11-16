@@ -1930,9 +1930,7 @@ class AlldoneSimpleMCPServer {
                             name: 'alldone-mcp-server',
                             version: '1.0.0',
                         },
-                        instructions: buildMcpServerInstructions(
-                            'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 authorization code flow with PKCE. No alternative authentication methods are supported. Use the /authorize endpoint to begin the authentication process.'
-                        ),
+                        instructions: buildMcpServerInstructions(),
                     },
                 })
                 return
@@ -2290,9 +2288,7 @@ class AlldoneSimpleMCPServer {
                         name: 'alldone-mcp-server',
                         version: '1.0.0',
                     },
-                    instructions: buildMcpServerInstructions(
-                        'AUTHENTICATION REQUIRED: You must authenticate using OAuth 2.0 (authorization_code for users or client_credentials for services). Use the /authorize endpoint to begin the authentication process.'
-                    ),
+                    instructions: buildMcpServerInstructions(),
                 }
 
                 console.log('✅ MCP Initialize complete:', {

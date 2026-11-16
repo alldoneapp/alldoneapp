@@ -7,19 +7,17 @@
  * objects, where the user and every later session find them, not only in the agent's own memory or
  * chat. The browser surfaces say the same in `utils/browserAgent/browserAgentApi.js`
  * (`SYSTEM_OF_RECORD_INSTRUCTIONS`) and `/llms.txt`; Functions code cannot enter the web bundle, so
- * keep the three in step by hand. Only name tools the server actually serves
- * (`MCP_DELEGATED_ASSISTANT_TOOLS`); `mcpAgentInstructions.test.js` checks that.
+ * keep the three in step by hand. Keep the complete MCP instructions within 512 characters so
+ * clients do not truncate the guidance. Only name tools the server actually serves
+ * (`MCP_DELEGATED_ASSISTANT_TOOLS`); `mcpServerSimple.test.js` checks both constraints.
  */
 
-const SERVER_DESCRIPTION =
-    'This is the Alldone MCP Server providing access to task management, project organization, and productivity tools. Every tool acts as the signed-in Alldone user, with exactly their permissions.'
-
 const SYSTEM_OF_RECORD_INSTRUCTIONS = [
-    "Alldone is the user's system of record. Keep durable work state and results in Alldone objects (tasks, notes, artifacts), not only in your own memory, chat or local files, so the user and any later session can pick up from there.",
-    'Look for the existing object first (get_tasks, get_notes, search) and update it rather than creating a duplicate.',
-    'Work that needs follow-up is a task. Add progress, decisions, blockers and results as a comment on the task it belongs to (update_task with comment), and complete the task when the work is done.',
-    'Put longer results in a note (create_note / update_note) or an artifact (create_artifact / update_artifact) and mention it in the task comment instead of repeating it.',
-    'Skip trivial or throwaway steps and do not record the same thing in several places. If a tool you need is not offered, tell the user rather than keeping the state elsewhere.',
+    "Alldone is the user's system of record. OAuth required; act within the signed-in user's permissions.",
+    "Find existing objects with get_tasks, get_notes or search; update, don't duplicate.",
+    'Track follow-up in tasks: update_task(comment) records progress, decisions, blockers and results; complete finished tasks.',
+    'Save long results via create_note/update_note or create_artifact/update_artifact; link them in task comments.',
+    'Keep durable state here, not only in chat or files. Skip trivial steps. Report missing tools.',
 ].join(' ')
 
 // Tool names the instructions mention, so a test can prove each one is really served over MCP.
@@ -34,8 +32,7 @@ const SYSTEM_OF_RECORD_TOOL_NAMES = [
     'update_artifact',
 ]
 
-const buildMcpServerInstructions = authenticationNote =>
-    [SERVER_DESCRIPTION, SYSTEM_OF_RECORD_INSTRUCTIONS, authenticationNote].filter(Boolean).join(' ')
+const buildMcpServerInstructions = () => SYSTEM_OF_RECORD_INSTRUCTIONS
 
 module.exports = {
     SYSTEM_OF_RECORD_INSTRUCTIONS,

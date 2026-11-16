@@ -194,7 +194,9 @@ places that cannot share code: `/llms.txt`, `SYSTEM_OF_RECORD_INSTRUCTIONS` / `_
 tools because the manifest never does), the `ai-agent-api` meta tag, and the MCP `initialize`
 instructions (`functions/MCP/mcpAgentInstructions.js`). Keep them in step, and name only tools the
 MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text mentions against
-`tools/list`.
+`tools/list`. Keep the complete MCP `instructions` within 512 characters, including authentication
+and permission guidance: connected clients may truncate longer text. Both GET discovery and
+`initialize` return the same compact text; the test checks the length and equality of both.
 
 ## The alldone.team specialists are assistant templates
 
