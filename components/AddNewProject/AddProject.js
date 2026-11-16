@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react'
 import { Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import { selectSidebarExpanded } from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
 import Icon from '../Icon'
 import styles from '../styles/global'
@@ -19,7 +20,7 @@ export default function AddProject({ scrollToBottom, addingTemplate }) {
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const sidebarInputOpenType = useSelector(state => state.sidebarInputOpenType)
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
+    const sidebarExpanded = useSelector(selectSidebarExpanded)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const dismissibleRef = useRef()
     const { expanded } = useCollapsibleSidebar()

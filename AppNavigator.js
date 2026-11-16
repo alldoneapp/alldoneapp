@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useContext, useEffect } from 'react'
 import { Dimensions, View } from 'react-native'
 
 import store from './redux/store'
@@ -26,6 +26,7 @@ import {
     toggleSmallScreen,
     toggleSmallScreenNavigation,
     toggleSmallScreenNavSidebarCollapsed,
+    toggleSidebarCompact,
 } from './redux/actions'
 import DismissibleModal from './components/UIComponents/DismissibleModal'
 import SettingsView from './components/SettingsView/SettingsView'
@@ -47,18 +48,20 @@ import { installAppResumeListener } from './utils/appResume'
 import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import AnnaShell from './components/Anna/AnnaShell'
+import AnnaTopStripContext, { isAnnaPhoneWindow } from './components/Anna/AnnaTopStripContext'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 import { isAnnaMode } from './utils/annaMode'
 import { EmbeddedToolWindowScreen } from './components/UIComponents/FloatModals/IframeModal/EmbeddedToolWindow'
 import { EMBEDDED_TOOL_WINDOW_ROUTE } from './utils/embeddedToolWindowUrl'
 
-const getCurrentResponsiveLayout = width => {
+const getCurrentResponsiveLayout = (width, underStrip) => {
     const { loggedUser, route } = store.getState()
     return getResponsiveLayoutState({
         width,
         sidebarExpanded: loggedUser.sidebarExpanded,
         route,
         preferCompactNavigation: isAnnaMode(),
+        underStrip,
     })
 }
 
@@ -76,6 +79,8 @@ export const initializeResponsiveLayout = () => {
         sidebarExpanded: current.loggedUser.sidebarExpanded,
         route: current.route,
         preferCompactNavigation: isAnnaMode(),
+        // AnnaShell's desktop strip, as far as boot can tell; the first layout callback knows for sure.
+        underStrip: !!current.loggedUser?.uid && !current.loggedUser.isAnonymous && !isAnnaPhoneWindow(),
     })
     const dispatches = []
 
@@ -94,11 +99,23 @@ export const initializeResponsiveLayout = () => {
     if (current.smallScreenNavSidebarCollapsed !== next.smallScreenNavSidebarCollapsed) {
         dispatches.push(toggleSmallScreenNavSidebarCollapsed(next.smallScreenNavSidebarCollapsed))
     }
+    if (current.sidebarCompact !== next.sidebarCompact) dispatches.push(toggleSidebarCompact(next.sidebarCompact))
 
     if (dispatches.length > 0) store.dispatch(dispatches)
 }
 
-const onLayoutChange = layout => {
+let lastLayoutWidth = 0
+
+const onLayoutChange = (layout, underStrip) => {
+    let widthScreenNavigation = layout.nativeEvent.layout.width
+    if (widthScreenNavigation === 0) {
+        widthScreenNavigation = Dimensions.get('window').width
+    }
+    lastLayoutWidth = widthScreenNavigation
+    applyResponsiveLayout(widthScreenNavigation, underStrip)
+}
+
+const applyResponsiveLayout = (widthScreenNavigation, underStrip) => {
     const {
         isMiddleScreen,
         smallScreenNavigation,
@@ -107,14 +124,10 @@ const onLayoutChange = layout => {
         smallScreen,
         isMiddleScreenNoteDV,
         showWebSideBar,
+        sidebarCompact,
     } = store.getState()
 
-    let widthScreenNavigation = layout.nativeEvent.layout.width
-    if (widthScreenNavigation === 0) {
-        widthScreenNavigation = Dimensions.get('window').width
-    }
-
-    const next = getCurrentResponsiveLayout(widthScreenNavigation)
+    const next = getCurrentResponsiveLayout(widthScreenNavigation, underStrip)
 
     if (next.smallScreenNavigation) {
         //This conditional is to avoid setting the state every time the layout changes while the condition is false
@@ -155,6 +168,8 @@ const onLayoutChange = layout => {
         dispatches.push(toggleSmallScreenNavSidebarCollapsed(false))
     }
 
+    if (next.sidebarCompact !== sidebarCompact) dispatches.push(toggleSidebarCompact(next.sidebarCompact))
+
     dispatches.length > 0 && store.dispatch(dispatches)
 
     // For screen size under breakpoint
@@ -193,13 +208,23 @@ const onLayoutChange = layout => {
 // negotiation never reached the wrapper when an inner touchable claimed the
 // touch, which is exactly why replacement_node_modules carried that patch.
 // A DOM capture-phase listener sees every press regardless of what claims it.
-const ScreenWrapper = ({ children }) => (
-    <View style={{ flex: 1 }} onLayout={onLayoutChange}>
-        <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-            {children}
+//
+// Inside AnnaShell's desktop strip Alldone keeps its desktop sidebar (responsiveLayout.js). The strip
+// comes and goes with the window's width, not necessarily in the same frame as this layout callback,
+// so a change of the strip alone recomputes the flags too.
+const ScreenWrapper = ({ children }) => {
+    const underStrip = useContext(AnnaTopStripContext)
+    useEffect(() => {
+        if (lastLayoutWidth) applyResponsiveLayout(lastLayoutWidth, underStrip)
+    }, [underStrip])
+    return (
+        <View style={{ flex: 1 }} onLayout={event => onLayoutChange(event, underStrip)}>
+            <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
+                {children}
+            </View>
         </View>
-    </View>
-)
+    )
+}
 
 // Route map replacing the old createStackNavigator config. `wrapped` mirrors
 // which screens had the chrome wrapper; `extra` renders the wrapper-level

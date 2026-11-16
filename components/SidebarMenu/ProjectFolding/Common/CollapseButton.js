@@ -18,6 +18,9 @@ export default function CollapseButton({ targetWidth }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    // Too narrow for the expanded sidebar below the assistant strip: the preference would change
+    // nothing visible, so there is nothing to toggle.
+    const sidebarCompact = useSelector(state => state.sidebarCompact)
     const { expanded, overlay } = useCollapsibleSidebar()
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.CollapseButton')
@@ -40,7 +43,7 @@ export default function CollapseButton({ targetWidth }) {
 
     return (
         <Animated.View style={parentStyles}>
-            {!isAnonymous && (
+            {!isAnonymous && !sidebarCompact && (
                 <TouchableOpacity
                     accessible={false}
                     onPress={toggleSidebarUser}

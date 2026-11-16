@@ -650,13 +650,12 @@ it.each(['home', 'browser'])(
     async destination => {
         jest.useFakeTimers()
         const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
-        const geometry = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-            left: 400,
-            top: 100,
-            right: 1000,
-            bottom: 500,
-            width: 600,
-            height: 400,
+        const geometry = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            // The shell's layout keeps a desktop width, or the chat and Alldone no longer fit side by side.
+            if (this.classList.contains('anna-layout')) {
+                return { left: 0, top: 56, right: 1440, bottom: 900, width: 1440, height: 844 }
+            }
+            return { left: 400, top: 100, right: 1000, bottom: 500, width: 600, height: 400 }
         })
         const change = {
             id: 'saved1',
@@ -706,7 +705,14 @@ it.each(['home', 'browser'])(
     }
 )
 
+const JSDOM_WINDOW_WIDTH = window.innerWidth
+afterEach(() => {
+    window.innerWidth = JSDOM_WINDOW_WIDTH
+})
+
 beforeEach(() => {
+    // Wide enough for the chat beside Alldone; jsdom's 1024px is not (useAnnaChatWidth's splitFits).
+    window.innerWidth = 1440
     mockMobileNavigation = false
     mockSidebarNumbers = {}
     global.IS_REACT_ACT_ENVIRONMENT = true
@@ -1882,20 +1888,103 @@ describe('the strip in plain Alldone (desktop)', () => {
         expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'TOP_BAR_WIDTH' }))
     })
 
-    it.each(['alldone', 'split'])('carries the sidebar menu while Alldone uses mobile navigation (%s)', layout => {
-        mockMobileNavigation = true
+    // Below the strip Alldone keeps its desktop sidebar, collapsed where needed (responsiveLayout.js).
+    it.each(['alldone', 'split', 'chat'])('carries no sidebar menu (%s)', layout => {
         setAnnaLayout(layout)
         render(content(1))
         expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
-        mockDispatch.mockClear()
-        fireEvent.click(screen.getByLabelText('Open sidebar'))
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SHOW_SIDEBAR' })
+        expect(document.querySelector('.anna-strip button[aria-label="Open sidebar"]')).toBeNull()
+        expect(document.querySelectorAll('.anna-strip-switch button')).toHaveLength(3)
+    })
+})
+
+// Too narrow for Alldone (with its collapsed sidebar) beside the chat, the desktop shows one or the
+// other: the strip offers Tasks and the assistant, and the split layout waits for a wider window.
+describe('a desktop window too narrow for both', () => {
+    const resizeTo = width =>
+        act(() => {
+            window.innerWidth = width
+            window.dispatchEvent(new Event('resize'))
+        })
+    const shell = () => document.querySelector('.anna-shell').classList
+    const chatPane = () => document.querySelector('.anna-conversation')
+    const stage = () => document.querySelector('.anna-stage')
+
+    beforeEach(() => {
+        window.innerWidth = 1000
     })
 
-    it('offers no sidebar menu where Alldone shows its own sidebar', () => {
-        setAnnaMode(false)
+    it('shows the chat alone and offers Tasks and the assistant only', () => {
+        setAnnaLayout('split')
         render(content(1))
-        expect(screen.getByLabelText('Open sidebar')).toBeNull()
+        expect(shell().contains('anna-narrow')).toBe(true)
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(layoutButton('split')).toBeNull()
+        expect(layoutButton('chat').getAttribute('aria-pressed')).toBe('true')
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('false')
+        expect(stage().getAttribute('aria-hidden')).toBe('true')
+        expect(chatPane().getAttribute('aria-hidden')).toBe('false')
+        expect(window.location.search).toContain('assistant=1')
+    })
+
+    it('shows a screen picked in the chat alone, and the assistant brings the chat back', () => {
+        setAnnaLayout('split')
+        render(content(1))
+        chooseSurface('browser')
+        expect(shell().contains('anna-screen-only')).toBe(true)
+        expect(stage().getAttribute('aria-hidden')).toBe('false')
+        expect(chatPane().getAttribute('aria-hidden')).toBe('true')
+        // Another screen than Alldone is neither of the two views the switch offers.
+        expect(layoutButton('chat').getAttribute('aria-pressed')).toBe('false')
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('false')
+
+        fireEvent.click(layoutButton('chat'))
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+        expect(window.location.search).toContain('assistant=1')
+        expect(selectedSurface()).toBe('browser')
+    })
+
+    it('opens the open task list from Tasks while the chat is in front', () => {
+        setAnnaLayout('split')
+        render(content(1))
+        mockDispatch.mockClear()
+        fireEvent.click(layoutButton('alldone'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(mockDispatch).toHaveBeenCalledWith(HOME_NAVIGATION)
+    })
+
+    it('shows Alldone alone, keeping its page, when Alldone is picked in the chat', () => {
+        setAnnaLayout('split')
+        render(content(1))
+        chooseSurface('browser')
+        fireEvent.click(layoutButton('chat'))
+        mockDispatch.mockClear()
+        NavigationService.navigate.mockClear()
+        pickScreen('alldone')
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(mockDispatch).not.toHaveBeenCalledWith(HOME_NAVIGATION)
+    })
+
+    it('brings the chat to the front when the window shrinks, and both back when it widens', () => {
+        window.innerWidth = 1440
+        setAnnaLayout('split')
+        render(content(1))
+        chooseSurface('browser')
+        expect(shell().contains('anna-narrow')).toBe(false)
+        expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
+
+        resizeTo(1000)
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(layoutButton('split')).toBeNull()
+
+        resizeTo(1440)
+        expect(shell().contains('anna-chat-only')).toBe(false)
+        expect(shell().contains('anna-screen-only')).toBe(false)
+        expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
+        expect(selectedSurface()).toBe('browser')
+        expect(stage().getAttribute('aria-hidden')).toBe('false')
     })
 })
 

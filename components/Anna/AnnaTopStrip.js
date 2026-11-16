@@ -1,24 +1,25 @@
 import React, { useLayoutEffect, useRef } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import Icon from '../Icon'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
 import NotificationArea from '../TopBar/NotificationArea'
 import TopBarStatisticArea from '../TopBar/TopBarStatisticArea'
-import { setShowWebSideBar, setTopBarWidth } from '../../redux/actions'
+import { setTopBarWidth } from '../../redux/actions'
 import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
 /**
  * Desktop: one row above Alldone and, in assistant mode, above the chat. It replaces Alldone's own
- * top bar there, also where Alldone uses mobile navigation (AnnaTopStripContext; the sidebar menu
- * then sits here too): XP, gold, task statistics and quota on the left, search,
- * chats and updates on the right, and in the middle the view switch, which stays in one place in
- * all three views. "Tasks" replaces the home button and the assistant toggle.
+ * top bar there (AnnaTopStripContext; Alldone keeps its desktop sidebar below it): XP, gold, task
+ * statistics and quota on the left, search, chats and updates on the right, and in the middle the
+ * view switch, which stays in one place in all views. "Tasks" replaces the home button and the
+ * assistant toggle. Where the window is too narrow for Alldone beside the chat (`canSplit`), the
+ * switch offers only Tasks and the assistant. `layout` is what the window shows: null while it
+ * shows another screen than Alldone alone.
  */
-export default function AnnaTopStrip({ layout, assistantName, photo, openTasksAmount, onSelect }) {
+export default function AnnaTopStrip({ layout, canSplit, assistantName, photo, openTasksAmount, onSelect }) {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const strip = useRef(null)
     // XpBar, TasksStatisticsArea and the connection chip size themselves from the top bar's width,
     // which only TopBar reported until now.
@@ -36,19 +37,6 @@ export default function AnnaTopStrip({ layout, assistantName, photo, openTasksAm
     return (
         <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
             <div className="anna-strip-left">
-                {/* Where Alldone uses mobile navigation (a narrow window or pane), its sidebar opens
-                    from here, as it did from the mobile bar this strip replaces. */}
-                {smallScreenNavigation && (
-                    <button
-                        type="button"
-                        className="anna-strip-menu"
-                        aria-label={translate('Open sidebar')}
-                        title={translate('Open sidebar')}
-                        onClick={() => dispatch(setShowWebSideBar())}
-                    >
-                        <Icon name="menu" size={20} color="currentColor" />
-                    </button>
-                )}
                 <TopBarStatisticArea />
             </div>
             <div className="anna-strip-switch" role="group" aria-label={translate('Assistant view')}>
@@ -72,15 +60,17 @@ export default function AnnaTopStrip({ layout, assistantName, photo, openTasksAm
                         </span>
                     )}
                 </button>
-                <button
-                    type="button"
-                    aria-pressed={layout === 'split'}
-                    data-anna-layout="split"
-                    onClick={() => onSelect('split')}
-                >
-                    <Icon name="columns" size={16} color="currentColor" />
-                    <span>{translate('Both')}</span>
-                </button>
+                {canSplit && (
+                    <button
+                        type="button"
+                        aria-pressed={layout === 'split'}
+                        data-anna-layout="split"
+                        onClick={() => onSelect('split')}
+                    >
+                        <Icon name="columns" size={16} color="currentColor" />
+                        <span>{translate('Both')}</span>
+                    </button>
+                )}
                 <button
                     type="button"
                     aria-pressed={layout === 'chat'}

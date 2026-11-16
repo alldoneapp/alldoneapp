@@ -204,9 +204,22 @@ task statistics, quota/premium) on the left, the view switch in the middle (Task
 open-task count, Both, the assistant's name for chat only), `ConnectionStatusChip` and
 `NotificationArea` on the right. It reports its width through `setTopBarWidth`, which XpBar,
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
-render nothing inside the workspace, also where Alldone uses mobile navigation (a narrow window, or
-the pane beside the chat): Alldone never repeats a bar below the strip, and the strip then shows the
-sidebar menu (`setShowWebSideBar`) at its left. While the strip shows, the workspace viewport owner is on in plain
+render nothing inside the workspace: Alldone never repeats a bar below the strip. With no bar left to
+open a mobile sidebar from, Alldone below the strip never uses mobile navigation either
+(2026-11-16): `ScreenWrapper` passes the context into `getResponsiveLayoutState` as `underStrip`,
+which keeps `smallScreenNavigation` false and sets `sidebarCompact` where the pane is at most
+`SCREEN_BREAKPOINT_NAV` wide. There the sidebar shows collapsed and floats open on hover whatever the
+stored preference says: read the shown state through `selectSidebarExpanded` (`UseCollapsibleSidebar.js`;
+the sidebar's hover, the detail views' back buttons, AddProject), never write it, and `CollapseButton`
+hides. The tag lists keep reading the preference on purpose (it picks their more compact layout).
+"Both" needs room for the chat (`MIN_CHAT_WIDTH`) beside Alldone at the collapsed sidebar's breakpoint
+plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
+`--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
+like a phone (`narrow`, `singlePane`, `mobilePane`): the strip offers only Tasks and the assistant,
+the chat comes to the front when the window shrinks from both, a screen picked in the chat shows alone
+in its bezel (`anna-screen-only`), the assistant button brings the chat back and keeps the split
+layout, so both return when the window widens; picking Alldone in the chat shows plain Alldone.
+While the strip shows, the workspace viewport owner is on in plain
 Alldone too (`.anna-has-strip` also gives `.anna-workspace-content` its transform), so modals and
 inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: beside a visible screen
 it keeps the page (`closeChat`), from chat only and from plain Alldone it opens the open task list
@@ -218,8 +231,10 @@ the X; a notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` p
 picker into the screen and turns accent with the bezel (`anna-workspace-busy`). Mobile keeps its
 header, select and X. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
 dark card under `:root[data-theme='dark']`, because popup scope keeps light tokens there. Pinned
-by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plain Alldone") and
-`TopBarContainer.test.js`.
+by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plain Alldone", "a desktop
+window too narrow for both"; the file runs at a 1440px window), `TopBarContainer.test.js`,
+`responsiveLayout.test.js` and `UseCollapsibleSidebar.test.js`. `browser-tests/anna-workspace` still
+expects both side by side at 1024px.
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative

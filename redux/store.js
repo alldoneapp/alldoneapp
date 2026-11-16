@@ -110,6 +110,7 @@ export const initialState = {
     smallScreenNavigation: false,
     reallySmallScreenNavigation: false,
     smallScreenNavSidebarCollapsed: false,
+    sidebarCompact: false,
     showProjectColorPicker: {
         visible: false,
         layout: { x: 0, y: 0, width: 0, height: 0 },
@@ -678,6 +679,11 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 smallScreenNavSidebarCollapsed: action.smallScreenNavSidebarCollapsed,
+            }
+        case 'Toggle sidebar compact':
+            return {
+                ...state,
+                sidebarCompact: action.sidebarCompact,
             }
         case 'Show project color picker':
             return {

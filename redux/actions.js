@@ -161,6 +161,9 @@ export const toggleSmallScreenNavSidebarCollapsed = smallScreenNavSidebarCollaps
     return action
 }
 
+// Below the desktop assistant strip, where the expanded sidebar does not fit (see responsiveLayout.js).
+export const toggleSidebarCompact = sidebarCompact => ({ type: 'Toggle sidebar compact', sidebarCompact })
+
 export const showProjectColorPicker = () => {
     const action = {
         type: 'Show project color picker',

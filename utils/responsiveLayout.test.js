@@ -16,6 +16,7 @@ describe('getResponsiveLayoutState', () => {
             smallScreenNavigation: true,
             reallySmallScreenNavigation: true,
             smallScreenNavSidebarCollapsed: true,
+            sidebarCompact: false,
         })
     })
 
@@ -51,6 +52,35 @@ describe('getResponsiveLayoutState', () => {
             getResponsiveLayoutState({ width: 1000, sidebarExpanded: false, preferCompactNavigation: true })
                 .smallScreenNavigation
         ).toBe(false)
+    })
+
+    // AnnaShell's desktop strip replaces Alldone's top bar, so nothing could open a mobile sidebar:
+    // Alldone keeps the desktop one, collapsed where the expanded one does not fit.
+    it('keeps the desktop sidebar below the assistant strip, collapsed where the expanded one does not fit', () => {
+        const narrow = getResponsiveLayoutState({
+            width: 640,
+            sidebarExpanded: true,
+            preferCompactNavigation: true,
+            underStrip: true,
+        })
+        expect(narrow.smallScreenNavigation).toBe(false)
+        expect(narrow.sidebarCompact).toBe(true)
+        expect(narrow.isMiddleScreen).toBe(true)
+
+        const atBreakpoint = getResponsiveLayoutState({ width: SCREEN_BREAKPOINT_NAV, underStrip: true })
+        expect(atBreakpoint.sidebarCompact).toBe(true)
+        const wide = getResponsiveLayoutState({
+            width: SCREEN_BREAKPOINT_NAV + 1,
+            sidebarExpanded: true,
+            underStrip: true,
+        })
+        expect(wide.sidebarCompact).toBe(false)
+        expect(wide.smallScreenNavigation).toBe(false)
+    })
+
+    it('never compacts the sidebar outside the strip', () => {
+        expect(getResponsiveLayoutState({ width: 700, sidebarExpanded: true }).sidebarCompact).toBe(false)
+        expect(getResponsiveLayoutState({ width: 700, sidebarExpanded: false }).sidebarCompact).toBe(false)
     })
 
     it('only enables the detail-view middle-screen flag on detail routes', () => {

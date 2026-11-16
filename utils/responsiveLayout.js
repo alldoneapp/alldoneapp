@@ -32,22 +32,30 @@ export const getResponsiveLayoutState = ({
     sidebarExpanded = false,
     route = '',
     preferCompactNavigation = false,
+    underStrip = false,
 }) => {
-    // The split workspace needs the compact navigation before the desktop top
-    // bar runs out of room, even when the user's sidebar preference is collapsed.
+    // Below the desktop assistant strip (AnnaTopStrip) Alldone has no bar of its own to open a
+    // mobile sidebar from, so it always keeps the desktop sidebar: collapsed, floating open on
+    // hover, wherever the expanded one does not fit (`sidebarCompact`). AnnaShell only puts
+    // Alldone beside the chat where it gets the collapsed sidebar's width
+    // (SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED); narrower, it shows one or the other.
+    // Elsewhere the split workspace on a phone needs the compact navigation before the
+    // desktop top bar runs out of room, even when the user's sidebar preference is collapsed.
     const navigationBreakpoint =
         sidebarExpanded || preferCompactNavigation ? SCREEN_BREAKPOINT_NAV : SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
+    const smallScreenNavigation = !underStrip && width <= navigationBreakpoint
     // Preserve AppNavigator's original boundary behavior: navigation switches
     // at <=, while content width starts accounting for the sidebar at the exact
-    // breakpoint.
-    const contentWidth = width < navigationBreakpoint ? width : width - SIDEBAR_MENU_WIDTH
+    // breakpoint. Below the strip the sidebar is always there.
+    const contentWidth = !underStrip && width < navigationBreakpoint ? width : width - SIDEBAR_MENU_WIDTH
 
     return {
         isMiddleScreen: contentWidth <= SCREEN_BREAKPOINT_MIDDLE - SIDEBAR_MENU_WIDTH,
         isMiddleScreenNoteDV: contentWidth <= SCREEN_BREAKPOINT_MIDDLE && DETAIL_VIEW_ROUTES.has(route),
         smallScreen: contentWidth <= SCREEN_BREAKPOINT,
-        smallScreenNavigation: width <= navigationBreakpoint,
+        smallScreenNavigation,
         reallySmallScreenNavigation: width <= SCREEN_SMALL_BREAKPOINT_NAV,
         smallScreenNavSidebarCollapsed: width <= SCREEN_BREAKPOINT_NAV,
+        sidebarCompact: underStrip && width <= SCREEN_BREAKPOINT_NAV,
     }
 }

@@ -2033,23 +2033,6 @@
         justify-content: flex-end;
         gap: 4px;
     }
-    .anna-strip-menu {
-        display: grid;
-        place-items: center;
-        flex: none;
-        width: 32px;
-        height: 32px;
-        margin-right: 8px;
-        padding: 0;
-        border: 0;
-        border-radius: 7px;
-        background: transparent;
-        color: var(--anna-muted);
-    }
-    .anna-strip-menu:hover {
-        background: var(--anna-hover);
-        color: var(--anna-accent);
-    }
     .anna-strip-switch {
         display: flex;
         gap: 2px;
@@ -2161,6 +2144,26 @@
     }
     .anna-workspace-busy .anna-conversation::after {
         border-left-color: var(--anna-accent);
+    }
+
+    /* A window too narrow for both (AnnaShell's `narrow`) shows one card at a time, as a phone does.
+       The screen alone keeps its bezel; the chat stays mounted behind it. With the chat in front,
+       the hidden screen is laid out at its full width already. */
+    .anna-zoom-active.anna-screen-only .anna-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .anna-screen-only .anna-conversation,
+    .anna-screen-only .anna-divider {
+        position: absolute;
+        inset: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+    .anna-zoom-active.anna-screen-only .anna-stage {
+        margin-left: 10px;
+    }
+    .anna-narrow.anna-chat-only .anna-stage {
+        width: 100%;
     }
 }
 .anna-screen-picker {

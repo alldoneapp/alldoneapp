@@ -1,6 +1,7 @@
 import React, { useRef } from 'react'
 import { Animated } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
+import { selectSidebarExpanded } from '../Collapsible/UseCollapsibleSidebar'
 
 import LoggedUserSidebarHeader from './LoggedUserSidebarHeader'
 import LoggedUserSidebarBody from './LoggedUserSidebarBody'
@@ -10,7 +11,7 @@ export default function LoggedUserSidebar({ navigation, expanded, containerStyle
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const sidebarHovered = useSelector(state => state.sidebarHovered)
-    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
+    const sidebarExpanded = useSelector(selectSidebarExpanded)
     const scrollView = useRef()
 
     const handleMouseEnter = e => {

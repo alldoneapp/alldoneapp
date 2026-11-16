@@ -18,7 +18,7 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs, { isActiveVmJob } from './useAnnaVmJobs'
 import AnnaTopStrip from './AnnaTopStrip'
-import AnnaTopStripContext from './AnnaTopStripContext'
+import AnnaTopStripContext, { ANNA_PHONE_QUERY, isAnnaPhoneWindow } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNavigationContext'
@@ -60,9 +60,9 @@ const appViewLabel = view => view.appName || view.serverLabel || view.toolName |
 const NO_ASSISTANT = {}
 
 function useMobilePane() {
-    const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 760px)').matches || false)
+    const [mobile, setMobile] = useState(isAnnaPhoneWindow)
     useEffect(() => {
-        const media = window.matchMedia?.('(max-width: 760px)')
+        const media = window.matchMedia?.(ANNA_PHONE_QUERY)
         if (!media) return
         const update = () => setMobile(media.matches)
         media.addEventListener('change', update)
@@ -274,7 +274,12 @@ export default function AnnaShell({ children, routeId }) {
     const focusAfterSwitch = useRef(active ? 'chat' : null)
     const awaitingChatInputFocus = useRef(false)
     const previousMode = useRef(layoutMode)
-    const { width: chatWidth, maximum: maxChatWidth, resize: setChatWidth } = useAnnaChatWidth(user.uid, layout)
+    const {
+        width: chatWidth,
+        maximum: maxChatWidth,
+        resize: setChatWidth,
+        splitFits,
+    } = useAnnaChatWidth(user.uid, layout)
     const presentationSeen = useRef(new Set())
     const browserSeen = useRef(null)
     const heldBrowser = useRef(false)
@@ -284,9 +289,13 @@ export default function AnnaShell({ children, routeId }) {
     const navigationTail = useRef(Promise.resolve())
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
-    const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
-    // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar; where
-    // Alldone uses mobile navigation, the strip carries the sidebar menu.
+    // A desktop window too narrow for Alldone beside the chat (with its collapsed sidebar) shows one
+    // or the other, like a phone does: `mobilePane` says which. The strip then offers Tasks and the
+    // assistant only, and Both returns by itself once the window is wide enough again.
+    const narrow = !mobile && !splitFits
+    const singlePane = mobile || narrow
+    const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !singlePane)
+    // Desktop shows AnnaTopStrip in every view, and Alldone below it never repeats its own bar.
     const showTopStrip = !mobile
     // Below the strip, Alldone is a pane of the window in plain Alldone too, so modals, popovers and
     // inline fixed overlays size and place themselves within it, as they do beside the chat.
@@ -301,14 +310,14 @@ export default function AnnaShell({ children, routeId }) {
         chatConversation.current?.focusInput()
     }, [])
     const selectSurface = nextSurface => {
-        if (mobile && nextSurface === 'alldone') {
+        if (singlePane && nextSurface === 'alldone') {
             // Choosing Alldone over the app must not bring the app back as a window.
             appOnExit.current = null
             closeChat()
             return
         }
         requestGeneration.current++
-        if (mobile) focusAfterSwitch.current = 'workspace'
+        if (singlePane) focusAfterSwitch.current = 'workspace'
         const vm = vmJobs.find(job => job.id === lastVmId.current) || vmJobs[0]
         setSurface(nextSurface === 'vms' && vm ? `vm:${vm.id}` : nextSurface)
         setAnnaLayout('split')
@@ -332,12 +341,12 @@ export default function AnnaShell({ children, routeId }) {
             })
             requestGeneration.current++
             setSurface(`app:${view.viewId}`)
-            if (auto && mobile) return
-            if (mobile) focusAfterSwitch.current = 'workspace'
+            if (auto && singlePane) return
+            if (singlePane) focusAfterSwitch.current = 'workspace'
             setAnnaLayout('split')
             setMobilePane('workspace')
         },
-        [mobile]
+        [singlePane]
     )
     // The view's own "show in chat" button: close the pane and show Alldone again. The view stays
     // mounted, so its card reopens it as it was.
@@ -434,9 +443,11 @@ export default function AnnaShell({ children, routeId }) {
     // visible screen it leaves assistant mode and keeps that page, like the X; from the chat alone,
     // and again from plain Alldone, it opens the open task list, like the Home button. "Both" and the
     // assistant alone switch the layout; entered from plain Alldone they open the chat focused, like
-    // the assistant button.
+    // the assistant button. In a window too narrow for both, the assistant brings the chat to the
+    // front and keeps the layout, so Both comes back when the window widens.
     const selectLayout = next => {
-        if (next === 'alldone') return active && !chatOnly ? closeChat() : goHome()
+        if (next === 'alldone') return visibleWorkspace ? closeChat() : goHome()
+        if (next === 'chat' && narrow && active && !chatOnly) return backToChat()
         if (next === layoutMode) return
         requestGeneration.current++
         followedBrowser.current = null
@@ -459,7 +470,7 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
     }
     const showLatestChat = () => {
-        if (!mobile && visibleWorkspace) {
+        if (!singlePane && visibleWorkspace) {
             requestGeneration.current++
             followedBrowser.current = null
             setSurface('alldone')
@@ -499,6 +510,12 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('workspace')
         setAnnaLayout('split')
     }, [active, visibleWorkspace, surface])
+    // Shrinking the window from both to one shows the chat; the picker and Tasks reach the rest.
+    const showedBoth = useRef(!singlePane)
+    useEffect(() => {
+        if (narrow && showedBoth.current) setMobilePane('chat')
+        showedBoth.current = !singlePane
+    }, [narrow, singlePane])
     useEffect(() => {
         const target = focusAfterSwitch.current || (previousMode.current === 'alldone' && active ? 'chat' : null)
         previousMode.current = layoutMode
@@ -1088,9 +1105,15 @@ export default function AnnaShell({ children, routeId }) {
             </div>
         </header>
     )
+    // What the window shows: the chat alone (chat only, or a narrow window with the chat in front),
+    // the screen alone (a narrow window with the screen in front), both, or plain Alldone.
+    const chatAlone = active && (chatOnly || (narrow && mobilePane === 'chat'))
+    const screenAlone = active && !chatOnly && narrow && mobilePane !== 'chat'
+    const shownLayout = chatAlone ? 'chat' : screenAlone ? (surface === 'alldone' ? 'alldone' : null) : layoutMode
     const topStrip = (
         <AnnaTopStrip
-            layout={layoutMode}
+            layout={shownLayout}
+            canSplit={splitFits}
             assistantName={headerAssistantName}
             photo={photo}
             openTasksAmount={openTasksAmount}
@@ -1100,7 +1123,7 @@ export default function AnnaShell({ children, routeId }) {
 
     const content = (
         <div
-            className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}`}
+            className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${narrow ? ' anna-narrow' : ''}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
                 '--anna-ink': colors.Text01,
@@ -1126,8 +1149,8 @@ export default function AnnaShell({ children, routeId }) {
                     ref={chatPane}
                     tabIndex={-1}
                     aria-label={translate('Conversation with %{assistantName}', { assistantName })}
-                    aria-hidden={!active || (!chatOnly && mobile && mobilePane !== 'chat')}
-                    inert={!active || (!chatOnly && mobile && mobilePane !== 'chat') ? '' : undefined}
+                    aria-hidden={!active || (!chatOnly && singlePane && mobilePane !== 'chat')}
+                    inert={!active || (!chatOnly && singlePane && mobilePane !== 'chat') ? '' : undefined}
                 >
                     {!mobile && header}
                     {active && !visibleWorkspace && pendingNotice}
@@ -1178,7 +1201,7 @@ export default function AnnaShell({ children, routeId }) {
                                         onResumeHandled={id =>
                                             setResumeRequest(current => (current?.id === id ? null : current))
                                         }
-                                        visible={active && (chatOnly || !mobile || mobilePane === 'chat')}
+                                        visible={active && (chatOnly || !singlePane || mobilePane === 'chat')}
                                         active={active}
                                         onExpand={() => setMobilePane('chat')}
                                         onSendingChange={setTextBusy}
@@ -1215,7 +1238,7 @@ export default function AnnaShell({ children, routeId }) {
                     aria-valuemax={maxChatWidth}
                     aria-valuenow={chatWidth}
                     aria-valuetext={`${Math.round(chatWidth)}px`}
-                    tabIndex={active && !chatOnly && !mobile ? 0 : -1}
+                    tabIndex={active && !chatOnly && !singlePane ? 0 : -1}
                     onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)}
                     onPointerMove={event => {
                         if (event.currentTarget.hasPointerCapture(event.pointerId)) {

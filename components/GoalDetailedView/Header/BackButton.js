@@ -1,6 +1,7 @@
 import React from 'react'
 import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
+import { selectSidebarExpanded } from '../../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
 import Icon from '../../Icon'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH, colors } from '../../styles/global'
@@ -17,7 +18,7 @@ export default function BackButton({ projectId, goal }) {
     const dispatch = useDispatch()
     const lastVisitedScreen = useSelector(state => state.lastVisitedScreen)
     const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
-    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
+    const sidebarExpanded = useSelector(selectSidebarExpanded)
 
     const onPress = () => {
         const commonPath = getDvLink(projectId, goal.id, 'goals')
