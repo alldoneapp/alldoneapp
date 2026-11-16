@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Keyboard, Text, TextInput, TouchableOpacity } from 'react-native'
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
@@ -87,6 +87,8 @@ jest.mock('./helper', () => ({
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => 'AssistantTaskSearchButtonWrapper')
 // The switcher reaches the popover/modal stack; its own behaviour is AssistantSwitchControl.test.js.
 jest.mock('../AssistantSwitchControl', () => 'AssistantSwitchControl')
+jest.mock('../../../RageMode/RageModeButton', () => 'RageModeButton')
+jest.mock('../../../Anna/AssistantModeButton', () => 'AssistantModeButton')
 
 jest.mock('./AssistantAvatarButton', () => {
     const React = require('react')
@@ -144,6 +146,13 @@ const renderOptions = async (props = {}) => {
     return tree
 }
 
+// The style of the nearest View around a node (react-test-renderer adds host wrappers between).
+const styleAround = node => {
+    let current = node.parent
+    while (current && !current.props.style) current = current.parent
+    return StyleSheet.flatten(current?.props.style)
+}
+
 describe('AssistantOptions layout', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -158,10 +167,36 @@ describe('AssistantOptions layout', () => {
         expect(templates[0].props.preferredProjectId).toBe('selected-project')
     })
 
-    it('has no game button: rage mode moved to the Empty inbox card', async () => {
+    // AT-3034: rage mode is back at the top right of the header (and stays on the Empty inbox card).
+    it('puts the rage mode crosshair at the right of the header, beside the avatar it launches from', async () => {
         const tree = await renderOptions()
 
-        expect(JSON.stringify(tree.toJSON())).not.toContain('Rage mode')
+        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
+        const rage = header.findAllByType('RageModeButton')
+        expect(rage).toHaveLength(1)
+        expect(styleAround(rage[0])).toMatchObject({ position: 'absolute', right: 0 })
+        expect(header.findByProps({ nativeID: 'rage-mode-launch-anchor' })).toBeTruthy()
+    })
+
+    // AT-3034: assistant mode starts from the top left of the line, with the line's assistant.
+    it('starts assistant mode from the top left of the header with the line project and assistant', async () => {
+        const tree = await renderOptions({ assistantModeProjectId: 'selected-project' })
+
+        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
+        const button = header.findByType('AssistantModeButton')
+        expect(button.props).toMatchObject({
+            inline: true,
+            testID: 'assistant-line-assistant-mode',
+            projectId: 'selected-project',
+            assistantName: 'Assistant',
+        })
+        expect(styleAround(button)).toMatchObject({ position: 'absolute', left: 0 })
+    })
+
+    it('opens the default chat ("Automatic") when the line names no project', async () => {
+        const tree = await renderOptions()
+
+        expect(tree.root.findByType('AssistantModeButton').props.projectId).toBeNull()
     })
 
     it('puts the + and the mic into the toolbar instead of floating them in the field', async () => {
@@ -196,6 +231,9 @@ describe('AssistantOptions layout', () => {
         const tree = await renderOptions({ headerControls: <Text testID="edit-control">Edit</Text> })
 
         expect(tree.root.findByProps({ testID: 'edit-control' })).toBeTruthy()
+        // The assistant-mode button leads, the edit pencil follows it.
+        const side = tree.root.findByType('AssistantModeButton').parent
+        expect(side.findByProps({ testID: 'edit-control' })).toBeTruthy()
     })
 
     // AT-2355: the mic used to appear only on hover/focus, i.e. on touch only after the field had
@@ -324,6 +362,49 @@ describe('AssistantOptions layout', () => {
     })
 })
 
+describe('AssistantOptions empty composer mic (AT-3025)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    const findSend = tree =>
+        tree.root.findAllByType(TouchableOpacity).find(node => node.props.accessibilityLabel === 'Send')
+
+    it('hands the field the send slot and says whether the composer is empty', async () => {
+        const tree = await renderOptions()
+        const input = () => tree.root.findByType(TextInput)
+
+        expect(input().props.sendSlotDictation).toEqual(
+            expect.objectContaining({ empty: true, style: expect.anything() })
+        )
+        await act(async () => {
+            input().props.onChangeText('Hello')
+        })
+        expect(input().props.sendSlotDictation.empty).toBe(false)
+        await act(async () => {
+            input().props.onChangeText('   ')
+        })
+        expect(input().props.sendSlotDictation.empty).toBe(true)
+    })
+
+    it('replaces the send button while the mic sits in its slot, and brings it back after', async () => {
+        const tree = await renderOptions()
+        const input = () => tree.root.findByType(TextInput)
+        expect(findSend(tree)).toBeTruthy()
+
+        await act(async () => {
+            input().props.onSendSlotDictationChange(true)
+        })
+        expect(findSend(tree)).toBeUndefined()
+
+        await act(async () => {
+            input().props.onChangeText('Hello')
+            input().props.onSendSlotDictationChange(false)
+        })
+        expect(findSend(tree)).toBeTruthy()
+    })
+})
+
 describe('AssistantOptions mentions (AT-2592)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -356,6 +437,28 @@ describe('AssistantOptions greeting', () => {
         expect(greeting).toBeTruthy()
         expect(greeting.props.numberOfLines).toBe(1)
         expect(JSON.stringify(tree.toJSON())).not.toContain('What can I do for you today?')
+    })
+
+    // AT-3043: on a phone the greeting and the name both ellipsised ("Anna Alldo…" / "Wie kann
+    // ich helf…"). Mobile drops the greeting so the name (and the switcher's chevron) get the line.
+    it('leaves the greeting out on mobile and keeps the name, avatar and switcher', async () => {
+        mockState.smallScreenNavigation = true
+        try {
+            const plain = await renderOptions()
+            const texts = plain.root.findAllByType(Text).map(node => node.props.children)
+            expect(texts).not.toContain('How can I help?')
+            expect(texts).toContain('Assistant')
+            expect(plain.root.findByProps({ nativeID: 'rage-mode-launch-anchor' })).toBeTruthy()
+
+            const assistantSwitch = { groups: [], activeAssistantId: 'assistant-1', onSelect: jest.fn() }
+            const switched = await renderOptions({ assistantSwitch })
+            expect(switched.root.findByType('AssistantSwitchControl').props.label).toBe('Assistant')
+            expect(switched.root.findAllByType(Text).some(node => node.props.children === 'How can I help?')).toBe(
+                false
+            )
+        } finally {
+            mockState.smallScreenNavigation = false
+        }
     })
 
     it('is translated in every supported locale', () => {

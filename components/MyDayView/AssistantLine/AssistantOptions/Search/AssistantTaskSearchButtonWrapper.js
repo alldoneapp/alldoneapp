@@ -14,8 +14,20 @@ import { translate } from '../../../../../i18n/TranslationService'
  * every assistant in every project. It replaced the row of per-assistant task chips, the
  * Search pill and the More toggle. The tasks of the assistant the line is talking to are listed
  * first (`preferredAssistantId` / `preferredProjectId`).
+ *
+ * The Anna composer reuses it beside its + (AT-3032). There the button sits at the bottom of the
+ * chat pane, so it passes `position` (open upwards) and `getPopoverViewport`: without one the
+ * popover is constrained to the global workspace viewport and would jump into the workspace pane.
  */
-export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId, preferredProjectId, compact }) {
+const DEFAULT_POSITION = ['bottom', 'top', 'left', 'right']
+
+export default function AssistantTaskSearchButtonWrapper({
+    preferredAssistantId,
+    preferredProjectId,
+    compact,
+    position = DEFAULT_POSITION,
+    getPopoverViewport,
+}) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
@@ -58,7 +70,8 @@ export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId,
                 ) : null
             }
             align={'start'}
-            position={['bottom', 'top', 'left', 'right']}
+            position={position}
+            getViewport={getPopoverViewport}
             onClickOutside={closeModal}
             isOpen={isOpen}
             contentLocation={null}
@@ -72,9 +85,8 @@ export default function AssistantTaskSearchButtonWrapper({ preferredAssistantId,
                 accessibilityState={{ expanded: isOpen }}
                 testID="assistant-task-search-button"
             >
-                <Icon name="zap" size={16} color={colors.Text03} />
+                <Icon name="search" size={16} color={colors.Text03} />
                 {!compact && <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>}
-                {!compact && <Icon name="chevron-down" size={16} color={colors.Text03} />}
             </TouchableOpacity>
         </AppPopover>
     )
@@ -86,7 +98,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         height: 32,
         paddingLeft: 10,
-        paddingRight: 8,
+        paddingRight: 10,
         borderRadius: 16,
         borderWidth: 1,
         borderColor: colors.Grey300,
@@ -103,6 +115,5 @@ const localStyles = StyleSheet.create({
     text: {
         color: colors.Text02,
         marginLeft: 6,
-        marginRight: 2,
     },
 })

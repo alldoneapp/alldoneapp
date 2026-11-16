@@ -178,6 +178,38 @@ describe('popup palette scope', () => {
     })
 })
 
+describe('page palette scope', () => {
+    it('brings the dark values back for a page-designed card inside a dark-mode popup', () => {
+        jest.isolateModules(() => {
+            document.getElementById('alldone-color-mode')?.remove()
+            document.getElementById('alldone-color-mode-alpha')?.remove()
+            const mod = require('./colorMode')
+            mod.setColorModePreference('dark')
+            const css = document.getElementById('alldone-color-mode').textContent
+            const selector = `:root[data-theme="dark"] [${mod.PAGE_PALETTE_SCOPE_ATTRIBUTE}]{`
+            expect(mod.PAGE_PALETTE_SCOPE_ATTRIBUTE).toBe('data-ad-page-palette')
+            // Declared after the popup scope; the card's own declaration wins over the inherited one.
+            expect(css.indexOf(selector)).toBeGreaterThan(css.indexOf('[data-ad-popup]'))
+            const body = css.slice(css.indexOf(selector) + selector.length).split('}')[0]
+            expect(body).toContain(`--ad-Grey100:${mod.DARK_PALETTE.Grey100};`)
+            expect(body).toContain(`--ad-Text01:${mod.DARK_PALETTE.Text01};`)
+            expect(body).toContain(`--ad-UtilityBlue100:${mod.DARK_PALETTE.UtilityBlue100};`)
+            expect(body).toContain(`--ad-AccentText:${mod.DARK_PALETTE.AccentText};`)
+            // Popup surfaces are not touched by either scope.
+            expect(body).not.toContain('--ad-Popup:')
+            // Light mode is untouched: the scope only exists under data-theme="dark".
+            expect(css).not.toMatch(/:root\{[^}]*data-ad-page-palette/)
+
+            // Alpha variants and modeColor pairs follow the same scope.
+            const alpha = mod.alphaColor(mod.themed.Text03, 0.3)
+            const pair = mod.modeColor('#ABCDEF', '#123456')
+            const dynamic = document.getElementById('alldone-color-mode-alpha').textContent
+            expect(dynamic).toContain(`[data-ad-page-palette]{${alpha.slice(4, -1)}:rgba(134,146,167,0.3);}`)
+            expect(dynamic).toContain(`[data-ad-page-palette]{${pair.slice(4, -1)}:#123456;}`)
+        })
+    })
+})
+
 describe('modeColor', () => {
     it('returns one var per light/dark pair, light in light mode and popups, dark in dark mode', () => {
         const { modeColor, LIGHT_PALETTE, DARK_PALETTE } = require('./colorMode')

@@ -6,7 +6,8 @@ import React from 'react'
 import { StyleSheet, Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
-import Comment from './Comment'
+import Comment, { QUEUED_CONTENT_STYLE } from './Comment'
+import MessageSendStatus from '../../../ChatsView/ChatDV/EditorView/MessageSendStatus'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 
@@ -42,6 +43,9 @@ jest.mock('../../../ChatsView/Utils/ChatHelper', () => ({
     getTimestampInMilliseconds: value => value,
 }))
 jest.mock('../../../Icon', () => 'Icon')
+jest.mock('../../../../utils/backends/Chats/commentOutbox', () => ({
+    commentOutbox: { retry: jest.fn(() => Promise.resolve()), update: jest.fn(), remove: jest.fn() },
+}))
 jest.mock('../../Utils/HelperFunctions', () => ({
     parseFeedComment: text =>
         text
@@ -211,5 +215,66 @@ describe('feed Comment', () => {
 
         expect(tree.root.findByProps({ testID: 'friendly-progress' }).props.children).toBe('Friendly progress')
         expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
+    })
+
+    // AT-3037: the header row is 24px high. A queued note inside it wrapped past that height and
+    // lay over the comment text ("Jetzt senden / Entfernen" over the first line).
+    describe('queued comment (AT-3037)', () => {
+        const queuedPendingSend = { id: 'pending-1', userId: 'user-1', status: 'queued' }
+        const renderQueued = pendingSend =>
+            renderer.create(
+                <Comment {...defaultProps} linkedEmail={undefined} comment={{ ...defaultProps.comment, pendingSend }} />
+            )
+        const opacityOf = node => StyleSheet.flatten(node.props.style || {}).opacity ?? 1
+        const ancestorsOf = node => {
+            const chain = []
+            for (let parent = node.parent; parent; parent = parent.parent) chain.push(parent)
+            return chain
+        }
+
+        test('renders the queued note on its own line below the header, not inside it', () => {
+            const tree = renderQueued(queuedPendingSend)
+            const header = tree.root.findByProps({ testID: 'feed-comment-header' })
+            const content = tree.root.findByProps({ testID: 'feed-comment-content' })
+            const status = tree.root.findByType(MessageSendStatus)
+
+            expect(header.findAllByType(MessageSendStatus)).toHaveLength(0)
+            expect(content.findAllByType(MessageSendStatus)).toHaveLength(0)
+            expect(status.props).toEqual(
+                expect.objectContaining({ prominent: true, dark: true, pendingSend: queuedPendingSend })
+            )
+            // Header, note and content are siblings in the comment column, in that order.
+            const column = header.parent
+            const siblings = column.children.filter(child => typeof child !== 'string')
+            const index = node => siblings.findIndex(child => child === node || child.findAll(n => n === node).length)
+            expect(index(header)).toBeLessThan(index(status))
+            expect(index(status)).toBeLessThan(index(content))
+        })
+
+        test('dims the header and the text but keeps Send now / Remove fully opaque', () => {
+            const tree = renderQueued(queuedPendingSend)
+            const status = tree.root.findByType(MessageSendStatus)
+
+            expect(opacityOf(tree.root.findByProps({ testID: 'feed-comment-header' }))).toBe(
+                QUEUED_CONTENT_STYLE.opacity
+            )
+            expect(opacityOf(tree.root.findByProps({ testID: 'feed-comment-content' }))).toBe(
+                QUEUED_CONTENT_STYLE.opacity
+            )
+            expect(ancestorsOf(status).every(node => opacityOf(node) === 1)).toBe(true)
+            expect(status.findAllByProps({ accessibilityRole: 'button' }).length).toBeGreaterThanOrEqual(2)
+        })
+
+        test('keeps a pending or failed status inline in the header and does not dim the comment', () => {
+            for (const status of ['pending', 'failed']) {
+                const tree = renderQueued({ id: 'pending-2', userId: 'user-1', status })
+                const header = tree.root.findByProps({ testID: 'feed-comment-header' })
+
+                expect(header.findAllByType(MessageSendStatus)).toHaveLength(1)
+                expect(header.findByType(MessageSendStatus).props.prominent).toBeUndefined()
+                expect(opacityOf(header)).toBe(1)
+                expect(opacityOf(tree.root.findByProps({ testID: 'feed-comment-content' }))).toBe(1)
+            }
+        })
     })
 })

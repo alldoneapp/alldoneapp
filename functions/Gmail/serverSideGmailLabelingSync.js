@@ -1180,6 +1180,59 @@ async function addRoutingCommentsToCreatedGmailTasks({
     return commentResults
 }
 
+// The email a task was created from opens the task's chat (AT-3022); later mail of the thread is
+// added there by thread continuation. Best effort: a failed line never fails the created task.
+async function addOriginEmailToCreatedGmailTasks({
+    userId,
+    userData = {},
+    createdTaskResults = [],
+    normalizedMessage = {},
+    gmailData,
+    outgoing = false,
+    assistantId = '',
+    assistant = null,
+}) {
+    const createdTasks = (Array.isArray(createdTaskResults) ? createdTaskResults : []).filter(
+        result => result?.projectId && result?.taskId && !result.existing
+    )
+    if (createdTasks.length === 0) return []
+    const { appendOriginEmailToTask } = require('../Email/emailThreadContinuation')
+    const actor =
+        outgoing || !assistantId
+            ? { uid: userId, displayName: userData.displayName || 'Email', fromAssistant: false }
+            : { uid: assistantId, displayName: assistant?.displayName || 'Assistant', fromAssistant: true }
+    const results = []
+    for (const createdTask of createdTasks) {
+        try {
+            const result = await appendOriginEmailToTask({
+                database: admin.firestore(),
+                userId,
+                projectId: createdTask.projectId,
+                taskId: createdTask.taskId,
+                gmailData,
+                context: normalizedMessage,
+                actor,
+                outgoing,
+            })
+            if (result?.commentId) {
+                results.push({
+                    taskId: createdTask.taskId,
+                    projectId: createdTask.projectId,
+                    commentId: result.commentId,
+                })
+            }
+        } catch (error) {
+            console.warn('[gmailLabeling] Could not add the email to the task created from it', {
+                userId,
+                taskId: createdTask.taskId,
+                messageId: normalizedMessage.messageId || '',
+                error: error.message,
+            })
+        }
+    }
+    return results
+}
+
 async function resolvePostLabelThreadTopic({
     userId,
     userData,
@@ -1548,6 +1601,16 @@ async function executePostLabelPrompt({
             selectedProjectId,
             consistencyCheck,
         })
+        const originEmailCommentResults = await addOriginEmailToCreatedGmailTasks({
+            userId,
+            userData,
+            createdTaskResults: result?.createdTaskResults || [],
+            normalizedMessage,
+            gmailData: { ...threadGmailData, origin: 'gmail_label_follow_up', connectionProjectId },
+            outgoing: isOutgoing,
+            assistantId,
+            assistant,
+        })
         const taskLinkResult = await linkCreatedTaskInThreadTopic({
             threadTopic: routedThreadTopic,
             createdTaskResults: result?.createdTaskResults || [],
@@ -1595,6 +1658,7 @@ async function executePostLabelPrompt({
                 ? result.createdChatCommentResults
                 : [],
             routingCommentResults,
+            originEmailCommentResults,
             ...(threadTopicSummary
                 ? { threadTopic: { ...threadTopicSummary, ...(taskLinkResult ? { taskLinked: true } : {}) } }
                 : {}),

@@ -7,7 +7,7 @@ import useAnnaActivityNotices from './useAnnaActivityNotices'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import { markChatCommentsAsRead } from '../../utils/backends/Chats/markChatCommentsAsRead'
 
-jest.mock('../Icon', () => () => null)
+jest.mock('../Icon', () => ({ __esModule: true, default: () => null, getIconGlyph: () => '' }))
 jest.mock('../Feeds/FollowSwitchableTag/AmountTag', () => ({ feedAmount, isFollowedButton }) => (
     <span data-testid="chat-badge" data-red={isFollowedButton}>
         {feedAmount}

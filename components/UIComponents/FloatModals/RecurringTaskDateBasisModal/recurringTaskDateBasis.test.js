@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import {
+    getNextRecurrenceDatePreview,
     getRecurrenceDateBasisOptions,
     isRecurringTaskOverdue,
     RECURRENCE_BASIS_ORIGINAL,
@@ -135,5 +136,44 @@ describe('the base date sent to the server', () => {
         expect(moment(toRecurrenceBaseDate(at('2026-10-28T23:59:59'))).format('YYYY-MM-DD HH:mm')).toBe(
             '2026-10-28 12:00'
         )
+    })
+})
+
+describe('AT-3049: the preview of the next occurrence', () => {
+    const day = value => (value === null ? null : moment(value).format('ddd YYYY-MM-DD HH:mm'))
+    const task = recurringTask({ startTime: '09:00' })
+
+    test('weekly from today is one week after today, at the task time', () => {
+        expect(day(getNextRecurrenceDatePreview(task, NOW, NOW))).toBe('Wed 2026-11-04 09:00')
+    })
+
+    test('weekly from a stale date skips ahead on its own weekday, never into the past', () => {
+        expect(day(getNextRecurrenceDatePreview(task, at('2026-10-12T09:00:00'), NOW))).toBe('Mon 2026-11-02 09:00')
+    })
+
+    test('daily from today is tomorrow; from yesterday, a later task time can still be today', () => {
+        const daily = recurringTask({ recurrence: 'daily', startTime: '18:00' })
+        expect(day(getNextRecurrenceDatePreview(daily, NOW, NOW))).toBe('Thu 2026-10-29 18:00')
+        expect(day(getNextRecurrenceDatePreview(daily, at('2026-10-27T09:00:00'), NOW))).toBe('Wed 2026-10-28 18:00')
+    })
+
+    test('object-shaped and custom recurrences are understood', () => {
+        expect(
+            day(
+                getNextRecurrenceDatePreview(
+                    recurringTask({ recurrence: { type: 'daily' }, startTime: '09:00' }),
+                    NOW,
+                    NOW
+                )
+            )
+        ).toBe('Thu 2026-10-29 09:00')
+        expect(
+            day(getNextRecurrenceDatePreview(recurringTask({ recurrence: 'custom:10', startTime: '09:00' }), NOW, NOW))
+        ).toBe('Sat 2026-11-07 09:00')
+    })
+
+    test('nothing to preview for Someday or an unknown recurrence', () => {
+        expect(getNextRecurrenceDatePreview(task, Number.MAX_SAFE_INTEGER, NOW)).toBeNull()
+        expect(getNextRecurrenceDatePreview(recurringTask({ recurrence: 'fortnightly' }), NOW, NOW)).toBeNull()
     })
 })

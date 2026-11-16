@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import Icon from '../Icon'
+import Icon, { getIconGlyph } from '../Icon'
 import AnnaTimestamp from './AnnaTimestamp'
 import { isBrowserOffline } from '../../utils/connectionState'
 import { translate } from '../../i18n/TranslationService'
@@ -97,6 +97,8 @@ function ActivityPreview({ text }) {
 
 // The actions of one row. Repeated state changes ("Notiz aktualisiert" twice, or the old German +
 // English pair of one completion) read once; each chat message is distinct content, so those count.
+// `text` names the action on its own (the title of a row that is not enriched yet); `label` is the
+// small type tag at the bottom of a card (AT-3046: "💬 Antwort", "✓ Aufgabe als erledigt markiert").
 export function summarizeAnnaActivityActions(entries) {
     const actions = []
     const feedActions = new Set()
@@ -109,61 +111,96 @@ export function summarizeAnnaActivityActions(entries) {
         const action = getAnnaActivityAction(entry)
         if (feedActions.has(action)) return
         feedActions.add(action)
-        actions.push(action)
+        actions.push({ text: action, label: action, icon: 'check' })
     })
-    if (messages === 1) actions.push(translate('New chat message'))
-    if (messages > 1) actions.push(translate('Anna activity new messages', { count: messages }))
+    if (messages === 1)
+        actions.push({
+            text: translate('New chat message'),
+            label: translate('Anna activity reply'),
+            icon: 'message-circle',
+        })
+    if (messages > 1)
+        actions.push({
+            text: translate('Anna activity new messages', { count: messages }),
+            label: translate('Anna activity replies', { count: messages }),
+            icon: 'message-circle',
+        })
     return actions
 }
 
-export function AnnaActivityGroup({ notices, onChange }) {
+// AT-3046: "Project · Actor" repeats what the day divider already says for most rows. A card names
+// them only when the row comes from another project, or from someone other than the thread's
+// assistant. Without a context (a row drawn on its own) the line always shows.
+export function isForeignAnnaActivity({ projectId, actors }, context) {
+    if (!context) return true
+    if (context.projectId && projectId && projectId !== context.projectId) return true
+    const assistantName = context.assistantName?.trim()
+    return actors.some(actor => actor.trim() !== assistantName)
+}
+
+// One card per row (AT-3046, variant C): the whole card is the link, the time sits in the title
+// line, a blue edge marks a row whose item is still unread (a grey one when read), and the type of
+// the update is a small label at the bottom.
+export function AnnaActivityGroup({ notices, onChange, unread = false, context = null }) {
     const contents = useAnnaActivityContents(notices, onChange)
     const entries = notices.map((notice, index) => ({ ...notice, content: contents[index] }))
     const last = entries[entries.length - 1]
     const objectName = [...entries].reverse().find(entry => entry.content?.objectName)?.content.objectName || ''
     const actions = summarizeAnnaActivityActions(entries)
+    const actionsText = actions.map(action => action.text).join(' · ')
     const preview = [...entries].reverse().find(entry => entry.content?.preview)?.content.preview || ''
     const actors = [...new Set(entries.map(entry => entry.content?.actorName).filter(Boolean))]
     const projectName = useAnnaActivityProjectName(last)
-    // Always the first line, project before people (AT-2906): rows from several projects are
-    // told apart before reading them.
+    const projectId = getAnnaActivityObject(last)?.projectId || last.sourceProjectId
+    // Project before people (AT-2906): rows from several projects are told apart before reading them.
     const metadata = [projectName, actors.join(', ')].filter(Boolean).join(' · ')
+    const showMetadata = isForeignAnnaActivity({ projectId, actors }, context)
     const target = getAnnaActivityTarget(entries)
 
     return (
         <p
             className="anna-context-notice anna-activity-notice"
             data-anna-activity-count={entries.length > 1 ? entries.length : undefined}
+            data-anna-activity-unread={unread ? '' : undefined}
         >
-            <a href={target} data-anna-activity-link="">
+            <a
+                href={target}
+                data-anna-activity-link=""
+                className={`anna-activity-card${unread ? ' anna-activity-card-unread' : ''}`}
+            >
                 <span className="anna-activity-content">
-                    <span className="anna-activity-meta">{metadata}</span>
-                    {objectName ? (
-                        <>
-                            <span className="anna-activity-title" title={objectName}>
-                                {objectName}
-                            </span>
-                            <span className="anna-activity-actions">
-                                {actions.map((action, index) => (
-                                    // One line with an ellipsis at the row's width (AT-2918);
-                                    // the title keeps the full text reachable.
-                                    <span className="anna-activity-action" key={index} title={action}>
-                                        {action}
-                                    </span>
-                                ))}
-                            </span>
-                        </>
-                    ) : (
-                        // Not enriched (yet, or unreadable): the action is the most useful title.
-                        <span className="anna-activity-title" title={actions.join(' · ')}>
-                            {actions.join(' · ')}
+                    {showMetadata ? (
+                        <span className="anna-activity-meta" title={metadata}>
+                            {metadata}
                         </span>
-                    )}
+                    ) : null}
+                    <span className="anna-activity-head">
+                        {/* Not enriched (yet, or unreadable): the action is the most useful title. */}
+                        <span className="anna-activity-title" title={objectName || actionsText}>
+                            {objectName || actionsText}
+                        </span>
+                        <AnnaTimestamp timestamp={last.created} />
+                    </span>
                     {preview ? <ActivityPreview text={preview} /> : null}
+                    {objectName ? (
+                        <span className="anna-activity-actions">
+                            {actions.map((action, index) => (
+                                // One line with an ellipsis at the card's width (AT-2918); the
+                                // title keeps the full text reachable. The type icon is the icon
+                                // font's glyph drawn by CSS, so the label stays plain text.
+                                <span
+                                    className="anna-activity-action"
+                                    key={index}
+                                    title={action.label}
+                                    data-icon={getIconGlyph(action.icon) || undefined}
+                                >
+                                    {action.label}
+                                </span>
+                            ))}
+                        </span>
+                    ) : null}
                 </span>
-                <Icon name="arrow-right" size={14} color="currentColor" />
             </a>
-            <AnnaTimestamp timestamp={last.created} />
         </p>
     )
 }

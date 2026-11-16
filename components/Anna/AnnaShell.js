@@ -5,8 +5,15 @@ import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
-import { getAnnaProjectChoices } from './annaProjectSelection'
-import AnnaProjectSwitcher from './AnnaProjectSwitcher'
+import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
+import {
+    getAnnaWorkspacePlanKey,
+    resolveAnnaChoiceForWorkspace,
+    syncAnnaWorkspaceProject,
+} from './annaWorkspaceProjectSync'
+import useAnnaWorkspaceProjectFollow from './useAnnaWorkspaceProjectFollow'
+import AnnaProjectSwitcher, { canSwitchAnnaProject } from './AnnaProjectSwitcher'
+import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
 import AnnaConversation from './AnnaConversation'
@@ -21,7 +28,10 @@ import AnnaTopStrip from './AnnaTopStrip'
 import AnnaTopStripContext, { ANNA_PHONE_QUERY, isAnnaPhoneWindow } from './AnnaTopStripContext'
 import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
-import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNavigationContext'
+import AnnaChatNavigationContext, {
+    AnnaSidebarCloseContext,
+    AnnaSidebarProjectContext,
+} from './AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
@@ -39,12 +49,14 @@ import { setAnnaMode, setAnnaLayout, useAnnaLayout } from '../../utils/annaMode'
 import useAnnaChatWidth, { MIN_CHAT_WIDTH } from './useAnnaChatWidth'
 import NavigationService from '../../utils/NavigationService'
 import navigateToHome from '../../utils/navigateToHome'
+import store from '../../redux/store'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
+import { ANNA_THEME_VARIABLES } from './annaThemeVariables'
 import AnnaAppPaneContext from './AnnaAppPaneContext'
 import { McpAppFrame, mcpAppKey } from '../ChatsView/ChatDV/EditorView/McpAppViews'
 import EmbeddedAppFrame from '../UIComponents/FloatModals/IframeModal/EmbeddedAppFrame'
@@ -84,6 +96,42 @@ const settleWithin = (promise, ms) =>
             })
     })
 
+// AT-3034: popover viewports for the header's assistant picker.
+const rectViewport = rect =>
+    rect && {
+        x: rect.left,
+        y: rect.top,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        active: true,
+    }
+const windowViewport = () =>
+    rectViewport({
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight,
+    })
+
+// AT-3036 follow-up: focus the person (or another dialog) put into a field outside the chat, e.g.
+// a task title in the workspace or an open modal, is theirs; a finished switch does not take it.
+const isFocusHeldElsewhere = chatPane => {
+    const element = document.activeElement
+    if (!element || element === document.body || chatPane?.contains(element)) return false
+    if (element.closest?.('[aria-modal="true"]')) return true
+    return (
+        element.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) ||
+        element.getAttribute?.('role') === 'textbox'
+    )
+}
+
 // Always mounted around the same route subtree, including in fullscreen Alldone. A layout switch
 // must never destroy a note editor, an unsent message, a selection, or the workspace scroll state.
 export default function AnnaShell({ children, routeId }) {
@@ -94,6 +142,7 @@ export default function AnnaShell({ children, routeId }) {
     const autoFollow = useRef(false)
     autoFollow.current = active && !chatOnly
     const user = useSelector(state => state.loggedUser)
+    const dispatch = useDispatch()
     const openTasksAmount = useSelector(state =>
         getAllProjectsOpenTasksAmount(
             state.sidebarNumbers,
@@ -126,6 +175,7 @@ export default function AnnaShell({ children, routeId }) {
         error,
         retry,
         threads,
+        otherThreads,
         resolveConversation,
         loadEarlier,
         nextBefore,
@@ -186,10 +236,25 @@ export default function AnnaShell({ children, routeId }) {
     // AT-2914: a project picked in the switcher is shown in the chat history (locally only).
     const [projectSwitch, setProjectSwitch] = useState(null)
     const projectSwitchSequence = useRef(0)
+    const chatPane = useRef(null)
+    // AT-3036 follow-up: the person opening a project in the workspace moves the chat there (the
+    // handler is set below, once `selectProject` exists). Presses in the chat pane or the Anna
+    // header are the chat's side; everything else, including body portals, the workspace's.
+    const followWorkspace = useRef(null)
+    // AT-3036 follow-up: a project picked in the chat sidebar waits here (its target project) to
+    // focus the composer once that project's chat is on screen. Any other selection drops it.
+    const chatSwitchFocus = useRef(null)
+    const { expectSync: expectWorkspaceSync } = useAnnaWorkspaceProjectFollow({
+        active,
+        isChatSide: target => !!target && (!!chatPane.current?.contains(target) || !!target.closest?.('.anna-header')),
+        follow: workspaceKey => followWorkspace.current?.(workspaceKey),
+    })
     const selectProject = useCallback(
-        projectId => {
+        (projectId, { syncWorkspace = true } = {}) => {
             setProjectNotice('')
-            const targetId = projectId || user.defaultProjectId
+            chatSwitchFocus.current = null
+            // "Automatic" (AT-3024) continues the default project's chat.
+            const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
             const currentId = activeProjectId || conversation?.projectId || user.defaultProjectId
             if (targetId && targetId !== currentId) {
                 projectSwitchSequence.current += 1
@@ -204,8 +269,21 @@ export default function AnnaShell({ children, routeId }) {
                 })
             }
             projectSelection.select(projectId)
+            // AT-3036: a choice made in the chat moves the Alldone workspace to the same project,
+            // synchronously, so the latest of several quick picks is the one that stays.
+            if (syncWorkspace) {
+                syncAnnaWorkspaceProject(projectId, {
+                    getState: store.getState,
+                    // Announced before it happens, so the follow below never bounces it back.
+                    onPlan: plan => expectWorkspaceSync(getAnnaWorkspacePlanKey(plan)),
+                    dispatch,
+                    navigate: route => NavigationService.navigate(route),
+                })
+            }
         },
         [
+            dispatch,
+            expectWorkspaceSync,
             projectSelection.select,
             user.defaultProjectId,
             activeProjectId,
@@ -268,7 +346,6 @@ export default function AnnaShell({ children, routeId }) {
     const [navigationError, setNavigationError] = useState('')
     const workspaceContent = useRef(null)
     const layout = useRef(null)
-    const chatPane = useRef(null)
     const chatConversation = useRef(null)
     const workspaceStage = useRef(null)
     const focusAfterSwitch = useRef(active ? 'chat' : null)
@@ -308,6 +385,54 @@ export default function AnnaShell({ children, routeId }) {
         chatPane.current?.focus({ preventScroll: true })
         awaitingChatInputFocus.current = !chatConversation.current
         chatConversation.current?.focusInput()
+    }, [])
+    // AT-3036 follow-up: after a project switch picked in the chat sidebar (composer chip, assistant
+    // picker at the top left, "Chats in other projects"), the composer takes focus once the new
+    // project's chat is loaded and on screen, so the person can type right away; the draft stays.
+    // Desktop only (decided with the product owner): on a phone the keyboard would cover the chat
+    // that just opened. Switches from the workspace or an assistant line never focus here, the
+    // latest pick wins, and any press while the chat loads (in the workspace, the chat, a menu)
+    // drops the pending focus, so it never takes over from what the person did meanwhile.
+    const chatInputFocusAllowed = useRef(false)
+    chatInputFocusAllowed.current = active && !mobile
+    const focusChatInputAfterSwitch = useCallback(() => {
+        if (!chatInputFocusAllowed.current || isFocusHeldElsewhere(chatPane.current)) return
+        focusChatInput()
+    }, [focusChatInput])
+    const selectProjectFromChat = useCallback(
+        projectId => {
+            const targetId = projectId && projectId !== ANNA_AUTOMATIC_PROJECT ? projectId : user.defaultProjectId
+            // e.g. "Automatic" -> the default project picked explicitly: the chat stays as it is.
+            const alreadyShown = !switching && !!conversation && conversation.projectId === targetId
+            selectProject(projectId)
+            if (!conversation || !chatInputFocusAllowed.current) return
+            if (alreadyShown) focusChatInputAfterSwitch()
+            else chatSwitchFocus.current = { projectId: targetId }
+        },
+        [selectProject, focusChatInputAfterSwitch, user.defaultProjectId, switching, conversation]
+    )
+    // Called by the conversation once a switch has ended and its messages are rendered. A switch
+    // only ends in the latest selected project, so a different project here means it was refused.
+    const chatSwitchSettled = useCallback(
+        projectId => {
+            const pending = chatSwitchFocus.current
+            chatSwitchFocus.current = null
+            if (pending?.projectId === projectId) focusChatInputAfterSwitch()
+        },
+        [focusChatInputAfterSwitch]
+    )
+    useEffect(() => {
+        const drop = () => {
+            chatSwitchFocus.current = null
+        }
+        // Capture phase: runs before the press's own handler, so a pick made by this very press
+        // (a menu option, a jump, Enter in the menu's search) is armed after the drop.
+        document.addEventListener('pointerdown', drop, true)
+        document.addEventListener('keydown', drop, true)
+        return () => {
+            document.removeEventListener('pointerdown', drop, true)
+            document.removeEventListener('keydown', drop, true)
+        }
     }, [])
     const selectSurface = nextSurface => {
         if (singlePane && nextSurface === 'alldone') {
@@ -430,7 +555,6 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(false)
     }, [])
-    const dispatch = useDispatch()
     // The header's Home button always lands on the open task list, never on whatever
     // page the workspace happened to show last (AT-2920). The X keeps that page.
     const goHome = useCallback(() => {
@@ -487,19 +611,60 @@ export default function AnnaShell({ children, routeId }) {
         chatConversation.current?.focusInput()
         chatConversation.current?.scrollToLatest()
     }, [latestChatRequest])
-    const openChat = useCallback(() => {
-        requestGeneration.current++
-        // Reveal and mount the editor within the gesture, including on desktop.
-        // Mobile browsers need this synchronous focus to open the keyboard.
-        flushSync(() => {
-            setVisited(true)
-            setMobilePane('chat')
-            setAnnaMode(true)
+    // AT-3034: the assistant line's entry button hands over its project, so the sidebar continues
+    // with the assistant the line showed: that project's chat, or "Automatic" (the default
+    // project's chat) for the default project and the "All projects" line. The composer's own
+    // switcher rules apply: no switch during a call or offline, and only to a selectable project.
+    // An explicit pick of the default project already continues the default chat, so it stays.
+    const followLineProject = useCallback(
+        options => {
+            if (!options || !Object.prototype.hasOwnProperty.call(options, 'projectId')) return
+            if (call.status !== 'idle' || offline) return
+            const requested = options.projectId
+            const automatic = !requested || requested === user.defaultProjectId
+            if (automatic) {
+                if (!projectSelection.isDefault) selectProject(ANNA_AUTOMATIC_PROJECT, { syncWorkspace: false })
+            } else if (requested !== projectSelection.choiceId && isAnnaProjectSelectable(user, requested)) {
+                // The line already shows its project in the workspace (AT-3036: no loop back).
+                selectProject(requested, { syncWorkspace: false })
+            }
+        },
+        [call.status, offline, user, projectSelection.isDefault, projectSelection.choiceId, selectProject]
+    )
+    // AT-3036 follow-up: the person opened a project (or All projects) in the workspace, so the chat
+    // continues there: that project's daily chat with its assistant (`resolveAnnaChoiceForWorkspace`).
+    // The same limits as the line entry apply (no switch during a call or offline), and the
+    // workspace is not moved back, since it is already there.
+    followWorkspace.current = workspaceKey => {
+        if (call.status !== 'idle' || offline) return
+        const next = resolveAnnaChoiceForWorkspace({
+            user,
+            workspaceKey,
+            choiceId: projectSelection.choiceId,
+            isDefault: projectSelection.isDefault,
         })
-        focusAfterSwitch.current = null
-        focusChatInput()
-        chatConversation.current?.scrollToLatest()
-    }, [focusChatInput])
+        if (next) selectProject(next, { syncWorkspace: false })
+    }
+    // Through a ref, so the context value (and every entry button) stays stable across user updates.
+    const followLineProjectRef = useRef(followLineProject)
+    followLineProjectRef.current = followLineProject
+    const openChat = useCallback(
+        options => {
+            followLineProjectRef.current(options)
+            requestGeneration.current++
+            // Reveal and mount the editor within the gesture, including on desktop.
+            // Mobile browsers need this synchronous focus to open the keyboard.
+            flushSync(() => {
+                setVisited(true)
+                setMobilePane('chat')
+                setAnnaMode(true)
+            })
+            focusAfterSwitch.current = null
+            focusChatInput()
+            chatConversation.current?.scrollToLatest()
+        },
+        [focusChatInput]
+    )
     const showAlldoneNavigation = useCallback(() => {
         if (!active) return
         requestGeneration.current++
@@ -540,6 +705,7 @@ export default function AnnaShell({ children, routeId }) {
     }, [active, visited, conversation])
     useEffect(() => {
         if (!active) {
+            chatSwitchFocus.current = null
             requestGeneration.current++
             followedBrowser.current = null
             setSurface('alldone')
@@ -951,7 +1117,7 @@ export default function AnnaShell({ children, routeId }) {
                   })
                 : workspacePage && { ...workspacePage, surface }
 
-    // What the desktop screen picker offers; each entry says what it would show.
+    // What the screen pickers offer (desktop menu, mobile select); each entry says what it would show.
     const browserHost = (() => {
         try {
             return currentBrowserPage?.url ? new URL(currentBrowserPage.url).hostname : ''
@@ -977,12 +1143,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         ...appViews.map(view => ({ value: `app:${view.viewId}`, label: appViewLabel(view), icon: 'box' })),
     ]
-    const getChatViewport = () => {
-        const pane = chatPane.current?.getBoundingClientRect?.()
-        if (!pane) return null
-        const { top, left, right, bottom, width, height } = pane
-        return { top, left, right, bottom, width, height, active: true }
-    }
 
     const pendingNotice = pending && (
         <div className="anna-pending" role="status">
@@ -1002,15 +1162,19 @@ export default function AnnaShell({ children, routeId }) {
         </div>
     )
 
-    // Desktop assistant mode: the view switch, the home count and leaving assistant mode live in the
-    // top strip (AnnaTopStrip), so the chat's header keeps only who answers and what the screen
-    // shows. Mobile keeps its own header controls, including the native picker and the X.
+    // Desktop: the view switch, the home count and leaving assistant mode live in the top strip
+    // (AnnaTopStrip), so the chat's header keeps who answers (AT-3047: the name picks another
+    // assistant) and what the screen shows (AnnaScreenPicker). Mobile keeps its own header controls:
+    // the home count, the close control (AT-3042) and the native picker at the far right (AT-3045).
+    const assistantPickerProjectId = projectSelection.isAutomatic ? ANNA_AUTOMATIC_PROJECT : activeProjectId
+    // AT-3047: whenever there is another assistant to pick, the name itself opens the picker.
+    const assistantNamePicks = canSwitchAnnaProject(projectChoices, assistantPickerProjectId)
     const header = (
         <header className={`anna-header${!mobile ? ' anna-header-sidebar' : ''}`}>
             <div className="anna-header-left">
                 <button
                     type="button"
-                    className="anna-header-assistant"
+                    className={`anna-header-assistant${assistantNamePicks ? ' anna-header-assistant-avatar' : ''}`}
                     title={`${headerAssistantName} – ${translate('Latest messages')}`}
                     aria-label={`${headerAssistantName} – ${translate('Latest messages')}`}
                     onClick={showLatestChat}
@@ -1018,8 +1182,24 @@ export default function AnnaShell({ children, routeId }) {
                     <span className="anna-small-avatar">
                         {photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}
                     </span>
-                    <strong className="anna-brand">{headerAssistantName}</strong>
+                    {!assistantNamePicks && <strong className="anna-brand">{headerAssistantName}</strong>}
                 </button>
+                {/* AT-3034: pick another assistant for the sidebar chat. Same state as the
+                    composer's project chip; listed by assistant instead of by project.
+                    AT-3047: name and chevron are one button, so the whole name opens it. */}
+                <AnnaProjectSwitcher
+                    variant="assistant"
+                    name={headerAssistantName}
+                    choices={projectChoices}
+                    activeProjectId={assistantPickerProjectId}
+                    onSelect={selectProjectFromChat}
+                    disabled={offline || call.status !== 'idle'}
+                    busy={switching}
+                    // The mobile header spans the window; on desktop it sits in the chat pane.
+                    getViewport={() =>
+                        mobile ? windowViewport() : rectViewport(chatPane.current?.getBoundingClientRect?.())
+                    }
+                />
             </div>
             {mobile && (
                 <button
@@ -1043,40 +1223,13 @@ export default function AnnaShell({ children, routeId }) {
                 </button>
             )}
             <div className="anna-header-right">
-                {mobile ? (
-                    <label className="anna-header-picker">
-                        <select
-                            aria-label={translate('Workspace')}
-                            value={!visibleWorkspace ? '' : vmSurface ? 'vms' : surface}
-                            onChange={event => {
-                                if (event.target.value === 'chat') backToChat()
-                                else selectSurface(event.target.value)
-                            }}
-                        >
-                            {!visibleWorkspace && (
-                                // A mobile selection opens that pane, including when reopening the same surface.
-                                <option value="" disabled hidden>
-                                    {vmSurface ? translate('VMs') : surfaceLabel}
-                                </option>
-                            )}
-                            {visibleWorkspace && <option value="chat">{translate('Back to chat')}</option>}
-                            {screenOptions.map(option => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                        <span aria-hidden="true">
-                            <Icon name="chevron-down" size={14} color="currentColor" />
-                        </span>
-                    </label>
-                ) : (
+                {!mobile && (
                     <AnnaScreenPicker
                         options={screenOptions}
                         value={vmSurface ? 'vms' : surface}
                         label={vmSurface ? translate('VMs') : surfaceLabel}
                         onSelect={selectSurface}
-                        getViewport={getChatViewport}
+                        getViewport={() => rectViewport(chatPane.current?.getBoundingClientRect?.())}
                     />
                 )}
                 {visibleWorkspace && selectedAppView?.kind === 'iframe' && (
@@ -1092,15 +1245,47 @@ export default function AnnaShell({ children, routeId }) {
                     </button>
                 )}
                 {mobile && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle anna-header-close"
-                        aria-label={translate('Close assistant chat')}
-                        title={translate('Close assistant chat')}
-                        onClick={closeChat}
-                    >
-                        <Icon name="x" size={20} color="currentColor" />
-                    </button>
+                    <>
+                        {/* AT-3042: the counterpart to the assistant line's panel button (chevron
+                            pointing right) closes the chat instead of an X. */}
+                        <button
+                            type="button"
+                            className="anna-pane-toggle anna-header-close"
+                            aria-label={translate('Close assistant chat')}
+                            title={translate('Close assistant chat')}
+                            onClick={closeChat}
+                        >
+                            <AssistantModeIcon expanded color="currentColor" />
+                        </button>
+                        {/* AT-3045: the workspace picker chooses the pane shown, so it sits at the far
+                            right and its chevron points right. */}
+                        <label className="anna-header-picker">
+                            <select
+                                aria-label={translate('Workspace')}
+                                value={!visibleWorkspace ? '' : vmSurface ? 'vms' : surface}
+                                onChange={event => {
+                                    if (event.target.value === 'chat') backToChat()
+                                    else selectSurface(event.target.value)
+                                }}
+                            >
+                                {!visibleWorkspace && (
+                                    // A mobile selection opens that pane, including when reopening the same surface.
+                                    <option value="" disabled hidden>
+                                        {vmSurface ? translate('VMs') : surfaceLabel}
+                                    </option>
+                                )}
+                                {visibleWorkspace && <option value="chat">{translate('Back to chat')}</option>}
+                                {screenOptions.map(option => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span aria-hidden="true">
+                                <Icon name="chevron-right" size={14} color="currentColor" />
+                            </span>
+                        </label>
+                    </>
                 )}
             </div>
         </header>
@@ -1126,18 +1311,7 @@ export default function AnnaShell({ children, routeId }) {
             className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${narrow ? ' anna-narrow' : ''}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
-                '--anna-ink': colors.Text01,
-                '--anna-muted': colors.Text02,
-                '--anna-placeholder': colors.Text03,
-                '--anna-accent': colors.Primary200,
-                '--anna-unread': colors.UtilityRed200,
-                '--anna-neutral': colors.Grey200,
-                '--anna-tint': colors.UtilityBlue100,
-                '--anna-hover': colors.UtilityBlue112,
-                '--anna-border': colors.Grey300,
-                '--anna-bezel': colors.Grey400,
-                '--anna-focus': colors.UtilityBlue150,
-                '--anna-surface': colors.Grey100,
+                ...ANNA_THEME_VARIABLES,
             }}
             onClickCapture={interceptLink}
         >
@@ -1193,6 +1367,9 @@ export default function AnnaShell({ children, routeId }) {
                                         user={user}
                                         call={call}
                                         threads={threads}
+                                        otherThreads={otherThreads}
+                                        onOpenProject={selectProjectFromChat}
+                                        onSwitchSettled={chatSwitchSettled}
                                         resolveConversation={resolveConversation}
                                         loadEarlier={loadEarlier}
                                         hasEarlier={nextBefore != null}
@@ -1209,12 +1386,21 @@ export default function AnnaShell({ children, routeId }) {
                                         onBeforeSend={resumeForMessage}
                                         pageContext={chatPageContext}
                                         switching={switching}
+                                        switchingProjectName={
+                                            switching
+                                                ? activeChoice?.name || projectsMap?.[activeProjectId]?.name || ''
+                                                : ''
+                                        }
                                         projectSwitch={projectSwitch}
                                         renderProjectSwitcher={({ disabled }) => (
                                             <AnnaProjectSwitcher
                                                 choices={projectChoices}
-                                                activeProjectId={activeProjectId}
-                                                onSelect={selectProject}
+                                                activeProjectId={
+                                                    projectSelection.isAutomatic
+                                                        ? ANNA_AUTOMATIC_PROJECT
+                                                        : activeProjectId
+                                                }
+                                                onSelect={selectProjectFromChat}
                                                 disabled={disabled || call.status !== 'idle'}
                                                 busy={switching}
                                                 getViewport={() => {
@@ -1451,9 +1637,11 @@ export default function AnnaShell({ children, routeId }) {
         >
             <AnnaChatNavigationContext.Provider value={openChat}>
                 <AnnaSidebarCloseContext.Provider value={active && !chatOnly && !mobile ? closeChat : null}>
-                    <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
-                        <AnnaTopStripContext.Provider value={showTopStrip}>{content}</AnnaTopStripContext.Provider>
-                    </AnnaWorkspaceNavigationContext.Provider>
+                    <AnnaSidebarProjectContext.Provider value={projectSelection.projectId}>
+                        <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
+                            <AnnaTopStripContext.Provider value={showTopStrip}>{content}</AnnaTopStripContext.Provider>
+                        </AnnaWorkspaceNavigationContext.Provider>
+                    </AnnaSidebarProjectContext.Provider>
                 </AnnaSidebarCloseContext.Provider>
             </AnnaChatNavigationContext.Provider>
         </AnnaBrowserTakeoverContext.Provider>

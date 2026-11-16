@@ -18,6 +18,7 @@ const threadReference = (reference, created) => ({
     dateKey: reference.dateKey,
     ...(created == null ? {} : { created }),
 })
+const list = value => (Array.isArray(value) ? value : [])
 const mergeThreads = (previous, incoming) => {
     const threads = new Map(previous.map(thread => [threadKey(thread), thread]))
     incoming.forEach(thread => threads.set(threadKey(thread), { ...threads.get(threadKey(thread)), ...thread }))
@@ -35,6 +36,9 @@ const initialState = (scope, cached, historyDay) => ({
     includeEarlier: false,
     ...(cached ? { ...cached, loading: false } : {}),
 })
+// AT-3036: "Earlier days" pages through the history of every project, three threads at a time.
+// One click keeps going until the project on screen gains an earlier day, within this bound.
+const MAX_EARLIER_PAGES = 8
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const accessDenied = error => ['permission-denied', 'unauthenticated'].some(code => error?.code?.endsWith(code))
 
@@ -51,7 +55,8 @@ export default function useAnnaConversation(
     scopeRef.current = scope
     // AT-2903: the project the conversation continues in. History, cache and the
     // draft stay keyed on the account's default project, so switching projects
-    // keeps one continuous timeline instead of starting a new scope.
+    // keeps the loaded history instead of starting a new scope. AT-3036: what is
+    // shown is scoped per project below (`threads` / `otherThreads`).
     const activeProjectId = validId(projectId) ? projectId : user.defaultProjectId || null
     const activeProjectRef = useRef(activeProjectId)
     activeProjectRef.current = activeProjectId
@@ -167,7 +172,7 @@ export default function useAnnaConversation(
                 ...(before ? { before } : {}),
             })
                 .then(result => {
-                    if (currentGeneration !== historyGeneration.current || scopeRef.current !== scope) return
+                    if (currentGeneration !== historyGeneration.current || scopeRef.current !== scope) return null
                     setState(previous => ({
                         ...previous,
                         // A refreshed first page replaces cached references, including
@@ -184,6 +189,7 @@ export default function useAnnaConversation(
                         historyLoaded: true,
                         includeEarlier: !!before,
                     }))
+                    return result
                 })
                 .finally(() => {
                     if (historyFlight.current === request) historyFlight.current = null
@@ -359,22 +365,44 @@ export default function useAnnaConversation(
         }
     }, [enabled, offline, scope, state.scope, !!state.conversation, state.historyLoaded, loadHistory])
 
+    const stateRef = useRef(state)
+    stateRef.current = state
+    // AT-3036: one click on "Earlier days" must show an earlier day of the project on screen, also
+    // when the next pages hold only other projects' threads.
+    const loadEarlier = useCallback(async () => {
+        const projectId = stateRef.current.conversation?.projectId
+        let before = stateRef.current.nextBefore
+        for (let page = 0; before != null && page < MAX_EARLIER_PAGES; page++) {
+            const result = await loadHistory(before)
+            if (!result || !projectId || list(result.threads).some(thread => thread.projectId === projectId)) return
+            before = result.nextBefore
+        }
+    }, [loadHistory])
+
     const visibleState = state.scope === scope ? state : initialState(scope)
+    const shownThreads =
+        state.scope !== scope
+            ? []
+            : state.includeEarlier
+              ? state.threads
+              : state.threads.filter(thread => isRecentAnnaThread(thread, historyWindow))
+    // AT-3036: every project has its own daily thread, so the chat shows only the threads of the
+    // project it continues in. A project switch therefore starts visibly in that project's chat
+    // (today's thread, reused if it exists), instead of appending it under the previous project's
+    // messages. The other projects' threads stay loaded and are offered as jumps (`otherThreads`).
+    // While a switch resolves, the previous project's chat stays on screen and sending waits.
+    const visibleProjectId = visibleState.conversation?.projectId || null
     return {
         ...visibleState,
         activeProjectId,
         // The previous project's chat stays visible until the selected one is ready.
         switching: !!visibleState.conversation && visibleState.conversation.projectId !== activeProjectId,
-        threads:
-            state.scope !== scope
-                ? []
-                : state.includeEarlier
-                  ? state.threads
-                  : state.threads.filter(thread => isRecentAnnaThread(thread, historyWindow)),
+        threads: visibleProjectId ? shownThreads.filter(thread => thread.projectId === visibleProjectId) : shownThreads,
+        otherThreads: visibleProjectId ? shownThreads.filter(thread => thread.projectId !== visibleProjectId) : [],
         offline,
         loading: !offline && (state.scope === scope ? state.loading : true),
         resolveConversation,
-        loadEarlier: () => (state.nextBefore == null ? Promise.resolve() : loadHistory(state.nextBefore)),
+        loadEarlier,
         retry: () => Promise.all([resolveConversation(), loadHistory()]).catch(() => {}),
     }
 }

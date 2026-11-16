@@ -667,3 +667,33 @@ independent layers.
 ```bash
 node browser-tests/artifacts/run.js
 ```
+
+### `at3037/` — the queued note in the task comment popup has a line of its own
+
+Renders the real `CommentsList` → `Comment` → `MessageSendStatus` inside a popup card
+(`data-ad-popup`, as the popover sets it) in light and dark mode at 720 px (the reported popup),
+432 px and 320 px, with the German strings of the screenshot. Only the translation service, the
+assistant avatar and the Firestore author lookup are stubbed. The author row of a comment is a
+fixed 24 px; the queued note ("In der Warteschlange …", Jetzt senden / Entfernen) used to sit
+inside it, cut the name and time to "Karsten …" / "5 minute…" and ran over the comment text. It
+checks that the note sits between the header and the text, overlaps and overflows nothing, has its
+own surface, keeps both actions visible and unfaded, and that the author name and time are whole;
+a pending/failed sync status stays inline. Against the code before the fix 24 of 78 checks fail.
+
+```bash
+node browser-tests/at3037/run.js
+```
+
+### `at3044/` — Gold sits top left in the mobile header
+
+Mounts the real `TopBarContainer` → `TopBarMobile` → `GoldArea` / `HomeButton` /
+`MobileNotificationArea` at 320-768 px with balances 0, 1,234, 123,456 and 123,456,789, with the ⋮
+row closed and open. It checks that exactly one Gold pill is shown and that it is in the top row,
+that it overlaps neither the centred Home button nor the right-hand icons, stays in the viewport,
+does not make the document scroll sideways, and that balances up to 123,456 are never truncated
+from 360 px up. Against the code before the fix 88 checks fail (no Gold in the top row on phones).
+`SCREENSHOTS=1` writes header PNGs into `.build/`.
+
+```bash
+node browser-tests/at3044/run.js
+```

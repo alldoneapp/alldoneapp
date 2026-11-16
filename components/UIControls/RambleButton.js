@@ -427,6 +427,10 @@ export function useRambleController({
  * The overlay variant used inside CustomTextInput3: a quiet mic icon that becomes a red timer chip
  * while recording. Positioning comes from the host via `style`; the button never affects layout.
  *
+ * `variant="send"` (AT-3025) is the same control drawn as a blue, filled button for the slot of an
+ * empty composer's send button (see composerMicSlot.js). Only the idle look differs: recording and
+ * processing render exactly like the quiet mic, so the timer chip reads the same in both places.
+ *
  * The host toggles `visible` (focus/hover), but the component stays MOUNTED either way — an active
  * recording or in-flight processing keeps rendering regardless of `visible`, so a hover change can
  * never tear down the recorder mid-ramble.
@@ -448,6 +452,11 @@ export default function RambleButton({
     // PT-5425: lets the host close its input on a push-to-talk release on this mic and finish in the
     // background. `() => null | { dismiss, submit(text), onFailed }`; see useRambleController.
     claimBackgroundSubmit,
+    // 'inline' (quiet icon) | 'send' (blue filled button in a composer's send slot, AT-3025).
+    variant = 'inline',
+    // Extra style for the idle send-variant only (e.g. a host whose send button is another blue).
+    sendIdleStyle,
+    testID,
 }) {
     const { phase, elapsedSeconds, toggle, getInputLevel, handlePressStart, handlePressEnd } = useRambleController({
         projectId,
@@ -599,6 +608,8 @@ export default function RambleButton({
     if (disabled) return null
     if (!visible && phase === RAMBLE_PHASE_IDLE) return null
 
+    const sendVariantIdle = variant === 'send' && phase === RAMBLE_PHASE_IDLE && !cancelArmed
+
     return (
         <>
             {/* Mounted only for the duration of a hold: it portals out of the input, listens for
@@ -617,12 +628,15 @@ export default function RambleButton({
             ) : null}
             <TouchableOpacity
                 ref={setButtonNode}
+                testID={testID}
                 style={[
                     localStyles.container,
+                    sendVariantIdle && localStyles.sendContainer,
                     phase === RAMBLE_PHASE_RECORDING && localStyles.recordingContainer,
                     cancelArmed && localStyles.cancelArmedContainer,
                     pressed && localStyles.pressedContainer,
                     style,
+                    sendVariantIdle && sendIdleStyle,
                 ]}
                 // Mouse and touch are owned by the gesture above. react-native-web still fires
                 // `onPress` from the trailing `click`, so a pointer press is filtered out here by
@@ -647,13 +661,15 @@ export default function RambleButton({
                             // ring and the card are. It matters for the frame after the release,
                             // and for a mouse hold, where the pointer does not hide the button.
                             name={cancelArmed ? 'trash-2' : 'mic'}
-                            size={16}
+                            size={sendVariantIdle ? 20 : 16}
                             color={
                                 cancelArmed
                                     ? colors.UtilityRed300
                                     : phase === RAMBLE_PHASE_RECORDING
                                       ? colors.Red200
-                                      : colors.Text03
+                                      : sendVariantIdle
+                                        ? '#ffffff'
+                                        : colors.Text03
                             }
                         />
                         {phase === RAMBLE_PHASE_RECORDING && (
@@ -677,6 +693,10 @@ const localStyles = StyleSheet.create({
         height: 24,
         paddingHorizontal: 4,
         borderRadius: 12,
+    },
+    // The blue of a primary Button (Button.js `buttonPrimary`), which is what the send button is.
+    sendContainer: {
+        backgroundColor: colors.Primary300,
     },
     recordingContainer: {
         backgroundColor: colors.Grey100,

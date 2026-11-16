@@ -46,9 +46,21 @@ export function LastCommentPreviewSkeleton({ compact = false }) {
 }
 
 // Same geometry as the real line (AssistantOptions): the compact header, then the composer box at
-// its resting two-line height, then the Last comment area.
-export default function AssistantLineSkeleton({ showLastComment = true }) {
+// its resting two-line height, then the Last comment area. `lastCommentOnly` (AT-3034 follow-up):
+// while the assistant-mode sidebar is open the line is only its Last comment card.
+export default function AssistantLineSkeleton({ showLastComment = true, lastCommentOnly = false }) {
     const { pulse, reducedMotion } = useGhostPulse()
+
+    if (lastCommentOnly) {
+        return (
+            <View testID="assistant-line-loading-skeleton" accessibilityRole="progressbar">
+                <GhostBlock style={localStyles.lastCommentLabel} pulse={pulse} reducedMotion={reducedMotion} soft />
+                <View style={localStyles.lastCommentInset}>
+                    <LastCommentPreviewSkeleton />
+                </View>
+            </View>
+        )
+    }
 
     return (
         <View testID="assistant-line-loading-skeleton" accessibilityRole="progressbar">

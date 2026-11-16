@@ -317,3 +317,102 @@ describe('mail the owner sent', () => {
         expect(again.updated).toBe(false)
     })
 })
+
+// AT-3022: the chat of a task created from an email started with the second email of the thread.
+describe('the email a task was created from', () => {
+    const { appendOriginEmailToTask } = require('./emailThreadContinuation')
+    const { getEmailIdentity } = require('./emailThreadIdentity')
+    const firstCommentPath = () =>
+        `chatComments/original/tasks/t1/comments/email_${getEmailIdentity('u', gmailData).messageKey}`
+    const originArgs = () => ({
+        database,
+        userId: 'u',
+        projectId: 'original',
+        taskId: 't1',
+        gmailData: { ...gmailData, origin: 'gmail_label_follow_up' },
+        context: {
+            from: '"Ronny Klann" <ronny@example.com>',
+            date: 'Thu, 12 Nov 2026 07:08:36 +0000',
+            internalDate: '1794467316000',
+            subject: 'Wohnungsübergabe',
+            snippet: 'Hallo Herr Wysk, wir schlagen den 1.12. um 15:00 Uhr vor &amp; bitten um Rückmeldung.',
+            bodyText: 'Full email body that must not be stored',
+        },
+        actor: { uid: 'assistant', displayName: 'Anna', fromAssistant: true },
+    })
+
+    test('opens the task chat at its received time, silently, without a model or Gold', async () => {
+        const result = await appendOriginEmailToTask(originArgs())
+        expect(result).toEqual({ commentId: `email_${getEmailIdentity('u', gmailData).messageKey}`, existing: false })
+        const comment = database.docs.get(firstCommentPath())
+        expect(comment).toMatchObject({
+            commentText:
+                '"Ronny Klann" <ronny@example.com> (Thu, 12 Nov 2026 07:08:36 +0000): Hallo Herr Wysk, wir schlagen den 1.12. um 15:00 Uhr vor & bitten um Rückmeldung.',
+            creatorId: 'assistant',
+            fromAssistant: true,
+            created: 1794467316000,
+            gmailData: {
+                messageId: 'first',
+                threadId: 'thread',
+                accountUserId: 'u',
+                taskProjectId: 'original',
+                receivedAt: 1794467316000,
+            },
+        })
+        expect(comment.commentText).not.toContain('Full email body')
+        expect(comment.gmailData.direction).toBeUndefined()
+        expect(summarizeEmailContinuation).not.toHaveBeenCalled()
+        expect(deductGold).not.toHaveBeenCalled()
+        expect(TaskCommentService.prototype.notifyFollowers).not.toHaveBeenCalled()
+        // The task already lists the email; nothing about the task itself changes.
+        const task = database.docs.get('items/original/tasks/t1')
+        expect(task).toMatchObject({ name: initialTask.name, description: initialTask.description, done: true })
+        expect(task.gmailData.messageIds).toBeUndefined()
+    })
+
+    test('the chat then holds the first and the second email, in order, each once', async () => {
+        await appendOriginEmailToTask(originArgs())
+        await appendOriginEmailToTask(originArgs())
+        // Thread continuation for the creating email itself stays a no-op.
+        expect(await continueEmailThread({ ...args, gmailData })).toMatchObject({ taskId: 't1', existing: true })
+        const second = await continueEmailThread({ ...args, context: { ...args.context, internalDate: 1794470113000 } })
+        const comments = [...database.docs.entries()]
+            .filter(([path]) => path.startsWith('chatComments/original/tasks/t1/comments/'))
+            .map(([, data]) => data)
+            .sort((a, b) => a.created - b.created)
+        expect(comments.map(comment => comment.gmailData.messageId)).toEqual(['first', 'second'])
+        expect(database.docs.get(`chatComments/original/tasks/t1/comments/${second.commentId}`)).toBeTruthy()
+    })
+
+    test('mail the owner sent is the owner’s message', async () => {
+        await appendOriginEmailToTask({
+            ...originArgs(),
+            actor: { uid: 'u', displayName: 'Owner', fromAssistant: false },
+            context: { snippet: 'Können wir das am 28.11. machen?', internalDate: 500 },
+            outgoing: true,
+        })
+        expect(database.docs.get(firstCommentPath())).toMatchObject({
+            commentText: 'Können wir das am 28.11. machen?',
+            creatorId: 'u',
+            fromAssistant: false,
+            created: 500,
+            gmailData: { direction: 'outgoing', archiveOnComplete: false },
+        })
+    })
+
+    test('an undated email is placed now, and falls back to the subject without a snippet', async () => {
+        const before = Date.now()
+        await appendOriginEmailToTask({ ...originArgs(), context: { from: 'Client', subject: 'Offer' } })
+        const comment = database.docs.get(firstCommentPath())
+        expect(comment.commentText).toBe('Client: Offer')
+        expect(comment.created).toBeGreaterThanOrEqual(before)
+    })
+
+    test('refuses an email of another thread or account', async () => {
+        await expect(
+            appendOriginEmailToTask({ ...originArgs(), gmailData: { ...gmailData, threadId: 'other-thread' } })
+        ).rejects.toThrow('does not match')
+        expect(await appendOriginEmailToTask({ ...originArgs(), gmailData: { provider: 'google' } })).toBeNull()
+        expect([...database.docs.keys()].filter(path => path.startsWith('chatComments/'))).toHaveLength(0)
+    })
+})

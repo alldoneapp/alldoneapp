@@ -260,16 +260,28 @@ const darkPopupScope = selectorBody =>
         .map(selector => `:root[data-theme="dark"] ${selector}`)
         .join(',') + `{${selectorBody}}`
 
+// The way back: a card designed for the page (light grey card, dark text) that is rendered inside
+// a popup, e.g. the VM agent question card in a task's comment popup. In dark mode it would stay a
+// white card, because the popup scope above hands it the light palette. Marking its root with
+// `dataSet={{ adPagePalette: 'true' }}` re-declares the dark values there, so inside it the tokens
+// mean what they mean on the page. Outside a popup the marker changes nothing; a popup opened
+// inside such a card sets its own scope again, because the nearest declaration wins.
+export const PAGE_PALETTE_SCOPE_ATTRIBUTE = 'data-ad-page-palette'
+const darkPagePaletteScope = selectorBody =>
+    `:root[data-theme="dark"] [${PAGE_PALETTE_SCOPE_ATTRIBUTE}]{${selectorBody}}`
+
 const injectPaletteCss = () => {
     if (!hasDom || document.getElementById(STYLE_ELEMENT_ID)) return
     const style = document.createElement('style')
     style.id = STYLE_ELEMENT_ID
     const popupScoped = Object.fromEntries(Object.entries(LIGHT_PALETTE).filter(([key]) => isPopupScopedToken(key)))
+    const pageScoped = Object.fromEntries(Object.entries(DARK_PALETTE).filter(([key]) => isPopupScopedToken(key)))
     style.textContent =
         `:root{${paletteToCss(LIGHT_PALETTE)}}` +
         `:root[data-theme="dark"]{${paletteToCss(DARK_PALETTE)}color-scheme:dark;}` +
         `:root[data-theme="light"]{color-scheme:light;}` +
-        darkPopupScope(paletteToCss(popupScoped))
+        darkPopupScope(paletteToCss(popupScoped)) +
+        darkPagePaletteScope(paletteToCss(pageScoped))
     document.head.appendChild(style)
 }
 
@@ -288,7 +300,9 @@ const appendDynamicVar = (varName, lightValue, darkValue, { popupKeepsLight = tr
     style.appendChild(
         document.createTextNode(
             `:root{${varName}:${lightValue};}:root[data-theme="dark"]{${varName}:${darkValue};}` +
-                (popupKeepsLight ? darkPopupScope(`${varName}:${lightValue};`) : '')
+                (popupKeepsLight
+                    ? darkPopupScope(`${varName}:${lightValue};`) + darkPagePaletteScope(`${varName}:${darkValue};`)
+                    : '')
         )
     )
 }

@@ -57,6 +57,14 @@ Added 2026-11-11. Read this before touching colors, `components/styles/global.js
   `.react-tiny-popover-container` and `[data-ad-popup]` (the bottom sheet sets
   `dataSet={{ adPopup: 'true' }}`). A new popup surface outside those two needs that dataSet.
   Consequence: a popup whose root is `colors.Surface` stays white in dark mode.
+- The way back: a card designed for the page that renders inside a popup (the VM agent
+  question/approval card, `VmInteractionCard`, in a task's comment popup) marks its root with
+  `dataSet={{ adPagePalette: 'true' }}` (`data-ad-page-palette`, `PAGE_PALETTE_SCOPE_ATTRIBUTE`).
+  In dark mode that re-declares the dark values of every popup-scoped token (alpha variants and
+  `modeColor` pairs included), so `colors.Grey100`, `Text01`, `UtilityBlue100` mean what they mean
+  on the page. No effect in light mode or outside popups. Before 2026-11-13 the card was a white
+  panel in the dark comment popup (AT-3039). Pinned by `Themes/colorMode.test.js` and
+  `VmInteractionCard.test.js`.
 - Blue text on a blue tint (milestone date chips) uses `themed.AccentText`, not `Primary300`,
   which is too dark on the dark tint. For a runtime pair with no token (a project's own colour),
   `modeColor(lightValue, darkValue)` returns one `var()` that flips with the mode.

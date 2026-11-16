@@ -197,6 +197,192 @@ project. The card's title line is the topic name alone. "All chats" (`openChatsL
 on the All projects line. The rage
 mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `AssistantOptions.test.js`,
 `AssistantLineSkeleton.test.js`, `openChatsList.test.js` and `AssistantTaskSearchButtonWrapper.test.js`.
+AT-3020: the popover a Last comment card opens (real comment or pending send) shows "All chats" next
+to "open chat" (`CommentPopupFooter`), with the same target as the header link. `RichCommentModal`
+shows it only when the caller passes `onOpenAllChats`; no other comment popup does.
+
+**Simple sidebar Wiki and Chats rows** (AT-3020): under the people list of the selected project, the
+simple sidebar has a Wiki row and, directly below it, a Chats row (`SidebarMenu/Items/WikiItem.js`,
+`ChatsItem.js`, both drawn by `SidebarLinkItem`). Neither hides behind "show more", and neither shows
+for a guest of a shared project. Chats opens the same tab as the advanced sidebar's Chats header
+(`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
+Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
+
+**The whole two-line field takes a click (AT-3028).** Auto-expand sets Quill's container and
+editor to `height: auto`, so the contenteditable was one line tall inside the 56px field and the
+blank line under "Start a new chat" was dead frame. `assistantInput.css` gives the composer's
+`.ql-editor` a 48px `min-height` (the two resting lines; the Anna composer does the same in
+`anna.css`), which leaves the measured resting height at 48 + 8 = 56. The field's few pixels of
+padding go through `assistantComposerFocus.js`: a `mousedown` on the `assistant-composer-field`
+wrapper (the field only, never the toolbar) focuses the editor at the end of its text. It must
+check `field.contains(target)`: the + and the mic are portalled out of the field, and React
+bubbles their presses through it. Pinned by `assistantComposerFocus.test.js` (also the CSS value
+against `assistantInputLayout.js`), `AssistantOptionsFocus.test.js` and `browser-tests/at3028`
+(real Chromium: click, tap, padding, toolbar controls, and a control run with the old CSS).
+
+**The composer box outline (AT-3031).** The assistant line's composer box rests on a 1px
+`colors.UtilityBlue150` border (adaptive: light pastel blue / blue mixed into the dark surface;
+`Grey300` vanished on the `Grey200` card). While the editor has focus, `assistantInput.css` turns
+it `#0C66FF` with a 3px `rgba(12,102,255,0.18)` box-shadow glow, via
+`[data-testid='assistant-composer-row']:has(.ql-editor:focus)`. Only the editor counts, so the
+toolbar's + / Templates / mic keep their own focus ring. The border width never changes (no layout
+shift); the `!important` on the colour beats react-native-web's atomic class. Pinned by
+`assistantComposerOutline.test.js`.
+
+**Assistant mode is entered from the assistant line (AT-3034).** The panel button
+(`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sits at the top left of the
+assistant line's header (`AssistantOptions`, before the assistant-board edit pencil). The desktop
+top bar and the mobile header no longer carry it. The app sidebar's `DefaultAssistantButton` stays,
+so screens without an assistant line still have an entry. The line passes its project
+(`assistantModeProjectId`: the line's project, null for `AllProjectsAssistantLine`), and
+`AnnaShell.openChat({ projectId })` selects that project's daily chat in the sidebar, so whoever
+answers there takes over. null or the default project means "Automatic", and an explicit pick of
+the default project stays. It does not switch during a call, while offline, or to a project that
+`isAnnaProjectSelectable` refuses. This is per project and frontend-only (decided with the
+product owner): a second assistant picked in the line's switcher inside the same project is NOT
+carried over, because the server's daily chat answers with the project's assistant
+(`findProjectAssistantId`). `AnnaSidebarProjectContext` publishes the sidebar's project. The
+button closes the desktop sidebar only when the sidebar already shows its line's project;
+otherwise it moves the sidebar there. Next to the assistant's name at the top left of the sidebar,
+a chevron (`AnnaProjectSwitcher variant="assistant"`) picks another assistant. It shares state
+with the composer's project chip. It lists "Automatic", each project with an assistant of its own
+and the active choice (`getAnnaAssistantChoices`), and loads every project's assistants only
+while open. Rage mode is back at the top right of the line (`rage-mode.md`). Pinned by
+`AssistantModeButton.test.js`, the AT-3034 cases in `AnnaShell.test.js`,
+`AnnaProjectSwitcher.test.js`, `AssistantOptions.test.js` and `AssistantLine.test.js`.
+
+**The sidebar header's assistant name is one line (AT-3040).** `.anna-brand` never wraps (it used to
+clamp to two lines, "Anna / Alld…"); it ends in an ellipsis and the button's `title` carries the
+full name. `.anna-header` is the `anna-header` size container: at 360px content width and less
+(sidebar chat ≤ 408px, the minimum is 340) `.anna-header-sidebar` tightens its gaps and the
+workspace picker (98 → 80px) so the name keeps ~72px instead of ~40px. Chosen with the product
+owner over a bare ellipsis. Geometry is checked by `browser-tests/anna-workspace/run.js`
+(`ACTIVITY_ONLY`), which asserts the name does not overlap the picker.
+
+**The whole assistant name opens the assistant picker (AT-3047).** The name and the chevron are
+one `<button>` (`AnnaProjectSwitcher variant="assistant"` with `name`, class
+`.anna-assistant-picker-named`), so a press anywhere on the name opens the same picker; before, only
+the 24px chevron did. The avatar keeps its own "Latest messages" button (`showLatestChat`) without
+the name; at 360px and less, where the avatar is hidden, that button is hidden too. With nothing
+else to pick (`canSwitchAnnaProject` false: one choice, or the active one missing) the switcher
+renders nothing and the name goes back into the avatar's button. Offline or in a call the button is
+disabled; only the chevron dims, the name stays readable. The accessible name is "Assistant:
+{name}" (contains the visible name), the title keeps the full name for a truncated one. Pinned by
+the AT-3047 cases in `AnnaProjectSwitcher.test.js` and `AnnaShell.test.js`.
+
+**The header closes with the panel icon, fullscreen sits beside it (AT-3042).** The close
+control (at the far right until AT-3045 put the workspace picker after it) is `AssistantModeIcon expanded` (panel, chevron
+pointing right), the counterpart to the assistant line's open button, not an X. It is the same
+`closeChat` and label ("Close assistant chat") on every device, mobile included (decided with the
+product owner). The fullscreen toggle (`maximize-2` / `minimize-2`, desktop only) moved from after
+the assistant chevron on the left to directly left of it; "Open app in new tab" comes before both.
+The left group is now only avatar, name and assistant chevron. Pinned by "puts the fullscreen
+action directly left of the right-pointing collapse action" and the AT-2954 new-tab case in
+`AnnaShell.test.js`.
+
+**The workspace picker is the last header control and its chevron points right (AT-3045).** The
+"Alldone / Browser / VMs / app" `<select>` (`.anna-header-picker`) chooses what the right-hand pane
+shows, so it sits after the panel/close button at the far right of `.anna-header-right` and uses
+`chevron-right` instead of `chevron-down` (desktop and mobile alike). This overrides AT-3042's
+"close control at the far right"; the order is now open-in-new-tab, fullscreen, close, picker.
+Anna's assistant chevron on the left stays `chevron-down`. Pinned by "puts the workspace picker at
+the far right" in `AnnaShell.test.js` and the header geometry in `browser-tests/anna-workspace`.
+
+**Project switch: one project's chat on the left, the same project on the right (AT-3036).**
+Every project has its own daily thread (`AnnaChat{YYYYMMDD}{uid}` in that project, reused all day
+by `ensureAnnaConversation`). `useAnnaConversation` used to return every recent thread of every
+project, so a switch to Steercom appended Steercom's thread under the previous project's messages
+and the chat read as one transcript while the backend wrote elsewhere. The hook now splits the
+loaded history by the project on screen (`conversation.projectId`): `threads` (that project's days)
+and `otherThreads`. `scopeAnnaThreads` (`annaThreadScope.js`) does the same for pending/failed sends,
+so another project's failed message is reached through its project, not shown here. The other
+projects appear as one row of jump buttons ("Chats in other projects", latest first, only
+`isAnnaProjectSelectable` ones) that select the project like the chip does. While a switch
+resolves, the previous chat stays and sending waits (`switching`, unchanged). "Earlier days" pages
+the shared registry three threads at a time, so `loadEarlier` keeps paging until the visible
+project gains an earlier day, bounded at 8 pages per click. A choice made in the chat (composer
+chip, assistant picker at the top left, a jump) also moves the Alldone workspace:
+`syncAnnaWorkspaceProject` (`annaWorkspaceProjectSync.js`) dispatches the header project picker's
+batch (`switchProject`, own board or All goals, active type), keeps the root tab (wiki falls back
+to tasks on All projects), leaves an object's detail view of the old project for the root list,
+and does nothing when the workspace already shows that project. "Automatic" matches All projects
+and the default project; from any other project it opens All projects. Entering assistant mode from
+an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits in the workspace's
+project. An app or VM on the right stays on screen; the Alldone view under it moves. Pinned by
+`annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
+`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`.
+
+**A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
+(the selected project's chat is still resolving, from either side), `AnnaConversation` shows a
+`role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
+the timeline: the previous project's messages, its "Earlier days" button and the project jumps
+are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
+(draft kept) and sending stays held exactly as before. Once the switch ends, the current thread
+reports through `onLoaded` when its messages are loaded and rendered (a layout effect, so after
+this commit's DOM), and the conversation snaps once to the very bottom (`activate`), also for a
+cached reused daily thread or a new empty one. The pending snap is keyed to the conversation the
+switch ended in, so an overtaken switch's thread never scrolls; a refused or taken-back switch
+returns to the bottom of the old chat. After the snap the chat follows like any open chat (later
+images/markdown keep it at the bottom through the ResizeObserver), and a reader who scrolls up is
+not pulled down again. A new day in the same project is not a switch and does not force a scroll.
+Pinned by "project switch loading and scroll (AT-3036)" in `AnnaConversation.test.js` and the
+loading-name case in `AnnaShell.test.js`.
+
+**A switch picked in the chat ends with the composer focused (AT-3036 follow-up).** A project
+picked in the chat sidebar (composer chip, assistant picker at the top left, "Chats in other
+projects") goes through `AnnaShell.selectProjectFromChat`. It remembers the target
+(`chatSwitchFocus`), and the composer takes focus when the switch has ended. The conversation reports
+that through `onSwitchSettled(projectId)` from the same point as the snap to the bottom (messages
+loaded and rendered, cached and empty chats included), right before the snap. A pick that keeps
+the chat on screen ("Automatic" to the explicit default project) focuses at once. The draft stays
+(the composer never remounts). It applies on desktop only (decided with the product owner): on a
+phone the keyboard would cover the chat that just opened. A switch from the workspace or an
+assistant line never focuses here; `selectProject` drops the pending focus, and only the chat's
+picks set it. The latest pick wins: a switch only ends in the latest selected project, so a report
+for another project (refused, fallback to the default) drops it. Any pointer or key press while the
+chat loads (in the workspace, the chat or a menu; capture phase, so the press that makes a new pick
+re-arms it afterwards) drops it, as do leaving assistant mode and focus already sitting in a field
+or modal outside the chat (`isFocusHeldElsewhere`). Not verified in a real browser: iOS opens no
+keyboard for a focus this late, which does not matter on desktop. Pinned by "focuses the composer
+after a switch picked in the chat" in `AnnaShell.test.js` and "reports the end of a switch" in
+`AnnaConversation.test.js`.
+
+**And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
+the product owner, replacing "nothing on the workspace side changes the chat's project". When the
+person opens a project's root view (tasks, notes, goals, …) in the workspace, the chat selects that
+project (`resolveAnnaChoiceForWorkspace`), so its daily chat and the assistant that answers there
+follow; that assistant comes from the existing rules (`resolveAnnaProjectAssistant` /
+`findProjectAssistantId`: flagged default, `project.assistantId`, else the user's default
+assistant), never from a new mapping. All projects and the default project mean "Automatic"; an
+explicit default pick stays. Archived, template, guide or foreign projects change nothing, nor do
+an object's detail view (opening a task from All projects is not entering its project), a call,
+offline, or assistant mode being off. Only the person's own navigation counts
+(`useAnnaWorkspaceProjectFollow`): a pointer or key press outside the chat pane and the Anna
+header (the header's project picker renders in a body portal, so "outside" rather than "inside
+the pane") opens a 4s window, and the first root project change in it is theirs. The press is used
+up by that change. A press in the chat closes the window; the chat's own sync announces its target
+(`expectSync` via `onPlan`) and closes it too. So the assistant's reveal, `show_workspace`, links
+and activity rows in the chat, and the left-to-right sync never move the chat, and the latest
+side the person touched wins. Known gap: a reveal that lands within 4s of a press in the workspace
+counts as the person's (the reveal itself cancels on interaction, so this needs a press without
+cancelling it). Browser Back/Forward is not a press and does not move the chat. Pinned by the
+`resolveAnnaChoiceForWorkspace` / `getAnnaWorkspaceProjectKey` cases in
+`annaWorkspaceProjectSync.test.js` and "the chat follows a project opened in the workspace" in
+`AnnaShell.test.js`.
+
+**With the sidebar open, the assistant line is only its Last comment (AT-3034 follow-up).** The
+chat box is in the sidebar, so `AssistantLine` hides its whole `AssistantOptions` (header,
+assistant-mode button, rage crosshair and composer) and shows only the Last comment card. Decided
+with the product owner: header included, desktop only. The signal is `AnnaSidebarCloseContext`
+being non-null, which the shell provides only while the desktop split view shows the sidebar. On
+mobile (chat and app take turns) and in chat-only mode the line is unchanged. The composer stays
+mounted under a `display: none` wrapper and the tree keeps the same shape in both modes, so opening
+or closing the sidebar loses no draft and does not reset the Last comment slot. The grey card style
+moves onto `LastCommentArea` (`style` prop), so an assistant board without a comment of its own
+leaves no empty box. The assistant board's edit pencil stays visible. Loading shows
+`AssistantLineSkeleton lastCommentOnly`. Pinned by the sidebar cases in `AssistantLine.test.js`,
+`AssistantLineSkeleton.test.js` and the container-style cases in
+`LastCommentAreaPendingSend.test.js`.
 
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
 renders `AnnaTopStrip` above everything, in all three views. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
@@ -225,12 +411,15 @@ Alldone too (`.anna-has-strip` also gives `.anna-workspace-content` its transfor
 inline fixed overlays use the pane below the strip. Tasks mirrors AT-2920: beside a visible screen
 it keeps the page (`closeChat`), from chat only and from plain Alldone it opens the open task list
 (`goHome`); Both and the assistant alone, entered from plain Alldone, open the chat focused like the
-assistant button. In assistant mode the chat is a card and the workspace keeps its bezel. The chat
-header keeps the assistant and `AnnaScreenPicker` (Alldone, Browser, VMs, apps; a menu on
-`AppPopover`, sized to the chat pane) in place of the select, the expand toggle, the Home button and
-the X; a notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
-picker into the screen and turns accent with the bezel (`anna-workspace-busy`). Mobile keeps its
-header, select and X. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
+assistant button. In assistant mode the chat is a card and the workspace keeps its bezel. The
+desktop chat header keeps the assistant (with AT-3047's name picker) and `AnnaScreenPicker`
+(Alldone, Browser, VMs, apps; a menu on `AppPopover`, sized to the chat pane) in place of AT-3045's
+select, AT-3042's fullscreen toggle and close control and the Home button: the strip's views do their
+work (merged with master on 2026-11-16; the AT-3042/AT-3045 notes above now describe the phone
+header). A notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
+picker into the screen and turns accent with the bezel (`anna-workspace-busy`). The phone keeps its
+header: Home with the count, the panel-icon close control and the select at the far right, built
+from the same `screenOptions` as the menu. The chat's menus (`.anna-project-menu`, also the project chip's) spell out a
 dark card under `:root[data-theme='dark']`, because popup scope keeps light tokens there. Pinned
 by `AnnaShell.test.js` (`layoutButton`, `pickScreen` helpers; "the strip in plain Alldone", "a desktop
 window too narrow for both"; the file runs at a 1440px window), `TopBarContainer.test.js`,
@@ -267,8 +456,9 @@ is added there. A flip inside a mixed batch is published at once from `toolCallB
 `annaWorkspaceWorkState.test.js`, the AT-2911/AT-2926 case in `AnnaShell.test.js`,
 `assistantWorkspaceChangeTools.test.js` and the AT-2926 case in `assistantHelper.test.js`.
 
-**Activity rows open their object, checked first (AT-2906).** Each row's first line is
-`Project · Actor(s)`, then title/action chips, then the preview. A row links to the object
+**Activity rows open their object, checked first (AT-2906).** Each row names
+`Project · Actor(s)` (since AT-3046 only when they differ from the thread's, see below), the
+object as title, the preview and what happened. A row links to the object
 (`getAnnaActivityTarget`); a chat message whose thread type was never saved links to its chat
 object (`/projects/{p}/chats/{id}/chat`), never to the followed chats inbox. On click
 (`data-anna-activity-link`) `AnnaShell` runs `resolveAnnaActivityPath` (one read-only `get`):
@@ -282,6 +472,24 @@ route handler. The crash behind the report: `TasksHelper.getUserInProject` answe
 members-snapshot reducer threw. Never compare that lookup with `null`; the `Store current user`
 reducer now falls back to the logged user. Pinned by `annaActivityNavigation.test.js`,
 `__tests__/Chats/ProjectsUserChatsColdProject.test.js` and the AT-2906 blocks of the Anna suites.
+
+**Activity rows are cards (AT-3046, variant C).** Chosen by the product owner from four drafts
+(A compact list, B bundled block, C cards, D digest). Each `AnnaActivityGroup` is one card, and the
+whole card is the link (no arrow). The order is: `Project · Actor` (blue, only when needed), then
+title with the time on the same line, then up to 2 lines of preview, then small blue type labels
+at the bottom (`💬 Antwort` / `%{count} Antworten` for chat messages, `✓ <action>` for feed
+changes). The icon is the icon font glyph in `data-icon`, drawn by `::before`, so the label stays
+plain, ellipsised text (AT-2918). A row that is not enriched yet has its action as the title and
+no label. The left edge is `--anna-accent` while the item is still unread and `--anna-border`
+once it is read. "Unread" is the same red followed activity that creates the rows and drives the
+badges (`useAnnaUnreadActivityIds`, computed once per conversation). Opening the item elsewhere
+turns the edge grey, and the card stays. `Project · Actor` shows only when the object's project
+is not the thread's `projectId` or an actor is not the thread's assistant
+(`isForeignAnnaActivity`). Without a `context` prop the line always shows. Hover/focus turns the
+border blue. The project-switch and view notices are thin centred dividers. Colours are Anna
+tokens only (`--anna-neutral` card, `--anna-accent-text` labels). Pinned by the `cards (AT-3046)`
+block in `AnnaActivityNotice.test.js`, the AT-3046 case in `AnnaConversation.test.js` and
+`browser-tests/at3046` (dark/light at 300/380/560px).
 
 **A lost callable response is not a failed message (AT-2921).** The Anna composer starts each run
 with `askToBotSecondGen`, and a phone drops that connection when the app goes to the background.
@@ -309,13 +517,42 @@ so an empty or failed take can never send the bare draft. No focus after a voice
 keyboard stays closed. Pinned by the AT-2929 block of `AnnaConversation.test.js` and the
 hold-to-send step of `browser-tests/anna-workspace` (`DICTATION_ONLY=1`).
 
+**Anna composer toolbar order (AT-3029, AT-3032).** Like the assistant line's composer:
+`.anna-composer-tools` (left) holds + then **Templates**; `.anna-composer-actions` (right,
+`flex: none`) holds mic, call, send. With an empty draft the small mic hides and the AT-3025
+send-slot mic takes Send's place, so the right group reads call, mic (`voice-and-dictation.md`).
+Offline hides the mic only. Templates is the assistant line's own `AssistantTaskSearchButtonWrapper`
+(same list, same pre-configured task run), not a copy. Below a 360px composer
+(`ANNA_TEMPLATES_COMPACT_WIDTH`, measured on the form) it shows only its icon, keeping its accessible
+name, so the row fits at 320px. Anna passes it `position` (open upwards) and a window-sized
+`getPopoverViewport`. Without a viewport, any popover is clamped to `window.__alldoneWorkspaceViewport`
+and the list opened inside the workspace pane, away from its button. The same applies to any other
+popup put in the Anna chat pane: pass a viewport.
+
+**Project chip on the field edge (AT-3032).** The project chip is no longer in the toolbar. It is
+the first child of `.anna-composer-draft`, in `.anna-composer-project`, absolutely positioned on the
+field's top border (centred on it, left-aligned with the +), and first in tab order. The room it
+needs (16px slot margin above, 22px field padding below) is reserved through
+`:has(.anna-project-chip)`, so a composer without a chip (fewer than two choices) keeps the old
+geometry. It has no `z-index` on purpose: with one it painted over the Templates popup. During calls
+it stays hidden with the draft. Pinned by `AnnaConversation.test.js`,
+`annaProjectChipText.test.js` and the chip/Templates geometry in `browser-tests/anna-workspace`
+(`PROJECT_SWITCH_ONLY=1`, 1440/1024/390/320).
+
+**Font sizes on Anna buttons (AT-3032).** `.anna-shell button:not(.anna-workspace-content *)
+{ font: inherit }` has specificity (0,2,1), so a `font-size` in a single-class button rule such as
+`.anna-project-chip` (0,1,0) never applies; the button inherits the composer's 16px. The project
+chip's intended 12px was dead for that reason and "Automatisch" was cut to "Automa…". Put the size on
+a child span (`.anna-project-chip-name`, now 13px / 16px line, like the project menu rows) or raise
+the selector's specificity. Pinned by `components/Anna/annaProjectChipText.test.js`.
+
 **The chat shows the view open NOW, not a list of visited views (AT-2914).**
 `useAnnaContextNotices` returns one notice ("Looking at: …"), or `null` while no view is open
 (chat-only mode). `AnnaConversation` renders it as the last entry of the current thread, after
 newer messages. Re-opening the same view keeps its original time. A project picked in the
 composer's switcher becomes a local "Switched to project: …" entry
-(`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to, and
-re-picking the active project adds nothing. Neither is written to Firestore or seen by the
+(`useAnnaProjectSwitchNotices`). It is placed by time in the thread that choice resolves to (since
+AT-3036 that thread is shown alone), and re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
 
 **The assistant is told what the work pane shows, not the Alldone route behind it (AT-2955).**
@@ -386,3 +623,12 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 **A popover that fits nowhere used to render nothing at all (AT-2189)**: `renderPopover` walks the position priority order (`['top','right','left','bottom']` by default) and recurses to the next candidate whenever the current one "violates" the viewport. Upstream, running off the end of that order `return`s without committing anything — but `renderWithPosition` has already written `popoverInfo` to state by then, so `render()` **mounts the portal** (and whatever full-screen overlay the caller wraps it in) while the container keeps its initial `opacity: 0` / `top: 0` / `left: 0`, and an active `contentLocation` **function is never called**. The result is the worst state available: invisible content that still swallows every tap. This is not a corner case on mobile — a popover anchored to a **zero-size target at the centre of the viewport** (the `DueDateSinglePopup` swipe-postpone pattern: `<Text />` inside a centring full-screen overlay) cannot fit left or right of centre if it is wider than ~half the screen, nor above or below it if it is taller than ~half the screen, so a 305×450 modal on a 390×664 phone violated all four candidates 100% of the time. Desktop escaped only because there is room at `'right'`. The patch in `replacement_node_modules/react-tiny-popover/dist/Popover.js` keeps the search but **commits the last candidate once the order is exhausted** (still nudged into the viewport), so coordinates are unchanged for any popover that already found a viable position. When writing jsdom tests against this library, **model the target rect realistically** — mocking every non-container element as `0×0 at (0,0)` parks the target in the top-left corner where `'right'` is always viable, which silently masks this entire class of bug. See `__tests__/UIComponents/ReactTinyPopoverNoFittingPosition.test.js` for the contract and `components/UIComponents/DueDateSinglePopupPositioning.test.js` for the app-level regression.
 
 **Nested `react-tiny-popover` dismisses its parent on tap (mobile tap/click timing)**: `react-tiny-popover` (v4) closes a popover by attaching a `window` `'click'` listener and calling `onClickOutside` whenever the click target is not inside **that** popover's own `document.body` portal. A nested popover (a dropdown/picker opened from inside a popover-based modal) renders in a **separate** portal, so tapping an item in the child is "outside" the parent — the parent's `onClickOutside` fires and the whole modal closes. This reproduces mainly on **mobile web**: a tap emits the touch press (`onPress`, which does the selection) and then a **synthesized `click` shortly after**, and it is that trailing click that reaches the parent's window listener — on desktop the RN-web press typically stops the click from bubbling to `window`, hiding the bug. The ordering is dependable: `onPress` (pointerup/touchend, or the click at the event target during bubbling) always runs before the trailing `click` reaches `window`, so a flag set in `onPress` is readable by the parent's `onClickOutside`. Fix (see `components/TaskListView/EmailLine/EmailLabelChip.js` + `EmailLabelModal/EmailRow.js` + `emailLineHelper.js`): on the child item's `onPress`, stamp a module-level interaction (`markEmailLabelPickerInteraction`); in the parent's `onClickOutside`, swallow the dismiss **once** (`shouldIgnoreEmailLabelModalDismiss` clears the stamp and returns true). Prefer this **consume-once** guard over a fixed time window so it does not depend on how far apart the tap and click land; keep a generous sanity cap (~2s) so a stamp whose dismiss never arrives (the desktop case) can't later swallow a genuine outside tap. Do not reach for `contentDestination` to re-parent the child into the modal DOM — it breaks the library's viewport-relative positioning math — and avoid an in-flow inline dropdown (it expands the modal) or an absolute in-modal overlay (it gets clipped by the modal's `CustomScrollView`).
+
+**Gold sits top left in the mobile header on every phone width (AT-3044).** `TopBarMobile`'s left
+group (hamburger + `GoldArea`) always shows Gold for signed-in users, also in the compact band
+(`reallySmallScreenNavigation`, ≤ 459px), where an earlier change had moved Gold into the ⋮
+secondary row and left a gap before the centred Home button. Gold is not repeated in the ⋮ row. The
+Home button is absolutely centred, so the left group is capped with `getLeftAreaMaxWidth(rowWidth)`
+(row width from `onLayout`, minus half the Home button, the row padding and an 8px gap); a long
+balance on a narrow phone ellipsizes inside the pill (`numberOfLines={1}`) instead of sliding under
+Home. Pinned by `TopBarMobile.test.js` and, for real geometry at 320-768px, `browser-tests/at3044/`.

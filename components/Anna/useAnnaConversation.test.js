@@ -421,6 +421,7 @@ it('loads older threads only on request and drops out-of-window days after midni
 })
 
 describe('selected project (AT-2903)', () => {
+    const keys = threads => threads.map(thread => `${thread.projectId}/${thread.chatId}`)
     const account = { defaultProjectId: 'p1', projectIds: ['p1', 'p2'] }
     const projectChat = (projectId, chatId, assistantId) => ({
         ...day(chatId, Date.now() + 86400000, projectId),
@@ -436,7 +437,7 @@ describe('selected project (AT-2903)', () => {
             type: 'topics',
         },
     })
-    it('continues in the selected project and keeps the previous chat in the shared timeline', async () => {
+    it('continues in the selected project and shows only its chat, the previous one as another project (AT-3036)', async () => {
         const next = deferred()
         runHttpsCallableFunction
             .mockResolvedValueOnce(day('home-today', Date.now() + 86400000))
@@ -453,13 +454,71 @@ describe('selected project (AT-2903)', () => {
         // The previous chat stays visible, but sending waits for the selected project.
         expect(result).toMatchObject({ activeProjectId: 'p2', switching: true })
         expect(result.conversation.projectId).toBe('p1')
+        expect(keys(result.threads)).toEqual(['p1/home-today'])
         await act(async () => next.resolve(projectChat('p2', 'product-today', 'cto')))
         expect(result).toMatchObject({ activeProjectId: 'p2', switching: false })
         expect(result.conversation).toMatchObject({ projectId: 'p2', id: 'product-today' })
-        expect(result.threads.map(thread => `${thread.projectId}/${thread.chatId}`)).toEqual([
-            'p1/home-today',
-            'p2/product-today',
-        ])
+        // AT-3036: the selected project's chat starts on its own, not under the previous one.
+        expect(keys(result.threads)).toEqual(['p2/product-today'])
+        expect(keys(result.otherThreads)).toEqual(['p1/home-today'])
+    })
+
+    it('returns to the same daily thread of the previous project, without leaking either history (AT-3036)', async () => {
+        runHttpsCallableFunction.mockImplementation(async (name, data) =>
+            data.historyOnly
+                ? { threads: [], nextBefore: null }
+                : data.projectId === 'p2'
+                  ? projectChat('p2', 'product-today', 'cto')
+                  : projectChat('p1', 'home-today', 'a1')
+        )
+        await render({ enabled: true, user: account })
+        await render({ enabled: true, user: account, projectId: 'p2' })
+        expect(keys(result.threads)).toEqual(['p2/product-today'])
+        // Back to the default project ("Automatic"): its daily thread again, asked without a project.
+        await render({ enabled: true, user: account, projectId: null })
+        expect(runHttpsCallableFunction).toHaveBeenLastCalledWith('getAnnaConversationSecondGen', {
+            includeHistory: false,
+        })
+        expect(result).toMatchObject({ activeProjectId: 'p1', switching: false })
+        expect(result.conversation).toMatchObject({ projectId: 'p1', id: 'home-today' })
+        expect(keys(result.threads)).toEqual(['p1/home-today'])
+        expect(keys(result.otherThreads)).toEqual(['p2/product-today'])
+    })
+
+    it('pages "Earlier days" until the project on screen has an earlier day (AT-3036)', async () => {
+        runHttpsCallableFunction.mockImplementation(async (name, data) => {
+            if (!data.historyOnly) return projectChat('p2', 'product-today', 'cto')
+            if (data.recentOnly) return { threads: [], nextBefore: { created: 100 } }
+            if (data.before.created === 100)
+                return { threads: [{ projectId: 'p1', chatId: 'home-old', created: 90 }], nextBefore: { created: 90 } }
+            return { threads: [{ projectId: 'p2', chatId: 'product-old', created: 80 }], nextBefore: { created: 80 } }
+        })
+        await render({ enabled: true, user: account, projectId: 'p2' })
+        expect(result.nextBefore).toEqual({ created: 100 })
+        await act(async () => result.loadEarlier())
+        const pages = runHttpsCallableFunction.mock.calls
+            .filter(([, data]) => data.before)
+            .map(([, data]) => data.before)
+        expect(pages).toEqual([{ created: 100 }, { created: 90 }])
+        // (Order is the conversation's job: it keeps the composer's thread last.)
+        expect(keys(result.threads).sort()).toEqual(['p2/product-old', 'p2/product-today'])
+        expect(keys(result.otherThreads)).toEqual(['p1/home-old'])
+        expect(result.nextBefore).toEqual({ created: 80 })
+    })
+
+    it('stops paging "Earlier days" after a bounded number of other projects’ pages (AT-3036)', async () => {
+        runHttpsCallableFunction.mockImplementation(async (name, data) => {
+            if (!data.historyOnly) return projectChat('p2', 'product-today', 'cto')
+            if (data.recentOnly) return { threads: [], nextBefore: { created: 1000 } }
+            const created = data.before.created - 1
+            return { threads: [{ projectId: 'p1', chatId: `home-${created}`, created }], nextBefore: { created } }
+        })
+        await render({ enabled: true, user: account, projectId: 'p2' })
+        await act(async () => result.loadEarlier())
+        expect(runHttpsCallableFunction.mock.calls.filter(([, data]) => data.before)).toHaveLength(8)
+        // The button stays, so the next click continues from there.
+        expect(result.nextBefore).toEqual({ created: 992 })
+        expect(keys(result.threads)).toEqual(['p2/product-today'])
     })
 
     it('resolves a send in the project it was written in, even after a switch', async () => {

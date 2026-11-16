@@ -31,6 +31,7 @@ export default function LastUserOrAssistantCommentContainer({
     isFollowedNotification,
     compact = false,
     scopeKey = null,
+    onOpenAllChats = null,
 }) {
     const userId = useSelector(state => state.loggedUser.uid)
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
@@ -104,6 +105,7 @@ export default function LastUserOrAssistantCommentContainer({
             compact={compact}
             arrivalId={arrivalId}
             scopeKey={scopeKey}
+            onOpenAllChats={onOpenAllChats}
         />
     )
 }

@@ -32,6 +32,7 @@ import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
 import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
 import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
+import { isComposerTextEmpty } from '../../../UIControls/composerMicSlot'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -98,6 +99,9 @@ export default function ChatInput({
     }
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
+    // AT-3025: the send button's slot, which holds a blue mic while the composer is empty.
+    const [sendDictationSlot, setSendDictationSlot] = useState(null)
+    const [micInSendSlot, setMicInSendSlot] = useState(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
     const displayedAssistantId = resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
@@ -495,6 +499,18 @@ export default function ChatInput({
                 // composer content (existing draft + transcript), and `onSubmit` already accepts a
                 // string precisely so a programmatic send does not race the `inputText` state.
                 onDictationSubmit={editing ? undefined : text => text && onSubmit(text)}
+                // AT-3025: an empty composer shows a blue mic in place of the greyed-out Send.
+                // Not while editing a message: there the button is Ok/Save, not a send.
+                sendSlotDictation={
+                    editing
+                        ? null
+                        : {
+                              target: sendDictationSlot,
+                              empty: isComposerTextEmpty(inputText),
+                              style: localStyles.sendSlotMic,
+                          }
+                }
+                onSendSlotDictationChange={setMicInSendSlot}
             />
             <ChatInputButtons
                 projectId={projectId}
@@ -519,6 +535,8 @@ export default function ChatInput({
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
                 onAssistantToggled={onAssistantToggled}
+                setSendDictationSlot={setSendDictationSlot}
+                micInSendSlot={micInSendSlot && !editing}
             />
         </AttachmentDropZone>
     )
@@ -553,5 +571,12 @@ const localStyles = StyleSheet.create({
     textInputAlignment: {
         paddingLeft: 0,
         paddingRight: 0,
+    },
+    // The size and corners of the icon-only primary Button the Send button is (AT-3025).
+    sendSlotMic: {
+        minWidth: 40,
+        height: 40,
+        borderRadius: 4,
+        paddingHorizontal: 12,
     },
 })

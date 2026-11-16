@@ -1,13 +1,23 @@
 import React, { useRef, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import AppPopover from '../../ModalShell/AppPopover'
-import { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { setDomAttributes } from '../../../../utils/setDomAttributes'
 
 import Button from '../../../UIControls/Button'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 
-export default function SubmitButton({ onSubmit, disabled, setShowRunOutGoalModal, showRunOutGoalModal }) {
+// AT-3025: `setDictationSlot` receives the node the comment input portals its blue mic into while
+// the comment is empty; `micInSendSlot` says the mic is there now, so this button steps aside. The
+// popover anchor stays mounted either way, so the out-of-Gold popup still has somewhere to open.
+export default function SubmitButton({
+    onSubmit,
+    disabled,
+    setShowRunOutGoalModal,
+    showRunOutGoalModal,
+    setDictationSlot,
+    micInSendSlot = false,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const buttonContainerRef = useRef(null)
 
@@ -30,21 +40,31 @@ export default function SubmitButton({ onSubmit, disabled, setShowRunOutGoalModa
             isOpen={showRunOutGoalModal}
             contentLocation={smallScreenNavigation ? null : undefined}
         >
-            <View ref={buttonContainerRef}>
-                <Button
-                    icon={'plus'}
-                    iconColor={'#ffffff'}
-                    type={'primary'}
-                    onPress={event => {
-                        event?.preventDefault?.()
-                        event?.stopPropagation?.()
-                        onSubmit()
-                    }}
-                    shortcutText={'Enter'}
-                    forceShowShortcut={true}
-                    disabled={disabled}
-                />
+            <View ref={buttonContainerRef} style={localStyles.slot}>
+                {setDictationSlot ? <View ref={setDictationSlot} style={localStyles.slot} /> : null}
+                {!micInSendSlot && (
+                    <Button
+                        icon={'plus'}
+                        iconColor={'#ffffff'}
+                        type={'primary'}
+                        onPress={event => {
+                            event?.preventDefault?.()
+                            event?.stopPropagation?.()
+                            onSubmit()
+                        }}
+                        shortcutText={'Enter'}
+                        forceShowShortcut={true}
+                        disabled={disabled}
+                    />
+                )}
             </View>
         </AppPopover>
     )
 }
+
+const localStyles = StyleSheet.create({
+    slot: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+})

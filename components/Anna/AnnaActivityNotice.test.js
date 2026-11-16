@@ -9,7 +9,7 @@ import { setLanguage } from '../../i18n/TranslationService'
 let mockState, root, container, notice
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 jest.mock('./annaActivityContext', () => ({ publishAnnaActivityContext: jest.fn(async () => {}) }))
-jest.mock('../Icon', () => () => <i />)
+jest.mock('../Icon', () => ({ __esModule: true, default: () => <i />, getIconGlyph: name => `<${name}>` }))
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn() }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 const details = {
@@ -46,9 +46,9 @@ afterEach(() => {
 
 it('renders a meaningful linked preview and persists it unchanged for later offline reading', async () => {
     await render()
-    // The object is the title; what happened to it is a chip (AT-2906).
+    // The object is the title; what happened to it is a small type label (AT-2906, AT-3046).
     expect(container.querySelector('.anna-activity-title').textContent).toBe('Sprintplanung')
-    expect(container.querySelector('.anna-activity-actions').textContent).toBe('Neue Chatnachricht')
+    expect(container.querySelector('.anna-activity-actions').textContent).toBe('Antwort')
     expect(container.querySelector('.anna-activity-preview').textContent).toBe(details.preview)
     expect(container.querySelector('.anna-activity-meta').textContent).toBe('Familie · Anna Alldone')
     // A thread whose type is not known yet opens its own chat object, never the followed chats
@@ -168,7 +168,7 @@ describe('one row per object (AT-2906)', () => {
         expect(container.querySelector('a').getAttribute('href')).toBe('/projects/p1/tasks/task1/chat')
         expect([...container.querySelectorAll('.anna-activity-action')].map(chip => chip.textContent)).toEqual([
             'Aufgabe als erledigt markiert',
-            'Neue Chatnachricht',
+            'Antwort',
         ])
         const link = container.querySelector('.anna-activity-link')
         expect(link.textContent).toBe('GitHub · Actions')
@@ -184,16 +184,17 @@ describe('the project and the people come first (AT-2906)', () => {
     const firstLine = () => container.querySelector('.anna-activity-content').firstElementChild
     const lines = () => [...container.querySelector('.anna-activity-content').children].map(node => node.className)
 
-    it('is the first line, project then name, above title, actions and preview', async () => {
+    it('is the first line, project then name, above title, preview and type label', async () => {
         loadAnnaActivityContent.mockResolvedValue({ ...details, actorName: 'Karsten Wysk' })
         await render()
         expect(firstLine().className).toBe('anna-activity-meta')
         expect(firstLine().textContent).toBe('Familie · Karsten Wysk')
+        // AT-3046: title and time share a line; the type label sits at the bottom of the card.
         expect(lines()).toEqual([
             'anna-activity-meta',
-            'anna-activity-title',
-            'anna-activity-actions',
+            'anna-activity-head',
             'anna-activity-preview',
+            'anna-activity-actions',
         ])
     })
 
@@ -202,7 +203,10 @@ describe('the project and the people come first (AT-2906)', () => {
         await render()
         expect(firstLine().className).toBe('anna-activity-meta')
         expect(firstLine().textContent).toBe('Familie')
-        expect(lines()).toEqual(['anna-activity-meta', 'anna-activity-title'])
+        expect(lines()).toEqual(['anna-activity-meta', 'anna-activity-head'])
+        expect(container.querySelector('.anna-activity-head > .anna-activity-title').textContent).toBe(
+            'Neue Chatnachricht'
+        )
     })
 
     it('names every actor of a grouped row once, after the project', async () => {
@@ -267,5 +271,63 @@ describe('long action chips stay within the row (AT-2918)', () => {
         await render()
         const label = container.querySelector('.anna-activity-link > .anna-activity-link-label')
         expect(label.textContent).toBe('GitLab · MR !2918')
+    })
+})
+
+describe('cards (AT-3046, variant C)', () => {
+    const here = { projectId: 'p1', assistantName: 'Anna Alldone' }
+    const renderCard = props => act(async () => root.render(<AnnaActivityGroup notices={[notice]} {...props} />))
+
+    it('is one link with the time in its title line and no arrow', async () => {
+        await renderCard({ context: here })
+        const card = container.querySelector('.anna-activity-notice > a.anna-activity-card')
+        expect(card.hasAttribute('data-anna-activity-link')).toBe(true)
+        expect(container.querySelectorAll('a')).toHaveLength(1)
+        expect(card.querySelector('.anna-activity-head > time').textContent).not.toBe('')
+        // The Icon mock renders <i>: the old trailing arrow is gone, the type icon is drawn by CSS.
+        expect(card.querySelector('i')).toBeNull()
+        expect(card.querySelector('.anna-activity-action').getAttribute('data-icon')).toBe('<message-circle>')
+        expect(card.querySelector('.anna-activity-action').textContent).toBe('Antwort')
+    })
+
+    it("hides project and assistant when both are the thread's own", async () => {
+        await renderCard({ context: here })
+        expect(container.querySelector('.anna-activity-meta')).toBeNull()
+    })
+
+    it('names project and actor for another project or another actor', async () => {
+        await renderCard({ context: { ...here, projectId: 'p2' } })
+        expect(container.querySelector('.anna-activity-meta').textContent).toBe('Familie · Anna Alldone')
+        act(() => root.unmount())
+        root = createRoot(container)
+        localStorage.clear() // forget the enrichment saved by the first render
+        loadAnnaActivityContent.mockResolvedValue({ ...details, actorName: 'Daniela' })
+        await renderCard({ context: here })
+        expect(container.querySelector('.anna-activity-meta').textContent).toBe('Familie · Daniela')
+    })
+
+    it('marks an unread card and leaves a read one grey', async () => {
+        await renderCard({ context: here, unread: true })
+        const card = () => container.querySelector('.anna-activity-card')
+        expect(card().classList.contains('anna-activity-card-unread')).toBe(true)
+        expect(container.querySelector('.anna-activity-notice').hasAttribute('data-anna-activity-unread')).toBe(true)
+        await renderCard({ context: here, unread: false })
+        expect(card().classList.contains('anna-activity-card-unread')).toBe(false)
+        expect(container.querySelector('.anna-activity-notice').hasAttribute('data-anna-activity-unread')).toBe(false)
+    })
+
+    it('counts several messages of one object in one label', async () => {
+        const second = { ...notice, id: 'chat/p1/chat1/message2', created: 1001 }
+        await act(async () => root.render(<AnnaActivityGroup notices={[notice, second]} context={here} />))
+        expect(container.querySelector('.anna-activity-action').textContent).toBe('2 Antworten')
+    })
+
+    it('keeps long titles whole in the title attribute so CSS can ellipsise them', async () => {
+        const objectName = 'Im Dark Mode sollte auch die Rückfrage von Claude lesbar sein '.repeat(2).trim()
+        loadAnnaActivityContent.mockResolvedValue({ ...details, objectName })
+        await renderCard({ context: here })
+        const title = container.querySelector('.anna-activity-title')
+        expect(title.textContent).toBe(objectName)
+        expect(title.getAttribute('title')).toBe(objectName)
     })
 })

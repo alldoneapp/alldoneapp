@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaConversation from './AnnaConversation'
+import AnnaConversation, { ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
@@ -89,29 +89,44 @@ jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
 })
 
 let mockDictation
+// AT-3025: the second mic, in the send button's place while the draft is empty.
+let mockSendSlotDictation
 let mockAttachments
 jest.mock('../Feeds/AddFeed/AddFeedAttachButton', () => props => {
     mockAttachments = props
     return <button type="button" aria-label="Select kind of file to add" disabled={props.isDisabled} />
+})
+// AT-3032: the assistant line's own Templates button, reused next to the +.
+let mockTemplates
+jest.mock('../MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearchButtonWrapper', () => props => {
+    mockTemplates = props
+    return <button type="button" aria-label="Templates" data-compact={props.compact ? 'true' : 'false'} />
 })
 let mockDictationSupported = true
 jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
 jest.mock('../UIControls/RambleButton', () => ({
     __esModule: true,
     RAMBLE_PHASE_IDLE: 'idle',
+    // Like the real button, an idle mic that is not `visible` renders nothing (it stays mounted).
     default: props => {
-        mockDictation = props
-        return <button type="button" aria-label="Dictate" />
+        if (props.variant === 'send') mockSendSlotDictation = props
+        else mockDictation = props
+        if (props.visible === false) return null
+        return <button type="button" aria-label="Dictate" data-variant={props.variant || 'inline'} />
     },
 }))
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
 const mockContextSet = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 const mockThreadMessages = {}
+// Threads whose messages have not arrived yet (useGetMessages reports loaded: false).
+const mockUnloadedThreads = new Set()
 jest.mock(
     '../../hooks/Chats/useGetMessages',
     () => (_a, _b, _projectId, chatId, _type, limit) =>
-        Object.assign((mockThreadMessages[chatId] || mockMessages).slice(-limit), { loaded: true })
+        mockUnloadedThreads.has(chatId)
+            ? Object.assign([], { loaded: false })
+            : Object.assign((mockThreadMessages[chatId] || mockMessages).slice(-limit), { loaded: true })
 )
 const mockMessageRender = jest.fn()
 jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => props => {
@@ -193,11 +208,14 @@ beforeEach(() => {
     getId.mockImplementation(() => `m${++messageSequence}`)
     localStorage.clear()
     mockDictation = null
+    mockSendSlotDictation = null
     mockAttachments = null
+    mockTemplates = null
     mockDictationSupported = true
     mockTrafficLimited = false
     mockMessages = []
     Object.keys(mockThreadMessages).forEach(key => delete mockThreadMessages[key])
+    mockUnloadedThreads.clear()
     Object.keys(mockCreators).forEach(key => delete mockCreators[key])
     createObjectMessage.mockResolvedValue('m1')
     updateNewAttachmentsData.mockImplementation(async (_projectId, text) => text)
@@ -322,15 +340,122 @@ it('follows viewport resizing after focus without pulling a reader away from old
     }
 })
 
-it('places the shared attachment picker next to the microphone and inserts the selected file', () => {
+it('orders the toolbar as + and Templates on the left, then mic, call and send on the right (AT-3029, AT-3032)', () => {
+    render({ renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    const labels = selector =>
+        [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    // An empty draft shows its mic in Send's place (AT-3025), still on the right.
+    expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Dictate'])
+    type('Draft')
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
+    // Offline hides only the mic; the rest keep their places.
+    render({ offline: true, renderProjectSwitcher: () => <button type="button" aria-label="Project" /> })
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
+    expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
+})
+
+describe('project chip on the field edge and Templates beside the + (AT-3032)', () => {
+    const project = () => <button type="button" aria-label="Project" />
+
+    it('renders the project chip above the editor, out of the toolbar, first in tab order', () => {
+        render({ renderProjectSwitcher: project })
+        const slot = container.querySelector('.anna-composer-draft > .anna-composer-project')
+        expect(slot.querySelector('[aria-label="Project"]')).not.toBeNull()
+        expect(container.querySelector('.anna-composer-toolbar [aria-label="Project"]')).toBeNull()
+        const buttonsAndEditor = [...container.querySelectorAll('.anna-composer-draft button, textarea')]
+        expect(buttonsAndEditor[0].getAttribute('aria-label')).toBe('Project')
+        expect(buttonsAndEditor[1].tagName).toBe('TEXTAREA')
+    })
+
+    it('leaves the slot empty when there is no project to choose', () => {
+        render({ renderProjectSwitcher: () => null })
+        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+        render()
+        expect(container.querySelector('.anna-composer-project').childNodes).toHaveLength(0)
+    })
+
+    it('still disables the chip during dictation, calls and offline', () => {
+        const renderProjectSwitcher = jest.fn(project)
+        render({ renderProjectSwitcher })
+        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
+        render({ renderProjectSwitcher, offline: true })
+        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
+        render({ renderProjectSwitcher, call: { status: 'connected' } })
+        expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: true })
+    })
+
+    it('opens the assistant line Templates for the chat’s project and assistant', () => {
+        render({ assistant: { uid: 'default-assistant', displayName: 'Existing assistant' } })
+        expect(mockTemplates).toEqual(
+            expect.objectContaining({ preferredAssistantId: 'a1', preferredProjectId: 'p1', compact: false })
+        )
+        // Opens upwards over the window, not pushed into the workspace pane's viewport.
+        expect(mockTemplates.position[0]).toBe('top')
+        expect(mockTemplates.getPopoverViewport()).toEqual(
+            expect.objectContaining({ top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight })
+        )
+        render({
+            conversation: { projectId: 'p2', id: 'anna_u1' },
+            assistant: { uid: 'default-assistant', displayName: 'Existing assistant' },
+        })
+        expect(mockTemplates).toEqual(
+            expect.objectContaining({ preferredAssistantId: 'default-assistant', preferredProjectId: 'p2' })
+        )
+    })
+
+    it('shows Templates as an icon in a narrow composer', () => {
+        const originalObserver = global.ResizeObserver
+        const observers = []
+        global.ResizeObserver = class {
+            constructor(callback) {
+                this.callback = callback
+                this.observe = jest.fn()
+                this.disconnect = jest.fn()
+                observers.push(this)
+            }
+        }
+        try {
+            render()
+            const form = container.querySelector('form')
+            const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === form))
+            expect(observer).toBeDefined()
+            const width = value =>
+                jest.spyOn(form, 'getBoundingClientRect').mockReturnValue({ width: value, toJSON: () => ({}) })
+            width(ANNA_TEMPLATES_COMPACT_WIDTH - 1)
+            act(() => observer.callback())
+            expect(mockTemplates.compact).toBe(true)
+            width(ANNA_TEMPLATES_COMPACT_WIDTH)
+            act(() => observer.callback())
+            expect(mockTemplates.compact).toBe(false)
+            // A hidden pane measures 0: keep the last real layout instead of flipping.
+            width(0)
+            act(() => observer.callback())
+            expect(mockTemplates.compact).toBe(false)
+            act(() => root.unmount())
+            expect(observer.disconnect).toHaveBeenCalledTimes(1)
+        } finally {
+            global.ResizeObserver = originalObserver
+        }
+    })
+})
+
+it('places the shared attachment picker in the toolbar and inserts the selected file', () => {
     render()
     const tools = container.querySelector('.anna-composer-tools')
-    expect(tools.querySelector('[aria-label="Dictate"]')).not.toBeNull()
     expect(tools.querySelector('[aria-label="Select kind of file to add"]')).not.toBeNull()
     expect(mockAttachments.compact).toBe(true)
     expect(mockAttachments.projectId).toBe('p1')
     mockAttachments.addAttachmentTag('plan.pdf', 'blob:plan')
     expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, expect.any(Object), 'plan.pdf', 'blob:plan')
+    // The mic is never next to the + (AT-3029): an empty draft has it in the send slot (AT-3025),
+    // with text it sits on the right before the call button.
+    const actions = container.querySelector('.anna-composer-actions')
+    expect(tools.querySelector('[aria-label="Dictate"]')).toBeNull()
+    type('Draft')
+    expect(tools.querySelector('[aria-label="Dictate"]')).toBeNull()
+    expect(actions.querySelector('[aria-label="Dictate"][data-variant="inline"]')).not.toBeNull()
 })
 
 it.each([{ offline: true }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
@@ -664,12 +789,39 @@ it('shows linked red activity between messages without posting to the assistant'
     ])
     expect(links[0].querySelector('.anna-activity-title').textContent).toBe('created task')
     expect(links[1].querySelector('.anna-activity-title').textContent).toBe('New chat message')
-    expect(links[0].querySelector('.anna-activity-meta').textContent).toBe('Launch')
+    // AT-3046: this thread's own project is not repeated on its cards.
+    expect(links[0].querySelector('.anna-activity-meta')).toBeNull()
     expect(container.querySelector('.anna-messages').textContent.indexOf('Working here')).toBeLessThan(
         container.querySelector('.anna-messages').textContent.indexOf('created task')
     )
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    now.mockRestore()
+})
+
+it('marks still unread activity cards with a blue edge until their badge clears (AT-3046)', () => {
+    jest.useFakeTimers()
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+    render()
+    now.mockReturnValue(2000)
+    mockActivityState.followedFeedsAmount = 2
+    mockActivityState.followedFeedsData = {
+        p1: [{ id: 'feed1', objectId: 'task1', objectTypes: 'tasks', lastChangeDate: 1900, entryText: 'created task' }],
+        p2: [{ id: 'feed2', objectId: 'task2', objectTypes: 'tasks', lastChangeDate: 1950, entryText: 'created task' }],
+    }
+    render()
+    const cards = () => [...container.querySelectorAll('.anna-activity-notice a')]
+    expect(cards()).toHaveLength(2)
+    expect(cards().map(card => card.classList.contains('anna-activity-card-unread'))).toEqual([true, true])
+    // A card from another project names it; one from this thread's project does not.
+    expect(cards()[0].querySelector('.anna-activity-meta')).toBeNull()
+    expect(cards()[1].querySelector('.anna-activity-meta')).not.toBeNull()
+    // The first task is read elsewhere: its badge clears, its card stays but turns grey.
+    mockActivityState.followedFeedsAmount = 1
+    mockActivityState.followedFeedsData = { p2: mockActivityState.followedFeedsData.p2 }
+    render()
+    expect(cards()).toHaveLength(2)
+    expect(cards().map(card => card.classList.contains('anna-activity-card-unread'))).toEqual([false, true])
     now.mockRestore()
 })
 
@@ -782,6 +934,8 @@ it('records a project chosen in the switcher in the chat history of that project
     expect(switchNotices()).toEqual([])
     render({ conversation: p2, threads, pageContext, projectSwitch: toFamilie })
     expect(switchNotices()).toEqual([['p2', 'm2', 'Switched to project: Familie']])
+    // AT-3036: the chosen project's chat starts on its own; the previous project's messages are gone.
+    expect(container.querySelector('[data-anna-message-id="m1"]')).toBeNull()
     // The current view moves with the conversation and exists only once.
     expect(container.querySelectorAll('.anna-view-notice')).toHaveLength(1)
     expect(
@@ -792,10 +946,10 @@ it('records a project chosen in the switcher in the chat history of that project
     render({ conversation: p2, threads, pageContext, projectSwitch: { ...toFamilie } })
     const back = { id: 2, projectId: 'p1', name: 'Alldone Product', created: 6000 }
     render({ conversation: p1, threads, pageContext, projectSwitch: back })
-    expect(switchNotices()).toEqual([
-        ['p2', 'm2', 'Switched to project: Familie'],
-        ['p1', 'm1', 'Switched to project: Alldone Product'],
-    ])
+    // AT-3036: each entry stays in its own project's thread, which is shown alone.
+    expect(switchNotices()).toEqual([['p1', 'm1', 'Switched to project: Alldone Product']])
+    render({ conversation: p2, threads, pageContext, projectSwitch: back })
+    expect(switchNotices()).toEqual([['p2', 'm2', 'Switched to project: Familie']])
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
@@ -987,7 +1141,8 @@ it('resolves the new local day before sending while preserving retries on their 
     render({ resolveConversation })
     await click('Find a note')
     await submit()
-    render({ resolveConversation, conversation: { projectId: 'p3', id: 'AnnaChat20261009u1', assistantId: 'a3' } })
+    // The next local day of the same project: yesterday's failed message keeps its Retry here.
+    render({ resolveConversation, conversation: { projectId: 'p2', id: 'AnnaChat20261009u1', assistantId: 'a3' } })
     await click('Retry')
     expect(resolveConversation).toHaveBeenCalledTimes(1)
     expect(createObjectMessage).toHaveBeenCalledTimes(1)
@@ -1762,14 +1917,97 @@ describe('selected project (AT-2903)', () => {
         }
     })
 
-    it('labels each project section and keeps the composer’s chat last after switching back', () => {
+    const user = { uid: 'u1', gold: 100, defaultProjectId: 'p1', projectIds: ['p1', 'p2', 'p3'] }
+    const jumps = () =>
+        [...container.querySelectorAll('.anna-project-jump')].map(button => [
+            button.dataset.annaProjectId,
+            button.textContent,
+        ])
+
+    // AT-3036: each project has its own daily thread, and the chat shows only the one it writes to.
+    it('shows only the chat of the project it continues in, never the previous project’s below it', () => {
         render({
             threads,
             conversation: { projectId: 'p1', id: 'AnnaChat20261029u1', assistantId: 'a1' },
             assistant: { uid: 'a1', displayName: 'Anna' },
-            user: { uid: 'u1', gold: 100, defaultProjectId: 'p1' },
+            user,
         })
-        expect(sections()).toEqual(['2026-10-29 · Alldone Product · Alldone CTO', '2026-10-29 · Home · Anna'])
+        expect(sections()).toEqual(['2026-10-29'])
+        render({
+            threads,
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+        })
+        expect(sections()).toEqual(['2026-10-29 · Alldone Product · Alldone CTO'])
+    })
+
+    it('keeps the composer’s chat last when the project had an earlier day (AT-2903)', () => {
+        render({
+            threads: [
+                { projectId: 'p2', chatId: 'AnnaChat20261029u1', dateKey: '20261029', assistantId: 'cto', created: 3 },
+                { projectId: 'p2', chatId: 'AnnaChat20261028u1', dateKey: '20261028', assistantId: 'cto', created: 1 },
+            ],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+        })
+        expect(sections()).toEqual([
+            '2026-10-28 · Alldone Product · Alldone CTO',
+            '2026-10-29 · Alldone Product · Alldone CTO',
+        ])
+    })
+
+    it('offers the other projects’ chats as jumps, latest first, and opens one through the picker (AT-3036)', () => {
+        const onOpenProject = jest.fn()
+        mockActivityState.loggedUserProjectsMap.p3 = { id: 'p3', name: 'Steercom', color: '#ff0000' }
+        render({
+            threads: [threads[1]],
+            otherThreads: [
+                threads[0],
+                { projectId: 'p3', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 5 },
+                // Not selectable (an archived or foreign project): no jump that would fail.
+                { projectId: 'gone', chatId: 'AnnaChat20261029u1', dateKey: '20261029', created: 9 },
+            ],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            assistant: { uid: 'cto', displayName: 'Alldone CTO' },
+            user,
+            onOpenProject,
+        })
+        expect(jumps()).toEqual([
+            ['p3', 'Steercom'],
+            ['p1', 'Home'],
+        ])
+        expect(container.querySelector('.anna-project-jump').getAttribute('aria-label')).toBe(
+            'Open the chat in %{projectName}'.replace('%{projectName}', 'Steercom')
+        )
+        act(() => container.querySelector('.anna-project-jump').click())
+        expect(onOpenProject).toHaveBeenCalledWith('p3')
+        // No jumps offline or during a call.
+        render({
+            threads: [threads[1]],
+            otherThreads: [threads[0]],
+            conversation: { projectId: 'p2', id: 'AnnaChat20261029u1', assistantId: 'cto' },
+            user,
+            onOpenProject,
+            offline: true,
+        })
+        expect(container.querySelector('.anna-project-jump').disabled).toBe(true)
+    })
+
+    it('keeps a failed message of another project out of this chat and offers its project instead (AT-3036)', async () => {
+        runHttpsCallableFunction.mockRejectedValueOnce(new Error('Offline'))
+        const onOpenProject = jest.fn()
+        render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
+        await click('Find a note')
+        await submit()
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
+        render({ user, onOpenProject, conversation: { projectId: 'p1', id: 'anna_u1', assistantId: 'a1' } })
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(false)
+        expect(jumps()).toEqual([['p2', 'Alldone Product']])
+        // Back in its project, the message and its Retry are still there.
+        render({ user, onOpenProject, conversation: { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' } })
+        expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry')).toBe(true)
     })
 
     it('shows no project label while every section is in the default project', () => {
@@ -1790,7 +2028,7 @@ describe('selected project (AT-2903)', () => {
         await submit()
         expect(createObjectMessage).not.toHaveBeenCalled()
         expect(container.querySelector('textarea').value).toBe('For the product project')
-        expect(container.querySelector('.anna-composer-tools [data-testid="project-chip"]')).not.toBeNull()
+        expect(container.querySelector('.anna-composer-project [data-testid="project-chip"]')).not.toBeNull()
         expect(renderProjectSwitcher).toHaveBeenLastCalledWith({ disabled: false })
         render({ switching: false, renderProjectSwitcher })
         expect(container.querySelector('.anna-send').disabled).toBe(false)
@@ -2082,5 +2320,273 @@ describe('dropping files onto the chat pane (AT-2928)', () => {
         expect(overlay()).not.toBeNull()
         act(() => window.dispatchEvent(new Event('dragend')))
         expect(overlay()).toBeNull()
+    })
+})
+
+describe('empty draft shows the mic in place of Send (AT-3025)', () => {
+    const actions = () => container.querySelector('.anna-composer-actions')
+    const tools = () => container.querySelector('.anna-composer-tools')
+    const sendButton = () => container.querySelector('[aria-label="Send message"]')
+
+    it('shows one blue mic where Send sits while the draft is empty', () => {
+        render()
+        expect(sendButton()).toBeNull()
+        expect(actions().querySelector('[aria-label="Dictate"][data-variant="send"]')).not.toBeNull()
+        expect(tools().querySelector('[aria-label="Dictate"]')).toBeNull()
+        expect(container.querySelectorAll('[aria-label="Dictate"]')).toHaveLength(1)
+    })
+
+    it('brings Send back, and the small mic before the call button, as soon as there is text', () => {
+        render()
+        type('Hello')
+        expect(sendButton().disabled).toBe(false)
+        expect(actions().querySelector('[aria-label="Dictate"][data-variant="send"]')).toBeNull()
+        expect(actions().querySelector('[aria-label="Dictate"][data-variant="inline"]')).not.toBeNull()
+        expect(tools().querySelector('[aria-label="Dictate"]')).toBeNull()
+        type('   ')
+        expect(sendButton()).toBeNull()
+    })
+
+    it('shares the composer wiring with the small mic', () => {
+        render()
+        expect(mockSendSlotDictation.projectId).toBe('p1')
+        expect(mockSendSlotDictation.onTextReady).toBe(mockDictation.onTextReady)
+        expect(mockSendSlotDictation.onSubmit).toBe(mockDictation.onSubmit)
+    })
+
+    it('keeps a take started in the send slot there until it is done, then offers Send', () => {
+        render()
+        act(() => mockSendSlotDictation.onPhaseChange('recording'))
+        act(() => mockSendSlotDictation.onPhaseChange('processing'))
+        act(() => mockSendSlotDictation.onTextReady('Call Sam tomorrow.'))
+        expect(container.querySelector('textarea').value).toBe('Call Sam tomorrow.')
+        // Still processing: the recording mic keeps the slot, no Send and no second mic yet.
+        expect(mockSendSlotDictation.visible).toBe(true)
+        expect(sendButton()).toBeNull()
+        expect(mockDictation.visible).toBe(false)
+        act(() => mockSendSlotDictation.onPhaseChange('idle'))
+        expect(sendButton().disabled).toBe(false)
+        expect(mockSendSlotDictation.visible).toBe(false)
+        expect(mockDictation.visible).toBe(true)
+    })
+
+    it('sends a held take from the send slot on release', async () => {
+        render()
+        act(() => mockSendSlotDictation.onPhaseChange('recording'))
+        act(() => mockSendSlotDictation.onPhaseChange('processing'))
+        await act(async () => {
+            mockSendSlotDictation.onTextReady('Book the train.')
+            mockSendSlotDictation.onSubmit('Book the train.')
+        })
+        act(() => mockSendSlotDictation.onPhaseChange('idle'))
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        expect(createObjectMessage.mock.calls[0][2]).toBe('Book the train.')
+    })
+
+    it('keeps the greyed-out Send where dictation is unavailable', () => {
+        render({ offline: true })
+        expect(sendButton().disabled).toBe(true)
+        expect(container.querySelector('[aria-label="Dictate"]')).toBeNull()
+        mockDictationSupported = false
+        render()
+        expect(sendButton().disabled).toBe(true)
+    })
+})
+
+// AT-3036: a project switch shows a loading state in place of the previous project's chat and
+// ends at the very bottom of the new project's chat once its messages are rendered.
+describe('project switch loading and scroll (AT-3036)', () => {
+    const p1 = { projectId: 'p1', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p2 = { projectId: 'p2', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p3 = { projectId: 'p3', id: 'AnnaChat20261113u1', assistantId: 'a1' }
+    const p2Thread = 'p2-today'
+    const p3Thread = 'p3-today'
+    const conversation = (base, chatId) => ({ ...base, id: chatId })
+    let log
+    const layout = (scrollHeight, clientHeight = 300) => {
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: scrollHeight })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: clientHeight })
+    }
+    const readEarlier = () => {
+        log.scrollTop = 100
+        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+    }
+    const loading = () => container.querySelector('[data-testid="anna-project-switch-loading"]')
+    const text = () => container.querySelector('[role="log"]').textContent
+    beforeEach(() => {
+        Object.assign(mockThreadMessages, {
+            [p1.id]: [{ id: 'old1', creatorId: 'u1', created: 1, commentText: 'Home project message' }],
+            [p2Thread]: [{ id: 'new1', creatorId: 'u1', created: 2, commentText: 'Steercom message' }],
+            [p3Thread]: [{ id: 'new3', creatorId: 'u1', created: 3, commentText: 'Product message' }],
+        })
+        render({ conversation: p1 })
+        log = container.querySelector('[role="log"]')
+        layout(1200)
+    })
+
+    it('shows a loading state instead of the previous project’s chat, keeping the draft and holding sends', async () => {
+        type('Draft for Steercom')
+        expect(text()).toContain('Home project message')
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        expect(loading().getAttribute('role')).toBe('status')
+        expect(loading().textContent).toBe('Opening the chat in Steercom…')
+        expect(text()).not.toContain('Home project message')
+        // Nothing of the old project to act on meanwhile: no earlier days, no jumps.
+        expect(container.querySelector('.anna-project-jumps')).toBeNull()
+        expect(container.querySelector('.anna-send').disabled).toBe(true)
+        await submit()
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+        // Without a known name the state still says what is happening.
+        render({ conversation: p1, switching: true })
+        expect(loading().textContent).toBe('Opening the chat…')
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(loading()).toBeNull()
+        expect(text()).toContain('Steercom message')
+        expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+    })
+
+    it('scrolls to the very bottom once the new chat’s messages are rendered, not before', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        mockUnloadedThreads.add(p2Thread)
+        render({ conversation: conversation(p2, p2Thread) })
+        // Resolved, but its messages are still on their way.
+        expect(text()).toContain('Loading your conversation…')
+        expect(log.scrollTop).toBe(100)
+        mockUnloadedThreads.delete(p2Thread)
+        layout(1800)
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(text()).toContain('Steercom message')
+        expect(log.scrollTop).toBe(1800)
+    })
+
+    it('scrolls to the bottom of a reused daily chat that is already cached', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('scrolls to the bottom of a new, empty chat', () => {
+        mockThreadMessages.empty = []
+        readEarlier()
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, 'empty') })
+        expect(container.querySelector('.anna-welcome')).not.toBeNull()
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('lets the latest of several quick switches decide, and scrolls only for it', () => {
+        readEarlier()
+        mockUnloadedThreads.add(p2Thread)
+        mockUnloadedThreads.add(p3Thread)
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        render({ conversation: conversation(p2, p2Thread), switching: true, switchingProjectName: 'Product' })
+        // The overtaken project's messages arrive while the next one opens: no scroll, no content.
+        mockUnloadedThreads.delete(p2Thread)
+        render({ conversation: conversation(p2, p2Thread), switching: true, switchingProjectName: 'Product' })
+        expect(text()).not.toContain('Steercom message')
+        expect(log.scrollTop).toBe(100)
+        render({ conversation: conversation(p3, p3Thread) })
+        expect(log.scrollTop).toBe(100)
+        mockUnloadedThreads.delete(p3Thread)
+        layout(1500)
+        render({ conversation: conversation(p3, p3Thread) })
+        expect(text()).toContain('Product message')
+        expect(log.scrollTop).toBe(1500)
+    })
+
+    it('scrolls once per switch: later updates do not pull a reader down', () => {
+        render({ conversation: p1, switching: true })
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(1200)
+        readEarlier()
+        mockThreadMessages[p2Thread] = [
+            ...mockThreadMessages[p2Thread],
+            { id: 'new2', creatorId: 'a1', created: 5, commentText: 'Later answer' },
+        ]
+        layout(1500)
+        render({ conversation: conversation(p2, p2Thread) })
+        expect(log.scrollTop).toBe(100)
+        expect(container.querySelector('.anna-latest')).not.toBeNull()
+    })
+
+    it('returns to the bottom of the previous chat when the switch is refused or taken back', () => {
+        readEarlier()
+        render({ conversation: p1, switching: true, switchingProjectName: 'Steercom' })
+        // The project could not be opened (or was picked away again): the old chat comes back.
+        render({ conversation: p1 })
+        expect(loading()).toBeNull()
+        expect(text()).toContain('Home project message')
+        expect(log.scrollTop).toBe(1200)
+    })
+
+    it('does not force a scroll when a new day starts in the same project', () => {
+        readEarlier()
+        render({ conversation: { ...p1, id: 'AnnaChat20261114u1' } })
+        expect(log.scrollTop).toBe(100)
+    })
+
+    // AT-3036 follow-up: the shell focuses the composer after a switch picked in the chat; it is told
+    // when the switch has ended, i.e. once the new chat's messages are on screen.
+    describe('reports the end of a switch (composer focus)', () => {
+        const settled = jest.fn()
+        const seen = []
+        beforeEach(() => {
+            seen.length = 0
+            settled.mockReset().mockImplementation(projectId => seen.push([projectId, text()]))
+        })
+
+        it('reports once, after the new chat’s messages are rendered, with the composer and draft in place', () => {
+            type('Draft for Steercom')
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            mockUnloadedThreads.add(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).not.toHaveBeenCalled()
+            mockUnloadedThreads.delete(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).toHaveBeenCalledTimes(1)
+            expect(seen[0][0]).toBe('p2')
+            expect(seen[0][1]).toContain('Steercom message')
+            expect(container.querySelector('textarea').value).toBe('Draft for Steercom')
+            // Later updates and a new day are no switch.
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            render({ conversation: { ...p2, id: 'AnnaChat20261114u1' }, onSwitchSettled: settled })
+            expect(settled).toHaveBeenCalledTimes(1)
+        })
+
+        it('reports a reused cached chat and a new empty chat right away', () => {
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            expect(settled).toHaveBeenLastCalledWith('p2')
+            mockThreadMessages.empty = []
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p3, 'empty'), onSwitchSettled: settled })
+            expect(container.querySelector('.anna-welcome')).not.toBeNull()
+            expect(settled.mock.calls).toEqual([['p2'], ['p3']])
+        })
+
+        it('reports only the latest of several quick switches', () => {
+            mockUnloadedThreads.add(p2Thread)
+            mockUnloadedThreads.add(p3Thread)
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), onSwitchSettled: settled })
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            mockUnloadedThreads.delete(p2Thread)
+            render({ conversation: conversation(p2, p2Thread), switching: true, onSwitchSettled: settled })
+            render({ conversation: conversation(p3, p3Thread), onSwitchSettled: settled })
+            expect(settled).not.toHaveBeenCalled()
+            mockUnloadedThreads.delete(p3Thread)
+            render({ conversation: conversation(p3, p3Thread), onSwitchSettled: settled })
+            expect(settled.mock.calls).toEqual([['p3']])
+        })
+
+        it('reports the previous project when the switch is refused, so the shell can drop it', () => {
+            render({ conversation: p1, switching: true, onSwitchSettled: settled })
+            render({ conversation: p1, onSwitchSettled: settled })
+            expect(settled.mock.calls).toEqual([['p1']])
+        })
     })
 })

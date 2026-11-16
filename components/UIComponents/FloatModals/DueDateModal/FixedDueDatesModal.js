@@ -85,7 +85,8 @@ export default function FixedDueDatesModal({
         { text: 'In 2 days', date: moment().add(2, 'day'), shortcut: '5' },
         { text: 'In 4 days', date: moment().add(4, 'day'), shortcut: '6' },
         { text: 'In 7 days', date: moment().add(7, 'day'), shortcut: '7' },
-        { text: 'In 30 days', date: moment().add(30, 'day'), shortcut: '8' },
+        { text: 'In 14 days', date: moment().add(14, 'day'), shortcut: '8' },
+        { text: 'In 30 days', date: moment().add(30, 'day'), shortcut: '9' },
     ]
 
     const getPreviousMilestoneDate = async () => {
@@ -173,14 +174,14 @@ export default function FixedDueDatesModal({
             <View style={localStyles.sectionSeparator} />
 
             <View style={localStyles.estimationSection}>
-                <Hotkeys keyName={'9'} onKeyDown={(sht, event) => sendToBacklog(event)} filter={e => true}>
+                <Hotkeys keyName={'0'} onKeyDown={(sht, event) => sendToBacklog(event)} filter={e => true}>
                     <TouchableOpacity style={localStyles.dateSectionItem} onPress={sendToBacklog} accessible={false}>
                         <View style={localStyles.dateSectionItem}>
                             <View style={localStyles.sectionItemText}>
                                 <Text style={[styles.subtitle1, { color: '#ffffff' }]}>{translate('Someday')}</Text>
                             </View>
                             <View style={localStyles.sectionItemCheck}>
-                                {!smallScreenNavigation && <Shortcut text={'9'} theme={SHORTCUT_LIGHT} />}
+                                {!smallScreenNavigation && <Shortcut text={'0'} theme={SHORTCUT_LIGHT} />}
                             </View>
                         </View>
                     </TouchableOpacity>

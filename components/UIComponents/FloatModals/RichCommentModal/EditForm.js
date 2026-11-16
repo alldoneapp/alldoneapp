@@ -14,6 +14,7 @@ import store from '../../../../redux/store'
 import { translate } from '../../../../i18n/TranslationService'
 import BotButtonWrapper from '../../../ChatsView/ChatDV/EditorView/BotOption/BotButtonWrapper'
 import SubmitButton from './SubmitButton'
+import { isComposerTextEmpty } from '../../../UIControls/composerMicSlot'
 import { themed } from '../../../../Themes/colorMode'
 
 export default class EditForm extends Component {
@@ -29,6 +30,9 @@ export default class EditForm extends Component {
             isPrivate: currentPrivacy || false,
             mentionsModalActive: false,
             isShiftPressed: false,
+            // AT-3025: the submit button's slot, which holds a blue mic while the comment is empty.
+            sendDictationSlot: null,
+            micInSendSlot: false,
         }
 
         this.inputTask = React.createRef()
@@ -112,6 +116,14 @@ export default class EditForm extends Component {
     submitDictatedComment = () => {
         if (!this.canSubmit()) return
         this.done()
+    }
+
+    setSendDictationSlot = node => {
+        if (node !== this.state.sendDictationSlot) this.setState({ sendDictationSlot: node })
+    }
+
+    setMicInSendSlot = value => {
+        if (value !== this.state.micInSendSlot) this.setState({ micInSendSlot: value })
     }
 
     setMentionsModalActive = value => {
@@ -227,6 +239,18 @@ export default class EditForm extends Component {
                             externalEditorId={`${projectId}AddComment`}
                             // Push-to-talk (AT-2410) — see `submitDictatedComment`.
                             onDictationSubmit={this.submitDictatedComment}
+                            // AT-3025: while the comment is empty a blue mic takes the submit
+                            // button's place (and the hover mic in the field steps aside).
+                            sendSlotDictation={
+                                hideDoneButton
+                                    ? null
+                                    : {
+                                          target: this.state.sendDictationSlot,
+                                          empty: isComposerTextEmpty(comment),
+                                          style: localStyles.sendSlotMic,
+                                      }
+                            }
+                            onSendSlotDictationChange={this.setMicInSendSlot}
                         />
                     </View>
                 </View>
@@ -305,6 +329,8 @@ export default class EditForm extends Component {
                                 disabled={userIsAnonymous || disableDoneButton || !comment.trim()}
                                 setShowRunOutGoalModal={setShowRunOutGoalModal}
                                 showRunOutGoalModal={showRunOutGoalModal}
+                                setDictationSlot={this.setSendDictationSlot}
+                                micInSendSlot={this.state.micInSendSlot}
                             />
                         </View>
                     )}
@@ -345,4 +371,11 @@ const localStyles = StyleSheet.create({
         flex: 1,
     },
     buttonsRight: {},
+    // The size and corners of the primary Button the submit button is (AT-3025).
+    sendSlotMic: {
+        minWidth: 40,
+        height: 40,
+        borderRadius: 4,
+        paddingHorizontal: 12,
+    },
 })

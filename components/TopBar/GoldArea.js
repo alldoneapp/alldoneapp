@@ -58,7 +58,6 @@ export default function GoldArea({ containerStyle }) {
                     marginRight: 8,
                 },
                 smallScreenNavigation ? theme.containerMobile : theme.container,
-                ,
                 containerStyle,
             ]}
             onPress={navigateToUserProfile}
@@ -73,7 +72,9 @@ export default function GoldArea({ containerStyle }) {
             >
                 <Gold width={21.43} height={21.43} id="goldArea" />
             </Animated.View>
-            <Text style={[localStyle.text, theme.text]}>{parseNumberToUseThousand(displayedGold)}</Text>
+            <Text style={[localStyle.text, theme.text]} numberOfLines={1}>
+                {parseNumberToUseThousand(displayedGold)}
+            </Text>
         </TouchableOpacity>
     )
 }
@@ -91,5 +92,6 @@ const localStyle = StyleSheet.create({
     text: {
         ...styles.caption2,
         marginLeft: 8,
+        flexShrink: 1,
     },
 })

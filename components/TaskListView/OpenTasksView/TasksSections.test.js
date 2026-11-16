@@ -25,6 +25,7 @@ jest.mock('./OriginallyFromSectionList', () => 'OriginallyFromSectionList')
 jest.mock('./ObservedFromSectionList', () => 'ObservedFromSectionList')
 jest.mock('./StreamAndUserTasksSectionList', () => 'StreamAndUserTasksSectionList')
 jest.mock('./CalendarSectionContainer', () => 'CalendarSectionContainer')
+jest.mock('./MessagesSection', () => 'MessagesSection')
 // The real module pulls in firestore.js, which needs the build-injected .env. Only the bucket
 // indexes matter here, so stub them the way taskPriorityFilterHelper.test.js does.
 jest.mock('../../../utils/backends/openTasks', () => ({
@@ -34,6 +35,7 @@ jest.mock('../../../utils/backends/openTasks', () => ({
     OBSERVED_TASKS_INDEX: 7,
     STREAM_AND_USER_TASKS_INDEX: 8,
     CALENDAR_TASK_INDEX: 10,
+    MESSAGE_TASK_INDEX: 11,
 }))
 
 describe('TasksSections assistant profile workflow tasks', () => {
@@ -114,6 +116,17 @@ describe('TasksSections calendar section', () => {
         const tree = renderSections({ assistantProfileMode: true })
 
         expect(tree.root.findAllByType('CalendarSectionContainer')).toHaveLength(0)
+    })
+
+    // AT-3027 - both sections jump into their project from All projects, so they need its index.
+    it('hands the project index to the Messages and Calendar sections', () => {
+        setCalendarTasks([['0', [{ id: 'meeting-1' }]]])
+        mockState.filteredOpenTasksStore.instance[0][11] = [['0', [{ id: 'message-1' }]]]
+
+        const tree = renderSections({ projectIndex: 4 })
+
+        expect(tree.root.findByType('CalendarSectionContainer').props.projectIndex).toBe(4)
+        expect(tree.root.findByType('MessagesSection').props.projectIndex).toBe(4)
     })
 
     it('never renders a dedicated email section', () => {

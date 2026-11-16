@@ -40,6 +40,48 @@ async function appendSentMessageToTask({ database, userId, userData, identity, s
     }
 }
 
+// The email a task was just created from is the first message of the task's chat (AT-3022).
+// continueEmailThread only adds the later mail of the thread, and skips this one because the task
+// already lists it, so without this the chat started with the second email. Same comment id as a
+// continuation line of that email, so a retry or a race never duplicates it. Placed at the time the
+// email arrived (ahead of the "added this task" lines) and silent: the new task already notified.
+// `outgoing`: the owner's own mail, shown as the owner's message like appendSentMessageToTask.
+async function appendOriginEmailToTask({
+    database,
+    userId,
+    projectId,
+    taskId,
+    gmailData,
+    context = {},
+    actor,
+    outgoing = false,
+}) {
+    if (!projectId || !taskId || !actor) return null
+    const identity = getEmailIdentity(userId, gmailData)
+    if (!identity) return null
+    const { buildReceivedMessageText, buildSentMessageText } = require('./emailThreadTopicStore')
+    const receivedAt = Number(context.internalDate) || Date.parse(context.date) || 0
+    const service = new TaskCommentService({ database })
+    const comment = await service.addComment({
+        projectId,
+        taskId,
+        commentId: `email_${identity.messageKey}`,
+        comment: outgoing ? buildSentMessageText(context) : buildReceivedMessageText(context),
+        actor,
+        fromAssistant: !outgoing && !!actor.fromAssistant,
+        gmailData: {
+            ...gmailData,
+            accountUserId: userId,
+            taskProjectId: projectId,
+            receivedAt,
+            ...(outgoing ? { direction: 'outgoing', archiveOnComplete: false } : {}),
+        },
+        silent: true,
+        createdAt: receivedAt || null,
+    })
+    return { commentId: comment.commentId, existing: !!comment.existing }
+}
+
 // `reopenOnNewEmail`: whether this email may reopen a done task. Callers that know the email's
 // classification pass it (the labeling sync: actionable or needs a reply); the explicit
 // "Create task" action leaves the default, since the user asked for the task themselves.
@@ -151,4 +193,4 @@ async function continueEmailThread({
     }
 }
 
-module.exports = { continueEmailThread }
+module.exports = { continueEmailThread, appendOriginEmailToTask }

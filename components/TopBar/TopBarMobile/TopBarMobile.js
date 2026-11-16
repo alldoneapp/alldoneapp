@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { Animated, ScrollView, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -13,9 +13,15 @@ import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE, barWidth } from '../../XpBar/XpBar'
 import HomeButton, { HOME_BUTTON_WIDTH } from '../HomeButton'
-import GoldArea from '../GoldArea'
 
 const SECONDARY_BAR_MOBILE = 36
+const TOP_ROW_PADDING = 16
+const HOME_BUTTON_GAP = 8
+
+// AT-3044: the left group (menu + Gold) must stop short of the absolutely centred Home button, so
+// a long balance on a narrow phone shrinks instead of sliding under it.
+export const getLeftAreaMaxWidth = rowWidth =>
+    rowWidth > 0 ? Math.max(0, rowWidth / 2 - HOME_BUTTON_WIDTH / 2 - TOP_ROW_PADDING - HOME_BUTTON_GAP) : undefined
 
 export default function TopBarMobile({ compact: compactOverride, showMenu = true }) {
     const dispatch = useDispatch()
@@ -26,6 +32,8 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
     const reallySmallScreenNavigation = useSelector(state => state.reallySmallScreenNavigation)
     const compact = compactOverride ?? reallySmallScreenNavigation
     const height = useRef(new Animated.Value(0)).current
+    const [rowWidth, setRowWidth] = useState(0)
+    const leftAreaMaxWidth = getLeftAreaMaxWidth(rowWidth)
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile')
 
@@ -60,13 +68,19 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
 
     return (
         <View>
-            <View testID="top-bar-mobile" style={[localStyles.container, theme.container]}>
-                <View style={localStyles.statisticArea}>
-                    <TopBarMobileStatisticArea
-                        expandSecondaryBar={expandSecondaryBar}
-                        compact={compact}
-                        showMenu={showMenu}
-                    />
+            <View
+                testID="top-bar-mobile"
+                style={[localStyles.container, theme.container]}
+                onLayout={({ nativeEvent }) => setRowWidth(nativeEvent.layout.width)}
+            >
+                <View
+                    testID="top-bar-mobile-left"
+                    style={[
+                        localStyles.statisticArea,
+                        leftAreaMaxWidth !== undefined && { maxWidth: leftAreaMaxWidth },
+                    ]}
+                >
+                    <TopBarMobileStatisticArea expandSecondaryBar={expandSecondaryBar} showMenu={showMenu} />
                 </View>
                 <View style={localStyles.notificationArea}>
                     {!isAnonymous && (
@@ -95,7 +109,6 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
                                 <View style={localStyles.xpContainer}>
                                     <XpBar size={XP_BAR_MOBILE} />
                                 </View>
-                                <GoldArea />
                                 {statistics}
                             </ScrollView>
                         ) : (
@@ -115,12 +128,14 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
+        paddingHorizontal: TOP_ROW_PADDING,
         height: 56,
     },
     statisticArea: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
     },
     notificationArea: {
         flexDirection: 'row',

@@ -4,7 +4,13 @@ import { useSelector } from 'react-redux'
 import CalendarSection from './CalendarSection'
 import { CALENDAR_TASK_INDEX } from '../../../utils/backends/openTasks'
 
-export default function CalendarSectionContainer({ projectId, dateIndex, instanceKey, isActiveOrganizeMode }) {
+export default function CalendarSectionContainer({
+    projectId,
+    projectIndex,
+    dateIndex,
+    instanceKey,
+    isActiveOrganizeMode,
+}) {
     const calendarTasks = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX]
     )
@@ -12,6 +18,7 @@ export default function CalendarSectionContainer({ projectId, dateIndex, instanc
     return (
         <CalendarSection
             projectId={projectId}
+            projectIndex={projectIndex}
             calendarEvents={calendarTasks}
             dateIndex={dateIndex}
             isActiveOrganizeMode={isActiveOrganizeMode}

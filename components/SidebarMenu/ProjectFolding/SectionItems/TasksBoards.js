@@ -15,6 +15,7 @@ import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ContactItem from '../../Items/ContactItem'
 import AssistantItem from '../../Items/AssistantItem'
 import WikiItem from '../../Items/WikiItem'
+import ChatsItem from '../../Items/ChatsItem'
 import useProjectData from '../../../../hooks/useProjectData'
 
 // Shared identity so a missing slice does not hand `useSelector` a new array on every render.
@@ -148,8 +149,9 @@ export default function TasksBoards({
                     )
                 })}
 
-            {/* Not behind "show more": a long member list must not hide the way into the wiki. */}
+            {/* Not behind "show more": a long member list must not hide the way into the wiki or the chats. */}
             {!isShared && <WikiItem projectId={projectId} projectColor={projectColor} />}
+            {!isShared && <ChatsItem projectId={projectId} projectColor={projectColor} />}
 
             {!isTemplate &&
                 !isGuideProject &&
