@@ -13,7 +13,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   }
 >
   <div
-    className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
+    className="css-view-g5y9jx r-height-1pi2tsx r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
     id="app-sidebar"
     onMouseEnter={[Function]}
@@ -489,51 +489,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-bottom-1p0dtai r-flexDirection-18u37iz r-height-1mwlp6a r-position-u8s1d r-left-1d2f490"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-GraySidebar)",
-        "width": "0px",
-      }
-    }
-  >
-    <div
-      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flexDirection-18u37iz r-height-1mwlp6a r-overflow-1udh08x r-paddingBlock-w7s2jr r-paddingInline-cxgwc0 r-width-13qz1uu r-paddingLeft-1937ghh"
-      dir={null}
-      onClick={[Function]}
-      onContextMenu={[Function]}
-      onKeyDown={[Function]}
-      style={
-        {
-          "opacity": 0.64,
-          "transitionDuration": "0s",
-        }
-      }
-      tabIndex="0"
-    >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
-          style={
-            {
-              "color": "var(--ad-Text03)",
-              "fontFamily": "alldone",
-              "fontSize": "22px",
-              "opacity": 1,
-            }
-          }
-        >
-          
         </div>
       </div>
     </div>
@@ -554,7 +509,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   }
 >
   <div
-    className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
+    className="css-view-g5y9jx r-height-1pi2tsx r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
     id="app-sidebar"
     onMouseEnter={[Function]}
@@ -1030,51 +985,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-bottom-1p0dtai r-flexDirection-18u37iz r-height-1mwlp6a r-position-u8s1d r-left-1d2f490"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-GraySidebar)",
-        "width": "0px",
-      }
-    }
-  >
-    <div
-      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flexDirection-18u37iz r-height-1mwlp6a r-overflow-1udh08x r-paddingBlock-w7s2jr r-paddingInline-cxgwc0 r-width-13qz1uu r-paddingLeft-1937ghh"
-      dir={null}
-      onClick={[Function]}
-      onContextMenu={[Function]}
-      onKeyDown={[Function]}
-      style={
-        {
-          "opacity": 0.64,
-          "transitionDuration": "0s",
-        }
-      }
-      tabIndex="0"
-    >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
-          style={
-            {
-              "color": "var(--ad-Text03)",
-              "fontFamily": "alldone",
-              "fontSize": "22px",
-              "opacity": 1,
-            }
-          }
-        >
-          
         </div>
       </div>
     </div>
@@ -1095,7 +1005,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   }
 >
   <div
-    className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
+    className="css-view-g5y9jx r-height-1pi2tsx r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
     id="app-sidebar"
     onMouseEnter={[Function]}
@@ -1571,51 +1481,6 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-bottom-1p0dtai r-flexDirection-18u37iz r-height-1mwlp6a r-position-u8s1d r-left-1d2f490"
-    dir={null}
-    style={
-      {
-        "backgroundColor": "var(--ad-GraySidebar)",
-        "width": "0px",
-      }
-    }
-  >
-    <div
-      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flexDirection-18u37iz r-height-1mwlp6a r-overflow-1udh08x r-paddingBlock-w7s2jr r-paddingInline-cxgwc0 r-width-13qz1uu r-paddingLeft-1937ghh"
-      dir={null}
-      onClick={[Function]}
-      onContextMenu={[Function]}
-      onKeyDown={[Function]}
-      style={
-        {
-          "opacity": 0.64,
-          "transitionDuration": "0s",
-        }
-      }
-      tabIndex="0"
-    >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
-          style={
-            {
-              "color": "var(--ad-Text03)",
-              "fontFamily": "alldone",
-              "fontSize": "22px",
-              "opacity": 1,
-            }
-          }
-        >
-          
         </div>
       </div>
     </div>

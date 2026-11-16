@@ -345,20 +345,6 @@ const ThemeColors = {
                 color: Colors.Grey400,
             },
         },
-
-        // CollapseButton component
-        CollapseButton: {
-            parent: {
-                backgroundColor: Colors.Primary400,
-            },
-            iconColor: Colors.White,
-            text: {
-                color: Colors.White,
-            },
-            container: {
-                opacity: 0.4,
-            },
-        },
     },
     AnonymousSideMenu: {
         AnonymousHeader: {
