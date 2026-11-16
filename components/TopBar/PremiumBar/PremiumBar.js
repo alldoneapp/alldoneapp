@@ -14,9 +14,10 @@ import { translate } from '../../../i18n/TranslationService'
 export const QUOTA_BAR_MOBILE = 0
 export const QUOTA_BAR_NORMAL = 1
 
-export default function PremiumBar({ size = QUOTA_BAR_NORMAL }) {
+// `compact`: the crown alone, as on a small screen (AnnaTopStrip when it is short of room).
+export default function PremiumBar({ size = QUOTA_BAR_NORMAL, compact = false }) {
     const dispatch = useDispatch()
-    const smallScreen = useSelector(state => state.smallScreen)
+    const smallScreen = useSelector(state => state.smallScreen) || compact
     const themeName = useSelector(state => state.loggedUser.themeName)
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.PremiumBar')

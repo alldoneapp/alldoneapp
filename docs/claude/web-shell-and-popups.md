@@ -388,8 +388,12 @@ leaves no empty box. The assistant board's edit pencil stays visible. Loading sh
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
 renders `AnnaTopStrip` above everything, in all three views; in plain Alldone a screen with a top
 bar slot shows it there instead (2026-11-16: `AnnaStripSlotContext`; RootView's `TopBarContainer`
-claims it and keeps clear of a collapsed sidebar, so the sidebar runs up to the top as it does without
-AnnaShell; detail views have no slot, so the strip stays above everything there). It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
+claims it, so the sidebar runs up to the top as it does without AnnaShell; there the strip is a card as
+wide as the content below, with TopBar's margins (`getDesktopTopBarMargins`, the shown sidebar
+state), height, rounded bottom and theme background, `[data-anna-strip-slot]` in anna.css; detail
+views have no slot, so the strip stays above everything there). When the strip's left side overflows
+(a narrow card), its statistics show icons instead of labels (`compact` on `TopBarStatisticArea`,
+`TasksStatisticsArea`, `QuotaBar`, `PremiumBar`) until the side is as wide as the labels needed. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
 (`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and

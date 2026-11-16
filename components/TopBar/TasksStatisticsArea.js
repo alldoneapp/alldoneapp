@@ -27,7 +27,8 @@ import store from '../../redux/store'
 import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_POINTS, getEstimationTypeToUse } from '../../utils/EstimationHelper'
 import { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
-export default function TasksStatisticsArea() {
+// `compact`: the icon instead of the label (AnnaTopStrip when it is short of room).
+export default function TasksStatisticsArea({ compact = false }) {
     const dispatch = useDispatch()
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -49,7 +50,7 @@ export default function TasksStatisticsArea() {
     const donePointsToShow = getValueToShow(donePointsByProject)
 
     // Keep the compact icon while a centered Home button limits the statistics row.
-    const useMobile = smallScreen || topBarWidth < 900
+    const useMobile = compact || smallScreen || topBarWidth < 900
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.TasksStatisticsArea')
 

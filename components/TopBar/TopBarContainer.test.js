@@ -50,7 +50,7 @@ describe('TopBarContainer and the assistant strip', () => {
     })
 
     // Plain Alldone on desktop: the strip sits here, right of the sidebar, which runs up to the top.
-    it('renders the strip in its slot and claims it, clear of a collapsed sidebar', () => {
+    it('renders the strip in its slot as wide as the content, clear of a collapsed sidebar', () => {
         const release = jest.fn()
         const slot = { strip: <strip-element />, claim: jest.fn(() => release) }
         const flatStyle = node => Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean))
@@ -58,11 +58,14 @@ describe('TopBarContainer and the assistant strip', () => {
         const expanded = render({ smallScreenNavigation: false }, true, slot)
         expect(slot.claim).toHaveBeenCalledTimes(1)
         const holder = expanded.root.findByType('strip-element').parent
-        expect(flatStyle(holder).marginLeft).toBeUndefined()
+        // TopBar's margins: as wide as the content below (104px each side outside a middle screen).
+        expect(parseFloat(flatStyle(holder).marginLeft)).toBe(104)
+        expect(parseFloat(flatStyle(holder).marginRight)).toBe(104)
         act(() => expanded.unmount())
         expect(release).toHaveBeenCalledTimes(1)
 
         const collapsed = render({ smallScreenNavigation: false, loggedUser: { sidebarExpanded: false } }, true, slot)
-        expect(parseFloat(flatStyle(collapsed.root.findByType('strip-element').parent).marginLeft)).toBe(56)
+        // Plus the collapsed sidebar's 56px, which floats over the content.
+        expect(parseFloat(flatStyle(collapsed.root.findByType('strip-element').parent).marginLeft)).toBe(160)
     })
 })

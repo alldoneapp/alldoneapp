@@ -4,10 +4,9 @@ import { Dimensions, StyleSheet, View } from 'react-native-web'
 
 import TopBar from './TopBar'
 import TopBarMobile from './TopBarMobile/TopBarMobile'
-import { getTopBarLayout } from './topBarLayout'
+import { getDesktopTopBarMargins, getTopBarLayout } from './topBarLayout'
 import AnnaTopStripContext, { AnnaStripSlotContext } from '../Anna/AnnaTopStripContext'
-import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { selectSidebarExpanded } from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
 export default function TopBarContainer({ containerStyle }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -21,12 +20,19 @@ export default function TopBarContainer({ containerStyle }) {
     const stripSlot = useContext(AnnaStripSlotContext)
     const claimStripSlot = stripSlot?.claim
     useLayoutEffect(() => claimStripSlot?.(), [claimStripSlot])
-    // The collapsed sidebar floats over the content, which keeps clear of it (MainViewsContainer).
-    const { overlay } = useCollapsibleSidebar()
+    // In its slot the strip is a card as wide as the content below, like TopBar: the same margins,
+    // clear of a collapsed sidebar too (the shown state, not the stored preference).
+    const shownSidebarExpanded = useSelector(selectSidebarExpanded)
     if (inAnnaStrip) {
         if (!stripSlot) return null
         return (
-            <View style={[containerStyle, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
+            <View
+                style={[
+                    containerStyle,
+                    getDesktopTopBarMargins({ isMiddleScreen, sidebarExpanded: shownSidebarExpanded }),
+                ]}
+                dataSet={{ annaStripSlot: 'app' }}
+            >
                 {stripSlot.strip}
             </View>
         )

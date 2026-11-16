@@ -15,10 +15,11 @@ import Percent from './Percent'
 export const QUOTA_BAR_MOBILE = 0
 export const QUOTA_BAR_NORMAL = 1
 
-export default function QuotaBar({ size = QUOTA_BAR_NORMAL }) {
+// `compact`: the icon instead of the label, as on a small screen (AnnaTopStrip when it is short of room).
+export default function QuotaBar({ size = QUOTA_BAR_NORMAL, compact = false }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const smallScreen = useSelector(state => state.smallScreen)
+    const smallScreen = useSelector(state => state.smallScreen) || compact
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.QuotaBar')
 

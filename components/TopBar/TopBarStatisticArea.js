@@ -10,8 +10,9 @@ import TasksStatisticsArea from './TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 
 // `showTasksStatistics`: AnnaTopStrip drops the done-task count in a window too narrow for the chat
-// beside Alldone, where it would run into the view switch in the middle.
-export default function TopBarStatisticArea({ showTasksStatistics = true }) {
+// beside Alldone, where it would run into the view switch in the middle. `compact`: icons instead of
+// labels, when the strip's left side would otherwise run into the switch.
+export default function TopBarStatisticArea({ showTasksStatistics = true, compact = false }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
 
@@ -23,8 +24,8 @@ export default function TopBarStatisticArea({ showTasksStatistics = true }) {
                 <XpBar key={'karma-bar-desktop'} compact />
             )}
             <GoldArea containerStyle={{ marginRight: smallScreen ? 4 : 8 }} />
-            {showTasksStatistics && <TasksStatisticsArea />}
-            {premiumStatus === PLAN_STATUS_PREMIUM ? <PremiumBar /> : <QuotaBar />}
+            {showTasksStatistics && <TasksStatisticsArea compact={compact} />}
+            {premiumStatus === PLAN_STATUS_PREMIUM ? <PremiumBar compact={compact} /> : <QuotaBar compact={compact} />}
         </View>
     )
 }

@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react'
+import React, { useLayoutEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
 import NotificationArea from '../TopBar/NotificationArea'
@@ -40,10 +40,36 @@ export default function AnnaTopStrip({
         return () => observer?.disconnect()
     }, [dispatch])
 
+    // The labelled statistics need more room than the left side has in a narrow strip (for example
+    // the card above the content in plain Alldone): there they show icons, as on a small screen, and
+    // their labels return once the side is as wide as they needed.
+    const left = useRef(null)
+    const labelledWidth = useRef(0)
+    const [compactStatistics, setCompactStatistics] = useState(false)
+    const checkStatistics = () => {
+        const node = left.current
+        if (!node) return
+        const room = node.clientWidth
+        setCompactStatistics(compact => {
+            if (!compact && node.scrollWidth > room + 1) {
+                labelledWidth.current = node.scrollWidth
+                return true
+            }
+            return compact && room < labelledWidth.current
+        })
+    }
+    useLayoutEffect(checkStatistics)
+    useLayoutEffect(() => {
+        if (!left.current || typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(checkStatistics)
+        observer.observe(left.current)
+        return () => observer.disconnect()
+    }, [])
+
     return (
         <div className="anna-strip" ref={strip} data-testid="anna-top-strip">
-            <div className="anna-strip-left" onClickCapture={onLeaveChat}>
-                <TopBarStatisticArea showTasksStatistics={canSplit} />
+            <div className="anna-strip-left" ref={left} onClickCapture={onLeaveChat}>
+                <TopBarStatisticArea showTasksStatistics={canSplit} compact={compactStatistics} />
             </div>
             <AnnaViewSwitch
                 layout={layout}
