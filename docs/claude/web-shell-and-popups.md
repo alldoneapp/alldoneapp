@@ -200,8 +200,9 @@ mode crosshair moved to the Empty inbox card (`rage-mode.md`). Pinned by `Assist
 
 **Desktop strip and two cards (2026-11-15 prototype, "variant C").** Above 760px `AnnaShell`
 renders `AnnaTopStrip` above everything, in all three views. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
-task statistics, quota/premium) on the left, the view switch in the middle (Tasks with the
-open-task count, Both, the assistant's name for chat only), `ConnectionStatusChip` and
+task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
+(the assistant's name for chat only, Both, Tasks with a check-circle icon and the open-task count;
+2026-11-16), `ConnectionStatusChip` and
 `NotificationArea` on the right. It reports its width through `setTopBarWidth`, which XpBar,
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
 render nothing inside the workspace: Alldone never repeats a bar below the strip. With no bar left to

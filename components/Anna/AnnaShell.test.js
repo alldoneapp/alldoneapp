@@ -1894,7 +1894,12 @@ describe('the strip in plain Alldone (desktop)', () => {
         render(content(1))
         expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
         expect(document.querySelector('.anna-strip button[aria-label="Open sidebar"]')).toBeNull()
-        expect(document.querySelectorAll('.anna-strip-switch button')).toHaveLength(3)
+        // In the order of the cards: the chat on the left, Alldone on the right.
+        expect([...document.querySelectorAll('.anna-strip-switch button')].map(b => b.dataset.annaLayout)).toEqual([
+            'chat',
+            'split',
+            'alldone',
+        ])
     })
 })
 
@@ -1919,7 +1924,10 @@ describe('a desktop window too narrow for both', () => {
         render(content(1))
         expect(shell().contains('anna-narrow')).toBe(true)
         expect(shell().contains('anna-chat-only')).toBe(true)
-        expect(layoutButton('split')).toBeNull()
+        expect([...document.querySelectorAll('.anna-strip-switch button')].map(b => b.dataset.annaLayout)).toEqual([
+            'chat',
+            'alldone',
+        ])
         expect(layoutButton('chat').getAttribute('aria-pressed')).toBe('true')
         expect(layoutButton('alldone').getAttribute('aria-pressed')).toBe('false')
         expect(stage().getAttribute('aria-hidden')).toBe('true')
