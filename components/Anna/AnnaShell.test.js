@@ -2185,11 +2185,11 @@ describe('the strip in plain Alldone (desktop)', () => {
         render(content(1))
         expect(document.querySelector('.anna-shell > .anna-strip')).toBeTruthy()
         expect(document.querySelector('.anna-strip button[aria-label="Open sidebar"]')).toBeNull()
-        // In the order of the cards: the chat on the left, Alldone on the right.
+        // The assistant on the left, App in the middle, Both on the right (AT-3073).
         expect([...document.querySelectorAll('.anna-strip-switch button')].map(b => b.dataset.annaLayout)).toEqual([
             'chat',
-            'split',
             'alldone',
+            'split',
         ])
         expect(mockStatisticProps).toEqual({ compact: false, showTasksStatistics: true })
     })

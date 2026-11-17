@@ -436,9 +436,10 @@ shrinks statistics in a strip that has the room; left out, as in TopBar, the fla
 step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
 is as wide as the step needed, so a render can never undo the previous one (an earlier version that
 checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It replaces Alldone's top bar: `TopBarStatisticArea` (gold,
-task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
-(`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
-2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
+task statistics, quota/premium) on the left, the view switch in the middle
+(`AnnaViewSwitch`: the assistant's name for chat only, App with a check-circle icon and the open-task count, then Both;
+2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`. AT-3073, 2026-11-17, moved App
+to the middle and Both to the right end, where it was assistant, Both, App; pinned by `AnnaShell.test.js`), `ConnectionStatusChip` and
 `NotificationArea` on the right. Where the strip spans the window (assistant mode, and screens
 without a top bar slot) it starts with Alldone's logo (`showLogo`, `.anna-strip-logo`), at the 16px
 inset where the sidebar shows its logo in the App view, so the logo stays put across views; like the

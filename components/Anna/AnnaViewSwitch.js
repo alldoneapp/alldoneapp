@@ -15,8 +15,8 @@ export const ANNA_VIEW_SWITCH_HEIGHT = 38
 /**
  * Switches between the assistant and the app: in the desktop strip (AnnaTopStrip, with "Both" where
  * the window has room for it) and on phones, icons only, in the chat header and in Alldone's own
- * phone bar. Its order follows the desktop cards: the assistant, Both, App. `layout` is what is in
- * front: `chat`, `split`, `alldone`, or null for another screen than Alldone.
+ * phone bar. Its order: the assistant, App, Both (AT-3073, 2026-11-17; it was assistant, Both, App).
+ * `layout` is what is in front: `chat`, `split`, `alldone`, or null for another screen than Alldone.
  */
 export default function AnnaViewSwitch({
     layout,
@@ -48,17 +48,6 @@ export default function AnnaViewSwitch({
                 </span>
                 {!iconsOnly && <span className="anna-strip-name">{assistantName}</span>}
             </button>
-            {canSplit && (
-                <button
-                    type="button"
-                    aria-pressed={layout === 'split'}
-                    data-anna-layout="split"
-                    onClick={() => onSelect('split')}
-                >
-                    <Icon name="columns" size={16} color="currentColor" />
-                    <span>{translate('Both')}</span>
-                </button>
-            )}
             <button
                 type="button"
                 aria-pressed={layout === 'alldone'}
@@ -80,6 +69,17 @@ export default function AnnaViewSwitch({
                     </span>
                 )}
             </button>
+            {canSplit && (
+                <button
+                    type="button"
+                    aria-pressed={layout === 'split'}
+                    data-anna-layout="split"
+                    onClick={() => onSelect('split')}
+                >
+                    <Icon name="columns" size={16} color="currentColor" />
+                    <span>{translate('Both')}</span>
+                </button>
+            )}
         </div>
     )
 }
