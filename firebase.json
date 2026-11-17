@@ -186,6 +186,13 @@
                 }
             },
             {
+                "source": "/api/roadmap/source",
+                "function": {
+                    "functionId": "roadmapSource",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/booking/**",
                 "function": {
                     "functionId": "bookingApi",

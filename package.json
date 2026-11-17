@@ -85,6 +85,7 @@
             "__tests__/TwilioWhatsAppService.test.js",
             "__tests__/Chats/copyChatToOtherProject.test.js",
             "__tests__/Feeds/copyInnerFeedsToOtherProject.test.js",
+            "__tests__/Roadmap/roadmapSourceParity.test.js",
             "__tests__/SidebarMenu/UserItem.test.js",
             "__tests__/LandingPage/Imprint.test.js",
             "__tests__/ContactDetailedView/ContactDetailedView.test.js",

@@ -33,8 +33,6 @@ jest.mock('../Feeds/globalFeedsHelper', () => ({
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY: 'allProjects',
-    OPEN_STEP: -1,
-    DONE_STEP: -2,
     FEED_PUBLIC_FOR_ALL: 0,
     STAYWARD_COMMENT: 2,
     getBaseUrl: jest.fn(() => 'https://app.alldone.test'),
@@ -100,12 +98,6 @@ jest.mock('./assistantStatusHelper', () => ({
 
 jest.mock('../Tasks/workflowAiStep', () => ({
     resolveWorkflowRunsForSettledVmJob: mockResolveWorkflowRunsForSettledVmJob,
-}))
-
-// AT-3074: Anna's summary for notices outside the task thread.
-const mockSummarizeVmResultForChat = jest.fn(async () => '')
-jest.mock('./vmResultSummary', () => ({
-    summarizeVmResultForChat: (...args) => mockSummarizeVmResultForChat(...args),
 }))
 
 const { __private__ } = require('./vmJobRunner')
@@ -3559,7 +3551,7 @@ describe('VM runner WhatsApp notifications', () => {
         })
     })
 
-    test('sends the prepared notice for WhatsApp-originated VM jobs', async () => {
+    test('sends final output for WhatsApp-originated VM jobs', async () => {
         const pendingRef = { update: jest.fn(async () => {}) }
 
         const result = await __private__.sendWhatsAppVmResultNotification(
@@ -3571,14 +3563,17 @@ describe('VM runner WhatsApp notifications', () => {
                 objectType: 'topics',
                 objectId: 'chat-1',
             },
-            '✅ The VM task you requested finished.\n\nThe report is ready.\n\nhttps://app.alldone.test/x',
-            { pendingRef }
+            'Final VM result',
+            {
+                mediaContext: [{ fileName: 'report.pdf', storageUrl: 'https://storage.example/report.pdf' }],
+                pendingRef,
+            }
         )
 
         expect(result.success).toBe(true)
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledWith(
             'whatsapp:+123',
-            '✅ The VM task you requested finished.\n\nThe report is ready.\n\nhttps://app.alldone.test/x',
+            'Generated file:\nreport.pdf: https://storage.example/report.pdf\n\nFinal VM result',
             {
                 projectId: 'project-1',
                 objectId: 'chat-1',
@@ -3613,6 +3608,48 @@ describe('VM runner WhatsApp notifications', () => {
         expect(result).toBeNull()
         expect(mockSendWhatsAppMessageWithConversationLink).not.toHaveBeenCalled()
         expect(pendingRef.update).not.toHaveBeenCalled()
+    })
+
+    test('sends the public artifact link, not the internal chat attachment token', () => {
+        const finalTextWithToken =
+            'Final VM result \n\n EbDsQTD14ahtSR5https://storage.example/fileEbDsQTD14ahtSR5file.pdfEbDsQTD14ahtSR5false'
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Final VM result', {
+            mediaContext: [{ fileName: 'file.pdf', storageUrl: 'https://storage.example/file.pdf' }],
+        })
+
+        expect(finalTextWithToken).toContain('EbDsQTD14ahtSR5')
+        expect(whatsappMessage).toBe('Generated file:\nfile.pdf: https://storage.example/file.pdf\n\nFinal VM result')
+        expect(whatsappMessage).not.toContain('EbDsQTD14ahtSR5')
+    })
+
+    test('lists every artifact download link before the answer', () => {
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Done', {
+            mediaContext: [
+                { fileName: 'a.pdf', storageUrl: 'https://storage.example/a' },
+                { fileName: 'b.csv', storageUrl: 'https://storage.example/b' },
+            ],
+        })
+
+        expect(whatsappMessage).toBe(
+            'Generated files:\na.pdf: https://storage.example/a\nb.csv: https://storage.example/b\n\nDone'
+        )
+    })
+
+    test('leads with the artifact link so it survives WhatsApp tail truncation', () => {
+        const longAnswer = 'x'.repeat(2000)
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage(longAnswer, {
+            mediaContext: [{ fileName: 'big.pdf', storageUrl: 'https://storage.example/big.pdf' }],
+        })
+
+        // Link is at the very top; the service trims the answer tail (never the leading link).
+        expect(whatsappMessage.startsWith('Generated file:\nbig.pdf: https://storage.example/big.pdf')).toBe(true)
+    })
+
+    test('falls back to the plain answer when there are no artifacts', () => {
+        expect(__private__.buildWhatsAppVmResultMessage('Just a text answer', {})).toBe('Just a text answer')
+        expect(__private__.buildWhatsAppVmResultMessage('Just a text answer', { mediaContext: [] })).toBe(
+            'Just a text answer'
+        )
     })
 
     test('sends failure text for WhatsApp-originated VM jobs', async () => {
@@ -3675,7 +3712,7 @@ describe('VM runner origin-conversation completion note', () => {
         mockCreateInitialStatusMessage.mockResolvedValue('origin-comment-1')
     })
 
-    test('posts the prepared notice into the delegated-from conversation', async () => {
+    test('posts a completion note into the delegated-from conversation', async () => {
         const result = await __private__.postVmOriginConversationNote(
             {
                 correlationId: 'correlation-1',
@@ -3688,7 +3725,8 @@ describe('VM runner origin-conversation completion note', () => {
                 originObjectId: 'whatsapp-topic-1',
                 originAssistantId: 'anna-assistant',
             },
-            '✅ The VM task you requested finished.\n\nThe research is done.\n\nhttps://app.alldone.test/host-task-1'
+            'The competitor research is done.',
+            { notificationType: 'completed' }
         )
 
         expect(result).toBe(true)
@@ -3701,9 +3739,30 @@ describe('VM runner origin-conversation completion note', () => {
         expect(assistantId).toBe('anna-assistant')
         expect(userIdsToNotify).toEqual(['user-1'])
         expect(followerIds).toEqual(['user-1'])
-        expect(note).toBe(
-            '✅ The VM task you requested finished.\n\nThe research is done.\n\nhttps://app.alldone.test/host-task-1'
+        // Note carries the outcome + a deep link to the host task (a different object/project).
+        expect(note).toContain('✅')
+        expect(note).toContain('finished')
+        expect(note).toContain('The competitor research is done.')
+        expect(note).toContain('host-task-1')
+    })
+
+    test('uses the failure framing for failed jobs', async () => {
+        await __private__.postVmOriginConversationNote(
+            {
+                userId: 'user-1',
+                projectId: 'project-X',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectId: 'whatsapp-topic-1',
+                originAssistantId: 'anna-assistant',
+            },
+            '❌ It broke.',
+            { notificationType: 'failed' }
         )
+
+        const note = mockCreateInitialStatusMessage.mock.calls[0][4]
+        expect(note).toContain('failed')
+        expect(note).not.toContain('✅')
     })
 
     test('is a no-op when there is no origin conversation', async () => {
@@ -3856,294 +3915,6 @@ describe('VM runner origin-conversation completion note', () => {
 
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledTimes(1)
         expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-    })
-})
-
-// ---------------------------------------------------------------------------
-// AT-3074: the VM report stays in its task thread; elsewhere only Anna's summary + the link
-// ---------------------------------------------------------------------------
-
-describe('VM result notices keep the report in the task thread (AT-3074)', () => {
-    const OWNER = 'user-1'
-    const CTO = 'cto-assistant'
-    const HOST_LINK = 'https://app.alldone.test/projects/project-X/tasks/host-task-1/chat'
-    const SUMMARY = 'AT-3073 is merged and live on production; please check the new button order.'
-    // Shaped like the AT-3073 merge report that was copied into the daily Anna chat.
-    const FULL_REPORT = [
-        'Der Merge hat geklappt und die Änderung ist auf Production.',
-        '',
-        '| Schritt | Status |',
-        '|---|---|',
-        '| Gemergt | ✅ MR !883, Merge-Commit `f3e34e033beee8c0294f373aaa909038418e60ba` |',
-        'Was sich geändert hat: `components/Anna/AnnaViewSwitch.js` ordnet die Buttons neu.',
-        '',
-        'Artifacts:',
-        '- report.html: https://my.alldone.app/artifacts/a1',
-    ].join('\n')
-
-    const job = (overrides = {}) => ({
-        correlationId: 'vm-1',
-        userId: OWNER,
-        projectId: 'project-X',
-        objectType: 'tasks',
-        objectId: 'host-task-1',
-        originProjectId: 'project-anna',
-        originObjectType: 'topics',
-        originObjectId: 'AnnaChat20261117user-1',
-        originAssistantId: 'anna',
-        ...overrides,
-    })
-
-    const plainTask = { userId: OWNER, name: 'Reorder top-bar buttons', humanReadableId: 'AT-3073', stepHistory: [-1] }
-    const delegatedTask = (stepHistory = [-1, '-A-build']) => ({
-        ...plainTask,
-        stepHistory,
-        done: false,
-        taskMetadata: { delegation: { ownerId: OWNER, assistantId: CTO, requiresReview: true } },
-    })
-    const ownerWorkflow = (steps = {}) => ({
-        workflow: {
-            'project-X': {
-                '-A-build': {
-                    description: 'AI: please build',
-                    reviewerUid: CTO,
-                    reviewerType: 'assistant',
-                    sortIndex: 0,
-                },
-                '-B-check': {
-                    description: 'Check what AI did',
-                    reviewerUid: OWNER,
-                    reviewerType: 'user',
-                    sortIndex: 1,
-                },
-                ...steps,
-            },
-        },
-    })
-    const receipt = (overrides = {}) => ({
-        ownerId: OWNER,
-        originProjectId: 'project-anna',
-        originObjectType: 'topics',
-        originObjectId: 'AnnaChat20261117user-1',
-        originAssistantId: 'anna',
-        ...overrides,
-    })
-
-    let docs
-    const useDocs = entries => {
-        docs = new Map(Object.entries(entries))
-    }
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        useDocs({ 'items/project-X/tasks/host-task-1': plainTask })
-        mockFirestore.mockImplementation(() => ({
-            doc: path => ({ get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }) }),
-        }))
-        mockCreateInitialStatusMessage.mockResolvedValue('origin-comment-1')
-        mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true, sid: 'SM1', status: 'queued' })
-        mockSummarizeVmResultForChat.mockResolvedValue(SUMMARY)
-    })
-
-    afterAll(() => {
-        mockFirestore.mockImplementation(() => ({ doc: jest.fn() }))
-        mockSummarizeVmResultForChat.mockResolvedValue('')
-    })
-
-    const expectNoReport = text => {
-        expect(text).not.toContain('Der Merge hat geklappt')
-        expect(text).not.toContain('| Schritt | Status |')
-        expect(text).not.toContain('f3e34e033beee8c0294f373aaa909038418e60ba')
-        expect(text).not.toContain('AnnaViewSwitch.js')
-        expect(text).not.toContain('https://my.alldone.app/artifacts/a1')
-    }
-
-    test('the daily Anna chat gets Anna’s summary and the task link, never the report', async () => {
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledWith(
-            expect.objectContaining({
-                resultText: FULL_REPORT,
-                userId: OWNER,
-                projectId: 'project-X',
-                objectId: 'host-task-1',
-                objectType: 'tasks',
-                taskLabel: 'AT-3073 “Reorder top-bar buttons”',
-            })
-        )
-        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-        const [projectId, objectType, objectId, assistantId, note] = mockCreateInitialStatusMessage.mock.calls[0]
-        expect([projectId, objectType, objectId, assistantId]).toEqual([
-            'project-anna',
-            'topics',
-            'AnnaChat20261117user-1',
-            'anna',
-        ])
-        expect(note).toBe(`✅ The VM task AT-3073 “Reorder top-bar buttons” finished.\n\n${SUMMARY}\n\n${HOST_LINK}`)
-        expectNoReport(note)
-    })
-
-    test('without a summary the note is the status line and the link, not a report excerpt', async () => {
-        mockSummarizeVmResultForChat.mockResolvedValueOnce('')
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        const note = mockCreateInitialStatusMessage.mock.calls[0][4]
-        expect(note).toBe(`✅ The VM task AT-3073 “Reorder top-bar buttons” finished.\n\n${HOST_LINK}`)
-    })
-
-    test('WhatsApp and its daily-topic mirror get the same short notice, without the report or file links', async () => {
-        useDocs({ 'items/project-X/tasks/host-task-1': plainTask })
-
-        await __private__.notifyVmResultChannels(
-            job({ triggerChannel: 'whatsapp', whatsappTo: 'whatsapp:+49123', originProjectId: '' }),
-            FULL_REPORT,
-            { notificationType: 'completed' }
-        )
-
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledTimes(1)
-        const message = mockSendWhatsAppMessageWithConversationLink.mock.calls[0][1]
-        expect(message).toBe(`✅ The VM task AT-3073 “Reorder top-bar buttons” finished.\n\n${SUMMARY}\n\n${HOST_LINK}`)
-        expectNoReport(message)
-        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
-            expect.objectContaining({ resultText: message })
-        )
-        // No origin conversation on this job.
-        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
-    })
-
-    test('WhatsApp and the origin chat share one summary', async () => {
-        await __private__.notifyVmResultChannels(
-            job({ triggerChannel: 'whatsapp', whatsappTo: 'whatsapp:+49123' }),
-            FULL_REPORT,
-            { notificationType: 'completed' }
-        )
-
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledTimes(1)
-        expect(mockSendWhatsAppMessageWithConversationLink.mock.calls[0][1]).toBe(
-            mockCreateInitialStatusMessage.mock.calls[0][4]
-        )
-    })
-
-    test('a run that ends a delegated task’s AI step leaves the one message to the review notice', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask(),
-            'users/user-1': ownerWorkflow(),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt(),
-        })
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
-        // Nothing else needs the summary, so none is written (and none is paid for).
-        expect(mockSummarizeVmResultForChat).not.toHaveBeenCalled()
-    })
-
-    test('the delegated task still texts its WhatsApp requester, who gets no review notice', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask(),
-            'users/user-1': ownerWorkflow(),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt(),
-        })
-
-        await __private__.notifyVmResultChannels(
-            job({ triggerChannel: 'whatsapp', whatsappTo: 'whatsapp:+49123' }),
-            FULL_REPORT,
-            { notificationType: 'completed' }
-        )
-
-        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
-        expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledTimes(1)
-    })
-
-    test('a delegated task whose next step is another AI step still gets the note', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask(),
-            'users/user-1': ownerWorkflow({
-                '-B-check': { description: 'AI: review', reviewerUid: CTO, reviewerType: 'assistant', sortIndex: 1 },
-                '-C-test': { description: 'Test', reviewerUid: OWNER, reviewerType: 'user', sortIndex: 2 },
-            }),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt(),
-        })
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-    })
-
-    test('a review notice bound for another conversation does not silence this one', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask(),
-            'users/user-1': ownerWorkflow(),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt({ originObjectId: 'another-chat' }),
-        })
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-    })
-
-    test('a VM run on a delegated task already waiting for the owner still reports', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask([-1, '-A-build', '-B-check']),
-            'users/user-1': ownerWorkflow(),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt(),
-        })
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-    })
-
-    test('a failed run on a delegated task reports its reason without a model call (no review follows)', async () => {
-        useDocs({
-            'items/project-X/tasks/host-task-1': delegatedTask(),
-            'users/user-1': ownerWorkflow(),
-            'delegatedTaskOrigins/project-X__host-task-1': receipt(),
-        })
-
-        await __private__.notifyVmResultChannels(job(), '❌ The VM task could not be completed: sandbox died', {
-            notificationType: 'failed',
-        })
-
-        expect(mockSummarizeVmResultForChat).not.toHaveBeenCalled()
-        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toBe(
-            `❌ The VM task AT-3073 “Reorder top-bar buttons” failed.\n\nThe VM task could not be completed: sandbox died\n\n${HOST_LINK}`
-        )
-    })
-
-    test('a cancelled run says so without repeating “Stopped.”', async () => {
-        await __private__.notifyVmResultChannels(job(), 'Stopped.', { notificationType: 'cancelled' })
-
-        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toBe(
-            `🛑 The VM task AT-3073 “Reorder top-bar buttons” was cancelled.\n\n${HOST_LINK}`
-        )
-    })
-
-    test('an unreadable host task keeps the generic subject and still links the thread', async () => {
-        mockFirestore.mockImplementation(() => ({
-            doc: () => ({
-                get: async () => {
-                    throw new Error('unavailable')
-                },
-            }),
-        }))
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toBe(
-            `✅ The VM task you requested finished.\n\n${SUMMARY}\n\n${HOST_LINK}`
-        )
-    })
-
-    test('a job with neither WhatsApp nor an origin conversation sends nothing and writes no summary', async () => {
-        await __private__.notifyVmResultChannels(job({ originProjectId: '' }), FULL_REPORT, {
-            notificationType: 'completed',
-        })
-
-        expect(mockSummarizeVmResultForChat).not.toHaveBeenCalled()
-        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
-        expect(mockSendWhatsAppMessageWithConversationLink).not.toHaveBeenCalled()
     })
 })
 

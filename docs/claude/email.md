@@ -315,6 +315,33 @@ operationId of its charge and may give back at most what that charge took, once:
 refund after a charge that never happened (an ambiguous timeout) would hand out Gold. Pinned by
 `functions/MenubarApp/menubarGoldWebhook.test.js`.
 
+**alldone.team reads the Roadmap Creator's Alldone source on its own site (JO-3355).** Inside
+alldone.app the embed window pushes an Alldone project's goals, milestones and OKRs to the Roadmap
+Creator over postMessage (`utils/roadmapSourceBridge.js`, protocol version 1). On alldone.team itself
+there is no alldone.app page, so alldone.team's Functions ask `POST https://my.alldone.app/api/roadmap/source`
+(hosting rewrite → `roadmapSource`, europe-west1, `functions/Roadmap/roadmapSourceApi.js`) for the
+alldone.app account linked to the alldone.team account (its `billingAccount.appAccountId` / `email`).
+It is signed exactly like the Gold webhook and shares its code (`functions/MenubarApp/alldoneTeamSignature.js`):
+`x-alldone-timestamp` (Unix seconds) and `x-alldone-signature` = hex HMAC-SHA256 of
+`` `${timestamp}.${rawBody}` `` with `MENUBAR_APP_WEBHOOK_SECRET` (or `EXTERNAL_TOOLS_SIGNING_SECRET`),
+compared in constant time, at most 5 minutes off; 401 `INVALID_SIGNATURE`, 503
+`SIGNING_NOT_CONFIGURED` without a secret. There is no user token: whoever holds that secret can read
+any account's roadmap data, which is the trust the Gold webhook already places in it (it can spend any
+account's Gold). Body `{ action: 'projects' | 'snapshot', account: { appAccountId?, email? }, projectId? }`;
+the account is found by its user id (what `/api/menubar/session` answers as `accountId`), else by the
+verified login email, never by the users document's email field (404 `ACCOUNT_NOT_FOUND`). `projects`
+answers `{ success: true, projects: [{ id, name, color }] }`, the list `getActiveRoadmapProjects` gives
+the embed window, limited to projects whose `userIds` list the account. `snapshot` answers
+`{ success: true, snapshot: { project: { id, name, color, focusAreas }, goals, milestones, okrs } }`,
+exactly what `subscribeToRoadmapProject` delivers, read once with the Admin SDK (403 `NOT_A_MEMBER`,
+404 `PROJECT_NOT_FOUND`); other errors are `INVALID_ACTION`, `INVALID_ACCOUNT`, `INVALID_PROJECT_ID`
+(400) and `INTERNAL_ERROR` (500), always as `{ success: false, error }`. Both sides build the snapshot
+from the normalizers in `functions/Roadmap/roadmapSourceModel.js` (a pure module the web bridge imports);
+the one difference is the day keys of a time-logged revenue OKR, which the browser takes from its own
+zone and the server from the account's stored zone (else UTC). Pinned by
+`functions/Roadmap/roadmapSourceApi.test.js` and `__tests__/Roadmap/roadmapSourceParity.test.js`, which
+runs the real bridge and the server read on the same documents and requires equal snapshots.
+
 **An assistant uses alldone.team as the person it answers (MCP auth type `alldone_app`).** An MCP server on `https://alldone.team` can be connected with "alldone.app account" instead of a token. Nothing is stored: each run calls `resolveMcpSecret` (`functions/MCP/mcpAssistantConnect.js`), which mints, through `getAlldoneTeamMcpToken` (`MenubarApp/menubarApp.js`), an hour-long `adapp_` token with app id `alldone-team-mcp` for the run's `requestUserId` (reused per instance while ten minutes remain). alldone.team checks it at `/api/menubar/session`, which now also answers `accountId` and `appId`, and acts as that person's own alldone.team account, linked to their alldone.app account and paying with their Gold (alldone_team `alldoneAppAccounts.ts`). These tokens expire (`expiresAt`), never count against the menubar app's ten devices and are not listed as devices. The auth type is refused for any other host, because the token speaks for the user's alldone.app account. A run without a requesting user gets no token. Pinned by `functions/MCP/mcpAlldoneAppAuth.test.js` and the `tokens for alldone.team/mcp` block of `functions/MenubarApp/menubarIdentity.test.js`.
 
 ## alldone.team pages in the IframeModal are billed by alldone.team's server
