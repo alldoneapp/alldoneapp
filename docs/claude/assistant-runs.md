@@ -175,8 +175,8 @@ lock only while that move is the task's latest transition. The trigger excludes 
 the approving run is still going, so the step runs after the reply finishes.
 
 **Anna:** when a delegated task lands on its owner's human step, `delegationReviewNotice.js`
-(onUpdateTask) posts "ready for you" with Anna's summary of the latest assistant result (never the
-result itself, AT-3074, see `vm.md`), the next step and a link in the originating conversation, once per step entry (`lastReviewNoticeKey` on the receipt). Without a
+(onUpdateTask) posts "ready for you" with the latest assistant result, the next step and a link in
+the originating conversation, once per step entry (`lastReviewNoticeKey` on the receipt). Without a
 `taskId`, the tool in that conversation picks the one delegated task waiting for the user
 (receipts now carry `projectId`/`taskId`) or asks which one. Moves from another conversation leave
 a line in the task chat. `loadDelegatedTaskOrigin` returns only the four destination fields because

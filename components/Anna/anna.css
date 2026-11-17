@@ -695,9 +695,12 @@
     white-space: nowrap;
 }
 /* AT-3046 (variant C): every activity row is a card set off from the chat. The whole card is the
-   link (no arrow), its border turns blue on hover/focus, and the left edge is blue while the item
-   is unread and grey once it is read. Colors are Anna's tokens, so light and dark both follow. */
+   link (no arrow), its border turns blue on hover/focus, and the left edge marks the read state.
+   AT-3075: unread is the red of the followed unread badges (--anna-unread, UtilityRed200) that
+   created the row, no longer blue; read stays the grey line. Colors are Anna's tokens, so light
+   and dark both follow. */
 .anna-activity-notice {
+    position: relative;
     display: block;
     margin: 8px 0;
 }
@@ -726,7 +729,11 @@
     content: '';
 }
 .anna-activity-notice a.anna-activity-card-unread::before {
-    background: var(--anna-accent);
+    background: var(--anna-unread);
+}
+/* AT-3075: room for the card's "Mark as read" button at the top right, beside the time. */
+.anna-activity-notice a.anna-activity-card-has-action {
+    padding-right: 44px;
 }
 .anna-activity-notice a:hover,
 .anna-activity-notice a:focus-visible {
@@ -1574,6 +1581,71 @@
     background: none;
     color: var(--anna-accent);
     padding: 8px;
+}
+/* AT-3075: "Mark as read". On a card it is a round icon button at the top right, a sibling of the
+   card's link; for the whole chat a pill beside "Latest messages". Neutral, never the link blue. */
+.anna-mark-read {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    border: 1px solid var(--anna-border);
+    border-radius: 20px;
+    padding: 7px 14px;
+    background: var(--ad-Surface, #ffffff);
+    color: var(--anna-muted);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+.anna-mark-read span {
+    /* Not the stretching text span of .anna-context-notice: the icon stays centred. */
+    flex: none;
+}
+.anna-mark-read:hover {
+    background: var(--anna-hover);
+    color: var(--anna-ink);
+}
+.anna-mark-read:focus-visible {
+    outline: 2px solid var(--anna-focus);
+    outline-offset: 1px;
+}
+.anna-mark-read:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+.anna-mark-read.anna-mark-read-error {
+    color: var(--anna-unread);
+}
+.anna-mark-read.anna-mark-read-compact {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-color: transparent;
+    border-radius: 50%;
+    background: transparent;
+}
+.anna-mark-read.anna-mark-read-compact:hover {
+    background: var(--anna-hover);
+}
+/* A finger needs about 44px; the visible circle stays small, the hit area grows around it. */
+.anna-mark-read.anna-mark-read-compact::after {
+    position: absolute;
+    inset: -6px;
+    content: '';
+}
+.anna-chat-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 8px;
 }
 .anna-latest {
     align-self: center;

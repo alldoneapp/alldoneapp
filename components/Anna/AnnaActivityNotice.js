@@ -10,6 +10,7 @@ import { getAnnaActivityAction, getAnnaActivityLabel } from './annaActivityText'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { getAnnaActivityObject, getAnnaActivityTarget } from './annaActivityGroups'
 import { splitActivityPreview } from './annaActivityLinks'
+import AnnaActivityMarkReadButton from './AnnaActivityMarkReadButton'
 
 const isOffline = connectionState => connectionState === 'offline' || isBrowserOffline()
 
@@ -139,9 +140,10 @@ export function isForeignAnnaActivity({ projectId, actors }, context) {
 }
 
 // One card per row (AT-3046, variant C): the whole card is the link, the time sits in the title
-// line, a blue edge marks a row whose item is still unread (a grey one when read), and the type of
-// the update is a small label at the bottom.
-export function AnnaActivityGroup({ notices, onChange, unread = false, context = null }) {
+// line, a red edge marks a row whose item is still unread (AT-3075: the red of the followed unread
+// badges that created it; a grey one when read), and the type of the update is a small label at
+// the bottom. An unread card with `onMarkRead` offers "Mark as read" beside its link (AT-3075).
+export function AnnaActivityGroup({ notices, onChange, unread = false, context = null, onMarkRead = null }) {
     const contents = useAnnaActivityContents(notices, onChange)
     const entries = notices.map((notice, index) => ({ ...notice, content: contents[index] }))
     const last = entries[entries.length - 1]
@@ -156,6 +158,8 @@ export function AnnaActivityGroup({ notices, onChange, unread = false, context =
     const metadata = [projectName, actors.join(', ')].filter(Boolean).join(' · ')
     const showMetadata = isForeignAnnaActivity({ projectId, actors }, context)
     const target = getAnnaActivityTarget(entries)
+    const markRead = unread && onMarkRead
+    const cardTitle = objectName || actionsText
 
     return (
         <p
@@ -166,7 +170,9 @@ export function AnnaActivityGroup({ notices, onChange, unread = false, context =
             <a
                 href={target}
                 data-anna-activity-link=""
-                className={`anna-activity-card${unread ? ' anna-activity-card-unread' : ''}`}
+                className={`anna-activity-card${unread ? ' anna-activity-card-unread' : ''}${
+                    markRead ? ' anna-activity-card-has-action' : ''
+                }`}
             >
                 <span className="anna-activity-content">
                     {showMetadata ? (
@@ -201,6 +207,18 @@ export function AnnaActivityGroup({ notices, onChange, unread = false, context =
                     ) : null}
                 </span>
             </a>
+            {markRead ? (
+                <AnnaActivityMarkReadButton
+                    compact
+                    className="anna-activity-mark-read"
+                    onMarkRead={onMarkRead}
+                    label={
+                        cardTitle
+                            ? translate('Anna activity mark read item', { title: cardTitle })
+                            : translate('Anna activity mark read')
+                    }
+                />
+            ) : null}
         </p>
     )
 }

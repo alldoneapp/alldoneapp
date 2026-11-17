@@ -667,8 +667,8 @@ title with the time on the same line, then up to 2 lines of preview, then small 
 at the bottom (`💬 Antwort` / `%{count} Antworten` for chat messages, `✓ <action>` for feed
 changes). The icon is the icon font glyph in `data-icon`, drawn by `::before`, so the label stays
 plain, ellipsised text (AT-2918). A row that is not enriched yet has its action as the title and
-no label. The left edge is `--anna-accent` while the item is still unread and `--anna-border`
-once it is read. "Unread" is the same red followed activity that creates the rows and drives the
+no label. The left edge is `--anna-unread` (red since AT-3075, see below; `--anna-accent` before)
+while the item is still unread and `--anna-border` once it is read. "Unread" is the same red followed activity that creates the rows and drives the
 badges (`useAnnaUnreadActivityIds`, computed once per conversation). Opening the item elsewhere
 turns the edge grey, and the card stays. `Project · Actor` shows only when the object's project
 is not the thread's `projectId` or an actor is not the thread's assistant
@@ -677,6 +677,27 @@ border blue. The project-switch and view notices are thin centred dividers. Colo
 tokens only (`--anna-neutral` card, `--anna-accent-text` labels). Pinned by the `cards (AT-3046)`
 block in `AnnaActivityNotice.test.js`, the AT-3046 case in `AnnaConversation.test.js` and
 `browser-tests/at3046` (dark/light at 300/380/560px).
+
+**Activity cards are marked read in place, and unread is red (AT-3075, 2026-11-17).** Decided with
+the product owner: the unread edge is `--anna-unread` (`UtilityRed200`, the red of the followed
+unread badges that create the rows; the same in light and dark mode), not the link blue, so the
+edge and the red counters read as one thing. Links, hover borders and type labels stay blue. An
+unread card has a round ✓✓ `AnnaActivityMarkReadButton` at its top right (`compact`, 32px circle,
+44px hit area through `::after`, the card reserves `padding-right: 44px`), and from two unread
+objects on screen a "Mark all as read" pill sits beside "Latest messages" in `.anna-chat-pills`
+(between the log and the composer, so it never moves the chat). The button is a **sibling** of the
+card's `<a>`, never inside it (invalid HTML, and AnnaShell's `interceptLink` would open the item),
+and still `preventDefault`s/`stopPropagation`s click and pointerdown. Marking clears exactly what
+opening the item clears, through the persisted read state, never a local hide
+(`markAnnaActivityRead` in `annaActivityReadState.js`; ids parsed by `annaActivityReadTargets.js`):
+a chat notice runs `markChatMessagesAsRead` for its whole chat (as ChatBoard/RichCommentModal do:
+`chatNotifications` deletes + activity summary in one batch, plus the server's email/push
+cleanup), a feed notice runs `queueObjectActivityFeedUnreadClear` for its object (both Updates
+tabs + summary). The card turns grey only when the badge listeners deliver the cleared state, which
+is the same moment every counter moves. The chat half needs the server, so the action fails fast
+offline (`code: 'offline'`) and the button is not offered offline; a failure shows a retry state.
+Pinned by `annaActivityReadState.test.js`, the AT-3075 blocks of `AnnaActivityNotice.test.js` and
+`AnnaConversation.test.js`, and `browser-tests/at3046` (edge colour, button geometry, no navigation).
 
 **A lost callable response is not a failed message (AT-2921).** The Anna composer starts each run
 with `askToBotSecondGen`, and a phone drops that connection when the app goes to the background.

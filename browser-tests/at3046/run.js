@@ -10,7 +10,10 @@
  *   - a card's title is one line with an ellipsis, its time sits on that line and stays whole;
  *   - the preview is at most two lines and the type label is one line inside the card;
  *   - "Project · Actor" shows only on the card from another project and the one from another actor;
- *   - an unread card has a blue (accent) edge, a read one the grey border colour;
+ *   - an unread card has a red edge (--anna-unread, the followed badges' red; AT-3075), a read one
+ *     the grey border colour;
+ *   - an unread card has a "Mark as read" button inside the card that does not cover the time,
+ *     offers a finger-sized hit area, and marks without following the card's link (AT-3075);
  *   - hovering a card turns its border blue, and the card is one link to its object;
  *   - system notices (project switched, view opened) are one-line centred dividers.
  * Screenshots land in `.build/` (or `--shots`).
@@ -89,6 +92,7 @@ const measure = () => {
         return rgb
     }
     const accent = toRgb(shell.getPropertyValue('--anna-accent').trim())
+    const unreadColor = toRgb(shell.getPropertyValue('--anna-unread').trim())
     const border = toRgb(shell.getPropertyValue('--anna-border').trim())
     const lineHeight = element => parseFloat(getComputedStyle(element).lineHeight)
     const cards = Array.from(log.querySelectorAll('[data-case]')).map(wrapper => {
@@ -100,6 +104,9 @@ const measure = () => {
         const labels = Array.from(card.querySelectorAll('.anna-activity-action'))
         const titleRect = title.getBoundingClientRect()
         const timeRect = time.getBoundingClientRect()
+        const markRead = wrapper.querySelector('button[data-anna-mark-read]')
+        const markRect = markRead?.getBoundingClientRect()
+        const markHit = markRead && getComputedStyle(markRead, '::after')
         const inside = element => {
             const r = element.getBoundingClientRect()
             return r.left >= rect.left - 0.5 && r.right <= rect.right + 0.5
@@ -123,6 +130,22 @@ const measure = () => {
             meta: card.querySelector('.anna-activity-meta')?.textContent || null,
             edge: getComputedStyle(card, '::before').backgroundColor,
             unread: card.classList.contains('anna-activity-card-unread'),
+            markRead: markRead
+                ? {
+                      inCard:
+                          markRect.left >= rect.left - 0.5 &&
+                          markRect.right <= rect.right + 0.5 &&
+                          markRect.top >= rect.top - 0.5 &&
+                          markRect.bottom <= rect.bottom + 0.5,
+                      clearOfTime: markRect.left >= timeRect.right - 0.5 || markRect.top >= timeRect.bottom - 0.5,
+                      hitSize: Math.min(
+                          markRect.width - 2 * parseFloat(markHit.left),
+                          markRect.height - 2 * parseFloat(markHit.top)
+                      ),
+                      label: markRead.getAttribute('aria-label'),
+                      insideLink: !!markRead.closest('a'),
+                  }
+                : null,
             background: getComputedStyle(card).backgroundColor,
         }
     })
@@ -139,6 +162,7 @@ const measure = () => {
     return {
         notices,
         accent,
+        unreadColor,
         border,
         surface: getComputedStyle(document.querySelector('.anna-shell')).getPropertyValue('--anna-surface').trim(),
         clientWidth: log.clientWidth,
@@ -192,9 +216,18 @@ const measure = () => {
                         check(label.icon && label.icon !== 'none', `${at}: label "${label.text}" lost its icon`)
                     }
                     check(
-                        card.edge === (card.unread ? result.accent : result.border),
+                        card.edge === (card.unread ? result.unreadColor : result.border),
                         `${at}: edge ${card.edge} for ${card.unread ? 'unread' : 'read'}`
                     )
+                    check(card.edge !== result.accent, `${at}: edge is the link blue`)
+                    // AT-3075: only an unread card offers "Mark as read".
+                    check(!!card.markRead === card.unread, `${at}: mark-as-read button ${!!card.markRead}`)
+                    if (card.markRead) {
+                        check(card.markRead.inCard, `${at}: mark-as-read button leaves the card`)
+                        check(card.markRead.clearOfTime, `${at}: mark-as-read button covers the time`)
+                        check(card.markRead.hitSize >= 44, `${at}: hit area ${card.markRead.hitSize}px`)
+                        check(!card.markRead.insideLink && !!card.markRead.label, `${at}: button ${card.markRead}`)
+                    }
                 }
                 check(result.notices.length === 2, `${tag}: system notices missing`)
                 for (const notice of result.notices)
@@ -224,6 +257,10 @@ const measure = () => {
                         }),
                     `${tag}: project/actor lines ${JSON.stringify(metas)}`
                 )
+                if (width === 380)
+                    await page
+                        .locator('[data-case="unread-reply"]')
+                        .screenshot({ path: path.join(SHOTS_DIR, `card-unread-${mode}.png`) })
                 await page.screenshot({ path: path.join(SHOTS_DIR, `cards-${mode}-${width}.png`) })
                 // Hover: the whole card is the target, its border turns blue.
                 const target = page.locator('[data-case="read-reply"] a')
@@ -233,6 +270,13 @@ const measure = () => {
                 check(hoverBorder === result.accent, `${tag}: hover border ${hoverBorder}`)
                 if (width === 380)
                     await page.screenshot({ path: path.join(SHOTS_DIR, `cards-${mode}-${width}-hover.png`) })
+                // AT-3075: pressing "Mark as read" marks that card and does not follow its link.
+                const before = page.url()
+                await page.locator('[data-case="unread-reply"] button[data-anna-mark-read]').click()
+                await page.waitForTimeout(100)
+                const marked = await page.evaluate(() => window.__annaMarkRead || [])
+                check(JSON.stringify(marked) === '["unread-reply"]', `${tag}: marked ${JSON.stringify(marked)}`)
+                check(page.url() === before, `${tag}: mark as read navigated to ${page.url()}`)
                 console.log(tag, JSON.stringify({ cards: result.cards.length, errors: errors.length, hoverBorder }))
                 await page.close()
             }

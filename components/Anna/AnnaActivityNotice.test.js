@@ -331,3 +331,155 @@ describe('cards (AT-3046, variant C)', () => {
         expect(title.getAttribute('title')).toBe(objectName)
     })
 })
+
+describe('mark as read on a card (AT-3075)', () => {
+    const here = { projectId: 'p1', assistantName: 'Anna Alldone' }
+    const renderCard = props => act(async () => root.render(<AnnaActivityGroup notices={[notice]} {...props} />))
+    const button = () => container.querySelector('button[data-anna-mark-read]')
+
+    it('is offered only on an unread card that can be marked', async () => {
+        await renderCard({ context: here, unread: true, onMarkRead: jest.fn() })
+        expect(button()).not.toBeNull()
+        expect(container.querySelector('.anna-activity-card').classList.contains('anna-activity-card-has-action')).toBe(
+            true
+        )
+        await renderCard({ context: here, unread: false, onMarkRead: jest.fn() })
+        expect(button()).toBeNull()
+        expect(container.querySelector('.anna-activity-card').classList.contains('anna-activity-card-has-action')).toBe(
+            false
+        )
+        await renderCard({ context: here, unread: true })
+        expect(button()).toBeNull()
+    })
+
+    it('is a named, typed button beside the link, never inside it', async () => {
+        await renderCard({ context: here, unread: true, onMarkRead: jest.fn() })
+        expect(button().getAttribute('type')).toBe('button')
+        expect(button().getAttribute('aria-label')).toBe('„Sprintplanung“ als gelesen markieren')
+        expect(button().getAttribute('title')).toBe(button().getAttribute('aria-label'))
+        expect(button().closest('a')).toBeNull()
+        expect(button().parentElement).toBe(container.querySelector('.anna-activity-notice'))
+        // Still exactly one link: the card itself.
+        expect(container.querySelectorAll('a')).toHaveLength(1)
+    })
+
+    it('marks read without navigating: no link click, no bubbling, default prevented', async () => {
+        const onMarkRead = jest.fn(async () => {})
+        // AnnaShell's link interception is a React onClick on an ancestor; a native listener
+        // above the root stands for anything outside React.
+        const ancestorClick = jest.fn()
+        const ancestorPointer = jest.fn()
+        const outsideClick = jest.fn()
+        document.body.appendChild(container)
+        document.body.addEventListener('click', outsideClick)
+        await act(async () =>
+            root.render(
+                <div onClick={ancestorClick} onPointerDown={ancestorPointer}>
+                    <AnnaActivityGroup notices={[notice]} context={here} unread onMarkRead={onMarkRead} />
+                </div>
+            )
+        )
+        const linkClick = jest.fn()
+        container.querySelector('a').addEventListener('click', linkClick)
+
+        await act(async () => button().dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })))
+        const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+        await act(async () => button().dispatchEvent(click))
+
+        expect(onMarkRead).toHaveBeenCalledTimes(1)
+        expect(click.defaultPrevented).toBe(true)
+        expect(linkClick).not.toHaveBeenCalled()
+        expect(ancestorClick).not.toHaveBeenCalled()
+        expect(ancestorPointer).not.toHaveBeenCalled()
+        expect(outsideClick).not.toHaveBeenCalled()
+        // AnnaShell intercepts clicks on `a[href]`: nothing for it to find from the button.
+        expect(button().closest('a[href]')).toBeNull()
+
+        // Control: a click on the card itself still reaches the ancestor (the card stays a link).
+        await act(async () =>
+            container.querySelector('a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+        )
+        expect(ancestorClick).toHaveBeenCalledTimes(1)
+        document.body.removeEventListener('click', outsideClick)
+        document.body.removeChild(container)
+    })
+
+    it('ignores a second press while the first is running', async () => {
+        let finish
+        const onMarkRead = jest.fn(() => new Promise(resolve => (finish = resolve)))
+        await renderCard({ context: here, unread: true, onMarkRead })
+        await act(async () => button().click())
+        expect(button().disabled).toBe(true)
+        expect(button().getAttribute('aria-busy')).toBe('true')
+        await act(async () => button().click())
+        expect(onMarkRead).toHaveBeenCalledTimes(1)
+        await act(async () => finish())
+        expect(button().disabled).toBe(false)
+    })
+
+    it('says so when marking fails, and a retry tries again', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+        const onMarkRead = jest.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce()
+        await renderCard({ context: here, unread: true, onMarkRead })
+        await act(async () => button().click())
+        expect(button().classList.contains('anna-mark-read-error')).toBe(true)
+        expect(button().getAttribute('aria-label')).toBe('Konnte nicht als gelesen markiert werden. Erneut versuchen')
+        await act(async () => button().click())
+        expect(onMarkRead).toHaveBeenCalledTimes(2)
+        expect(button().classList.contains('anna-mark-read-error')).toBe(false)
+        console.error.mockRestore()
+    })
+
+    it('is not offered offline, where the chat half of the clear cannot run', async () => {
+        mockState.connectionState = 'offline'
+        await renderCard({ context: here, unread: true, onMarkRead: jest.fn() })
+        expect(button()).toBeNull()
+        // The unread edge itself stays.
+        expect(container.querySelector('.anna-activity-card-unread')).not.toBeNull()
+    })
+})
+
+describe('unread styling (AT-3075)', () => {
+    const fs = require('fs')
+    const path = require('path')
+    const css = fs.readFileSync(path.join(__dirname, 'anna.css'), 'utf8')
+    const theme = fs.readFileSync(path.join(__dirname, 'annaThemeVariables.js'), 'utf8')
+    const badge = fs.readFileSync(
+        path.join(__dirname, '../MyDayView/AssistantLine/LastComment/UnreadCommentsBadge.js'),
+        'utf8'
+    )
+    // The rule whose selector list is exactly `selector` (not a grouped one that includes it).
+    const rule = selector => {
+        let start = css.indexOf(`\n${selector} {`)
+        while (start > -1 && css[start - 1] === ',') start = css.indexOf(`\n${selector} {`, start + 1)
+        expect(start).toBeGreaterThan(-1)
+        return css.slice(start, css.indexOf('}', start))
+    }
+
+    it("draws the unread edge in the followed badges' red, not the link blue", () => {
+        expect(rule('.anna-activity-notice a.anna-activity-card-unread::before')).toMatch(
+            /background:\s*var\(--anna-unread\);/
+        )
+        expect(rule('.anna-activity-notice a.anna-activity-card-unread::before')).not.toMatch(/--anna-accent/)
+        // The same token as the red (followed) unread counter, in light and dark mode alike.
+        expect(theme).toContain("'--anna-unread': colors.UtilityRed200")
+        expect(badge).toMatch(/followed \? colors\.UtilityRed200/)
+    })
+
+    it('keeps the read edge grey and the blue for links and hover only', () => {
+        expect(rule('.anna-activity-notice a::before')).toMatch(/background:\s*var\(--anna-border\);/)
+        expect(rule('.anna-activity-link')).toMatch(/color:\s*var\(--anna-accent\);/)
+        expect(css).toMatch(
+            /\.anna-activity-notice a:hover,\s*\.anna-activity-notice a:focus-visible \{\s*border-color: var\(--anna-accent\);/
+        )
+    })
+
+    it('gives the card button a touch-sized hit area and keeps it neutral', () => {
+        expect(rule('.anna-activity-notice')).toMatch(/position:\s*relative;/)
+        expect(rule('.anna-mark-read.anna-mark-read-compact')).toMatch(/width:\s*32px;/)
+        expect(rule('.anna-mark-read.anna-mark-read-compact::after')).toMatch(/inset:\s*-6px;/)
+        expect(rule('.anna-mark-read')).toMatch(/color:\s*var\(--anna-muted\);/)
+        expect(rule('.anna-mark-read')).not.toMatch(/--anna-accent/)
+        expect(rule('.anna-activity-notice a.anna-activity-card-has-action')).toMatch(/padding-right:\s*44px;/)
+    })
+})

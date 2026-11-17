@@ -9,7 +9,6 @@ const { resolveMenubarRichTextLinks } = require('./menubarRichText')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const { getVerifiedAccountEmail, findUserIdByVerifiedEmail } = require('../shared/verifiedAccountEmail')
 const { canAccessObject, isProjectMemberData } = require('../shared/privacyAccess')
-const { getAlldoneTeamSigningSecrets, verifyWebhookSignature } = require('./alldoneTeamSignature')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -22,6 +21,7 @@ const ALLDONE_TEAM_MCP_TOKEN_TTL_MS = 60 * 60 * 1000
 const ALLDONE_TEAM_MCP_TOKEN_REUSE_MARGIN_MS = 10 * 60 * 1000
 const alldoneTeamMcpTokens = new Map()
 const LAST_USED_UPDATE_THROTTLE_MS = 5 * 60 * 1000
+const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60
 
 // Who charges Gold through /api/menubar/gold. A request that names no app is the Anna
 // menubar app or an alldone.team tool from before the `app` field existed, and is booked
@@ -319,6 +319,89 @@ async function handleMenubarSession(req, res) {
     }
 }
 
+// Short, non-reversible fingerprint of a secret so we can tell two secrets
+// apart in logs (e.g. "is MENUBAR_APP_WEBHOOK_SECRET == EXTERNAL_TOOLS_SIGNING_SECRET?")
+// without ever logging the secret itself.
+function secretFingerprint(secret) {
+    return crypto.createHash('sha256').update(String(secret)).digest('hex').slice(0, 8)
+}
+
+function signaturesMatch(providedHex, expectedHex) {
+    try {
+        const providedBuffer = Buffer.from(providedHex, 'hex')
+        const expectedBuffer = Buffer.from(expectedHex, 'hex')
+        return providedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+    } catch (error) {
+        return false
+    }
+}
+
+// Verify against EVERY configured candidate secret (raw + trimmed, deduped).
+// The alldone.team side signs with one shared secret, but on our side that
+// value may have landed in either MENUBAR_APP_WEBHOOK_SECRET or
+// EXTERNAL_TOOLS_SIGNING_SECRET, and a stray trailing newline from the CI
+// env blob would also break a byte-exact compare — so we accept any match
+// instead of guessing precedence.
+function verifyWebhookSignature(req, candidateSecrets) {
+    const timestampHeader = String(req.headers['x-alldone-timestamp'] || '').trim()
+    const signatureHeader = String(req.headers['x-alldone-signature'] || '').trim()
+    if (!timestampHeader || !signatureHeader) {
+        return { valid: false, error: 'Missing signature headers' }
+    }
+
+    const timestampValue = Number(timestampHeader)
+    if (!Number.isFinite(timestampValue)) {
+        return { valid: false, error: 'Invalid timestamp' }
+    }
+    // Timestamps are unix seconds per the contract; tolerate milliseconds too.
+    const timestampSeconds = timestampValue > 1e12 ? timestampValue / 1000 : timestampValue
+    const ageSeconds = Math.abs(Date.now() / 1000 - timestampSeconds)
+    if (ageSeconds > WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS) {
+        return { valid: false, error: 'Timestamp outside tolerance' }
+    }
+
+    // Sign over the RAW request bytes — never a re-serialized req.body, whose
+    // key order / whitespace would not match the sender's digest.
+    const hasRawBody = !!req.rawBody
+    const rawBody = hasRawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {})
+    const signingInput = `${timestampHeader}.${rawBody}`
+
+    // Build candidate list: raw + trimmed variant of each, deduped, non-empty.
+    const candidates = []
+    const seen = new Set()
+    candidateSecrets.forEach(secret => {
+        ;[secret, typeof secret === 'string' ? secret.trim() : secret].forEach(variant => {
+            if (variant && !seen.has(variant)) {
+                seen.add(variant)
+                candidates.push(variant)
+            }
+        })
+    })
+
+    for (const secret of candidates) {
+        const expected = crypto.createHmac('sha256', secret).update(signingInput).digest('hex')
+        if (signaturesMatch(signatureHeader, expected)) {
+            return { valid: true }
+        }
+    }
+
+    // No candidate matched — log enough to diagnose body-vs-secret without
+    // leaking the secret. The body itself is the caller's own payload.
+    console.warn('menubarGoldWebhook: signature mismatch diagnostics', {
+        hasRawBody,
+        rawBodyLength: rawBody.length,
+        rawBodyPreview: rawBody.slice(0, 120),
+        providedSigPrefix: signatureHeader.slice(0, 10),
+        timestampAgeSeconds: Math.round(ageSeconds),
+        candidates: candidates.map(secret => ({
+            fingerprint: secretFingerprint(secret),
+            expectedSigPrefix: crypto.createHmac('sha256', secret).update(signingInput).digest('hex').slice(0, 10),
+        })),
+    })
+
+    return { valid: false, error: 'Invalid signature' }
+}
+
 // The account behind the address alldone.team names. Resolved through Firebase Auth, which
 // holds one verified login email per account; a users query on the email field would match
 // whatever address an account wrote into its own document.
@@ -387,9 +470,10 @@ async function handleMenubarGoldWebhook(req, res) {
         return
     }
 
+    const { MENUBAR_APP_WEBHOOK_SECRET, EXTERNAL_TOOLS_SIGNING_SECRET } = getEnvFunctions()
     // The alldone.team side signs with one shared secret; on our side that value
     // may live under either key, so verify against both candidates.
-    const candidateSecrets = getAlldoneTeamSigningSecrets(getEnvFunctions())
+    const candidateSecrets = [MENUBAR_APP_WEBHOOK_SECRET, EXTERNAL_TOOLS_SIGNING_SECRET].filter(Boolean)
     if (candidateSecrets.length === 0) {
         console.error('menubarGoldWebhook: no webhook secret configured')
         res.status(500).json({ success: false, error: 'Webhook secret not configured' })

@@ -5,6 +5,10 @@ jest.mock('./backends/firestore', () => ({
     mapProjectData: jest.fn(),
 }))
 jest.mock('./backends/OKRs/okrsFirestore', () => ({ mapOKRData: jest.fn() }))
+jest.mock('../components/GoalsView/GoalsHelper', () => ({
+    ALL_USERS: 'ALL_USERS',
+    DYNAMIC_PERCENT: 'DYNAMIC_PERCENT',
+}))
 jest.mock('../components/TaskListView/OKRs/okrHelper', () => ({
     calculateOkrPace: () => ({ status: 'onTrack' }),
     calculateRevenueOkrCurrentValue: jest.fn(),
@@ -15,15 +19,23 @@ jest.mock('../components/TaskListView/OKRs/okrHelper', () => ({
         return Number.isFinite(number) ? number : 0
     },
 }))
+jest.mock('../Themes/Modern/ProjectColors', () => ({
+    PROJECT_COLOR_DEFAULT: 'default',
+    PROJECT_COLOR_SYSTEM: {
+        default: { MARKER: '#2563EB' },
+        red: { MARKER: '#DC2626' },
+    },
+}))
+
 const { getActiveRoadmapProjects, getRoadmapNavigationPath, normalizeRoadmapGoal } = require('./roadmapSourceBridge')
 
 describe('roadmap source bridge', () => {
     it('offers only active projects and returns a minimal sorted DTO', () => {
         const projects = [
-            { id: 'guide', name: 'Guide', color: '#47A3FF', secret: 'not exposed' },
-            { id: 'active-b', name: 'Zulu', color: '#FF5274', userIds: ['u1'] },
-            { id: 'archived', name: 'Archived', color: '#47A3FF' },
-            { id: 'active-a', name: 'Alpha', color: 'not-a-project-color' },
+            { id: 'guide', name: 'Guide', color: 'default', secret: 'not exposed' },
+            { id: 'active-b', name: 'Zulu', color: 'red', userIds: ['u1'] },
+            { id: 'archived', name: 'Archived', color: 'default' },
+            { id: 'active-a', name: 'Alpha', color: 'default' },
         ]
         const user = {
             projectIds: ['guide', 'active-b', 'archived', 'active-a'],
@@ -33,8 +45,8 @@ describe('roadmap source bridge', () => {
         }
 
         expect(getActiveRoadmapProjects(projects, user)).toEqual([
-            { id: 'active-a', name: 'Alpha', color: '#47A3FF' },
-            { id: 'active-b', name: 'Zulu', color: '#FF5274' },
+            { id: 'active-a', name: 'Alpha', color: '#2563EB' },
+            { id: 'active-b', name: 'Zulu', color: '#DC2626' },
         ])
     })
 

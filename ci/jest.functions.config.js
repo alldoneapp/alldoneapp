@@ -29,7 +29,6 @@ const BRIDGE_SUITES = [
     '__tests__/TwilioWhatsAppService.test.js',
     '__tests__/Chats/copyChatToOtherProject.test.js',
     '__tests__/Feeds/copyInnerFeedsToOtherProject.test.js',
-    '__tests__/Roadmap/roadmapSourceParity.test.js',
 ]
 
 module.exports = {

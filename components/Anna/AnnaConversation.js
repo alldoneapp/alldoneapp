@@ -44,7 +44,10 @@ import AnnaMessageAuthor from './AnnaMessageAuthor'
 import AnnaTimestamp from './AnnaTimestamp'
 import { annaMessageCache } from './annaMessageCache'
 import { AnnaActivityGroup } from './AnnaActivityNotice'
-import { groupAnnaTimeline } from './annaActivityGroups'
+import AnnaActivityMarkReadButton from './AnnaActivityMarkReadButton'
+import { markAnnaActivityRead } from './annaActivityReadState'
+import { hasAnnaActivityReadTargets } from './annaActivityReadTargets'
+import { getAnnaActivityObject, groupAnnaTimeline } from './annaActivityGroups'
 import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
 import useAnnaChatScroll from './useAnnaChatScroll'
 import useAnnaFileDrop from './useAnnaFileDrop'
@@ -385,6 +388,24 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const showProject =
         new Set(displayedThreads.map(thread => thread.projectId)).size > 1 ||
         conversation.projectId !== user.defaultProjectId
+    // AT-3075: the unread activity cards on screen, for "Mark all as read". Offered from two cards
+    // up; a single card has its own button.
+    const unreadShownActivity = switching
+        ? []
+        : activityNotices.filter(
+              notice =>
+                  unreadActivityIds.has(notice.id) &&
+                  displayedThreads.some(
+                      thread => thread.projectId === notice.projectId && (thread.chatId || thread.id) === notice.chatId
+                  )
+          )
+    const unreadShownObjects = new Set(
+        unreadShownActivity.map(notice => {
+            const object = getAnnaActivityObject(notice)
+            return object ? `${object.projectId}/${object.objectId}` : notice.id
+        })
+    )
+    const showMarkAllRead = unreadShownObjects.size > 1 && hasAnnaActivityReadTargets(unreadShownActivity)
     const latest = useCallback(() => {
         scrollAnchor.current = null
         chatScroll.latest()
@@ -577,10 +598,21 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                     ))}
                 </div>
             </div>
-            {newMessages && (
-                <button className="anna-latest" onClick={latest}>
-                    {translate('Latest messages')} ↓
-                </button>
+            {(newMessages || showMarkAllRead) && (
+                <div className="anna-chat-pills">
+                    {showMarkAllRead && (
+                        <AnnaActivityMarkReadButton
+                            className="anna-mark-all-read"
+                            label={translate('Anna activity mark all read')}
+                            onMarkRead={() => markAnnaActivityRead(unreadShownActivity)}
+                        />
+                    )}
+                    {newMessages && (
+                        <button className="anna-latest" onClick={latest}>
+                            {translate('Latest messages')} ↓
+                        </button>
+                    )}
+                </div>
             )}
             <form className="anna-composer" ref={composerForm} onSubmit={send}>
                 {offline && (
@@ -938,6 +970,9 @@ function AnnaThreadMessages({
                             onChange={onChange}
                             unread={!!unreadActivityIds && notices.some(item => unreadActivityIds.has(item.id))}
                             context={activityContext}
+                            onMarkRead={() =>
+                                markAnnaActivityRead(notices.filter(item => unreadActivityIds?.has(item.id)))
+                            }
                         />
                     )
                 if (notice)

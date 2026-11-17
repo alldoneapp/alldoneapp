@@ -15,7 +15,10 @@ sidebar widths and asserts the following:
 - titles are one line with an ellipsis and the time stays whole on that line;
 - previews have at most 2 lines and labels are one line with their icon;
 - `Project · Actor` appears only on the two foreign rows;
-- the edge is accent for unread rows and border grey for read ones;
+- the edge is the followed badges' red (`--anna-unread`, AT-3075) for unread rows and border grey
+  for read ones, never the link blue;
+- only unread rows have the "Mark as read" button (AT-3075): inside the card, clear of the time,
+  a hit area of at least 44px, and a press marks the row without following its link;
 - hover turns the border blue;
 - the system notices are one-line dividers.
 

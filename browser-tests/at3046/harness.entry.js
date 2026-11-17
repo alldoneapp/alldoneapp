@@ -6,6 +6,8 @@
  * `run.js` (`?width=380&mode=dark`). Covers every kind of row the sidebar shows: a single reply,
  * several replies to one object, a state change, a row from another project, a row from another
  * actor, a row that is not enriched yet, long titles/previews, and the system notices in between.
+ * AT-3075: unread rows get the "Mark as read" button; a press is recorded in `window.__annaMarkRead`
+ * (nothing is written: the button's backend is pinned by annaActivityReadState.test.js).
  */
 import 'setimmediate'
 import React from 'react'
@@ -176,7 +178,14 @@ function Harness() {
                                 <div className="anna-date-divider">2026-11-13 · Alldone Product · {ASSISTANT}</div>
                                 {ROWS.map(([name, notices, unread]) => (
                                     <div key={name} data-case={name}>
-                                        <AnnaActivityGroup notices={notices} unread={unread} context={context} />
+                                        <AnnaActivityGroup
+                                            notices={notices}
+                                            unread={unread}
+                                            context={context}
+                                            onMarkRead={async () => {
+                                                window.__annaMarkRead = [...(window.__annaMarkRead || []), name]
+                                            }}
+                                        />
                                     </div>
                                 ))}
                                 <p className="anna-context-notice anna-project-switch-notice">

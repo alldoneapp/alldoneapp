@@ -2,6 +2,7 @@ import moment from 'moment'
 
 import { getDb, mapGoalData, mapMilestoneData, mapProjectData } from './backends/firestore'
 import { mapOKRData } from './backends/OKRs/okrsFirestore'
+import { ALL_USERS, DYNAMIC_PERCENT } from '../components/GoalsView/GoalsHelper'
 import {
     calculateOkrPace,
     calculateRevenueOkrCurrentValue,
@@ -9,22 +10,116 @@ import {
     isRevenueOkr,
     normalizeOkrNumber,
 } from '../components/TaskListView/OKRs/okrHelper'
-import {
-    ALL_USERS,
-    getActiveRoadmapProjects,
-    normalizeRoadmapGoal,
-    normalizeRoadmapMilestone,
-    normalizeRoadmapOkr,
-    normalizeRoadmapProject,
-} from '../functions/Roadmap/roadmapSourceModel'
-
-// The normalizers live in functions/Roadmap/roadmapSourceModel.js: alldone.team reads the same
-// snapshot outside the embed window through POST /api/roadmap/source (roadmapSourceApi.js).
-export { getActiveRoadmapProjects, normalizeRoadmapGoal }
+import { PROJECT_COLOR_DEFAULT, PROJECT_COLOR_SYSTEM } from '../Themes/Modern/ProjectColors'
 
 export const ALLDONE_ROADMAP_PROTOCOL_VERSION = 1
 
-const paceStatusOf = okr => calculateOkrPace(okr).status
+const normalizeProjectColor = color =>
+    PROJECT_COLOR_SYSTEM[color]?.MARKER || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT]?.MARKER || color || '#2563EB'
+
+const cleanIdList = value => (Array.isArray(value) ? value : [])
+
+export function getActiveRoadmapProjects(projects, user) {
+    const projectIds = new Set(cleanIdList(user?.projectIds))
+    const excludedIds = new Set([
+        ...cleanIdList(user?.archivedProjectIds),
+        ...cleanIdList(user?.templateProjectIds),
+        ...cleanIdList(user?.guideProjectIds),
+    ])
+
+    return (Array.isArray(projects) ? projects : [])
+        .filter(project => project?.id && projectIds.has(project.id) && !excludedIds.has(project.id))
+        .map(project => ({
+            id: project.id,
+            name: project.name || 'Untitled project',
+            color: normalizeProjectColor(project.color),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+}
+
+function normalizeFocusAreas(catalog) {
+    return Object.entries(catalog && typeof catalog === 'object' && !Array.isArray(catalog) ? catalog : {})
+        .map(([id, area]) => ({
+            id,
+            name: typeof area?.name === 'string' ? area.name.trim().replace(/\s+/g, ' ') : '',
+        }))
+        .filter(area => area.name && area.name.toLowerCase() !== 'general')
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id))
+}
+
+function normalizeProject(project) {
+    return {
+        id: project.id,
+        name: project.name || 'Untitled project',
+        color: normalizeProjectColor(project.color),
+        focusAreas: normalizeFocusAreas(project.focusAreas),
+    }
+}
+
+function normalizeGoalComments(commentsData) {
+    const lastComment = typeof commentsData?.lastComment === 'string' ? commentsData.lastComment.trim() : ''
+    if (!lastComment) return null
+
+    return {
+        lastComment,
+        lastCommentType: typeof commentsData.lastCommentType === 'string' ? commentsData.lastCommentType : '',
+        amount: Math.max(1, Math.round(normalizeOkrNumber(commentsData.amount))),
+    }
+}
+
+export function normalizeRoadmapGoal(goal) {
+    return {
+        id: goal.id,
+        name: goal.name || '',
+        // mapGoalData uses this sentinel when progress is calculated from the
+        // goal's live child data. Preserve that meaning for the roadmap
+        // consumer instead of coercing the string to 0.
+        progress: goal.progress === DYNAMIC_PERCENT ? -1 : normalizeOkrNumber(goal.progress),
+        dynamicProgress: normalizeOkrNumber(goal.dynamicProgress),
+        startingMilestoneDate: normalizeOkrNumber(goal.startingMilestoneDate),
+        completionMilestoneDate: normalizeOkrNumber(goal.completionMilestoneDate),
+        parentDoneMilestoneIds: Array.isArray(goal.parentDoneMilestoneIds) ? goal.parentDoneMilestoneIds : [],
+        progressByDoneMilestone: goal.progressByDoneMilestone || {},
+        dateByDoneMilestone: goal.dateByDoneMilestone || {},
+        sortIndexByMilestone: goal.sortIndexByMilestone || {},
+        scheduleMode: goal.scheduleMode || '',
+        focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
+        commentsData: normalizeGoalComments(goal.commentsData),
+    }
+}
+
+function normalizeMilestone(milestone) {
+    return {
+        id: milestone.id,
+        name: milestone.extendedName || 'Milestone',
+        date: normalizeOkrNumber(milestone.date),
+        done: milestone.done === true,
+        doneDate: normalizeOkrNumber(milestone.doneDate),
+        milestoneType: milestone.milestoneType || '',
+        periodStartDate: milestone.periodStartDate == null ? null : normalizeOkrNumber(milestone.periodStartDate),
+        periodEndDate: milestone.periodEndDate == null ? null : normalizeOkrNumber(milestone.periodEndDate),
+        periodKey: milestone.periodKey || '',
+        cadence: milestone.cadence || '',
+    }
+}
+
+function normalizeOkr(okr, resolvedCurrentValue = okr.currentValue) {
+    const withResolvedValue = { ...okr, resolvedCurrentValue: normalizeOkrNumber(resolvedCurrentValue) }
+    return {
+        id: okr.id,
+        label: okr.label || '',
+        type: okr.type,
+        currentValue: normalizeOkrNumber(okr.currentValue),
+        resolvedCurrentValue: withResolvedValue.resolvedCurrentValue,
+        targetValue: normalizeOkrNumber(okr.targetValue),
+        unit: okr.unit || '',
+        cadence: okr.cadence || '',
+        periodStart: normalizeOkrNumber(okr.periodStart),
+        periodEnd: normalizeOkrNumber(okr.periodEnd),
+        status: okr.status || '',
+        paceStatus: calculateOkrPace(withResolvedValue).status,
+    }
+}
 
 export function getRoadmapNavigationPath({ projectId, userId, entityType, entityId }) {
     if (!projectId || !userId) return null
@@ -57,12 +152,12 @@ export function subscribeToRoadmapProject({ projectId, userId, onSnapshot, onErr
 
     const emit = () => {
         if (disposed || !project || !goals || !milestones || !okrs || revenuePending.size > 0) return
-        onSnapshot({ project: normalizeRoadmapProject(project), goals, milestones, okrs })
+        onSnapshot({ project: normalizeProject(project), goals, milestones, okrs })
     }
 
     const rebuildOkrs = () => {
         if (!rawOkrs) return
-        okrs = rawOkrs.map(okr => normalizeRoadmapOkr(okr, revenueValues.get(okr.id) ?? okr.currentValue, paceStatusOf))
+        okrs = rawOkrs.map(okr => normalizeOkr(okr, revenueValues.get(okr.id) ?? okr.currentValue))
     }
 
     const subscribeRevenueOkrs = () => {
@@ -142,9 +237,7 @@ export function subscribeToRoadmapProject({ projectId, userId, onSnapshot, onErr
             .orderBy('date', 'asc')
             .onSnapshot(
                 snapshot => {
-                    milestones = snapshot.docs.map(doc =>
-                        normalizeRoadmapMilestone(mapMilestoneData(doc.id, doc.data()))
-                    )
+                    milestones = snapshot.docs.map(doc => normalizeMilestone(mapMilestoneData(doc.id, doc.data())))
                     emit()
                 },
                 error => reportError('milestones', error)

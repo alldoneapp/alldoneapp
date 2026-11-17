@@ -67,11 +67,6 @@ jest.mock('./workflowAiStep', () => ({ writeMovedInWorkflowFeed: mockWriteMovedI
 
 const mockCreateInitialStatusMessage = jest.fn(async () => {})
 jest.mock('../Assistant/assistantStatusHelper', () => ({ createInitialStatusMessage: mockCreateInitialStatusMessage }))
-// AT-3074: the notice carries Anna's summary of the result, written by vmResultSummary.
-const mockSummarizeVmResultForChat = jest.fn(async () => 'MR !45 is open and the tests pass.')
-jest.mock('../Assistant/vmResultSummary', () => ({
-    summarizeVmResultForChat: (...args) => mockSummarizeVmResultForChat(...args),
-}))
 jest.mock('../shared/privacyAccess', () => ({
     assertObjectAccess: jest.fn(async (db, userId, projectId) => {
         const project = mockStore.get(`projects/${projectId}`)
@@ -543,20 +538,9 @@ describe('notifyDelegationOriginOnHumanStep', () => {
         mockStore.set(`chatComments/${PROJECT}/tasks/${TASK}/comments/c1`, {
             fromAssistant: true,
             created: 6000,
-            commentText: FULL_REPORT,
+            commentText: 'Opened MR !45, tests pass.',
         })
-        mockSummarizeVmResultForChat.mockClear()
-        mockSummarizeVmResultForChat.mockResolvedValue('MR !45 is open and the tests pass.')
     })
-
-    const FULL_REPORT = [
-        'Opened MR !45, tests pass.',
-        '',
-        '| Step | Status |',
-        '|---|---|',
-        '| Merged | ✅ commit `f3e34e0` |',
-        'What changed: `components/Anna/AnnaViewSwitch.js` now orders the buttons App | Both.',
-    ].join('\n')
 
     const notify = (oldTask = delegatedAt(IMPLEMENT), newTask = delegatedAt(REVIEW)) =>
         notifyDelegationOriginOnHumanStep({ db: mockDb, projectId: PROJECT, taskId: TASK, oldTask, newTask })
@@ -569,57 +553,9 @@ describe('notifyDelegationOriginOnHumanStep', () => {
         const [projectId, objectType, objectId, assistantId, text] = mockCreateInitialStatusMessage.mock.calls[0]
         expect([projectId, objectType, objectId, assistantId]).toEqual([PROJECT, 'topics', 'anna-topic', 'anna'])
         expect(text).toContain('AT-1 “Fix the popup” is ready for you at “Review”')
-        expect(text).toContain('MR !45 is open and the tests pass.')
+        expect(text).toContain('Opened MR !45, tests pass.')
         expect(text).toContain('Next: “Merge” (assistant)')
         expect(text).toContain(`https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`)
-    })
-
-    // AT-3074: the detailed result stays in the task chat; Anna's chat gets her summary and the link.
-    it('posts Anna’s summary and the task link, never the result itself', async () => {
-        expect(await notify()).toBe(true)
-
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledTimes(1)
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledWith(
-            expect.objectContaining({
-                resultText: FULL_REPORT,
-                // The task's owner asked for the work, reads the summary and pays for it.
-                userId: OWNER,
-                projectId: PROJECT,
-                objectId: TASK,
-                objectType: 'tasks',
-                taskLabel: 'AT-1 “Fix the popup”',
-            })
-        )
-        const text = mockCreateInitialStatusMessage.mock.calls[0][4]
-        expect(text).not.toContain('Opened MR !45, tests pass.')
-        expect(text).not.toContain('AnnaViewSwitch.js')
-        expect(text).not.toContain('| Step | Status |')
-        expect(text).not.toContain('f3e34e0')
-    })
-
-    it('falls back to the step, the next step and the link when no summary can be written', async () => {
-        mockSummarizeVmResultForChat.mockResolvedValueOnce('')
-
-        expect(await notify()).toBe(true)
-
-        const text = mockCreateInitialStatusMessage.mock.calls[0][4]
-        expect(text).toBe(
-            [
-                '📋 AT-1 “Fix the popup” is ready for you at “Review”.',
-                '',
-                'Next: “Merge” (assistant). Reply here to approve, for example “go ahead”, or tell me what to change.',
-                `https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`,
-            ].join('\n')
-        )
-    })
-
-    it('does not ask for a summary when the task chat has no assistant result yet', async () => {
-        mockStore.delete(`chatComments/${PROJECT}/tasks/${TASK}/comments/c1`)
-
-        expect(await notify()).toBe(true)
-
-        expect(mockSummarizeVmResultForChat).not.toHaveBeenCalled()
-        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toContain('is ready for you at “Review”')
     })
 
     it('stays quiet for assistant steps and for moves the user made from a chat', async () => {

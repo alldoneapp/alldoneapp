@@ -7,6 +7,7 @@ import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { threadRunGate } from '../../utils/backends/Chats/threadRunGate'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
+import { markAnnaActivityRead } from './annaActivityReadState'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor, insertFilesAsAttachments } from '../Feeds/CommentsTextInput/textInputHelper'
 import { installAppResumeListener } from '../../utils/appResume'
@@ -184,6 +185,8 @@ jest.mock('../ChatsView/ChatDV/EditorView/AssistantThinking3D/AssistantThinking3
     useAssistantThinking3DEnabled: () => false,
 }))
 jest.mock('./useAnnaMessageReadState', () => jest.fn())
+// AT-3075: the writes are pinned in annaActivityReadState.test.js; here only what is asked for.
+jest.mock('./annaActivityReadState', () => ({ markAnnaActivityRead: jest.fn() }))
 const mockCreators = {}
 jest.mock('../ContactsView/Utils/ContactsHelper', () => ({
     getUserPresentationData: id => mockCreators[id] || { uid: id, displayName: id },
@@ -814,7 +817,7 @@ it('shows linked red activity between messages without posting to the assistant'
     now.mockRestore()
 })
 
-it('marks still unread activity cards with a blue edge until their badge clears (AT-3046)', () => {
+it('marks still unread activity cards with an unread edge until their badge clears (AT-3046, red since AT-3075)', () => {
     jest.useFakeTimers()
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
     render()
@@ -838,6 +841,112 @@ it('marks still unread activity cards with a blue edge until their badge clears 
     expect(cards()).toHaveLength(2)
     expect(cards().map(card => card.classList.contains('anna-activity-card-unread'))).toEqual([false, true])
     now.mockRestore()
+})
+
+describe('mark as read in Assistant mode (AT-3075)', () => {
+    const cards = () => [...container.querySelectorAll('.anna-activity-notice')]
+    const cardButton = card => card.querySelector('button[data-anna-mark-read]')
+    const markAll = () => container.querySelector('.anna-chat-pills .anna-mark-all-read')
+    // Two red (followed) items arrive while the chat is open: a task change and a chat message.
+    const arrive = () => {
+        jest.useFakeTimers()
+        const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+        render()
+        now.mockReturnValue(2000)
+        mockActivityState.followedFeedsAmount = 1
+        mockActivityState.followedFeedsData = {
+            p1: [
+                {
+                    id: 'feed1',
+                    objectId: 'task1',
+                    objectTypes: 'tasks',
+                    lastChangeDate: 1900,
+                    entryText: 'created task',
+                },
+            ],
+        }
+        mockActivityState.projectChatNotifications = {
+            p1: {
+                totalFollowed: 2,
+                chatA: {
+                    totalFollowed: 2,
+                    followedNotifications: [
+                        { commentId: 'message1', date: 1950 },
+                        { commentId: 'message2', date: 1960 },
+                    ],
+                },
+            },
+        }
+        render()
+        act(() => jest.advanceTimersByTime(300))
+        now.mockRestore()
+    }
+    // What the read-state listeners deliver once the write lands: the badge source is empty.
+    const badgesClear = (keep = {}) => {
+        mockActivityState = {
+            ...mockActivityState,
+            followedFeedsAmount: keep.feed ? 1 : 0,
+            followedFeedsData: keep.feed ? mockActivityState.followedFeedsData : {},
+            projectChatNotifications: keep.chat ? mockActivityState.projectChatNotifications : {},
+        }
+        render()
+    }
+    beforeEach(() => markAnnaActivityRead.mockReset().mockResolvedValue(undefined))
+
+    it("offers a button on each unread card that marks that card's items through the read state", async () => {
+        arrive()
+        expect(cards()).toHaveLength(2)
+        expect(cards().map(card => !!cardButton(card))).toEqual([true, true])
+        await act(async () => cardButton(cards()[1]).click())
+        expect(markAnnaActivityRead).toHaveBeenCalledTimes(1)
+        expect(markAnnaActivityRead.mock.calls[0][0].map(notice => notice.id)).toEqual([
+            'chat/p1/chatA/message1',
+            'chat/p1/chatA/message2',
+        ])
+        // Nothing was sent to the assistant, and the card did not navigate anywhere.
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    })
+
+    it('turns the card grey and drops its button once the badge clears, not before', async () => {
+        arrive()
+        await act(async () => cardButton(cards()[1]).click())
+        // The click alone hides nothing: the edge follows the persisted badge state.
+        expect(cards()[1].querySelector('a').classList.contains('anna-activity-card-unread')).toBe(true)
+        badgesClear({ feed: true })
+        expect(cards()).toHaveLength(2)
+        expect(cards().map(card => card.querySelector('a').classList.contains('anna-activity-card-unread'))).toEqual([
+            true,
+            false,
+        ])
+        expect(cardButton(cards()[1])).toBeNull()
+        expect(cardButton(cards()[0])).not.toBeNull()
+    })
+
+    it('offers "Mark all as read" from two unread cards, for every unread card on screen', async () => {
+        arrive()
+        expect(markAll()).not.toBeNull()
+        expect(markAll().getAttribute('aria-label')).toBe('Anna activity mark all read')
+        expect(markAll().textContent).toContain('Anna activity mark all read')
+        expect(markAll().closest('.anna-messages')).toBeNull()
+        await act(async () => markAll().click())
+        expect(markAnnaActivityRead).toHaveBeenCalledTimes(1)
+        expect(markAnnaActivityRead.mock.calls[0][0].map(notice => notice.id).sort()).toEqual([
+            'chat/p1/chatA/message1',
+            'chat/p1/chatA/message2',
+            'feed/p1/tasks/task1/feed1',
+        ])
+        badgesClear()
+        expect(markAll()).toBeNull()
+        expect(cards().every(card => !cardButton(card))).toBe(true)
+    })
+
+    it('leaves a single unread card to its own button', () => {
+        arrive()
+        badgesClear({ feed: true })
+        expect(cards().filter(card => cardButton(card))).toHaveLength(1)
+        expect(markAll()).toBeNull()
+    })
 })
 
 it('uses the user date/time setting for messages and every notice, including changes while chat is open', () => {

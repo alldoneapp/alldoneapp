@@ -64,7 +64,6 @@ function getTransactionLabel(source) {
         email_create_task: 'Task from email',
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
-        vm_result_summary: 'VM result summary',
         mcp_tool_call: 'MCP tool call',
         knowledge_base_ingest: 'Project wiki update',
         browser_automation: 'Website visit',

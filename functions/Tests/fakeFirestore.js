@@ -2,8 +2,7 @@
 
 // A small in-memory Firestore for unit tests of server services that take `db` as a parameter:
 // doc/collection reads and writes, equality and range `where` filters, `orderBy`/`limit`, dotted-path updates,
-// deletes, batches, `getAll` and auto ids. `onSnapshot` delivers the current state once (no live updates),
-// so web code that listens can be fed the same data. Not a test file itself (no `.test.js`), shared by suites.
+// deletes, batches and auto ids. Not a test file itself (no `.test.js`), shared by suites.
 
 const clone = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
 
@@ -45,7 +44,6 @@ function createFakeFirestore(initial = {}) {
             return db
         },
         get: async () => snapshotOf(path),
-        onSnapshot: (next, error) => deliverOnce(() => snapshotOf(path), next, error),
         set: async (data, options) => {
             record('set', path, data)
             if (options?.merge && docs.has(path)) docs.set(path, { ...docs.get(path), ...clone(data) })
@@ -80,25 +78,11 @@ function createFakeFirestore(initial = {}) {
         }
     }
 
-    const deliverOnce = (read, next, error) => {
-        let active = true
-        Promise.resolve()
-            .then(read)
-            .then(
-                snapshot => active && next(snapshot),
-                failure => active && error && error(failure)
-            )
-        return () => {
-            active = false
-        }
-    }
-
     // `orderBy` keeps only documents that have the field, as Firestore does.
     const query = (path, filters = [], order = null, max = null) => ({
         where: (field, op, value) => query(path, [...filters, { field, op, value }], order, max),
         orderBy: (field, direction = 'asc') => query(path, filters, { field, direction }, max),
         limit: count => query(path, filters, order, count),
-        onSnapshot: (next, error) => deliverOnce(() => query(path, filters, order, max).get(), next, error),
         get: async () => {
             const prefix = `${path}/`
             let matching = [...docs.keys()].filter(key => {
@@ -116,31 +100,18 @@ function createFakeFirestore(initial = {}) {
                 })
             }
             if (max !== null) matching = matching.slice(0, max)
-            const snapshots = matching.map(snapshotOf)
-            return {
-                size: snapshots.length,
-                empty: snapshots.length === 0,
-                docs: snapshots,
-                forEach: callback => snapshots.forEach(callback),
-            }
+            return { size: matching.length, empty: matching.length === 0, docs: matching.map(snapshotOf) }
         },
     })
-
-    // Firestore accepts a leading slash ('/statistics/...'); stored keys have none.
-    const cleanPath = path => String(path).replace(/^\/+/, '')
 
     const db = {
         docs,
         writes,
-        doc: path => docRef(cleanPath(path)),
-        getAll: async (...refs) => refs.map(ref => snapshotOf(ref.path)),
-        collection: rawPath => {
-            const path = cleanPath(rawPath)
-            return {
-                ...query(path),
-                doc: id => docRef(`${path}/${id || `auto${++autoId}`}`),
-            }
-        },
+        doc: docRef,
+        collection: path => ({
+            ...query(path),
+            doc: id => docRef(`${path}/${id || `auto${++autoId}`}`),
+        }),
         batch: () => {
             const ops = []
             return {

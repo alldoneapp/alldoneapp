@@ -3245,20 +3245,6 @@ exports.menubarProjects = onRequest(
     }
 )
 
-// The Roadmap Creator's Alldone source on alldone.team (JO-3355): project list and read-only
-// snapshot for the linked alldone.app account, signed by alldone.team's Functions. Reads only.
-exports.roadmapSource = onRequest(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async (req, res) => {
-        const { handleRoadmapSource } = require('./Roadmap/roadmapSourceApi')
-        return await handleRoadmapSource(req, res)
-    }
-)
-
 // The Mac app's local autocomplete "Writer:" profile. Firestore reads only, no model call.
 exports.menubarAutocompleteProfile = onRequest(
     {
