@@ -111,6 +111,12 @@ it('adds the same persisted notice context to app prompts while keeping permissi
     expect(await loadAnnaContext(db, { ...runtime, requestUserId: 'u2' }, { includeActivity: true })).toBeNull()
 })
 
+it('puts the state of delegated tasks into the prompt', () => {
+    const delegatedTasks = 'Open tasks the user delegated to assistants, as they stand now.\n{"task":"AT-1 “Fix it”"}'
+    expect(annaInstructions({ delegatedTasks })).toContain('{"task":"AT-1 “Fix it”"}')
+    expect(annaInstructions({})).not.toContain('Open tasks the user delegated')
+})
+
 describe('Anna conversation and presentation boundary', () => {
     it('creates one daily chat with WhatsApp sharing and reuses it within the local day', async () => {
         const { db, data, writes } = database()

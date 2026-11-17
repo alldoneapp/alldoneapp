@@ -168,6 +168,14 @@ async function askToOpenAIBotOptimized(
         // AT-3071: a project assistant's chat tracks substantial work as its own task, like Anna.
         const { isChatTaskTrackingConversation, chatTaskTrackingInstructions } = require('./chatTaskTracking')
         if (isChatTaskTrackingConversation(baseToolRuntimeContext)) baseToolRuntimeContext.chatTaskTracking = true
+        // Like Anna, a project assistant's chat knows where the tasks delegated from it stand now.
+        // Loaded alongside the context messages; empty unless the chat really tracks work.
+        const chatDelegatedTasksPromise = baseToolRuntimeContext.chatTaskTracking
+            ? require('./delegatedTasksContext').loadChatDelegatedTasksContext(
+                  admin.firestore(),
+                  baseToolRuntimeContext
+              )
+            : Promise.resolve('')
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
         // aborts the run so no message can fall beyond the current 20-message context window
@@ -213,8 +221,11 @@ async function askToOpenAIBotOptimized(
         const chatTaskTrackingText = baseToolRuntimeContext.chatTaskTracking
             ? chatTaskTrackingInstructions({ allowedTools })
             : ''
-        if (chatTaskTrackingText) messages.push(['system', chatTaskTrackingText])
-        else delete baseToolRuntimeContext.chatTaskTracking
+        if (chatTaskTrackingText) {
+            messages.push(['system', chatTaskTrackingText])
+            const chatDelegatedTasks = await chatDelegatedTasksPromise
+            if (chatDelegatedTasks) messages.push(['system', chatDelegatedTasks])
+        } else delete baseToolRuntimeContext.chatTaskTracking
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {

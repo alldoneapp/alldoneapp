@@ -141,6 +141,45 @@ still answered `workflow_managed`, so Anna announced work that never started. Ne
 UIs that compare step _indexes_ work only by coincidence (`indexOf('Open')` is -1). A task that is
 neither Open nor in the workflow now returns `task_changed` instead of a false `workflow_managed`.
 
+## Assistants know where the tasks they delegated stand, including what happened in their own chats (2026-11-17)
+
+The user hands work to an assistant (Anna, or a project assistant in its chat, AT-3071), the work gets
+its own task, and the user often goes on in that task's chat: answers the VM, sends the work back,
+approves a step there. The conversation it came from knew nothing of that, and Anna's history only
+reaches back to yesterday, so after two days she did not even know the task existed. Every run in a
+delegating conversation now gets a "where the delegated tasks stand" block
+(`functions/Assistant/delegatedTasksContext.js`).
+
+- **Who watches what:** Anna, the personal assistant, watches all of the user's open delegated tasks
+  (`loadAnnaContext`, with the activity notices). A project assistant's chat (`chatTaskTracking`) watches the tasks delegated from the user's conversations with that
+  assistant: receipts whose `originAssistantId` is the answering assistant
+  (`loadChatDelegatedTasksContext`, started in parallel with the context messages in
+  `assistantNormalTalk_optimized.js`, added only when the chat-tracking instruction is).
+- **What it holds:** up to 10 tasks, most recently changed first (product decision 2026-11-17). Each has
+  its step, who that step waits for, the next step, a VM waiting for an answer or a failed VM run (from
+  the `vmInteractionWorkflowStep` hold), the time of the last change, the latest message of the user and
+  of the assistant in the task chat (300 characters each), the link, and whether it was delegated from
+  this very conversation. The whole block is capped at 9000 characters. It tells the assistant to go on
+  in that task (comment, `move_task_workflow_step`, `execute_task_in_vm` with the task as target)
+  rather than start the work again, and not to list the tasks unasked.
+- **Nothing is posted into the conversation.** By design the task chat stays the record of the work
+  (Anna's instructions already say not to duplicate task comments into the conversation). The visible
+  notices are the review notice, the VM question notice (`docs/claude/vm.md`) and VM results, and those
+  already work for every origin conversation, Anna's or a project chat.
+- **Listing:** `delegatedTaskOrigins` where `ownerId == user` and `open == true` (plus
+  `originAssistantId == assistant` for a chat). Equality filters only are served by single-field
+  indexes, so no composite index is needed (those need an interactive deploy, see `ci-cd.md`). The
+  receipt is written with `open: true`. `syncDelegatedTaskOriginOpenState` in the task update fan-out
+  sets it to false when the task is done or leaves the delegation, and back to true on a reopen. It reads
+  the receipt on every update of a delegated task, which also gives receipts written before the flag
+  existed their `open` on their next update. Until then such a task is missing from the block.
+- **Scope:** a conversation other members can read gets only its project's tasks, and only those every
+  member may see. For Anna that is `projectOnlyContext`. For a chat it is a project with other members
+  plus a chat `isPublicFor` that is not just the user; an unreadable chat counts as shared. The task
+  must still be the user's own (`task.userId`), delegated, not done, and in a project the user is a
+  member of.
+- **Never fails a run:** any read error returns an empty block.
+
 ## Workflow steps move from chat: "merge it" (AT-2829, 2026-11-16)
 
 `move_task_workflow_step` moves a task to `next`, `back`, `done`, `open` or a named step, or (without

@@ -47,6 +47,9 @@ async function startDelegatedTaskWorkflow({
                 taskId,
                 ownerId,
                 assistantId,
+                // Lists the user's open delegated tasks for Anna (delegatedTasksContext.js); the task
+                // update fan-out keeps it in step with the task.
+                open: true,
                 ...(requestId ? { requestCommentId: requestId } : {}),
                 ...(trackedOrigin
                     ? {
