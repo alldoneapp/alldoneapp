@@ -36,7 +36,7 @@ export default function ButtonsArea({
                 <MoreOptions showMoreOptions={showMoreOptions} disabled={disabled} />
             </View>
             <View style={localStyles.buttonsRight}>
-                <DoneButton done={done} disabled={disabled || uploadingDraft} />
+                <DoneButton done={done} disabled={disabled} uploading={uploadingDraft} />
             </View>
         </View>
     )

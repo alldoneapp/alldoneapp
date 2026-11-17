@@ -35,6 +35,7 @@ export default function MainModal({
     widthStyle,
     onFilesDropped,
     uploadingDraft,
+    draftUploadFailed,
     pushToTalkHandoff,
     claimDictatedTaskInBackground,
 }) {
@@ -91,6 +92,7 @@ export default function MainModal({
                     showParentGoal={showParentGoal}
                     showMoreOptions={showMoreOptions}
                     uploadingDraft={uploadingDraft}
+                    draftUploadFailed={draftUploadFailed}
                     pushToTalkHandoff={pushToTalkHandoff}
                     claimDictatedTaskInBackground={claimDictatedTaskInBackground}
                 />
