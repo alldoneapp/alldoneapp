@@ -11,8 +11,8 @@ const { execFileSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '../..')
 const BUILD = path.join(__dirname, '.build')
 const GAP = 24 // FLOATING_ACTION_VIEWPORT_GAP
-const BEZEL = 1 // AT-3065: the chat card's fine line
-const BEZEL_COLOR = 'rgb(231, 236, 239)' // colors.Grey300 (--anna-border)
+const BEZEL = 6
+const BEZEL_COLOR = 'rgb(198, 205, 210)' // colors.Grey400
 const HEIGHT = 900
 
 if (!process.argv.includes('--skip-build'))
@@ -251,10 +251,10 @@ async function main() {
             await open(page, width)
             const m = await measure(page)
             checkBezel(m, `${width}px`)
-            assert.deepEqual(m.borderColors, Array(4).fill(BEZEL_COLOR), `${width}px: fine bezel`)
+            assert.deepEqual(m.borderColors, Array(4).fill(BEZEL_COLOR), `${width}px: gray bezel`)
             checkPlus(m, `${width}px`)
             pass(
-                `${width}px idle: 1px bezel at the column edges, padding ${m.padding[3]}px left/right only, "+" 24px from the app`
+                `${width}px idle: 6px gray bezel at the column edges, padding ${m.padding[3]}px left/right only, "+" 24px from the app`
             )
             await page.screenshot({ path: path.join(BUILD, `idle-${width}.png`) })
 

@@ -447,8 +447,8 @@ stored preference says: read the shown state through `selectSidebarExpanded` (`U
 the sidebar's hover, the detail views' back buttons, AddProject), never write it, and `CollapseButton`
 hides. The tag lists keep reading the preference on purpose (it picks their more compact layout).
 "Both" needs room for the chat (`MIN_CHAT_WIDTH`) beside Alldone at the collapsed sidebar's breakpoint
-plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which still counts
-AT-2911's frame, see AT-3065 below; about 1036px of window). Narrower desktop windows show one card at a time,
+plus the screen's margin, bezel and gutters (`useAnnaChatWidth`'s `splitFits`, which mirrors
+`--anna-workspace-gutter`; about 1036px of window). Narrower desktop windows show one card at a time,
 like a phone (`narrow`, `singlePane`, `mobilePane`; Anna only on a wide window is the same one card,
 `oneCard`/`anna-one-card`, so a screen picked there shows below the row and never opens Both, and
 entering Anna only always brings the chat to the front; `frontPane` says which is in front): the strip offers only Tasks and the assistant
@@ -471,9 +471,8 @@ middle (only while the chat shows alone: in Both, Alldone beside it shows the fo
 (Alldone, Browser, VMs, apps; a menu on `AppPopover`, sized to the chat pane) in place of AT-3045's
 select, AT-3042's fullscreen toggle and close control and the Home button: the strip's views do their
 work (merged with master on 2026-11-16; the AT-3042/AT-3045 notes above now describe the phone
-header). A notch (`.anna-conversation::after`) in `--anna-workspace-notch-color` (the stronger
-`--anna-bezel` gray) points from the picker into the screen and turns accent with the bezel
-(`anna-workspace-busy`). Phones (2026-11-16) mirror the desktop narrow window: the first line is Alldone's
+header). A notch (`.anna-conversation::after`) in `--anna-workspace-bezel-color` points from the
+picker into the screen and turns accent with the bezel (`anna-workspace-busy`). Phones (2026-11-16) mirror the desktop narrow window: the first line is Alldone's
 own phone bar (`TopBarMobile`), which AnnaShell renders above the chat in assistant mode
 (`.anna-phone-bar`; a click on anything but the switch leaves the chat once the control has acted,
 `leaveChatFromPhoneBar` on a `setTimeout`: leaving at once swaps this bar for Alldone's in the
@@ -572,17 +571,6 @@ web Modal that creates a browser-wide portal. Never remount popup content when t
 pane changes size: drafts must survive desktop/sheet transitions. Browser coverage:
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
-
-**The workspace frame in Both is the chat card's fine line (AT-3065, 2026-11-17).** Decided with
-the product owner: AT-2911's 6px `--anna-bezel` frame and 24-48px gutters looked heavy beside the
-chat card. The bezel (`--anna-workspace-bezel`) is now 1px in `--anna-border`, the chat card's
-line and radius, so light and dark mode follow the same token; the gutter inside it is 12px (8px
-up to 1100px). While a tool changes the workspace only the line's colour turns accent; it stays
-1px. The notch keeps the stronger `--anna-bezel` through its own `--anna-workspace-notch-color`.
-`useAnnaChatWidth` deliberately still reserves the old frame's room (`minWorkspaceWidth`), so
-Both opens from the same window width as before (about 1036px) and the freed room goes to
-Alldone; change both together if that threshold should move. Pinned by
-`annaWorkspaceFrame.test.js` and `browser-tests/at2911`.
 
 **The workspace bezel turns blue only while a tool changes the workspace (AT-2926).** The
 blue accent on the frame around the Alldone pane (and its "… is working here" notch) used to

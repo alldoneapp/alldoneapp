@@ -612,9 +612,8 @@ workspace column. That column is AnnaShell's markup, with the same class names,
 `anna.css` and `useWorkspaceViewportOwner`. The shell itself needs the chat transport
 and is covered by `anna-workspace/`. Checked at 1600, 1440, 1373, 1100, 1024 and 900px:
 
-- a 1px bezel in the chat card's line colour (`--anna-border`, AT-3065; it was a 6px
-  gray frame) on all four sides fills the column from the divider to the window edge,
-  with padding inside it on the left and right only;
+- a 6px gray bezel on all four sides fills the column from the divider to the window
+  edge, with white padding inside it on the left and right only;
 - the measured workspace viewport equals the app box;
 - the "+" sits 24px from the app's right and bottom edges, on the loader's baseline;
 - the "working" bezel is blue, and its label is centred on the bottom edge, clear of

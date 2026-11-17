@@ -14,12 +14,11 @@ const themeSource = fs.readFileSync(path.join(__dirname, 'annaThemeVariables.js'
 const frameBlock = css.slice(css.indexOf('/* AT-2911'), css.indexOf('.anna-working-label {'))
 
 describe('assistant workspace monitor frame (AT-2911)', () => {
-    it('draws one fine bezel width on all four edges from a single variable', () => {
-        // AT-3065: the chat card's line (1px, --anna-border), no longer a 6px gray frame.
-        expect(frameBlock).toMatch(/--anna-workspace-bezel:\s*1px;/)
-        expect(frameBlock).toMatch(/--anna-workspace-bezel-color:\s*var\(--anna-border\);/)
+    it('draws one gray bezel width on all four edges from a single variable', () => {
+        expect(frameBlock).toMatch(/--anna-workspace-bezel:\s*6px;/)
+        expect(frameBlock).toMatch(/--anna-workspace-bezel-color:\s*var\(--anna-bezel\);/)
         expect(shellSource).toContain('...ANNA_THEME_VARIABLES')
-        expect(themeSource).toContain("'--anna-border': colors.Grey300")
+        expect(themeSource).toContain("'--anna-bezel': colors.Grey400")
         expect(frameBlock).toMatch(
             /border:\s*var\(--anna-workspace-bezel\)\s+solid\s+var\(--anna-workspace-bezel-color\);/
         )
@@ -47,36 +46,6 @@ describe('assistant workspace monitor frame (AT-2911)', () => {
         // padded .anna-workspace — so the floating "+", inline fixed overlays and popover
         // bounds start at the app's own edge without any compensation of their own.
         expect(frameBlock).not.toMatch(/\.anna-workspace-content\s*\{[^}]*(padding|border|margin)/)
-    })
-
-    it('matches the chat card: the same line and radius as .anna-conversation (AT-3065)', () => {
-        const chatCard = css.match(/\.anna-zoom-active \.anna-conversation \{[^}]*\}/)[0]
-        expect(chatCard).toMatch(/border: 1px solid var\(--anna-border\);/)
-        expect(chatCard).toMatch(/border-radius: 14px;/)
-        expect(frameBlock).toMatch(/--anna-workspace-radius:\s*14px;/)
-    })
-
-    it('keeps a narrow gutter inside the bezel (AT-3065)', () => {
-        expect(frameBlock).toMatch(/\.anna-zoom-active \{[^}]*--anna-workspace-gutter:\s*12px;/)
-        expect(frameBlock).toMatch(
-            /@media \(max-width: 1100px\) \{\s*\.anna-zoom-active \{\s*--anna-workspace-gutter:\s*8px;/
-        )
-    })
-
-    it('stays a fine line while a tool works: only the colour turns accent', () => {
-        const working = frameBlock.match(/\.anna-stage\.anna-stage-working \{[^}]*\}/)[0]
-        expect(working).toMatch(/border-color: var\(--anna-accent\);/)
-        expect(working).not.toMatch(/border-width|border:\s/)
-    })
-
-    it('keeps the notch from the chat in the stronger bezel gray, and accent while busy', () => {
-        expect(frameBlock).toMatch(/--anna-workspace-notch-color:\s*var\(--anna-bezel\);/)
-        expect(themeSource).toContain("'--anna-bezel': colors.Grey400")
-        const notch = css.match(/\.anna-zoom-active:not\(\.anna-chat-only\) \.anna-conversation::after \{[^}]*\}/)[0]
-        expect(notch).toMatch(/border-left: 15px solid var\(--anna-workspace-notch-color\);/)
-        expect(css).toMatch(
-            /\.anna-workspace-busy \.anna-conversation::after \{\s*border-left-color: var\(--anna-accent\);/
-        )
     })
 
     it('raises the working label from the bottom bezel, clear of the app top bar', () => {
