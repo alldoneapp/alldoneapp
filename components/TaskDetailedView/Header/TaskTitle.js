@@ -11,6 +11,7 @@ import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelp
 import { setTaskName } from '../../../utils/backends/Tasks/tasksFirestore'
 import { isGmailLabelFollowUpTask } from '../../../utils/Gmail/gmailTaskUtils'
 import GmailTag from '../../Tags/GmailTag'
+import { TASK_HEADER_TITLE_ROW_HEIGHT, TASK_HEADER_TOP_SPACING } from './headerLayout'
 
 import { themed } from '../../../Themes/colorMode'
 
@@ -21,8 +22,8 @@ export const TITLE_NOTE = 2
 // heading has to fit a very different amount of text on a phone than on a desktop (AT-2341).
 // A wrapped title line is `styles.title4`'s lineHeight plus the 3px top/bottom margins that
 // WordsList adds to every wrapped word, and the whole title block also carries the fixed-height
-// spacer above the text.
-export const TITLE_UPPER_SPACER_HEIGHT = 32
+// spacer above the text. The spacer is the compact header rhythm (AT-3081, was 32px).
+export const TITLE_UPPER_SPACER_HEIGHT = TASK_HEADER_TOP_SPACING
 export const TITLE_LINE_HEIGHT = styles.title4.lineHeight + 6
 export const COLLAPSED_TITLE_LINES_DESKTOP = 1
 export const COLLAPSED_TITLE_LINES_MOBILE = 3
@@ -201,12 +202,12 @@ export default TaskTitle
 const localStyles = StyleSheet.create({
     titleContainer: {
         flex: 1,
-        minHeight: 64,
+        minHeight: TITLE_UPPER_SPACER_HEIGHT + TASK_HEADER_TITLE_ROW_HEIGHT,
         maxHeight: 800,
         overflow: 'hidden',
     },
     upperContainer: {
-        height: 32,
+        height: TITLE_UPPER_SPACER_HEIGHT,
         backgroundColor: themed.Surface,
     },
     bottomContainer: {

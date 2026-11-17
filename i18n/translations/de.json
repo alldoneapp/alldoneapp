@@ -848,6 +848,8 @@
     "Copy link": "Link kopieren",
     "Open view in new window": "Öffne in einem neuen Fenster",
     "More options": "Weitere Optionen",
+    "Visibility with value": "Sichtbarkeit: %{value}",
+    "Workflow action with target step": "%{action}: %{step}",
     "Overdue tasks": "Überfällige Aufgaben",
     "Someday": "Irgendwann",
     "TODAY": "HEUTE",
