@@ -2942,7 +2942,9 @@ const toolSchemas = {
                             '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data. ' +
                             'Always use "prototype" for coding tasks, including simple HTML/CSS/JS pages, scripts, apps, prototypes, and changes to the project\'s codebase. If a GitLab or GitHub repository is connected to this ' +
                             'project and the requesting user has linked their token, a "prototype" task runs inside a checkout of that repo ' +
-                            'and opens a Merge Request (GitLab) / Pull Request (GitHub) only when it actually changes repository files.',
+                            'and opens a Merge Request (GitLab) / Pull Request (GitHub) only when it actually changes repository files. ' +
+                            'Every other task type can still read a connected GitHub repository through its API (pipeline/CI status, pull requests, ' +
+                            'issues, files) without a checkout, so use "research" to check a pipeline or a pull request.',
                     },
                     handoff_message: {
                         type: 'string',

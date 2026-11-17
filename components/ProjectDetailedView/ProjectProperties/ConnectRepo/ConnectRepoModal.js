@@ -79,7 +79,13 @@ export default function ConnectRepoModal({ project, closePopover, onConnectionCh
                 baseBranch: baseBranch.trim(),
             })
             setToken('')
-            setConnection({ connected: true, username: result.username, canPush: result.canPush })
+            setConnection({
+                connected: true,
+                username: result.username,
+                canPush: result.canPush,
+                // Only known right after connecting (not stored): the token can gain permissions later.
+                missingCiPermissions: Array.isArray(result.missingCiPermissions) ? result.missingCiPermissions : [],
+            })
             setBaseBranch(result.defaultBranch || baseBranch)
             setSuccess(result.warning || translate(provider.connectedKey))
             if (onConnectionChange) onConnectionChange({ connected: true, repoUrl: repoUrl.trim() })
@@ -129,6 +135,13 @@ export default function ConnectRepoModal({ project, closePopover, onConnectionCh
                         </Text>
                         {connection.canPush === false && (
                             <Text style={localStyles.warningText}>{translate(provider.readOnlyWarningKey)}</Text>
+                        )}
+                        {provider.ciWarningKey && connection.missingCiPermissions?.length > 0 && (
+                            <Text style={localStyles.warningText}>
+                                {translate(provider.ciWarningKey, {
+                                    permissions: connection.missingCiPermissions.join(', '),
+                                })}
+                            </Text>
                         )}
                     </View>
                 ) : null}

@@ -1206,6 +1206,104 @@ describe('VM Git checkout setup', () => {
     })
 })
 
+// AM-1304: a non-coding VM run used to get no repo token at all, so "check the pipeline" runs
+// answered that they could not see anything. They now get read access to a bound GitHub
+// repository through its REST API, without a checkout or push credentials.
+describe('GitHub API access for non-coding runs (AM-1304)', () => {
+    const boundGithubContext = {
+        enabled: true,
+        provider: 'github',
+        repoUrl: 'https://github.com/acme/app',
+        credentialOrigin: 'https://github.com',
+        baseBranch: 'develop',
+        token: 'secret-token',
+        credentialUsername: 'x-access-token',
+        identityName: 'octo',
+        identityEmail: 'octo@users.noreply.github.com',
+        apiBase: 'https://api.github.com',
+        repoSlug: 'acme/app',
+        vmGolden: { status: 'ready' },
+    }
+
+    test('keeps only the API fields of a bound GitHub context', () => {
+        expect(__private__.buildRepoApiContext(boundGithubContext)).toEqual({
+            enabled: true,
+            provider: 'github',
+            token: 'secret-token',
+            apiBase: 'https://api.github.com',
+            repoSlug: 'acme/app',
+            repoUrl: 'https://github.com/acme/app',
+            baseBranch: 'develop',
+        })
+    })
+
+    test('gives nothing for GitLab, a missing token, a mismatch or no repository', () => {
+        expect(__private__.buildRepoApiContext({ ...boundGithubContext, provider: 'gitlab' })).toBeNull()
+        expect(__private__.buildRepoApiContext({ ...boundGithubContext, token: '' })).toBeNull()
+        expect(__private__.buildRepoApiContext({ enabled: false, repoTokenMismatch: true })).toBeNull()
+        expect(__private__.buildRepoApiContext({ enabled: false, repoConnectedButNoToken: true })).toBeNull()
+        expect(__private__.buildRepoApiContext(null)).toBeNull()
+    })
+
+    test('the API env carries no git push credentials', () => {
+        const env = __private__.buildGithubApiEnv(__private__.buildRepoApiContext(boundGithubContext))
+        expect(env).toEqual({
+            GH_TOKEN: 'secret-token',
+            GITHUB_TOKEN: 'secret-token',
+            GH_API: 'https://api.github.com',
+            GH_REPO: 'acme/app',
+        })
+        expect(
+            __private__.buildGithubApiEnv({ token: 't', apiBase: 'https://ghe.example/api/v3', repoSlug: 'a/b' })
+                .GH_HOST
+        ).toBe('ghe.example')
+    })
+
+    test('the coding env still carries the same GitHub API variables', () => {
+        const env = __private__.buildGitEnv(boundGithubContext)
+        expect(env).toEqual(
+            expect.objectContaining({ GH_TOKEN: 'secret-token', GH_REPO: 'acme/app', GIT_TOKEN: 'secret-token' })
+        )
+    })
+
+    test('a research run is told it can read the repository and its CI, read-only', () => {
+        const prompt = __private__.buildAgentPrompt(
+            { taskType: 'research', objective: 'Is the pipeline green?' },
+            null,
+            null,
+            __private__.buildRepoApiContext(boundGithubContext)
+        )
+
+        expect(prompt).toContain('# Connected GitHub repository (API access, no checkout)')
+        expect(prompt).toContain('acme/app')
+        expect(prompt).toContain('Do NOT change anything in the repository')
+        expect(prompt).toContain('$GH_API/repos/$GH_REPO/actions/runs?per_page=10')
+        expect(prompt).toContain('$GH_API/repos/$GH_REPO/commits/<sha or branch>/status')
+        expect(prompt).toContain('Actions: read for runs, jobs and logs')
+        expect(prompt).not.toContain('# Connected Git repository\n')
+        expect(prompt).not.toContain('git push -u origin HEAD')
+        expect(prompt).not.toContain('secret-token')
+    })
+
+    test('a coding run also learns how to read CI, without the API-only section', () => {
+        const prompt = __private__.buildAgentPrompt(
+            { taskType: 'prototype', objective: 'Fix the failing build.' },
+            boundGithubContext
+        )
+
+        expect(prompt).toContain('## Reading CI / pipeline status')
+        expect(prompt).not.toContain('API access, no checkout')
+    })
+
+    test('GitLab coding runs get no GitHub CI instructions', () => {
+        const prompt = __private__.buildAgentPrompt(
+            { taskType: 'prototype', objective: 'Fix it.' },
+            { enabled: true, provider: 'gitlab', baseBranch: 'main' }
+        )
+        expect(prompt).not.toContain('## Reading CI / pipeline status')
+    })
+})
+
 // security audit 2026-11 (vmJobRunner:loadRepoContext-token-bound-to-member-writable-repo-url):
 // the repo URL, API base and base branch on the project doc are member-writable; the requesting
 // user's token may only ever go to the repository it was validated for at connect time.

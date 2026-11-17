@@ -47,6 +47,32 @@ async function githubApi(apiBase, apiPath, token) {
     }
 }
 
+// AM-1304: VM tasks read the pipeline status with this token. A fine-grained token made with only
+// Contents + Pull requests gets 403 there, and the VM then cannot see CI. Probe the two read
+// permissions once at connect time so the user hears about it now, not from a confused VM run.
+// Best-effort: a network error or any answer but 403 counts as readable. The result is not
+// stored, because the user can add permissions to the same token on GitHub later.
+const CI_READ_PROBES = [
+    { permission: 'Actions: read', path: slug => `repos/${slug}/actions/runs?per_page=1` },
+    {
+        permission: 'Commit statuses: read',
+        path: (slug, branch) => `repos/${slug}/commits/${encodeURIComponent(branch)}/status`,
+    },
+]
+
+async function findMissingCiPermissions(apiBase, slug, branch, token) {
+    const missing = []
+    for (const probe of CI_READ_PROBES) {
+        try {
+            const resp = await githubApi(apiBase, probe.path(slug, branch), token)
+            if (resp.status === 403) missing.push(probe.permission)
+        } catch (_) {
+            // Unknown is not missing: never block or warn on a flaky network.
+        }
+    }
+    return missing
+}
+
 // Only project members may connect/disconnect a repo for a project.
 async function assertProjectMember(projectId, userId) {
     const snap = await admin.firestore().doc(`projects/${projectId}`).get()
@@ -105,6 +131,8 @@ async function connectGithubRepo({ userId, projectId, token, repoUrl, baseBranch
     // GitHub often hides the email; fall back to the noreply address so commits still attribute.
     const email = ghUser.email || (login ? `${login}@users.noreply.github.com` : '')
 
+    const missingCiPermissions = await findMissingCiPermissions(apiBase, slug, resolvedBase, token)
+
     // 3) Persist. Token → per-user private doc; repo config → project doc (shared, non-secret).
     const db = admin.firestore()
     await db.doc(`users/${userId}/private/githubAuth_${projectId}`).set(
@@ -140,6 +168,7 @@ async function connectGithubRepo({ userId, projectId, token, repoUrl, baseBranch
         repoName: repoData.full_name || slug,
         defaultBranch: resolvedBase,
         canPush,
+        missingCiPermissions,
         warning: canPush
             ? null
             : 'This token has read-only access to the repo. It can clone but cannot open a Pull Request — use a token with write access (Contents + Pull requests: read/write).',
@@ -174,4 +203,4 @@ async function disconnectGithubRepo({ userId, projectId, clearProjectRepo = fals
     return { success: true }
 }
 
-module.exports = { connectGithubRepo, disconnectGithubRepo, parseGithubRepoUrl }
+module.exports = { connectGithubRepo, disconnectGithubRepo, parseGithubRepoUrl, findMissingCiPermissions }

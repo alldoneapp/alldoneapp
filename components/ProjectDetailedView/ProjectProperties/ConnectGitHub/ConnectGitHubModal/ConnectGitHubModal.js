@@ -24,8 +24,8 @@ const GITHUB_PROVIDER = {
     disconnectedKey: 'Your GitHub token was removed from this project.',
     disconnectFailedKey: 'Could not disconnect GitHub.',
     readOnlyWarningKey: 'This token is read-only and cannot open Pull Requests.',
-    tokenHelpKey:
-        'Use a fine-grained Personal Access Token with Contents + Pull requests read/write (or a classic token with the repo scope).',
+    ciWarningKey: 'GitHub token cannot read CI',
+    tokenHelpKey: 'GitHub token help',
     repoUrlPlaceholder: 'https://github.com/owner/repo',
     tokenPlaceholder: 'github_pat_… / ghp_…',
 }

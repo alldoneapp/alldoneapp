@@ -1057,17 +1057,61 @@ function buildGitEnv(gitContext) {
         GIT_DIR: GIT_METADATA_DIR,
         GIT_WORK_TREE: REPO_DIR,
     }
-    if (gitContext.provider === 'github') {
-        // Let the gh CLI / curl calls authenticate without re-plumbing the token.
-        env.GH_TOKEN = gitContext.token
-        env.GITHUB_TOKEN = gitContext.token
-        env.GH_API = gitContext.apiBase || 'https://api.github.com'
-        env.GH_REPO = gitContext.repoSlug || ''
-        if (gitContext.apiBase && gitContext.apiBase !== 'https://api.github.com') {
-            env.GH_HOST = gitContext.apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v3$/, '')
-        }
+    if (gitContext.provider === 'github') Object.assign(env, buildGithubApiEnv(gitContext))
+    return env
+}
+
+// The GitHub REST API env: lets the gh CLI / curl calls authenticate without re-plumbing the
+// token. `apiBase` and `repoSlug` come from the token's own binding (vmRepoTokenBinding.js).
+function buildGithubApiEnv(context) {
+    const env = {
+        GH_TOKEN: context.token,
+        GITHUB_TOKEN: context.token,
+        GH_API: context.apiBase || 'https://api.github.com',
+        GH_REPO: context.repoSlug || '',
+    }
+    if (context.apiBase && context.apiBase !== 'https://api.github.com') {
+        env.GH_HOST = context.apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v3$/, '')
     }
     return env
+}
+
+// AM-1304: a VM run that is not a coding task (research, data, document) gets no checkout, but
+// when the project has a GitHub repository and the requesting user's token is bound to it, it may
+// read that repository through the REST API: pipeline status, pull requests, issues. Before, only
+// "prototype" runs received the token, so "check the pipeline" runs could not see anything.
+// GitLab is not covered yet. The context carries no push identity or git credential helper.
+function buildRepoApiContext(gitContext) {
+    if (!gitContext || !gitContext.enabled || gitContext.provider !== 'github' || !gitContext.token) return null
+    return {
+        enabled: true,
+        provider: 'github',
+        token: gitContext.token,
+        apiBase: gitContext.apiBase || 'https://api.github.com',
+        repoSlug: gitContext.repoSlug || '',
+        repoUrl: gitContext.repoUrl || '',
+        baseBranch: gitContext.baseBranch || 'main',
+    }
+}
+
+// How to read CI through the GitHub REST API. curl first: the gh CLI is not guaranteed in the
+// sandbox (E2B's prebuilt agent templates may lack it). A 403 names the missing token permission
+// instead of letting the agent guess or give up with "I cannot see this".
+function buildGithubCiReadingLines() {
+    return [
+        '## Reading CI / pipeline status',
+        'You can read GitHub Actions runs, jobs, logs and commit statuses of this repository with curl ' +
+            '(add -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" to every call). ' +
+            'If `command -v gh` succeeds you may use `gh run list` / `gh run view <id> --log-failed` instead; it is authenticated via $GH_TOKEN.',
+        '- Latest workflow runs: curl -sS "$GH_API/repos/$GH_REPO/actions/runs?per_page=10" (add &branch=<branch> or &head_sha=<sha> to narrow it).',
+        '- Jobs and steps of one run: curl -sS "$GH_API/repos/$GH_REPO/actions/runs/<run_id>/jobs".',
+        '- Log of one job: curl -sSL "$GH_API/repos/$GH_REPO/actions/jobs/<job_id>/logs" | tail -n 200 (it redirects to the log file).',
+        '- Combined commit status (preview deploys and other external checks): curl -sS "$GH_API/repos/$GH_REPO/commits/<sha or branch>/status".',
+        '- A pull request\'s head commit: curl -sS "$GH_API/repos/$GH_REPO/pulls/<number>" (field head.sha), then query its runs and status as above.',
+        'If GitHub answers 403 "Resource not accessible by personal access token" (or 404 for a run you can see on github.com), the token lacks a permission. ' +
+            'Do not guess the result: say exactly which permission is missing (Actions: read for runs, jobs and logs; Commit statuses: read for statuses) ' +
+            'and that the user can add it by editing the token on GitHub (Settings → Developer settings → Personal access tokens); the token value stays the same, so nothing needs reconnecting in Alldone.',
+    ]
 }
 
 // Clone (or refresh, on resume) the repo and configure git auth before the agent runs.
@@ -1275,7 +1319,7 @@ async function writeStatusComment(
 /**
  * Build the prompt fed to Claude Code inside the sandbox.
  */
-function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
+function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null, repoApiContext = null) {
     const profile = TASK_TYPE_PROFILES[vmJob.taskType] || TASK_TYPE_PROFILES.research
     const parts = [profile, '', `# Objective`, vmJob.objective]
     if (vmJob.deliverable) {
@@ -1322,7 +1366,9 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
                 `6. Open the Pull Request with the GitHub CLI (already authenticated via $GH_TOKEN): gh pr create --base ${base} --head <your-branch> --title "<concise title>" --body "<summary of the change>"`,
                 '   The gh command prints the Pull Request URL. If gh is not installed, instead POST to the GitHub REST API with curl: ' +
                     `curl -sS -X POST "$GH_API/repos/$GH_REPO/pulls" -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -d '{"title":"<title>","head":"<your-branch>","base":"${base}","body":"<summary>"}'  (read the "html_url" field from the JSON response).`,
-                '7. Copy the Pull Request URL into your final message so the user can review it.'
+                '7. Copy the Pull Request URL into your final message so the user can review it.',
+                '',
+                ...buildGithubCiReadingLines()
             )
         } else {
             parts.push(
@@ -1336,6 +1382,23 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
                 `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
             `If you made repository changes, your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why). If you made no repository changes, your final message MUST say that no ${reqName} was opened because no code change was needed.`
+        )
+    }
+    if (repoApiContext && repoApiContext.enabled && !(gitContext && gitContext.enabled)) {
+        parts.push(
+            '',
+            '# Connected GitHub repository (API access, no checkout)',
+            `The project is connected to the GitHub repository ${repoApiContext.repoSlug || repoApiContext.repoUrl} ` +
+                `(base branch "${repoApiContext.baseBranch}"). This task type gets no checkout and no git push credentials, ` +
+                "but you can READ the repository through the GitHub REST API with the requesting user's token: " +
+                '$GITHUB_TOKEN (also $GH_TOKEN), the API base $GH_API and the repository $GH_REPO are in the environment.',
+            'Use it to read what the objective needs: pipeline and deploy status, pull requests, issues, commits, files ' +
+                '(e.g. curl -sS "$GH_API/repos/$GH_REPO/contents/<path>?ref=<branch>" -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GITHUB_TOKEN"). ' +
+                'Do NOT change anything in the repository (no pushes, comments, reviews, merges, re-runs or workflow dispatches) unless the objective explicitly asks for that exact action. ' +
+                'Code changes belong in a coding task, which works in a checkout and opens a Pull Request.',
+            'NEVER print, echo, log, or persist the token.',
+            '',
+            ...buildGithubCiReadingLines()
         )
     }
     if (gitContext && gitContext.repoTokenMismatch) {
@@ -3544,7 +3607,8 @@ async function runAgentInSandbox(
     pendingRef = null,
     subscriptionAuth = null,
     allowAuthRecovery = true,
-    sharedRunDetails = null
+    sharedRunDetails = null,
+    repoApiContext = null
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
@@ -3767,7 +3831,7 @@ async function runAgentInSandbox(
         if (interactionPhase) {
             await pendingRef?.set({ interactionPhase }, { merge: true }).catch(() => {})
         }
-        const prompt = buildAgentPrompt(vmJob, gitContext, gcpContext)
+        const prompt = buildAgentPrompt(vmJob, gitContext, gcpContext, repoApiContext)
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
         await sandbox.files.write('/home/user/context.md', contextFileContent)
@@ -3976,7 +4040,10 @@ async function runAgentInSandbox(
         const runEnvs = buildSandboxCommandEnv(
             agentEnv,
             gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
-            gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null
+            gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null,
+            repoApiContext && repoApiContext.enabled && !(gitContext && gitContext.enabled)
+                ? buildGithubApiEnv(repoApiContext)
+                : null
         )
         let agentCommand
         if (usesAgentBridge) {
@@ -4855,9 +4922,20 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     // For a coding ("prototype") task, surface the project's connected repo (GitHub or GitLab)
-    // so the agent works inside it and opens a Pull/Merge Request. Other task types unaffected.
+    // so the agent works inside it and opens a Pull/Merge Request. Other task types get no
+    // checkout, but read access to a connected GitHub repository through its REST API (AM-1304),
+    // e.g. to check the pipeline status.
     let gitContext = null
-    if (vmJob.taskType === 'prototype') {
+    let repoApiContext = null
+    if (vmJob.taskType !== 'prototype') {
+        repoApiContext = buildRepoApiContext(await loadRepoContext(vmJob))
+        if (repoApiContext) {
+            console.log('🖥️ VM JOB RUNNER: GitHub API access for non-coding task', {
+                correlationId,
+                taskType: vmJob.taskType,
+            })
+        }
+    } else {
         gitContext = await loadRepoContext(vmJob)
         if (gitContext && gitContext.enabled) {
             console.log('🖥️ VM JOB RUNNER: repo connected for coding task', {
@@ -4915,7 +4993,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 pendingRef,
                 subscriptionAuth,
                 allowAuthRecovery,
-                runDetails
+                runDetails,
+                repoApiContext
             )
         let agentResult
         try {
@@ -5314,6 +5393,8 @@ module.exports = {
         publishVmOutputs,
         GIT_SETUP_SCRIPT,
         buildGitEnv,
+        buildGithubApiEnv,
+        buildRepoApiContext,
         setupGitRepo,
         loadRepoContext,
         loadGcpContext,
