@@ -558,6 +558,30 @@ is open (`aria-expanded`). Keyboard focus keeps the shell's `button:focus-visibl
 not give the button a resting border or outline back. Its 36px height, label and menu are
 unchanged. Pinned by `annaScreenPickerStyle.test.js`.
 
+**A different focus task, and a slot-machine roll while one is searched (AT-3067, 2026-11-17).**
+Decided with the product owner: the focus task and a round "Show a different focus task" button
+(`.anna-focus-reroll`, refresh icon, own `aria-label`/`title`) share one pill (`.anna-focus-pill`);
+the button is a sibling of the task link, never inside it, so a click on the rest still opens the
+task. It calls `rerollFocusTask` (`components/Anna/annaFocusReroll.js`) → `pickDifferentFocusTask`
+in `tasksFirestore.js`, the same `findAndSetNewFocusedTask` pick with options: the current task and
+every task passed over in this session (module memory, per tab) are excluded, so each click brings
+a task not shown yet; once nothing is left it **starts over** (clears the list, excludes only the
+current task) and says so. `keepFocusWhenNone` makes the pick return false instead of clearing the
+focus, so "no alternative" keeps the current task ("No other open task for today").
+`previousFocus` unpins the replaced task in the same batch (ordinary `generateSortIndex()`, no
+due-date change, unfocus feed), like a manual focus change. The swap runs as a focus handoff
+(`startFocusHandoff`), so a focus set by hand meanwhile wins (`'superseded'`, no notice); it is
+online only (`code: 'offline'`); one swap at a time across mounted headers (`busy`). While "Get a
+focus task" or a swap searches, the pill rolls (`phase` `rolling` → `landing` → `idle` in
+`AnnaFocusTask`): candidate names (reported through the pick's `onCandidates`) slide through a reel
+at 70ms ticks for at least ~1s, it keeps rolling until the new task is actually shown (at most ~3s
+after the answer), slows down over four ticks and the found task drops in with a glow. A radar ping
+on the focus icon and a light sweep use theme tokens only; under reduced motion the reel shows
+static "Finding a focus task…" and nothing moves. Screen readers get one `role="status"` "Finding a
+focus task…". Notices hang below the pill (`.anna-focus-notice`, `role="status"`, 4s). Pinned by
+`AnnaFocusTask.test.js` (AT-3067 block), `annaFocusReroll.test.js` and
+`utils/backends/Tasks/focusSwap.test.js`.
+
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
 bounds and a deduplicated change event for portals, including the vendored popover.
