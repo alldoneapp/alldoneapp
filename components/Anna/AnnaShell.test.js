@@ -2512,6 +2512,55 @@ describe('Anna only on a wide window', () => {
     })
 })
 
+describe('navigation dividers in the chat only in Both (AT-3079)', () => {
+    const shown = () => mockConversationProps.showNavigationNotices
+
+    it('shows them in Both, hides them in Anna only, and brings them back on a switch', () => {
+        setAnnaLayout('split')
+        render(content(1))
+        expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
+        expect(shown()).toBe(true)
+        fireEvent.click(layoutButton('chat'))
+        expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+        expect(shown()).toBe(false)
+        // The page the user looks at is not what decides: the dividers are presentation only.
+        fireEvent.click(layoutButton('split'))
+        expect(shown()).toBe(true)
+    })
+
+    it('hides them when Anna only is the starting layout', () => {
+        setAnnaLayout('chat')
+        render(content(1))
+        expect(shown()).toBe(false)
+    })
+
+    it('hides them in a desktop window too narrow for Both, where the chat stands alone', () => {
+        window.innerWidth = 1000
+        setAnnaLayout('split')
+        render(content(1))
+        expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+        expect(shown()).toBe(false)
+    })
+
+    it('hides them on a phone, which has no Both', () => {
+        const originalMatchMedia = window.matchMedia
+        mockMobileNavigation = true
+        window.matchMedia = () => ({
+            matches: mockMobileNavigation,
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+        })
+        try {
+            render(content(1))
+            expect(phoneSwitch('chat').getAttribute('aria-pressed')).toBe('true')
+            expect(shown()).toBe(false)
+        } finally {
+            if (originalMatchMedia) window.matchMedia = originalMatchMedia
+            else delete window.matchMedia
+        }
+    })
+})
+
 it('keeps the current Alldone page when the chat is left beside a visible screen (AT-2920)', () => {
     setAnnaLayout('split')
     render(content(1))
