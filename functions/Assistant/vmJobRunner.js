@@ -4553,22 +4553,123 @@ function isWhatsAppTriggeredVmJob(pendingWebhook) {
     )
 }
 
-// Build the WhatsApp result message. When the run produced downloadable artifacts, lead with each
-// file's public download URL so a WhatsApp-originated request gets the link first — matching the
-// chat comment (buildVmFinalCommentText also puts artifacts before the answer). The chat-only
-// attachment tokens (ATTACHMENT_TRIGGER) can't render in WhatsApp, so we send the raw URLs.
-// Putting the links first also means they survive the WhatsApp plain-message cap: the service
-// truncates the tail of long messages (and appends a "read full message" thread link), so the
-// answer text is what gets trimmed, never the links. Falls back to the plain answer for
-// text-only completions and failure notifications (no mediaContext).
-function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
-    const message = String(output || '').trim() || 'The VM task completed.'
-    const files = Array.isArray(mediaContext) ? mediaContext.filter(m => m && m.storageUrl) : []
-    if (!files.length) return message
+// ---------------------------------------------------------------------------
+// Result notices outside the task thread (AT-3074)
+// ---------------------------------------------------------------------------
+// The detailed result (report, MR details, artifact links, attachments) is posted only into the
+// host task thread by writeStatusComment. Every other place the user hears about the run (the
+// conversation the job was delegated from, WhatsApp, and the daily WhatsApp topic mirror) gets one
+// short notice: a status line, Anna's one- or two-sentence summary, and the link to the task
+// thread. It never carries a copy of the report: when no summary can be written, the notice is the
+// status line and the link only.
 
-    const heading = files.length === 1 ? 'Generated file:' : 'Generated files:'
-    const links = files.map(m => `${m.fileName || 'file'}: ${m.storageUrl}`).join('\n')
-    return `${heading}\n${links}\n\n${message}`
+const VM_NOTICE_REASON_MAX = 300
+
+function getVmNoticeStatus(notificationType) {
+    if (notificationType === 'completed') return { icon: '✅', verb: 'finished' }
+    if (notificationType === 'cancelled') return { icon: '🛑', verb: 'was cancelled' }
+    if (notificationType === VM_JOB_INTERRUPTED_STATUS) return { icon: '⚠️', verb: 'was interrupted' }
+    return { icon: '❌', verb: 'failed' }
+}
+
+function buildVmNoticeTaskLabel(task) {
+    const name = String(task?.extendedName || task?.name || '').trim()
+    if (!name) return ''
+    return task.humanReadableId ? `${task.humanReadableId} “${name}”` : `“${name}”`
+}
+
+function buildVmResultNoticeText({ notificationType = 'completed', taskLabel = '', summary = '', link = '' } = {}) {
+    const { icon, verb } = getVmNoticeStatus(notificationType)
+    const subject = taskLabel ? `The VM task ${taskLabel}` : 'The VM task you requested'
+    return [`${icon} ${subject} ${verb}.`, String(summary || '').trim(), link].filter(Boolean).join('\n\n')
+}
+
+// A failed, cancelled or interrupted run carries the runner's own status line (no report exists),
+// so it is shown as the reason, on one line and clipped.
+function buildVmFailureReason(text) {
+    const reason = cleanTextMetaData(removeFormatTagsFromText(String(text || '')), true)
+        .replace(/^\s*(?:❌|🛑|⚠️|✅)\s*/u, '')
+        .trim()
+    if (!reason || /^stopped\.?$/i.test(reason)) return ''
+    return shrinkTagText(reason, VM_NOTICE_REASON_MAX)
+}
+
+async function loadVmHostTask(pendingWebhook) {
+    if ((pendingWebhook?.objectType || 'tasks') !== 'tasks' || !pendingWebhook?.projectId || !pendingWebhook?.objectId)
+        return null
+    try {
+        const snapshot = await admin
+            .firestore()
+            .doc(`items/${pendingWebhook.projectId}/tasks/${pendingWebhook.objectId}`)
+            .get()
+        return snapshot.exists ? { ...(snapshot.data() || {}), id: pendingWebhook.objectId } : null
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Could not read the host task for the result notice', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+function getVmOriginConversation(pendingWebhook) {
+    const originProjectId = typeof pendingWebhook?.originProjectId === 'string' ? pendingWebhook.originProjectId : ''
+    const originObjectId = typeof pendingWebhook?.originObjectId === 'string' ? pendingWebhook.originObjectId : ''
+    const originObjectType =
+        typeof pendingWebhook?.originObjectType === 'string' && pendingWebhook.originObjectType
+            ? pendingWebhook.originObjectType
+            : 'topics'
+    const originAssistantId =
+        typeof pendingWebhook?.originAssistantId === 'string' ? pendingWebhook.originAssistantId : ''
+    if (!originProjectId || !originObjectId || !originAssistantId) return null
+    // Don't double-post if the origin conversation is the host thread itself.
+    if (originProjectId === pendingWebhook.projectId && originObjectId === pendingWebhook.objectId) return null
+    return { originProjectId, originObjectType, originObjectId, originAssistantId }
+}
+
+// A delegated workflow task whose AI step this run completes moves on to its owner's review step,
+// and delegationReviewNotice then announces it in the same origin conversation with the summary,
+// the next step and the link. Posting the completion note as well put two messages with the same
+// content into the daily chat for every run, so the review notice is the only one in that case.
+// Any doubt (unreadable task or workflow, a different origin, a next step that is not the owner's)
+// keeps the completion note: one message too many beats none.
+async function willDelegationReviewNoticeFollow(pendingWebhook, task, origin) {
+    if (!task || task.done || task.parentId) return false
+    try {
+        const { isDelegatedWorkflowTask } = require('../shared/delegatedTaskWorkflow')
+        if (!isDelegatedWorkflowTask(task)) return false
+        const db = admin.firestore()
+        const { loadDelegatedTaskOrigin } = require('./annaTaskDelegation')
+        const receipt = await loadDelegatedTaskOrigin(db, pendingWebhook.projectId, task)
+        if (receipt.originProjectId !== origin.originProjectId || receipt.originObjectId !== origin.originObjectId)
+            return false
+        const { describeTaskWorkflow, getTaskPosition, loadTaskWorkflow } = require('../Tasks/workflowStepMove')
+        const { isAiWorkflowStep } = require('../Tasks/workflowStepHelper')
+        const workflow = await loadTaskWorkflow(db, pendingWebhook.projectId, task)
+        if (!isAiWorkflowStep(workflow[getTaskPosition(task)])) return false
+        const next = describeTaskWorkflow(task, workflow, task.userId)?.next
+        return !!(next && next.handledBy === 'you' && workflow[next.id])
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Could not tell whether a review notice follows; posting the note', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+        return false
+    }
+}
+
+// Anna's summary for a completed run, or the runner's reason line for any other outcome.
+async function buildVmNoticeSummary(pendingWebhook, text, notificationType, taskLabel) {
+    if (notificationType !== 'completed') return buildVmFailureReason(text)
+    const { summarizeVmResultForChat } = require('./vmResultSummary')
+    return summarizeVmResultForChat({
+        resultText: text,
+        userId: pendingWebhook.userId,
+        projectId: pendingWebhook.projectId,
+        objectId: pendingWebhook.objectId,
+        objectType: pendingWebhook.objectType || 'tasks',
+        taskLabel,
+    })
 }
 
 // Mirror a WhatsApp-delivered VM result into the user's daily WhatsApp topic, so the next
@@ -4604,10 +4705,12 @@ async function mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notif
     }
 }
 
+// `noticeText` is the finished short notice (buildVmResultNoticeText), never the report: the
+// report, its artifact links and its files stay in the task thread the notice links to (AT-3074).
 async function sendWhatsAppVmResultNotification(
     pendingWebhook,
-    output,
-    { mediaContext = [], pendingRef = null, notificationType = 'completed' } = {}
+    noticeText,
+    { pendingRef = null, notificationType = 'completed' } = {}
 ) {
     if (!isWhatsAppTriggeredVmJob(pendingWebhook)) return null
 
@@ -4623,7 +4726,7 @@ async function sendWhatsAppVmResultNotification(
     try {
         const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
         const whatsappService = new TwilioWhatsAppService()
-        const message = buildWhatsAppVmResultMessage(output, { mediaContext })
+        const message = String(noticeText || '').trim() || buildVmResultNoticeText({ notificationType })
         const result = await whatsappService.sendWhatsAppMessageWithConversationLink(
             pendingWebhook.whatsappTo,
             message,
@@ -4679,56 +4782,23 @@ async function sendWhatsAppVmResultNotification(
     }
 }
 
-const VM_ORIGIN_NOTE_SNIPPET_MAX = 600
-
-// Post a short completion note back into the conversation the job was delegated from (e.g. the
-// WhatsApp daily topic where the user talked to Anna), so the user sees the outcome where they
-// are actually talking — not only in the separate host task. No-op when there is no distinct
-// origin conversation on the job.
-async function postVmOriginConversationNote(pendingWebhook, text, { notificationType = 'completed' } = {}) {
-    const originProjectId = typeof pendingWebhook?.originProjectId === 'string' ? pendingWebhook.originProjectId : ''
-    const originObjectId = typeof pendingWebhook?.originObjectId === 'string' ? pendingWebhook.originObjectId : ''
-    const originObjectType =
-        typeof pendingWebhook?.originObjectType === 'string' && pendingWebhook.originObjectType
-            ? pendingWebhook.originObjectType
-            : 'topics'
-    const originAssistantId =
-        typeof pendingWebhook?.originAssistantId === 'string' ? pendingWebhook.originAssistantId : ''
-    if (!originProjectId || !originObjectId || !originAssistantId) return null
-    // Don't double-post if the origin conversation is the host thread itself.
-    if (originProjectId === pendingWebhook.projectId && originObjectId === pendingWebhook.objectId) return null
-
-    const hostObjectType = pendingWebhook.objectType || 'tasks'
-    const link = buildVmChatLink(pendingWebhook.projectId, hostObjectType, pendingWebhook.objectId)
-    const icon =
-        notificationType === 'completed'
-            ? '✅'
-            : notificationType === 'cancelled'
-              ? '🛑'
-              : notificationType === VM_JOB_INTERRUPTED_STATUS
-                ? '⚠️'
-                : '❌'
-    const verb =
-        notificationType === 'completed'
-            ? 'finished'
-            : notificationType === 'cancelled'
-              ? 'was cancelled'
-              : notificationType === VM_JOB_INTERRUPTED_STATUS
-                ? 'was interrupted'
-                : 'failed'
-    const snippet = shrinkTagText(
-        cleanTextMetaData(removeFormatTagsFromText(text || ''), true),
-        VM_ORIGIN_NOTE_SNIPPET_MAX
-    )
-    const note = `${icon} The VM task you requested ${verb}.\n\n${snippet}\n\n${link}`
+// Post the short result notice back into the conversation the job was delegated from (e.g. the
+// daily Anna chat or the WhatsApp daily topic), so the user hears the outcome where they are
+// actually talking. `noticeText` is built by notifyVmResultChannels; the report itself stays in the
+// host task thread (AT-3074). No-op when there is no distinct origin conversation on the job.
+async function postVmOriginConversationNote(pendingWebhook, noticeText) {
+    const origin = getVmOriginConversation(pendingWebhook)
+    if (!origin) return null
+    const note = String(noticeText || '').trim()
+    if (!note) return null
 
     try {
         const { createInitialStatusMessage } = require('./assistantStatusHelper')
         await createInitialStatusMessage(
-            originProjectId,
-            originObjectType,
-            originObjectId,
-            originAssistantId,
+            origin.originProjectId,
+            origin.originObjectType,
+            origin.originObjectId,
+            origin.originAssistantId,
             note,
             [pendingWebhook.userId],
             [],
@@ -4736,8 +4806,8 @@ async function postVmOriginConversationNote(pendingWebhook, text, { notification
         )
         console.log('🖥️ VM JOB: Posted completion note to origin conversation', {
             correlationId: pendingWebhook.correlationId,
-            originProjectId,
-            originObjectId,
+            originProjectId: origin.originProjectId,
+            originObjectId: origin.originObjectId,
         })
         return true
     } catch (error) {
@@ -4749,12 +4819,43 @@ async function postVmOriginConversationNote(pendingWebhook, text, { notification
     }
 }
 
-// Fan a settled VM job's result out to the external channels the request came through: a direct
-// WhatsApp message (when WhatsApp-triggered) and a continuity note in the origin conversation
-// (when delegated from another thread). Both are best-effort and independent.
+// Fan a settled VM job's outcome out to the channels the request came through: a direct WhatsApp
+// message (when WhatsApp-triggered) and a note in the origin conversation (when delegated from
+// another thread). Both get the same short notice: status line, Anna's summary, link to the task
+// thread. `text` is the full result (or the runner's failure line) and is only ever summarized,
+// never forwarded. Best-effort and independent.
 async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
-    await sendWhatsAppVmResultNotification(pendingWebhook, text, opts)
-    await postVmOriginConversationNote(pendingWebhook, text, { notificationType: opts.notificationType })
+    const notificationType = opts.notificationType || 'completed'
+    const wantsWhatsApp = isWhatsAppTriggeredVmJob(pendingWebhook)
+    const origin = getVmOriginConversation(pendingWebhook)
+    if (!wantsWhatsApp && !origin) return
+
+    const task = await loadVmHostTask(pendingWebhook)
+    const postOriginNote =
+        !!origin &&
+        !(notificationType === 'completed' && (await willDelegationReviewNoticeFollow(pendingWebhook, task, origin)))
+    if (origin && !postOriginNote) {
+        console.log('🖥️ VM JOB: Origin note left to the delegated task review notice', {
+            correlationId: pendingWebhook.correlationId,
+            originObjectId: origin.originObjectId,
+        })
+    }
+    if (!wantsWhatsApp && !postOriginNote) return
+
+    const taskLabel = buildVmNoticeTaskLabel(task)
+    const summary = await buildVmNoticeSummary(pendingWebhook, text, notificationType, taskLabel)
+    const noticeText = buildVmResultNoticeText({
+        notificationType,
+        taskLabel,
+        summary,
+        link: buildVmChatLink(pendingWebhook.projectId, pendingWebhook.objectType || 'tasks', pendingWebhook.objectId),
+    })
+
+    await sendWhatsAppVmResultNotification(pendingWebhook, noticeText, {
+        pendingRef: opts.pendingRef || null,
+        notificationType,
+    })
+    if (postOriginNote) await postVmOriginConversationNote(pendingWebhook, noticeText)
 }
 
 // A workflow step parked on this VM can move as soon as all of the job's own finalization has
@@ -5139,8 +5240,9 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
+        // Outside the thread only Anna's summary and the thread link go out (AT-3074); the report is
+        // passed in to be summarized, not forwarded.
         await notifyVmResultChannels(pendingWebhook, appendVmArtifactLinks(output, publishedArtifacts), {
-            mediaContext,
             pendingRef,
             notificationType: 'completed',
         })
@@ -5479,7 +5581,10 @@ module.exports = {
         RESUME_HEALTHCHECK_TIMEOUT_MS,
         formatVmRuntimeDuration,
         buildVmRuntimeTimeoutText,
-        buildWhatsAppVmResultMessage,
+        buildVmResultNoticeText,
+        buildVmFailureReason,
+        buildVmNoticeTaskLabel,
+        willDelegationReviewNoticeFollow,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,
         postVmOriginConversationNote,
