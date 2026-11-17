@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 
 import { MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
@@ -7,7 +7,7 @@ import store from '../../../../redux/store'
 import Backend from '../../../../utils/BackendBridge'
 import InputArea from './InputArea'
 import ButtonsArea from './ButtonsArea'
-import DraftAttachmentStatus from './DraftAttachmentStatus'
+import { translate } from '../../../../i18n/TranslationService'
 import { themed } from '../../../../Themes/colorMode'
 
 export default function TaskEditForm({
@@ -24,7 +24,6 @@ export default function TaskEditForm({
     showParentGoal,
     showMoreOptions,
     uploadingDraft,
-    draftUploadFailed,
     pushToTalkHandoff,
     // PT-5425: closes the popup on a push-to-talk release and creates the task in the background.
     claimDictatedTaskInBackground,
@@ -160,11 +159,11 @@ export default function TaskEditForm({
                     claimDictatedTaskInBackground ? claimDictationBackgroundSubmit : undefined
                 }
             />
-            <DraftAttachmentStatus
-                uploadingDraft={uploadingDraft}
-                uploadFailed={draftUploadFailed}
-                description={task.description}
-            />
+            {(uploadingDraft || task.description?.includes('blob:')) && (
+                <Text style={localStyles.attachmentHint} accessibilityLiveRegion="polite">
+                    {translate(uploadingDraft ? 'Adding files to description' : 'Files added to description')}
+                </Text>
+            )}
             <ButtonsArea
                 projectId={projectId}
                 task={task}
@@ -186,5 +185,11 @@ const localStyles = StyleSheet.create({
         borderColor: themed.PopupFieldBorder,
         backgroundColor: themed.PopupFieldFill,
         borderRadius: 4,
+    },
+    attachmentHint: {
+        color: '#ffffff',
+        fontSize: 12,
+        marginHorizontal: 16,
+        marginBottom: 8,
     },
 })

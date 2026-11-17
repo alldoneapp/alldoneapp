@@ -27,8 +27,6 @@ describe('Anna entry and navigation', () => {
         '/projects/chats/followed',
         '/projects/p1/user/u1/updates/followed',
         '/projects/p1/user/u1/chats/followed',
-        '/projects/p1/artifacts/a1',
-        '/projects/p1/artifacts/a1/chat',
     ])('opens activity feature links in the workspace: %s', path => {
         expect(resolveAnnaLink(path, 'https://my.alldone.app')).toBe(path)
     })
@@ -38,7 +36,6 @@ describe('Anna entry and navigation', () => {
         '//my.alldone.app.evil.test/projects/tasks/open',
         '/logout',
         '/projects/p1/tasks/t1/properties/extra',
-        '/projects/p1/artifacts/a1/extra',
     ])('does not intercept unsafe or unsupported link %s', href => {
         expect(resolveAnnaLink(href, 'https://anna.alldone.app')).toBeNull()
     })

@@ -412,14 +412,15 @@ whose menu button opens the sidebar, so the detail views render `CustomSideMenu`
 is the same with or without the bar, so switching views never remounts the screen and their absolute
 back buttons stay at the top of the content, below the bar; a screen without a slot, such as
 PrivateResource, keeps the strip above everything). When the strip's left side overflows (a narrow card), its statistics give up one thing at a time:
-first the XP bar (`showXp`), then the labels (`compact` on `TopBarStatisticArea`,
+first the labels (`compact` on `TopBarStatisticArea`,
 `TasksStatisticsArea`, `QuotaBar`; `PremiumBar` is the crown alone at every size since 2026-11-16,
-so `compact` only narrows its gap), then the done-task count. The strip always passes
+so `compact` only narrows its gap), then the done-task count (there was an XP bar step before
+the labels until AT-3068 removed the XP bar from every top bar, 2026-11-17). The strip always passes
 `compact` explicitly, so Alldone's `smallScreen` flag (measured on the pane beside the chat) never
 shrinks statistics in a strip that has the room; left out, as in TopBar, the flag decides. A render may only add a
 step; a size change of that side (ResizeObserver) takes steps back, one per render while the side
 is as wide as the step needed, so a render can never undo the previous one (an earlier version that
-checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It replaces Alldone's top bar: `TopBarStatisticArea` (XP, gold,
+checked both ways on every render looped). Pinned by `AnnaTopStrip.test.js`. It replaces Alldone's top bar: `TopBarStatisticArea` (gold,
 task statistics, quota/premium) on the left, the view switch in the middle, in the order of the cards
 (`AnnaViewSwitch`: the assistant's name for chat only, Both, App with a check-circle icon and the open-task count;
 2026-11-16; "App" was "Tasks", and the code and tests still call that view `alldone`), `ConnectionStatusChip` and
@@ -430,13 +431,13 @@ sidebar's it opens All projects (`navigateToHome`), but in the view the person c
 of the strip's left side it does not leave the chat (Anna stays Anna; the chat follows All projects
 like any project the person opens). In the slot it has none: the sidebar's is beside it
 (2026-11-16). In assistant mode a click on anything left or right of the switch
-first leaves the chat for the app (`leaveChatFromStrip` through `onLeaveChat`, on click capture), so XP,
+first leaves the chat for the app (`leaveChatFromStrip` through `onLeaveChat`, on click capture), so
 gold, statistics, search, chats and updates act in plain Alldone; it queues no focus move, so the
 search field keeps the focus its popup gives it. Leaving moves the strip into Alldone's top bar slot,
 which remounts it, and the browser re-renders between the click's capture and bubble phases, so the
 strip is held in place (`stripHeld`, released on a `setTimeout`) until the click has reached the
 control; without that hold the controls only switched views (2026-11-16). jsdom's `fireEvent` does
-not re-render between the phases: the test checks that the clicked strip is still the same element. It reports its width through `setTopBarWidth`, which XpBar,
+not re-render between the phases: the test checks that the clicked strip is still the same element. It reports its width through `setTopBarWidth`, which
 TasksStatisticsArea and the chip placement read. `AnnaTopStripContext` makes `TopBarContainer`
 render nothing inside the workspace: Alldone never repeats a bar below the strip. With no bar left to
 open a mobile sidebar from, Alldone below the strip never uses mobile navigation either
@@ -483,7 +484,7 @@ and which plain Alldone shows anyway; in place of its Home button it carries `An
 only (the assistant's photo, App's check circle with the count), handed down through
 `AnnaViewSwitchContext`; `TopBarContainer` takes this phone bar whenever that context is there, also
 between 612 and 760px where a collapsed sidebar still keeps Alldone's desktop navigation (no desktop
-TopBar with XP bar and Home there). On a narrow phone `getCenterLeft` moves the switch left until it clears
+TopBar with Home there). On a narrow phone `getCenterLeft` moves the switch left until it clears
 search, chats and updates, and Gold shrinks. The second line is the chat header, the same three cells
 as on desktop (assistant with name, focus task, a native select at the far right with Chat,
 Browser, VMs and apps and a downward chevron); no close control and no Home button any more. While
@@ -557,30 +558,6 @@ rest, 8px radius, `--anna-tint` background with accent label and chevron on hove
 is open (`aria-expanded`). Keyboard focus keeps the shell's `button:focus-visible` accent ring; do
 not give the button a resting border or outline back. Its 36px height, label and menu are
 unchanged. Pinned by `annaScreenPickerStyle.test.js`.
-
-**A different focus task, and a slot-machine roll while one is searched (AT-3067, 2026-11-17).**
-Decided with the product owner: the focus task and a round "Show a different focus task" button
-(`.anna-focus-reroll`, refresh icon, own `aria-label`/`title`) share one pill (`.anna-focus-pill`);
-the button is a sibling of the task link, never inside it, so a click on the rest still opens the
-task. It calls `rerollFocusTask` (`components/Anna/annaFocusReroll.js`) → `pickDifferentFocusTask`
-in `tasksFirestore.js`, the same `findAndSetNewFocusedTask` pick with options: the current task and
-every task passed over in this session (module memory, per tab) are excluded, so each click brings
-a task not shown yet; once nothing is left it **starts over** (clears the list, excludes only the
-current task) and says so. `keepFocusWhenNone` makes the pick return false instead of clearing the
-focus, so "no alternative" keeps the current task ("No other open task for today").
-`previousFocus` unpins the replaced task in the same batch (ordinary `generateSortIndex()`, no
-due-date change, unfocus feed), like a manual focus change. The swap runs as a focus handoff
-(`startFocusHandoff`), so a focus set by hand meanwhile wins (`'superseded'`, no notice); it is
-online only (`code: 'offline'`); one swap at a time across mounted headers (`busy`). While "Get a
-focus task" or a swap searches, the pill rolls (`phase` `rolling` → `landing` → `idle` in
-`AnnaFocusTask`): candidate names (reported through the pick's `onCandidates`) slide through a reel
-at 70ms ticks for at least ~1s, it keeps rolling until the new task is actually shown (at most ~3s
-after the answer), slows down over four ticks and the found task drops in with a glow. A radar ping
-on the focus icon and a light sweep use theme tokens only; under reduced motion the reel shows
-static "Finding a focus task…" and nothing moves. Screen readers get one `role="status"` "Finding a
-focus task…". Notices hang below the pill (`.anna-focus-notice`, `role="status"`, 4s). Pinned by
-`AnnaFocusTask.test.js` (AT-3067 block), `annaFocusReroll.test.js` and
-`utils/backends/Tasks/focusSwap.test.js`.
 
 **Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
 `useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
@@ -805,3 +782,14 @@ Home button is absolutely centred, so the left group is capped with `getLeftArea
 (row width from `onLayout`, minus half the Home button, the row padding and an 8px gap); a long
 balance on a narrow phone ellipsizes inside the pill (`numberOfLines={1}`) instead of sliding under
 Home. Pinned by `TopBarMobile.test.js` and, for real geometry at 320-768px, `browser-tests/at3044/`.
+
+## Top bar statistics: no XP progress, short "Tasks" label (AT-3068, 2026-11-17)
+
+No top bar shows the XP bar (`components/XpBar/XpBar.js`) any more: not `TopBarStatisticArea`
+(desktop TopBar and AnnaTopStrip) and not `TopBarMobile`'s expanded statistics. The avatar inside it
+was the bar's link to the profile settings. That link is gone too; the profile is reached through the
+sidebar and Settings. XP, levels and skill points are still tracked and shown in Settings > Profile
+(`GlobalXP` / `XpBarSetting`). `TasksStatisticsArea` labels the count with the existing `Tasks` key
+("Aufgaben" / "Tareas"); `Done tasks` ("erledigte Aufgaben") stays on the statistics pages, the export
+and the charts, which share that key. Pinned by `TopBarStatisticArea.test.js`, `TopBarMobile.test.js`
+and `AnnaTopStrip.test.js`.

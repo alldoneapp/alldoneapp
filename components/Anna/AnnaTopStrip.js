@@ -11,20 +11,20 @@ import AnnaViewSwitch from './AnnaViewSwitch'
 
 /**
  * Desktop: one row above Alldone and, in assistant mode, above the chat. It replaces Alldone's own
- * top bar there (AnnaTopStripContext; Alldone keeps its desktop sidebar below it): XP, gold, task
+ * top bar there (AnnaTopStripContext; Alldone keeps its desktop sidebar below it): gold, task
  * statistics and quota on the left, search, chats and updates on the right, and in the middle the
  * view switch (AnnaViewSwitch), which stays in one place in all views. "App" replaces the home
  * button and the assistant toggle and still shows the open-task count. Where the window is too
  * narrow for Alldone beside the chat (`canSplit`), the switch offers only App and the assistant. `layout` is what the window shows: null while it
  * shows another screen than Alldone alone. In assistant mode a click on anything left or right of
- * the switch (XP, gold, statistics, search, chats, updates) first leaves the chat for the app
+ * the switch (gold, statistics, search, chats, updates) first leaves the chat for the app
  * (`onLeaveChat`), and then does what it always does there. Where the strip spans the window
  * (`showLogo`: assistant mode, and screens without a top bar slot) it starts with Alldone's logo, at
  * the spot where the sidebar shows it in the App view; like the sidebar's, it opens All projects,
  * but keeps the view: in Anna or Both it does not leave the chat.
  */
 // How many things the statistics can give up when short of room (see `squeeze`).
-const STATISTICS_STEPS = 3
+const STATISTICS_STEPS = 2
 
 export default function AnnaTopStrip({
     showLogo = false,
@@ -38,7 +38,7 @@ export default function AnnaTopStrip({
 }) {
     const dispatch = useDispatch()
     const strip = useRef(null)
-    // XpBar, TasksStatisticsArea and the connection chip size themselves from the top bar's width,
+    // TasksStatisticsArea and the connection chip size themselves from the top bar's width,
     // which only TopBar reported until now.
     useLayoutEffect(() => {
         const node = strip.current
@@ -51,8 +51,8 @@ export default function AnnaTopStrip({
     }, [dispatch])
 
     // The statistics need more room than the left side has in a narrow strip (for example the card
-    // above the content in plain Alldone). Each step gives some up until they fit: first the XP bar,
-    // then the labels (icons instead, as on a small screen), then the done-task count. A step is taken
+    // above the content in plain Alldone). Each step gives some up until they fit: first the labels
+    // (icons instead, as on a small screen), then the done-task count. A step is taken
     // back once the side is as wide as the statistics needed before it.
     const left = useRef(null)
     const neededWidth = useRef([])
@@ -105,11 +105,7 @@ export default function AnnaTopStrip({
                         <Icon size={24} name="logo" color={colors.Primary100} />
                     </button>
                 )}
-                <TopBarStatisticArea
-                    showXp={squeeze < 1}
-                    compact={squeeze >= 2}
-                    showTasksStatistics={canSplit && squeeze < 3}
-                />
+                <TopBarStatisticArea compact={squeeze >= 1} showTasksStatistics={canSplit && squeeze < 2} />
             </div>
             <AnnaViewSwitch
                 layout={layout}

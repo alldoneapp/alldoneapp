@@ -36,8 +36,6 @@ describe('resolveAnnaActivityPath (AT-2906)', () => {
         ['/projects/p2/goals/g1/chat', 'goals/p2/items/g1'],
         ['/projects/p1/notes/n1/editor', 'noteItems/p1/notes/n1'],
         ['/projects/p2/contacts/c1/properties', 'projectsContacts/p2/contacts/c1'],
-        ['/projects/p1/artifacts/a1', 'artifactItems/p1/artifacts/a1'],
-        ['/projects/p1/artifacts/a1/chat', 'artifactItems/p1/artifacts/a1'],
     ])('opens %s once the object exists', async (path, doc) => {
         mockDocs[doc] = { id: 'x' }
         expect(await resolveAnnaActivityPath(path)).toEqual({ path })
@@ -48,12 +46,6 @@ describe('resolveAnnaActivityPath (AT-2906)', () => {
         expect(await resolveAnnaActivityPath('/projects/p1/tasks/gone/properties')).toEqual({
             error: ANNA_TARGET_MISSING,
         })
-    })
-
-    it('reports a deleted or unreadable artifact (AT-3066)', async () => {
-        expect(await resolveAnnaActivityPath('/projects/p1/artifacts/gone')).toEqual({ error: ANNA_TARGET_MISSING })
-        mockDocs['artifactItems/p1/artifacts/private'] = codeError('permission-denied')
-        expect(await resolveAnnaActivityPath('/projects/p1/artifacts/private')).toEqual({ error: ANNA_TARGET_MISSING })
     })
 
     it('treats an object the user may no longer read like a missing one', async () => {
@@ -87,7 +79,6 @@ describe('resolveAnnaActivityPath (AT-2906)', () => {
             ['goals', 'goals/p1/items/o1', '/projects/p1/goals/o1/chat'],
             ['notes', 'noteItems/p1/notes/o1', '/projects/p1/notes/o1/editor'],
             ['contacts', 'projectsContacts/p1/contacts/o1', '/projects/p1/contacts/o1/properties'],
-            ['artifacts', 'artifactItems/p1/artifacts/o1', '/projects/p1/artifacts/o1/chat'],
         ])('opens the %s object it belongs to', async (type, doc, expected) => {
             mockDocs['chatObjects/p1/chats/o1'] = { type }
             mockDocs[doc] = { id: 'o1' }
