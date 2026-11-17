@@ -123,14 +123,10 @@
     width: 24px;
     height: 24px;
 }
-/* The open-task count sits at the top left of the task icon, centred on the 2px gap to the assistant
-   button, so it also reads as the top right of the assistant icon. It ignores the pointer, so each
-   button keeps its whole click target. */
 .anna-view-switch-icons .anna-strip-count {
     position: absolute;
     top: -6px;
-    left: -1px;
-    transform: translateX(-50%);
+    right: -2px;
     pointer-events: none;
 }
 /* Desktop: the assistant on the left, the focus task (AnnaFocusTask) in the middle, the screen

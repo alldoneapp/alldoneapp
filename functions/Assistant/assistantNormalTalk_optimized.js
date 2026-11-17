@@ -165,6 +165,9 @@ async function askToOpenAIBotOptimized(
                 projectOnly: annaContext.project?.projectOnlyContext === true,
             })
         }
+        // AT-3071: a project assistant's chat tracks substantial work as its own task, like Anna.
+        const { isChatTaskTrackingConversation, chatTaskTrackingInstructions } = require('./chatTaskTracking')
+        if (isChatTaskTrackingConversation(baseToolRuntimeContext)) baseToolRuntimeContext.chatTaskTracking = true
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
         // aborts the run so no message can fall beyond the current 20-message context window
@@ -207,6 +210,11 @@ async function askToOpenAIBotOptimized(
         ])
         if (annaContext)
             messages.push(['system', annaInstructions(annaContext, { allowedTools, mcpServers: assistant.mcpServers })])
+        const chatTaskTrackingText = baseToolRuntimeContext.chatTaskTracking
+            ? chatTaskTrackingInstructions({ allowedTools })
+            : ''
+        if (chatTaskTrackingText) messages.push(['system', chatTaskTrackingText])
+        else delete baseToolRuntimeContext.chatTaskTracking
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {

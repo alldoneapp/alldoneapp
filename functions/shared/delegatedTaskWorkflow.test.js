@@ -1,4 +1,9 @@
-const { DELEGATION_REVIEW_STEP, withDelegationReviewStep } = require('./delegatedTaskWorkflow')
+const {
+    DELEGATION_REVIEW_STEP,
+    DELEGATION_WORK_STEP,
+    isDirectStartDelegation,
+    withDelegationReviewStep,
+} = require('./delegatedTaskWorkflow')
 const { buildDelegatedTaskFields } = require('../Assistant/annaTaskDelegation')
 const { TaskService } = require('./TaskService')
 
@@ -38,6 +43,53 @@ test('does not add review steps to ordinary, legacy assistant-owned or explicitl
     ]) {
         expect(withDelegationReviewStep(workflow, other)).toBe(workflow)
     }
+})
+
+describe('direct start without a usable saved step (AT-3071)', () => {
+    const direct = {
+        ...task,
+        taskMetadata: { ...task.taskMetadata, delegation: { ...task.taskMetadata.delegation, directStart: true } },
+    }
+
+    test('runs its own work step for the responsible assistant, then the owner review', () => {
+        for (const saved of [{}, { other: { reviewerUid: 'someone' } }, { implement: aiStep }]) {
+            const result = withDelegationReviewStep(saved, direct, 'Ergebnis prüfen', 'Auftrag bearbeiten')
+            expect(Object.keys(result)).toEqual([DELEGATION_WORK_STEP, DELEGATION_REVIEW_STEP])
+            expect(result[DELEGATION_WORK_STEP]).toMatchObject({
+                reviewerUid: 'cto',
+                reviewerType: 'assistant',
+                description: 'Auftrag bearbeiten',
+                aiPrompt: expect.any(String),
+            })
+            expect(result[DELEGATION_REVIEW_STEP]).toMatchObject({
+                reviewerUid: 'owner',
+                reviewerType: 'user',
+                description: 'Ergebnis prüfen',
+            })
+        }
+    })
+
+    test('is ignored for explicitly direct, reassigned or non-delegated tasks', () => {
+        const directMetadata = { delegation: { ownerId: 'owner', assistantId: 'cto', directStart: true } }
+        expect(isDirectStartDelegation(direct)).toBe(true)
+        expect(isDirectStartDelegation({ ...direct, executionMode: 'direct' })).toBe(false)
+        expect(isDirectStartDelegation({ ...direct, userId: 'someone-else' })).toBe(false)
+        expect(isDirectStartDelegation({ userId: 'owner', taskMetadata: directMetadata })).toBe(false)
+        expect(isDirectStartDelegation(task)).toBe(false)
+    })
+
+    test('cannot complete before the owner review', async () => {
+        const service = new TaskService({ enableFeeds: false, enableValidation: false })
+        await service.initialize()
+        await expect(
+            service.updateTask({
+                taskId: 'task',
+                projectId: 'project',
+                currentTask: { ...direct, currentReviewerId: 'cto', stepHistory: [-1, DELEGATION_WORK_STEP] },
+                completed: true,
+            })
+        ).rejects.toThrow('human review')
+    })
 })
 
 describe('delegated task completion', () => {

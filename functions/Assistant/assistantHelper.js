@@ -5376,9 +5376,10 @@ async function ensureVmJobThread({
     // attached images, so it reads as the originating request and grounds the VM agent through
     // buildVmThreadContext's normal conversation/attachment slices — making this contextless job
     // behave like a normal in-thread one.
+    let requestCommentId = null
     try {
         const promptText = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
-        await postUserRequestComment({
+        requestCommentId = await postUserRequestComment({
             projectId: targetProjectId,
             objectType: 'tasks',
             objectId: resolvedTaskId,
@@ -5403,6 +5404,7 @@ async function ensureVmJobThread({
               ownerId: creatorId,
               assistantId: workAssistantId,
               originConversation,
+              requestCommentId,
           })
         : null
     return {
@@ -6306,7 +6308,7 @@ async function executeToolNativelyImpl(
                         [creatorId],
                         result.task?.isPublicFor || [FEED_PUBLIC_FOR_ALL, creatorId]
                     )
-                    await postUserRequestComment({
+                    const requestCommentId = await postUserRequestComment({
                         projectId: resolvedProjectId,
                         objectType: 'tasks',
                         objectId: resolvedTaskId,
@@ -6321,6 +6323,7 @@ async function executeToolNativelyImpl(
                         ownerId: creatorId,
                         assistantId: workAssistantId,
                         originConversation: { ...toolRuntimeContext, projectId, assistantId },
+                        requestCommentId,
                     })
                 }
 
@@ -6339,7 +6342,10 @@ async function executeToolNativelyImpl(
                               responsibleAssistant,
                               ...(delegation
                                   ? {
-                                        delegation: { status: delegation.status },
+                                        delegation: {
+                                            status: delegation.status,
+                                            ...(delegation.directStart ? { directStart: true } : {}),
+                                        },
                                         handoffInstruction: delegation.handoffInstruction,
                                     }
                                   : workAssistantId !== assistantId
@@ -10961,11 +10967,14 @@ async function executeToolNativelyImpl(
                 // fresh task to host this job. Each contextless call gets its own task/thread —
                 // and therefore its own VM session — while the work can be continued later by
                 // talking to the assistant inside that created task.
+                // Anna's conversation and, since AT-3071, a project assistant's chat never host the
+                // work themselves: it runs in an existing or newly created task (chatTaskTracking.js).
+                const tracksWorkInTasks = !!(
+                    toolRuntimeContext?.annaConversation || toolRuntimeContext?.chatTaskTracking
+                )
                 let effectiveProjectId = projectId
-                let effectiveObjectType = toolRuntimeContext?.annaConversation
-                    ? 'tasks'
-                    : toolRuntimeContext?.objectType || 'tasks'
-                let effectiveObjectId = toolRuntimeContext?.annaConversation ? '' : toolRuntimeContext?.objectId || ''
+                let effectiveObjectType = tracksWorkInTasks ? 'tasks' : toolRuntimeContext?.objectType || 'tasks'
+                let effectiveObjectId = tracksWorkInTasks ? '' : toolRuntimeContext?.objectId || ''
                 let responsibleAssistant = { projectId, assistantId }
                 let responsibleAssistantData = null
                 const workflowOwnsTask = () =>
@@ -10974,7 +10983,7 @@ async function executeToolNativelyImpl(
                     (toolRuntimeContext.workflowTaskProjectId || toolRuntimeContext.projectId) === effectiveProjectId
 
                 const resolveWorkAssistant = async (selectedAssistant, assignedAssistantId) => {
-                    if (!toolRuntimeContext?.annaConversation) return
+                    if (!tracksWorkInTasks) return
                     responsibleAssistant =
                         selectedAssistant ||
                         (await resolveAnnaTaskAssistant({
@@ -11031,8 +11040,11 @@ async function executeToolNativelyImpl(
                         objectId: requestedContinuationObjectId,
                         // `latest` is project-wide only for contextless callers. Inside a thread,
                         // prefer that thread's existing VM session so an unrelated, newer project
-                        // run cannot steal the follow-up.
-                        preferredObjectId: effectiveObjectId,
+                        // run cannot steal the follow-up. A chat that ran VM work before AT-3071
+                        // keeps continuing that session.
+                        preferredObjectId:
+                            effectiveObjectId ||
+                            (toolRuntimeContext?.chatTaskTracking ? toolRuntimeContext.objectId : ''),
                         requestUserId,
                     })
                     if (!continuation.ok) {
@@ -11222,10 +11234,7 @@ async function executeToolNativelyImpl(
                     return ''
                 })
 
-                if (
-                    (toolRuntimeContext?.annaConversation || toolRuntimeContext?.onVmJobStarted) &&
-                    effectiveObjectType === 'tasks'
-                ) {
+                if ((tracksWorkInTasks || toolRuntimeContext?.onVmJobStarted) && effectiveObjectType === 'tasks') {
                     const completionInstruction = workflowOwnsTask()
                         ? 'Its workflow manages completion and human review: report the result and leave the task open.'
                         : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.'
@@ -11279,16 +11288,13 @@ async function executeToolNativelyImpl(
                     // completion note back where the user is actually talking.
                     originProjectId:
                         toolRuntimeContext?.originProjectId ||
-                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.projectId || projectId : ''),
+                        (tracksWorkInTasks ? toolRuntimeContext.projectId || projectId : ''),
                     originObjectType:
                         toolRuntimeContext?.originObjectType ||
-                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectType : ''),
+                        (tracksWorkInTasks ? toolRuntimeContext.objectType : ''),
                     originObjectId:
-                        toolRuntimeContext?.originObjectId ||
-                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectId : ''),
-                    originAssistantId:
-                        toolRuntimeContext?.originAssistantId ||
-                        (toolRuntimeContext?.annaConversation ? assistantId : ''),
+                        toolRuntimeContext?.originObjectId || (tracksWorkInTasks ? toolRuntimeContext.objectId : ''),
+                    originAssistantId: toolRuntimeContext?.originAssistantId || (tracksWorkInTasks ? assistantId : ''),
                 })
                 // A workflow can end the turn once it has recorded the VM as responsible for the step.
                 if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {

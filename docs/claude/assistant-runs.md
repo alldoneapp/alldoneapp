@@ -2,6 +2,40 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
+## Work asked for in a project assistant's chat gets its own task (AT-3071, 2026-11-17)
+
+Karsten asked Alldone CTO to build things in its chat, and the work (VM run included) happened in
+that chat. Now a **chat** (topic) with a project assistant tracks substantial work the way Anna's
+conversation does. `chatTaskTracking.js` decides when: objectType `topics`/`chats`, a member's turn
+(not `automaticCommentReply`), not Anna (which has its own instructions). Task, note, goal and
+contact threads are unchanged; a task thread already is the task. `assistantNormalTalk_optimized.js`
+sets `chatTaskTracking` on the tool runtime and adds the instruction (only for assistants that have
+`create_task` or the VM tool): quick questions and small edits stay in the chat, substantial work
+becomes `create_task` with `trackAssistantWork`, then a one-line pointer to the task in the chat.
+`execute_task_in_vm` treats a tracked chat like Anna's conversation (`tracksWorkInTasks`): never
+hosted in the chat, a new tracked task or `target_task_id`, the chat recorded as origin. A
+`continue_in_object_id: latest` still prefers a VM session the chat had before this change.
+
+**No usable saved step no longer stops the work (Anna too).** `startDelegatedTaskWorkflow` used to
+return `needs_workflow_choice` and leave the task Open. Karsten chose to start such tasks at once:
+the transaction sets `taskMetadata.delegation.directStart`, and `withDelegationReviewStep` then
+returns a task-specific workflow `~delegation-work` (the responsible assistant, "Work on request")
+→ `~delegation-review` (owner, "Review result"), ignoring the saved workflow, which stays untouched.
+The ordinary runner, VM parking, completion protection, review notice and `move_task_workflow_step`
+therefore all apply unchanged. `needs_workflow_choice` remains only for older delegated tasks still
+Open.
+
+The first run of the work step must answer the user's request, not a generic prompt. The receipt in
+`delegatedTaskOrigins` now also holds `assistantId` and `requestCommentId` (the request comment
+`create_task`/`ensureVmJobThread` posted), and `runWorkflowAiStep` uses that comment as the trigger
+message instead of posting `DELEGATION_WORK_PROMPT`. **Trap:** a send-back rebuilds `stepHistory` to
+`[Open, ~delegation-work]`, identical to the first entry, so the history cannot tell the runs apart.
+`claimDelegatedTaskRequest` records the first run id on the receipt (`requestRunId`); a retry of
+that run gets the request again, a later run posts the step prompt. The receipt is written for
+chat origins too now (`isTrackedOriginConversation`), so the "ready for review" notice and "merge
+it" work in a project chat as they do for Anna. Coverage: `chatTaskTracking.test.js`, the AT-3071
+cases in `workflowAiStep.test.js`, `delegatedTaskWorkflow.test.js` and `assistantHelper.test.js`.
+
 ## A VM run sent into another task brings its request along; tools quote the latest message (2026-11-16)
 
 Two bugs showed on the crown-only Premium task (Alldone Product, MR !874). Alldone CTO answered

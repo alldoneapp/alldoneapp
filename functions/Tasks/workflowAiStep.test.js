@@ -344,15 +344,111 @@ describe('user-owned delegated work', () => {
         })
     })
 
-    it('offers configuration or direct execution when no suitable assistant step exists', async () => {
+    it('starts directly in the task when no suitable assistant step exists, answering the original request (AT-3071)', async () => {
+        const { DELEGATION_WORK_STEP } = require('../shared/delegatedTaskWorkflow')
         seedAssignee({ [NEXT_STEP]: humanStep() })
+        const savedWorkflow = JSON.stringify(mockStore.get(`users/${ASSIGNEE}`).workflow)
         mockStore.set(`items/${PROJECT}/tasks/${TASK}`, openTask())
-        expect(await start()).toMatchObject({
-            status: 'needs_workflow_choice',
-            handoffInstruction: expect.stringContaining('Offer to configure'),
+        mockStore.set(`chatComments/${PROJECT}/tasks/${TASK}/comments/request-1`, { commentText: 'Build it' })
+        const result = await startDelegatedTaskWorkflow({
+            db: mockDb,
+            projectId: PROJECT,
+            taskId: TASK,
+            ownerId: ASSIGNEE,
+            assistantId: ASSISTANT,
+            requestCommentId: 'request-1',
+            originConversation: {
+                chatTaskTracking: true,
+                projectId: PROJECT,
+                objectType: 'topics',
+                objectId: 'cto-chat',
+                assistantId: ASSISTANT,
+            },
         })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1])
-        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(result).toMatchObject({
+            status: 'workflow_managed',
+            directStart: true,
+            handoffInstruction: expect.stringContaining('started directly'),
+            task: {
+                userId: ASSIGNEE,
+                currentReviewerId: ASSISTANT,
+                stepHistory: [-1, DELEGATION_WORK_STEP],
+                taskMetadata: { delegation: { ownerId: ASSIGNEE, assistantId: ASSISTANT, directStart: true } },
+            },
+        })
+        // The saved workflow is not touched, and a repeated start does not queue a second run.
+        expect(JSON.stringify(mockStore.get(`users/${ASSIGNEE}`).workflow)).toBe(savedWorkflow)
+        await startDelegatedTaskWorkflow({
+            db: mockDb,
+            projectId: PROJECT,
+            taskId: TASK,
+            ownerId: ASSIGNEE,
+            assistantId: ASSISTANT,
+            requestCommentId: 'request-1',
+        })
+        expect([...mockStore.keys()].filter(path => path.startsWith('workflowAiRuns/'))).toHaveLength(1)
+        expect(await getDelegatedTaskExecution({ db: mockDb, projectId: PROJECT, taskId: TASK })).toMatchObject({
+            status: 'workflow_managed',
+        })
+
+        await dispatchPendingWorkflowAiRuns({ now: Date.now() })
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        // The run answers the user's own request instead of a generic prompt posted after it, and
+        // reports back to the chat it came from.
+        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][5]).toBe(ASSISTANT)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toMatchObject({
+            triggerMessageId: 'request-1',
+            originProjectId: PROJECT,
+            originObjectType: 'topics',
+            originObjectId: 'cto-chat',
+            originAssistantId: ASSISTANT,
+        })
+        const reviewedTask = mockStore.get(`items/${PROJECT}/tasks/${TASK}`)
+        expect(reviewedTask).toMatchObject({
+            userId: ASSIGNEE,
+            currentReviewerId: ASSIGNEE,
+            done: false,
+            stepHistory: [-1, DELEGATION_WORK_STEP, DELEGATION_REVIEW_STEP],
+        })
+
+        // Sent back: the history is rebuilt to the work step again, but the request is not the
+        // latest message any more, so the step posts its own prompt.
+        const returnedTask = {
+            ...reviewedTask,
+            currentReviewerId: ASSISTANT,
+            stepHistory: [-1, DELEGATION_WORK_STEP],
+            completed: Date.now() + 1,
+        }
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, returnedTask)
+        await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, reviewedTask, returnedTask)
+        await dispatchPendingWorkflowAiRuns({ now: Date.now() + 10 })
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(2)
+        expect(mockPostUserRequestComment).toHaveBeenCalledTimes(1)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[1][12].triggerMessageId).toBe('trigger-comment-1')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(ASSIGNEE)
+    })
+
+    it('does not use a request receipt written for another assistant', async () => {
+        seedAssignee({})
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, openTask())
+        mockStore.set(`chatComments/${PROJECT}/tasks/${TASK}/comments/request-1`, { commentText: 'Build it' })
+        await start()
+        mockStore.set(`delegatedTaskOrigins/${PROJECT}__${TASK}`, {
+            ownerId: ASSIGNEE,
+            assistantId: 'someone-else',
+            requestCommentId: 'request-1',
+        })
+        await dispatchPendingWorkflowAiRuns({ now: Date.now() })
+        expect(mockPostUserRequestComment).toHaveBeenCalledTimes(1)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12].triggerMessageId).toBe('trigger-comment-1')
+    })
+
+    it('keeps reporting a choice for an older delegated task that is still Open', async () => {
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, openTask())
+        expect(await getDelegatedTaskExecution({ db: mockDb, projectId: PROJECT, taskId: TASK })).toMatchObject({
+            status: 'needs_workflow_choice',
+        })
     })
 
     it('preserves a manual completion made while delegation is being prepared', async () => {

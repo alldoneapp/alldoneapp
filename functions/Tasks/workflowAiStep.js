@@ -15,7 +15,12 @@ const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('..
 const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/vmThreadQueue')
 const { TASK_EXECUTION_MODE_DIRECT } = require('../shared/taskExecutionMode')
 const { Timestamp } = require('firebase-admin/firestore')
-const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared/delegatedTaskWorkflow')
+const {
+    DELEGATION_WORK_STEP,
+    isDelegatedWorkflowTask,
+    isDirectStartDelegation,
+    withDelegationReviewStep,
+} = require('../shared/delegatedTaskWorkflow')
 const { PROMPT_OVERRIDE_MODE_APPEND, getWorkflowMoverRunLockId } = require('./workflowStepMove')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
@@ -503,6 +508,33 @@ const postWorkflowStepPrompt = async (projectId, taskId, assigneeUserId, prompt)
 }
 
 /**
+ * AT-3071: a delegation that started directly works on the request it was created with. On the first
+ * run of its work step that request comment (named by the server-only receipt) is the run's trigger
+ * message, so the assistant answers the user's own words instead of a generic prompt posted after them.
+ * A later run (sent back) has newer messages than the request and posts the step prompt as usual.
+ */
+const resolveDelegatedRequestTrigger = async (runId, projectId, taskId, task, stepId, assistantId) => {
+    if (stepId !== DELEGATION_WORK_STEP || !isDirectStartDelegation(task)) return null
+    try {
+        const { claimDelegatedTaskRequest } = require('../Assistant/annaTaskDelegation')
+        const db = admin.firestore()
+        const request = await claimDelegatedTaskRequest(db, projectId, { ...task, id: taskId }, assistantId, runId)
+        if (!request) return null
+        const comment = await db
+            .doc(`chatComments/${projectId}/tasks/${taskId}/comments/${request.requestCommentId}`)
+            .get()
+        return comment.exists ? request.requestCommentId : null
+    } catch (error) {
+        console.warn('[workflowAiStep] Could not read the delegated request', {
+            projectId,
+            taskId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+/**
  * Makes the workflow reviewer the task's active thread assistant before its prompt is posted.
  *
  * The client can source assistant state from either the task or an existing chat object, so both
@@ -738,7 +770,16 @@ const runWorkflowAiStep = async (runId, run) => {
                     const triggerMessageId =
                         hasPromptOverride && run.triggerMessageId
                             ? run.triggerMessageId
-                            : await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt)
+                            : (!run.promptOverride &&
+                                  (await resolveDelegatedRequestTrigger(
+                                      runId,
+                                      projectId,
+                                      taskId,
+                                      task,
+                                      stepId,
+                                      assistantId
+                                  ))) ||
+                              (await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt))
 
                     const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
                     const { loadDelegatedTaskOrigin } = require('../Assistant/annaTaskDelegation')

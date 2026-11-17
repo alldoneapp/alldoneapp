@@ -2,4 +2,4 @@ import { withDelegationReviewStep } from '../functions/shared/delegatedTaskWorkf
 import { translate } from '../i18n/TranslationService'
 
 export const getDelegatedTaskWorkflow = (workflow, task) =>
-    withDelegationReviewStep(workflow, task, translate('Review result'))
+    withDelegationReviewStep(workflow, task, translate('Review result'), translate('Work on request'))

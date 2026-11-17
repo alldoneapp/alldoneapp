@@ -5733,7 +5733,28 @@ describe('assistant task assignment and attribution', () => {
         })
     })
 
-    test('keeps delegated work user-owned and offers a choice when no assistant step exists', async () => {
+    // Serves the task create_task just persisted, so the delegation start reads what was created.
+    const serveCreatedTask = (taskPath, otherData) => {
+        let created = null
+        mockCreateAndPersistTask.mockImplementation(async params => {
+            created = require('../shared/TaskModelBuilder').createTaskObject({ ...params, taskId: 'task-new' })
+            return { success: true, taskId: created.id, task: created }
+        })
+        mockDocGet.mockImplementation(function () {
+            if (this.path === taskPath) return Promise.resolve({ exists: !!created, data: () => created })
+            const data = otherData(this.path)
+            return Promise.resolve({ exists: !!data, data: () => data })
+        })
+    }
+
+    test('keeps delegated work user-owned and starts it directly when no assistant step exists (AT-3071)', async () => {
+        serveCreatedTask('items/project-1/tasks/task-new', () => ({
+            defaultProjectId: 'project-1',
+            projectIds: ['project-1'],
+        }))
+        const enqueue = jest
+            .spyOn(require('../Tasks/workflowAiStep'), 'enqueueWorkflowAiRunIfNeeded')
+            .mockResolvedValue('run-1')
         const result = await executeToolNatively(
             'create_task',
             {
@@ -5752,14 +5773,29 @@ describe('assistant task assignment and attribution', () => {
 
         expect(result.task).toMatchObject({
             userId: 'user-1',
-            currentReviewerId: 'user-1',
+            currentReviewerId: 'assistant-1',
+            stepHistory: [-1, '~delegation-work'],
             assigneeType: 'USER',
             executionMode: 'workflow',
             suggestedBy: null,
-            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' } },
+            taskMetadata: {
+                annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' },
+                delegation: { ownerId: 'user-1', assistantId: 'assistant-1', directStart: true },
+            },
         })
-        expect(result.delegation.status).toBe('needs_workflow_choice')
-        expect(result.handoffInstruction).toContain('Offer to configure')
+        expect(result.delegation).toEqual({ status: 'workflow_managed', directStart: true })
+        expect(result.handoffInstruction).toContain('started directly')
+        expect(enqueue).toHaveBeenCalledTimes(1)
+        // The request posted into the task is what the first run of the work step answers.
+        const requestComment = mockDocSet.mock.contexts.findIndex(ref =>
+            ref?.path?.startsWith('chatComments/project-1/tasks/task-new/comments/')
+        )
+        const requestCommentId = mockDocSet.mock.contexts[requestComment].path.split('/').pop()
+        const receipt = mockDocSet.mock.calls.find(
+            (_, index) => mockDocSet.mock.contexts[index]?.path === 'delegatedTaskOrigins/project-1__task-new'
+        )
+        expect(receipt[0]).toMatchObject({ ownerId: 'user-1', assistantId: 'assistant-1', requestCommentId })
+        enqueue.mockRestore()
         expect(addAssistantTaskComment).toHaveBeenCalledWith(
             expect.objectContaining({
                 comment: 'You asked me to research the client before your meeting.',
@@ -5820,13 +5856,14 @@ describe('assistant task assignment and attribution', () => {
             'assistants/product/items/cto': { displayName: 'Alldone CTO' },
             'assistants/project-1/items/assistant-1': { displayName: 'Anna' },
         }
-        mockDocGet.mockImplementation(function () {
-            return Promise.resolve({ exists: !!docs[this.path], data: () => docs[this.path] })
-        })
+        serveCreatedTask('items/product/tasks/task-new', path => docs[path])
         mockFirestoreGetAll.mockImplementation(async (...refs) =>
             refs.map(ref => ({ id: ref.path.split('/').pop(), exists: !!docs[ref.path], data: () => docs[ref.path] }))
         )
         mockCollectionGet.mockResolvedValue({ docs: [] })
+        const enqueue = jest
+            .spyOn(require('../Tasks/workflowAiStep'), 'enqueueWorkflowAiRunIfNeeded')
+            .mockResolvedValue('run-1')
 
         const result = await executeToolNatively(
             'create_task',
@@ -5840,15 +5877,16 @@ describe('assistant task assignment and attribution', () => {
 
         expect(result.task).toMatchObject({
             userId: 'user-1',
-            userIds: ['user-1'],
+            userIds: ['user-1', 'cto'],
             assistantId: 'cto',
-            currentReviewerId: 'user-1',
+            currentReviewerId: 'cto',
             creatorId: 'user-1',
             assigneeType: 'USER',
             taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'cto' } },
         })
         expect(result.responsibleAssistant).toEqual({ projectId: 'product', assistantId: 'cto' })
-        expect(result.handoffInstruction).toContain('this existing task')
+        expect(result.handoffInstruction).toContain('that assistant is now working')
+        enqueue.mockRestore()
     })
 
     test('reports failure if the assistant attribution comment cannot be saved', async () => {
@@ -9734,9 +9772,28 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
-    test('creates user-owned work and offers a workflow choice without launching a VM from the daily chat', async () => {
+    // The created host task, served back to the delegation start like Firestore would.
+    const serveCreatedHostTask = () => {
+        let created = null
+        mockCreateAndPersistTask.mockImplementationOnce(async params => {
+            created = require('../shared/TaskModelBuilder').createTaskObject({ ...params, taskId: 'new-host' })
+            return { success: true, taskId: 'new-host', projectId: 'project-1', task: created }
+        })
+        mockDocGet.mockImplementation(function () {
+            if (this.path === 'items/project-1/tasks/new-host')
+                return Promise.resolve({ exists: !!created, data: () => created })
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        return jest.spyOn(require('../Tasks/workflowAiStep'), 'enqueueWorkflowAiRunIfNeeded').mockResolvedValue('run-1')
+    }
+    const receiptWrite = () =>
+        mockDocSet.mock.calls.find(
+            (_, index) => mockDocSet.mock.contexts[index]?.path === 'delegatedTaskOrigins/project-1__new-host'
+        )?.[0]
+
+    test('creates user-owned work and starts it in that task without launching a VM from the daily chat', async () => {
         mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
-        mockCreateAndPersistTask.mockResolvedValueOnce({ success: true, taskId: 'new-host', projectId: 'project-1' })
+        const enqueue = serveCreatedHostTask()
         const result = await executeToolNatively(
             'execute_task_in_vm',
             { objective: 'Research launch options', task_type: 'research' },
@@ -9761,8 +9818,95 @@ describe('execute_task_in_vm existing task routing', () => {
             }),
             expect.anything()
         )
-        expect(result).toMatchObject({ success: true, taskId: 'new-host', status: 'needs_workflow_choice' })
+        expect(result).toMatchObject({ success: true, taskId: 'new-host', status: 'workflow_managed' })
+        expect(enqueue).toHaveBeenCalledTimes(1)
         expect(startVmJobSpy).not.toHaveBeenCalled()
+        enqueue.mockRestore()
+    })
+
+    // AT-3071: Alldone CTO asked to build something in its project chat.
+    test("routes VM work from a project assistant's chat into its own task and reports back to that chat", async () => {
+        mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
+        const enqueue = serveCreatedHostTask()
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Build the export button', task_type: 'coding' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Build the export button' },
+            {
+                chatTaskTracking: true,
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'cto-chat',
+                assistantId: 'assistant-1',
+                messageId: 'chat-message-1',
+            }
+        )
+        expect(result).toMatchObject({ success: true, taskId: 'new-host', status: 'workflow_managed' })
+        expect(startVmJobSpy).not.toHaveBeenCalled()
+        // The request is the new task's first message, and the chat is the origin the result returns to.
+        const requestIndex = mockDocSet.mock.contexts.findIndex(ref =>
+            ref?.path?.startsWith('chatComments/project-1/tasks/new-host/comments/')
+        )
+        expect(mockDocSet.mock.calls[requestIndex][0].commentText).toContain('Build the export button')
+        expect(receiptWrite()).toMatchObject({
+            ownerId: 'user-1',
+            assistantId: 'assistant-1',
+            requestCommentId: mockDocSet.mock.contexts[requestIndex].path.split('/').pop(),
+            originProjectId: 'project-1',
+            originObjectType: 'topics',
+            originObjectId: 'cto-chat',
+            originAssistantId: 'assistant-1',
+        })
+        // Nothing is written into the chat itself.
+        expect(mockDocSet.mock.contexts.some(ref => ref?.path?.includes('/topics/cto-chat/'))).toBe(false)
+        enqueue.mockRestore()
+    })
+
+    test('keeps hosting VM work in an ordinary chat thread without chat task tracking', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Summarize the logs', task_type: 'research' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Summarize the logs' },
+            { projectId: 'project-1', objectType: 'topics', objectId: 'plain-chat', assistantId: 'assistant-1' }
+        )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ objectType: 'topics', objectId: 'plain-chat', originObjectId: '' })
+        )
+    })
+
+    test('a project chat sends VM work for an existing task into that task, with the chat as origin', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Continue the export button', target_task_id: 'task-1', task_type: 'coding' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Continue the export button in AT-1' },
+            {
+                chatTaskTracking: true,
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'cto-chat',
+                assistantId: 'assistant-1',
+            }
+        )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                objectType: 'tasks',
+                objectId: 'task-1',
+                originObjectType: 'topics',
+                originObjectId: 'cto-chat',
+                threadContext: expect.stringContaining('tracked by the existing Alldone task task-1'),
+            })
+        )
     })
 
     test('joins an existing delegated workflow instead of dispatching a duplicate VM', async () => {
