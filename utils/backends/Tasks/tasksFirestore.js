@@ -4569,81 +4569,20 @@ async function finishWorkflowFocusHandoff(projectId, task, focusHandoff) {
  * display order, starting in `projectId`, then the other projects). Resolves true when a task was
  * put in focus and false when no open task is left for today.
  */
-export async function pickNewFocusTask(projectId, userId, { onCandidates } = {}) {
-    return await awaitWriteAck(
-        findAndSetNewFocusedTask(projectId, userId, null, null, null, { onCandidates }),
-        'focus task pick'
-    )
+export async function pickNewFocusTask(projectId, userId) {
+    return await awaitWriteAck(findAndSetNewFocusedTask(projectId, userId), 'focus task pick')
 }
 
-/**
- * AT-3067: Assistant mode's "Show a different focus task" (AnnaFocusTask). Replaces the current focus
- * task with the next one the normal pick would choose, skipping the current task and
- * `skippedTaskIds` (the tasks already passed over in this session, see annaFocusReroll.js).
- *
- * Unlike the pick after completing a task it never clears the focus: with no alternative the current
- * task stays and the result says 'none'. The task that loses focus keeps its due date and only loses
- * its pinned focus place in the list (an ordinary sortIndex, as a manual focus change gives it).
- * It runs as a focus handoff, so a focus the user sets by hand meanwhile wins ('superseded') and a
- * postpone search still in flight cannot overwrite the new pick.
- *
- * Online only: offline it fails fast with `code: 'offline'`.
- *
- * Resolves 'picked' | 'none' | 'superseded' | 'offline' ('offline' when the connection dropped
- * before the write was acknowledged; the write itself is queued).
- */
-export async function pickDifferentFocusTask(userId, { taskId, projectId, skippedTaskIds = [], onCandidates } = {}) {
-    if (isAppOffline()) {
-        const error = new Error('A different focus task can only be picked online')
-        error.code = 'offline'
-        throw error
-    }
-    const focusHandoffId = startFocusHandoff(taskId)
-    try {
-        const picked = await awaitWriteAck(
-            findAndSetNewFocusedTask(projectId, userId, null, taskId, focusHandoffId, {
-                excludeTaskIds: skippedTaskIds,
-                keepFocusWhenNone: true,
-                previousFocus: taskId && projectId ? { taskId, projectId } : null,
-                onCandidates,
-            }),
-            'focus task swap'
-        )
-        if (picked === true) return 'picked'
-        if (picked === undefined) return 'offline'
-        return isFocusHandoffSuperseded(focusHandoffId) ? 'superseded' : 'none'
-    } finally {
-        finishFocusHandoff(focusHandoffId)
-    }
-}
-
-/** AT-3067: hands the names of the tasks a pick is choosing from to the caller (the header's roll). */
-const reportFocusCandidates = (onCandidates, tasks) => {
-    if (typeof onCandidates !== 'function' || !tasks?.length) return
-    try {
-        onCandidates(tasks.map(task => ({ id: task.id, name: task.name || '' })))
-    } catch (error) {
-        console.warn('[findAndSetNewFocusedTask] onCandidates failed', error)
-    }
-}
-
-/**
- * Options (AT-3067): `excludeTaskIds` are never picked; `keepFocusWhenNone` returns false instead of
- * clearing the focus when nothing is found; `previousFocus` ({ taskId, projectId }) is the focus task
- * being replaced, which is unpinned in the same batch; `onCandidates` receives the candidates found.
- */
 async function findAndSetNewFocusedTask(
     currentProjectId,
     userId,
     previousTaskParentGoalId = null,
     excludeTaskId = null,
-    focusHandoffId = null,
-    { excludeTaskIds = [], keepFocusWhenNone = false, previousFocus = null, onCandidates = null } = {}
+    focusHandoffId = null
 ) {
     // AT-2191: every task released by the current burst, not just the one that triggered this
     // search. A Firestore query can still be served the pre-postpone state of the others.
     const excludedTaskIds = buildFocusCandidateExclusions(excludeTaskId)
-    excludeTaskIds.forEach(id => id && excludedTaskIds.add(id))
 
     /**
      * AT-2191: a newer postpone has taken over. Bail out BEFORE writing — setNewFocusedTaskBatch
@@ -4758,8 +4697,7 @@ async function findAndSetNewFocusedTask(
             earliestUpcomingCalendarTaskProject,
             userId,
             earliestUpcomingCalendarTask,
-            focusHandoffId,
-            previousFocus
+            focusHandoffId
         )
     }
 
@@ -4792,7 +4730,6 @@ async function findAndSetNewFocusedTask(
                     // has already handed on to the next workflow step's reviewer.
                     isTaskOnUserPlate(task, userId)
             )
-            reportFocusCandidates(onCandidates, allFetchedTasksInCurrentProject)
 
             // Log filtering results for current project
             const filteredOutTasks = allTasksBeforeFilter.filter(
@@ -4913,7 +4850,7 @@ async function findAndSetNewFocusedTask(
                 parentGoalId: newFocusedTask.parentGoalId,
             })
         }
-        return await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask, focusHandoffId, previousFocus)
+        return await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask, focusHandoffId)
     }
 
     // --- Phase 4: If no tasks found in current project with prioritization, look in other projects (original logic) ---
@@ -4976,7 +4913,6 @@ async function findAndSetNewFocusedTask(
                         // AT-2193: same rule as the current project.
                         isTaskOnUserPlate(task, userId)
                 )
-                reportFocusCandidates(onCandidates, validTasks)
 
                 // Log why tasks were filtered out
                 const filteredOutTasks = allTasksFromProject.filter(
@@ -5026,13 +4962,7 @@ async function findAndSetNewFocusedTask(
                                 isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
                             })
                         }
-                        return await setNewFocusedTaskBatch(
-                            pid,
-                            userId,
-                            newFocusedTaskFromOtherProject,
-                            focusHandoffId,
-                            previousFocus
-                        )
+                        return await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject, focusHandoffId)
                     }
                 }
             } else {
@@ -5045,8 +4975,6 @@ async function findAndSetNewFocusedTask(
 
     // If no tasks found in any project, clear the focus
     if (isSuperseded()) return false
-    // AT-3067: asking for a different focus task never takes the current one away.
-    if (keepFocusWhenNone) return false
 
     const batch = new BatchWrapper(getDb())
 
@@ -5105,7 +5033,7 @@ async function findAndSetNewFocusedTask(
 }
 
 // Helper function to set a new focused task with all necessary updates
-async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = null, previousFocus = null) {
+async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = null) {
     // AT-2191: a newer postpone already owns the focus. Writing here would re-date this task to
     // `now` (the setTaskDueDate call below runs with fromSetTaskFocus=true), un-postponing a task
     // the user just pushed away, so bail out before anything is queued.
@@ -5143,25 +5071,6 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     batch.update(getDb().doc(`items/${projectId}/tasks/${task.id}`), {
         sortIndex: focusSortIndex,
     })
-
-    // AT-3067: a swap replaces a focus task that is still open. Like a manual focus change
-    // (updateFocusedTask) it leaves its pinned focus place with an ordinary "just moved" sortIndex
-    // and keeps its due date. Read first: an update of a deleted task would fail the whole batch.
-    const releasedPrevious =
-        previousFocus?.taskId && previousFocus?.projectId && previousFocus.taskId !== task.id ? previousFocus : null
-    let previousUnpinned = false
-    if (releasedPrevious) {
-        const previousRef = getDb().doc(`items/${releasedPrevious.projectId}/tasks/${releasedPrevious.taskId}`)
-        try {
-            const previousSnap = await previousRef.get()
-            if (previousSnap.exists) {
-                batch.update(previousRef, { sortIndex: generateSortIndex() })
-                previousUnpinned = true
-            }
-        } catch (error) {
-            console.error('[setNewFocusedTaskBatch] Could not unpin the previous focus task', error)
-        }
-    }
 
     // Update user's focused task
     updateUserDataDirectly(
@@ -5203,15 +5112,6 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     }
 
     // Create feed after successful update
-    if (previousUnpinned) {
-        createTaskFocusChangedFeed(
-            releasedPrevious.projectId,
-            releasedPrevious.taskId,
-            false,
-            null,
-            TasksHelper.getUserInProject(releasedPrevious.projectId, userId)
-        )
-    }
     createTaskFocusChangedFeed(projectId, task.id, true, null, TasksHelper.getUserInProject(projectId, userId))
     return true
 }

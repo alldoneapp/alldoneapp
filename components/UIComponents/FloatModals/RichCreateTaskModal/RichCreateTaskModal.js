@@ -245,6 +245,9 @@ export default function RichCreateTaskModal({
     const [selectedProject, setSelectedProject] = useState(null)
     const [projects, setProjects] = useState([])
     const [uploadingDraft, setUploadingDraft] = useState(false)
+    // AT-3070: the last upload attempt left local files behind; the status line says so until the
+    // next attempt instead of falling back to "Files added to description".
+    const [draftUploadFailed, setDraftUploadFailed] = useState(false)
     const droppedObjectUrls = useRef(new Set())
 
     useEffect(
@@ -381,6 +384,7 @@ export default function RichCreateTaskModal({
                 return
             }
 
+            setDraftUploadFailed(false)
             setUploadingDraft(true)
             return resolveDraftAttachments(projectId, task.description)
                 .catch(() => ({ description: task.description, failedCount: 1 }))
@@ -389,6 +393,7 @@ export default function RichCreateTaskModal({
                     // word must never reach Firestore, even when other uploads succeeded.
                     if (failedCount > 0) {
                         setTask(current => ({ ...current, description }))
+                        setDraftUploadFailed(true)
                         alert(translate('Task attachment upload failed'))
                         submitOnce.reset()
                         return
@@ -998,6 +1003,7 @@ export default function RichCreateTaskModal({
                     setTask={setTask}
                     onFilesDropped={onFilesDropped}
                     uploadingDraft={uploadingDraft}
+                    draftUploadFailed={draftUploadFailed}
                     selectedProject={selectedProject}
                     activeGoal={activeGoal}
                     widthStyle={widthStyle}

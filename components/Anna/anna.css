@@ -253,259 +253,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* AT-3067: the focus task and its "Show a different focus task" button share one pill: the link
-   takes the room, the round button sits at the right end as its own click target. While a focus
-   task is searched the pill rolls through candidate names like a slot machine (a radar ping on the
-   focus icon, a light sweep across the pill) and the found task drops in. Only theme tokens, so
-   light and dark mode both work; no motion under reduced motion. */
-.anna-focus-pill {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    max-width: min(100%, 400px);
-    height: 32px;
-    border: 1px solid var(--anna-border);
-    border-radius: 16px;
-    background: var(--anna-tint);
-    color: var(--anna-ink);
-    font-family: Roboto, Arial, sans-serif;
-    font-size: 13px;
-    white-space: nowrap;
-}
-.anna-focus-pill:hover {
-    border-color: var(--anna-focus);
-}
-.anna-focus-pill > .anna-focus-task {
-    flex: 1 1 auto;
-    max-width: none;
-    height: 30px;
-    padding-right: 4px;
-    border: 0;
-    background: transparent;
-}
-.anna-focus-reroll {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    margin-right: 2px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--anna-muted);
-}
-/* Icon is a font glyph in a wrapper View: size and centre the wrapper so it turns on its centre. */
-.anna-focus-reroll > *,
-.anna-focus-radar > * {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    line-height: 1;
-}
-.anna-focus-reroll > * {
-    width: 14px;
-    height: 14px;
-    transition: transform 240ms ease;
-}
-.anna-focus-reroll:hover:not(:disabled) {
-    background: var(--anna-hover);
-    color: var(--anna-accent);
-}
-.anna-focus-reroll:hover:not(:disabled) > * {
-    transform: rotate(180deg);
-}
-.anna-shell .anna-focus-pill button.anna-focus-reroll:disabled {
-    opacity: 1;
-    cursor: progress;
-}
-.anna-focus-rolling {
-    overflow: hidden;
-    border-color: var(--anna-focus);
-}
-.anna-focus-rolling::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-        100deg,
-        transparent 30%,
-        color-mix(in srgb, var(--anna-focus) 45%, transparent) 50%,
-        transparent 70%
-    );
-    transform: translateX(-100%);
-    animation: anna-focus-sweep 1100ms ease-in-out infinite;
-    pointer-events: none;
-}
-.anna-focus-task-rolling {
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--anna-ink);
-    font-weight: 500;
-}
-.anna-focus-radar {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-    color: var(--anna-accent);
-}
-.anna-focus-radar::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border: 2px solid var(--anna-accent);
-    border-radius: 50%;
-    opacity: 0;
-    animation: anna-focus-ping 1000ms ease-out infinite;
-}
-.anna-focus-radar > * {
-    animation: anna-focus-spin 1400ms linear infinite;
-}
-.anna-focus-rolling .anna-focus-reroll {
-    color: var(--anna-accent);
-}
-.anna-focus-rolling .anna-focus-reroll > * {
-    animation: anna-focus-spin 700ms linear infinite;
-}
-.anna-focus-reel {
-    display: block;
-    flex: 1 1 auto;
-    min-width: 0;
-    height: 20px;
-    overflow: hidden;
-}
-.anna-focus-reel-item {
-    display: block;
-    line-height: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    animation: anna-focus-reel-fast 70ms linear both;
-}
-.anna-focus-rolling-slow .anna-focus-reel-item {
-    animation: anna-focus-reel-slow 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.anna-focus-landed {
-    animation: anna-focus-land-glow 700ms ease-out both;
-}
-.anna-focus-landed .anna-focus-task-name,
-.anna-focus-landed .anna-focus-task-project {
-    animation: anna-focus-land 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.anna-focus-notice {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    z-index: 5;
-    width: max-content;
-    max-width: min(360px, 90vw);
-    padding: 4px 10px;
-    border: 1px solid var(--anna-border);
-    border-radius: 10px;
-    background: var(--ad-Surface, #ffffff);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    color: var(--anna-ink);
-    font-size: 12px;
-    line-height: 16px;
-    text-align: center;
-    white-space: normal;
-    transform: translateX(-50%);
-    pointer-events: none;
-    animation: anna-focus-notice-in 180ms ease-out both;
-}
-@keyframes anna-focus-sweep {
-    to {
-        transform: translateX(100%);
-    }
-}
-@keyframes anna-focus-ping {
-    0% {
-        opacity: 0.7;
-        transform: scale(0.6);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(1.8);
-    }
-}
-@keyframes anna-focus-spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-@keyframes anna-focus-reel-fast {
-    from {
-        opacity: 0.4;
-        filter: blur(1px);
-        transform: translateY(-100%);
-    }
-    to {
-        opacity: 1;
-        filter: blur(0);
-        transform: translateY(0);
-    }
-}
-@keyframes anna-focus-reel-slow {
-    from {
-        opacity: 0.3;
-        transform: translateY(-100%);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-@keyframes anna-focus-land {
-    from {
-        opacity: 0;
-        transform: translateY(-90%);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-@keyframes anna-focus-land-glow {
-    0% {
-        box-shadow: 0 0 0 0 color-mix(in srgb, var(--anna-focus) 70%, transparent);
-    }
-    100% {
-        box-shadow: 0 0 0 8px transparent;
-    }
-}
-@keyframes anna-focus-notice-in {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -4px);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, 0);
-    }
-}
-@media (prefers-reduced-motion: reduce) {
-    .anna-focus-rolling::after {
-        display: none;
-    }
-    .anna-focus-radar::after,
-    .anna-focus-radar > *,
-    .anna-focus-rolling .anna-focus-reroll > *,
-    .anna-focus-reel-item,
-    .anna-focus-landed,
-    .anna-focus-landed .anna-focus-task-name,
-    .anna-focus-landed .anna-focus-task-project,
-    .anna-focus-notice {
-        animation: none;
-    }
-    .anna-focus-reroll > * {
-        transition: none;
-    }
-}
 .anna-header-right {
     justify-content: flex-end;
 }
@@ -1826,16 +1573,20 @@
    bezel and app is padding of .anna-workspace, horizontal only: the app touches the
    bezel's inner top and bottom edge. That padding is outside .anna-workspace-content,
    the box useWorkspaceViewportOwner measures, so the floating "+", inline fixed overlays
-   and popover bounds start at the app's own edge with no compensation of their own. */
+   and popover bounds start at the app's own edge with no compensation of their own.
+   AT-3065: the bezel is the chat card's fine line (1px in --anna-border, so it follows light and
+   dark mode like the chat), and the gutter inside it is narrow; it was 6px of --anna-bezel with
+   24-48px gutters. The notch keeps the stronger --anna-bezel so it still points at the screen. */
 .anna-zoom-active {
-    --anna-workspace-gutter: clamp(24px, 3.5vw, 48px);
-    --anna-workspace-bezel: 6px;
-    --anna-workspace-bezel-color: var(--anna-bezel);
+    --anna-workspace-gutter: 12px;
+    --anna-workspace-bezel: 1px;
+    --anna-workspace-bezel-color: var(--anna-border);
+    --anna-workspace-notch-color: var(--anna-bezel);
     --anna-workspace-radius: 14px;
 }
 @media (max-width: 1100px) {
     .anna-zoom-active {
-        --anna-workspace-gutter: clamp(16px, 2.5vw, 24px);
+        --anna-workspace-gutter: 8px;
         --anna-workspace-radius: 12px;
     }
 }
@@ -2608,10 +2359,6 @@
 .anna-header-phone .anna-focus-task-project {
     max-width: min(96px, 30%);
 }
-/* AT-3067: the pill around the focus task and its "different task" button fills the room too. */
-.anna-header-phone .anna-focus-pill {
-    max-width: 100%;
-}
 /* The icon and chevron show the choice; the native select lies over the whole control,
    transparent, so a tap anywhere opens the system list and screen readers meet the select. Its box
    is the shared phone selector below, the same as the assistant picker's on the left. */
@@ -2869,7 +2616,7 @@
 
 /* Desktop assistant mode (variant C): a strip across the top holds the view switch and Alldone's
    global controls (gold, search, chats, updates); below it the chat and the workspace are two
-   cards. The chat's screen picker points at the workspace with a notch in the bezel colour, so the
+   cards. The chat's screen picker points at the workspace with a notch in the bezel grey, so the
    chat visibly drives the screen, and the notch lights up with the bezel while a tool changes it. */
 .anna-strip {
     display: none;
@@ -2967,7 +2714,8 @@
     .anna-zoom-active .anna-divider:focus-visible::after {
         opacity: 1;
     }
-    /* The notch: from the chat card's edge, at the picker's height, into the screen's bezel. */
+    /* The notch: from the chat card's edge, at the picker's height, into the screen's bezel. Its own
+       colour (AT-3065): in the bezel's fine line colour it would barely show. */
     .anna-zoom-active:not(.anna-chat-only) .anna-conversation::after {
         content: '';
         position: absolute;
@@ -2978,7 +2726,7 @@
         height: 0;
         border-top: 10px solid transparent;
         border-bottom: 10px solid transparent;
-        border-left: 15px solid var(--anna-workspace-bezel-color);
+        border-left: 15px solid var(--anna-workspace-notch-color);
         pointer-events: none;
         transition: border-color 200ms ease;
     }
