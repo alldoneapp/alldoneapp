@@ -6,6 +6,7 @@ import { clearPendingWebShareTarget, setTasksArrowButtonIsExpanded } from '../..
 import { clearStoredWebShareTarget } from '../../utils/webShareTarget'
 import SharedHelper from '../../utils/SharedHelper'
 import useModalSizing from '../../hooks/useModalSizing'
+import useVirtualKeyboardVisible from '../../hooks/useVirtualKeyboardVisible'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import { AUTOMATIC_PROJECT_OPTION } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { FEED_TASK_OBJECT_TYPE } from '../Feeds/Utils/FeedsConstants'
@@ -38,6 +39,7 @@ export default function FloatingAddTaskButton() {
     const taskEditorCount = useSelector(state => state.taskEditorCount)
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
+    const keyboardVisible = useVirtualKeyboardVisible()
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -69,20 +71,26 @@ export default function FloatingAddTaskButton() {
 
     if (!canAddTask) return null
 
+    // Hidden, never unmounted: AddTaskTag owns the add-task popup and its web-share
+    // auto-open, so unmounting would tear those down. AT-3076: the software keyboard
+    // hides it too, because the "+" otherwise floats over (or rides on top of) the
+    // keyboard while the user types in any other field.
+    const hidden = taskEditorCount > 0 || keyboardVisible
+
     return (
         <View
             testID="floating-add-task-button"
             style={[
                 localStyles.floating,
-                taskEditorCount > 0 && localStyles.hidden,
+                hidden && localStyles.hidden,
                 {
                     right: FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right,
                     bottom: getFloatingActionBottom(safeAreaInsets.bottom),
                 },
             ]}
-            pointerEvents={taskEditorCount > 0 ? 'none' : 'auto'}
-            accessibilityElementsHidden={taskEditorCount > 0}
-            importantForAccessibility={taskEditorCount > 0 ? 'no-hide-descendants' : 'auto'}
+            pointerEvents={hidden ? 'none' : 'auto'}
+            accessibilityElementsHidden={hidden}
+            importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
         >
             <AddTaskTag
                 projectId={projectId}
@@ -100,7 +108,7 @@ export default function FloatingAddTaskButton() {
                 initialTaskName={pendingWebShareTarget?.taskName}
                 autoOpenKey={pendingWebShareTarget?.id}
                 onAutoOpen={consumeWebShareTarget}
-                plusShortcutEnabled={taskEditorCount === 0 && !blockShortcuts}
+                plusShortcutEnabled={!hidden && !blockShortcuts}
                 // AT-2823: press and hold → the popup opens straight into the title mic's
                 // push-to-talk hold; release creates the task from what was said.
                 holdToDictate={true}

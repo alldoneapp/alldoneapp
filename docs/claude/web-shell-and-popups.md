@@ -118,6 +118,23 @@ desktop popup blockers eat it. Pinned by `utils/openInNewWindow.test.js` and
 word: if a future Chromium re-captures redirect chains back into the app window, the result
 degrades to today's behaviour rather than breaking.
 
+### "Keyboard visible" signal vs. the shell-shrink class (AT-3076, 2026-11-17)
+
+`utils/virtualKeyboard.js` sets two different classes on `<html>`. `app-keyboard-open` means
+"the shell is shrunk by `--app-keyboard-inset`". Only the iOS-style inset path sets it, and CSS
+plus `useHomeIndicatorLift` depend on exactly that meaning. `app-keyboard-visible`
+(`KEYBOARD_VISIBLE_CLASS`) means "a software keyboard is up" on **either** path, including
+Android's layout-viewport resize (`interactive-widget=resizes-content`). It is also cleared on a
+deferred `focusout` when no field is focused and no inset is measured, so a resize-path reading
+cannot stay stuck. UI that should get out of the keyboard's way reads it through
+`hooks/useVirtualKeyboardVisible.js`. Do not use `app-keyboard-open` for that: it is never set
+on Android. The floating add-task "+" (`FloatingAddTaskButton`) hides while the keyboard is
+visible, in the same way it hides while a task editor is open: opacity 0, no pointer events,
+hidden from accessibility, "+" shortcut off, and **never unmounted**, because `AddTaskTag` owns
+the add-task popup and the web-share auto-open. Pinned by the AT-3076 blocks in
+`utils/virtualKeyboard.test.js`, `FloatingAddTaskButton.test.js` and
+`hooks/useVirtualKeyboardVisible.test.js`.
+
 ## Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.

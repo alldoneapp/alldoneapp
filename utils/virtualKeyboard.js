@@ -48,6 +48,12 @@ export const KEYBOARD_OPEN_MIN_INSET_PX = 120
 
 export const KEYBOARD_INSET_CSS_VAR = '--app-keyboard-inset'
 export const KEYBOARD_OPEN_CLASS = 'app-keyboard-open'
+// AT-3076. `KEYBOARD_OPEN_CLASS` means "the SHELL is shrunk by the inset" and is
+// only set on the iOS-style path; CSS and `useHomeIndicatorLift` depend on that
+// meaning. This class means "a software keyboard is up" on EITHER path, including
+// Android's layout-viewport resize, and is what UI that should get out of the
+// keyboard's way (the floating add-task "+") listens to.
+export const KEYBOARD_VISIBLE_CLASS = 'app-keyboard-visible'
 export const KEYBOARD_REVEAL_TARGET_ATTRIBUTE = 'data-keyboard-reveal-target'
 
 // The keyboard animates in over ~250ms and the visual viewport reports its size
@@ -127,6 +133,21 @@ export const applyKeyboardInset = inset => {
     else root.classList.remove(KEYBOARD_OPEN_CLASS)
     return open
 }
+
+/**
+ * Publish whether a software keyboard is visible (either detection path).
+ */
+export const applyKeyboardVisible = visible => {
+    if (typeof document === 'undefined' || !document.documentElement) return
+    const classList = document.documentElement.classList
+    if (visible) classList.add(KEYBOARD_VISIBLE_CLASS)
+    else classList.remove(KEYBOARD_VISIBLE_CLASS)
+}
+
+export const isKeyboardVisible = () =>
+    typeof document !== 'undefined' &&
+    !!document.documentElement &&
+    document.documentElement.classList.contains(KEYBOARD_VISIBLE_CLASS)
 
 /**
  * `isContentEditable` alone is not enough: it is the inherited, computed flag and
@@ -312,6 +333,7 @@ export const startVirtualKeyboardViewport = ({ margin = KEYBOARD_REVEAL_MARGIN_P
         const wasOpen = keyboardOpen
         const insetOpen = applyKeyboardInset(measureKeyboardInset())
         keyboardOpen = insetOpen || (editing && isLayoutViewportShrunk(baselineLayoutHeight, window.innerHeight))
+        applyKeyboardVisible(keyboardOpen)
         if (!keyboardOpen) return
 
         // Once per opening, and only when the shell itself was shrunk. Both
@@ -337,9 +359,28 @@ export const startVirtualKeyboardViewport = ({ margin = KEYBOARD_REVEAL_MARGIN_P
         scheduleReveal()
     }
 
+    // The layout-resize path is otherwise only re-evaluated on viewport events, so a
+    // field that loses focus without one (a desktop window resized while typing)
+    // would leave the keyboard "visible" until the next resize. Deferred so focus
+    // moving between two fields lands first; the baseline is deliberately left
+    // alone (an Android keyboard is still mid-close here) and the inset path is
+    // left to its own resize, which always follows.
+    const onFocusOut = () => {
+        if (!keyboardOpen) return
+        const timer = setTimeout(() => {
+            timers.delete(timer)
+            if (disposed || !keyboardOpen || isEditableElement(document.activeElement)) return
+            if (isKeyboardInsetOpen(measureKeyboardInset())) return
+            keyboardOpen = false
+            applyKeyboardVisible(false)
+        }, 0)
+        timers.add(timer)
+    }
+
     viewport.addEventListener('resize', syncViewport)
     viewport.addEventListener('scroll', syncViewport)
     document.addEventListener('focusin', onFocusIn, true)
+    document.addEventListener('focusout', onFocusOut, true)
     // Follow the caret while typing. Both are needed: Safari/Chrome fire
     // `selectionchange` for contenteditable, while `input` is the dependable one
     // for <textarea>. Each ends in the same no-op-when-visible reveal.
@@ -354,6 +395,7 @@ export const startVirtualKeyboardViewport = ({ margin = KEYBOARD_REVEAL_MARGIN_P
         viewport.removeEventListener('resize', syncViewport)
         viewport.removeEventListener('scroll', syncViewport)
         document.removeEventListener('focusin', onFocusIn, true)
+        document.removeEventListener('focusout', onFocusOut, true)
         document.removeEventListener('selectionchange', onCaretMoved)
         document.removeEventListener('input', onCaretMoved, true)
         timers.forEach(clearTimeout)
@@ -363,5 +405,6 @@ export const startVirtualKeyboardViewport = ({ margin = KEYBOARD_REVEAL_MARGIN_P
         }
         revealFrame = null
         applyKeyboardInset(0)
+        applyKeyboardVisible(false)
     }
 }

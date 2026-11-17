@@ -2,6 +2,7 @@ import {
     KEYBOARD_OPEN_CLASS,
     KEYBOARD_INSET_CSS_VAR,
     KEYBOARD_REVEAL_MARGIN_PX,
+    KEYBOARD_VISIBLE_CLASS,
     applyKeyboardInset,
     getCaretRect,
     getKeyboardRevealTarget,
@@ -587,6 +588,113 @@ describe('startVirtualKeyboardViewport', () => {
         stop()
     })
 
+    describe('keyboard visible signal (AT-3076)', () => {
+        const visible = () => document.documentElement.classList.contains(KEYBOARD_VISIBLE_CLASS)
+
+        it('flags the iOS inset keyboard as visible and clears it when the keyboard closes', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const stop = startVirtualKeyboardViewport()
+            expect(visible()).toBe(false)
+
+            field.focus()
+            viewport.height = LAYOUT_HEIGHT - KEYBOARD_HEIGHT
+            viewport.emit('resize')
+            expect(visible()).toBe(true)
+
+            viewport.height = LAYOUT_HEIGHT
+            viewport.emit('resize')
+            expect(visible()).toBe(false)
+            stop()
+        })
+
+        it('flags the Android layout-resize keyboard too, which never sets the shrink class', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const stop = startVirtualKeyboardViewport()
+
+            field.focus()
+            setLayoutHeight(LAYOUT_HEIGHT - KEYBOARD_HEIGHT)
+            viewport.height = LAYOUT_HEIGHT - KEYBOARD_HEIGHT
+            viewport.emit('resize')
+            expect(document.documentElement.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false)
+            expect(visible()).toBe(true)
+
+            // Back button: the keyboard goes away while the field keeps focus.
+            setLayoutHeight(LAYOUT_HEIGHT)
+            viewport.height = LAYOUT_HEIGHT
+            viewport.emit('resize')
+            expect(visible()).toBe(false)
+            stop()
+        })
+
+        it('ignores a URL-bar-sized viewport change', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const stop = startVirtualKeyboardViewport()
+
+            field.focus()
+            viewport.height = LAYOUT_HEIGHT - 80
+            viewport.emit('resize')
+            expect(visible()).toBe(false)
+            stop()
+        })
+
+        it('clears a layout-resize keyboard when the field blurs without a viewport event', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const stop = startVirtualKeyboardViewport()
+
+            field.focus()
+            setLayoutHeight(LAYOUT_HEIGHT - KEYBOARD_HEIGHT)
+            viewport.height = LAYOUT_HEIGHT - KEYBOARD_HEIGHT
+            viewport.emit('resize')
+            expect(visible()).toBe(true)
+
+            field.blur()
+            jest.runAllTimers()
+            expect(visible()).toBe(false)
+            stop()
+        })
+
+        it('stays visible while focus moves between two fields', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const other = document.createElement('textarea')
+            document.body.appendChild(other)
+            const stop = startVirtualKeyboardViewport()
+
+            field.focus()
+            setLayoutHeight(LAYOUT_HEIGHT - KEYBOARD_HEIGHT)
+            viewport.height = LAYOUT_HEIGHT - KEYBOARD_HEIGHT
+            viewport.emit('resize')
+
+            other.focus()
+            jest.runAllTimers()
+            expect(visible()).toBe(true)
+            stop()
+        })
+
+        it('leaves an iOS inset keyboard to its own closing resize after a blur', () => {
+            const viewport = installVisualViewport()
+            const { field } = buildSurface()
+            const stop = startVirtualKeyboardViewport()
+
+            field.focus()
+            viewport.height = LAYOUT_HEIGHT - KEYBOARD_HEIGHT
+            viewport.emit('resize')
+            field.blur()
+            jest.runAllTimers()
+            // Still covering the screen while it animates away.
+            expect(visible()).toBe(true)
+
+            viewport.height = LAYOUT_HEIGHT
+            viewport.emit('resize')
+            expect(visible()).toBe(false)
+            stop()
+        })
+    })
+
     it('releases the shell and every listener on teardown', () => {
         const viewport = installVisualViewport()
         const { field } = buildSurface({ fieldTop: 700, fieldHeight: 40 })
@@ -599,6 +707,7 @@ describe('startVirtualKeyboardViewport', () => {
         stop()
 
         expect(document.documentElement.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false)
+        expect(document.documentElement.classList.contains(KEYBOARD_VISIBLE_CLASS)).toBe(false)
         expect(document.documentElement.style.getPropertyValue(KEYBOARD_INSET_CSS_VAR)).toBe('0px')
         expect(viewport.listenerCount('resize')).toBe(0)
         expect(viewport.listenerCount('scroll')).toBe(0)

@@ -9,12 +9,14 @@ import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import { AUTOMATIC_PROJECT_OPTION } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { getMostVisibleTaskProjectId } from './visibleTaskProject'
+import useVirtualKeyboardVisible from '../../hooks/useVirtualKeyboardVisible'
 
 const mockDispatch = jest.fn()
 const mockClearStoredWebShareTarget = jest.fn()
 
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 jest.mock('../../hooks/useModalSizing', () => () => ({ safeAreaInsets: { right: 3, bottom: 5 } }))
+jest.mock('../../hooks/useVirtualKeyboardVisible', () => jest.fn(() => false))
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({ useVoiceCall: jest.fn() }))
 jest.mock('../../utils/SharedHelper', () => ({ accessGranted: jest.fn(() => true) }))
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
@@ -56,6 +58,7 @@ const renderButton = (overrides = {}, callStatus = 'idle') => {
 describe('FloatingAddTaskButton (AT-2575)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        useVirtualKeyboardVisible.mockReturnValue(false)
         getMostVisibleTaskProjectId.mockReturnValue(null)
         SharedHelper.accessGranted.mockReturnValue(true)
         ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(false)
@@ -190,5 +193,46 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
         const addTask = renderButton({ blockShortcuts: true }).root.findByType('AddTaskTag')
 
         expect(addTask.props.plusShortcutEnabled).toBe(false)
+    })
+
+    describe('software keyboard (AT-3076)', () => {
+        it('hides without unmounting while the keyboard is visible', () => {
+            useVirtualKeyboardVisible.mockReturnValue(true)
+            const tree = renderButton()
+            const wrapper = tree.root.findByProps({ testID: 'floating-add-task-button' })
+            const addTask = tree.root.findByType('AddTaskTag')
+
+            // Still mounted: AddTaskTag owns the popup and the web-share auto-open.
+            expect(StyleSheet.flatten(wrapper.props.style).opacity).toBe(0)
+            expect(wrapper.props.pointerEvents).toBe('none')
+            expect(wrapper.props.accessibilityElementsHidden).toBe(true)
+            expect(wrapper.props.importantForAccessibility).toBe('no-hide-descendants')
+            expect(addTask.props.plusShortcutEnabled).toBe(false)
+        })
+
+        it('keeps the web-share auto-open wired while hidden by the keyboard', () => {
+            useVirtualKeyboardVisible.mockReturnValue(true)
+            const addTask = renderButton({
+                pendingWebShareTarget: { id: 'share-1', taskName: 'https://example.com/article' },
+            }).root.findByType('AddTaskTag')
+
+            expect(addTask.props.autoOpenKey).toBe('share-1')
+        })
+
+        it('comes back, in the same place, once the keyboard is dismissed', () => {
+            useVirtualKeyboardVisible.mockReturnValue(true)
+            const tree = renderButton()
+
+            useVirtualKeyboardVisible.mockReturnValue(false)
+            act(() => tree.update(<FloatingAddTaskButton />))
+            const wrapper = tree.root.findByProps({ testID: 'floating-add-task-button' })
+            const styles = StyleSheet.flatten(wrapper.props.style)
+
+            expect(styles.opacity).toBeUndefined()
+            expect(styles).toMatchObject({ position: 'absolute', right: 27, bottom: 29 })
+            expect(wrapper.props.pointerEvents).toBe('auto')
+            expect(wrapper.props.accessibilityElementsHidden).toBe(false)
+            expect(tree.root.findByType('AddTaskTag').props.plusShortcutEnabled).toBe(true)
+        })
     })
 })
