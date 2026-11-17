@@ -84,17 +84,6 @@ describe('getAnnaActivityTarget (AT-2906)', () => {
         )
     })
 
-    it('opens the artifact itself for its updates, its chat for a message (AT-3066)', () => {
-        // "Created artifact" used to land on the followed updates inbox.
-        expect(getAnnaActivityTarget([feed('a', 1, 'art1', 'artifacts').notice])).toBe('/projects/p1/artifacts/art1')
-        expect(getAnnaActivityTarget([chat('art1', 'c', 1, 'artifacts').notice])).toBe(
-            '/projects/p1/artifacts/art1/chat'
-        )
-        expect(getAnnaActivityTarget([feed('a', 1, 'art1', 'artifacts').notice, chat('art1', 'c', 2).notice])).toBe(
-            '/projects/p1/artifacts/art1/chat'
-        )
-    })
-
     it('keeps the updates inbox for objects the workspace cannot open', () => {
         expect(getAnnaActivityTarget([feed('a', 1, 'u2', 'users').notice])).toBe(
             '/projects/p1/user/u1/updates/followed'

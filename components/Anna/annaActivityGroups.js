@@ -56,9 +56,6 @@ const DETAIL_PATHS = {
     goals: (projectId, id, chat) => `/projects/${projectId}/goals/${id}/${chat ? 'chat' : 'properties'}`,
     notes: (projectId, id) => `/projects/${projectId}/notes/${id}/editor`,
     contacts: (projectId, id) => `/projects/${projectId}/contacts/${id}/properties`,
-    // AT-3066: "Created artifact" (and every other artifact update) opens the artifact itself, a
-    // message in its chat opens that chat, never the followed updates inbox.
-    artifacts: (projectId, id, chat) => `/projects/${projectId}/artifacts/${id}${chat ? '/chat' : ''}`,
     // A topic IS its chat.
     topics: (projectId, id) => `/projects/${projectId}/chats/${id}/chat`,
 }

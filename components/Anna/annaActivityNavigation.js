@@ -17,7 +17,6 @@ const ROUTES = [
     { type: 'notes', pattern: new RegExp(`^/projects/(${id})/notes/(${id})/editor$`) },
     { type: 'contacts', pattern: new RegExp(`^/projects/(${id})/contacts/(${id})/properties$`) },
     { type: 'chats', pattern: new RegExp(`^/projects/(${id})/chats/(${id})/chat$`) },
-    { type: 'artifacts', pattern: new RegExp(`^/projects/(${id})/artifacts/(${id})(/chat)?$`) },
 ]
 
 const DOCS = {
@@ -26,7 +25,6 @@ const DOCS = {
     notes: (projectId, objectId) => `noteItems/${projectId}/notes/${objectId}`,
     contacts: (projectId, objectId) => `projectsContacts/${projectId}/contacts/${objectId}`,
     chats: (projectId, chatId) => `chatObjects/${projectId}/chats/${chatId}`,
-    artifacts: (projectId, objectId) => `artifactItems/${projectId}/artifacts/${objectId}`,
 }
 
 // Where a thread's chat lives once its type is known; mirrors `getAnnaActivityTarget`.
@@ -35,7 +33,6 @@ const CHAT_TARGETS = {
     goals: (projectId, objectId) => `/projects/${projectId}/goals/${objectId}/chat`,
     notes: (projectId, objectId) => `/projects/${projectId}/notes/${objectId}/editor`,
     contacts: (projectId, objectId) => `/projects/${projectId}/contacts/${objectId}/properties`,
-    artifacts: (projectId, objectId) => `/projects/${projectId}/artifacts/${objectId}/chat`,
     topics: (projectId, chatId) => `/projects/${projectId}/chats/${chatId}/chat`,
 }
 

@@ -9,8 +9,6 @@ export const isAnnaNavigationPath = path =>
         (/^\/(updates\/followed|projects\/chats\/followed)$/.test(path) ||
             // One chat object (a topic, or a thread whose type is resolved on open, AT-2906).
             /^\/projects\/[a-zA-Z0-9_-]+\/chats\/[a-zA-Z0-9_-]+\/chat$/.test(path) ||
-            // One artifact, or its chat (AT-3066).
-            /^\/projects\/[a-zA-Z0-9_-]+\/artifacts\/[a-zA-Z0-9_-]+(\/chat)?$/.test(path) ||
             /^\/projects\/[a-zA-Z0-9_-]+\/user\/[a-zA-Z0-9_-]+\/(updates|chats)\/followed$/.test(path)))
 
 export function resolveAnnaLink(href, origin) {

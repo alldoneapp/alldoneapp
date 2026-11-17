@@ -10,15 +10,13 @@ const DIVIDER_WIDTH = 14
 // which takes the width at which the plain app switches to mobile navigation with that sidebar.
 const MIN_ALLDONE_WIDTH = SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED + 1
 
-// The frame AT-2911 drew around Alldone: right margin (10), bezel (2 × 6) and two gutters of
-// clamp(24px, 3.5vw, 48px), clamp(16px, 2.5vw, 24px) up to 1100px. AT-3065 made the frame in anna.css
-// thinner (1px bezel, 12px/8px gutters) but keeps these numbers on purpose, so Both opens from the
-// same window width as before (about 1036px); the room the thinner frame frees goes to Alldone.
+// Mirrors --anna-workspace-gutter in anna.css: the white margin inside the screen's bezel.
 const workspaceGutter = windowWidth =>
     windowWidth <= 1100
         ? Math.min(24, Math.max(16, windowWidth * 0.025))
         : Math.min(48, Math.max(24, windowWidth * 0.035))
 
+// Around Alldone the screen adds its right margin (10), its bezel (2 × 6) and two gutters.
 export const minWorkspaceWidth = windowWidth => MIN_ALLDONE_WIDTH + 10 + 12 + 2 * workspaceGutter(windowWidth)
 
 // Save the preferred width, not the temporary clamp applied in a narrow window. `splitFits`: the
