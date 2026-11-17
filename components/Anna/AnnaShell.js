@@ -1484,6 +1484,8 @@ export default function AnnaShell({ children, routeId }) {
                                                 : ''
                                         }
                                         projectSwitch={projectSwitch}
+                                        // AT-3079: navigation dividers only while Both is in front.
+                                        showNavigationNotices={shownLayout === 'split'}
                                     />
                                 </AnnaAppPaneContext.Provider>
                             )}

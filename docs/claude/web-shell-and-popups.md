@@ -769,6 +769,16 @@ assistant picker (formerly also the composer's chip) becomes a local "Switched t
 AT-3036 that thread is shown alone), and re-picking the active project adds nothing. Neither is written to Firestore or seen by the
 assistant. Pinned by the AT-2914 cases in `AnnaConversation.test.js` and `AnnaShell.test.js`.
 
+**Navigation dividers only in Both (AT-3079, 2026-11-17).** Product owner: the "Switched to
+project: …" and "Looking at: …" dividers show only in Beides/Both, never in Anna only. AnnaShell
+passes `showNavigationNotices={shownLayout === 'split'}`, so it follows what the view switch shows
+as pressed: a narrow desktop window or a phone (no Both there) hides them too. It is a render
+filter only: `useAnnaProjectSwitchNotices`/`useAnnaContextNotices` keep recording while hidden, so
+returning to Both brings every divider back with its original time, and what the assistant is told
+(`annaPageContext`) does not depend on it. Activity cards are not affected. `AnnaConversation`
+defaults the prop to `true` (tests, browser-test harnesses). Pinned by the AT-3079 cases in
+`AnnaConversation.test.js` and `AnnaShell.test.js`.
+
 **The assistant is told what the work pane shows, not the Alldone route behind it (AT-2955).**
 `annaPageContext` on the Anna chat used to be only `{ path, title }`, and every non-Alldone surface
 wrote `{ path: '/', title: 'Anna' }`. With Story Builder on screen the assistant answered about the
