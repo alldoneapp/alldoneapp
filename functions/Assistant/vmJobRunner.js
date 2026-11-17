@@ -5011,6 +5011,14 @@ async function runVmJobByCorrelationId(correlationId) {
                 assistantRunStatus: 'awaiting_user',
                 interaction: agentResult.interaction,
             })
+            // The task chat alone is easy to miss when the user talks to Anna elsewhere (AT-3065).
+            const { notifyVmInputNeededInOrigin } = require('./vmInputNotice')
+            await notifyVmInputNeededInOrigin({
+                pendingRef,
+                pendingWebhook,
+                interaction: agentResult.interaction,
+                agentLabel,
+            })
             console.log('🖥️ VM JOB RUNNER: Waiting for user interaction', {
                 correlationId,
                 kind: agentResult.interaction?.kind,
