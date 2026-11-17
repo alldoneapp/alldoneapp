@@ -50,6 +50,8 @@ jest.mock('../../../Feeds/Utils/HelperFunctions', () => ({
 jest.mock('../../../../utils/assistantHelper', () => ({ createBotQuickTopic: jest.fn() }))
 jest.mock('../../../../redux/actions', () => ({ stopLoadingData: () => ({ type: 'stop' }) }))
 
+// AT-3069: the edit pencil's navigation reaches the redux store; its behaviour is openAssistantEditor.test.js.
+jest.mock('../openAssistantEditor', () => jest.fn())
 jest.mock('./helper', () => ({
     getAssistantLineData: () => ({
         assistant: { uid: 'assistant-1', displayName: 'Assistant' },

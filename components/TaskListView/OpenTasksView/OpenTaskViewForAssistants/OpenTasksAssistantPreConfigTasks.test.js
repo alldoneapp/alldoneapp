@@ -6,12 +6,10 @@ import OpenTasksAssistantPreConfigTasks from './OpenTasksAssistantPreConfigTasks
 
 let mockState
 let mockTasks
-const mockDispatch = jest.fn()
-const mockNavigate = jest.fn()
+const mockOpenAssistantEditor = jest.fn()
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
-    useDispatch: () => mockDispatch,
 }))
 jest.mock('uuid/v4', () => () => 'watcher-1')
 jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
@@ -41,13 +39,10 @@ jest.mock('../../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine
 // mocked banner would assert nothing. Only Button is stubbed; it subscribes to
 // the real redux store in its constructor.
 jest.mock('../../../UIControls/Button', () => 'Button')
-jest.mock('../../../../utils/NavigationService', () => ({
+// AT-3069: where the pencil lands (global vs project, admin vs read-only) is openAssistantEditor.test.js.
+jest.mock('../../../MyDayView/AssistantLine/openAssistantEditor', () => ({
     __esModule: true,
-    default: { navigate: (...args) => mockNavigate(...args) },
-}))
-jest.mock('../../../../redux/actions', () => ({ setSelectedNavItem: tab => ({ type: 'select-tab', tab }) }))
-jest.mock('../../../../utils/TabNavigationConstants', () => ({
-    DV_TAB_ASSISTANT_CUSTOMIZATIONS: 'assistant-customizations',
+    default: (...args) => mockOpenAssistantEditor(...args),
 }))
 
 const TimelineChild = () => null
@@ -103,11 +98,7 @@ describe('assistant profile workflow task creator', () => {
             showEditAssistantButton: true,
         })
         act(() => tree.root.findByType('AssistantLine').props.onEditAssistant())
-        expect(mockNavigate).toHaveBeenCalledWith('AssistantDetailedView', {
-            assistantId: 'assistant-1',
-            projectId: 'project-1',
-        })
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'select-tab', tab: 'assistant-customizations' })
+        expect(mockOpenAssistantEditor).toHaveBeenCalledWith('assistant-1', 'project-1')
         expect(tree.root.findAllByType(Text).map(node => node.props.children)).toEqual(['Tasks'])
     })
 
@@ -125,6 +116,20 @@ describe('assistant profile workflow task creator', () => {
 
         expect(tree.root.findAllByType('WorkflowConfigurationLink')).toHaveLength(0)
         expect(tree.root.findByType(TimelineChild).props.assistantTaskCreatorContext).toBeNull()
+        // AT-3069: the pencil still shows; the editor opens the global assistant read-only.
+        expect(tree.root.findByType('AssistantLine').props.showEditAssistantButton).toBe(true)
+        act(() => tree.root.findByType('AssistantLine').props.onEditAssistant())
+        expect(mockOpenAssistantEditor).toHaveBeenCalledWith('assistant-1', 'project-1')
+    })
+
+    it('shows no edit pencil to an anonymous visitor', () => {
+        mockState.loggedUser.isAnonymous = true
+
+        let tree
+        act(() => {
+            tree = renderer.create(<OpenTasksAssistantPreConfigTasks projectId="project-1" />)
+        })
+
         expect(tree.root.findByType('AssistantLine').props.showEditAssistantButton).toBe(false)
     })
 
@@ -201,11 +206,7 @@ describe('assistant profile workflow task creator', () => {
             expect(buttons).toHaveLength(1)
             act(() => buttons[0].props.onPress())
 
-            expect(mockNavigate).toHaveBeenCalledWith('AssistantDetailedView', {
-                assistantId: 'assistant-1',
-                projectId: 'project-1',
-            })
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'select-tab', tab: 'assistant-customizations' })
+            expect(mockOpenAssistantEditor).toHaveBeenCalledWith('assistant-1', 'project-1')
         })
 
         it('stays quiet when the assistant has nothing to review', () => {
@@ -215,14 +216,12 @@ describe('assistant profile workflow task creator', () => {
             expect(tree.root.findAllByType('Button')).toHaveLength(0)
         })
 
-        it('does not tell a read-only viewer to click an Edit button they do not have', () => {
-            // A global assistant renders no Edit control (showEditAssistantButton
-            // is false above), so the notice would point at nothing.
+        it('does not ask a read-only viewer to review template changes they cannot apply', () => {
+            // A global assistant is read-only here: the pencil opens it without edit rights.
             withPendingTemplateReview()
             mockState.globalAssistants = [{ uid: 'assistant-1' }]
 
             const tree = renderBoard()
-            expect(tree.root.findByType('AssistantLine').props.showEditAssistantButton).toBe(false)
             expect(copy(tree)).not.toContain("This assistant's template was updated")
         })
     })

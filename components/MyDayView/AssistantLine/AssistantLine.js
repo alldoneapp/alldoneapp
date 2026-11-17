@@ -1,12 +1,12 @@
 import React, { useContext } from 'react'
-import { StyleSheet, View, TouchableOpacity } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../styles/global'
 import AssistantOptions from './AssistantOptions/AssistantOptions'
 import { getAssistantLineData } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
-import Icon from '../../Icon'
+import EditAssistantButton from './EditAssistantButton'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
 import { AnnaSidebarCloseContext } from '../../Anna/AnnaChatNavigationContext'
@@ -25,11 +25,11 @@ export default function AssistantLine({
     assistantSwitch = null,
     preferAssistantIdOverride = false,
     scopeLastCommentToAssistant = false,
+    // AT-3069: every line's header carries the edit pencil. `showEditAssistantButton` only keeps it
+    // reachable while the sidebar hides the header (the assistant board), and `onEditAssistant`
+    // replaces what it opens.
     showEditAssistantButton = false,
     onEditAssistant = null,
-    // AT-3034: which project's chat the assistant-mode button opens in the sidebar. By default the
-    // line's own project; the "All projects" line passes null ("Automatic", the default assistant).
-    assistantModeProjectId,
 }) {
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -102,11 +102,8 @@ export default function AssistantLine({
         >
             <View testID="assistant-line-composer" style={sidebarChatVisible ? localStyles.hidden : null}>
                 <AssistantOptions
-                    headerControls={showEditAssistantButton ? <EditAssistantButton onPress={onEditAssistant} /> : null}
+                    onEditAssistant={onEditAssistant}
                     assistantSwitch={assistantSwitch}
-                    assistantModeProjectId={
-                        assistantModeProjectId !== undefined ? assistantModeProjectId : selectedProject?.id || null
-                    }
                     projectOverride={selectedProject}
                     assistantIdOverride={assistantId}
                     preferAssistantIdOverride={preferAssistantIdOverride}
@@ -115,7 +112,7 @@ export default function AssistantLine({
             {/* The assistant board's edit pencil is not a chat control, so it stays reachable. */}
             {sidebarChatVisible && showEditAssistantButton && (
                 <View style={localStyles.sidebarModeControls}>
-                    <EditAssistantButton onPress={onEditAssistant} />
+                    <EditAssistantButton onPress={onEditAssistant} style={localStyles.sidebarModeEditButton} />
                 </View>
             )}
             {showLastComment && (
@@ -139,20 +136,6 @@ export default function AssistantLine({
                 />
             )}
         </View>
-    )
-}
-
-function EditAssistantButton({ onPress }) {
-    const editAssistant = event => {
-        event?.preventDefault?.()
-        event?.stopPropagation?.()
-        onPress?.()
-    }
-
-    return (
-        <TouchableOpacity style={localStyles.actionButton} onPress={editAssistant} accessibilityLabel="Edit assistant">
-            <Icon name="edit-2" size={16} color={colors.Text03} />
-        </TouchableOpacity>
     )
 }
 
@@ -193,14 +176,8 @@ const localStyles = StyleSheet.create({
     hidden: {
         display: 'none',
     },
-    actionButton: {
-        width: 28,
-        height: 28,
-        flexShrink: 0,
+    sidebarModeEditButton: {
         borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
         backgroundColor: colors.Grey300,
-        marginRight: 8,
     },
 })

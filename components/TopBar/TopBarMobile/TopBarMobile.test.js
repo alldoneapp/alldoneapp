@@ -26,6 +26,12 @@ jest.mock('../QuotaBar/QuotaBar', () => ({
 }))
 jest.mock('../PremiumBar/PremiumBar', () => 'PremiumBar')
 jest.mock('../TasksStatisticsArea', () => 'TasksStatisticsArea')
+jest.mock('../../XpBar/XpBar', () => ({
+    __esModule: true,
+    default: 'XpBar',
+    XP_BAR_MOBILE: 'mobile',
+    barWidth: { mobile: 92 },
+}))
 jest.mock('../../Premium/PremiumHelper', () => ({ PLAN_STATUS_PREMIUM: 'premium' }))
 jest.mock('../../../redux/actions', () => ({
     toggleNavPicker: value => ({ type: 'toggle nav picker', value }),
@@ -76,19 +82,9 @@ describe('TopBarMobile connection health', () => {
         expect(
             component.root.findByProps({ testID: 'top-bar-mobile-statistics' }).findAllByType('GoldArea')
         ).toHaveLength(0)
-        // AT-3068: no XP progress in the expanded statistics.
-        expect(component.root.findAll(node => node.props?.nativeID === 'xpArea')).toHaveLength(0)
+        expect(component.root.findAllByType('XpBar')).toHaveLength(1)
         expect(component.root.findAllByType('TasksStatisticsArea')).toHaveLength(1)
         expect(component.root.findAllByType('QuotaBar')).toHaveLength(1)
-    })
-
-    it('shows the task count but no XP progress in the expanded statistics on wider phones (AT-3068)', () => {
-        mockExpanded = true
-        const component = renderer.create(<TopBarMobile />)
-        const statistics = component.root.findByProps({ testID: 'top-bar-mobile-statistics' })
-        expect(statistics.findAll(node => node.props?.nativeID === 'xpArea')).toHaveLength(0)
-        expect(statistics.findAllByType('TasksStatisticsArea')).toHaveLength(1)
-        expect(statistics.findAllByType('QuotaBar')).toHaveLength(1)
     })
 
     it('caps the left area so Gold never reaches the centred Home button', () => {

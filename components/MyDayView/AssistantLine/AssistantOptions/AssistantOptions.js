@@ -29,7 +29,8 @@ import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButton
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
 import RageModeButton from '../../../RageMode/RageModeButton'
-import AssistantModeButton from '../../../Anna/AssistantModeButton'
+import EditAssistantButton from '../EditAssistantButton'
+import openAssistantEditor from '../openAssistantEditor'
 import {
     ASSISTANT_COMPOSER_BOX_PADDING_BOTTOM,
     ASSISTANT_COMPOSER_BOX_PADDING_TOP,
@@ -63,11 +64,10 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
  * blue mic instead and the small mic hides (AT-3025, `sendSlotDictation`).
  */
 export default function AssistantOptions({
-    headerControls = null,
     assistantSwitch = null,
-    // AT-3034: the project the assistant-mode sidebar continues in when entered from this line
-    // (null: "Automatic", the default project's chat).
-    assistantModeProjectId = null,
+    // AT-3069: what the edit pencil does. Without it the pencil opens the line's assistant's
+    // settings (`openAssistantEditor`); the assistant board passes its own.
+    onEditAssistant = null,
     projectOverride = null,
     assistantIdOverride = null,
     preferAssistantIdOverride = false,
@@ -79,6 +79,7 @@ export default function AssistantOptions({
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const gold = useSelector(state => state.loggedUser.gold)
+    const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
     const [message, setMessage] = useState('')
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
@@ -305,19 +306,17 @@ export default function AssistantOptions({
             setInputCursorIndex={setInputCursorIndex}
         >
             <View testID="assistant-line-header" style={localStyles.headerRow}>
-                {/* AT-3034: assistant mode starts here, top left, and takes this line's assistant
-                    (its project's chat) into the sidebar. */}
+                {/* AT-3069: the edit pencil sits at the top left on every line, where the
+                    assistant-mode button was (AT-3034). It opens the line's assistant's settings;
+                    assistant mode is entered through the Anna | App switch. */}
                 <View style={localStyles.headerSide}>
-                    <AssistantModeButton
-                        inline
-                        testID="assistant-line-assistant-mode"
-                        projectId={assistantModeProjectId}
-                        assistantName={assistant.displayName}
-                        style={headerControls ? localStyles.assistantModeButton : null}
-                    />
-                    {headerControls}
+                    {!isAnonymous && (
+                        <EditAssistantButton
+                            onPress={onEditAssistant || (() => openAssistantEditor(assistant.uid, assistantProject.id))}
+                        />
+                    )}
                 </View>
-                <View style={[localStyles.headerCenter, headerControls && localStyles.headerCenterWide]}>
+                <View style={localStyles.headerCenter}>
                     {/* Rage mode's Anna takes off from this avatar when the game is started from a
                         screen that also shows the assistant line (rageLaunchAnchor.js). */}
                     <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
@@ -467,8 +466,8 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: ASSISTANT_HEADER_GAP,
     },
-    // AT-3034: the assistant-mode button (and the edit pencil on the assistant board) sits at the
-    // left edge, outside the centred line; rage mode mirrors it on the right.
+    // AT-3069: the edit pencil sits at the left edge, outside the centred line; rage mode mirrors
+    // it on the right.
     headerSide: {
         position: 'absolute',
         left: 0,
@@ -487,9 +486,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         zIndex: 1,
     },
-    assistantModeButton: {
-        marginRight: 8,
-    },
     rageButton: {
         width: 28,
         height: 28,
@@ -504,10 +500,6 @@ const localStyles = StyleSheet.create({
         maxWidth: '100%',
         minWidth: 0,
         paddingHorizontal: 36,
-    },
-    // Two controls on the left (assistant mode + edit pencil): keep the centred line clear of both.
-    headerCenterWide: {
-        paddingHorizontal: 72,
     },
     avatarWrapper: {
         width: ASSISTANT_HEADER_HEIGHT,

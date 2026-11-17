@@ -22,7 +22,7 @@ jest.mock('./AssistantOptions/AssistantOptions', () => {
         React.useEffect(() => {
             mockOptionsMounts.count += 1
         }, [])
-        return React.createElement('AssistantOptions', props, props.headerControls)
+        return React.createElement('AssistantOptions', props)
     }
 })
 jest.mock('./AssistantLineSkeleton', () => 'AssistantLineSkeleton')
@@ -49,7 +49,9 @@ describe('AssistantLine edit control', () => {
         }
     })
 
-    it('shows a compact edit button and stops its press from propagating', () => {
+    // AT-3069: the header (AssistantOptions) draws the pencil on every line; the line hands it
+    // the board's own edit action, or none (the header then opens the assistant's settings).
+    it("hands the board's edit action to the header", () => {
         const onEditAssistant = jest.fn()
         let tree
         act(() => {
@@ -62,25 +64,21 @@ describe('AssistantLine edit control', () => {
             )
         })
 
-        const button = tree.root
-            .findAllByType(TouchableOpacity)
-            .find(item => item.props.accessibilityLabel === 'Edit assistant')
-        const event = { preventDefault: jest.fn(), stopPropagation: jest.fn() }
-        act(() => button.props.onPress(event))
-
-        expect(button.findByType('Icon').props.name).toBe('edit-2')
-        expect(event.preventDefault).toHaveBeenCalled()
-        expect(event.stopPropagation).toHaveBeenCalled()
-        expect(onEditAssistant).toHaveBeenCalled()
+        expect(tree.root.findByType('AssistantOptions').props.onEditAssistant).toBe(onEditAssistant)
+        // With the header visible the line adds no second pencil of its own.
+        expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
     })
 
-    it('does not show the edit control by default', () => {
+    it('leaves the edit action to the header by default, and no longer names an assistant-mode project', () => {
         let tree
         act(() => {
             tree = renderer.create(<AssistantLine projectOverride={mockProject} />)
         })
 
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'Edit assistant' })).toHaveLength(0)
+        const options = tree.root.findByType('AssistantOptions')
+        expect(options.props.onEditAssistant).toBeNull()
+        expect(options.props).not.toHaveProperty('assistantModeProjectId')
+        expect(options.props).not.toHaveProperty('headerControls')
     })
 })
 
@@ -120,36 +118,6 @@ describe('AssistantLine switch control (AT-2430)', () => {
         })
 
         expect(tree.root.findByType('AssistantOptions').props.assistantSwitch).toBe(assistantSwitch)
-    })
-})
-
-// AT-3034: the line tells its assistant-mode button which project's chat to open in the sidebar.
-describe('AssistantLine assistant mode project', () => {
-    beforeEach(() => {
-        mockState = {
-            isMiddleScreen: false,
-            smallScreenNavigation: false,
-            defaultAssistant: mockAssistant,
-            loggedUser: { defaultProjectId: 'default-project' },
-            selectedProjectIndex: -1,
-            loggedUserProjects: [],
-        }
-    })
-    const projectOf = element => {
-        let tree
-        act(() => {
-            tree = renderer.create(element)
-        })
-        return tree.root.findByType('AssistantOptions').props.assistantModeProjectId
-    }
-
-    it("defaults to the line's own project", () => {
-        expect(projectOf(<AssistantLine projectOverride={mockProject} />)).toBe('project-1')
-    })
-
-    it('uses "Automatic" (null) without a project, and honours an explicit choice', () => {
-        expect(projectOf(<AssistantLine />)).toBeNull()
-        expect(projectOf(<AssistantLine projectOverride={mockProject} assistantModeProjectId={null} />)).toBeNull()
     })
 })
 

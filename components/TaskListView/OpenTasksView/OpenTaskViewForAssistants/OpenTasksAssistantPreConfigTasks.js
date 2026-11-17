@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import styles, { colors } from '../../../styles/global'
@@ -13,13 +13,10 @@ import TasksHelper, { RECURRENCE_NEVER } from '../../../TaskListView/Utils/Tasks
 import { WorkflowConfigurationLink } from './WorkflowTaskCreator'
 import { buildAssistantScheduleOccurrences } from '../../../../utils/assistantSchedule'
 import AssistantLine from '../../../MyDayView/AssistantLine/AssistantLine'
-import NavigationService from '../../../../utils/NavigationService'
-import { setSelectedNavItem } from '../../../../redux/actions'
-import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
+import openAssistantEditor from '../../../MyDayView/AssistantLine/openAssistantEditor'
 import AssistantTemplateReviewBanner from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/AssistantTemplateReviewBanner'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId, children }) {
-    const dispatch = useDispatch()
     const currentUser = useSelector(state => state.currentUser)
     const globalAssistants = useSelector(state => state.globalAssistants)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -27,7 +24,6 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId, children }
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const administratorUserId = useSelector(state => state.administratorUser?.uid)
-    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [tasks, setTasks] = useState([])
 
     const isGlobalAssistant = globalAssistants.find(item => item.uid === currentUser.uid)
@@ -38,14 +34,9 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId, children }
         ((!isGlobalAssistant && !currentUser.fromTemplate) ||
             (isGlobalAssistant && administratorUserId === loggedUserId))
 
-    const openAssistantEditor = () => {
-        if (showFloatPopup) return
-        NavigationService.navigate('AssistantDetailedView', {
-            assistantId: currentUser.uid,
-            projectId: isGlobalAssistant ? GLOBAL_PROJECT_ID : projectId,
-        })
-        dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
-    }
+    // AT-3069: the pencil shows for every assistant; one this person cannot edit (a global or
+    // template assistant) opens read-only in this project, with "copy to edit".
+    const openEditor = () => openAssistantEditor(currentUser.uid, projectId)
 
     useEffect(() => {
         const watcherKey = v4()
@@ -100,18 +91,16 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId, children }
                 assistantIdOverride={currentUser.uid}
                 preferAssistantIdOverride
                 scopeLastCommentToAssistant
-                showEditAssistantButton={canEditAssistant}
-                onEditAssistant={openAssistantEditor}
+                showEditAssistantButton={!isAnonymous}
+                onEditAssistant={openEditor}
             />
             {/*
-             * Gated on canEditAssistant for the same reason the notice exists:
-             * it tells you to click Edit, and the Edit button above it is
-             * rendered under exactly that condition. Showing it to someone with
-             * no way in would point at a control that is not on screen.
+             * Gated on canEditAssistant: the notice asks you to review template
+             * changes, which only someone who can edit the assistant can do. The
+             * pencil above shows for everyone (AT-3069), but for anyone else it
+             * opens the assistant read-only.
              */}
-            {canEditAssistant && (
-                <AssistantTemplateReviewBanner assistant={currentUser} onReview={openAssistantEditor} />
-            )}
+            {canEditAssistant && <AssistantTemplateReviewBanner assistant={currentUser} onReview={openEditor} />}
             {currentUser.displayName === 'Anna Alldone' && (
                 <View style={localStyles.section}>
                     <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />

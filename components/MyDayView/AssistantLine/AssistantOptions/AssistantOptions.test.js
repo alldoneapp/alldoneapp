@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
+import openAssistantEditor from '../openAssistantEditor'
 import {
     PENDING_SEND_AWAITING_REPLY,
     PENDING_SEND_FAILED,
@@ -88,7 +89,8 @@ jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => 'AssistantTaskSearc
 // The switcher reaches the popover/modal stack; its own behaviour is AssistantSwitchControl.test.js.
 jest.mock('../AssistantSwitchControl', () => 'AssistantSwitchControl')
 jest.mock('../../../RageMode/RageModeButton', () => 'RageModeButton')
-jest.mock('../../../Anna/AssistantModeButton', () => 'AssistantModeButton')
+jest.mock('../EditAssistantButton', () => 'EditAssistantButton')
+jest.mock('../openAssistantEditor', () => jest.fn())
 
 jest.mock('./AssistantAvatarButton', () => {
     const React = require('react')
@@ -178,25 +180,41 @@ describe('AssistantOptions layout', () => {
         expect(header.findByProps({ nativeID: 'rage-mode-launch-anchor' })).toBeTruthy()
     })
 
-    // AT-3034: assistant mode starts from the top left of the line, with the line's assistant.
-    it('starts assistant mode from the top left of the header with the line project and assistant', async () => {
-        const tree = await renderOptions({ assistantModeProjectId: 'selected-project' })
-
-        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
-        const button = header.findByType('AssistantModeButton')
-        expect(button.props).toMatchObject({
-            inline: true,
-            testID: 'assistant-line-assistant-mode',
-            projectId: 'selected-project',
-            assistantName: 'Assistant',
-        })
-        expect(styleAround(button)).toMatchObject({ position: 'absolute', left: 0 })
-    })
-
-    it('opens the default chat ("Automatic") when the line names no project', async () => {
+    // AT-3069: the edit pencil replaced the assistant-mode button at the top left, on every line.
+    it('puts the edit pencil at the top left of the header, where the assistant-mode button was', async () => {
         const tree = await renderOptions()
 
-        expect(tree.root.findByType('AssistantModeButton').props.projectId).toBeNull()
+        const header = tree.root.findByProps({ testID: 'assistant-line-header' })
+        const pencils = header.findAllByType('EditAssistantButton')
+        expect(pencils).toHaveLength(1)
+        expect(styleAround(pencils[0])).toMatchObject({ position: 'absolute', left: 0 })
+        expect(tree.root.findAll(node => node.props.testID === 'assistant-line-assistant-mode')).toHaveLength(0)
+    })
+
+    it("opens the line assistant's settings in the assistant's project", async () => {
+        const tree = await renderOptions()
+
+        act(() => tree.root.findByType('EditAssistantButton').props.onPress())
+        expect(openAssistantEditor).toHaveBeenCalledWith('assistant-1', 'default-project')
+    })
+
+    it('uses the edit action it is handed instead', async () => {
+        const onEditAssistant = jest.fn()
+        const tree = await renderOptions({ onEditAssistant })
+
+        act(() => tree.root.findByType('EditAssistantButton').props.onPress())
+        expect(onEditAssistant).toHaveBeenCalled()
+        expect(openAssistantEditor).not.toHaveBeenCalled()
+    })
+
+    it('shows no pencil to an anonymous visitor', async () => {
+        mockState.loggedUser = { ...mockState.loggedUser, isAnonymous: true }
+        try {
+            const tree = await renderOptions()
+            expect(tree.root.findAllByType('EditAssistantButton')).toHaveLength(0)
+        } finally {
+            mockState.loggedUser = { ...mockState.loggedUser, isAnonymous: false }
+        }
     })
 
     it('puts the + and the mic into the toolbar instead of floating them in the field', async () => {
@@ -225,15 +243,6 @@ describe('AssistantOptions layout', () => {
         const control = switched.root.findByType('AssistantSwitchControl')
         expect(control.props.label).toBe('Assistant')
         expect(control.props.onSelect).toBe(assistantSwitch.onSelect)
-    })
-
-    it('renders the edit control it is handed in the header', async () => {
-        const tree = await renderOptions({ headerControls: <Text testID="edit-control">Edit</Text> })
-
-        expect(tree.root.findByProps({ testID: 'edit-control' })).toBeTruthy()
-        // The assistant-mode button leads, the edit pencil follows it.
-        const side = tree.root.findByType('AssistantModeButton').parent
-        expect(side.findByProps({ testID: 'edit-control' })).toBeTruthy()
     })
 
     // AT-2355: the mic used to appear only on hover/focus, i.e. on touch only after the field had

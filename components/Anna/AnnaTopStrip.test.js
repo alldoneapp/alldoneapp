@@ -21,8 +21,9 @@ jest.mock('../TopBar/TopBarStatisticArea', () => props => {
     return null
 })
 
-// What the statistics need with what they show: labels, the done-task count. No XP bar since AT-3068.
-const neededFor = ({ compact, showTasksStatistics }) => 120 + (compact ? 0 : 200) + (showTasksStatistics ? 60 : 0)
+// What the statistics need with what they show: the XP bar, labels, the done-task count.
+const neededFor = ({ showXp, compact, showTasksStatistics }) =>
+    120 + (showXp ? 100 : 0) + (compact ? 0 : 200) + (showTasksStatistics ? 60 : 0)
 
 let room = 0
 let container
@@ -70,39 +71,41 @@ afterEach(() => {
 })
 
 describe('the strip’s statistics when short of room', () => {
-    it('shows everything where it fits, and never an XP bar (AT-3068)', () => {
+    it('shows everything where it fits', () => {
         room = 600
         render()
-        expect(mockStatistics).toEqual({ compact: false, showTasksStatistics: true })
-        expect(mockStatistics).not.toHaveProperty('showXp')
+        expect(mockStatistics).toEqual({ showXp: true, compact: false, showTasksStatistics: true })
     })
 
-    it('drops the labels first, then the done-task count, and takes them back', () => {
-        // Everything needs 380, with icons 180, without the count 120.
-        room = 300
+    it('drops the XP bar first, then the labels, then the done-task count, and takes them back', () => {
+        // Everything needs 480, without the XP bar 380, with icons 180, without the count 120.
+        room = 400
         render()
-        expect(mockStatistics).toEqual({ compact: true, showTasksStatistics: true })
+        expect(mockStatistics).toEqual({ showXp: false, compact: false, showTasksStatistics: true })
 
-        resizeTo(350)
-        // Not yet the 380 the labels needed: they stay away, so nothing flickers.
-        expect(mockStatistics).toEqual({ compact: true, showTasksStatistics: true })
+        resizeTo(450)
+        // Not yet the 480 the XP bar needed: it stays away, so nothing flickers.
+        expect(mockStatistics).toEqual({ showXp: false, compact: false, showTasksStatistics: true })
+
+        resizeTo(300)
+        expect(mockStatistics).toEqual({ showXp: false, compact: true, showTasksStatistics: true })
 
         resizeTo(150)
-        expect(mockStatistics).toEqual({ compact: true, showTasksStatistics: false })
+        expect(mockStatistics).toEqual({ showXp: false, compact: true, showTasksStatistics: false })
 
         // One size change takes back every step the side is wide enough for.
         resizeTo(1000)
-        expect(mockStatistics).toEqual({ compact: false, showTasksStatistics: true })
+        expect(mockStatistics).toEqual({ showXp: true, compact: false, showTasksStatistics: true })
     })
 
     it('never takes a step back on a mere re-render', () => {
-        room = 300
+        room = 400
         render()
-        expect(mockStatistics.compact).toBe(true)
+        expect(mockStatistics.showXp).toBe(false)
         room = 1000
         render()
         render()
-        expect(mockStatistics.compact).toBe(true)
+        expect(mockStatistics.showXp).toBe(false)
     })
 })
 
