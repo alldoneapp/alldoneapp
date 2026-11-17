@@ -1573,16 +1573,20 @@
    bezel and app is padding of .anna-workspace, horizontal only: the app touches the
    bezel's inner top and bottom edge. That padding is outside .anna-workspace-content,
    the box useWorkspaceViewportOwner measures, so the floating "+", inline fixed overlays
-   and popover bounds start at the app's own edge with no compensation of their own. */
+   and popover bounds start at the app's own edge with no compensation of their own.
+   AT-3065: the bezel is the chat card's fine line (1px in --anna-border, so it follows light and
+   dark mode like the chat), and the gutter inside it is narrow; it was 6px of --anna-bezel with
+   24-48px gutters. The notch keeps the stronger --anna-bezel so it still points at the screen. */
 .anna-zoom-active {
-    --anna-workspace-gutter: clamp(24px, 3.5vw, 48px);
-    --anna-workspace-bezel: 6px;
-    --anna-workspace-bezel-color: var(--anna-bezel);
+    --anna-workspace-gutter: 12px;
+    --anna-workspace-bezel: 1px;
+    --anna-workspace-bezel-color: var(--anna-border);
+    --anna-workspace-notch-color: var(--anna-bezel);
     --anna-workspace-radius: 14px;
 }
 @media (max-width: 1100px) {
     .anna-zoom-active {
-        --anna-workspace-gutter: clamp(16px, 2.5vw, 24px);
+        --anna-workspace-gutter: 8px;
         --anna-workspace-radius: 12px;
     }
 }
@@ -2612,7 +2616,7 @@
 
 /* Desktop assistant mode (variant C): a strip across the top holds the view switch and Alldone's
    global controls (gold, search, chats, updates); below it the chat and the workspace are two
-   cards. The chat's screen picker points at the workspace with a notch in the bezel colour, so the
+   cards. The chat's screen picker points at the workspace with a notch in the bezel grey, so the
    chat visibly drives the screen, and the notch lights up with the bezel while a tool changes it. */
 .anna-strip {
     display: none;
@@ -2710,7 +2714,8 @@
     .anna-zoom-active .anna-divider:focus-visible::after {
         opacity: 1;
     }
-    /* The notch: from the chat card's edge, at the picker's height, into the screen's bezel. */
+    /* The notch: from the chat card's edge, at the picker's height, into the screen's bezel. Its own
+       colour (AT-3065): in the bezel's fine line colour it would barely show. */
     .anna-zoom-active:not(.anna-chat-only) .anna-conversation::after {
         content: '';
         position: absolute;
@@ -2721,7 +2726,7 @@
         height: 0;
         border-top: 10px solid transparent;
         border-bottom: 10px solid transparent;
-        border-left: 15px solid var(--anna-workspace-bezel-color);
+        border-left: 15px solid var(--anna-workspace-notch-color);
         pointer-events: none;
         transition: border-color 200ms ease;
     }
