@@ -88,7 +88,10 @@ const {
     resolveTarget,
 } = require('./workflowStepMove')
 const { executeMoveTaskWorkflowStepTool } = require('../Assistant/workflowStepMoveTool')
-const { notifyDelegationOriginOnHumanStep } = require('../Assistant/delegationReviewNotice')
+const {
+    notifyDelegationOriginOnHumanStep,
+    notifyDelegationOriginOnStepChange,
+} = require('../Assistant/delegationReviewNotice')
 
 const PROJECT = 'p1'
 const TASK = 't1'
@@ -413,6 +416,8 @@ describe('move_task_workflow_step tool', () => {
 
         expect(result).toMatchObject({ success: true, moved: true, to: { label: 'Merge' } })
         expect(storedTask().workflowStepMove.runLockId).toBe('lock-m1')
+        // Moved in the task's own chat: the parent conversation still hears of it.
+        expect(storedTask().workflowStepMove.fromConversation).toBeNull()
         // The assistant's own reply in this chat says so; no extra line.
         expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
     })
@@ -452,6 +457,7 @@ describe('move_task_workflow_step tool', () => {
 
         expect(result).toMatchObject({ success: true, moved: true })
         expect(storedTask().workflowStepMove.runLockId).toBeNull()
+        expect(storedTask().workflowStepMove.fromConversation).toBeNull()
     })
 
     it('reads the workflow without moving when no target is given', async () => {
@@ -497,6 +503,12 @@ describe('move_task_workflow_step tool', () => {
 
             expect(result).toMatchObject({ success: true, moved: true, taskId: TASK })
             expect(storedTask().workflowStepMove.runLockId).toBeNull()
+            // Asked for here, so this conversation is not told again by the step-change notice.
+            expect(storedTask().workflowStepMove.fromConversation).toEqual({
+                projectId: PROJECT,
+                objectType: 'topics',
+                objectId: TOPIC,
+            })
             expect(mockCreateInitialStatusMessage).toHaveBeenCalledWith(
                 PROJECT,
                 'tasks',
@@ -638,5 +650,152 @@ describe('notifyDelegationOriginOnHumanStep', () => {
 
     it('ignores tasks that were not delegated', async () => {
         expect(await notify(taskAt(IMPLEMENT), taskAt(REVIEW))).toBe(false)
+    })
+})
+
+describe('notifyDelegationOriginOnStepChange', () => {
+    const delegatedAt = (stepId, overrides = {}) =>
+        taskAt(stepId, {
+            taskMetadata: { delegation: { ownerId: OWNER, assistantId: CTO, requiresReview: true } },
+            completed: 7000,
+            ...overrides,
+        })
+    const movedByOwner = (stepId, extra = {}) => ({
+        workflowStepMove: { stepId, actorUserId: OWNER, enteredAt: 7000, ...extra },
+    })
+    const origin = (overrides = {}) =>
+        mockStore.set(`delegatedTaskOrigins/${PROJECT}__${TASK}`, {
+            ownerId: OWNER,
+            originProjectId: PROJECT,
+            originObjectType: 'topics',
+            originObjectId: 'cto-chat',
+            originAssistantId: CTO,
+            ...overrides,
+        })
+
+    beforeEach(() => {
+        seed(delegatedAt(MERGE))
+        origin()
+    })
+
+    const notify = (oldTask, newTask) =>
+        notifyDelegationOriginOnStepChange({ db: mockDb, projectId: PROJECT, taskId: TASK, oldTask, newTask })
+    const posted = () => mockCreateInitialStatusMessage.mock.calls.map(call => call[4])
+
+    it('tells the parent chat, once, when the user moves the task on in the task itself', async () => {
+        const newTask = delegatedAt(MERGE, movedByOwner(MERGE))
+        expect(await notify(delegatedAt(REVIEW), newTask)).toBe(true)
+        expect(await notify(delegatedAt(REVIEW), newTask)).toBe(false)
+
+        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
+        const [projectId, objectType, objectId, assistantId, text, notifyIds, , followerIds] =
+            mockCreateInitialStatusMessage.mock.calls[0]
+        expect([projectId, objectType, objectId, assistantId]).toEqual([PROJECT, 'topics', 'cto-chat', CTO])
+        expect(text).toBe(
+            [
+                '🔀 AT-1 “Fix the popup” moved from “Review” to “Merge”; the assistant works on it now.',
+                'You moved it yourself.',
+                `https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`,
+            ].join('\n')
+        )
+        // A routine update rings no bell; the user still follows the chat.
+        expect(notifyIds).toEqual([])
+        expect(followerIds).toEqual([OWNER])
+    })
+
+    it('reports moves the workflow makes and the completion', async () => {
+        expect(await notify(delegatedAt(-1), delegatedAt(IMPLEMENT))).toBe(true)
+        expect(await notify(delegatedAt(MERGE), delegatedAt(MERGE, { done: true, completed: 9000 }))).toBe(true)
+        expect(posted()[0]).toContain('moved from “Open” to “Implement”; the assistant works on it now.')
+        expect(posted()[0]).not.toContain('You moved it')
+        expect(posted()[1]).toContain('✅ AT-1 “Fix the popup” is done (it was at “Merge”).')
+    })
+
+    it('says when the user sent it back to their own step', async () => {
+        expect(await notify(delegatedAt(MERGE), delegatedAt(REVIEW, movedByOwner(REVIEW)))).toBe(true)
+        expect(posted()[0]).toContain('moved from “Merge” to “Review”; it waits for you.')
+    })
+
+    it('leaves the delegation start and the review handover to the messages that already say them', async () => {
+        expect(await notify(delegatedAt(-1), delegatedAt(IMPLEMENT, { delegationStartedAt: 7000 }))).toBe(false)
+        expect(await notify(delegatedAt(IMPLEMENT), delegatedAt(REVIEW))).toBe(false)
+        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
+    })
+
+    it('stays quiet when the move was asked for in the parent chat itself', async () => {
+        const fromParent = movedByOwner(MERGE, {
+            fromConversation: { projectId: PROJECT, objectType: 'topics', objectId: 'cto-chat' },
+        })
+        expect(await notify(delegatedAt(REVIEW), delegatedAt(MERGE, fromParent))).toBe(false)
+
+        // Any of the user's daily Anna threads is the same conversation.
+        origin({ originObjectId: 'AnnaChat20261116karsten', originAssistantId: 'anna' })
+        const fromToday = movedByOwner(MERGE, {
+            fromConversation: { projectId: PROJECT, objectType: 'topics', objectId: 'AnnaChat20261117karsten' },
+        })
+        expect(await notify(delegatedAt(REVIEW), delegatedAt(MERGE, fromToday))).toBe(false)
+        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
+    })
+
+    it('tells the parent chat about a move asked for in another conversation', async () => {
+        const fromElsewhere = movedByOwner(MERGE, {
+            fromConversation: { projectId: PROJECT, objectType: 'topics', objectId: 'AnnaChat20261117karsten' },
+        })
+        expect(await notify(delegatedAt(REVIEW), delegatedAt(MERGE, fromElsewhere))).toBe(true)
+        expect(posted()[0]).toContain('moved from “Review” to “Merge”')
+        expect(posted()[0]).toContain('You moved it yourself.')
+    })
+
+    describe('moves made in the browser (step picker, checkbox)', () => {
+        const pickerStamp = (stepId, actorUserId = OWNER, extra = {}) => ({
+            workflowStepMove: {
+                stepId,
+                enteredAt: null,
+                runLockId: null,
+                actorUserId,
+                at: 8000,
+                fromConversation: null,
+                ...extra,
+            },
+        })
+
+        it('names the owner for a move back to Open, which has no entry time', async () => {
+            const reopened = delegatedAt(-1, { completed: null, ...pickerStamp(-1) })
+            expect(await notify(delegatedAt(MERGE), reopened)).toBe(true)
+            expect(posted()[0]).toContain('↩️ AT-1 “Fix the popup” is back in Open (it was at “Merge”).')
+            expect(posted()[0]).toContain('You moved it yourself.')
+        })
+
+        it('says the owner completed it with the checkbox', async () => {
+            const done = delegatedAt(MERGE, {
+                done: true,
+                completed: 9000,
+                ...pickerStamp(-2, OWNER, { enteredAt: 9000 }),
+            })
+            expect(await notify(delegatedAt(MERGE), done)).toBe(true)
+            expect(posted()[0]).toContain('✅ AT-1 “Fix the popup” is done (it was at “Merge”).')
+            expect(posted()[0]).toContain('You completed it yourself.')
+        })
+
+        it('names another member who moved it', async () => {
+            mockStore.set(`users/${COLLEAGUE}`, { displayName: 'Daniela' })
+            const moved = delegatedAt(MERGE, pickerStamp(MERGE, COLLEAGUE, { enteredAt: 7000 }))
+            expect(await notify(delegatedAt(REVIEW), moved)).toBe(true)
+            expect(posted()[0]).toContain('Daniela moved it.')
+        })
+
+        it('does not name anyone from a stamp an earlier move left behind', async () => {
+            const stale = pickerStamp(MERGE, COLLEAGUE, { enteredAt: 1000 })
+            const workflowMove = delegatedAt(MERGE, stale)
+            expect(await notify(delegatedAt(REVIEW, stale), workflowMove)).toBe(true)
+            expect(posted()[0]).toContain('moved from “Review” to “Merge”')
+            expect(posted()[0]).not.toContain('moved it.')
+            expect(posted()[0]).not.toContain('yourself')
+        })
+    })
+
+    it('ignores tasks that were not delegated and changes that keep the step', async () => {
+        expect(await notify(taskAt(REVIEW), taskAt(MERGE))).toBe(false)
+        expect(await notify(delegatedAt(MERGE), delegatedAt(MERGE, { name: 'Renamed' }))).toBe(false)
     })
 })

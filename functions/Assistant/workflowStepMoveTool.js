@@ -230,6 +230,10 @@ async function executeMoveTaskWorkflowStepTool({
         humanTurn,
         runLockId: inOwnThread ? runtime?.runLockId || null : null,
         feedUser,
+        fromConversation:
+            !inOwnThread && runtime?.sourceChannel !== 'mcp' && runtime?.objectId
+                ? { projectId: runtime.projectId || null, objectType: runtime.objectType, objectId: runtime.objectId }
+                : null,
     })
 
     if (result.success && result.moved && assistantId && !inOwnThread) {

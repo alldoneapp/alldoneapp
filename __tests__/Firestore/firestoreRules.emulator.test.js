@@ -3126,6 +3126,47 @@ describe('task identity fields', () => {
         // Back to Open starts no run.
         await assertSucceeds(updateDoc(taskRef(memberDb(), 'assistant-workflow'), { stepHistory: [-1] }))
     })
+
+    it('lets a browser stamp only itself as the mover of a workflow step', async () => {
+        const serverStamp = {
+            stepId: 'step-2',
+            enteredAt: 1000,
+            runLockId: 'chat-run-1',
+            actorUserId: TEAMMATE_ID,
+            at: 1000,
+            fromConversation: { projectId: PROJECT_ID, objectType: 'topics', objectId: 'anna-chat' },
+        }
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(taskRef(context.firestore(), 'moved-task'), baseTask({ workflowStepMove: serverStamp }))
+        })
+        const stamp = overrides => ({
+            stepId: 'step-3',
+            enteredAt: 2000,
+            runLockId: null,
+            actorUserId: MEMBER_ID,
+            at: 2000,
+            fromConversation: null,
+            ...overrides,
+        })
+
+        // An edit that leaves the server's stamp alone is fine.
+        await assertSucceeds(updateDoc(taskRef(memberDb(), 'moved-task'), { name: 'Renamed' }))
+        // Naming someone else, a run lock or a conversation is the server's to write.
+        await assertFails(
+            updateDoc(taskRef(memberDb(), 'moved-task'), { workflowStepMove: stamp({ actorUserId: TEAMMATE_ID }) })
+        )
+        await assertFails(
+            updateDoc(taskRef(memberDb(), 'moved-task'), { workflowStepMove: stamp({ runLockId: 'run-x' }) })
+        )
+        await assertFails(
+            updateDoc(taskRef(memberDb(), 'moved-task'), {
+                workflowStepMove: stamp({ fromConversation: { objectId: 'anna-chat' } }),
+            })
+        )
+        await assertSucceeds(updateDoc(taskRef(memberDb(), 'moved-task'), { workflowStepMove: stamp() }))
+        // A project move re-creates the document in the browser with the stamp it had.
+        await assertSucceeds(setDoc(taskRef(memberDb(), 'moved-copy'), baseTask({ workflowStepMove: serverStamp })))
+    })
 })
 
 describe('recurring assistant task activation', () => {

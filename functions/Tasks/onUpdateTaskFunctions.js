@@ -15,7 +15,10 @@ const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
-const { notifyDelegationOriginOnHumanStep } = require('../Assistant/delegationReviewNotice')
+const {
+    notifyDelegationOriginOnHumanStep,
+    notifyDelegationOriginOnStepChange,
+} = require('../Assistant/delegationReviewNotice')
 const { syncDelegatedTaskOriginOpenState } = require('../Assistant/delegatedTasksContext')
 const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
@@ -396,6 +399,11 @@ const onUpdateTask = async (taskId, projectId, change, eventId) => {
     promises.push(
         notifyDelegationOriginOnHumanStep({ projectId, taskId, oldTask, newTask }).catch(error =>
             console.error('[delegationReviewNotice] Review notice failed', { taskId, error: error.message })
+        )
+    )
+    promises.push(
+        notifyDelegationOriginOnStepChange({ projectId, taskId, oldTask, newTask }).catch(error =>
+            console.error('[delegationReviewNotice] Step change notice failed', { taskId, error: error.message })
         )
     )
     promises.push(

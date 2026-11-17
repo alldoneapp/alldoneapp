@@ -124,6 +124,13 @@ server reads only the bound value:
   comment (`workflowAiPromptOverride`) runs there only when the owner wrote it (`requestedByUserId`)
   in that same transition. The payer must be in `projects/{id}.userIds` at enqueue and at dispatch.
 - Calendar routing feedback markers must carry the writer as `requestedByUserId`.
+- A workflow step move names its mover in `workflowStepMove.actorUserId`; the task update fan-out
+  acts on it (the parent conversation of a delegated task says who moved it, and the review notice
+  stays quiet for an owner who moved the task onto their own step). On update a browser may stamp
+  only itself, with `runLockId` and `fromConversation` null, which only the server's chat moves set
+  (`workflowStepMoveBoundToWriter`). Not bound on create, because a project move re-creates the task
+  with its old stamp; there the stamp names a step entry that no update made, so nothing acts on it.
+  See `assistant-runs.md`.
 - Recurring assistant tasks: each user may add or change only their own activation entry, point it
   only at a project they belong to, and name only themselves as activator or creator. The global
   catalog (`assistantTasks/globalProject`) is created, deleted and re-prompted by the administrator.

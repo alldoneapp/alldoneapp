@@ -19,7 +19,7 @@
 
 const admin = require('firebase-admin')
 
-const { OPEN_STEP, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
+const { DONE_STEP, OPEN_STEP, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { isAiWorkflowStep } = require('../Tasks/workflowStepHelper')
 const { isDelegatedWorkflowTask } = require('../shared/delegatedTaskWorkflow')
 const { describeTaskWorkflow, getTaskPosition, loadTaskWorkflow } = require('../Tasks/workflowStepMove')
@@ -147,4 +147,175 @@ async function notifyDelegationOriginOnHumanStep({
     return true
 }
 
-module.exports = { buildNoticeText, notifyDelegationOriginOnHumanStep }
+// --- Every other step change (2026-11-17) -------------------------------------------------------
+//
+// The user goes on in the delegated task (moves it to "Merge", sends it back, completes it) or its
+// workflow moves on. The conversation the task came from gets one short line, so the user and its
+// assistant can pick the work up there. Left out, because something else already says it:
+// - the delegation start itself: the delegating conversation just reported it;
+// - a landing on the owner's own step that the owner did not make: the 📋 review notice above;
+// - a move asked for in the origin conversation itself (any of the user's Anna threads counts as one
+//   conversation): the assistant there confirmed it.
+// No bell: this is a routine update, unlike the review notice.
+
+const stepLabel = (workflow, stepId) => {
+    if (stepId === OPEN_STEP) return 'Open'
+    if (stepId === DONE_STEP) return 'Done'
+    const description = workflow?.[stepId]?.description
+    return (typeof description === 'string' && description.trim()) || 'Workflow step'
+}
+
+const WAITING_PHRASES = {
+    assistant: 'the assistant works on it now',
+    you: 'it waits for you',
+    'task owner': 'it waits for you',
+    'another member': 'it waits for another member',
+}
+
+const buildActorLine = ({ toStepId, actorUserId, actorName, ownerId }) => {
+    if (!actorUserId) return null
+    const completed = toStepId === DONE_STEP
+    if (actorUserId === ownerId) return completed ? 'You completed it yourself.' : 'You moved it yourself.'
+    return `${actorName || 'Another member'} ${completed ? 'completed' : 'moved'} it.`
+}
+
+const buildStepChangeText = ({ task, fromLabel, toStepId, toLabel, handledBy, actorUserId, actorName, link }) => {
+    const label = buildTaskLabel(task)
+    let line
+    if (toStepId === DONE_STEP) line = `✅ ${label} is done (it was at “${fromLabel}”).`
+    else if (toStepId === OPEN_STEP) line = `↩️ ${label} is back in Open (it was at “${fromLabel}”).`
+    else {
+        const waiting = WAITING_PHRASES[handledBy]
+        line = `🔀 ${label} moved from “${fromLabel}” to “${toLabel}”${waiting ? `; ${waiting}` : ''}.`
+    }
+    const actorLine = buildActorLine({ toStepId, actorUserId, actorName, ownerId: task.userId })
+    return [line, ...(actorLine ? [actorLine] : []), link].join('\n')
+}
+
+const sameConversation = (conversation, origin, userId) => {
+    if (!conversation?.objectId || !origin?.originObjectId) return false
+    if (conversation.objectId === origin.originObjectId) return true
+    const { isAnnaChatId } = require('./annaWorkspace')
+    return isAnnaChatId(conversation.objectId, userId) && isAnnaChatId(origin.originObjectId, userId)
+}
+
+/**
+ * What a position change of a delegated task means for its origin conversation: null (nothing to
+ * say), 'review' (the 📋 notice says it) or { actorUserId, fromConversation } for a step line.
+ *
+ * The `workflowStepMove` stamp says who moved the task: a chat move on the server, or the step picker
+ * and the checkbox in the browser (bound to the writer by firestore.rules). It counts for this change
+ * when it names the step the task landed on and was written with this update, or entered the step at
+ * the task's `completed`. An older stamp says nothing about this move.
+ */
+const classifyStepChange = ({ oldTask = {}, newTask, workflow = {} }) => {
+    const from = getTaskPosition(oldTask || {})
+    const to = getTaskPosition(newTask)
+    if (from === to) return null
+    if (from === OPEN_STEP && newTask.delegationStartedAt != null && newTask.delegationStartedAt === newTask.completed)
+        return null
+    const move = newTask.workflowStepMove
+    const sameStep = !!move && move.stepId === to
+    const enteredWithMove = sameStep && move.enteredAt != null && move.enteredAt === newTask.completed
+    const writtenNow = sameStep && move.at != null && move.at !== oldTask?.workflowStepMove?.at
+    const step = workflow[to]
+    // Same test as the review notice, so exactly one of the two speaks.
+    const ownerEnteredOwnStep = enteredWithMove && move.actorUserId === newTask.userId
+    if (
+        to !== OPEN_STEP &&
+        to !== DONE_STEP &&
+        step &&
+        !isAiWorkflowStep(step) &&
+        step.reviewerUid === newTask.userId &&
+        !ownerEnteredOwnStep
+    )
+        return 'review'
+    const stamped = enteredWithMove || writtenNow
+    return {
+        actorUserId: stamped ? move.actorUserId || null : null,
+        fromConversation: stamped ? move.fromConversation || null : null,
+    }
+}
+
+/**
+ * Tells the conversation a delegated task came from that its workflow position changed. Returns true
+ * when a line was posted.
+ */
+async function notifyDelegationOriginOnStepChange({
+    db = admin.firestore(),
+    projectId,
+    taskId,
+    oldTask = {},
+    newTask = {},
+}) {
+    if (!newTask || newTask.parentId || !isDelegatedWorkflowTask(newTask)) return false
+    if (getTaskPosition(newTask) === getTaskPosition(oldTask || {})) return false
+
+    const task = { ...newTask, id: taskId }
+    const { loadDelegatedTaskOrigin } = require('./annaTaskDelegation')
+    const origin = await loadDelegatedTaskOrigin(db, projectId, task)
+    if (!origin.originObjectId || !origin.originAssistantId || !origin.originProjectId) return false
+
+    const workflow = await loadTaskWorkflow(db, projectId, task)
+    const change = classifyStepChange({ oldTask, newTask: task, workflow })
+    if (!change || change === 'review') return false
+    if (sameConversation(change.fromConversation, origin, task.userId)) return false
+
+    const to = getTaskPosition(task)
+    const receiptRef = db.doc(`delegatedTaskOrigins/${projectId}__${taskId}`)
+    const key = buildNoticeKey(task, to)
+    const claimed = await db.runTransaction(async transaction => {
+        const receipt = await transaction.get(receiptRef)
+        if (!receipt.exists || receipt.data()?.lastStepNoticeKey === key) return false
+        transaction.update(receiptRef, { lastStepNoticeKey: key, lastStepNoticeAt: Date.now() })
+        return true
+    })
+    if (!claimed) return false
+
+    const description = describeTaskWorkflow(task, workflow, task.userId)
+    let actorName = null
+    if (change.actorUserId && change.actorUserId !== task.userId) {
+        const actor = await db
+            .doc(`users/${change.actorUserId}`)
+            .get()
+            .catch(() => null)
+        actorName = (actor?.exists && actor.data()?.displayName) || null
+    }
+    const text = buildStepChangeText({
+        task,
+        fromLabel: stepLabel(workflow, getTaskPosition(oldTask || {})),
+        toStepId: to,
+        toLabel: stepLabel(workflow, to),
+        handledBy: description?.current?.handledBy || null,
+        actorUserId: change.actorUserId,
+        actorName,
+        link: `${getBaseUrl()}/projects/${projectId}/tasks/${taskId}/chat`,
+    })
+
+    const { createInitialStatusMessage } = require('./assistantStatusHelper')
+    await createInitialStatusMessage(
+        origin.originProjectId,
+        origin.originObjectType || 'topics',
+        origin.originObjectId,
+        origin.originAssistantId,
+        text,
+        [],
+        [],
+        [task.userId]
+    )
+    console.log('[delegationReviewNotice] Announced a step change in the origin conversation', {
+        projectId,
+        taskId,
+        to,
+        originObjectId: origin.originObjectId,
+    })
+    return true
+}
+
+module.exports = {
+    buildNoticeText,
+    buildStepChangeText,
+    classifyStepChange,
+    notifyDelegationOriginOnHumanStep,
+    notifyDelegationOriginOnStepChange,
+}

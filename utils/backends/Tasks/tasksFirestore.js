@@ -335,6 +335,38 @@ const updateEditionData = data => {
 export const buildWorkflowPayerStamp = task =>
     task?.workflowTask === true ? { workflowPayerUserId: store.getState().loggedUser.uid } : {}
 
+// Who moved the task through its workflow by hand, for the server: the line in the conversation a
+// delegated task came from then says "You moved it yourself" (functions/Assistant/
+// delegationReviewNotice.js). firestore.rules binds the mover to the writer; the run lock and the
+// conversation are set only by the server's chat moves.
+export const buildWorkflowStepMoveStamp = (stepId, enteredAt) => {
+    const now = Date.now()
+    return {
+        workflowStepMove: {
+            stepId,
+            enteredAt: typeof enteredAt === 'number' ? enteredAt : null,
+            runLockId: null,
+            actorUserId: store.getState().loggedUser.uid,
+            at: now,
+            fromConversation: null,
+        },
+    }
+}
+
+// Undo restores the task's position, not who moved it last: restoring an earlier stamp would write
+// another member's name, or a server-only run lock, and the rules refuse both.
+// Where the checkbox reopens a task: its last workflow step, or Open (also the legacy 'Open').
+const getReopenedStepId = task => {
+    const history = Array.isArray(task?.stepHistory) ? task.stepHistory : []
+    const last = history[history.length - 1]
+    return last === undefined || last === 'Open' ? OPEN_STEP : last
+}
+
+const withoutWorkflowStepMoveStamp = data => {
+    const { workflowStepMove, ...rest } = data
+    return rest
+}
+
 const buildManuallyPinnedCalendarData = (task, sourceProjectId, targetProjectId, requestedByUserId) => {
     if (!task?.calendarData) return null
 
@@ -3121,6 +3153,7 @@ export async function moveTasksFromMiddleOfWorkflow(
             store.getState().loggedUser.uid
         ),
         ...buildWorkflowPayerStamp(task),
+        ...buildWorkflowStepMoveStamp(stepToMoveId, updateData.completed),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
         sortIndex,
@@ -3128,10 +3161,11 @@ export async function moveTasksFromMiddleOfWorkflow(
     }
     updateTaskData(projectId, task.id, taskUpdateData, batch)
 
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
+    const undoableTaskUpdateData = withoutWorkflowStepMoveStamp(taskUpdateData)
+    const taskChanges = [{ taskId: task.id, afterChanges: undoableTaskUpdateData }]
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
+        taskChanges[0].afterChanges = { ...undoableTaskUpdateData, ...promotionChanges }
         const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
@@ -3392,6 +3426,7 @@ export async function moveTasksFromOpen(
             store.getState().loggedUser.uid
         ),
         ...buildWorkflowPayerStamp(task),
+        ...buildWorkflowStepMoveStamp(stepToMoveId, updateData.completed),
         ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
@@ -3400,10 +3435,11 @@ export async function moveTasksFromOpen(
     }
     updateTaskData(projectId, task.id, taskUpdateData, batch)
 
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
+    const undoableTaskUpdateData = withoutWorkflowStepMoveStamp(taskUpdateData)
+    const taskChanges = [{ taskId: task.id, afterChanges: undoableTaskUpdateData }]
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
+        taskChanges[0].afterChanges = { ...undoableTaskUpdateData, ...promotionChanges }
         const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
@@ -3527,16 +3563,18 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         // handoff so landing on an AI step runs its configured prompt.
         workflowAiPromptOverride: null,
         ...buildWorkflowPayerStamp(task),
+        ...buildWorkflowStepMoveStamp(stepToMoveId, updateData.completed),
         done: false,
         inDone: false,
         sortIndex,
     }
     updateTaskData(projectId, task.id, taskUpdateData, batch)
 
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
+    const undoableTaskUpdateData = withoutWorkflowStepMoveStamp(taskUpdateData)
+    const taskChanges = [{ taskId: task.id, afterChanges: undoableTaskUpdateData }]
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
+        taskChanges[0].afterChanges = { ...undoableTaskUpdateData, ...promotionChanges }
         const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
@@ -3611,7 +3649,11 @@ export async function setTaskStatus(
         updateData.currentReviewerId = isDone ? DONE_STEP : task.userId
     }
 
-    updateTaskData(projectId, taskId, updateData, taskBatch)
+    // The checkbox completes or reopens; say who, as the step picker does. Kept out of undo below.
+    const stepMoveStamp = task.parentId
+        ? {}
+        : buildWorkflowStepMoveStamp(isDone ? DONE_STEP : getReopenedStepId(task), completedDate)
+    updateTaskData(projectId, taskId, { ...updateData, ...stepMoveStamp }, taskBatch)
 
     if (isDone) {
         updateSubtasksCompletedState(projectId, task.subtaskIds, completed, taskBatch)

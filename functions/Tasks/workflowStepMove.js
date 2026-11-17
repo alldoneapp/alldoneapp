@@ -259,6 +259,7 @@ const buildWorkflowMoveUpdate = ({
     note,
     runLockId,
     feedUser = null,
+    fromConversation = null,
 }) => {
     const position = getTaskPosition(task)
     const stepIds = getSortedWorkflowStepIds(workflow)
@@ -370,6 +371,15 @@ const buildWorkflowMoveUpdate = ({
                 runLockId: runLockId || null,
                 actorUserId,
                 at: now,
+                // The conversation the move was asked for in, when that is not the task's own chat.
+                // That conversation already confirms the move, so the origin is not told again.
+                fromConversation: fromConversation?.objectId
+                    ? {
+                          projectId: fromConversation.projectId || null,
+                          objectType: fromConversation.objectType || null,
+                          objectId: fromConversation.objectId,
+                      }
+                    : null,
             },
         },
     }
@@ -423,6 +433,7 @@ async function moveTaskWorkflowStep({
     humanTurn = false,
     runLockId = null,
     feedUser = null,
+    fromConversation = null,
     now = Date.now,
 }) {
     if (!projectId || !taskId || !actorUserId) throw new Error('projectId, taskId and actorUserId are required')
@@ -488,6 +499,7 @@ async function moveTaskWorkflowStep({
             note,
             runLockId,
             feedUser,
+            fromConversation,
         })
         transaction.set(taskRef, move.update, { merge: true })
 

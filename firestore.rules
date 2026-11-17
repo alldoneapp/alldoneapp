@@ -793,6 +793,20 @@ service cloud.firestore {
         (override is map && override.get('requestedByUserId', request.auth.uid) == request.auth.uid);
     }
 
+    // A workflow step move names its mover (workflowStepMove.actorUserId). The server acts on it: the
+    // parent conversation of a delegated task is told "You moved it yourself", and the review notice
+    // stays quiet for an owner who moved the task onto their own step. A browser therefore stamps only
+    // itself, never a run lock or a conversation, which only the server's chat moves set. Update only:
+    // moving a task to another project re-creates the document in the browser with its old stamp.
+    function workflowStepMoveBoundToWriter(before, after) {
+      let move = after.get('workflowStepMove', null);
+      return move == null || move == before.get('workflowStepMove', null) ||
+        (move is map &&
+          move.get('actorUserId', '') == request.auth.uid &&
+          move.get('runLockId', null) == null &&
+          move.get('fromConversation', null) == null);
+    }
+
     // Links that the app hands to window.open / <a href> / <iframe src> must be web links: a
     // javascript: URL in any of them runs script in a colleague's session when clicked (security
     // audit 2026-11, NV-03/NV-36; the client also refuses them in utils/safeUrl.js). An existing
@@ -840,6 +854,7 @@ service cloud.firestore {
         canWriteObject(projectId, request.resource.data) &&
         accessProjectionUnchanged() &&
         taskIdentityFieldsBoundToWriter(resource.data, request.resource.data) &&
+        workflowStepMoveBoundToWriter(resource.data, request.resource.data) &&
         replyTaskMessageDataUnchanged();
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);

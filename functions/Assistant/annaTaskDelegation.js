@@ -100,6 +100,9 @@ async function startDelegatedTaskWorkflow({
             dueDate: now,
             sortIndex: now,
             isAssistantEnabled: true,
+            // The start of the delegation, which the delegating conversation reports itself; the
+            // step-change notice leaves this entry out (delegationReviewNotice.js).
+            delegationStartedAt: now,
             ...(suitable ? {} : { taskMetadata }),
         }
         transaction.set(taskRef, update, { merge: true })

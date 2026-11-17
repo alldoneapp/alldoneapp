@@ -162,10 +162,38 @@ delegating conversation now gets a "where the delegated tasks stand" block
   this very conversation. The whole block is capped at 9000 characters. It tells the assistant to go on
   in that task (comment, `move_task_workflow_step`, `execute_task_in_vm` with the task as target)
   rather than start the work again, and not to list the tasks unasked.
-- **Nothing is posted into the conversation.** By design the task chat stays the record of the work
-  (Anna's instructions already say not to duplicate task comments into the conversation). The visible
-  notices are the review notice, the VM question notice (`docs/claude/vm.md`) and VM results, and those
-  already work for every origin conversation, Anna's or a project chat.
+- **The block itself posts nothing.** The task chat stays the record of the work (Anna's instructions
+  say not to duplicate task comments into the conversation). What does appear in the origin
+  conversation, Anna's or a project chat: the 📋 review notice, the VM question notice
+  (`docs/claude/vm.md`), VM results, and a line for every other workflow step change (next bullet).
+- **Step changes reach the parent chat (product decision 2026-11-17).** When a delegated task changes
+  its position (another step, back to Open, Done), `notifyDelegationOriginOnStepChange`
+  (`delegationReviewNotice.js`, task update fan-out) posts one line in the origin conversation:
+  "🔀 AT-1 “…” moved from “Review” to “Merge”; the assistant works on it now.", "↩️ … is back in Open"
+  or "✅ … is done". It names the mover from the `workflowStepMove` stamp: "You moved it
+  yourself." / "You completed it yourself." for the owner, "Daniela moved it." for another member.
+  `classifyStepChange` leaves out what is already said elsewhere: the delegation
+  start (`delegationStartedAt`, written by `startDelegatedTaskWorkflow`, equals `completed`), a landing
+  on the owner's own step that the owner did not make (the 📋 review notice says it), and a move asked
+  for in the origin conversation itself. That last one is the stamp's `fromConversation`, written by
+  `move_task_workflow_step` for any conversation other than the task's own chat (not for MCP); all of
+  the user's daily Anna threads count as one conversation. The line rings no bell (`userIdsToNotify`
+  empty), unlike the review notice. It is claimed per step entry on the receipt
+  (`lastStepNoticeKey`), so a redelivered update posts nothing.
+- **Who moved it (`workflowStepMove`).** The server's chat moves write the stamp
+  (`buildWorkflowMoveUpdate`, with `runLockId` and `fromConversation`), and so does the browser for the
+  step picker and the checkbox: `buildWorkflowStepMoveStamp` in `utils/backends/Tasks/tasksFirestore.js`
+  (`moveTasksFromMiddleOfWorkflow`, `moveTasksFromOpen`, `moveTasksFromDone`, `setTaskStatus`). A
+  stamp counts for a change when it names the step the task landed on and was written with that update
+  (`at` differs from the old stamp, which covers a move to Open with no entry time) or entered the step
+  at the task's `completed`. The review notice keeps its narrower test (entry time only), and the
+  'review' decision uses the same one, so exactly one of the two notices speaks.
+  `workflowStepMoveBoundToWriter` in `firestore.rules` (updates only) lets a browser stamp only itself,
+  with `runLockId` and `fromConversation` null. It is not applied on create, because a project move
+  re-creates the document in the browser with its old stamp. Undo leaves the stamp out
+  (`withoutWorkflowStepMoveStamp`): restoring an older stamp would write another member's name or a
+  run lock, which the rule refuses, and the whole undo would fail. Rules emulator test: "lets a browser
+  stamp only itself"; client: `utils/backends/Tasks/workflowStepMoveStamp.test.js`.
 - **Listing:** `delegatedTaskOrigins` where `ownerId == user` and `open == true` (plus
   `originAssistantId == assistant` for a chat). Equality filters only are served by single-field
   indexes, so no composite index is needed (those need an interactive deploy, see `ci-cd.md`). The
