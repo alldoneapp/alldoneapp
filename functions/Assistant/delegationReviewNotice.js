@@ -5,8 +5,13 @@
  *
  * A task Anna delegated runs through its workflow in its own chat. When it reaches a step of the
  * user who delegated it (their review, or a human prerequisite), Anna says so where the user asked
- * for it, with the latest result and what comes next. A short reply there ("merge it") is then
- * handled by move_task_workflow_step, which finds this task from the same origin receipt.
+ * for it, with Anna's short summary of the latest result, what comes next and the link to the task
+ * chat. A short reply there ("merge it") is then handled by move_task_workflow_step, which finds
+ * this task from the same origin receipt.
+ *
+ * The detailed result stays in the task chat (AT-3074): the notice used to repeat its first 600
+ * characters, and the VM runner posted the same excerpt a few seconds earlier. The runner now leaves
+ * a run that ends a delegated task's AI step to this notice, and this notice carries only the summary.
  *
  * Runs in the onUpdateTask fan-out, which is at-least-once: the origin receipt remembers the last
  * step entry it announced, so a redelivery posts nothing.
@@ -15,12 +20,10 @@
 const admin = require('firebase-admin')
 
 const { OPEN_STEP, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
-const { cleanTextMetaData, removeFormatTagsFromText, shrinkTagText } = require('../Utils/parseTextUtils')
 const { isAiWorkflowStep } = require('../Tasks/workflowStepHelper')
 const { isDelegatedWorkflowTask } = require('../shared/delegatedTaskWorkflow')
 const { describeTaskWorkflow, getTaskPosition, loadTaskWorkflow } = require('../Tasks/workflowStepMove')
 
-const RESULT_SNIPPET_MAX = 600
 const RECENT_COMMENTS_TO_SCAN = 10
 
 const buildNoticeKey = (task, stepId) => `${stepId}__${task.completed || `s${(task.stepHistory || []).length}`}`
@@ -33,20 +36,22 @@ async function loadLatestAssistantResult(db, projectId, taskId) {
             .limit(RECENT_COMMENTS_TO_SCAN)
             .get()
         const latest = snapshot.docs.map(doc => doc.data() || {}).find(comment => comment.fromAssistant === true)
-        const text = latest?.commentText || ''
-        return text ? shrinkTagText(cleanTextMetaData(removeFormatTagsFromText(text), true), RESULT_SNIPPET_MAX) : ''
+        return latest?.commentText || ''
     } catch (error) {
         console.warn('[delegationReviewNotice] Could not read the latest result', { taskId, error: error.message })
         return ''
     }
 }
 
-const buildNoticeText = ({ task, step, next, result, link }) => {
-    const label = task.humanReadableId
+const buildTaskLabel = task =>
+    task.humanReadableId
         ? `${task.humanReadableId} “${task.extendedName || task.name}”`
         : `“${task.extendedName || task.name}”`
-    const lines = [`📋 ${label} is ready for you at “${step.description || 'Review'}”.`]
-    if (result) lines.push('', result)
+
+// `summary` is Anna's summary of the latest result (vmResultSummary), never the result itself.
+const buildNoticeText = ({ task, step, next, summary, link }) => {
+    const lines = [`📋 ${buildTaskLabel(task)} is ready for you at “${step.description || 'Review'}”.`]
+    if (summary) lines.push('', summary)
     if (next?.id === 'done') {
         lines.push('', 'Reply “done” to complete it, or tell me what to change.')
     } else if (next) {
@@ -101,12 +106,24 @@ async function notifyDelegationOriginOnHumanStep({
     if (!claimed) return false
 
     const description = describeTaskWorkflow(task, workflow, task.userId)
-    const result = await loadLatestAssistantResult(db, projectId, taskId)
+    const latestResult = await loadLatestAssistantResult(db, projectId, taskId)
+    const { summarizeVmResultForChat } = require('./vmResultSummary')
+    const summary = latestResult
+        ? await summarizeVmResultForChat({
+              resultText: latestResult,
+              userId: task.userId,
+              projectId,
+              objectId: taskId,
+              objectType: 'tasks',
+              taskLabel: buildTaskLabel(task),
+              db,
+          })
+        : ''
     const text = buildNoticeText({
         task,
         step,
         next: description?.next || null,
-        result,
+        summary,
         link: `${getBaseUrl()}/projects/${projectId}/tasks/${taskId}/chat`,
     })
 
