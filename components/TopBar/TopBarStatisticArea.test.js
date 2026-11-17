@@ -12,7 +12,6 @@ jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
     useSelector: selector => selector(mockState),
 }))
-jest.mock('../XpBar/XpBar', () => ({ __esModule: true, default: 'XpBar', XP_BAR_TABLET: 'tablet' }))
 jest.mock('./GoldArea', () => 'GoldArea')
 jest.mock('./TasksStatisticsArea', () => 'TasksStatisticsArea')
 jest.mock('./QuotaBar/Percent', () => 'Percent')
@@ -48,7 +47,7 @@ const VARIANTS = [
     ['Anna strip with room while the pane beside the chat is small', true, { compact: false }],
     ['Anna strip short of room', false, { compact: true }],
     ['Anna strip short of room on a small pane', true, { compact: true }],
-    ['Anna strip without XP and done-task count', false, { compact: false, showXp: false, showTasksStatistics: false }],
+    ['Anna strip without the done-task count', false, { compact: false, showTasksStatistics: false }],
 ]
 
 describe('TopBarStatisticArea paid-user badge', () => {
@@ -74,5 +73,18 @@ describe('TopBarStatisticArea paid-user badge', () => {
             expect(texts(component)).toEqual(iconOnly ? [] : ['Free quota'])
             expect(component.root.findAllByType('Icon').map(icon => icon.props.name)).toEqual(iconOnly ? ['cap'] : [])
         })
+    })
+})
+
+describe('TopBarStatisticArea XP progress (AT-3068)', () => {
+    it.each(VARIANTS)('%s: shows no XP bar, but gold and the done-task count', (_variant, smallScreen, props) => {
+        mockState = { smallScreen, loggedUser: { themeName: 'default', premium: { status: 'free' } } }
+        const component = render(props)
+
+        expect(component.root.findAll(node => node.props?.nativeID === 'xpArea')).toHaveLength(0)
+        expect(component.root.findAllByType('GoldArea')).toHaveLength(1)
+        expect(component.root.findAllByType('TasksStatisticsArea')).toHaveLength(
+            props.showTasksStatistics === false ? 0 : 1
+        )
     })
 })

@@ -2,11 +2,15 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import { useSelector } from 'react-redux'
-import { pickNewFocusTask } from '../../utils/backends/Tasks/tasksFirestore'
+import { pickDifferentFocusTask, pickNewFocusTask } from '../../utils/backends/Tasks/tasksFirestore'
 import AnnaFocusTask from './AnnaFocusTask'
+import { resetFocusRerollSession } from './annaFocusReroll'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
-jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({ pickNewFocusTask: jest.fn() }))
+jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({
+    pickNewFocusTask: jest.fn(),
+    pickDifferentFocusTask: jest.fn(),
+}))
 jest.mock('../Icon', () => ({ name }) => <i data-icon={name} />)
 
 let container
@@ -33,10 +37,24 @@ const render = state => {
 const button = () => container.querySelector('button.anna-focus-get')
 const celebration = () => container.querySelector('.anna-focus-empty-inbox')
 const focusLink = () => container.querySelector('a.anna-focus-task')
+const rolling = () => container.querySelector('.anna-focus-rolling')
+const reroll = () => container.querySelector('button.anna-focus-reroll')
+const reelText = () => container.querySelector('.anna-focus-reel-item')?.textContent
+// The roll is driven by chained timeouts, each set after the previous tick has rendered.
+const advance = ms => {
+    for (let elapsed = 0; elapsed < ms; elapsed += 10) act(() => jest.advanceTimersByTime(10))
+}
+const rollUntilDone = () => {
+    for (let elapsed = 0; elapsed < 10000 && rolling(); elapsed += 10) act(() => jest.advanceTimersByTime(10))
+    expect(rolling()).toBeNull()
+}
 
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
+    jest.useFakeTimers()
+    resetFocusRerollSession()
+    window.matchMedia = jest.fn(() => ({ matches: false }))
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -44,6 +62,8 @@ beforeEach(() => {
 afterEach(() => {
     act(() => root.unmount())
     container.remove()
+    jest.useRealTimers()
+    delete window.matchMedia
 })
 
 describe('the focus task in the assistant header', () => {
@@ -117,30 +137,215 @@ describe('the focus task in the assistant header', () => {
         expect(button()).toBeTruthy()
     })
 
-    it('picks a focus task like completing one does, starting in the default project', async () => {
+    it('picks a focus task like completing one does, starting in the default project, rolling meanwhile', async () => {
         let finish
         pickNewFocusTask.mockReturnValue(new Promise(resolve => (finish = resolve)))
         render({})
         await act(async () => button().click())
-        expect(pickNewFocusTask).toHaveBeenCalledWith('home', 'u1')
-        expect(button().disabled).toBe(true)
-        expect(container.querySelector('[data-icon="loader"]')).toBeTruthy()
+        expect(pickNewFocusTask).toHaveBeenCalledWith('home', 'u1', { onCandidates: expect.any(Function) })
+        // AT-3067: the search shows as a rolling pill, announced once to screen readers.
+        expect(button()).toBeNull()
+        expect(rolling().getAttribute('aria-busy')).toBe('true')
+        expect(rolling().querySelector('[role="status"]').textContent).toBe('Finding a focus task…')
+        // No candidates known yet: the reel says what it is doing.
+        expect(reelText()).toBe('Finding a focus task…')
+        // Only a swap has the "different task" button.
+        expect(reroll()).toBeNull()
+
+        // Candidate names roll through the pill like a slot machine.
+        act(() =>
+            pickNewFocusTask.mock.calls[0][2].onCandidates([
+                { id: 'a', name: 'Call **Ben**' },
+                { id: 'b', name: 'Pay invoice' },
+            ])
+        )
+        const seen = new Set()
+        for (let i = 0; i < 6; i++) {
+            advance(70)
+            seen.add(reelText())
+        }
+        expect([...seen].sort()).toEqual(['Call Ben', 'Pay invoice'])
+
         await act(async () => finish(true))
-        expect(button().disabled).toBe(false)
-        expect(button().textContent).toBe('Get a focus task')
+        // It keeps rolling until the picked task is there, then lands on it.
+        expect(rolling()).toBeTruthy()
+        render({
+            loggedUser: { inFocusTaskId: 'b', inFocusTaskProjectId: 'home' },
+            taskInFocus: { id: 'b', name: 'Pay invoice', done: false },
+        })
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Pay invoice')
+        expect(container.querySelector('.anna-focus-pill').className).toContain('anna-focus-landed')
+        advance(800)
+        expect(container.querySelector('.anna-focus-pill').className).not.toContain('anna-focus-landed')
     })
 
     it('says so when no open task is left for today, and when the pick fails', async () => {
         pickNewFocusTask.mockResolvedValueOnce(false)
         render({})
         await act(async () => button().click())
+        rollUntilDone()
         expect(container.querySelector('[role="status"]').textContent).toBe('No open task for today')
 
         pickNewFocusTask.mockRejectedValueOnce(new Error('offline'))
         await act(async () => button().click())
+        rollUntilDone()
         expect(container.querySelector('[role="status"]').textContent).toBe(
             'The focus task could not be picked. Please try again.'
         )
+    })
+})
+
+// AT-3067: a button at the pill's right end swaps the focus task for a different one.
+describe('a different focus task from the assistant header', () => {
+    const FOCUSED = {
+        loggedUser: { inFocusTaskId: 't1', inFocusTaskProjectId: 'p1' },
+        taskInFocus: { id: 't1', name: 'Call Ben', done: false },
+        projectsMap: { p1: { id: 'p1', name: 'Privat', color: '#4c8bf5' } },
+    }
+    const focusOn = (id, name) => ({
+        ...FOCUSED,
+        loggedUser: { inFocusTaskId: id, inFocusTaskProjectId: 'p1' },
+        taskInFocus: { id, name, done: false },
+    })
+
+    it('sits at the pill’s right end as its own labelled button, outside the task link', () => {
+        render(FOCUSED)
+        const pill = container.querySelector('.anna-focus-pill')
+        expect([...pill.children].map(child => child.tagName)).toEqual(['A', 'BUTTON'])
+        expect(reroll().getAttribute('aria-label')).toBe('Show a different focus task')
+        expect(reroll().getAttribute('title')).toBe('Show a different focus task')
+        expect(reroll().getAttribute('type')).toBe('button')
+        expect(focusLink().contains(reroll())).toBe(false)
+        expect(reroll().querySelector('[data-icon="refresh-cw"]')).toBeTruthy()
+    })
+
+    it('rolls, ignores more clicks meanwhile, lands on the new task and skips the old one next time', async () => {
+        let finish
+        pickDifferentFocusTask.mockReturnValueOnce(new Promise(resolve => (finish = resolve)))
+        render(FOCUSED)
+        await act(async () => reroll().click())
+
+        expect(pickDifferentFocusTask).toHaveBeenCalledTimes(1)
+        expect(pickDifferentFocusTask).toHaveBeenCalledWith('u1', {
+            taskId: 't1',
+            projectId: 'p1',
+            skippedTaskIds: [],
+            onCandidates: expect.any(Function),
+        })
+        // The link is gone while it searches; the button stays in place, busy.
+        expect(focusLink()).toBeNull()
+        expect(rolling()).toBeTruthy()
+        expect(reroll().disabled).toBe(true)
+        expect(reroll().getAttribute('aria-busy')).toBe('true')
+        // The current task is in the reel from the start.
+        expect(reelText()).toBe('Call Ben')
+        await act(async () => reroll().click())
+        expect(pickDifferentFocusTask).toHaveBeenCalledTimes(1)
+
+        await act(async () => finish('picked'))
+        render(focusOn('t2', 'Write offer'))
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Write offer')
+        expect(container.querySelector('.anna-focus-notice')).toBeNull()
+        advance(800)
+
+        // The next click skips Call Ben as well.
+        pickDifferentFocusTask.mockResolvedValueOnce('picked')
+        await act(async () => reroll().click())
+        expect(pickDifferentFocusTask).toHaveBeenLastCalledWith('u1', {
+            taskId: 't2',
+            projectId: 'p1',
+            skippedTaskIds: ['t1'],
+            onCandidates: expect.any(Function),
+        })
+    })
+
+    it('keeps rolling at least a moment, even when the pick answers at once', async () => {
+        pickDifferentFocusTask.mockResolvedValueOnce('picked')
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        render(focusOn('t2', 'Write offer'))
+        advance(500)
+        expect(rolling()).toBeTruthy()
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Write offer')
+    })
+
+    it('tells the user when it starts over after every task for today was shown', async () => {
+        pickDifferentFocusTask.mockResolvedValueOnce('picked')
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        render(focusOn('t2', 'Write offer'))
+        rollUntilDone()
+        advance(800)
+
+        // t1 is skipped; nothing else is left, so it starts over and lands on t1 again.
+        pickDifferentFocusTask.mockResolvedValueOnce('none').mockResolvedValueOnce('picked')
+        await act(async () => reroll().click())
+        render(FOCUSED)
+        rollUntilDone()
+        expect(pickDifferentFocusTask.mock.calls.slice(1).map(([, options]) => options.skippedTaskIds)).toEqual([
+            ['t1'],
+            [],
+        ])
+        expect(focusLink().textContent).toContain('Call Ben')
+        expect(container.querySelector('.anna-focus-notice').getAttribute('role')).toBe('status')
+        expect(container.querySelector('.anna-focus-notice').textContent).toBe(
+            'You have seen every task for today – starting over'
+        )
+        advance(4100)
+        expect(container.querySelector('.anna-focus-notice')).toBeNull()
+    })
+
+    it('keeps the current task when there is no other one', async () => {
+        pickDifferentFocusTask.mockResolvedValueOnce('none')
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Call Ben')
+        expect(container.querySelector('.anna-focus-notice').textContent).toBe('No other open task for today')
+        expect(reroll().disabled).toBe(false)
+    })
+
+    it('explains offline and other failures, keeping the current task', async () => {
+        pickDifferentFocusTask.mockRejectedValueOnce(Object.assign(new Error('offline'), { code: 'offline' }))
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Call Ben')
+        expect(container.querySelector('.anna-focus-notice').textContent).toBe(
+            'You are offline. Reconnect to get a different focus task.'
+        )
+
+        pickDifferentFocusTask.mockRejectedValueOnce(new Error('permission-denied'))
+        await act(async () => reroll().click())
+        rollUntilDone()
+        expect(container.querySelector('.anna-focus-notice').textContent).toBe(
+            'The focus task could not be picked. Please try again.'
+        )
+    })
+
+    it('says nothing when a focus the user set by hand took over', async () => {
+        pickDifferentFocusTask.mockResolvedValueOnce('superseded')
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        render(focusOn('t9', 'Chosen by hand'))
+        rollUntilDone()
+        expect(focusLink().textContent).toContain('Chosen by hand')
+        expect(container.querySelector('.anna-focus-notice')).toBeNull()
+    })
+
+    it('does not roll names under reduced motion', async () => {
+        window.matchMedia = jest.fn(query => ({ matches: query.includes('reduce') }))
+        pickDifferentFocusTask.mockReturnValueOnce(new Promise(() => {}))
+        render(FOCUSED)
+        await act(async () => reroll().click())
+        act(() => pickDifferentFocusTask.mock.calls[0][1].onCandidates([{ id: 't2', name: 'Write offer' }]))
+        for (let i = 0; i < 4; i++) {
+            advance(70)
+            expect(reelText()).toBe('Finding a focus task…')
+        }
     })
 })
 

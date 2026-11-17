@@ -153,7 +153,8 @@ export default function TasksStatisticsArea({ compact }) {
                     />
                 ) : (
                     <Text style={[localStyle.text, smallScreenNavigation ? theme.textMobile : theme.text]}>
-                        {translate('Done tasks')}
+                        {/* AT-3068: the short "Tasks"; the statistics pages keep "Done tasks". */}
+                        {translate('Tasks')}
                     </Text>
                 )}
                 <Text style={[localStyle.value, theme.value]}>{parseNumberToUseThousand(doneTasksToShow)}</Text>

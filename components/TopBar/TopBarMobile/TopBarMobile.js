@@ -11,7 +11,6 @@ import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
-import XpBar, { XP_BAR_MOBILE, barWidth } from '../../XpBar/XpBar'
 import HomeButton, { HOME_BUTTON_WIDTH } from '../HomeButton'
 import AnnaViewSwitch, {
     ANNA_VIEW_SWITCH_HEIGHT,
@@ -142,16 +141,10 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
                                 style={localStyles.compactStatistics}
                                 contentContainerStyle={localStyles.statisticsRow}
                             >
-                                <View style={localStyles.xpContainer}>
-                                    <XpBar size={XP_BAR_MOBILE} />
-                                </View>
                                 {statistics}
                             </ScrollView>
                         ) : (
-                            <>
-                                <XpBar size={XP_BAR_MOBILE} />
-                                {statistics}
-                            </>
+                            statistics
                         ))}
                 </Animated.View>
             )}
@@ -206,10 +199,5 @@ const localStyles = StyleSheet.create({
         justifyContent: 'flex-end',
         height: SECONDARY_BAR_MOBILE,
         flexGrow: 1,
-    },
-    xpContainer: {
-        // XpBar normally grows into available space; reserve its mobile width in the scroll row.
-        width: barWidth[XP_BAR_MOBILE] + 8,
-        flexShrink: 0,
     },
 })
