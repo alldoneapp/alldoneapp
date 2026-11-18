@@ -10,19 +10,19 @@ import { translate } from '../../../i18n/TranslationService'
 import useGetUserPresentationData from '../../ContactsView/Utils/useGetUserPresentationData'
 import { withMcpActorLabel } from '../../../utils/mcpActorLabel'
 import { getDateFormat, getTimeFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
-import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 import { onOpenChat } from '../Utils/ChatHelper'
 import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
 import { UNREAD_TAG_ADS, UNREAD_TAG_LABEL_KEYS, UNREAD_TAG_PEOPLE } from './unreadMessageTags'
 
 const AVATAR_SIZE = 32
-// The summary may run to two or three lines (decided 2026-11-18): enough to decide without opening.
-// Fewer characters on a phone, where a line holds about half as many. The height cap is the
-// backstop for a long word run, since SocialText wraps word by word and cannot clamp lines itself.
-export const UNREAD_SUMMARY_CHARACTER_LIMIT = 320
-export const UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE = 160
-const SUMMARY_MAX_LINES = 3
+
+// The row shows the whole message and grows with it (AT-3094, decided 2026-11-18): no character
+// limit, no line clamp, no height cap. The earlier cap (maxHeight 3 x body2.lineHeight, overflow
+// hidden) cut the third line in half, because SocialText's wrapped words carry 3px margins above
+// and below, so a wrapped line is 28px, not 22px. Do not reintroduce a fixed or maximum height here.
+// A token wider than the column (a long hash or path) breaks instead of pushing the actions out.
+export const UNREAD_SUMMARY_WORD_STYLE = { whiteSpace: 'normal', maxWidth: '100%', overflowWrap: 'anywhere' }
 
 // The same link the thread's "Email" chip opens (GmailTag): the message in Gmail, account-aware.
 export const getRowEmailUrl = message =>
@@ -52,7 +52,7 @@ export const formatRowTime = time => {
 }
 
 /**
- * One unread message in the unread list: who sent it, its tag, a one-line summary and three
+ * One unread message in the unread list: who sent it, its tag, the whole message and three
  * actions - archive (emails only), mark as read, open. Pressing the row opens it too.
  *
  * Archive goes through the chat list's shared archive (the same call and optimistic state as the
@@ -159,19 +159,15 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                 <SocialText
                     style={localStyles.summary}
                     textStyle={localStyles.summaryText}
-                    normalStyle={{ whiteSpace: 'normal' }}
+                    normalStyle={UNREAD_SUMMARY_WORD_STYLE}
                     wrapText
-                    numberOfLines={SUMMARY_MAX_LINES}
                     projectId={projectId}
                 >
-                    {shrinkTagText(
-                        row.summary || '',
-                        mobile ? UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE : UNREAD_SUMMARY_CHARACTER_LIMIT
-                    )}
+                    {row.summary || ''}
                 </SocialText>
             </View>
 
-            <View style={localStyles.actions}>
+            <View style={localStyles.actions} testID={`unread-row-actions-${message.id}`}>
                 {canArchive && (
                     <RowAction
                         icon={archiveFailed ? 'x' : 'archive'}
@@ -293,15 +289,15 @@ const localStyles = StyleSheet.create({
     },
     summary: {
         marginTop: 2,
-        maxHeight: SUMMARY_MAX_LINES * styles.body2.lineHeight,
-        overflow: 'hidden',
     },
     summaryText: {
         ...styles.body2,
         color: colors.Text02,
     },
+    // Top-aligned with the sender line: a long message makes the row tall, and centred icons would
+    // drift to the middle of it, a different place in every row.
     actions: {
-        alignSelf: 'center',
+        alignSelf: 'flex-start',
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 8,

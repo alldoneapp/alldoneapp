@@ -178,7 +178,7 @@ function buildVmHostRequestCommentId(messageId) {
  * where the host thread lives in a different project than the conversation the user is in. Mirrors
  * ensureCreatedNoteLinksInResponse.
  */
-function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], currentThread = null, { language } = {}) {
+function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], currentThread = null) {
     let response = typeof responseText === 'string' ? responseText.trim() : ''
     const seen = new Set()
 
@@ -189,8 +189,7 @@ function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], cur
         if (isVmJobHostedInThread(job, currentThread)) continue
         if (response.includes(job.url)) continue
 
-        // In the user's language since AT-3096 (English, the old fixed text, by default).
-        const label = require('./noticeLanguage').noticeText(language, 'taskLink.follow')
+        const label = 'Follow it here:'
         response = response ? `${response}\n\n${label} ${job.url}` : `${label} ${job.url}`
     }
 
