@@ -425,9 +425,6 @@ async function startVmJob({
     originObjectType = '',
     originObjectId = '',
     originAssistantId = '',
-    // The conversation the calling assistant answers in. When the job runs in that very thread the
-    // result does not ask the assistant to link it: the user is already there (AT-3096 follow-up).
-    callerThread = null,
 }) {
     if (!objective || typeof objective !== 'string' || !objective.trim()) {
         return { success: false, message: 'A non-empty objective is required to run a task in a VM.' }
@@ -861,18 +858,9 @@ async function startVmJob({
         hostObjectId: objectId,
         hostThreadUrl: `${getBaseUrl()}${buildVmChatPath(projectId, objectType, objectId)}`,
     }
-    const hostedInCallerThread =
-        !!callerThread?.objectId &&
-        callerThread.objectId === objectId &&
-        String(callerThread.projectId || '') === String(projectId) &&
-        (callerThread.objectType || 'tasks') === (objectType || 'tasks')
     const hostThreadHint =
-        (hostedInCallerThread
-            ? 'The work runs in this conversation, where the user already is: do not link it or point the user ' +
-              'elsewhere; progress and the result appear here. '
-            : `The work lives in this thread: ${hostThread.hostThreadUrl} — include that link in your answer so the user ` +
-              'can follow progress, check the source, or continue there. ') +
-        `To continue this same VM later (keeping its files ` +
+        `The work lives in this thread: ${hostThread.hostThreadUrl} — include that link in your answer so the user ` +
+        `can follow progress, check the source, or continue there. To continue this same VM later (keeping its files ` +
         `and conversation) after a new user request, call execute_task_in_vm with continue_in_object_id="${objectId}". ` +
         `For this request, wait/check with get_vm_job({correlationId:"${correlationId}",waitSeconds:30}); do not queue another job. ` +
         'Completed results include artifact references that Gmail draft tools can attach directly without base64.'

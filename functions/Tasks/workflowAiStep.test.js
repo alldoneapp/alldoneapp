@@ -2425,3 +2425,109 @@ describe('a step retried by a later VM job after its own run failed', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
     })
 })
+
+// AT-3098: the user comments on a done task and the assistant starts VM work on it. The task goes
+// back to the AI step, the step waits for that work instead of running its prompt as well, and the
+// result then lands on the human review step like any other AI step's.
+describe('a done task reopened for renewed assistant work (AT-3098)', () => {
+    const { reactivateDoneTaskForAssistantWork } = require('./doneTaskReactivation')
+    const CORRELATION = 'follow-up-vm'
+    const doneTask = (overrides = {}) =>
+        taskOnAiStep({
+            userIds: [ASSIGNEE],
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: -2,
+            completed: 500,
+            done: true,
+            inDone: true,
+            ...overrides,
+        })
+    const seedVmJob = status =>
+        mockStore.set(`pendingWebhooks/${CORRELATION}`, {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            createdAt: Date.now(),
+            status,
+        })
+    const reopen = () =>
+        reactivateDoneTaskForAssistantWork({
+            db: mockDb,
+            projectId: PROJECT,
+            taskId: TASK,
+            assistantId: ASSISTANT,
+            actorUserId: ASSIGNEE,
+            now: () => 9000,
+            createId: () => 'transition-1',
+        })
+    const storedTask = () => mockStore.get(`items/${PROJECT}/tasks/${TASK}`)
+
+    beforeEach(() => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, doneTask())
+    })
+
+    it('parks the reopened step on the VM and hands the result to the human review, running nothing twice', async () => {
+        // execute_task_in_vm reopens only after the job is accepted, so the job is already visible.
+        seedVmJob('running')
+        const result = await reopen()
+        expect(storedTask()).toMatchObject({ done: false, stepHistory: [-1, AI_STEP], currentReviewerId: ASSISTANT })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, result.oldTask, result.task)
+        expect(runId).toBe(`${PROJECT}__${TASK}__${AI_STEP}__9000`)
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            status: RUN_STATUS_AWAITING_VM,
+            awaitingCorrelationIds: [CORRELATION],
+            awaitingSkipReason: 'task_ai_run_already_active',
+        })
+        expect(await dispatchPendingWorkflowAiRuns({ now: Date.now() })).toBe(0)
+
+        // A redelivered task update must not enqueue the step a second time.
+        expect(await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, result.oldTask, result.task)).toBeNull()
+
+        seedVmJob('completed')
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
+
+        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(storedTask()).toMatchObject({
+            done: false,
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: HUMAN_REVIEWER,
+        })
+    })
+
+    it('a done task the last AI step completed still runs the step when reopened onto it', async () => {
+        seedAssignee({ [AI_STEP]: aiStep() })
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, doneTask({ stepHistory: [-1, AI_STEP] }))
+
+        const result = await reopen()
+        expect(result.task.stepHistory).toEqual([-1, AI_STEP])
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, result.oldTask, result.task)
+        expect(runId).toBe(`${PROJECT}__${TASK}__${AI_STEP}__9000`)
+        expect(mockStore.get(`workflowAiRuns/${runId}`).status).toBe('pending')
+    })
+
+    it('unchecking the checkbox keeps the history but hands the task to its owner: no step run', async () => {
+        const oldTask = doneTask({ stepHistory: [-1, AI_STEP] })
+        // setTaskStatus(false): the stamp names the step but has no entry time.
+        const unchecked = {
+            ...oldTask,
+            done: false,
+            inDone: false,
+            currentReviewerId: ASSIGNEE,
+            completed: undefined,
+            workflowStepMove: { stepId: AI_STEP, enteredAt: null, actorUserId: ASSIGNEE, at: 9000 },
+        }
+
+        expect(await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, unchecked)).toBeNull()
+    })
+
+    it('completing a task never enqueues a step', async () => {
+        const open = taskOnAiStep({ completed: 400 })
+        const completed = { ...open, done: true, completed: 9000, stepHistory: [-1, AI_STEP] }
+        expect(await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, { ...open, stepHistory: [-1] }, completed)).toBeNull()
+    })
+})

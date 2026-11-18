@@ -9607,6 +9607,161 @@ describe('execute_task_in_vm existing task routing', () => {
         })
     })
 
+    // AT-3098: VM work on a done task reopens it into its workflow, but only once the work actually
+    // starts. Talking about a done task (no VM) never reaches this; a refused launch reopens nothing.
+    describe('VM work on a task that is already done (AT-3098)', () => {
+        let doneTaskReactivation
+        let planSpy
+        let reactivateSpy
+        // A fresh runtime per call: one runtime dedupes repeated VM calls of the same answer.
+        let messageCount = 0
+        const inTaskChat = () => ({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            messageId: `msg-${++messageCount}`,
+        })
+        const startFollowUp = (runtime = inTaskChat()) =>
+            executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug the user reported', task_type: 'prototype' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'There is still a bug, please fix it' },
+                runtime
+            )
+
+        beforeEach(() => {
+            doneTaskReactivation = require('../Tasks/doneTaskReactivation')
+            planSpy = jest
+                .spyOn(doneTaskReactivation, 'planDoneTaskReactivation')
+                .mockResolvedValue({ targetStepId: 'build', landsOnAiStep: true })
+            reactivateSpy = jest.spyOn(doneTaskReactivation, 'reactivateDoneTaskForAssistantWork').mockResolvedValue({
+                reactivated: true,
+                stepId: 'build',
+                stepLabel: 'AI: please build',
+                landsOnAiStep: true,
+            })
+            startVmJobSpy.mockResolvedValue({ success: true, correlationId: 'vm-1', status: 'started' })
+        })
+
+        afterEach(() => {
+            planSpy.mockRestore()
+            reactivateSpy.mockRestore()
+        })
+
+        test('reopens the task into its AI step once the job is accepted, and tells the VM to leave it open', async () => {
+            const order = []
+            startVmJobSpy.mockImplementation(async () => {
+                order.push('vm')
+                return { success: true, correlationId: 'vm-1', status: 'started' }
+            })
+            reactivateSpy.mockImplementation(async () => {
+                order.push('reopen')
+                return { reactivated: true, stepId: 'build', stepLabel: 'AI: please build', landsOnAiStep: true }
+            })
+
+            const result = await startFollowUp()
+
+            expect(planSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'project-1', taskId: 'task-1', assistantId: 'assistant-1' })
+            )
+            // After the VM record exists, so the reopened step parks on it instead of running twice.
+            expect(order).toEqual(['vm', 'reopen'])
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'project-1',
+                    taskId: 'task-1',
+                    assistantId: 'assistant-1',
+                    actorUserId: 'user-1',
+                    fromConversation: null,
+                })
+            )
+            expect(result).toMatchObject({
+                success: true,
+                correlationId: 'vm-1',
+                taskReopened: { stepId: 'build', step: 'AI: please build' },
+            })
+            const context = startVmJobSpy.mock.calls[0][0].threadContext
+            expect(context).toContain('already done and is reopened into its workflow')
+            expect(context).toContain('leave the task open')
+        })
+
+        test('a task without an AI step goes back to Open; its owner completes it afterwards', async () => {
+            planSpy.mockResolvedValue({ targetStepId: -1, landsOnAiStep: false })
+            reactivateSpy.mockResolvedValue({ reactivated: true, stepId: -1, stepLabel: 'Open', landsOnAiStep: false })
+
+            const result = await startFollowUp()
+
+            expect(result.taskReopened.message).toContain('back in Open')
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).toContain('its owner completes it')
+        })
+
+        test('a refused launch reopens nothing', async () => {
+            startVmJobSpy.mockResolvedValue({ success: false, message: 'Not enough Gold.' })
+
+            const result = await startFollowUp()
+
+            expect(result.success).toBe(false)
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('an open task is left alone', async () => {
+            planSpy.mockResolvedValue(null)
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).not.toContain('reopened')
+        })
+
+        test('work sent from another conversation (target_task_id) reopens the task too, naming that conversation', async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'Please fix the bug in that task' },
+                { projectId: 'private', objectType: 'topics', objectId: 'anna-daily', messageId: 'msg-2' }
+            )
+
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    taskId: 'task-1',
+                    fromConversation: { projectId: 'private', objectType: 'topics', objectId: 'anna-daily' },
+                })
+            )
+        })
+
+        test("the workflow's own step run never reopens anything (it owns the task)", async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Run the build step', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                {},
+                { onVmJobStarted: jest.fn(), workflowTaskId: 'task-1', workflowTaskProjectId: 'project-1' }
+            )
+
+            expect(planSpy).not.toHaveBeenCalled()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('a failed reopen does not fail the running work', async () => {
+            reactivateSpy.mockRejectedValue(new Error('Firestore unavailable'))
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+        })
+    })
+
     test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
         const onVmJobStarted = jest.fn()
         startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })
@@ -12250,62 +12405,6 @@ describe('Anna VM message order', () => {
         } finally {
             target.mockRestore()
         }
-    })
-    // AT-3096 follow-up, reported 2026-11-18 in task Q2XA2dxekAsf9QjI24yS (AT-3093): the user asked in
-    // the delegated task's own chat to retry; execute_task_in_vm joined that same task (workflow_managed)
-    // and the reply said "The result will appear here: <link to this very task>".
-    test('a retry asked for in the delegated task’s own chat gets no link to that task', async () => {
-        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
-        const otherUrl = 'https://my.alldone.app/projects/presentation-project/tasks/other-task/chat'
-        documents.set('items/presentation-project/tasks/presentation-task', {
-            userId: 'presentation-user',
-            executionMode: 'workflow',
-            stepHistory: [-1, '~delegation-work', '~delegation-review'],
-            taskMetadata: {
-                delegation: {
-                    ownerId: 'presentation-user',
-                    assistantId: 'presentation-assistant',
-                    requiresReview: true,
-                },
-            },
-        })
-        mockResponsesCreate.mockResolvedValueOnce(
-            textResponse(
-                'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
-                    `foreground—no merge or deployment. The result will appear here:\n\n${selfUrl}\n\nRelated: ${otherUrl}`
-            )
-        )
-
-        const answer = await run({ handoff_message: undefined })
-
-        expect(start).not.toHaveBeenCalled()
-        // What the model was given: no URL of the task it is answering in.
-        const toolOutput = mockResponsesCreate.mock.calls[0][0].input.find(
-            item => item.type === 'function_call_output' && item.call_id === 'launch-vm'
-        )
-        expect(JSON.parse(toolOutput.output)).toMatchObject({
-            status: 'workflow_managed',
-            continuesInCurrentConversation: true,
-        })
-        expect(toolOutput.output).not.toContain('/tasks/presentation-task/chat')
-        // What was stored: the self-link the model wrote anyway is gone, a link to another task stays.
-        expect(answer).toBe(
-            'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
-                `foreground—no merge or deployment. The result will appear here.\n\nRelated: ${otherUrl}`
-        )
-        expect(messages()).toEqual([expect.objectContaining({ commentText: answer, isLoading: false })])
-    })
-    test('a VM started in this task keeps no link to this task in its frozen introduction', async () => {
-        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
-        mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
-
-        // The default startVmJob mock asserts the frozen introduction is exactly `intro`.
-        expect(await run({ handoff_message: `${intro}\n\n${selfUrl}` })).toBe(intro)
-        expect(start).toHaveBeenCalledWith(
-            expect.objectContaining({
-                callerThread: { projectId: 'presentation-project', objectType: 'tasks', objectId: 'presentation-task' },
-            })
-        )
     })
     test('a launch failure has its own Anna message and leaves the introduction intact', async () => {
         start.mockResolvedValueOnce({ success: false, message: 'The VM is unavailable.' })

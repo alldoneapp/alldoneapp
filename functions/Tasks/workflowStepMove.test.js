@@ -415,10 +415,6 @@ describe('move_task_workflow_step tool', () => {
         )
 
         expect(result).toMatchObject({ success: true, moved: true, to: { label: 'Merge' } })
-        // AT-3096 follow-up: the work goes on where the user is, so the reply must not link this task.
-        expect(result.delegatedTask).toEqual({ projectId: PROJECT, taskId: TASK, currentConversation: true })
-        expect(result.message).toContain('do not link this task')
-        expect(JSON.stringify(result)).not.toContain(`/tasks/${TASK}/chat`)
         expect(storedTask().workflowStepMove.runLockId).toBe('lock-m1')
         // Moved in the task's own chat: the parent conversation still hears of it.
         expect(storedTask().workflowStepMove.fromConversation).toBeNull()
@@ -506,9 +502,6 @@ describe('move_task_workflow_step tool', () => {
             const result = await runTool({ to: 'next', note: 'squash the commits' }, annaRuntime, 'anna')
 
             expect(result).toMatchObject({ success: true, moved: true, taskId: TASK })
-            // Moved from another conversation: no current-conversation marker suppresses anything.
-            expect(result.delegatedTask).toBeUndefined()
-            expect(result.message).not.toContain('do not link')
             expect(storedTask().workflowStepMove.runLockId).toBeNull()
             // Asked for here, so this conversation is not told again by the step-change notice.
             expect(storedTask().workflowStepMove.fromConversation).toEqual({

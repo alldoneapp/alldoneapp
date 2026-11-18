@@ -181,17 +181,12 @@ function buildVmHostRequestCommentId(messageId) {
 function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], currentThread = null, { language } = {}) {
     let response = typeof responseText === 'string' ? responseText.trim() : ''
     const seen = new Set()
-    let hostedInCurrentThread = false
 
     for (const job of startedVmJobs.map(normalizeStartedVmJob).filter(Boolean)) {
         if (seen.has(job.objectId)) continue
         seen.add(job.objectId)
-        // The user is already reading the host thread — linking them to where they are is noise,
-        // and a link the model wrote anyway is removed below (AT-3096 follow-up).
-        if (isVmJobHostedInThread(job, currentThread)) {
-            hostedInCurrentThread = true
-            continue
-        }
+        // The user is already reading the host thread — linking them to where they are is noise.
+        if (isVmJobHostedInThread(job, currentThread)) continue
         if (response.includes(job.url)) continue
 
         // In the user's language since AT-3096 (English, the old fixed text, by default).
@@ -199,9 +194,7 @@ function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], cur
         response = response ? `${response}\n\n${label} ${job.url}` : `${label} ${job.url}`
     }
 
-    return hostedInCurrentThread
-        ? require('./delegatedTaskLinks').removeCurrentThreadLinks(response, currentThread)
-        : response
+    return response
 }
 
 /**
