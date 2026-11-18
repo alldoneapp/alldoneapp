@@ -1,10 +1,4 @@
-import {
-    getAnnaWorkspacePlanKey,
-    getAnnaWorkspaceProjectKey,
-    planAnnaWorkspaceProjectSync,
-    resolveAnnaChoiceForWorkspace,
-    syncAnnaWorkspaceProject,
-} from './annaWorkspaceProjectSync'
+import { planAnnaWorkspaceProjectSync, syncAnnaWorkspaceProject } from './annaWorkspaceProjectSync'
 import { ANNA_AUTOMATIC_PROJECT } from './annaProjectSelection'
 
 jest.mock('../../redux/actions', () => ({
@@ -107,60 +101,5 @@ describe('syncAnnaWorkspaceProject', () => {
         expect(syncAnnaWorkspaceProject('product', { getState: () => state(), dispatch, navigate })).toBeNull()
         expect(dispatch).not.toHaveBeenCalled()
         expect(navigate).not.toHaveBeenCalled()
-    })
-})
-
-// AT-3036 follow-up: the other direction, the chat follows a project opened in the workspace.
-describe('getAnnaWorkspaceProjectKey', () => {
-    it('names the project (or All projects) of a root view, and nothing for a detail view', () => {
-        expect(getAnnaWorkspaceProjectKey(state())).toBe('product')
-        expect(getAnnaWorkspaceProjectKey(state({ selectedProjectIndex: -1 }))).toBe(':all')
-        expect(getAnnaWorkspaceProjectKey(state({ route: 'TaskDetailedView' }))).toBeNull()
-        expect(getAnnaWorkspaceProjectKey({})).toBeNull()
-    })
-
-    it('matches the key a sync plan lands on', () => {
-        expect(getAnnaWorkspacePlanKey(planAnnaWorkspaceProjectSync(state(), 'steercom'))).toBe('steercom')
-        expect(getAnnaWorkspacePlanKey(planAnnaWorkspaceProjectSync(state(), ANNA_AUTOMATIC_PROJECT))).toBe(':all')
-        expect(getAnnaWorkspacePlanKey(null)).toBeNull()
-    })
-})
-
-describe('resolveAnnaChoiceForWorkspace', () => {
-    const user = { uid: 'u1', defaultProjectId: 'home', projectIds: ['home', 'product', 'steercom', 'old'] }
-    const resolve = (
-        workspaceKey,
-        choiceId = ANNA_AUTOMATIC_PROJECT,
-        isDefault = choiceId === ANNA_AUTOMATIC_PROJECT
-    ) => resolveAnnaChoiceForWorkspace({ user, workspaceKey, choiceId, isDefault })
-
-    it("picks the opened project's chat, whose assistant answers there", () => {
-        expect(resolve('steercom')).toBe('steercom')
-        expect(resolve('steercom', 'product', false)).toBe('steercom')
-    })
-
-    it('keeps the chat when it already continues in that project', () => {
-        expect(resolve('product', 'product', false)).toBeNull()
-    })
-
-    it('means "Automatic" for All projects and the default project, keeping an explicit default pick', () => {
-        expect(resolve(':all', 'product', false)).toBe(ANNA_AUTOMATIC_PROJECT)
-        expect(resolve('home', 'product', false)).toBe(ANNA_AUTOMATIC_PROJECT)
-        expect(resolve(':all')).toBeNull()
-        expect(resolve(':all', 'home', true)).toBeNull()
-        expect(resolve('home', 'home', true)).toBeNull()
-    })
-
-    it('changes nothing for a project the chat cannot continue in', () => {
-        expect(
-            resolveAnnaChoiceForWorkspace({
-                user: { ...user, archivedProjectIds: ['old'] },
-                workspaceKey: 'old',
-                choiceId: 'product',
-                isDefault: false,
-            })
-        ).toBeNull()
-        expect(resolve('foreign', 'product', false)).toBeNull()
-        expect(resolve(null, 'product', false)).toBeNull()
     })
 })

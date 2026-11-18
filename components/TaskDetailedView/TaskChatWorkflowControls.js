@@ -5,7 +5,9 @@ import useGetTaskWorkflow from '../../utils/useGetTaskWorkflow'
 import SharedHelper from '../../utils/SharedHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
-import CommentPopupWorkflowControls from '../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
+import CommentPopupWorkflowControls, {
+    WORKFLOW_CONTROLS_LAYOUT_BAR,
+} from '../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
 
 export default function TaskChatWorkflowControls({ projectId, task }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -28,6 +30,9 @@ export default function TaskChatWorkflowControls({ projectId, task }) {
             workflow={workflow}
             disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
             appearance="chat"
+            // AT-3081 — a slim current-step bar instead of the stacked panel, so the chat keeps
+            // its height; the step list opens from the bar, Back/Forward stay on it.
+            layout={WORKFLOW_CONTROLS_LAYOUT_BAR}
             narrow={narrow}
         />
     )

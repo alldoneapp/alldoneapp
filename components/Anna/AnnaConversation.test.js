@@ -1078,6 +1078,47 @@ it('records a project chosen in the switcher in the chat history of that project
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
 
+it('hides the navigation dividers outside Both and shows them again unchanged on return (AT-3079)', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(5000)
+    const p2 = { projectId: 'p2', id: 'anna_p2', assistantId: 'a1' }
+    const threads = [{ projectId: 'p2', chatId: 'anna_p2', created: 2 }]
+    Object.assign(mockThreadMessages, {
+        anna_p2: [{ id: 'm2', creatorId: 'u1', created: 3000, commentText: 'Hallo' }],
+    })
+    const pageContext = { surface: 'alldone', path: '/tasks', title: 'Privat - Tasks' }
+    const projectSwitch = { id: 1, projectId: 'p2', name: 'Privat', created: 4000 }
+    const base = { conversation: p2, threads, pageContext, projectSwitch }
+    const notices = () => [...container.querySelectorAll('.anna-context-notice span')].map(node => node.textContent)
+    const section = () => container.querySelector('[data-anna-message-id="m2"]').closest('section')
+
+    render({ ...base, showNavigationNotices: true })
+    expect(notices()).toEqual(['Switched to project: Privat', 'Looking at: Privat - Tasks'])
+    const timesInBoth = [...container.querySelectorAll('.anna-context-notice')].map(node => node.textContent)
+
+    // Anna only: no divider, no empty element left behind, only the message.
+    render({ ...base, showNavigationNotices: false })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(0)
+    expect(container.querySelector('[data-anna-project-switch]')).toBeNull()
+    expect([...section().children].filter(node => !node.matches('article, .anna-date-divider'))).toEqual([])
+    // A switch made while hidden is still recorded...
+    const toFamilie = { id: 2, projectId: 'p2', name: 'Familie', created: 4500 }
+    render({ ...base, projectSwitch: toFamilie, showNavigationNotices: false })
+    expect(notices()).toEqual([])
+
+    // ...and Both shows every divider again, with its original time.
+    render({ ...base, projectSwitch: toFamilie, showNavigationNotices: true })
+    expect(notices()).toEqual([
+        'Switched to project: Privat',
+        'Switched to project: Familie',
+        'Looking at: Privat - Tasks',
+    ])
+    const timesBack = [...container.querySelectorAll('.anna-context-notice')].map(node => node.textContent)
+    expect(timesBack[0]).toBe(timesInBoth[0])
+    expect(timesBack[2]).toBe(timesInBoth[1])
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
 it('keeps context hints scoped to the account and daily conversation', () => {
     const pageContext = { surface: 'alldone', path: '/tasks', title: 'Tasks' }
     render({ pageContext })

@@ -14,6 +14,7 @@ import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import { taskUsesWorkflowOutsideSteps } from './commentPopupWorkflowState'
 import { isOpenStepId } from '../../../WorkflowView/workflowStepHelper'
 import MainButtons from '../../../WorkflowModal/MainButtons'
+import WorkflowBarButtons from '../../../WorkflowModal/WorkflowBarButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
 import { getWorkflowStepName } from '../../../WorkflowModal/workflowNavigation'
 import Icon from '../../../Icon'
@@ -22,6 +23,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import useOnHover from '../../../../hooks/UseOnHover'
 
 const CHAT_APPEARANCE = 'chat'
+export const WORKFLOW_CONTROLS_LAYOUT_BAR = 'bar'
 
 function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppearance, narrow }) {
     const { hover, onHover, offHover } = useOnHover()
@@ -149,6 +151,12 @@ export default function CommentPopupWorkflowControls({
      * immediately, exactly as it does today.
      */
     completionMotion,
+    /**
+     * AT-3081 — `'bar'` collapses the controls into one slim row for the task detailed view:
+     * the current-step selector (which expands the step list below it) with compact Back /
+     * Forward buttons beside it. The comment popup keeps the default stacked panel.
+     */
+    layout,
 }) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
@@ -159,6 +167,7 @@ export default function CommentPopupWorkflowControls({
     const selectableSteps = getCommentPopupSelectableSteps(task, workflow)
     const currentStepId = task?.stepHistory?.[task.stepHistory.length - 1]
     const chatAppearance = appearance === CHAT_APPEARANCE
+    const barLayout = layout === WORKFLOW_CONTROLS_LAYOUT_BAR
 
     useEffect(() => {
         submittingRef.current = false
@@ -243,72 +252,107 @@ export default function CommentPopupWorkflowControls({
 
     const controlsDisabled = disabled || submitting
 
+    const selectorIconColor = chatAppearance ? colors.Text02 : colors.Text03
+    const selector = (
+        <TouchableOpacity
+            testID="comment-popup-workflow-selector"
+            style={[
+                localStyles.selectorButton,
+                chatAppearance && localStyles.chatSelectorButton,
+                chatAppearance && selectorHovered && !controlsDisabled && localStyles.chatSelectorButtonHover,
+                narrow && !barLayout && localStyles.narrowSelectorButton,
+                barLayout && localStyles.barSelectorButton,
+                controlsDisabled && localStyles.disabled,
+            ]}
+            onPress={() => setSelectorOpen(open => !open)}
+            onMouseEnter={onSelectorHover}
+            onMouseLeave={offSelectorHover}
+            disabled={controlsDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={translate('Select workflow step with name', { step: currentStepLabel })}
+            accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
+        >
+            {submitting ? (
+                <ActivityIndicator
+                    testID="workflow-transition-loading"
+                    size="small"
+                    color={chatAppearance ? colors.Primary100 : colors.Text03}
+                />
+            ) : (
+                <Icon name="list" size={18} color={selectorIconColor} />
+            )}
+            <Text
+                style={[
+                    styles.subtitle2,
+                    localStyles.selectorButtonText,
+                    chatAppearance && localStyles.chatSelectorButtonText,
+                ]}
+                // The slim bar is one line by definition; the full name is in the step list.
+                numberOfLines={narrow && !barLayout ? 2 : 1}
+            >
+                {/* On a phone the bar has no room for the "Current step:" prefix. */}
+                {barLayout && narrow
+                    ? currentStepLabel
+                    : translate('Current workflow step with name', { step: currentStepLabel })}
+            </Text>
+            <Icon name={selectorOpen ? 'chevron-up' : 'chevron-down'} size={18} color={selectorIconColor} />
+        </TouchableOpacity>
+    )
+
+    const stepList = selectorOpen && (
+        <ScrollView
+            testID="comment-popup-workflow-step-list"
+            style={[
+                localStyles.stepList,
+                chatAppearance && localStyles.chatStepList,
+                barLayout && localStyles.barStepList,
+            ]}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+        >
+            {selectableSteps.map(step => (
+                <WorkflowStepOption
+                    key={step.id}
+                    step={step}
+                    controlsDisabled={controlsDisabled}
+                    moveTaskToStep={moveTaskToStep}
+                    chatAppearance={chatAppearance}
+                    narrow={narrow}
+                />
+            ))}
+        </ScrollView>
+    )
+
+    if (barLayout) {
+        return (
+            <View
+                testID="comment-popup-workflow-controls"
+                style={[localStyles.container, chatAppearance && localStyles.chatContainer, localStyles.barContainer]}
+            >
+                <View testID="workflow-step-bar" style={localStyles.barRow}>
+                    {selector}
+                    <WorkflowBarButtons
+                        onDonePress={moveTask}
+                        currentStep={targets.currentStep}
+                        disabled={controlsDisabled}
+                        narrow={narrow}
+                        backwardStepName={backwardStepName}
+                        forwardStepName={forwardStepName}
+                        hideForwardButton={targets.forwardStepId == null}
+                    />
+                </View>
+                {stepList}
+            </View>
+        )
+    }
+
     return (
         <View
             testID="comment-popup-workflow-controls"
             style={[localStyles.container, chatAppearance && localStyles.chatContainer]}
         >
-            <TouchableOpacity
-                testID="comment-popup-workflow-selector"
-                style={[
-                    localStyles.selectorButton,
-                    chatAppearance && localStyles.chatSelectorButton,
-                    chatAppearance && selectorHovered && !controlsDisabled && localStyles.chatSelectorButtonHover,
-                    narrow && localStyles.narrowSelectorButton,
-                    controlsDisabled && localStyles.disabled,
-                ]}
-                onPress={() => setSelectorOpen(open => !open)}
-                onMouseEnter={onSelectorHover}
-                onMouseLeave={offSelectorHover}
-                disabled={controlsDisabled}
-                accessibilityRole="button"
-                accessibilityLabel={translate('Select workflow step with name', { step: currentStepLabel })}
-                accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
-            >
-                {submitting ? (
-                    <ActivityIndicator
-                        testID="workflow-transition-loading"
-                        size="small"
-                        color={chatAppearance ? colors.Primary100 : colors.Text03}
-                    />
-                ) : (
-                    <Icon name="list" size={18} color={chatAppearance ? colors.Text02 : colors.Text03} />
-                )}
-                <Text
-                    style={[
-                        styles.subtitle2,
-                        localStyles.selectorButtonText,
-                        chatAppearance && localStyles.chatSelectorButtonText,
-                    ]}
-                    numberOfLines={narrow ? 2 : 1}
-                >
-                    {translate('Current workflow step with name', { step: currentStepLabel })}
-                </Text>
-                <Icon
-                    name={selectorOpen ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={chatAppearance ? colors.Text02 : colors.Text03}
-                />
-            </TouchableOpacity>
-            {selectorOpen && (
-                <ScrollView
-                    testID="comment-popup-workflow-step-list"
-                    style={[localStyles.stepList, chatAppearance && localStyles.chatStepList]}
-                    nestedScrollEnabled
-                    keyboardShouldPersistTaps="handled"
-                >
-                    {selectableSteps.map(step => (
-                        <WorkflowStepOption
-                            key={step.id}
-                            step={step}
-                            controlsDisabled={controlsDisabled}
-                            moveTaskToStep={moveTaskToStep}
-                            chatAppearance={chatAppearance}
-                            narrow={narrow}
-                        />
-                    ))}
-                </ScrollView>
-            )}
+            {selector}
+            {stepList}
             <MainButtons
                 onDonePress={moveTask}
                 selectedCustomStep={false}
@@ -368,6 +412,27 @@ const localStyles = StyleSheet.create({
     },
     disabled: {
         opacity: 0.5,
+    },
+    // AT-3081 — the task view's slim bar: one 32px row instead of a 36px selector plus a 52px
+    // button row.
+    barContainer: {
+        paddingTop: 6,
+        paddingBottom: 6,
+    },
+    barRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+    },
+    barSelectorButton: {
+        flex: 1,
+        height: 32,
+        marginBottom: 0,
+        minWidth: 0,
+        width: 'auto',
+    },
+    barStepList: {
+        marginBottom: 0,
+        marginTop: 6,
     },
     narrowSelectorButton: {
         height: 'auto',

@@ -6,12 +6,7 @@ import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
 import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
-import {
-    getAnnaWorkspacePlanKey,
-    resolveAnnaChoiceForWorkspace,
-    syncAnnaWorkspaceProject,
-} from './annaWorkspaceProjectSync'
-import useAnnaWorkspaceProjectFollow from './useAnnaWorkspaceProjectFollow'
+import { syncAnnaWorkspaceProject } from './annaWorkspaceProjectSync'
 import AnnaProjectSwitcher, { canSwitchAnnaProject } from './AnnaProjectSwitcher'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../utils/InitialLoad/projectDataLoader'
@@ -246,17 +241,12 @@ export default function AnnaShell({ children, routeId }) {
     const [projectSwitch, setProjectSwitch] = useState(null)
     const projectSwitchSequence = useRef(0)
     const chatPane = useRef(null)
-    // AT-3036 follow-up: the person opening a project in the workspace moves the chat there (the
-    // handler is set below, once `selectProject` exists). Presses in the chat pane or the Anna
-    // header are the chat's side; everything else, including body portals, the workspace's.
-    const followWorkspace = useRef(null)
     // AT-3036 follow-up: a project picked in the chat sidebar waits here (its target project) to
     // focus the composer once that project's chat is on screen. Any other selection drops it.
     const chatSwitchFocus = useRef(null)
-    const { expectSync: expectWorkspaceSync } = useAnnaWorkspaceProjectFollow({
-        isChatSide: target => !!target && (!!chatPane.current?.contains(target) || !!target.closest?.('.anna-header')),
-        follow: workspaceKey => followWorkspace.current?.(workspaceKey),
-    })
+    // AT-3080: the sync is one-way. A project the person opens in the Alldone workspace never
+    // changes the chat's project or its assistant, in any view (decided with the product owner,
+    // replacing the AT-3036 follow-up that moved the chat after the workspace).
     const selectProject = useCallback(
         (projectId, { syncWorkspace = true } = {}) => {
             setProjectNotice('')
@@ -282,8 +272,6 @@ export default function AnnaShell({ children, routeId }) {
             if (syncWorkspace) {
                 syncAnnaWorkspaceProject(projectId, {
                     getState: store.getState,
-                    // Announced before it happens, so the follow below never bounces it back.
-                    onPlan: plan => expectWorkspaceSync(getAnnaWorkspacePlanKey(plan)),
                     dispatch,
                     navigate: route => NavigationService.navigate(route),
                 })
@@ -291,7 +279,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         [
             dispatch,
-            expectWorkspaceSync,
             projectSelection.select,
             user.defaultProjectId,
             activeProjectId,
@@ -419,7 +406,7 @@ export default function AnnaShell({ children, routeId }) {
     // picker at the top left), the composer takes focus once the new
     // project's chat is loaded and on screen, so the person can type right away; the draft stays.
     // Desktop only (decided with the product owner): on a phone the keyboard would cover the chat
-    // that just opened. Switches from the workspace or an assistant line never focus here, the
+    // that just opened. A switch from an assistant line never focuses here, the
     // latest pick wins, and any press while the chat loads (in the workspace, the chat, a menu)
     // drops the pending focus, so it never takes over from what the person did meanwhile.
     const chatInputFocusAllowed = useRef(false)
@@ -704,20 +691,6 @@ export default function AnnaShell({ children, routeId }) {
         },
         [call.status, offline, user, projectSelection.isDefault, projectSelection.choiceId, selectProject]
     )
-    // AT-3036 follow-up: the person opened a project (or All projects) in the workspace, so the chat
-    // continues there: that project's daily chat with its assistant (`resolveAnnaChoiceForWorkspace`).
-    // The same limits as the line entry apply (no switch during a call or offline), and the
-    // workspace is not moved back, since it is already there.
-    followWorkspace.current = workspaceKey => {
-        if (call.status !== 'idle' || offline) return
-        const next = resolveAnnaChoiceForWorkspace({
-            user,
-            workspaceKey,
-            choiceId: projectSelection.choiceId,
-            isDefault: projectSelection.isDefault,
-        })
-        if (next) selectProject(next, { syncWorkspace: false })
-    }
     // Through a ref, so the context value (and every entry button) stays stable across user updates.
     const followLineProjectRef = useRef(followLineProject)
     followLineProjectRef.current = followLineProject
@@ -1511,6 +1484,8 @@ export default function AnnaShell({ children, routeId }) {
                                                 : ''
                                         }
                                         projectSwitch={projectSwitch}
+                                        // AT-3079: navigation dividers only while Both is in front.
+                                        showNavigationNotices={shownLayout === 'split'}
                                     />
                                 </AnnaAppPaneContext.Provider>
                             )}
