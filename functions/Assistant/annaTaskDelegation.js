@@ -139,72 +139,19 @@ async function startDelegatedTaskWorkflow({
     }
 }
 
-const hasFailedCurrentStep = task => {
-    const history = Array.isArray(task?.stepHistory) ? task.stepHistory : []
-    const status = task?.workflowAiStatus
-    return history.length > 1 && status?.status === 'failed' && status.stepId === history[history.length - 1]
-}
-
-/**
- * Restarts the failed AI step of a delegated task when the user asked to continue it.
- *
- * Only the workflow may start a VM on a delegated task, so a chat turn is refused below. When the
- * step's own run had failed, that refusal was a dead end (2026-11-18, task nFzDtx2oPmJOsH5ztdGF): the
- * VM restarted under the agent, its notice said "reply in this thread to continue", and the reply
- * was refused while the only way on was the "Needs attention" tag in the task list. Restarting the
- * failed run keeps the workflow the only one that starts the VM: the run waits for this reply to
- * finish (deferDelegatedWorkflowForConversation) and continues in the same thread and VM session.
- * Only a message the user typed counts, as for move_task_workflow_step; the user pays, as with the
- * tag. Returns null when the step cannot be restarted from here.
- */
-async function retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs }) {
-    if (!retryAs?.requestUserId || !hasFailedCurrentStep(task)) return null
-    const { isHumanTurn } = require('./workflowStepMoveTool')
-    if (!(await isHumanTurn(db, retryAs.runtime, retryAs.requestUserId))) return null
-    try {
-        const { retryFailedWorkflowAiRun } = require('../Tasks/workflowAiStep')
-        const runId = await retryFailedWorkflowAiRun(projectId, taskId, retryAs.requestUserId)
-        if (!runId) return null
-        return {
-            success: true,
-            projectId,
-            taskId,
-            status: 'workflow_step_restarted',
-            runId,
-            message:
-                "This task's failed workflow step was started again. It continues in this task's conversation, in the same VM when one was kept, as soon as this reply is finished. Do not start a VM yourself. Tell the user briefly that the step is running again.",
-        }
-    } catch (error) {
-        console.warn('Could not restart the failed workflow step of a delegated task', {
-            projectId,
-            taskId,
-            error: error.message,
-        })
-        return null
-    }
-}
-
-/**
- * Whether execute_task_in_vm must leave this task to its workflow, and what to tell the assistant.
- * `retryAs` ({ requestUserId, runtime }) lets a request the user typed restart a failed AI step.
- */
-async function getDelegatedTaskExecution({ db, projectId, taskId, retryAs = null }) {
+async function getDelegatedTaskExecution({ db, projectId, taskId }) {
     const snapshot = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
     const task = snapshot.exists ? snapshot.data() : null
     if (!isDelegatedWorkflowTask(task) || task.done) return null
-    const restarted = await retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs })
-    if (restarted) return restarted
-    const managed = task.stepHistory?.length > 1
     return {
         success: true,
         projectId,
         taskId,
-        status: managed ? 'workflow_managed' : 'needs_workflow_choice',
-        message: !managed
-            ? 'This task has no active assistant workflow step. Offer to configure the workflow or explicitly switch this existing task to direct execution first.'
-            : hasFailedCurrentStep(task)
-              ? "This task is handled by its workflow, and the run of its current step failed. Do not start a second execution. Only a message the user types asking to continue restarts the step; otherwise the user can press the task's 'Needs attention' tag in the task list."
-              : 'This task is handled by its workflow. Do not start a second execution; follow its current step and review the result on the same task.',
+        status: task.stepHistory?.length > 1 ? 'workflow_managed' : 'needs_workflow_choice',
+        message:
+            task.stepHistory?.length > 1
+                ? 'This task is handled by its workflow. Do not start a second execution; follow its current step and review the result on the same task.'
+                : 'This task has no active assistant workflow step. Offer to configure the workflow or explicitly switch this existing task to direct execution first.',
     }
 }
 

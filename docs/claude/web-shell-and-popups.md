@@ -929,3 +929,30 @@ header rows and a one-row workflow bar.
   `TagListSharedActions.test.js`, `TaskHeaderOverflow*.test.js`, `HeaderSharedChat.test.js`.
 - `accessibilityHint` is dropped by react-native-web 0.21. Use `accessibilityState` (`expanded`)
   or the label instead.
+
+## Assistant header focus pick: project-list order, calmer reel (AT-3085, 2026-11-18)
+
+- **Order:** "Get a focus task" and "Show a different focus task" (`AnnaFocusTask`) walk the
+  projects from the **top of the user's project list** (the sidebar order). Before this they started
+  in the project of the last focus task, often the default project ("Privat") at the bottom of
+  the list. Both call the app's `findAndSetNewFocusedTask` with `fromTopOfList: true`, which
+  skips the "stay in the current project" phase. Completing or postponing a focus task still
+  searches its own project first, then walks the list.
+- **One order everywhere:** `functions/shared/projectListOrder.js` is the only implementation. It
+  sorts by `sortIndexByUser[uid]` (highest first), then by name. A project with no sort index sorts
+  first, as lodash `orderBy` always did. `ProjectHelper.sortProjects` (sidebar), the app pick and
+  `FocusTaskService.findAndSetNewFocusTask` all use it. The app searches the listed active projects
+  first, then other member projects (guide, archived) as the last fallback; the server only
+  searches active projects. A project with no task due today is skipped, eligibility
+  (`isTaskOnUserPlate`, due today, no calendar task) is unchanged, and an imminent calendar task
+  still beats everything. Do not reintroduce a `|| 0` sort: it sends projects without an index to
+  the end and breaks parity with the sidebar. Tests: `projectListOrder.test.js` (functions),
+  lodash parity in `ProjectHelper.test.js`, `focusListOrder.test.js`, and the AT-3085 block in
+  `FocusTaskService.test.js`.
+- **Reel timing:** names change every `FAST_TICK_MS` = 130 ms (was 70 ms; too fast to read), with
+  about the same total length: `MIN_TICKS` ≈ 1 s, `LAND_WAIT_TICKS` ≈ 3.1 s. The CSS slide-in
+  `anna-focus-reel-fast` lasts one tick, so change both together.
+- **Centring:** the reel item is keyed by its **text**, not by the tick. Keyed by the tick, the static
+  "Finding a focus task…" restarted its slide-in from above on every tick and so sat above the
+  pill's middle most of the time. The rolling pill without a reroll button pads both sides by
+  12px (`.anna-focus-pill > .anna-focus-task:last-child`).

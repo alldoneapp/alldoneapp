@@ -351,16 +351,6 @@ themselves), one handler (`mcpWorkspaceSetupTools.js`), one Tools Access key for
   never the assistant's. `add_chat_comment` shows the shape: user as author, no
   `lastAssistantCommentData` pointers.
 
-**A task an MCP client creates skips the workflow by default (2026-11-18).** `create_task` over MCP
-(Claude Code, Codex, browser agents through `window.alldone`/WebMCP) gets `executionMode: 'direct'`
-unless the client passes `direct` or `workflow` (`applyMcpCreateTaskDefaults` in
-`mcpServerSimple.js`; the MCP schema of `executionMode` says so). Agents keep their own work state
-there, and a review step would only park those tasks with a reviewer. The shared `create_task` code
-and the in-app assistants keep the `workflow` default, because delegated assistant work returns for
-human review (`assistant-runs.md`, "Delegated work stays user-owned"). `update_task` is not
-defaulted. Before the client read `executionMode` (AT-2845, 2026-10-25) even an explicit `direct`
-went through the workflow on the checkbox.
-
 **Where each capability lives (2026-11-09).** Shared modules, both surfaces:
 
 - **Workspace setup and scheduled tasks** (`Assistant/workspaceToolsForAssistants.js`): MCP's

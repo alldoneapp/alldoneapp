@@ -18,8 +18,6 @@ import { translate } from '../../../../../i18n/TranslationService'
  * The Anna composer reuses it beside its + (AT-3032). There the button sits at the bottom of the
  * chat pane, so it passes `position` (open upwards) and `getPopoverViewport`: without one the
  * popover is constrained to the global workspace viewport and would jump into the workspace pane.
- * It also passes `originConversation` (its own chat), so a template's new task is announced there
- * (AT-3082).
  */
 const DEFAULT_POSITION = ['bottom', 'top', 'left', 'right']
 
@@ -29,7 +27,6 @@ export default function AssistantTaskSearchButtonWrapper({
     compact,
     position = DEFAULT_POSITION,
     getPopoverViewport,
-    originConversation = null,
 }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
@@ -69,7 +66,6 @@ export default function AssistantTaskSearchButtonWrapper({
                         closeModal={closeModal}
                         preferredAssistantId={preferredAssistantId}
                         preferredProjectId={preferredProjectId}
-                        originConversation={originConversation}
                     />
                 ) : null
             }

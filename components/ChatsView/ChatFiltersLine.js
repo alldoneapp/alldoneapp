@@ -5,14 +5,13 @@ import { shallowEqual, useSelector } from 'react-redux'
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
-import { getUnreadMessageCount } from './Utils/unreadChatFilter'
-import UnreadTriageFilters from './UnreadTriage/UnreadTriageFilters'
+import { getUnreadThreadCount } from './Utils/unreadChatFilter'
 
 export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly }) {
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
     const projectChatNotifications = useSelector(state => state.projectChatNotifications, shallowEqual)
     const unreadCount = useMemo(
-        () => getUnreadMessageCount(projectChatNotifications, projectIds, chatsActiveTab),
+        () => getUnreadThreadCount(projectChatNotifications, projectIds, chatsActiveTab),
         [projectChatNotifications, projectIds, chatsActiveTab]
     )
 
@@ -43,8 +42,6 @@ export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly 
                     count={unreadCount}
                 />
             </View>
-            {/* Chats > Unread is the flat list of unread messages; its tags, sort and settings. */}
-            {unreadOnly && <UnreadTriageFilters projectIds={projectIds} />}
         </View>
     )
 }
