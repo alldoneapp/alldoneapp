@@ -159,7 +159,7 @@ describe('setKnowledgeBaseSettings', () => {
         expect(db.read(KB_PATH)).toMatchObject({ ownerUserId: 'teammate', nextRunAt: NOW })
     })
 
-    it('runs a wiki paused for an archived project before AT-2893 again when its payer saves it', async () => {
+    it('runs a wiki paused for an archived project again when its payer saves it', async () => {
         const db = createDb({
             enabled: true,
             ownerUserId: 'owner',
@@ -177,7 +177,75 @@ describe('setKnowledgeBaseSettings', () => {
         })
 
         expect(view.nextRunAt).toBe(NOW)
-        expect(view).not.toHaveProperty('pausedForArchivedProject')
+        expect(view.pausedForArchivedProject).toBe(false)
+    })
+
+    describe('automatic project description update (AT-3095)', () => {
+        it('is on and weekly when nothing was stored, without writing anything for it', async () => {
+            const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 1 })
+
+            const view = await setKnowledgeBaseSettings({
+                enqueue,
+                db,
+                now: NOW,
+                userId: 'owner',
+                projectId: PROJECT_ID,
+                settings: { instructions: 'neu' },
+            })
+
+            expect(view.descriptionUpdate).toEqual({
+                enabled: true,
+                intervalDays: 7,
+                lastRunAt: null,
+                lastChangedAt: null,
+                lastResult: null,
+            })
+            expect(db.read(KB_PATH)).not.toHaveProperty('descriptionUpdate')
+        })
+
+        it('stores the switch and the interval the payer chose, keeping the other one', async () => {
+            const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 1 })
+            const save = settings =>
+                setKnowledgeBaseSettings({ enqueue, db, now: NOW, userId: 'owner', projectId: PROJECT_ID, settings })
+
+            await save({ descriptionUpdateIntervalDays: 14 })
+            const view = await save({ descriptionUpdateEnabled: false })
+
+            expect(view.descriptionUpdate).toMatchObject({ enabled: false, intervalDays: 14 })
+            expect(db.read(KB_PATH).descriptionUpdate).toEqual({
+                enabled: false,
+                intervalDays: 14,
+                updatedAt: NOW,
+                updatedBy: 'owner',
+            })
+            expect(enqueue).not.toHaveBeenCalled()
+        })
+
+        it('refuses an interval that is not offered and a non-boolean switch', async () => {
+            const db = createDb({ enabled: true, ownerUserId: 'owner' })
+            const save = settings =>
+                setKnowledgeBaseSettings({ enqueue, db, now: NOW, userId: 'owner', projectId: PROJECT_ID, settings })
+
+            await expect(save({ descriptionUpdateIntervalDays: 3 })).rejects.toMatchObject({ code: 'invalid-argument' })
+            await expect(save({ descriptionUpdateEnabled: 'yes' })).rejects.toMatchObject({ code: 'invalid-argument' })
+            expect(db.read(KB_PATH)).not.toHaveProperty('descriptionUpdate')
+        })
+
+        it('may only be changed by the payer while the wiki is on, like the rest of it', async () => {
+            const db = createDb({ enabled: true, ownerUserId: 'owner' })
+
+            await expect(
+                setKnowledgeBaseSettings({
+                    enqueue,
+                    db,
+                    now: NOW,
+                    userId: 'teammate',
+                    projectId: PROJECT_ID,
+                    settings: { descriptionUpdateEnabled: false },
+                })
+            ).rejects.toMatchObject({ code: 'permission-denied' })
+            expect(db.read(KB_PATH)).not.toHaveProperty('descriptionUpdate')
+        })
     })
 
     it('lets any member edit a wiki that is off without becoming its owner', async () => {

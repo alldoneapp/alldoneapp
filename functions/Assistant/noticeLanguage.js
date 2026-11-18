@@ -67,9 +67,6 @@ const NOTICE_STRINGS = {
         'vmResult.cancelled': 'was cancelled',
         'vmResult.interrupted': 'was interrupted',
         'vmResult.failed': 'failed',
-
-        'taskLink.follow': 'Follow it here:',
-        'taskLink.followId': 'Follow {id} here:',
     },
     de: {
         'quote.open': '„',
@@ -120,9 +117,6 @@ const NOTICE_STRINGS = {
         'vmResult.cancelled': 'wurde abgebrochen',
         'vmResult.interrupted': 'wurde unterbrochen',
         'vmResult.failed': 'ist fehlgeschlagen',
-
-        'taskLink.follow': 'Hier geht es weiter:',
-        'taskLink.followId': 'Hier geht es mit {id} weiter:',
     },
     es: {
         'quote.open': '“',
@@ -173,9 +167,6 @@ const NOTICE_STRINGS = {
         'vmResult.cancelled': 'fue cancelada',
         'vmResult.interrupted': 'fue interrumpida',
         'vmResult.failed': 'falló',
-
-        'taskLink.follow': 'Síguelo aquí:',
-        'taskLink.followId': 'Sigue {id} aquí:',
     },
 }
 

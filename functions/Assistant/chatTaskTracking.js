@@ -42,7 +42,7 @@ function chatTaskTrackingInstructions({ allowedTools = [] } = {}) {
                 "call create_task once with trackAssistantWork true, taskOrigin user_request, a concise name and a description of the request in the user's language. " +
                 'The user owns the task; the responsible project assistant works on it in the task thread and the result returns to the user for review. ' +
                 'Follow the returned delegation status and handoffInstruction. workflow_managed means the work has already started in that task (through the saved workflow, or directly when there is no workflow step): do not also launch a VM, delegate or do the work in this chat. ' +
-                'Then reply here in one or two sentences that the work continues in the task, with its link (taskUrl from the result).'
+                'Then reply here in one or two sentences that the work continues in the task.'
         )
     }
     if (canUseVm) {

@@ -102,7 +102,10 @@ function mount(knowledgeBase, project = PROJECT) {
     return component
 }
 
-const wikiSwitch = component => component.root.findByProps({ testID: 'wiki-switch' })
+// The wiki's own switch comes first; the automatic description update has the second one.
+const wikiSwitch = component => component.root.findAll(node => node.props.testID === 'wiki-switch', { deep: false })[0]
+const descriptionBlock = component => component.root.findByProps({ testID: 'project-description-update-settings' })
+const descriptionSwitch = component => descriptionBlock(component).findByProps({ testID: 'wiki-switch' })
 const isSwitching = component => component.root.findAllByProps({ testID: 'project-wiki-switching' }).length > 0
 
 function deferred() {
@@ -149,7 +152,7 @@ describe('ProjectWikiSettings', () => {
         const component = mount(null)
         expect(textOf(component.toJSON())).toContain('The member who switches the wiki on pays')
 
-        await act(async () => component.root.findByProps({ testID: 'wiki-switch' }).props.onPress())
+        await act(async () => wikiSwitch(component).props.onPress())
 
         expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { enabled: true })
         expect(textOf(component.toJSON())).toContain('Saved')
@@ -211,7 +214,7 @@ describe('ProjectWikiSettings', () => {
 
         expect(text).toContain('Paid by Karsten')
         expect(text).toContain('Only the member who pays for the wiki can change these settings.')
-        expect(component.root.findByProps({ testID: 'wiki-switch' }).props.disabled).toBe(true)
+        expect(wikiSwitch(component).props.disabled).toBe(true)
         expect(component.root.findByProps({ testID: 'project-wiki-cap' }).props.editable).toBe(false)
         expect(component.root.findByProps({ testID: 'project-wiki-instructions' }).props.editable).toBe(false)
     })
@@ -243,10 +246,10 @@ describe('ProjectWikiSettings', () => {
                 lastRunStopReason: 'project_archived',
             })
         )
-        // AT-2893: archiving no longer pauses a wiki, so a leftover paused state announces nothing
-        // (the default sweep resumes it).
-        expect(component.root.findAllByProps({ testID: 'project-wiki-archived-hint' })).toHaveLength(0)
-        expect(textOf(component.toJSON())).not.toContain('archived this project')
+        // AT-3095: an archived project's wiki pauses after its one complete build, and says so.
+        expect(textOf(component.root.findByProps({ testID: 'project-wiki-archived-hint' }).children)).toContain(
+            'Paused: the paying member has archived this project.'
+        )
 
         // A wiki a member switched on themselves says neither.
         act(() => mockWatchers.knowledgeBase({ enabled: true, ownerUserId: 'owner', nextRunAt: 5 }))
@@ -369,7 +372,7 @@ describe('ProjectWikiSettings', () => {
         saveKnowledgeBaseSettings.mockRejectedValue({ code: 'offline' })
         const component = mount(null)
 
-        await act(async () => component.root.findByProps({ testID: 'wiki-switch' }).props.onPress())
+        await act(async () => wikiSwitch(component).props.onPress())
 
         expect(textOf(component.toJSON())).toContain('Changing the wiki settings needs an internet connection.')
     })
@@ -403,5 +406,45 @@ describe('ProjectWikiSettings', () => {
 
         const runs = textOf(component.root.findByProps({ testID: 'project-wiki-runs' }).children)
         expect(runs).toContain('Stopped · Monthly Gold limit reached · 12 sources · 1 changes · 30 Gold')
+    })
+})
+
+describe('automatic project description update (AT-3095)', () => {
+    it('shows the default (on, weekly) and saves the switch and the interval', async () => {
+        const component = mount({ enabled: true, ownerUserId: 'me' })
+        const block = descriptionBlock(component)
+        expect(textOf(component.toJSON())).toContain('Update project description automatically')
+        expect(descriptionSwitch(component).props.accessibilityState).toEqual({ checked: true })
+        expect(findButton(component, 'Weekly').props.disabled).toBe(true)
+        expect(block.findAllByProps({ testID: 'project-description-update-needs-wiki' })).toHaveLength(0)
+
+        await act(async () => findButton(component, 'Every 2 weeks').props.onPress())
+        expect(saveKnowledgeBaseSettings).toHaveBeenLastCalledWith('p1', { descriptionUpdateIntervalDays: 14 })
+
+        await act(async () => descriptionSwitch(component).props.onPress())
+        expect(saveKnowledgeBaseSettings).toHaveBeenLastCalledWith('p1', { descriptionUpdateEnabled: false })
+    })
+
+    it('hides the interval while switched off and shows when it last checked and changed', () => {
+        const component = mount({
+            enabled: true,
+            ownerUserId: 'me',
+            descriptionUpdate: { enabled: false, intervalDays: 28 },
+            descriptionUpdateState: { lastRunAt: Date.UTC(2026, 10, 10, 2), lastChangedAt: Date.UTC(2026, 10, 3, 2) },
+        })
+
+        expect(descriptionSwitch(component).props.accessibilityState).toEqual({ checked: false })
+        expect(findButton(component, 'Every 4 weeks')).toBeUndefined()
+        const status = textOf(component.root.findByProps({ testID: 'project-description-update-status' }).children)
+        expect(status).toContain('Last checked 10.11.2026')
+        expect(status).toContain('last changed 03.11.2026')
+    })
+
+    it('says it needs the wiki, and only the payer may change it', () => {
+        const off = mount({ enabled: false })
+        expect(off.root.findAllByProps({ testID: 'project-description-update-needs-wiki' }).length).toBeGreaterThan(0)
+
+        const someoneElses = mount({ enabled: true, ownerUserId: 'owner' })
+        expect(descriptionSwitch(someoneElses).props.disabled).toBe(true)
     })
 })
