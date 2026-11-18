@@ -155,3 +155,77 @@ describe('getDelegatedTaskExecution', () => {
         expect(mockRetryFailedWorkflowAiRun).not.toHaveBeenCalled()
     })
 })
+
+describe('resolveDelegationOrigin (AT-3096)', () => {
+    const { resolveDelegationOrigin, startDelegatedTaskWorkflow } = require('./annaTaskDelegation')
+    const forwarded = {
+        projectId: 'cto-project',
+        assistantId: 'cto',
+        originProjectId: 'private-project',
+        originObjectType: 'topics',
+        originObjectId: 'anna-chat',
+        originAssistantId: 'anna',
+    }
+
+    test('a tracked conversation is its own origin', () => {
+        expect(
+            resolveDelegationOrigin({
+                annaConversation: true,
+                projectId: 'p',
+                objectType: 'topics',
+                objectId: 'chat',
+                assistantId: 'anna',
+            })
+        ).toEqual({ projectId: 'p', objectType: 'topics', objectId: 'chat', assistantId: 'anna' })
+    })
+
+    test("a delegate without a conversation reports to the caller's tracked conversation", () => {
+        expect(resolveDelegationOrigin({ ...forwarded, originTracksWork: true })).toEqual({
+            projectId: 'private-project',
+            objectType: 'topics',
+            objectId: 'anna-chat',
+            assistantId: 'anna',
+        })
+    })
+
+    test('an untracked caller, a task thread, or incomplete fields give no origin', () => {
+        expect(resolveDelegationOrigin(forwarded)).toBeNull()
+        expect(resolveDelegationOrigin({ ...forwarded, originTracksWork: 'true' })).toBeNull()
+        expect(resolveDelegationOrigin({ ...forwarded, originTracksWork: true, originObjectId: '' })).toBeNull()
+        // A conversation of its own that is not tracked (a task thread) stays without origin.
+        expect(resolveDelegationOrigin({ ...forwarded, originTracksWork: true, objectId: 'task-thread' })).toBeNull()
+        expect(resolveDelegationOrigin(null)).toBeNull()
+    })
+
+    test('the receipt records the forwarded origin so the result returns to that chat', async () => {
+        const writes = []
+        const db = {
+            doc: path => ({
+                path,
+                set: async (data, options) => writes.push({ path, data, options }),
+                get: async () => ({ exists: false, data: () => undefined }),
+            }),
+            runTransaction: async () => ({ task: {}, changed: true }),
+        }
+        const result = await startDelegatedTaskWorkflow({
+            db,
+            projectId: 'cto-project',
+            taskId: 'task-9',
+            ownerId: 'user-1',
+            assistantId: 'cto',
+            originConversation: { ...forwarded, originTracksWork: true },
+            requestCommentId: 'request-1',
+        })
+        expect(result.status).toBe('task_changed')
+        expect(writes[0]).toMatchObject({
+            path: 'delegatedTaskOrigins/cto-project__task-9',
+            data: {
+                originProjectId: 'private-project',
+                originObjectType: 'topics',
+                originObjectId: 'anna-chat',
+                originAssistantId: 'anna',
+                requestCommentId: 'request-1',
+            },
+        })
+    })
+})

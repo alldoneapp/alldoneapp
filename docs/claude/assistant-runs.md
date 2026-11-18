@@ -2,6 +2,42 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
+## The commissioning chat always links the task the work continues in (AT-3096, 2026-11-18)
+
+Karsten asked in a CTO chat for weekly project-description updates; the reply was "Die Umsetzung
+läuft in **AT-3095** weiter" with no link. The **result** side already linked the task in every
+server-written line (VM result note, 📋 review notice, step-change line, VM question notice, template
+notices). The **hand-off** reply was model prose. Product decision: both moments always show the
+canonical task link (`{base}/projects/{pid}/tasks/{tid}/chat`), as platform behaviour.
+
+- **Tool results** (`functions/Assistant/delegatedTaskLinks.js`, `withDelegatedTaskLink`):
+  `create_task` with `trackAssistantWork` (workflow and direct) and every delegation answer of
+  `execute_task_in_vm` (`workflow_managed`/`task_changed` from a created host task,
+  `workflow_managed`/`workflow_step_restarted`/`needs_workflow_choice` when joining a delegated task)
+  carry `taskUrl` and `delegatedTask`, built only from the ids the tool resolved. The hand-off
+  instruction tells the model to pass `taskUrl` on and never build or placeholder a link.
+- **Safety net:** both run paths (`storeChunks` and the non-streaming collector, which also feeds
+  `talk_to_assistant` results via `delegatedTaskResults`) run `ensureDelegatedTaskLinksInResponse`
+  after the note and VM link helpers. It rewrites any URL of the same task (wrong project, no
+  `/chat`) to the canonical one, appends `Follow it here: …` / `Hier geht es weiter: …` /
+  `Síguelo aquí: …` (`noticeLanguage` key `taskLink.follow`, run language) when missing, dedupes per
+  task and against the VM host link, and adds nothing when the reply is written in that task's chat.
+  Plain `create_task` (no delegation) is untouched. The VM host link line uses the same localized key.
+- **VM hand-off to another task:** `onVmHandoff` links the frozen introduction itself, because a
+  follow-up message (result after `get_vm_job`) gets the link at finalization while the introduction
+  stays frozen.
+- **Delegates:** a `talk_to_assistant` delegate has no conversation. `executeDelegatedAssistantRequest`
+  now forwards `originTracksWork` (the caller's chat is Anna's or a tracked project chat), and
+  `resolveDelegationOrigin` (`annaTaskDelegation.js`) records that chat on the receipt, so the review
+  notice and step-change lines of a task the delegate created reach the chat the user asked in. A
+  task thread is still never an origin; nested delegates keep no origin, as before.
+- **Privacy:** only the task URL (and a known human-readable id) is added, never the task name; the
+  link opens nothing a reader could not already open.
+
+Coverage: `delegatedTaskLinks.test.js`, the AT-3096 cases in `assistantHelper.test.js` (create_task
+results, the end-to-end German reply, the frozen VM introduction, the delegate receipt) and
+`annaTaskDelegation.test.js`. Ships with the Functions deploy; the runner image is not involved.
+
 ## A template started in the Anna chat announces its task there (AT-3082, 2026-11-18)
 
 The Anna composer's **Templates** button (for example Anna's "Historical fact of the day" prompt)
