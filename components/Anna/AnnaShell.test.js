@@ -2888,139 +2888,99 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
         expect(projectSwitches()).toEqual([])
     })
 
-    // AT-3036 follow-up: the other direction. The person opens a project in the workspace and the
-    // chat follows: that project's chat, answered by that project's assistant.
-    describe('the chat follows a project opened in the workspace', () => {
+    // AT-3080: the sync is one-way. The person opening a project in the workspace (right) never
+    // changes the chat's project or the assistant on the left, in Both and in every other view
+    // (decided with the product owner; replaces the AT-3036 follow-up that moved the chat).
+    describe('one-way sync: a project opened in the workspace leaves the chat (AT-3080)', () => {
         const indexOf = { p1: 0, p2: 1, p3: 2, all: -1 }
         // What the store looks like after a navigation in the workspace (redux is mocked here).
         const workspaceShows = (view, project, route = 'ROOT_NOTES') => {
             mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: indexOf[project], route }
             view.rerender(content(1))
         }
-        // The person's press in the workspace (the app sidebar, a list) or in the chat pane.
+        // The person's press in the workspace (the app sidebar, the header's project picker, a list).
         const press = target => act(() => target.dispatchEvent(new Event('pointerdown', { bubbles: true })))
         const pressWorkspace = () => press(screen.getByLabelText('Real workspace editor'))
-        const pressChat = () => press(screen.getByLabelText('Persistent conversation'))
         const headerAssistant = () => document.querySelector('.anna-header-assistant').getAttribute('aria-label')
-
-        it('selects the opened project and previews its own assistant, without moving the workspace back', () => {
-            const view = render(content(1))
-            pressWorkspace()
-            workspaceShows(view, 'p2')
-            expect(lastProject()).toBe('p2')
-            // (The chip's project comes from the mocked conversation hook; only the mode is real here.)
-            expect(switcher().props.activeProjectId).not.toBe(':automatic')
-            expect(mockConversationProps.projectSwitch).toMatchObject({ projectId: 'p2', name: 'Alldone Product' })
+        const chatButton = () => layoutButton('chat').getAttribute('aria-label')
+        // The person switches project in the workspace: to a project with its own assistant, one
+        // without, All projects, the default project, and an object's detail view.
+        const navigateWorkspace = view => {
+            for (const [project, route] of [
+                ['p2', 'ROOT_NOTES'],
+                ['p3', 'ROOT_TASKS'],
+                ['all', 'ROOT_TASKS'],
+                ['p1', 'ROOT_GOALS'],
+                ['p2', 'TaskDetailedView'],
+            ]) {
+                pressWorkspace()
+                workspaceShows(view, project, route)
+                expect(lastProject()).toBe('p1')
+            }
+        }
+        const expectChatUnchanged = () => {
+            expect(lastProject()).toBe('p1')
+            expect(switcher().props.activeProjectId).toBe(':automatic')
+            // (The App view does not mount the conversation.)
+            expect(mockConversationProps?.projectSwitch).toBeFalsy()
+            expect(mockConversationProps?.switchingProjectName || '').toBe('')
+            expect(chatButton()).toBe('Only Anna Alldone')
+            // Nothing is sent back to the workspace either.
             expect(projectSwitches()).toEqual([])
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
-            view.rerender(content(1))
-            expect(headerAssistant()).toBe('Alldone CTO – Latest messages')
-        })
+        }
 
-        it('falls back to the default assistant in a project without one of its own', () => {
+        it('keeps the chat and its assistant in Both when the person switches project on the right', () => {
             const view = render(content(1))
-            pressWorkspace()
-            workspaceShows(view, 'p3')
-            expect(lastProject()).toBe('p3')
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p3', switching: true })
-            view.rerender(content(1))
+            expect(document.querySelector('.anna-shell').classList.contains('anna-one-card')).toBe(false)
+            expect(layoutButton('split').getAttribute('aria-pressed')).toBe('true')
+            expect(headerAssistant()).toBe('Anna Alldone – Latest messages')
+            navigateWorkspace(view)
+            expectChatUnchanged()
             expect(headerAssistant()).toBe('Anna Alldone – Latest messages')
         })
 
-        it('goes back to "Automatic" on All projects or the default project', () => {
-            const view = render(content(1))
-            pressWorkspace()
-            workspaceShows(view, 'p3')
-            expect(lastProject()).toBe('p3')
-            pressWorkspace()
-            workspaceShows(view, 'all', 'ROOT_TASKS')
-            expect(lastProject()).toBe('p1')
-            expect(switcher().props.activeProjectId).toBe(':automatic')
-            pressWorkspace()
-            workspaceShows(view, 'p2')
-            pressWorkspace()
-            workspaceShows(view, 'p1')
-            expect(switcher().props.activeProjectId).toBe(':automatic')
-        })
-
-        it('ignores project changes nobody made in the workspace (assistant reveal, chat links)', () => {
-            const view = render(content(1))
-            workspaceShows(view, 'p3', 'ROOT_TASKS')
-            expect(lastProject()).toBe('p1')
-            // A press in the chat (an activity row, a link in an answer) is the chat's side.
-            pressChat()
-            workspaceShows(view, 'p2', 'ROOT_TASKS')
-            expect(lastProject()).toBe('p1')
-            // A press long ago is no intent for a change now.
-            const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
-            pressWorkspace()
-            now.mockReturnValue(1000 + 4001)
-            workspaceShows(view, 'p3')
-            now.mockRestore()
-            expect(lastProject()).toBe('p1')
-        })
-
-        it('takes one press as one change, so a later programmatic change stays programmatic', () => {
-            const view = render(content(1))
-            pressWorkspace()
-            workspaceShows(view, 'p3')
-            expect(lastProject()).toBe('p3')
-            workspaceShows(view, 'p2')
-            expect(lastProject()).toBe('p3')
-        })
-
-        it('does not follow into an object’s detail view', () => {
-            const view = render(content(1))
-            pressWorkspace()
-            workspaceShows(view, 'p3', 'TaskDetailedView')
-            expect(lastProject()).toBe('p1')
-        })
-
-        // 2026-11-16: in the App view too, so the view switch in the top bar names the project's
-        // assistant (its chat is not loaded there) and Anna opens the chat it names.
-        it('follows in the App view, where the view switch names the project’s assistant', () => {
+        it('keeps the chat and the view switch’s assistant in the App view too', () => {
             setAnnaMode(false)
             const view = render(content(1))
-            const chatButton = () => layoutButton('chat').getAttribute('aria-label')
             expect(chatButton()).toBe('Only Anna Alldone')
-            pressWorkspace()
-            workspaceShows(view, 'p2')
-            expect(lastProject()).toBe('p2')
-            useAnnaConversation.mockReturnValue({ ...state, conversation: null, activeProjectId: 'p2' })
-            view.rerender(content(1))
-            expect(chatButton()).toBe('Only Alldone CTO')
-            pressWorkspace()
-            workspaceShows(view, 'all', 'ROOT_TASKS')
-            expect(lastProject()).toBe('p1')
-            useAnnaConversation.mockReturnValue({ ...state, conversation: null, activeProjectId: 'p1' })
-            view.rerender(content(1))
-            expect(chatButton()).toBe('Only Anna Alldone')
+            navigateWorkspace(view)
+            expectChatUnchanged()
         })
 
-        it('keeps the latest choice of both sides, without a loop (rapid navigation)', () => {
+        it('still moves the workspace when the assistant is switched on the left, without a loop', () => {
             const view = render(content(1))
-            // Two quick projects in the workspace: the second wins.
-            pressWorkspace()
-            workspaceShows(view, 'p2')
+            // The person browses another project on the right first: the chat stays.
             pressWorkspace()
             workspaceShows(view, 'p3')
-            expect(lastProject()).toBe('p3')
-            expect(projectSwitches()).toEqual([])
-            // Then the chat's chip: it wins and moves the workspace, once.
-            pressChat()
-            act(() => switcher().props.onSelect('p2'))
+            expect(lastProject()).toBe('p1')
+            // Then picks the "Alldone Product" assistant on the left: the workspace follows, once.
+            fireEvent.click(document.querySelector('.anna-header-left .anna-assistant-picker'))
+            fireEvent.click(
+                [...document.querySelectorAll('.anna-project-option')].find(row =>
+                    row.textContent.includes('Alldone Product')
+                )
+            )
             expect(lastProject()).toBe('p2')
             expect(projectSwitches()).toEqual([1])
-            // The workspace arrives there; nothing bounces back.
+            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
+            view.rerender(content(1))
+            expect(headerAssistant()).toBe('Alldone CTO – Latest messages')
+            // The workspace arrives there; nothing bounces back or fires again.
             workspaceShows(view, 'p2')
             expect(lastProject()).toBe('p2')
             expect(projectSwitches()).toEqual([1])
+            // A later switch on the right keeps the assistant the person picked on the left.
+            pressWorkspace()
+            workspaceShows(view, 'p3')
+            pressWorkspace()
+            workspaceShows(view, 'all', 'ROOT_TASKS')
+            expect(lastProject()).toBe('p2')
+            expect(projectSwitches()).toEqual([1])
+            expect(headerAssistant()).toBe('Alldone CTO – Latest messages')
         })
 
-        it('never bounces a late workspace sync back over a newer chat choice', () => {
+        it('keeps the latest of quick picks on the left while the workspace catches up', () => {
             const view = render(content(1))
-            // A press in the workspace just before, then two quick picks in the chat (no chat press
-            // here: the picks are called directly, so only the sync bookkeeping protects them).
             pressWorkspace()
             act(() => switcher().props.onSelect('p2'))
             act(() => switcher().props.onSelect('p3'))
@@ -3032,16 +2992,9 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             expect(projectSwitches()).toEqual([1, 2])
         })
 
-        it('names the opening project for the chat’s loading state, from either side (AT-3036)', () => {
+        it('names the opening project for the chat’s loading state after a pick on the left', () => {
             const view = render(content(1))
             expect(mockConversationProps.switchingProjectName).toBe('')
-            // From the workspace ...
-            pressWorkspace()
-            workspaceShows(view, 'p3')
-            useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p3', switching: true })
-            view.rerender(content(1))
-            expect(mockConversationProps).toMatchObject({ switching: true, switchingProjectName: 'Steercom' })
-            // ... and from the chat's chip.
             act(() => switcher().props.onSelect('p2'))
             useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: true })
             view.rerender(content(1))
@@ -3049,18 +3002,6 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             useAnnaConversation.mockReturnValue({ ...state, activeProjectId: 'p2', switching: false })
             view.rerender(content(1))
             expect(mockConversationProps.switchingProjectName).toBe('')
-        })
-
-        it('does not switch during a voice call', () => {
-            mockCallStatus = 'active'
-            try {
-                const view = render(content(1))
-                pressWorkspace()
-                workspaceShows(view, 'p2')
-                expect(lastProject()).toBe('p1')
-            } finally {
-                mockCallStatus = 'idle'
-            }
         })
     })
 
@@ -3175,30 +3116,30 @@ describe('the workspace follows the chat’s project (AT-3036)', () => {
             expect(document.activeElement).toBe(document.body)
         })
 
-        it('never focuses for a switch from the workspace or an assistant line', () => {
+        it('never focuses for a project opened in the workspace, which leaves the chat (AT-3080)', () => {
             const view = start()
             press(workspaceEditor())
             act(() => workspaceEditor().blur())
             mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: 2 }
             view.rerender(content(1))
-            expect(lastProject()).toBe('p3')
-            opened(view, 'p3')
-            settle('p3')
+            expect(lastProject()).toBe('p1')
+            settle('p1')
             expect(document.activeElement).toBe(document.body)
         })
 
-        it('drops the focus when the workspace takes over the switch while the chat loads', () => {
+        it('drops the focus when the person navigates the workspace while the chat loads', () => {
             const view = start()
             act(() => switcher().props.onSelect('p2'))
             opening(view, 'p2')
-            // The person opens Steercom in the workspace meanwhile: that is the switch that counts.
+            // The person opens Steercom in the workspace meanwhile: the chat stays on its pick
+            // (AT-3080), but the press means the person is busy there, so the composer stays put.
             press(workspaceEditor())
             act(() => workspaceEditor().blur())
             mockWorkspaceState = { ...mockWorkspaceState, selectedProjectIndex: 2 }
             view.rerender(content(1))
-            expect(lastProject()).toBe('p3')
-            opened(view, 'p3')
-            settle('p3')
+            expect(lastProject()).toBe('p2')
+            opened(view, 'p2')
+            settle('p2')
             expect(document.activeElement).toBe(document.body)
         })
 

@@ -344,16 +344,13 @@ and the default project; from any other project it opens All projects. Entering 
 an assistant line (AT-3034) passes `syncWorkspace: false`: the line already sits in the workspace's
 project. An app or VM on the right stays on screen; the Alldone view under it moves. Pinned by
 `annaThreadScope.test.js`, `annaWorkspaceProjectSync.test.js`, the AT-3036 cases in
-`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`. The other
-direction, the chat following a project the person opens in the workspace
-(`useAnnaWorkspaceProjectFollow`), also runs in the App view (2026-11-16): the view switch in the
-top bar names the chat's assistant, so it changes with the project (All projects: the default
-assistant; a project with its own assistant: that one), and Anna opens the chat it names. The chat
-loads only in assistant mode, so until then `headerAssistant` takes the project's own assistant
+`useAnnaConversation.test.js`, `AnnaConversation.test.js` and `AnnaShell.test.js`. The sync is
+**one-way** (AT-3080): the workspace never moves the chat, see below. The chat loads only in
+assistant mode, so until then `headerAssistant` takes the chat's selected project's own assistant
 (`activeChoice`) instead of the unloaded conversation's.
 
 **A project switch loads visibly and ends at the bottom (AT-3036 follow-up).** While `switching`
-(the selected project's chat is still resolving and has no local copy, from either side), `AnnaConversation` shows a
+(the selected project's chat is still resolving and has no local copy), `AnnaConversation` shows a
 `role="status"` loading state ("Opening the chat in …", the name from `AnnaShell`) in place of
 the timeline: the previous project's messages and its "Earlier days" button
 are not rendered, so nothing of the old project reads as the new chat. The composer stays mounted
@@ -380,7 +377,7 @@ that through `onSwitchSettled(projectId)` from the same point as the snap to the
 loaded and rendered, cached and empty chats included), right before the snap. A pick that keeps
 the chat on screen ("Automatic" to the explicit default project) focuses at once. The draft stays
 (the composer never remounts). It applies on desktop only (decided with the product owner): on a
-phone the keyboard would cover the chat that just opened. A switch from the workspace or an
+phone the keyboard would cover the chat that just opened. A switch from an
 assistant line never focuses here; `selectProject` drops the pending focus, and only the chat's
 picks set it. The latest pick wins: a switch only ends in the latest selected project, so a report
 for another project (refused, fallback to the default) drops it. Any pointer or key press while the
@@ -391,28 +388,17 @@ keyboard for a focus this late, which does not matter on desktop. Pinned by "foc
 after a switch picked in the chat" in `AnnaShell.test.js` and "reports the end of a switch" in
 `AnnaConversation.test.js`.
 
-**And back: a project opened in the workspace moves the chat (AT-3036 follow-up).** Decided with
-the product owner, replacing "nothing on the workspace side changes the chat's project". When the
-person opens a project's root view (tasks, notes, goals, …) in the workspace, the chat selects that
-project (`resolveAnnaChoiceForWorkspace`), so its daily chat and the assistant that answers there
-follow; that assistant comes from the existing rules (`resolveAnnaProjectAssistant` /
-`findProjectAssistantId`: flagged default, `project.assistantId`, else the user's default
-assistant), never from a new mapping. All projects and the default project mean "Automatic"; an
-explicit default pick stays. Archived, template, guide or foreign projects change nothing, nor do
-an object's detail view (opening a task from All projects is not entering its project), a call,
-offline, or assistant mode being off. Only the person's own navigation counts
-(`useAnnaWorkspaceProjectFollow`): a pointer or key press outside the chat pane and the Anna
-header (the header's project picker renders in a body portal, so "outside" rather than "inside
-the pane") opens a 4s window, and the first root project change in it is theirs. The press is used
-up by that change. A press in the chat closes the window; the chat's own sync announces its target
-(`expectSync` via `onPlan`) and closes it too. So the assistant's reveal, `show_workspace`, links
-and activity rows in the chat, and the left-to-right sync never move the chat, and the latest
-side the person touched wins. Known gap: a reveal that lands within 4s of a press in the workspace
-counts as the person's (the reveal itself cancels on interaction, so this needs a press without
-cancelling it). Browser Back/Forward is not a press and does not move the chat. Pinned by the
-`resolveAnnaChoiceForWorkspace` / `getAnnaWorkspaceProjectKey` cases in
-`annaWorkspaceProjectSync.test.js` and "the chat follows a project opened in the workspace" in
-`AnnaShell.test.js`.
+**One-way: a project opened in the workspace never moves the chat (AT-3080, 2026-11-17).**
+Decided with the product owner, replacing the AT-3036 follow-up ("a project opened in the
+workspace moves the chat", 2026-11-16, also in the App view). Switching project in the Alldone
+workspace (sidebar, header project picker, shortcuts, links, the assistant's reveal) leaves the
+chat's project and its assistant alone, in Both and in every other view (App, narrow window, phone);
+the view switch keeps naming the assistant last picked on the left. Only the chat side moves the
+workspace (`syncAnnaWorkspaceProject`, above), so there is no loop to guard: the press-intent hook
+(`useAnnaWorkspaceProjectFollow`) and `resolveAnnaChoiceForWorkspace` / `getAnnaWorkspaceProjectKey`
+were removed. Bringing a reverse sync back needs a product decision first. A press in the workspace
+still drops a pending composer focus after a chat pick. Pinned by "one-way sync: a project opened
+in the workspace leaves the chat (AT-3080)" and the focus cases in `AnnaShell.test.js`.
 
 **With the sidebar open, the assistant line is only its Last comment (AT-3034 follow-up).** The
 chat box is in the sidebar, so `AssistantLine` hides its whole `AssistantOptions` (header,
