@@ -21,6 +21,8 @@ import MarkAsRead from './MarkAsRead'
 import ChatFiltersLine from './ChatFiltersLine'
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
+import { UnreadTriageProvider } from './UnreadTriage/UnreadTriageContext'
+import UnreadTriageMarkAsRead from './UnreadTriage/UnreadTriageMarkAsRead'
 import ChatsEmailConnectionStatus from './ChatsEmailConnectionStatus'
 import {
     buildSecondaryViewCacheKey,
@@ -201,62 +203,67 @@ function ChatsView() {
         // list) keeps the state out of ChatsView itself: `children` keeps its identity across the
         // provider's own re-renders, so a registration re-renders only the buttons that read it.
         <UnreadEmailArchiveProvider>
-            <View
-                style={[
-                    localStyles.container,
-                    inAllProjects && localStyles.containerSpace,
-                    smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
-                ]}
-            >
-                {inAllProjects && (
-                    <AllProjectsLine
-                        showActions={false}
-                        bottomSpacing={8}
-                        customRight={
-                            <View style={localStyles.allProjectsActions}>
-                                {/* Archives the emails behind every project's previewed unread
+            {/* The unread list's tag filter, sort and per-project counts (Chats > Unread). */}
+            <UnreadTriageProvider>
+                <View
+                    style={[
+                        localStyles.container,
+                        inAllProjects && localStyles.containerSpace,
+                        smallScreenNavigation
+                            ? localStyles.containerMobile
+                            : isMiddleScreen && localStyles.containerTablet,
+                    ]}
+                >
+                    {inAllProjects && (
+                        <AllProjectsLine
+                            showActions={false}
+                            bottomSpacing={8}
+                            customRight={
+                                <View style={localStyles.allProjectsActions}>
+                                    {/* Archives the emails behind every project's previewed unread
                                     messages, each one exactly once. */}
-                                <ArchiveUnreadEmailsButton containerStyle={localStyles.archiveEmailsInline} />
-                                <MarkAsRead projectIds={sortedProjectIds} userId={loggedUserId} />
-                            </View>
-                        }
-                    />
-                )}
+                                    <ArchiveUnreadEmailsButton containerStyle={localStyles.archiveEmailsInline} />
+                                    <UnreadTriageMarkAsRead projectIds={sortedProjectIds} userId={loggedUserId} />
+                                </View>
+                            }
+                        />
+                    )}
 
-                {inAllProjects && <AllProjectsAssistantLine />}
-                <HashtagFiltersView />
+                    {inAllProjects && <AllProjectsAssistantLine />}
+                    <HashtagFiltersView />
 
-                <ChatsEmailConnectionStatus />
+                    <ChatsEmailConnectionStatus />
 
-                <ChatFiltersLine
-                    projectIds={filteredProjectIds}
-                    unreadOnly={unreadOnly}
-                    setUnreadOnly={setUnreadOnly}
-                />
-
-                {inSelectedProject ? (
-                    <ChatsByProject
-                        project={loggedUserProjects[selectedProjectIndex]}
-                        setChatXProject={setAreThereChats}
+                    <ChatFiltersLine
+                        projectIds={filteredProjectIds}
                         unreadOnly={unreadOnly}
+                        setUnreadOnly={setUnreadOnly}
                     />
-                ) : (
-                    <>
-                        {presenceComplete && !Object.values(areThereChats).includes(true) && (
-                            <NothingToShowOnChats isInChats />
-                        )}
-                        {sortedProjects.map(project => (
-                            <ChatsByProject
-                                key={project.id}
-                                project={project}
-                                isInAllProjects
-                                setChatXProject={setAreThereChats}
-                                unreadOnly={unreadOnly}
-                            />
-                        ))}
-                    </>
-                )}
-            </View>
+
+                    {inSelectedProject ? (
+                        <ChatsByProject
+                            project={loggedUserProjects[selectedProjectIndex]}
+                            setChatXProject={setAreThereChats}
+                            unreadOnly={unreadOnly}
+                        />
+                    ) : (
+                        <>
+                            {presenceComplete && !Object.values(areThereChats).includes(true) && (
+                                <NothingToShowOnChats isInChats />
+                            )}
+                            {sortedProjects.map(project => (
+                                <ChatsByProject
+                                    key={project.id}
+                                    project={project}
+                                    isInAllProjects
+                                    setChatXProject={setAreThereChats}
+                                    unreadOnly={unreadOnly}
+                                />
+                            ))}
+                        </>
+                    )}
+                </View>
+            </UnreadTriageProvider>
         </UnreadEmailArchiveProvider>
     )
 }

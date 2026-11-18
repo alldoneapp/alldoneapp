@@ -12,6 +12,8 @@ jest.mock('react-redux', () => ({
     shallowEqual: (a, b) => a === b,
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
+// The unread list's tag row has its own tests (UnreadTriage/); here only whether it shows.
+jest.mock('./UnreadTriage/UnreadTriageFilters', () => () => 'UnreadTriageFilters')
 
 import ChatFiltersLine from './ChatFiltersLine'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
@@ -28,6 +30,18 @@ const renderFilter = ({ notifications, tab = ALL_TAB, unreadOnly = false, setUnr
     return { component, setUnreadOnly }
 }
 
+// chat1: two followed unread messages, chat2: one unfollowed unread message.
+const TWO_CHATS_THREE_MESSAGES = {
+    totalFollowed: 2,
+    totalUnfollowed: 1,
+    chat1: {
+        totalFollowed: 2,
+        totalUnfollowed: 0,
+        followedNotifications: [{ commentId: 'a' }, { commentId: 'b' }],
+    },
+    chat2: { totalFollowed: 0, totalUnfollowed: 1, unfollowedNotifications: [{ commentId: 'c' }] },
+}
+
 describe('ChatFiltersLine', () => {
     beforeEach(() => jest.clearAllMocks())
 
@@ -39,16 +53,11 @@ describe('ChatFiltersLine', () => {
         expect(component.root.findAllByProps({ testID: 'chat-filters' })).toHaveLength(0)
     })
 
-    it('shows the unread thread count and switches between Unread and All', () => {
+    it('shows the unread message count and switches between Unread and All', () => {
         const setUnreadOnly = jest.fn()
         const { component } = renderFilter({
             notifications: {
-                'project-1': {
-                    totalFollowed: 2,
-                    totalUnfollowed: 1,
-                    chat1: { totalFollowed: 2, totalUnfollowed: 0 },
-                    chat2: { totalFollowed: 0, totalUnfollowed: 1 },
-                },
+                'project-1': TWO_CHATS_THREE_MESSAGES,
             },
             setUnreadOnly,
         })
@@ -56,12 +65,27 @@ describe('ChatFiltersLine', () => {
         // react-native-web renders host DOM tags, so 'Text' no longer matches
         // a node type - find the Text component itself instead.
         expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
-            2
+            3
         )
         act(() => component.root.findByProps({ testID: 'chat-filter-unread' }).props.onPress())
         expect(setUnreadOnly).toHaveBeenCalledWith(true)
         act(() => component.root.findByProps({ testID: 'chat-filter-all' }).props.onPress())
         expect(setUnreadOnly).toHaveBeenCalledWith(false)
+    })
+
+    it('shows the unread list tag row only on the Unread filter', () => {
+        const notifications = {
+            'project-1': {
+                totalFollowed: 1,
+                totalUnfollowed: 0,
+                chat1: { totalFollowed: 1, totalUnfollowed: 0, followedNotifications: [{ commentId: 'a' }] },
+            },
+        }
+        const all = renderFilter({ notifications })
+        expect(all.component.toJSON().children).not.toContain('UnreadTriageFilters')
+
+        const unread = renderFilter({ notifications, unreadOnly: true })
+        expect(JSON.stringify(unread.component.toJSON())).toContain('UnreadTriageFilters')
     })
 
     // AT-2264: the header used to carry a badge with the number of selected filters -- here a
@@ -70,19 +94,46 @@ describe('ChatFiltersLine', () => {
     it('does not show how many filters are selected', () => {
         const { component } = renderFilter({
             notifications: {
-                'project-1': {
-                    totalFollowed: 2,
-                    totalUnfollowed: 1,
-                    chat1: { totalFollowed: 2, totalUnfollowed: 0 },
-                    chat2: { totalFollowed: 0, totalUnfollowed: 1 },
-                },
+                'project-1': TWO_CHATS_THREE_MESSAGES,
             },
             unreadOnly: true,
         })
 
         expect(component.root.findAllByProps({ testID: 'chat-filter-active-count' })).toHaveLength(0)
         expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
+            3
+        )
+    })
+
+    it('counts only the followed messages in the Followed tab, like the red chats badge', () => {
+        const { component } = renderFilter({
+            notifications: { 'project-1': TWO_CHATS_THREE_MESSAGES },
+            tab: FOLLOWED_TAB,
+        })
+
+        expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
             2
+        )
+    })
+
+    it('counts a chat with followed and unfollowed messages the way the list shows it: followed only', () => {
+        const { component } = renderFilter({
+            notifications: {
+                'project-1': {
+                    totalFollowed: 1,
+                    totalUnfollowed: 2,
+                    chat1: {
+                        totalFollowed: 1,
+                        totalUnfollowed: 2,
+                        followedNotifications: [{ commentId: 'a' }],
+                        unfollowedNotifications: [{ commentId: 'b' }, { commentId: 'c' }],
+                    },
+                },
+            },
+        })
+
+        expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
+            1
         )
     })
 

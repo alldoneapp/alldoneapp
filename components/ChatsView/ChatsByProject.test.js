@@ -6,9 +6,10 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import ChatsByProject from './ChatsByProject'
+import ChatsByProject, { UNREAD_LIST_CHAT_LIMIT } from './ChatsByProject'
 import { watchChatsAmount, unwatchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import useGetChats from '../../hooks/Chats/useGetChats'
+import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 
 const mockDispatch = jest.fn()
@@ -26,6 +27,8 @@ jest.mock('../../hooks/Chats/useGetUnreadChats', () => jest.fn(() => ({ chats: {
 jest.mock('./ChatsByDate', () => () => null)
 jest.mock('./StickyChats', () => () => null)
 jest.mock('./MarkAsRead', () => () => null)
+jest.mock('./UnreadTriage/UnreadTriageMarkAsRead', () => () => null)
+jest.mock('./UnreadTriage/UnreadMessagesList', () => () => 'UnreadMessagesList')
 // Renders only what this suite asserts on: the header's right-hand actions.
 jest.mock('../TaskListView/Header/ProjectHeader', () => props => props.customRight || null)
 jest.mock('./ArchiveUnreadEmailsButton', () => {
@@ -90,6 +93,22 @@ describe('ChatsByProject chats-amount watcher', () => {
         const all = renderView(buildState(3))
         expect(all.root.findAllByType('ProjectAssistantLine')).toHaveLength(0)
         act(() => all.unmount())
+    })
+
+    it('lists unread messages instead of topics on the Unread filter', () => {
+        useGetUnreadChats.mockReturnValue({
+            chats: { 20261118: [{ id: 'chat-1', lastEditionDate: 1794989380988 }] },
+            stickyChats: [{ id: 'chat-sticky', stickyData: { days: 2 } }],
+            total: 2,
+        })
+        const tree = renderView(buildState(3), { unreadOnly: true })
+
+        expect(JSON.stringify(tree.toJSON())).toContain('UnreadMessagesList')
+        const list = tree.root.findAll(node => node.props && Array.isArray(node.props.chats))[0]
+        expect(list.props.chats.map(chat => chat.id)).toEqual(['chat-sticky', 'chat-1'])
+        // Every unread chat, not the first page: the Unread chip counts all of their messages.
+        expect(useGetUnreadChats.mock.calls[useGetUnreadChats.mock.calls.length - 1][4]).toBe(UNREAD_LIST_CHAT_LIMIT)
+        act(() => tree.unmount())
     })
 
     it('caps the amount query at the number of chats it renders in All Projects', () => {
