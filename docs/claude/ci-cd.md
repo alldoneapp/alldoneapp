@@ -195,8 +195,6 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   waiting behind it was superseded in six pipelines. The ceiling is the Cloud Run functions
   write quota, 60 API calls per minute per region, which Google does not raise; 50 stays
   under it and each following batch starts on a fresh quota minute.
-  The block itself shrank to 70 functions when the model helpers left `assistantHelper.js`
-  (see `assistant-models-and-tools.md`).
   **A file no import leads to has to be given an owner, or it redeploys everything.** A
   changed file under `functions/` that is neither in the dependency graph nor test code is
   an "unmapped runtime asset" and selects all functions. Five of the six full deploys in

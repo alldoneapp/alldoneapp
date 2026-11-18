@@ -2,7 +2,7 @@
 
 const admin = require('firebase-admin')
 const { PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
-const { calculateGoldCostFromTokens } = require('../Assistant/assistantModelRuntime')
+const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
 const { deductGold } = require('../Gold/goldHelper')
 const { classifyCalendarEventProject } = require('./calendarProjectClassifier')
 const {

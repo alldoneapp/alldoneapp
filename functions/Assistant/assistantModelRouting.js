@@ -35,9 +35,9 @@
  * ## Why the OpenAI branch returns no model id
  *
  * `resolveAssistantModelProvider` deliberately answers only "which provider", never "which OpenAI
- * id". The OpenAI id mapping lives in `getModel` (`assistantModelRuntime.js`, re-exported by
- * `assistantHelper`), which requires this module, so reaching for it from here would be a require
- * cycle. Callers already have their own OpenAI mapper; they only need to be told when *not* to use it.
+ * id". The OpenAI id mapping lives in `assistantHelper.getModel`, and having this module reach for
+ * it would make `assistantHelper` → this module → `assistantHelper` a require cycle. Callers already
+ * have their own OpenAI mapper; they only need to be told when *not* to use it.
  *
  * Dependency-free on purpose, so the Gmail and Calendar classifiers can require it without pulling
  * the 13k-line `assistantHelper` (and firebase-admin behind it) into their module graph.
@@ -110,7 +110,7 @@ function isPerplexityAssistantModel(modelKey) {
  * The single question every call site asks: which upstream serves this model key?
  *
  * `model` is the ready-to-send upstream id for OpenRouter, and `null` for OpenAI and Perplexity —
- * those two have their own key→id mappers (`getModel` in `assistantModelRuntime.js`), and duplicating them here
+ * those two have their own key→id mappers (`assistantHelper.getModel`), and duplicating them here
  * is exactly the drift this module exists to stop.
  *
  * An unknown key resolves to OpenAI, which is the pre-AT-2238 behaviour: it then flows into the

@@ -22,7 +22,9 @@ jest.mock('firebase-admin', () => ({
 jest.mock('./config/environments.js', () => ({
     getEnvironmentConfig: jest.fn(() => ({ mcpBaseUrl: 'https://my.alldone.app', firebaseWeb: {} })),
 }))
-jest.mock('firebase-functions/params', () => ({ defineString: jest.fn(() => ({ value: jest.fn(() => '') })) }))
+jest.mock('firebase-functions/params', () => ({ defineString: jest.fn(() => ({ value: jest.fn(() => '') })) }), {
+    virtual: true,
+})
 jest.mock('../Assistant/assistantHelper', () => ({ executeToolNatively: jest.fn() }))
 
 const { AlldoneSimpleMCPServer } = require('./mcpServerSimple')

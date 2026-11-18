@@ -738,7 +738,7 @@ async function draftReply({
     if (!composed.body) throw new Error('Failed to compose a reply draft')
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
-    const { calculateGoldCostFromTokens } = require('../../Assistant/assistantModelRuntime')
+    const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
     // Bill the model that actually ran — composeReply returns its modelKey.
     const goldCost = Math.max(1, calculateGoldCostFromTokens(composed.totalTokens, composed.modelKey))
     const goldContext = {
@@ -965,7 +965,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     }
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
-    const { calculateGoldCostFromTokens } = require('../../Assistant/assistantModelRuntime')
+    const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
     // Bill the model that actually ran — summarizeEmailAsTaskName returns its modelKey.
     const goldCost = Math.max(1, calculateGoldCostFromTokens(summary.totalTokens, summary.modelKey))
     const goldContext = {

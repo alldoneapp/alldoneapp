@@ -20,14 +20,18 @@ mockFirestore.FieldValue = { delete: jest.fn(() => ({ __op: 'delete' })) }
 
 jest.mock('firebase-admin', () => ({ firestore: mockFirestore }))
 jest.mock('firebase-admin/firestore', () => ({ FieldValue: mockFirestore.FieldValue }))
-jest.mock('firebase-functions/v2/https', () => ({
-    HttpsError: class HttpsError extends Error {
-        constructor(code, message) {
-            super(message)
-            this.code = code
-        }
-    },
-}))
+jest.mock(
+    'firebase-functions/v2/https',
+    () => ({
+        HttpsError: class HttpsError extends Error {
+            constructor(code, message) {
+                super(message)
+                this.code = code
+            }
+        },
+    }),
+    { virtual: true }
+)
 
 const {
     getVmApiKeyStatus,

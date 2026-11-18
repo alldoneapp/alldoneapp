@@ -717,25 +717,6 @@ offline (`code: 'offline'`) and the button is not offered offline; a failure sho
 Pinned by `annaActivityReadState.test.js`, the AT-3075 blocks of `AnnaActivityNotice.test.js` and
 `AnnaConversation.test.js`, and `browser-tests/at3046` (edge colour, button geometry, no navigation).
 
-**Every activity card has a type icon (AT-3087, 2026-11-18).** Decided with the product owner: the
-icon names the card's **object type** (task, note, goal, chat topic, contact, member, skill,
-assistant, artifact, project), not the source (update vs. chat message). A card bundles both, and
-the blue labels at the bottom already say what happened. The icons are `getChatIcon`'s
-(`check-square`, `file-text`, `target`, `comments-thread`, …); a chat message whose thread type is
-unknown is `chat` (`comments-thread`), custom objects and notices without an object are `update`
-(`bell`). `getAnnaActivityType` (`annaActivityGroups.js`) takes the type from any notice of the
-group. The badge is the first child of the card link, a 22px grey circle in a column of its own
-left of the content, centred on the title line (`anna-activity-card-has-meta` shifts it under the
-`Project · Actor` line). It is drawn from the icon font through `data-icon`/`::before` like the
-labels, has `role="img"` with the translated type as `aria-label`/`title` (`Anna activity type
-<type>`), and uses only `--anna-border` (fill) and `--anna-muted` (glyph): never the blue of
-actions/links or the red of unread, and never a glyph of the action labels (`check`,
-`message-circle`) or the ✓✓ button. Its selector has two classes, because
-`.anna-context-notice span { flex: 1 }` would stretch it. Pinned by the AT-3087 blocks of
-`AnnaActivityNotice.test.js` and `annaActivityGroups.test.js` and `browser-tests/at3046` (now 9
-cards incl. a note and a topic: badge present, left of and centred on the title, clear of the
-read button, colours; dark/light at 300/380/560px).
-
 **A lost callable response is not a failed message (AT-2921).** The Anna composer starts each run
 with `askToBotSecondGen`, and a phone drops that connection when the app goes to the background.
 The Firebase callable SDK reports any failed `fetch` (status 0) as `FunctionsError('internal',

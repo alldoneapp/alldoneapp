@@ -10,7 +10,7 @@ jest.mock('./vmJobRunner', () => ({
         setupGitRepo: jest.fn(async () => {}),
     },
 }))
-jest.mock('e2b', () => ({ Sandbox: { create: jest.fn(), kill: jest.fn(async () => {}) } }))
+jest.mock('e2b', () => ({ Sandbox: { create: jest.fn(), kill: jest.fn(async () => {}) } }), { virtual: true })
 
 const admin = require('firebase-admin')
 const { getFunctions } = require('firebase-admin/functions')

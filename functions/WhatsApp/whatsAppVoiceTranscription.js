@@ -1,4 +1,4 @@
-const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantModelRuntime')
+const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
 
 /**
  * Transcribe a WhatsApp voice message using OpenAI Whisper API.

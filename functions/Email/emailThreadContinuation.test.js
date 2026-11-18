@@ -1,7 +1,5 @@
 jest.mock('./emailLine/taskSummarizer', () => ({ summarizeEmailContinuation: jest.fn() }))
 jest.mock('../Assistant/assistantHelper', () => ({ calculateGoldCostFromTokens: jest.fn(() => 3) }))
-// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
-jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 jest.mock('../Gold/goldHelper', () => ({ deductGold: jest.fn(async () => ({ success: true })) }))
 jest.mock('../Firestore/generalFirestoreCloud', () => ({ getId: () => 'unused' }))
 jest.mock('../Utils/HelperFunctionsCloud', () => ({ FEED_PUBLIC_FOR_ALL: 0, STAYWARD_COMMENT: 2 }))

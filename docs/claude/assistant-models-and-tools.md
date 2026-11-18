@@ -7,36 +7,16 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 `functions/Assistant/selectableAssistantModels.js` is the **one** product menu of assistant models,
 and adding an entry there surfaces it in every picker at once: assistant model, heartbeat model,
 inbound email, per-task override, Gmail labeling and calendar routing. Each selectable entry also
-carries its actual in-app `tokensPerGold`; `getTokensPerGold` (`assistantModelRuntime.js`) reads that shared value
+carries its actual in-app `tokensPerGold`; `assistantHelper.getTokensPerGold` reads that shared value
 for billing, while `components/UIComponents/AssistantModelGoldRate.js` renders the same translated
 `1 Gold = N tokens` line in every picker. Do not reuse the separate VM-agent divisor: the two product
 paths can intentionally pass through different amounts of an upstream saving. Everything else is a per-capability
 allowlist keyed on the product key (`MODEL_GPT5_6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`), never on the
 upstream id. Adding a model means setting `tokensPerGold` in the shared entry, then touching
-`getModel` and the model key in `assistantModelRuntime.js`, `assistantHelper.js`'s `getMaxTokensForModel` and each `modelSupports*` gate, plus the label chains in `ModelWrapper.js` /
+`assistantHelper.js`'s `getModel`, `getMaxTokensForModel` and each `modelSupports*` gate, plus the label chains in `ModelWrapper.js` /
 `assistantUpdates.js` / `UpdateFromTemplate.js` and the `i18n` label. **A model missing from
 `getTokensPerGold` is billed nothing at all** — it returns `undefined` and
 `calculateGoldCostFromTokens` turns that into `0`, silently.
-
-**Code that only needs a model client, the environment, a model id or a Gold rate imports
-`functions/Assistant/assistantModelRuntime.js`, never `assistantHelper.js` (2026-11-18).** That
-module holds the model keys, `getCachedEnvFunctions`, `getOpenAIClient`, `normalizeModelKey`,
-`getModel`, `getTokensPerGold`, `calculateGoldCostFromTokens`, `buildOpenAiPromptCacheKey`,
-`getOpenAiCacheUsage` and `logOpenAiCacheUsage`, and requires only modules that require nothing
-local. `assistantHelper.js` takes them from there and exports them again under the old names, so
-there is one copy of each (one client cache, one environment cache). The reason is the deploy
-selection: `assistantHelper.js` sits in an import cycle of 30 modules (the menubar app, the Gmail
-sync, `workflowAiStep.js`, the knowledge base, MCP), so a function that reaches it loads all of
-them and is redeployed on every change to any of them. Fifteen modules imported it for one of
-these helpers alone, which put 89 functions in that block, among them the Firestore triggers for
-notes, tasks, goals, contacts, chats and artifacts and the WhatsApp and phone webhooks. With the
-helpers moved, 70 are left. `assistantModelRuntime.test.js` holds both ends: the module stays free
-of local dependencies, and a list of those triggers and webhooks must not load `assistantHelper.js`
-in the graph `ci/selectFunctionsDeployment.js` deploys by. A test that stubs these helpers on its
-`assistantHelper` mock keeps working with
-`jest.mock('<path>/assistantModelRuntime', () => jest.requireMock('<path>/assistantHelper'))`.
-The next two bridges into the block are `MenubarApp/menubarApp.js` (16 functions run through it,
-token and project endpoints included) and `assistantNormalTalk_optimized.js` (19).
 
 **This is a separate system from the VM agent catalog** (`vmAgentModelCatalog.js` /
 `vmModelRouting.js`). The VM harness encodes its provider into the model string

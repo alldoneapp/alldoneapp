@@ -18,8 +18,6 @@ jest.mock('../Assistant/assistantHelper', () => ({
         responses: { create: mockResponsesCreate },
     })),
 }))
-// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
-jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: (...args) => mockDeductGold(...args),
 }))

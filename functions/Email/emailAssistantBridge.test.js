@@ -50,18 +50,26 @@ jest.mock('./emailDailyTopic', () => ({
     storeEmailAssistantMessageInTopic: jest.fn().mockResolvedValue('assistant-comment'),
 }))
 
-jest.mock('@dqbd/tiktoken/lite', () => ({
-    Tiktoken: jest.fn().mockImplementation(() => ({
-        encode: jest.fn(() => []),
-        free: jest.fn(),
-    })),
-}))
+jest.mock(
+    '@dqbd/tiktoken/lite',
+    () => ({
+        Tiktoken: jest.fn().mockImplementation(() => ({
+            encode: jest.fn(() => []),
+            free: jest.fn(),
+        })),
+    }),
+    { virtual: true }
+)
 
-jest.mock('@dqbd/tiktoken/encoders/cl100k_base.json', () => ({
-    bpe_ranks: {},
-    special_tokens: {},
-    pat_str: '',
-}))
+jest.mock(
+    '@dqbd/tiktoken/encoders/cl100k_base.json',
+    () => ({
+        bpe_ranks: {},
+        special_tokens: {},
+        pat_str: '',
+    }),
+    { virtual: true }
+)
 
 const { getUserData } = require('../Users/usersFirestore')
 const {

@@ -60,7 +60,8 @@ export function canManageWiki(knowledgeBase, userId, projectUserIds = []) {
     return !projectUserIds.includes(knowledgeBase.ownerUserId)
 }
 
-function ModelPicker({ model, disabled, onChange }) {
+// Also used by the assistant profile settings (Settings → Profile).
+export function ModelPicker({ model, disabled, onChange }) {
     const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [open, setOpen] = useState(false)

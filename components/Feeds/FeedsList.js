@@ -12,7 +12,9 @@ import SkillObject from './FeedsObjects/SkillObject'
 import AssistantObject from './FeedsObjects/AssistantObject'
 import WikiObject from './FeedsObjects/WikiObject'
 import ArtifactObject from './FeedsObjects/ArtifactObject'
+import AssistantProfileObject from './FeedsObjects/AssistantProfileObject'
 import { WIKI_FEED_OBJECT_TYPE } from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
+import { ASSISTANT_PROFILE_FEED_OBJECT_TYPE } from '../../functions/AssistantProfile/assistantProfileFeedModel'
 import { FEED_ARTIFACT_OBJECT_TYPE } from './Utils/FeedsConstants'
 
 // `customIndex` used to embed `JSON.stringify(feedObjectData.object)`. That serialized every feed
@@ -134,6 +136,16 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             day={date.format('YYYYMMDD')}
+                            feedActiveTab={feedActiveTab}
+                            style={style}
+                        />
+                    )
+                } else if (type === ASSISTANT_PROFILE_FEED_OBJECT_TYPE) {
+                    customIndex = `assistantProfile_${object.id}`
+                    feedComponent = (
+                        <AssistantProfileObject
+                            key={customIndex}
+                            feedObjectData={feedObjectData}
                             feedActiveTab={feedActiveTab}
                             style={style}
                         />

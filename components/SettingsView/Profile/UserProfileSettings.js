@@ -9,6 +9,7 @@ import ProfileProperties, { ProfileDescriptionProperty } from './Properties/Prof
 import LogoutAndRemoveSection from './Properties/LogoutAndRemoveSection'
 import UserData from './Properties/UserData'
 import AchievementsArea from './Achievements/AchievementsArea'
+import AssistantProfileSection from './AssistantProfile/AssistantProfileSection'
 
 export default function UserProfileSettings() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -31,6 +32,7 @@ export default function UserProfileSettings() {
             </ProfileProperties>
             <LogoutAndRemoveSection />
             <ProfileDescriptionProperty user={loggedUser} />
+            <AssistantProfileSection />
         </View>
     )
 }
