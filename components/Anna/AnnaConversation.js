@@ -169,6 +169,15 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const composer = useRef(null)
     const composerForm = useRef(null)
     const [compactTemplates, setCompactTemplates] = useState(false)
+    // AT-3082: a template started here creates its own task; this chat is told it started and,
+    // with Anna's summary, when it has its result (preConfigOriginNotice on the server).
+    const templateOrigin = useMemo(
+        () =>
+            conversation?.projectId && conversation?.id
+                ? { projectId: conversation.projectId, objectType: 'topics', objectId: conversation.id }
+                : null,
+        [conversation?.projectId, conversation?.id]
+    )
     useLayoutEffect(() => {
         const form = composerForm.current
         if (!form) return
@@ -692,6 +701,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                         <AssistantTaskSearchButtonWrapper
                                             preferredAssistantId={conversation.assistantId || assistant?.uid}
                                             preferredProjectId={conversation.projectId}
+                                            originConversation={templateOrigin}
                                             compact={compactTemplates}
                                             position={ANNA_TEMPLATES_POSITION}
                                             getPopoverViewport={getTemplatesViewport}

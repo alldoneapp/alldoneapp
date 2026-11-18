@@ -103,6 +103,18 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         const modal = tree.root.findByType(AssistantTaskSearchModal)
         expect(modal.props.preferredAssistantId).toBe('assistant-1')
         expect(modal.props.preferredProjectId).toBe('project-1')
+        expect(modal.props.originConversation).toBeNull()
+    })
+
+    it('hands the Anna chat it sits in to the picker as the origin of a new task (AT-3082)', () => {
+        const origin = { projectId: 'project-1', objectType: 'topics', objectId: 'AnnaChat20261118u1' }
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantTaskSearchButtonWrapper originConversation={origin} />)
+        })
+
+        pressButton(tree)
+        expect(tree.root.findByType(AssistantTaskSearchModal).props.originConversation).toBe(origin)
     })
 
     it('opens downwards in the assistant line and takes a placement from the Anna composer (AT-3032)', () => {

@@ -2,6 +2,63 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
+## A template started in the Anna chat announces its task there (AT-3082, 2026-11-18)
+
+The Anna composer's **Templates** button (for example Anna's "Historical fact of the day" prompt)
+runs `generateTaskFromPreConfig(..., { skipNavigation: true })`. That creates a new assistant task and
+answers in that task's own thread. The Anna chat the user clicked in stayed silent. Product decision
+(Karsten, confirmed 2026-11-18): the same approach as delegated tasks. The chat says the task
+started, and says it again when the task has its result, with Anna's summary.
+
+- **Client:** `AnnaConversation` passes `originConversation` (`{ projectId, objectType: 'topics',
+objectId }` of its own chat) through `AssistantTaskSearchButtonWrapper` → `AssistantTaskSearchModal`
+  (and `PreConfigTaskGeneratorModal` for templates with variables) → `generateTaskFromPreConfig`
+  option → `executePreConfigPromptForTask` → `createTopicForPreConfigTask` → callable data. The
+  assistant line and every other caller pass nothing and behave as before.
+- **Server (`functions/Assistant/preConfigOriginNotice.js`, wired in
+  `generatePreConfigTaskResultSecondGen`):** the origin from `request.data` is only a nomination.
+  `resolvePreConfigOrigin` accepts it only for a `topics` chat with `annaOwnerId` and `creatorId` equal
+  to the caller, in a project whose `userIds` lists the caller. The speaking assistant is the chat's
+  stored `assistantId`. Anything else, or a read error, means no notice. Resolution and both notices
+  run **after** the run lock is acquired, so a replayed POST (duplicate branch) posts nothing twice.
+- **Lines** (assistant comments via `createInitialStatusMessage`, no bell, in the user's app
+  language, see below): `🚀 I started PT-7 “…” for you. I will tell you here when it is done.` + link,
+  posted in parallel with the run. After the run and the task completion: `✅ … is done.` (or "has its
+  result." when the server did not complete it) + Anna's summary of the **actual** answer in the task
+  thread (`summarizeVmResultForChat`, user's app language, Gold source `task_result_summary`, skipped
+  at gold <= 0) + link. `⚠️ … could not finish` on a thrown run, `💬 … waits for your message` for a
+  webhook template, `✅ … finished without an answer to report` for a silent run. The summary is
+  never invented: without an answer there is no summary.
+- **Later updates:** the origin is also handed to the run's tool runtime (`originProjectId` …), so a
+  VM the template starts reports its result to the Anna chat through the AT-3074 notice.
+- **Not covered:** templates whose `executionMode` is `workflow` (they do not use this callable; the
+  workflow runner owns them). Coverage: `preConfigOriginNotice.test.js` (also checks the callable's
+  wiring order from source), `AssistantTaskSearchModal.test.js`, the AT-3082 cases in
+  `AnnaConversation.test.js`, `AssistantTaskSearchButtonWrapper.test.js` and `vmResultSummary.test.js`.
+
+### Task notices in another conversation speak the user's language (AT-3082)
+
+Karsten asked for the notices to be localized "überall". The fixed lines the server writes about a
+task into another conversation used to be English for everybody. They now come from
+`functions/Assistant/noticeLanguage.js` (en/de/es table; functions cannot import the app's
+`i18n/`) in the recipient's `users/{uid}.language` (`loadNoticeLanguage`, English on a missing user
+or a read error, never blocks the notice):
+
+- the template notices above (`preConfigOriginNotice.js`);
+- the delegated task review notice and the step-change line (`delegationReviewNotice.js`, owner's
+  language; `Open`/`Done`/unnamed steps are translated, the user's own step names are not);
+- the VM input notice (`vmInputNotice.js`, the asking user's language; VM questions, plan and reason
+  stay as the VM wrote them);
+- the VM result notice in the origin chat and on WhatsApp (`buildVmResultNoticeText` in
+  `vmJobRunner.js`, the requesting user's language).
+
+Task names are quoted in the language's marks (`„…“` in German). Builders default to English, so a
+caller that passes no `language` keeps the old text. A new notice key goes into all three tables;
+`noticeLanguage.test.js` fails when a language lacks a key or a placeholder. Left in English on
+purpose: the task-thread note of `move_task_workflow_step` (`postApprovalNoteInTaskThread`), because a
+task thread is shared by members with different languages and the assistant reads the note as an
+instruction; and the VM's own status comments in the task thread.
+
 ## Work asked for in a project assistant's chat gets its own task (AT-3071, 2026-11-17)
 
 Karsten asked Alldone CTO to build things in its chat, and the work (VM run included) happened in

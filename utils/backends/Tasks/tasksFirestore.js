@@ -182,6 +182,7 @@ import {
     supersedeFocusHandoffs,
 } from './focusHandoffRace'
 import { isTaskOnUserPlate } from './focusTaskEligibility'
+import { orderProjectIdsForFocusSearch } from '../../../functions/shared/projectListOrder'
 import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
 import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
 import { captureTaskUndoStates } from './taskUndoCapture'
@@ -4611,12 +4612,14 @@ async function finishWorkflowFocusHandoff(projectId, task, focusHandoff) {
 /**
  * Assistant mode's "Get a focus task" (AnnaFocusTask) when the user has none: the same pick as after
  * completing or postponing the focus task (an imminent calendar event first, then today's tasks in
- * display order, starting in `projectId`, then the other projects). Resolves true when a task was
- * put in focus and false when no open task is left for today.
+ * display order), except that it has no project to stay in: AT-3085 walks the projects from the top
+ * of the user's project list (sidebar order), so the first project the user sees is searched first.
+ * `projectId` is only where an empty result is recorded. Resolves true when a task was put in focus
+ * and false when no open task is left for today.
  */
 export async function pickNewFocusTask(projectId, userId, { onCandidates } = {}) {
     return await awaitWriteAck(
-        findAndSetNewFocusedTask(projectId, userId, null, null, null, { onCandidates }),
+        findAndSetNewFocusedTask(projectId, userId, null, null, null, { onCandidates, fromTopOfList: true }),
         'focus task pick'
     )
 }
@@ -4625,6 +4628,9 @@ export async function pickNewFocusTask(projectId, userId, { onCandidates } = {})
  * AT-3067: Assistant mode's "Show a different focus task" (AnnaFocusTask). Replaces the current focus
  * task with the next one the normal pick would choose, skipping the current task and
  * `skippedTaskIds` (the tasks already passed over in this session, see annaFocusReroll.js).
+ *
+ * AT-3085: it walks the projects from the top of the user's project list, not from the current
+ * task's project, so the swaps go through the first listed project's tasks before the next one's.
  *
  * Unlike the pick after completing a task it never clears the focus: with no alternative the current
  * task stays and the result says 'none'. The task that loses focus keeps its due date and only loses
@@ -4651,6 +4657,8 @@ export async function pickDifferentFocusTask(userId, { taskId, projectId, skippe
                 keepFocusWhenNone: true,
                 previousFocus: taskId && projectId ? { taskId, projectId } : null,
                 onCandidates,
+                // AT-3085: like "Get a focus task", from the top of the project list.
+                fromTopOfList: true,
             }),
             'focus task swap'
         )
@@ -4676,6 +4684,13 @@ const reportFocusCandidates = (onCandidates, tasks) => {
  * Options (AT-3067): `excludeTaskIds` are never picked; `keepFocusWhenNone` returns false instead of
  * clearing the focus when nothing is found; `previousFocus` ({ taskId, projectId }) is the focus task
  * being replaced, which is unpinned in the same batch; `onCandidates` receives the candidates found.
+ *
+ * AT-3085 — project order. Without `fromTopOfList` (completing or postponing a focus task) the search
+ * stays in `currentProjectId` first (same goal, general tasks), then walks the other projects. With
+ * it (the assistant header's pick and swap) there is no project to stay in and the walk starts at the
+ * top. The walk is always the user's project list order (`functions/shared/projectListOrder.js`, the
+ * sidebar's order): the listed active projects first, then any other project the user is a member of
+ * (guide, archived) as the last fallback. A project without a suitable task is skipped.
  */
 async function findAndSetNewFocusedTask(
     currentProjectId,
@@ -4683,7 +4698,13 @@ async function findAndSetNewFocusedTask(
     previousTaskParentGoalId = null,
     excludeTaskId = null,
     focusHandoffId = null,
-    { excludeTaskIds = [], keepFocusWhenNone = false, previousFocus = null, onCandidates = null } = {}
+    {
+        excludeTaskIds = [],
+        keepFocusWhenNone = false,
+        previousFocus = null,
+        onCandidates = null,
+        fromTopOfList = false,
+    } = {}
 ) {
     // AT-2191: every task released by the current burst, not just the one that triggered this
     // search. A Firestore query can still be served the pre-postpone state of the others.
@@ -4738,14 +4759,30 @@ async function findAndSetNewFocusedTask(
         return Array.isArray(project?.userIds) && project.userIds.includes(userId)
     }
 
-    // --- NEW PRE-PRIORITIZATION: Check for upcoming calendar tasks across ALL projects ---
-    const allUserProjectIds = Object.keys(projectUsers)
-        .filter(isMemberOfProject) // Projects user is a member of
+    // AT-3085: every project the user may search, in project-list order (see the doc comment above).
+    // Candidates come from the members slices AND the loaded projects, so a listed project whose
+    // members have not been requested yet is not dropped; isMemberOfProject decides.
+    const memberProjects = [...new Set([...Object.keys(projectUsers), ...loggedUserProjects.map(p => p.id)])]
+        .filter(isMemberOfProject)
         .map(pid => loggedUserProjects.find(p => p.id === pid))
-        .filter(project => project) // Ensure project exists
-        .map(p => p.id)
+        .filter(project => project)
+    const notListedIds = new Set([
+        ...(loggedUser.archivedProjectIds || []),
+        ...(loggedUser.templateProjectIds || []),
+        ...(loggedUser.guideProjectIds || []),
+    ])
+    const isListedProject = project =>
+        (loggedUser.projectIds || []).includes(project.id) && !notListedIds.has(project.id)
+    const searchProjectIds = orderProjectIdsForFocusSearch({
+        listedProjects: memberProjects.filter(isListedProject),
+        otherProjects: memberProjects.filter(project => !isListedProject(project)),
+        userId,
+        startProjectId: fromTopOfList ? null : currentProjectId,
+    })
 
-    for (const pid of allUserProjectIds) {
+    // --- NEW PRE-PRIORITIZATION: Check for upcoming calendar tasks across ALL projects ---
+    // (in list order, so of two equally good calendar tasks the one higher in the list wins)
+    for (const pid of searchProjectIds) {
         const tasksCollectionRef = getDb().collection(`items/${pid}/tasks`)
         let calendarQuery = tasksCollectionRef
             // The reader projection is what makes this query PROVABLE to firestore.rules: since the
@@ -4824,9 +4861,10 @@ async function findAndSetNewFocusedTask(
         .orderBy('sortIndex', 'desc') // Primary sort
 
     try {
-        const openTasksSnapshot = await query.limit(200).get() // Fetch a larger batch for in-memory filtering
+        // AT-3085: a pick from the top of the list has no project to stay in, so it skips this phase.
+        const openTasksSnapshot = fromTopOfList ? null : await query.limit(200).get() // Larger batch, filtered in memory
 
-        if (!openTasksSnapshot.empty) {
+        if (openTasksSnapshot && !openTasksSnapshot.empty) {
             const allTasksBeforeFilter = openTasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
             const allFetchedTasksInCurrentProject = allTasksBeforeFilter.filter(
                 task =>
@@ -4936,7 +4974,7 @@ async function findAndSetNewFocusedTask(
                     tasks: allFetchedTasksInCurrentProject,
                 })
             }
-        } else {
+        } else if (openTasksSnapshot) {
             if (__DEV__) {
                 console.log(
                     `[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`
@@ -4961,31 +4999,10 @@ async function findAndSetNewFocusedTask(
         return await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask, focusHandoffId, previousFocus)
     }
 
-    // --- Phase 4: If no tasks found in current project with prioritization, look in other projects (original logic) ---
-    // const { projectUsers, loggedUserProjects } = store.getState(); // This line will be removed as it's declared above
-    const userProjects = Object.keys(projectUsers)
-        .filter(pid => pid !== currentProjectId) // Exclude current project
-        .filter(isMemberOfProject) // AT-2386: falls back to the project doc while members load
-
-    // Sort projects by sortIndexByUser (descending)
-    const projectsBeforeFilter = userProjects.map(pid => loggedUserProjects.find(p => p.id === pid))
-    const projectsLostInFilter = userProjects.filter((pid, index) => !projectsBeforeFilter[index])
-
-    if (projectsLostInFilter.length > 0) {
-        console.warn(`[findAndSetNewFocusedTask] Projects in projectUsers but NOT in loggedUserProjects:`, {
-            lostProjectIds: projectsLostInFilter,
-            loggedUserProjectIds: loggedUserProjects.map(p => p.id),
-        })
-    }
-
-    const sortedProjects = projectsBeforeFilter
-        .filter(project => project) // Remove any undefined projects
-        .sort((a, b) => {
-            const aIndex = a.sortIndexByUser?.[userId] || 0
-            const bIndex = b.sortIndexByUser?.[userId] || 0
-            return bIndex - aIndex // Sort descending
-        })
-        .map(p => p.id)
+    // --- Phase 4: walk the projects in project-list order (AT-3085) ---
+    // After a completed/postponed task the current project was searched above; from the top of the
+    // list it was not, so it keeps its place in the walk.
+    const sortedProjects = fromTopOfList ? searchProjectIds : searchProjectIds.filter(pid => pid !== currentProjectId)
 
     if (__DEV__) {
         console.log(`[findAndSetNewFocusedTask] Phase 4: Searching other projects`, {
@@ -4996,7 +5013,7 @@ async function findAndSetNewFocusedTask(
         })
     }
 
-    // Search through each project in order of sortIndexByUser
+    // Search through each project in project-list order
     for (const pid of sortedProjects) {
         try {
             const otherProjectTasksRef = getDb().collection(`items/${pid}/tasks`)
@@ -5126,7 +5143,7 @@ async function findAndSetNewFocusedTask(
     await batch.commit()
     if (__DEV__) {
         console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
-            searchedCurrentProject: currentProjectId,
+            searchedCurrentProject: fromTopOfList ? null : currentProjectId,
             searchedOtherProjects: sortedProjects,
             totalProjectsSearched: 1 + sortedProjects.length,
             excludeTaskId,

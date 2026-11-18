@@ -13,6 +13,8 @@
  * characters, and the VM runner posted the same excerpt a few seconds earlier. The runner now leaves
  * a run that ends a delegated task's AI step to this notice, and this notice carries only the summary.
  *
+ * The fixed words are in the delegating user's app language (noticeLanguage.js, AT-3082).
+ *
  * Runs in the onUpdateTask fan-out, which is at-least-once: the origin receipt remembers the last
  * step entry it announced, so a redelivery posts nothing.
  */
@@ -23,6 +25,13 @@ const { DONE_STEP, OPEN_STEP, getBaseUrl } = require('../Utils/HelperFunctionsCl
 const { isAiWorkflowStep } = require('../Tasks/workflowStepHelper')
 const { isDelegatedWorkflowTask } = require('../shared/delegatedTaskWorkflow')
 const { describeTaskWorkflow, getTaskPosition, loadTaskWorkflow } = require('../Tasks/workflowStepMove')
+const {
+    buildNoticeTaskLabel,
+    loadNoticeLanguage,
+    noticeStepLabel,
+    noticeText,
+    quoteNotice,
+} = require('./noticeLanguage')
 
 const RECENT_COMMENTS_TO_SCAN = 10
 
@@ -43,22 +52,26 @@ async function loadLatestAssistantResult(db, projectId, taskId) {
     }
 }
 
-const buildTaskLabel = task =>
-    task.humanReadableId
-        ? `${task.humanReadableId} “${task.extendedName || task.name}”`
-        : `“${task.extendedName || task.name}”`
-
 // `summary` is Anna's summary of the latest result (vmResultSummary), never the result itself.
-const buildNoticeText = ({ task, step, next, summary, link }) => {
-    const lines = [`📋 ${buildTaskLabel(task)} is ready for you at “${step.description || 'Review'}”.`]
+const buildNoticeText = ({ task, step, next, summary, link, language = 'en' }) => {
+    const stepName = (typeof step.description === 'string' && step.description.trim()) || ''
+    const lines = [
+        noticeText(language, 'review.ready', {
+            label: buildNoticeTaskLabel(task, language),
+            step: quoteNotice(language, stepName || noticeText(language, 'step.review')),
+        }),
+    ]
     if (summary) lines.push('', summary)
     if (next?.id === 'done') {
-        lines.push('', 'Reply “done” to complete it, or tell me what to change.')
+        lines.push('', noticeText(language, 'review.replyDone'))
     } else if (next) {
-        const who = next.handledBy === 'assistant' ? 'assistant' : next.handledBy
+        const who = next.handledBy ? noticeText(language, `handler.${next.handledBy}`) : ''
         lines.push(
             '',
-            `Next: “${next.label}”${who ? ` (${who})` : ''}. Reply here to approve, for example “go ahead”, or tell me what to change.`
+            noticeText(language, 'review.next', {
+                next: quoteNotice(language, noticeStepLabel(language, next.label)),
+                who: who ? ` (${who})` : '',
+            })
         )
     }
     lines.push(link)
@@ -106,7 +119,10 @@ async function notifyDelegationOriginOnHumanStep({
     if (!claimed) return false
 
     const description = describeTaskWorkflow(task, workflow, task.userId)
-    const latestResult = await loadLatestAssistantResult(db, projectId, taskId)
+    const [latestResult, language] = await Promise.all([
+        loadLatestAssistantResult(db, projectId, taskId),
+        loadNoticeLanguage(db, task.userId),
+    ])
     const { summarizeVmResultForChat } = require('./vmResultSummary')
     const summary = latestResult
         ? await summarizeVmResultForChat({
@@ -115,7 +131,8 @@ async function notifyDelegationOriginOnHumanStep({
               projectId,
               objectId: taskId,
               objectType: 'tasks',
-              taskLabel: buildTaskLabel(task),
+              taskLabel: buildNoticeTaskLabel(task, language),
+              language,
               db,
           })
         : ''
@@ -125,6 +142,7 @@ async function notifyDelegationOriginOnHumanStep({
         next: description?.next || null,
         summary,
         link: `${getBaseUrl()}/projects/${projectId}/tasks/${taskId}/chat`,
+        language,
     })
 
     const { createInitialStatusMessage } = require('./assistantStatusHelper')
@@ -165,30 +183,49 @@ const stepLabel = (workflow, stepId) => {
     return (typeof description === 'string' && description.trim()) || 'Workflow step'
 }
 
-const WAITING_PHRASES = {
-    assistant: 'the assistant works on it now',
-    you: 'it waits for you',
-    'task owner': 'it waits for you',
-    'another member': 'it waits for another member',
+// The notice goes to the task owner, so "task owner" waits for "you" as well.
+const WAITING_PHRASE_KEYS = {
+    assistant: 'waiting.assistant',
+    you: 'waiting.you',
+    'task owner': 'waiting.you',
+    'another member': 'waiting.another member',
 }
 
-const buildActorLine = ({ toStepId, actorUserId, actorName, ownerId }) => {
+const buildActorLine = ({ toStepId, actorUserId, actorName, ownerId, language = 'en' }) => {
     if (!actorUserId) return null
     const completed = toStepId === DONE_STEP
-    if (actorUserId === ownerId) return completed ? 'You completed it yourself.' : 'You moved it yourself.'
-    return `${actorName || 'Another member'} ${completed ? 'completed' : 'moved'} it.`
+    if (actorUserId === ownerId) return noticeText(language, completed ? 'actor.completedSelf' : 'actor.movedSelf')
+    return noticeText(language, completed ? 'actor.completedBy' : 'actor.movedBy', {
+        name: actorName || noticeText(language, 'actor.anotherMember'),
+    })
 }
 
-const buildStepChangeText = ({ task, fromLabel, toStepId, toLabel, handledBy, actorUserId, actorName, link }) => {
-    const label = buildTaskLabel(task)
+const buildStepChangeText = ({
+    task,
+    fromLabel,
+    toStepId,
+    toLabel,
+    handledBy,
+    actorUserId,
+    actorName,
+    link,
+    language = 'en',
+}) => {
+    const label = buildNoticeTaskLabel(task, language)
+    const from = quoteNotice(language, noticeStepLabel(language, fromLabel))
     let line
-    if (toStepId === DONE_STEP) line = `✅ ${label} is done (it was at “${fromLabel}”).`
-    else if (toStepId === OPEN_STEP) line = `↩️ ${label} is back in Open (it was at “${fromLabel}”).`
+    if (toStepId === DONE_STEP) line = noticeText(language, 'change.done', { label, from })
+    else if (toStepId === OPEN_STEP) line = noticeText(language, 'change.open', { label, from })
     else {
-        const waiting = WAITING_PHRASES[handledBy]
-        line = `🔀 ${label} moved from “${fromLabel}” to “${toLabel}”${waiting ? `; ${waiting}` : ''}.`
+        const waitingKey = WAITING_PHRASE_KEYS[handledBy]
+        line = noticeText(language, 'change.moved', {
+            label,
+            from,
+            to: quoteNotice(language, noticeStepLabel(language, toLabel)),
+            waiting: waitingKey ? `; ${noticeText(language, waitingKey)}` : '',
+        })
     }
-    const actorLine = buildActorLine({ toStepId, actorUserId, actorName, ownerId: task.userId })
+    const actorLine = buildActorLine({ toStepId, actorUserId, actorName, ownerId: task.userId, language })
     return [line, ...(actorLine ? [actorLine] : []), link].join('\n')
 }
 
@@ -273,6 +310,7 @@ async function notifyDelegationOriginOnStepChange({
     if (!claimed) return false
 
     const description = describeTaskWorkflow(task, workflow, task.userId)
+    const language = await loadNoticeLanguage(db, task.userId)
     let actorName = null
     if (change.actorUserId && change.actorUserId !== task.userId) {
         const actor = await db
@@ -290,6 +328,7 @@ async function notifyDelegationOriginOnStepChange({
         actorUserId: change.actorUserId,
         actorName,
         link: `${getBaseUrl()}/projects/${projectId}/tasks/${taskId}/chat`,
+        language,
     })
 
     const { createInitialStatusMessage } = require('./assistantStatusHelper')
