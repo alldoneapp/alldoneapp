@@ -5856,6 +5856,11 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.delegation).toEqual({ status: 'workflow_managed', directStart: true })
         expect(result.handoffInstruction).toContain('started directly')
+        // AT-3096: the hand-off carries the real task link for the commissioning conversation.
+        const taskUrl = 'https://my.alldone.app/projects/project-1/tasks/task-new/chat'
+        expect(result.taskUrl).toBe(taskUrl)
+        expect(result.delegatedTask).toEqual({ projectId: 'project-1', taskId: 'task-new', url: taskUrl })
+        expect(result.handoffInstruction).toContain('taskUrl')
         expect(enqueue).toHaveBeenCalledTimes(1)
         // The request posted into the task is what the first run of the work step answers.
         const requestComment = mockDocSet.mock.contexts.findIndex(ref =>
@@ -5898,6 +5903,23 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.delegation).toBeUndefined()
         expect(result.task.taskMetadata.delegation).toBeUndefined()
+        // Delegated, if directly: still linked (AT-3096).
+        expect(result.delegatedTask).toMatchObject({ projectId: 'project-1', url: expect.stringContaining('/tasks/') })
+    })
+
+    test('a task created without delegation gets no forced link (AT-3096)', async () => {
+        const result = await executeToolNatively(
+            'create_task',
+            { name: 'Call the dentist', projectId: 'project-1', taskOrigin: 'user_request' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+        expect(result.success).toBe(true)
+        expect(result.taskUrl).toBeUndefined()
+        expect(result.delegatedTask).toBeUndefined()
     })
 
     test('preserves user-authored MCP task creation without an assistant identity', async () => {
@@ -5957,6 +5979,8 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.responsibleAssistant).toEqual({ projectId: 'product', assistantId: 'cto' })
         expect(result.handoffInstruction).toContain('that assistant is now working')
+        // The link points into the destination project, not the conversation's (AT-3096).
+        expect(result.taskUrl).toBe('https://my.alldone.app/projects/product/tasks/task-new/chat')
         enqueue.mockRestore()
     })
 
@@ -9895,6 +9919,44 @@ describe('execute_task_in_vm existing task routing', () => {
         enqueue.mockRestore()
     })
 
+    // AT-3096: Anna asked a project assistant through talk_to_assistant; that delegate has no
+    // conversation of its own, so its task reports back to the chat the user asked in.
+    test('a delegate without a conversation links its task and records the caller chat as origin', async () => {
+        mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
+        const enqueue = serveCreatedHostTask()
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Build the export button', task_type: 'coding' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Build the export button' },
+            {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                originProjectId: 'anna-project',
+                originObjectType: 'topics',
+                originObjectId: 'anna-daily-chat',
+                originAssistantId: 'anna',
+                originTracksWork: true,
+            }
+        )
+        expect(result).toMatchObject({
+            success: true,
+            taskId: 'new-host',
+            status: 'workflow_managed',
+            taskUrl: 'https://my.alldone.app/projects/project-1/tasks/new-host/chat',
+        })
+        expect(receiptWrite()).toMatchObject({
+            originProjectId: 'anna-project',
+            originObjectType: 'topics',
+            originObjectId: 'anna-daily-chat',
+            originAssistantId: 'anna',
+        })
+        enqueue.mockRestore()
+    })
+
     // AT-3071: Alldone CTO asked to build something in its project chat.
     test("routes VM work from a project assistant's chat into its own task and reports back to that chat", async () => {
         mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
@@ -12128,14 +12190,20 @@ describe('Anna VM message order', () => {
             isPublicFor: [0],
         })
         const ensureChat = jest.spyOn(require('./assistantStatusHelper'), 'ensureChatExists').mockResolvedValue()
-        start.mockResolvedValueOnce({
-            success: true,
-            correlationId: 'vm-1',
-            status: 'started',
-            hostProjectId: 'other-project',
-            hostObjectId: 'other-task',
-            hostObjectType: 'tasks',
-            hostThreadUrl: hostUrl,
+        start.mockImplementationOnce(async () => {
+            // AT-3096: the introduction is frozen while the VM runs, so it carries the link already.
+            expect(messages()).toEqual([
+                expect.objectContaining({ commentText: `${intro}\n\nFollow it here: ${hostUrl}`, vmHandoff: true }),
+            ])
+            return {
+                success: true,
+                correlationId: 'vm-1',
+                status: 'started',
+                hostProjectId: 'other-project',
+                hostObjectId: 'other-task',
+                hostObjectType: 'tasks',
+                hostThreadUrl: hostUrl,
+            }
         })
         mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
         try {
@@ -12150,6 +12218,37 @@ describe('Anna VM message order', () => {
         } finally {
             target.mockRestore()
             ensureChat.mockRestore()
+        }
+    })
+    test('a reply that only names the delegated task gets its canonical link in the user language (AT-3096)', async () => {
+        const taskUrl = 'https://my.alldone.app/projects/other-project/tasks/other-task/chat'
+        const target = jest.spyOn(require('./vmTargetTask'), 'resolveVmTargetTask').mockResolvedValue({
+            ok: true,
+            projectId: 'other-project',
+            objectType: 'tasks',
+            objectId: 'other-task',
+            isPublicFor: [0],
+        })
+        // A delegated task its workflow already handles: execute_task_in_vm joins it instead of a VM.
+        documents.set('items/other-project/tasks/other-task', {
+            userId: 'presentation-user',
+            executionMode: 'workflow',
+            stepHistory: [-1, '~delegation-work'],
+            taskMetadata: {
+                delegation: { ownerId: 'presentation-user', assistantId: 'cto', requiresReview: true },
+            },
+        })
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('Die Umsetzung läuft in **AT-3095** weiter.'))
+        try {
+            const answer = await run(
+                { target_task_id: 'other-task', target_project_id: 'other-project' },
+                { language: 'de' }
+            )
+            expect(start).not.toHaveBeenCalled()
+            expect(answer).toBe(`Die Umsetzung läuft in **AT-3095** weiter.\n\nHier geht es weiter: ${taskUrl}`)
+            expect(messages()).toEqual([expect.objectContaining({ commentText: answer, isLoading: false })])
+        } finally {
+            target.mockRestore()
         }
     })
     test('a launch failure has its own Anna message and leaves the introduction intact', async () => {

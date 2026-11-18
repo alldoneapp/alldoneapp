@@ -8,6 +8,42 @@ const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared
 const isTrackedOriginConversation = conversation =>
     !!conversation?.objectId && (conversation.annaConversation === true || conversation.chatTaskTracking === true)
 
+/**
+ * The conversation a delegated task reports back to, or null. Normally the conversation the tool
+ * runs in. A delegate reached through talk_to_assistant runs without a conversation of its own; its
+ * runtime carries the caller's conversation as `origin*` (set by the server, never by the model),
+ * and `originTracksWork` says whether that one is tracked (AT-3096). Without this the review notice
+ * of a task the delegate created never reached the chat the user asked in.
+ */
+function resolveDelegationOrigin(conversation) {
+    if (isTrackedOriginConversation(conversation)) {
+        return {
+            projectId: conversation.projectId || '',
+            objectType: conversation.objectType || 'topics',
+            objectId: conversation.objectId,
+            assistantId: conversation.assistantId || '',
+        }
+    }
+    if (
+        !conversation?.objectId &&
+        conversation?.originTracksWork === true &&
+        typeof conversation.originProjectId === 'string' &&
+        conversation.originProjectId &&
+        typeof conversation.originObjectId === 'string' &&
+        conversation.originObjectId &&
+        typeof conversation.originAssistantId === 'string' &&
+        conversation.originAssistantId
+    ) {
+        return {
+            projectId: conversation.originProjectId,
+            objectType: conversation.originObjectType || 'topics',
+            objectId: conversation.originObjectId,
+            assistantId: conversation.originAssistantId,
+        }
+    }
+    return null
+}
+
 const buildDelegatedTaskFields = (ownerId, assistantId, executionMode) => ({
     userId: executionMode === 'direct' ? assistantId : ownerId,
     assigneeType: executionMode === 'direct' ? 'assistant' : 'USER',
@@ -36,7 +72,7 @@ async function startDelegatedTaskWorkflow({
 }) {
     // Callback destinations and the request must come from the authenticated call, never mutable task
     // metadata. No client write rule exists for this collection. Subsequent workflow steps read it.
-    const trackedOrigin = isTrackedOriginConversation(originConversation)
+    const trackedOrigin = resolveDelegationOrigin(originConversation)
     const requestId = typeof requestCommentId === 'string' && requestCommentId ? requestCommentId : ''
     if (trackedOrigin || requestId) {
         // Merged: a retried start must not erase the review-notice bookkeeping of the receipt.
@@ -53,10 +89,10 @@ async function startDelegatedTaskWorkflow({
                 ...(requestId ? { requestCommentId: requestId } : {}),
                 ...(trackedOrigin
                     ? {
-                          originProjectId: originConversation.projectId || projectId,
-                          originObjectType: originConversation.objectType || 'topics',
-                          originObjectId: originConversation.objectId,
-                          originAssistantId: originConversation.assistantId || assistantId,
+                          originProjectId: trackedOrigin.projectId || projectId,
+                          originObjectType: trackedOrigin.objectType,
+                          originObjectId: trackedOrigin.objectId,
+                          originAssistantId: trackedOrigin.assistantId || assistantId,
                       }
                     : {}),
             },
@@ -135,7 +171,7 @@ async function startDelegatedTaskWorkflow({
                 : 'This existing task belongs to the requesting user and is handled by their workflow, including any prerequisite steps. ' +
                   'The workflow starts the assistant work and returns the result for human review. ') +
             'Do not separately delegate, launch a VM, or mark this task done from the coordinating conversation; that would duplicate or bypass its workflow. ' +
-            'Tell the user briefly that the work continues in that task.',
+            'Tell the user briefly that the work continues in that task and give them its link (taskUrl in this result) exactly as returned; never write a placeholder or build the link yourself.',
     }
 }
 
@@ -241,6 +277,7 @@ async function claimDelegatedTaskRequest(db, projectId, task, assistantId, runId
 
 module.exports = {
     isTrackedOriginConversation,
+    resolveDelegationOrigin,
     claimDelegatedTaskRequest,
     buildDelegatedTaskFields,
     startDelegatedTaskWorkflow,
