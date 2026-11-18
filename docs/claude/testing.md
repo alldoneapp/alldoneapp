@@ -75,5 +75,7 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 `GIT_DIR` and `GIT_WORK_TREE` (as the Alldone VM does), those variables win over `-C`: the
 fixtures' `init --bare` fails, and their `add`/`commit` run against the real checkout. That
 committed a whole uncommitted change as "Fixture" on the working branch. These suites fail there
-on `master` too. Run them only with both variables unset
+on `master` too. Run them only with both variables unset, best in a throwaway clone
 (`env -u GIT_DIR -u GIT_WORK_TREE npx jest __tests__/Ci…`), and never with uncommitted work.
+That makes the git-fixture suites pass; `CiDeployCredentials` and
+`CiFirebaseFunctionsDeployment` still fail in the VM for other environment reasons.
