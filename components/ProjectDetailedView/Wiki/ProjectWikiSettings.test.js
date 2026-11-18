@@ -416,13 +416,32 @@ describe('automatic project description update (AT-3095)', () => {
         expect(textOf(component.toJSON())).toContain('Update project description automatically')
         expect(descriptionSwitch(component).props.accessibilityState).toEqual({ checked: true })
         expect(findButton(component, 'Weekly').props.disabled).toBe(true)
+        expect(findButton(component, 'Daily').props.disabled).toBe(false)
         expect(block.findAllByProps({ testID: 'project-description-update-needs-wiki' })).toHaveLength(0)
 
         await act(async () => findButton(component, 'Every 2 weeks').props.onPress())
         expect(saveKnowledgeBaseSettings).toHaveBeenLastCalledWith('p1', { descriptionUpdateIntervalDays: 14 })
 
+        await act(async () => findButton(component, 'Daily').props.onPress())
+        expect(saveKnowledgeBaseSettings).toHaveBeenLastCalledWith('p1', { descriptionUpdateIntervalDays: 1 })
+
         await act(async () => descriptionSwitch(component).props.onPress())
         expect(saveKnowledgeBaseSettings).toHaveBeenLastCalledWith('p1', { descriptionUpdateEnabled: false })
+    })
+
+    it('offers daily before the weekly options and marks it when chosen (added on review)', () => {
+        const component = mount({ enabled: true, ownerUserId: 'me', descriptionUpdate: { intervalDays: 1 } })
+        const titles = descriptionBlock(component)
+            .findAll(node => typeof node.props.onPress === 'function' && typeof node.props.title === 'string')
+            .map(node => node.props.title)
+        expect(titles.filter((title, index) => titles.indexOf(title) === index)).toEqual([
+            'Daily',
+            'Weekly',
+            'Every 2 weeks',
+            'Every 4 weeks',
+        ])
+        expect(findButton(component, 'Daily').props.disabled).toBe(true)
+        expect(findButton(component, 'Weekly').props.disabled).toBe(false)
     })
 
     it('hides the interval while switched off and shows when it last checked and changed', () => {

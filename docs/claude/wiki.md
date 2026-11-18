@@ -254,7 +254,7 @@ source key, so `knowledgeSourceInvalidation.js` could never take a copied statem
 `update_project_description` and its base instruction steer assistants the same way: status
 and recent activity stay out of the description unless the user explicitly asks for them.
 
-**The wiki run keeps the project description current, weekly by default (AT-3095).** The last step
+**The wiki run keeps the project description current, weekly by default, daily on request (AT-3095).** The last step
 of a run (`projectDescriptionRefresh.js`, after the health check) reads the description and the wiki
 (index plus the most recently updated page bodies, about 40,000 characters, citations and links
 flattened to their labels) and the model ends with exactly one of two tools of its own:
@@ -269,7 +269,7 @@ current length + 300, at most 4,000). A save goes through `updateProjectDescript
 `expectedDescription`, so a member's edit made while the model worked wins (`conflict`) and the
 Updates feed gets the usual "changed description" line, credited to the project's assistant (the
 payer when there is none); the same text writes nothing and makes no line. Settings sit on the wiki
-document: `descriptionUpdate { enabled, intervalDays: 7|14|28 }`, a missing field meaning on and
+document: `descriptionUpdate { enabled, intervalDays: 1|7|14|28 }`, a missing field meaning on and
 weekly (that is the default for every existing wiki, no migration), changed in the wiki settings by
 whoever may change the wiki, because it is billed to the wiki's payer (`project_description_update`
 Gold, counted in the wiki's monthly cap and only spent below the health check's 80% share). It runs
@@ -277,7 +277,15 @@ only once the run has caught up, the interval since `descriptionUpdateState.last
 (minus 6 hours of slack for the nightly start time), the wiki has a visible page, and the project is
 active, not a template and not archived by the payer. `lastRunAt` only moves on a decision (changed,
 unchanged, conflict); a skip, a stop or a run without a decision looks again next time, which is at
-most one conversation a night. The run document keeps the previous and new text under
+most one conversation a night. **Daily (1) was added on review (Karsten, 2026-11-18)**: due 18
+hours after the last decision, so every nightly run qualifies but an afternoon "Update now" after a
+nightly decision does not run it again. Karsten chose that daily skips a quiet night: every decision
+stores `descriptionUpdateState.inputsFingerprint`, a SHA-256 over the system prompt (rules, project
+name, wiki instructions) and the user prompt built from the description as it now stands (the saved
+text after `changed`) and the wiki material; a daily run whose fingerprint matches is
+`skipped`/`no_changes`, before any model call, and `lastRunAt` stays so it is due again the next
+night. A `conflict` stores `null` (the member's text is new input). Weekly and longer ignore the
+fingerprint and run whenever due, as before. The run document keeps the previous and new text under
 `descriptionUpdate`. Known limits: a project without a wiki gets no automatic update, and a
 statement that came from a source later withdrawn is not taken back out of the description until a
 later update or a member removes it. Pinned by the AT-3095 blocks of `knowledgeBaseIngest.test.js`,

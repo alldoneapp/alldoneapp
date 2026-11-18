@@ -1510,6 +1510,7 @@ describe('automatic project description update (AT-3095)', () => {
             lastRunId: 'run-1',
             lastResult: 'changed',
             lastChangedAt: NOW,
+            inputsFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
         })
         expect(db.read(`${KB_PATH}/runs/run-1`).descriptionUpdate).toMatchObject({ result: 'changed' })
     })
@@ -1530,6 +1531,7 @@ describe('automatic project description update (AT-3095)', () => {
             lastRunId: 'run-1',
             lastResult: 'unchanged',
             lastChangedAt: NOW - 30 * DAY,
+            inputsFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
         })
     })
 
@@ -1553,6 +1555,20 @@ describe('automatic project description update (AT-3095)', () => {
             [{ descriptionUpdateState: { lastRunAt: NOW - 7 * DAY + 60 * 60 * 1000 } }, 1],
             [{ descriptionUpdate: { intervalDays: 14 }, descriptionUpdateState: { lastRunAt: NOW - 10 * DAY } }, 0],
             [{ descriptionUpdate: { intervalDays: 14 }, descriptionUpdateState: { lastRunAt: NOW - 14 * DAY } }, 1],
+            [
+                {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { lastRunAt: NOW - 12 * 60 * 60 * 1000 },
+                },
+                0,
+            ],
+            [
+                {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { lastRunAt: NOW - DAY + 60 * 60 * 1000 },
+                },
+                1,
+            ],
             [{ descriptionUpdate: { enabled: false }, descriptionUpdateState: {} }, 0],
         ]
         for (const [knowledgeBase, expectedCalls] of cases) {
@@ -1560,6 +1576,115 @@ describe('automatic project description update (AT-3095)', () => {
             await run(descriptionDb({ knowledgeBase }), { runConversation, writeDescription: writer() })
             expect([knowledgeBase, runConversation.mock.calls.length]).toEqual([knowledgeBase, expectedCalls])
         }
+    })
+
+    describe('daily (added on review)', () => {
+        const keep = () => scriptedModel(async tools => tools.keep_project_description({ reason: 'x' }))
+        // The state a first daily run leaves, read back for the next night's run.
+        async function firstNight({ knowledgeBase = {}, project = {}, pages, turn } = {}) {
+            const db = descriptionDb({
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, ...knowledgeBase },
+                project,
+                ...(pages ? { pages } : {}),
+            })
+            const { runConversation } = turn ? scriptedModel(turn) : keep()
+            await run(db, { runConversation, writeDescription: writer() })
+            expect(runConversation).toHaveBeenCalledTimes(1)
+            return db.read(KB_PATH).descriptionUpdateState
+        }
+        // Tonight is 23 hours after the last decision, as between two nightly runs.
+        const tonight = state => ({ ...state, lastRunAt: NOW - 23 * 60 * 60 * 1000 })
+
+        it('runs every night while something changed, and skips a quiet night at no cost', async () => {
+            const state = await firstNight()
+            expect(state.inputsFingerprint).toMatch(/^[0-9a-f]{64}$/)
+
+            // Nothing changed: no model call, no Gold, and lastRunAt stays, so it stays due.
+            const quietDb = descriptionDb({
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: tonight(state) },
+            })
+            const quiet = keep()
+            const charge = jest.fn(async () => ({ success: true }))
+            const result = await run(quietDb, {
+                runConversation: quiet.runConversation,
+                writeDescription: writer(),
+                charge,
+            })
+            expect(quiet.runConversation).not.toHaveBeenCalled()
+            expect(charge).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'no_changes' })
+            expect(quietDb.read(KB_PATH).descriptionUpdateState).toEqual(tonight(state))
+
+            // A wiki page changed, a member edited the description, or the wiki instructions
+            // changed: the next night runs.
+            const changes = [
+                {
+                    pages: {
+                        team: page('team', { body: 'Karla verantwortet jetzt die Roadmap.', updatedAt: NOW - 1 }),
+                    },
+                },
+                { project: { description: `${CURRENT} Von Hand ergänzt.` } },
+                { knowledgeBase: { instructions: 'Schreibe auf Englisch.' } },
+            ]
+            for (const change of changes) {
+                const db = descriptionDb({
+                    ...change,
+                    knowledgeBase: {
+                        descriptionUpdate: { intervalDays: 1 },
+                        descriptionUpdateState: tonight(state),
+                        ...change.knowledgeBase,
+                    },
+                })
+                const next = keep()
+                await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+                expect([change, next.runConversation.mock.calls.length]).toEqual([change, 1])
+            }
+        })
+
+        it('counts its own save as the new starting point, not as a change', async () => {
+            const revised = `${CURRENT} Karla verantwortet die Roadmap.`
+            const state = await firstNight({
+                turn: tools => tools.save_project_description({ description: revised, reason: 'Neue Rolle' }),
+            })
+            expect(state.lastResult).toBe('changed')
+
+            const db = descriptionDb({
+                project: { description: revised },
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: tonight(state) },
+            })
+            const next = keep()
+            const result = await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'no_changes' })
+        })
+
+        it('is not due again within the same day', async () => {
+            const state = await firstNight()
+            const db = descriptionDb({
+                pages: { team: page('team', { body: 'Neu.', updatedAt: NOW - 1 }) },
+                knowledgeBase: {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { ...state, lastRunAt: NOW - 12 * 60 * 60 * 1000 },
+                },
+            })
+            const next = keep()
+            const result = await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toBeNull()
+        })
+
+        it('leaves weekly as it was: due after a week even when nothing changed', async () => {
+            const state = await firstNight({ knowledgeBase: { descriptionUpdate: { intervalDays: 7 } } })
+            const db = descriptionDb({
+                knowledgeBase: {
+                    descriptionUpdate: { intervalDays: 7 },
+                    descriptionUpdateState: { ...state, lastRunAt: NOW - 7 * DAY },
+                },
+            })
+            const next = keep()
+            await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).toHaveBeenCalledTimes(1)
+        })
     })
 
     it('leaves inactive projects, templates, archived projects and empty wikis alone at no cost', async () => {
@@ -1641,6 +1766,8 @@ describe('automatic project description update (AT-3095)', () => {
         expect(result.descriptionUpdate.result).toBe('conflict')
         expect(db.read(KB_PATH).descriptionUpdateState).toMatchObject({ lastRunAt: NOW, lastResult: 'conflict' })
         expect(db.read(KB_PATH).descriptionUpdateState).not.toHaveProperty('lastChangedAt')
+        // The member's text is new input, so a daily update looks again the next night.
+        expect(db.read(KB_PATH).descriptionUpdateState.inputsFingerprint).toBeNull()
     })
 
     it('writes a first profile for a project without a description', async () => {

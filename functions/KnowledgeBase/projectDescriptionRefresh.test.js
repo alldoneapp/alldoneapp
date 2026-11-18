@@ -13,13 +13,16 @@ jest.mock('../shared/UserHelper', () => ({
 }))
 
 const {
+    buildDescriptionInputsFingerprint,
     buildDescriptionWikiMaterial,
     getProjectDescriptionUpdateSkipReason,
+    isDescriptionUpdateInputUnchanged,
     resolveDescriptionFeedUser,
     validateProposedDescription,
 } = require('./projectDescriptionRefresh')
 const {
     getProjectDescriptionUpdateNextDueAt,
+    isProjectDescriptionUpdateDue,
     resolveProjectDescriptionUpdateSettings,
 } = require('./knowledgeBaseModel')
 
@@ -35,6 +38,56 @@ describe('settings and schedule', () => {
         expect(
             resolveProjectDescriptionUpdateSettings({ descriptionUpdate: { enabled: false, intervalDays: 28 } })
         ).toEqual({ enabled: false, intervalDays: 28 })
+        expect(resolveProjectDescriptionUpdateSettings({ descriptionUpdate: { intervalDays: 1 } })).toEqual({
+            enabled: true,
+            intervalDays: 1,
+        })
+    })
+
+    it('makes daily due 18 hours after the last decision, so every nightly run qualifies', () => {
+        const daily = lastRunAt => ({ descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: { lastRunAt } })
+        expect(getProjectDescriptionUpdateNextDueAt(daily(0))).toBe(18 * 60 * 60 * 1000)
+        // Last night's run at 03:10, tonight's at 02:55 (or 02:55 after a DST change): due.
+        expect(isProjectDescriptionUpdateDue(daily(0), DAY - 15 * 60 * 1000)).toBe(true)
+        expect(isProjectDescriptionUpdateDue(daily(0), 23 * 60 * 60 * 1000)).toBe(true)
+        // "Update now" in the afternoon after a nightly decision: not again the same day.
+        expect(isProjectDescriptionUpdateDue(daily(0), 11 * 60 * 60 * 1000)).toBe(false)
+    })
+
+    it('fingerprints what the model would see, and lets only daily skip on an equal one', () => {
+        const material = buildDescriptionWikiMaterial([{ slug: 'team', title: 'Team', body: 'Karsten leitet.' }])
+        const base = { systemPrompt: 'rules', currentDescription: 'Profil.', material }
+        const fingerprint = buildDescriptionInputsFingerprint(base)
+
+        expect(buildDescriptionInputsFingerprint({ ...base, currentDescription: '  Profil.\n' })).toBe(fingerprint)
+        expect(buildDescriptionInputsFingerprint({ ...base, currentDescription: 'Profil neu.' })).not.toBe(fingerprint)
+        expect(buildDescriptionInputsFingerprint({ ...base, systemPrompt: 'other rules' })).not.toBe(fingerprint)
+        expect(
+            buildDescriptionInputsFingerprint({
+                ...base,
+                material: buildDescriptionWikiMaterial([{ slug: 'team', title: 'Team', body: 'Daniela leitet.' }]),
+            })
+        ).not.toBe(fingerprint)
+
+        const state = { descriptionUpdateState: { inputsFingerprint: fingerprint } }
+        expect(
+            isDescriptionUpdateInputUnchanged({ ...state, descriptionUpdate: { intervalDays: 1 } }, fingerprint)
+        ).toBe(true)
+        expect(isDescriptionUpdateInputUnchanged({ ...state, descriptionUpdate: { intervalDays: 1 } }, 'other')).toBe(
+            false
+        )
+        // Weekly and longer run whenever they are due, as before.
+        expect(isDescriptionUpdateInputUnchanged(state, fingerprint)).toBe(false)
+        expect(
+            isDescriptionUpdateInputUnchanged({ ...state, descriptionUpdate: { intervalDays: 14 } }, fingerprint)
+        ).toBe(false)
+        // Nothing stored yet (or a conflict cleared it): run.
+        expect(
+            isDescriptionUpdateInputUnchanged(
+                { descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: { inputsFingerprint: null } },
+                fingerprint
+            )
+        ).toBe(false)
     })
 
     it('is due at once when it never ran, never when switched off', () => {

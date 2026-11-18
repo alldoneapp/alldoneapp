@@ -227,8 +227,34 @@ describe('setKnowledgeBaseSettings', () => {
                 setKnowledgeBaseSettings({ enqueue, db, now: NOW, userId: 'owner', projectId: PROJECT_ID, settings })
 
             await expect(save({ descriptionUpdateIntervalDays: 3 })).rejects.toMatchObject({ code: 'invalid-argument' })
+            await expect(save({ descriptionUpdateIntervalDays: 0 })).rejects.toMatchObject({ code: 'invalid-argument' })
+            await expect(save({ descriptionUpdateIntervalDays: 0.5 })).rejects.toMatchObject({
+                code: 'invalid-argument',
+            })
             await expect(save({ descriptionUpdateEnabled: 'yes' })).rejects.toMatchObject({ code: 'invalid-argument' })
             expect(db.read(KB_PATH)).not.toHaveProperty('descriptionUpdate')
+        })
+
+        it('offers daily as well (added on review), without starting a run for it', async () => {
+            const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 1 })
+
+            const view = await setKnowledgeBaseSettings({
+                enqueue,
+                db,
+                now: NOW,
+                userId: 'owner',
+                projectId: PROJECT_ID,
+                settings: { descriptionUpdateIntervalDays: 1 },
+            })
+
+            expect(view.descriptionUpdate).toMatchObject({ enabled: true, intervalDays: 1 })
+            expect(db.read(KB_PATH).descriptionUpdate).toEqual({
+                enabled: true,
+                intervalDays: 1,
+                updatedAt: NOW,
+                updatedBy: 'owner',
+            })
+            expect(enqueue).not.toHaveBeenCalled()
         })
 
         it('may only be changed by the payer while the wiki is on, like the rest of it', async () => {

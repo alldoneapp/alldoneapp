@@ -390,7 +390,7 @@
     "Only the paying member can change the wiki": "Solo el miembro que paga la wiki puede cambiar estos ajustes.",
     "Wiki paused while its payer has archived the project": "En pausa: el miembro que paga ha archivado este proyecto. La wiki se creó una vez y no se mantiene actualizada; continúa cuando el proyecto se vuelva a activar.",
     "Update project description automatically": "Actualizar la descripción del proyecto automáticamente",
-    "Project description update hint": "Cuando la wiki está al día, el asistente revisa con ella la descripción del proyecto. Sigue siendo un perfil breve (propósito, límites, roles, reglas) y conserva lo que sigue siendo cierto. Los cambios aparecen en Actualizaciones y se pagan con el Oro de la wiki.",
+    "Project description update hint": "Cuando la wiki está al día, el asistente revisa con ella la descripción del proyecto. Sigue siendo un perfil breve (propósito, límites, roles, reglas) y conserva lo que sigue siendo cierto. Los cambios aparecen en Actualizaciones y se pagan con el Oro de la wiki. Con «Diario» solo se revisa en las noches en que cambió la wiki o la descripción.",
     "Project description update needs the wiki": "Necesita la wiki del proyecto: actívala para usar esta función.",
     "Project description last checked": "Última revisión %{date}",
     "Project description last changed": "último cambio %{date}",

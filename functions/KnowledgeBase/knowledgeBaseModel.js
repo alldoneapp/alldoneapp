@@ -80,10 +80,16 @@ const KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES = ['completed', 'partial']
 // of the wiki run; its settings sit on the wiki document. Kept here, free of server imports, because
 // the wiki settings in the browser read them too.
 const DAY_MS = 24 * 60 * 60 * 1000
-const PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS = [7, 14, 28]
+// Daily (1) was added on review; the default stays weekly. Daily skips a night whose wiki and
+// description are the same as at the last decision (projectDescriptionRefresh.js), so it costs
+// nothing on quiet days.
+const PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS = [1, 7, 14, 28]
 const DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS = 7
+const DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS = 1
 // Nightly runs start at slightly different minutes; a week is a week even when this night's run
-// started an hour earlier than last week's.
+// started an hour earlier than last week's. Daily is due 18 hours after the last decision, so every
+// night's 03:00 run qualifies (also across a DST change), while a manual "Update now" in the
+// afternoon after a nightly decision does not run it a second time that day.
 const DESCRIPTION_UPDATE_DUE_SLACK_MS = 6 * 60 * 60 * 1000
 
 // A `chat` source is one comment thread, keyed by its chat object's id: chatObjects/{projectId}/chats
@@ -517,6 +523,7 @@ module.exports = {
     KNOWLEDGE_SOURCE_TYPES,
     PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
     DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
+    DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
     DESCRIPTION_UPDATE_DUE_SLACK_MS,
     hasKnowledgeBaseCaughtUp,
     resolveProjectDescriptionUpdateIntervalDays,

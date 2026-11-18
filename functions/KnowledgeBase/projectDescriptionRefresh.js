@@ -16,8 +16,8 @@
 // project's audience. A project without a wiki therefore gets no automatic description update.
 //
 // Settings live on the wiki document, beside the wiki's own:
-//   descriptionUpdate      { enabled, intervalDays }  what members chose; missing = on, weekly
-//   descriptionUpdateState { lastRunAt, lastRunId, lastResult, lastChangedAt }  run state
+//   descriptionUpdate      { enabled, intervalDays: 1|7|14|28 }  what members chose; missing = on, weekly
+//   descriptionUpdateState { lastRunAt, lastRunId, lastResult, lastChangedAt, inputsFingerprint }  run state
 //
 // When it runs: once the wiki run has caught up (no continuation pending), the interval since the
 // last decision has passed, the wiki has at least one visible page, the project is active
@@ -27,6 +27,13 @@
 // stopped or failed before that tries again on the next run, which is at most one conversation a
 // night.
 //
+// Daily (added on review): due every night, but a night whose model inputs (the prompt rules with
+// the wiki instructions, the description and the wiki material) are exactly what the last decision
+// left behind is skipped with `no_changes`, before any model call and at no cost. The fingerprint of
+// those inputs is stored with every decision (except a conflict, after which the member's text is
+// new input anyway). The weekly and longer intervals do not use it: they run whenever they are due,
+// as before.
+//
 // What a save does: `updateProjectDescription` (shared/projectDescriptionUpdateHelper.js), the same
 // path the assistants' update_project_description tool takes, so the Updates feed gets the usual
 // "changed description" line, attributed to the project's assistant. A text equal to the current one
@@ -34,7 +41,10 @@
 // run read it (a member's edit wins over the model's), and the save tool refuses a text that drops
 // most of a substantial description or carries wiki links/citations.
 
+const crypto = require('crypto')
+
 const {
+    DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
     DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
     DESCRIPTION_UPDATE_DUE_SLACK_MS,
     PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
@@ -161,6 +171,29 @@ function buildDescriptionUserPrompt({ currentDescription, material }) {
         material.sections.join('\n\n') || '(none)',
         ...(material.omitted ? ['', `(${material.omitted} more pages are not shown.)`] : []),
     ].join('\n')
+}
+
+// What the model would see, as one hash: the system prompt (rules, project name, wiki instructions)
+// and the user prompt for this description and wiki material. Stored with a decision so that the
+// daily interval can tell a night with nothing new from one worth a model call.
+function buildDescriptionInputsFingerprint({ systemPrompt, currentDescription, material }) {
+    const userPrompt = buildDescriptionUserPrompt({
+        currentDescription: normalizeDescription(currentDescription),
+        material,
+    })
+    return crypto
+        .createHash('sha256')
+        .update(JSON.stringify([String(systemPrompt || ''), userPrompt]))
+        .digest('hex')
+}
+
+// Daily only: true when neither the wiki, the description nor the instructions changed since the
+// last decision, so this night is skipped without a model call.
+function isDescriptionUpdateInputUnchanged(knowledgeBase = {}, fingerprint) {
+    const { intervalDays } = resolveProjectDescriptionUpdateSettings(knowledgeBase)
+    if (intervalDays !== DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS) return false
+    const stored = knowledgeBase?.descriptionUpdateState?.inputsFingerprint
+    return typeof stored === 'string' && stored.length > 0 && stored === fingerprint
 }
 
 function getProjectDescriptionMaxChars(currentDescription) {
@@ -318,6 +351,7 @@ async function writeProjectDescriptionDefault({ db, projectId, ownerUserId, owne
 module.exports = {
     PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
     DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
+    DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
     DESCRIPTION_UPDATE_DUE_SLACK_MS,
     DESCRIPTION_GOLD_SOURCE,
     DESCRIPTION_RESULT_CHANGED,
@@ -333,6 +367,8 @@ module.exports = {
     buildDescriptionWikiMaterial,
     buildDescriptionSystemPrompt,
     buildDescriptionUserPrompt,
+    buildDescriptionInputsFingerprint,
+    isDescriptionUpdateInputUnchanged,
     validateProposedDescription,
     createDescriptionTools,
     resolveDescriptionFeedUser,

@@ -22,6 +22,7 @@ import {
     MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
+    resolveProjectDescriptionUpdateIntervalDays,
     toKnowledgeBaseSettingsView,
 } from '../../../functions/KnowledgeBase/knowledgeBaseModel'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../functions/Assistant/selectableAssistantModels'
@@ -49,8 +50,9 @@ const STOP_REASON_LABELS = {
     no_owner: 'No paying member',
 }
 
-// 7, 14, 28 days, as offered by the server (knowledgeBaseModel.js).
+// 1, 7, 14, 28 days, as offered by the server (knowledgeBaseModel.js).
 const DESCRIPTION_INTERVAL_LABELS = {
+    1: 'Daily',
     7: 'Weekly',
     14: 'Every 2 weeks',
     28: 'Every 4 weeks',
@@ -108,7 +110,7 @@ export function ModelPicker({ model, disabled, onChange }) {
 // on and is changed by whoever may change the wiki (it is billed to the wiki's payer).
 export function ProjectDescriptionUpdateSettings({ settings, wikiEnabled, disabled, onSave }) {
     const enabled = settings?.enabled !== false
-    const intervalDays = settings?.intervalDays || PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS[0]
+    const intervalDays = resolveProjectDescriptionUpdateIntervalDays(settings?.intervalDays)
     return (
         <View testID="project-description-update-settings" style={localStyles.descriptionBlock}>
             <View style={localStyles.row}>

@@ -7,7 +7,7 @@
 // the health check (knowledgeLint.js): rule-based checks whenever pages changed, and at most once a
 // week a bounded model pass that may only spend below the reserve it leaves for the ingest. The very
 // last step is the automatic update of the project description (projectDescriptionRefresh.js), weekly
-// by default. Runs unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
+// by default, daily on request. Runs unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
 //
 // Order matters: rebuilds come first so that the ingest prompts never see a page that still repeats
 // a withdrawn source, not even in the index.
@@ -90,12 +90,16 @@ const {
 const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
 const {
     DESCRIPTION_GOLD_SOURCE,
+    DESCRIPTION_RESULT_CHANGED,
+    DESCRIPTION_RESULT_CONFLICT,
     DESCRIPTION_RESULT_NO_DECISION,
+    buildDescriptionInputsFingerprint,
     buildDescriptionSystemPrompt,
     buildDescriptionUserPrompt,
     buildDescriptionWikiMaterial,
     createDescriptionTools,
     getProjectDescriptionUpdateSkipReason,
+    isDescriptionUpdateInputUnchanged,
     isProjectDescriptionUpdateDue,
     writeProjectDescriptionDefault,
 } = require('./projectDescriptionRefresh')
@@ -925,30 +929,43 @@ async function runKnowledgeBaseIngest({
         // 5. The automatic update of the project description (projectDescriptionRefresh.js): once
         //    the wiki has caught up, at most once per interval, below the same share of the cap as
         //    the health check. The model either keeps the description or saves a revision of it.
+        //    Daily skips a night whose inputs are the ones the last decision left (no_changes).
         if (!moreWork && isProjectDescriptionUpdateDue(knowledgeBase, clock())) {
             const skipReason = getProjectDescriptionUpdateSkipReason({ projectId, projectData, ownerData })
             const material = buildDescriptionWikiMaterial(pages)
             const spendLimit = getLintSpendLimit(goldCap)
+            const currentDescription = typeof projectData.description === 'string' ? projectData.description.trim() : ''
+            const descriptionSystemPrompt = buildDescriptionSystemPrompt({
+                projectName,
+                instructions: knowledgeBase.instructions,
+            })
             if (skipReason) {
                 stats.descriptionUpdate = { result: 'skipped', reason: skipReason }
             } else if (!material.pageCount) {
                 // Nothing to learn from yet; tried again on the next run, at no cost.
                 stats.descriptionUpdate = { result: 'skipped', reason: 'empty_wiki' }
+            } else if (
+                isDescriptionUpdateInputUnchanged(
+                    knowledgeBase,
+                    buildDescriptionInputsFingerprint({
+                        systemPrompt: descriptionSystemPrompt,
+                        currentDescription,
+                        material,
+                    })
+                )
+            ) {
+                // Daily, and nothing new since the last decision: looked at again tomorrow, at no cost.
+                stats.descriptionUpdate = { result: 'skipped', reason: 'no_changes' }
             } else if (monthlyGold.spent >= spendLimit) {
                 stats.descriptionUpdate = { result: 'skipped', reason: 'budget' }
             } else {
-                const currentDescription =
-                    typeof projectData.description === 'string' ? projectData.description.trim() : ''
                 const decision = {}
                 try {
                     await conversation({
                         label: 'description',
                         spendLimit,
                         goldSource: DESCRIPTION_GOLD_SOURCE,
-                        systemPrompt: buildDescriptionSystemPrompt({
-                            projectName,
-                            instructions: knowledgeBase.instructions,
-                        }),
+                        systemPrompt: descriptionSystemPrompt,
                         userPrompt: buildDescriptionUserPrompt({ currentDescription, material }),
                         tools: createDescriptionTools({
                             currentDescription,
@@ -983,7 +1000,21 @@ async function runKnowledgeBaseIngest({
                             lastRunAt: decidedAt,
                             lastRunId: leaseId,
                             lastResult: decision.result,
-                            ...(decision.result === 'changed' ? { lastChangedAt: decidedAt } : {}),
+                            ...(decision.result === DESCRIPTION_RESULT_CHANGED ? { lastChangedAt: decidedAt } : {}),
+                            // What the next run would see if nothing changes: the description as it
+                            // now stands. After a conflict the member's text is unknown here, so
+                            // the next daily run looks again.
+                            inputsFingerprint:
+                                decision.result === DESCRIPTION_RESULT_CONFLICT
+                                    ? null
+                                    : buildDescriptionInputsFingerprint({
+                                          systemPrompt: descriptionSystemPrompt,
+                                          currentDescription:
+                                              decision.result === DESCRIPTION_RESULT_CHANGED
+                                                  ? decision.description
+                                                  : currentDescription,
+                                          material,
+                                      }),
                         }
                     } else if (!stats.descriptionUpdate) {
                         stats.descriptionUpdate = { result: DESCRIPTION_RESULT_NO_DECISION }
