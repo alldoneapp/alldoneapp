@@ -28,7 +28,7 @@ describe('vmThreadAgentContinuity', () => {
             // vmRunOverrideGuard). If a new agent is added to vmAgentSettings and not here, it would
             // silently lose thread continuity, so pin the two together.
             jest.isolateModules(() => {
-                jest.doMock('firebase-admin', () => ({ firestore: jest.fn() }), { virtual: true })
+                jest.doMock('firebase-admin', () => ({ firestore: jest.fn() }))
                 const { VALID_VM_AGENTS: authoritative } = require('./vmAgentSettings')
                 expect([...VALID_VM_AGENTS].sort()).toEqual([...authoritative].sort())
             })

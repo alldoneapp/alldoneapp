@@ -13,19 +13,15 @@ jest.mock('firebase-admin', () => ({
     firestore: jest.fn(() => ({ doc: mockDoc })),
 }))
 
-jest.mock(
-    'firebase-functions/v2/https',
-    () => ({
-        onCall: (options, handler) => handler,
-        HttpsError: class HttpsError extends Error {
-            constructor(code, message) {
-                super(message)
-                this.code = code
-            }
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/v2/https', () => ({
+    onCall: (options, handler) => handler,
+    HttpsError: class HttpsError extends Error {
+        constructor(code, message) {
+            super(message)
+            this.code = code
+        }
+    },
+}))
 
 const mockTranscribeAudioBase64 = jest.fn()
 jest.mock('../Notes/deepgramTranscribe', () => ({

@@ -23,6 +23,8 @@ jest.mock('./assistantHelper', () => ({
               : 'gpt-6.1-sol',
     logOpenAiCacheUsage: (...args) => mockLogOpenAiCacheUsage(...args),
 }))
+// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
+jest.mock('./assistantModelRuntime', () => jest.requireMock('./assistantHelper'))
 
 const {
     cleanupRamble,

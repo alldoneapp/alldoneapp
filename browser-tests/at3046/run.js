@@ -15,9 +15,7 @@
  *   - an unread card has a "Mark as read" button inside the card that does not cover the time,
  *     offers a finger-sized hit area, and marks without following the card's link (AT-3075);
  *   - hovering a card turns its border blue, and the card is one link to its object;
- *   - system notices (project switched, view opened) are one-line centred dividers;
- *   - AT-3087: every card has one grey type badge left of its title, centred on the title line, in
- *     the border colour (never the link blue or the unread red), clear of the read button.
+ *   - system notices (project switched, view opened) are one-line centred dividers.
  * Screenshots land in `.build/` (or `--shots`).
  */
 const path = require('path')
@@ -149,27 +147,6 @@ const measure = () => {
                   }
                 : null,
             background: getComputedStyle(card).backgroundColor,
-            type: (() => {
-                const badge = card.querySelector('.anna-activity-type')
-                if (!badge) return null
-                const r = badge.getBoundingClientRect()
-                const style = getComputedStyle(badge)
-                return {
-                    count: card.querySelectorAll('.anna-activity-type').length,
-                    first: card.firstElementChild === badge,
-                    type: badge.dataset.annaActivityType,
-                    label: badge.getAttribute('aria-label'),
-                    size: [Math.round(r.width), Math.round(r.height)],
-                    leftOfTitle: r.right <= titleRect.left + 0.5,
-                    inCard: inside(badge) && r.top >= rect.top - 0.5 && r.bottom <= rect.bottom + 0.5,
-                    titleCentred: Math.abs((r.top + r.bottom) / 2 - (titleRect.top + titleRect.bottom) / 2) <= 3,
-                    clearOfButton:
-                        !markRect || r.right <= markRect.left || r.bottom <= markRect.top || r.top >= markRect.bottom,
-                    background: style.backgroundColor,
-                    color: style.color,
-                    icon: getComputedStyle(badge, '::before').content,
-                }
-            })(),
         }
     })
     // System notices are thin centred dividers: one line, text and time both inside the pane.
@@ -225,7 +202,7 @@ const measure = () => {
                 const byCase = Object.fromEntries(result.cards.map(card => [card.case, card]))
                 check(errors.length === 0, `${tag}: runtime errors: ${errors.join('; ')}`)
                 check(result.scrollWidth <= result.clientWidth, `${tag}: horizontal scroll range`)
-                check(result.cards.length === 9, `${tag}: expected 9 cards, got ${result.cards.length}`)
+                check(result.cards.length === 7, `${tag}: expected 7 cards, got ${result.cards.length}`)
                 for (const card of result.cards) {
                     const at = `${tag} "${card.case}"`
                     check(card.links === 1, `${at}: not exactly one link`)
@@ -243,23 +220,6 @@ const measure = () => {
                         `${at}: edge ${card.edge} for ${card.unread ? 'unread' : 'read'}`
                     )
                     check(card.edge !== result.accent, `${at}: edge is the link blue`)
-                    // AT-3087: one grey type badge, left of the title and centred on its line.
-                    const type = card.type
-                    check(!!type && type.count === 1 && type.first, `${at}: type badge ${JSON.stringify(type)}`)
-                    if (type) {
-                        check(type.size[0] === 22 && type.size[1] === 22, `${at}: type badge size ${type.size}`)
-                        check(type.leftOfTitle && type.inCard, `${at}: type badge not left of the title`)
-                        check(type.titleCentred, `${at}: type badge not on the title line`)
-                        check(type.clearOfButton, `${at}: type badge under the read button`)
-                        check(type.icon && type.icon !== 'none', `${at}: type badge has no icon`)
-                        check(type.background === result.border, `${at}: type badge fill ${type.background}`)
-                        check(
-                            ![result.accent, result.unreadColor].includes(type.color) &&
-                                ![result.accent, result.unreadColor].includes(type.background),
-                            `${at}: type badge in an action/status colour`
-                        )
-                        check(!!type.label, `${at}: type badge has no name`)
-                    }
                     // AT-3075: only an unread card offers "Mark as read".
                     check(!!card.markRead === card.unread, `${at}: mark-as-read button ${!!card.markRead}`)
                     if (card.markRead) {
@@ -283,22 +243,6 @@ const measure = () => {
                     `${tag}: grouped labels ${JSON.stringify(byCase.grouped.labels.map(label => label.text))}`
                 )
                 check(byCase['not-enriched'].labels.length === 0, `${tag}: not-enriched card repeats its title`)
-                const types = Object.fromEntries(result.cards.map(card => [card.case, card.type?.type]))
-                check(
-                    JSON.stringify(types) ===
-                        JSON.stringify({
-                            'unread-reply': 'tasks',
-                            'unread-long': 'tasks',
-                            grouped: 'tasks',
-                            'read-reply': 'tasks',
-                            'other-project': 'tasks',
-                            'other-actor': 'tasks',
-                            'note-update': 'notes',
-                            'topic-chat': 'topics',
-                            'not-enriched': 'chat',
-                        }),
-                    `${tag}: card types ${JSON.stringify(types)}`
-                )
                 const metas = Object.fromEntries(result.cards.map(card => [card.case, card.meta]))
                 check(
                     JSON.stringify(metas) ===
@@ -309,8 +253,6 @@ const measure = () => {
                             'read-reply': null,
                             'other-project': 'Alldone Business · Daniela',
                             'other-actor': 'Alldone Product · Daniela',
-                            'note-update': null,
-                            'topic-chat': null,
                             'not-enriched': null,
                         }),
                     `${tag}: project/actor lines ${JSON.stringify(metas)}`

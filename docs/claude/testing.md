@@ -59,6 +59,23 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   (`__tests__/TwilioWhatsAppService.test.js`, `__tests__/Chats/copyChatToOtherProject.test.js`,
   `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) run in the functions config
   instead (`BRIDGE_SUITES` in `ci/jest.functions.config.js`).
+- **`{ virtual: true }` is only for a module that does not exist; on one that does it makes
+  other suites fail by run order (fixed 2026-11-18).** Jest keeps one resolver per worker
+  and caches, per requiring file, the id it worked out for each module name. Under a
+  virtual mock that id is the bare name rather than the resolved path, and the cache
+  outlives the suite. A later suite in the same worker that mocks the same module the
+  normal way registers its mock under the resolved path, while the shared module it tests
+  still looks the mock up under the cached bare name, finds none and loads the real
+  package. `typesenseHelper.test.js` then made real network calls (15 tests failing after
+  48 seconds) and `vmAgentSettings.test.js` used the real firebase-admin, but only when
+  `scopedSearchParentKey.test.js` or `vmThreadAgentContinuity.test.js` ran before them in
+  the same worker. It showed in about one full run in five once a new slow suite changed how
+  Jest spread the files over its workers, and never with either suite on its own.
+  46 such mocks in 31 suites (firebase-admin and its subpaths, firebase-functions,
+  typesense, tiktoken, e2b) are normal mocks now; `functions/Tests/virtualMocks.test.js`
+  fails for a virtual mock of a module that resolves. To reproduce an order problem, run
+  the two files with `--runInBand` and a `--testSequencer` that puts the suspect first; a
+  mock that "does not apply" in one run and applies in the next is this.
 - **firebase-admin is pinned to ^13 — do NOT bump to 14 casually.** v14's top-level
   `require('firebase-admin')` export is only the `app` module: the entire legacy namespace
   API (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, `admin.database()`,
@@ -69,13 +86,3 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   project. Convention going forward regardless: statics come from the modular subpath —
   `const { FieldValue, Timestamp } = require('firebase-admin/firestore')` — and tests that
   stub them must mock `'firebase-admin/firestore'`, not just `'firebase-admin'`.
-
-**CI git fixtures and `GIT_DIR`/`GIT_WORK_TREE` (2026-11-18, AT-3087).** The `__tests__/Ci*` and
-`__tests__/ci/` suites build throwaway repos with `git -C <tmp> …`. When the shell exports
-`GIT_DIR` and `GIT_WORK_TREE` (as the Alldone VM does), those variables win over `-C`: the
-fixtures' `init --bare` fails, and their `add`/`commit` run against the real checkout. That
-committed a whole uncommitted change as "Fixture" on the working branch. These suites fail there
-on `master` too. Run them only with both variables unset, best in a throwaway clone
-(`env -u GIT_DIR -u GIT_WORK_TREE npx jest __tests__/Ci…`), and never with uncommitted work.
-That makes the git-fixture suites pass; `CiDeployCredentials` and
-`CiFirebaseFunctionsDeployment` still fail in the VM for other environment reasons.

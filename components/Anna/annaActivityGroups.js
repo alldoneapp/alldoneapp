@@ -22,38 +22,6 @@ export const getAnnaActivityObject = notice => {
     return null
 }
 
-// AT-3087: every card names what it is about with a small grey icon left of its title. The icons
-// are the ones the chat list already uses per object type (`getChatIcon`), so a task reads as a
-// task everywhere. They are object types only: what happened (completed, a reply) stays the blue
-// labels at the bottom, and read state stays the red edge and the ✓✓ button.
-export const ANNA_ACTIVITY_TYPES = {
-    tasks: { icon: 'check-square', label: 'Anna activity type tasks' },
-    notes: { icon: 'file-text', label: 'Anna activity type notes' },
-    goals: { icon: 'target', label: 'Anna activity type goals' },
-    topics: { icon: 'comments-thread', label: 'Anna activity type topics' },
-    contacts: { icon: 'user', label: 'Anna activity type contacts' },
-    users: { icon: 'users', label: 'Anna activity type users' },
-    skills: { icon: 'star', label: 'Anna activity type skills' },
-    assistants: { icon: 'cpu', label: 'Anna activity type assistants' },
-    artifacts: { icon: 'layers', label: 'Anna activity type artifacts' },
-    projects: { icon: 'folder', label: 'Anna activity type projects' },
-    // A chat message whose thread type is not known (yet): still a chat.
-    chat: { icon: 'comments-thread', label: 'Anna activity type chat' },
-    // Anything else (custom objects, a notice without an object): a notification.
-    update: { icon: 'bell', label: 'Anna activity type update' },
-}
-
-// The type of a card: the object type any notice of the group knows (a feed notice always does,
-// a chat notice once enriched or when its source saved the chat type), else chat or update.
-export function getAnnaActivityType(notices) {
-    const known = [...notices]
-        .reverse()
-        .map(getAnnaActivityObject)
-        .find(object => object?.objectType && ANNA_ACTIVITY_TYPES[object.objectType])
-    const type = known?.objectType || (notices.some(notice => notice?.kind === 'chat') ? 'chat' : 'update')
-    return { type, ...ANNA_ACTIVITY_TYPES[type] }
-}
-
 const objectKey = notice => {
     const object = getAnnaActivityObject(notice)
     return object ? `${object.projectId}/${object.objectId}` : `notice/${notice.id}`

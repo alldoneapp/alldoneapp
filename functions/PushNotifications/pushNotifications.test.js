@@ -9,13 +9,9 @@ jest.mock('firebase-admin', () => ({
     })),
 }))
 
-jest.mock(
-    'firebase-functions/params',
-    () => ({
-        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+}))
 
 jest.mock('../Users/usersFirestore', () => ({
     removeUserFcmTokens: jest.fn(),

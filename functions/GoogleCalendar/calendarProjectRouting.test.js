@@ -16,6 +16,8 @@ jest.mock('firebase-admin', () => {
 jest.mock('../Assistant/assistantHelper', () => ({
     calculateGoldCostFromTokens: jest.fn(() => 2),
 }))
+// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
+jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: jest.fn(() => Promise.resolve({ success: true })),

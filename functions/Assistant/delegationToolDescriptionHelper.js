@@ -2,7 +2,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
-const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('./assistantHelper')
+const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('./assistantModelRuntime')
 
 const MAX_GENERATED_DESCRIPTION_LENGTH = 420
 const MAX_TASK_EXAMPLES = 50

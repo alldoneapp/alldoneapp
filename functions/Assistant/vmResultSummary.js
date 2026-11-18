@@ -88,7 +88,7 @@ function calculateSummaryGold(totalTokens, tokensPerGold) {
 }
 
 async function defaultComplete({ system, user }) {
-    const { getCachedEnvFunctions, getModel } = require('./assistantHelper')
+    const { getCachedEnvFunctions, getModel } = require('./assistantModelRuntime')
     const { resolveClassifierClient } = require('./classifierModelClient')
     const env = getCachedEnvFunctions() || {}
     const { client, model, isOpenRouter } = resolveClassifierClient(VM_RESULT_SUMMARY_MODEL_KEY, {
@@ -117,7 +117,7 @@ async function defaultSettle(userId, gold, context) {
 }
 
 function defaultTokensPerGold(modelKey) {
-    const { getTokensPerGold } = require('./assistantHelper')
+    const { getTokensPerGold } = require('./assistantModelRuntime')
     return getTokensPerGold(modelKey)
 }
 

@@ -34,13 +34,9 @@ jest.mock('./config/environments.js', () => ({
     getEnvironmentConfig: jest.fn(() => ({ mcpBaseUrl: 'https://my.alldone.app' })),
 }))
 
-jest.mock(
-    'firebase-functions/params',
-    () => ({
-        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+}))
 
 // The MCP server now delegates every tool that also exists as an internal
 // assistant tool to executeToolNatively, so we mock that single seam instead of

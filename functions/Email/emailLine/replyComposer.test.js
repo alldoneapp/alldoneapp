@@ -7,6 +7,8 @@ jest.mock('../../Assistant/assistantHelper', () => ({
     getOpenAIClient: jest.fn(() => ({ chat: { completions: { create: (...args) => mockCreate(...args) } } })),
     logOpenAiCacheUsage: jest.fn(),
 }))
+// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
+jest.mock('../../Assistant/assistantModelRuntime', () => jest.requireMock('../../Assistant/assistantHelper'))
 
 const { getCachedEnvFunctions } = require('../../Assistant/assistantHelper')
 const { composeReply, buildUserContent } = require('./replyComposer')

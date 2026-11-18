@@ -368,32 +368,20 @@ jest.mock('openai', () =>
     }))
 )
 const mockTiktokenEncode = jest.fn(() => [])
-jest.mock(
-    '@dqbd/tiktoken/lite',
-    () => ({
-        Tiktoken: jest.fn().mockImplementation(() => ({
-            encode: mockTiktokenEncode,
-            free: jest.fn(),
-        })),
-    }),
-    { virtual: true }
-)
-jest.mock(
-    '@dqbd/tiktoken/encoders/cl100k_base.json',
-    () => ({
-        bpe_ranks: {},
-        special_tokens: {},
-        pat_str: '',
-    }),
-    { virtual: true }
-)
-jest.mock(
-    'firebase-functions/params',
-    () => ({
-        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-    }),
-    { virtual: true }
-)
+jest.mock('@dqbd/tiktoken/lite', () => ({
+    Tiktoken: jest.fn().mockImplementation(() => ({
+        encode: mockTiktokenEncode,
+        free: jest.fn(),
+    })),
+}))
+jest.mock('@dqbd/tiktoken/encoders/cl100k_base.json', () => ({
+    bpe_ranks: {},
+    special_tokens: {},
+    pat_str: '',
+}))
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+}))
 
 const { ProjectService } = require('../shared/ProjectService')
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')

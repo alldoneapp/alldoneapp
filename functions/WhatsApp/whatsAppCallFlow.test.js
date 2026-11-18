@@ -55,7 +55,7 @@ jest.mock('firebase-admin/firestore', () => ({
     Timestamp: { now: () => 'TIMESTAMP' },
 }))
 
-jest.mock('firebase-admin/functions', () => ({ getFunctions: jest.fn() }), { virtual: true })
+jest.mock('firebase-admin/functions', () => ({ getFunctions: jest.fn() }))
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
 jest.mock('../Services/TwilioWhatsAppService', () => jest.fn())
 jest.mock('../Utils/HelperFunctionsCloud', () => ({ STAYWARD_COMMENT: 'STAYWARD_COMMENT' }))
