@@ -157,6 +157,21 @@ row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 
+## Dictation stays close to the spoken wording, it does not summarize (AT-3105)
+
+The rambler's LLM cleanup (`functions/Assistant/ramblerCleanup.js`) used to ask for "clear,
+coherent, well-written" text, "concise prose", "reasonably brief" comments, a "concise" title and
+notes "structured for readability", and the model condensed and rephrased what was said. It is
+now a light cleanup of a transcription. Fillers, stutters, repeated words, false starts and spoken
+self-corrections are removed or applied, and punctuation/grammar get minimal fixes. Wording, word
+order and every detail stay; no summary, no synonyms, no reordering. The per-target rules only
+describe formatting: a title is still a single line (the field needs that) but is not shortened,
+and a note gets paragraphs and lists only where the speaker enumerates. The assistant persona is
+background only and may not shorten or rephrase, because personas such as "concise answers" were
+pulling the cleanup towards brevity. Meeting transcription (`transcribeMeetingAudio`, the
+"Transcribe" tag) never had an LLM step and is unchanged. `ramblerCleanup.test.js` fails if any
+prompt part asks for brevity again.
+
 ## Holding the floating "+" is a hold on the add-task mic (AT-2823)
 
 Pressing and holding the task board's floating "+" (`FloatingAddTaskButton` → `AddTaskTag`
