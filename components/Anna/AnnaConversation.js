@@ -116,18 +116,12 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         // AT-3036: called with the project id once a project switch has ended and the new chat's
         // messages are on screen (right before the snap to the bottom).
         onSwitchSettled,
-        // AT-3079: false hides the navigation dividers ("Switched to project: …", "Looking at: …").
-        // AnnaShell shows them only in Both, never in Anna only. The hooks below keep recording
-        // either way, so the dividers come back with their original times when Both returns.
-        showNavigationNotices = true,
     },
     ref
 ) {
     // AT-2914: one indicator of the view open right now, always at the end of the chat.
-    const trackedViewNotice = useAnnaContextNotices(user.uid, conversation, pageContext)
-    const trackedProjectNotices = useAnnaProjectSwitchNotices(user.uid, conversation, projectSwitch)
-    const viewNotice = showNavigationNotices ? trackedViewNotice : null
-    const projectNotices = showNavigationNotices ? trackedProjectNotices : []
+    const viewNotice = useAnnaContextNotices(user.uid, conversation, pageContext)
+    const projectNotices = useAnnaProjectSwitchNotices(user.uid, conversation, projectSwitch)
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
     const unreadActivityIds = useAnnaUnreadActivityIds()
     const contextNotices = [...projectNotices, ...activityNotices].sort((a, b) => a.created - b.created)

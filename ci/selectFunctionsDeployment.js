@@ -30,14 +30,24 @@ const normalize = node =>
             ? undefined
             : value
     )
+// functions/Tests/ holds the doubles the functions suites share (fakeFirestore.js). A module a
+// function really imports stays a runtime file wherever it lives: the dependency graph wins
+// over this list.
 const nonRuntime = file =>
-    /(^|\/)(__tests__|__mocks__|__fixtures__)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)(README|CHANGELOG|AGENTS|CLAUDE)(\.[^/]*)?\.md$/i.test(
+    /(^|\/)(__tests__|__mocks__|__fixtures__)(\/|$)|^functions\/Tests\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)(README|CHANGELOG|AGENTS|CLAUDE)(\.[^/]*)?\.md$/i.test(
         file
     )
+// Files a module reads from disk at run time instead of importing them, so no import edge
+// leads to them: [directory, the module that reads it]. A change to one is a change to the
+// functions that load its reader. Without an entry here such a file has no known owner and
+// every function is redeployed, which is what one edit to the VM agent bridge cost twice in
+// 2026-11 (303 functions for a file seven of them can reach).
+const ASSET_READERS = [['functions/Assistant/vm-agent-bridge/', 'functions/Assistant/vmJobRunner.js']]
 const globalFile = file =>
     /^functions\/(package(?:-lock)?\.json|npm-shrinkwrap\.json|\.npmrc|firebaseConfig\.js|env_functions[^/]*\.json|service_accounts\/)/.test(
         file
     )
+const SOURCE_FILE = /\.[cm]?[jt]sx?$|\.json$/
 const staticString = node =>
     node?.type === 'StringLiteral'
         ? node.value
@@ -66,12 +76,52 @@ function gitTree(root, ref, blobs = new Map()) {
                 return [file, metadata.split(' ')[2]]
             })
     )
+    // One `git cat-file` per file was two thirds of this script's run time (643 processes for
+    // one plan, 2026-11), and the plan is computed up to four times per pipeline, twice of them
+    // before anything else may start. Read the functions sources of a tree in a single process
+    // the first time one is asked for. Anything unexpected leaves the blobs unread, and `read`
+    // then fetches each one on demand as before.
+    let loaded = false
+    const loadSources = () => {
+        loaded = true
+        const wanted = [
+            ...new Set(
+                [...entries]
+                    .filter(([file]) => file.startsWith('functions/') && SOURCE_FILE.test(file) && !nonRuntime(file))
+                    .map(([, blob]) => blob)
+            ),
+        ].filter(blob => !blobs.has(blob))
+        if (!wanted.length) return
+        try {
+            const output = execFileSync('git', ['-C', root, 'cat-file', '--batch'], {
+                input: wanted.join('\n') + '\n',
+                maxBuffer: 1024 * 1024 * 1024,
+            })
+            const sources = new Map()
+            let offset = 0
+            for (const blob of wanted) {
+                // "<id> blob <bytes>\n<content>\n" for every id, in the order asked.
+                const headerEnd = output.indexOf(10, offset)
+                if (headerEnd < 0) throw new Error('Truncated git cat-file output')
+                const [id, type, size] = output.toString('latin1', offset, headerEnd).split(' ')
+                const start = headerEnd + 1
+                const end = start + Number(size)
+                if (id !== blob || type !== 'blob' || !/^\d+$/.test(size) || output[end] !== 10)
+                    throw new Error('Unexpected git cat-file output')
+                sources.set(blob, output.toString('utf8', start, end))
+                offset = end + 1
+            }
+            if (offset !== output.length) throw new Error('Unexpected git cat-file output')
+            for (const [blob, source] of sources) blobs.set(blob, source)
+        } catch (_) {}
+    }
     return {
         sha,
         files: new Set(entries.keys()),
         read(file) {
             const blob = entries.get(file)
             if (!blob) return null
+            if (!loaded) loadSources()
             // Most dependencies are identical across the two commits. Read each
             // immutable blob once rather than spawning git again for the old tree.
             if (!blobs.has(blob)) blobs.set(blob, git(['cat-file', 'blob', blob]))
@@ -437,6 +487,24 @@ function functionDeploymentEnvironment(tree) {
     })
 }
 
+// firebase-tools uploads the functions source without what `functions.ignore` in firebase.json
+// names, so a directory ignored as `dir/**` never reaches the runtime and nothing in it can
+// change what a function does (e2b-template/ is built into VM templates by its own script).
+// Only that literal form is read; every other pattern keeps going through the checks below.
+function ignoredDirectories(tree) {
+    try {
+        const config = JSON.parse(tree.read('firebase.json') || '{}').functions
+        if (!config || Array.isArray(config) || !Array.isArray(config.ignore)) return []
+        const source = String(config.source || 'functions').replace(/\/+$/, '')
+        return config.ignore
+            .map(pattern => /^([\w.-]+(?:\/[\w.-]+)*)\/\*\*$/.exec(String(pattern)))
+            .filter(match => match && !match[1].split('/').includes('..'))
+            .map(match => `${source}/${match[1]}/`)
+    } catch (_) {
+        return []
+    }
+}
+
 function selectDeployment({ before, after, changed, force = false, rangeChanged = [] }) {
     const current = buildGraph(after)
     const names = [...current.keys()].sort()
@@ -490,9 +558,18 @@ function selectDeployment({ before, after, changed, force = false, rangeChanged 
     const allDependencies = new Set([...previous.values(), ...current.values()].flatMap(value => [...value.files]))
     // An unreferenced runtime file could be loaded through fs, eval or a dynamic
     // path. Do not silently omit it just because static imports cannot prove ownership.
-    const runtimeFiles = relevant.filter(file => allDependencies.has(file) || !nonRuntime(file))
+    const notUploaded = ignoredDirectories(after)
+    const runtimeFiles = relevant.filter(
+        file => allDependencies.has(file) || !(nonRuntime(file) || notUploaded.some(dir => file.startsWith(dir)))
+    )
+    // A reader that no function loads any more cannot vouch for its directory.
+    const readers = file =>
+        ASSET_READERS.filter(([directory, reader]) => file.startsWith(directory) && allDependencies.has(reader)).map(
+            ([, reader]) => reader
+        )
+    const uses = (info, file) => info.files.has(file) || readers(file).some(reader => info.files.has(reader))
     const unknownAssets = runtimeFiles.filter(
-        file => file.startsWith('functions/') && file !== INDEX && !allDependencies.has(file)
+        file => file.startsWith('functions/') && file !== INDEX && !allDependencies.has(file) && !readers(file).length
     )
     if (unknownAssets.length) return full(`Unmapped runtime assets: ${unknownAssets.join(', ')}`)
     const runtimeChanges = runtimeFiles.filter(file => file.startsWith('functions/') || allDependencies.has(file))
@@ -501,7 +578,7 @@ function selectDeployment({ before, after, changed, force = false, rangeChanged 
     const reasons = {}
     for (const [name, next] of current) {
         const old = previous.get(name)
-        const affected = runtimeChanges.filter(file => next.files.has(file) || old?.files.has(file))
+        const affected = runtimeChanges.filter(file => uses(next, file) || (old && uses(old, file)))
         if (
             !old ||
             old.signature !== next.signature ||
@@ -591,6 +668,7 @@ if (require.main === module) {
     }
 }
 module.exports = {
+    ASSET_READERS,
     readExtraChangedFiles,
     buildGraph,
     selectDeployment,

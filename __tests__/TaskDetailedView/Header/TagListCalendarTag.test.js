@@ -68,18 +68,23 @@ jest.mock('../../../components/UIControls/CopyLinkButton', () => {
     const CopyLinkButton = props => <View testID="CopyLinkButton" {...props} />
     return CopyLinkButton
 })
+jest.mock('../../../components/UIControls/OpenInNewWindowButton', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    const OpenInNewWindowButton = props => <View testID="OpenInNewWindowButton" {...props} />
+    return OpenInNewWindowButton
+})
 jest.mock('../../../components/UIControls/DvBotButton', () => {
     const React = require('react')
     const { View } = require('react-native')
     const DvBotButton = props => <View testID="DvBotButton" {...props} />
     return DvBotButton
 })
-
-jest.mock('../../../components/TaskDetailedView/Header/TaskHeaderOverflowButton', () => {
+jest.mock('../../../components/UIControls/DvSearchButton', () => {
     const React = require('react')
     const { View } = require('react-native')
-    const TaskHeaderOverflowButton = props => <View testID="TaskHeaderOverflowButton" {...props} />
-    return TaskHeaderOverflowButton
+    const DvSearchButton = props => <View testID="DvSearchButton" {...props} />
+    return DvSearchButton
 })
 
 import TagList from '../../../components/TaskDetailedView/Header/TagList'

@@ -6,6 +6,15 @@ const { spawn } = require('child_process')
 const { completedFunctionNames, exportedFunctionNames } = require('./assertFirebaseFunctionsDeployed')
 const { readPlan } = require('./functionsDeploymentPlan')
 
+// A partial plan deploys by name, this many functions per `firebase deploy`. One command takes
+// about 140 seconds whether it names 1 function or 20 (measured over the master pipelines of
+// 2026-11-10 to 17): Firebase builds and rolls out its functions in parallel, so the time is per
+// command, not per function. With 10 per command the 89 functions every change to the assistant
+// core selects took 9 commands and 21 minutes on average, twice as long as deploying all 303 in
+// one. The ceiling is the Cloud Run functions write quota of 60 API calls per minute per region,
+// which cannot be raised: a batch stays under it and the next one starts minutes later, on a
+// fresh quota minute. A batch that still loses functions is covered by the redeploy below.
+const DEPLOY_BATCH_SIZE = 50
 // Functions Firebase left without a result are redeployed by name in batches of this size. Small
 // batches keep each `firebase deploy` under the Cloud Functions per-minute mutation quota, whose
 // 429s are what made firebase-tools drop whole groups in the first place (2026-11-11).
@@ -29,7 +38,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 function deploymentFilters(plan) {
     if (plan.mode === 'none') throw new Error('No Functions selected; the scope gate should have skipped this job')
     if (plan.mode === 'full') return ['functions']
-    return nameFilters(plan.names, 10)
+    return nameFilters(plan.names, DEPLOY_BATCH_SIZE)
 }
 
 function nameFilters(names, size) {
@@ -141,4 +150,11 @@ if (require.main === module) {
         process.exitCode = 1
     })
 }
-module.exports = { REDEPLOY_BATCH_SIZE, QUOTA_RETRIES, QUOTA_RETRY_DELAY_MS, deploymentFilters, run }
+module.exports = {
+    DEPLOY_BATCH_SIZE,
+    REDEPLOY_BATCH_SIZE,
+    QUOTA_RETRIES,
+    QUOTA_RETRY_DELAY_MS,
+    deploymentFilters,
+    run,
+}

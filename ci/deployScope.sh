@@ -231,22 +231,51 @@ marker_payload() {
 }
 
 # The marker lives on the remote, because the runner's checkout is shallow and
-# disposable. Read it there rather than trusting anything local. Prints the ref's own
-# object id (the tag object for an annotated tag); empty when there is no marker.
-marker_remote_sha() {
+# disposable. Read it there rather than trusting anything local. Prints the commit the
+# marker points at (an annotated tag is listed with its peeled `<ref>^{}` line, a
+# lightweight one is the commit itself); empty when there is no marker.
+marker_remote_commit() {
     have_git || return 1
-    remote_refs="$(g ls-remote origin "$(marker_ref "$1")" 2>/dev/null)" || return 1
-    printf '%s\n' "$remote_refs" | awk 'NR == 1 { print $1 }'
+    remote_ref="$(marker_ref "$1")"
+    remote_refs="$(g ls-remote origin "$remote_ref" 2>/dev/null)" || return 1
+    printf '%s\n' "$remote_refs" | awk -v ref="$remote_ref" '
+        $2 == ref "^{}" { peeled = $1 }
+        $2 == ref { own = $1 }
+        END { if (peeled != "") print peeled; else if (own != "") print own }'
 }
 
-# A tree diff only needs both commit objects present, not a shared history, so a
-# depth-1 fetch of the marker is enough in GitLab's depth-50 clone. In a complete clone
-# (mirror:github sets GIT_DEPTH 0) `--depth=1` would graft a shallow boundary at the
-# marker and cut off everything older, including the mirror's cutoff commit, so fetch
-# normally there: the commit is already present and only the tag object is transferred.
+# 0 when commit $1 is already part of the history this checkout has for the commit under
+# test. Fails (non-zero) for a commit that is missing here, as a marker older than the
+# clone depth is.
+in_checkout_history() {
+    [ -n "${1:-}" ] && [ -n "${CI_COMMIT_SHA:-}" ] || return 1
+    g merge-base --is-ancestor "$1" "$CI_COMMIT_SHA" >/dev/null 2>&1
+}
+
+# Fetch the marker tag (its signed message) and make its commit available for the diff.
+# $2 is the commit the remote marker points at.
+#
+# GitLab's clone is shallow (depth 50). For a marker OLDER than that boundary a depth-1
+# fetch is what keeps this cheap: one commit instead of its whole history, and
+# `is_ancestor` then deepens only as far as the answer needs.
+#
+# But `--depth` also re-cuts history that is already here. Fetching a marker whose commit
+# sits inside the clone with its parents makes that commit a shallow boundary, so nothing
+# behind it is reachable from it any more, and `marker..HEAD` stops excluding the marker's
+# own ancestors. The merge of a branch that forked before the last deploy then drags the
+# rest of the clone into the range, down to boundary commits git shows as adding every
+# file in the repository, and each target reads that as "everything changed". That is
+# what redeployed all 303 Functions (and rebuilt the runner image) for web-only merges in
+# pipelines 9705 and 9808 (2026-11): 40 changed paths became 6,407. A second marker
+# grafted inside another target's range has the same effect on that target.
+#
+# So `--depth=1` is only used for a commit this checkout does not have. Otherwise the
+# fetch is a normal one, which transfers just the tag object and leaves the shallow
+# boundary alone. The same holds in a complete clone (mirror:github sets GIT_DEPTH 0),
+# where a depth-1 fetch used to cut off the mirror's cutoff commit.
 fetch_marker() {
     ref="$(marker_ref "$1")"
-    if [ "$(g rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+    if [ "$(g rev-parse --is-shallow-repository 2>/dev/null)" = "true" ] && ! in_checkout_history "${2:-}"; then
         g fetch --quiet --depth=1 origin "+${ref}:${ref}" >/dev/null 2>&1 || return 1
     else
         g fetch --quiet --no-tags origin "+${ref}:${ref}" >/dev/null 2>&1 || return 1
@@ -286,9 +315,9 @@ is_ancestor() {
 # A missing marker fails quietly; a rejected one says why.
 verified_marker() {
     t="$1"
-    remote="$(marker_remote_sha "$t" || true)"
+    remote="$(marker_remote_commit "$t" || true)"
     [ -n "$remote" ] || return 1
-    fetch_marker "$t" || {
+    fetch_marker "$t" "$remote" || {
         LOG_TO_STDERR=1 log "marker $(marker_ref "$t") exists but could not be fetched; not trusting it."
         return 1
     }
@@ -359,15 +388,49 @@ verified_marker() {
     echo "$commit"
 }
 
+# 0 when base..head contains a commit without parents. With an ancestor base that is not
+# a real root: it is where the shallow clone ends, and git shows such a commit as adding
+# every file in the repository.
+range_reaches_clone_boundary() {
+    [ -n "$(g rev-list --parents "${1}..${CI_COMMIT_SHA}" 2>/dev/null | awk 'NF == 1 { print; exit }')" ]
+}
+
+# A range is only complete while the clone holds every commit in it. The depth-50 clone
+# ends on each path after 50 commits, so a merged branch that forked further back reaches
+# commits the base can no longer reach on its side, and they would all count as changes.
+# Deepen the default branch until the range stops touching the boundary, as `is_ancestor`
+# does. Never fails: an incomplete range lists too much, which deploys.
+complete_range() {
+    branch="${CI_DEFAULT_BRANCH:-master}"
+    for deepen in 1000 unshallow; do
+        [ "$(g rev-parse --is-shallow-repository 2>/dev/null)" = "true" ] || return 0
+        range_reaches_clone_boundary "$1" || return 0
+        if [ "$deepen" = "unshallow" ]; then
+            g fetch --quiet --unshallow origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" >/dev/null 2>&1 || return 0
+        else
+            g fetch --quiet --deepen="$deepen" origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" >/dev/null 2>&1 || return 0
+        fi
+    done
+    return 0
+}
+
 # Every path touched by any commit in base..head plus the two-tree diff. With a verified
 # ancestor marker the range is complete, so a change that was made and later reverted
 # still counts: production may be running the intermediate state (see point 3 above).
+#
+# A merge commit contributes only the paths where its result differs from ALL its parents
+# (`-c`), i.e. what the merge itself wrote. `-m` listed its difference to each parent
+# separately, and the difference to the merged branch is everything master changed since
+# that branch forked: work that shipped before the marker, counted as new on every merge
+# request (13 runner image rebuilds without a functions/ change in eight days, 2026-11).
+# The commits a merge brings in are in the range themselves and list their own paths.
 changed_paths() {
     cp_base="$1"
     {
         g diff --name-only --no-renames "$cp_base" "$CI_COMMIT_SHA" 2>/dev/null || echo "__deploy_scope_diff_failed__"
         if [ "${2:-}" = "range" ]; then
-            g log --format= --name-only --no-renames -m "${cp_base}..${CI_COMMIT_SHA}" 2>/dev/null || echo "__deploy_scope_diff_failed__"
+            complete_range "$cp_base"
+            g log --format= --name-only --no-renames -c "${cp_base}..${CI_COMMIT_SHA}" 2>/dev/null || echo "__deploy_scope_diff_failed__"
         fi
     } | sed '/^$/d' | sort -u
 }
