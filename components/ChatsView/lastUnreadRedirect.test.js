@@ -304,3 +304,62 @@ describe('createLastUnreadRedirect', () => {
         })
     })
 })
+
+describe('runWithLastUnreadRedirect (the app instance)', () => {
+    afterEach(() => {
+        jest.resetModules()
+        jest.dontMock('../../redux/store')
+    })
+
+    it('never loads the redux store itself, so component tests stay fast', async () => {
+        // Requiring the store cost ~4.4s with a cold Jest cache and timed out
+        // ArchiveUnreadEmailsButton.test.js on master pipeline 3085791241.
+        jest.doMock('../../redux/store', () => {
+            throw new Error('lastUnreadRedirect must not require the store')
+        })
+        let result
+        jest.isolateModules(() => {
+            const { runWithLastUnreadRedirect } = require('./lastUnreadRedirect')
+            result = runWithLastUnreadRedirect(['p1'], () => 'done')
+        })
+        expect(result).toBe('done')
+    })
+
+    it('opens the project tasks through the store App.js configures', async () => {
+        jest.doMock('../../redux/actions', () => ({
+            hideFloatPopup: () => ({ type: 'hide' }),
+            storeCurrentUser: user => ({ type: 'user', user }),
+            switchProject: index => ({ type: 'switch', index }),
+            setSelectedTypeOfProject: type => ({ type: 'projectType', projectType: type }),
+            setSelectedSidebarTab: tab => ({ type: 'tab', tab }),
+            setTaskViewToggleIndex: index => ({ type: 'toggleIndex', index }),
+            setTaskViewToggleSection: section => ({ type: 'toggleSection', section }),
+        }))
+        jest.doMock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+            __esModule: true,
+            default: { getTypeOfProject: () => 'active' },
+        }))
+        jest.doMock('../../utils/HelperFunctions', () => ({ dismissAllPopups: jest.fn() }))
+
+        const store = makeStore()
+        const dispatched = []
+        const appStore = { ...store, dispatch: actions => dispatched.push(actions) }
+
+        let lastUnreadRedirect
+        jest.isolateModules(() => {
+            lastUnreadRedirect = require('./lastUnreadRedirect')
+        })
+        lastUnreadRedirect.configureLastUnreadRedirect(appStore)
+        await lastUnreadRedirect.runWithLastUnreadRedirect(['p2'], () => store.setUnread('p2', 0))
+
+        expect(dispatched).toHaveLength(1)
+        expect(dispatched[0]).toEqual(
+            expect.arrayContaining([
+                { type: 'switch', index: 1 },
+                { type: 'tab', tab: DV_TAB_ROOT_TASKS },
+                { type: 'toggleIndex', index: 0 },
+                { type: 'toggleSection', section: 'Open' },
+            ])
+        )
+    })
+})

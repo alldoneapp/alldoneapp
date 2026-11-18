@@ -249,7 +249,10 @@ the redirect waits for the action to succeed and then re-checks the live count, 
 selected project and the user; overlapping presses of one project let the last to settle decide;
 a late local snapshot gets a 2s window. All archive presses go through the provider's wrapped
 `archiveLinkedEmails` (`lastUnreadRedirect: false` opts out). The thread view (ChatBoard) is out of
-scope. Pinned by `lastUnreadRedirect.test.js` and `lastUnreadRedirect.wiring.test.js`.
+scope. App.js hands the store in (`configureLastUnreadRedirect`); the module must not require
+the store itself: that cost ~4.4s in a cold Jest cache and timed out the first archive test on
+master pipeline 3085791241. Pinned by `lastUnreadRedirect.test.js` and
+`lastUnreadRedirect.wiring.test.js`.
 
 ## Every email gets a Gmail label: fallback labels and bounded retries (AT-3102, 2026-11-18)
 

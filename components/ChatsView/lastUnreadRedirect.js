@@ -181,8 +181,7 @@ export function createLastUnreadRedirect({
 }
 
 /** The same dispatches as pressing the project in the sidebar: the project's open tasks. */
-export function openProjectTasksFromChats(projectId) {
-    const store = require('../../redux/store').default
+export function openProjectTasksFromChats(store, projectId) {
     const actions = require('../../redux/actions')
     const ProjectHelper = require('../SettingsView/ProjectsSettings/ProjectHelper').default
     const { dismissAllPopups } = require('../../utils/HelperFunctions')
@@ -203,28 +202,34 @@ export function openProjectTasksFromChats(projectId) {
     ])
 }
 
+let configuredStore = null
 let defaultRunner = null
+
+/**
+ * Hands the app's redux store to the redirect; App.js calls it once at boot, next to the other
+ * store observers.
+ *
+ * The store is passed in rather than required here on the first press. Requiring it pulls in the
+ * Firebase client and most of the app, about 4.4s with a cold Jest cache, and every test that
+ * presses an archive or mark-as-read button paid that inside its first case: on master pipeline
+ * 3085791241 it pushed `ArchiveUnreadEmailsButton.test.js` past Jest's 5s timeout. Without a
+ * configured store (component tests that render a row or a button on their own) the action simply
+ * runs and nothing navigates.
+ */
+export function configureLastUnreadRedirect(store) {
+    if (!store || store === configuredStore) return
+    configuredStore = store
+    defaultRunner = createLastUnreadRedirect({
+        getState: store.getState,
+        subscribe: store.subscribe,
+        openProjectTasks: projectId => openProjectTasksFromChats(store, projectId),
+    })
+}
 
 /**
  * Runs a Chats-list archive / mark-as-read action and, if it cleared the last unread message of
  * the one project it touched, opens that project's tasks. See the notes at the top of this file.
  */
 export function runWithLastUnreadRedirect(projectIds, action) {
-    if (!defaultRunner) {
-        let store = null
-        try {
-            store = require('../../redux/store').default
-        } catch (error) {
-            // Only where the store cannot load at all: component tests that render a row or a
-            // button on its own, without the Firebase client. The app always has its store.
-        }
-        defaultRunner = store
-            ? createLastUnreadRedirect({
-                  getState: store.getState,
-                  subscribe: store.subscribe,
-                  openProjectTasks: openProjectTasksFromChats,
-              })
-            : (projectIds, action) => action()
-    }
-    return defaultRunner(projectIds, action)
+    return defaultRunner ? defaultRunner(projectIds, action) : action()
 }
