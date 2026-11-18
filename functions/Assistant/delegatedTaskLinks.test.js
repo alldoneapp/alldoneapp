@@ -8,6 +8,7 @@ const {
     withDelegatedTaskLink,
     collectDelegatedTaskHandoffs,
     ensureDelegatedTaskLinksInResponse,
+    removeCurrentThreadLinks,
 } = require('./delegatedTaskLinks')
 const { ensureVmHostThreadLinksInResponse } = require('./vmHostTaskHelper')
 
@@ -133,6 +134,147 @@ describe('ensureDelegatedTaskLinksInResponse', () => {
     })
 })
 
+// AT-3096 follow-up (2026-11-18): in the chat of task Q2XA2dxekAsf9QjI24yS (AT-3093) the user asked to
+// retry; execute_task_in_vm joined that same delegated task and its result carried `taskUrl`, so the
+// reply said "The result will appear here: <link to this very task>".
+describe('the conversation the work continues in gets no link to itself', () => {
+    const REPORTED_TASK = 'Q2XA2dxekAsf9QjI24yS'
+    const SELF_URL = `${BASE}/projects/${PROJECT}/tasks/${REPORTED_TASK}/chat`
+    const inReportedTask = { projectId: PROJECT, objectType: 'tasks', objectId: REPORTED_TASK }
+    const reportedReply =
+        'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+        'foreground—no merge or deployment. The result will appear here:\n\n' +
+        SELF_URL
+    const managed = { success: true, projectId: PROJECT, taskId: REPORTED_TASK, status: 'workflow_managed' }
+
+    it('a tool result for the current task carries no URL the model could pass on', () => {
+        const result = withDelegatedTaskLink(managed, { baseUrl: BASE, currentThread: inReportedTask })
+        expect(result.taskUrl).toBeUndefined()
+        expect(JSON.stringify(result)).not.toContain('/chat')
+        expect(result).toMatchObject({
+            continuesInCurrentConversation: true,
+            delegatedTask: { projectId: PROJECT, taskId: REPORTED_TASK, currentConversation: true },
+        })
+        expect(result.linkInstruction).toMatch(/Do not link this task/)
+    })
+
+    it('drops a taskUrl the result already had', () => {
+        const result = withDelegatedTaskLink(
+            { ...managed, taskUrl: SELF_URL },
+            { baseUrl: BASE, currentThread: inReportedTask }
+        )
+        expect(result.taskUrl).toBeUndefined()
+    })
+
+    it('still links a different task, and the same task from a chat or another project', () => {
+        const other = withDelegatedTaskLink(
+            { ...managed, taskId: TASK },
+            { baseUrl: BASE, currentThread: inReportedTask }
+        )
+        expect(other.taskUrl).toBe(URL)
+        expect(withDelegatedTaskLink(managed, { baseUrl: BASE, currentThread: chat }).taskUrl).toBe(SELF_URL)
+        const sameIdAsChat = { ...chat, objectId: REPORTED_TASK }
+        expect(withDelegatedTaskLink(managed, { baseUrl: BASE, currentThread: sameIdAsChat }).taskUrl).toBe(SELF_URL)
+        const otherProject = { ...inReportedTask, projectId: 'another-project' }
+        expect(withDelegatedTaskLink(managed, { baseUrl: BASE, currentThread: otherProject }).taskUrl).toBe(SELF_URL)
+        // A delegate without a conversation of its own keeps the link; its caller decides.
+        expect(withDelegatedTaskLink(managed, { baseUrl: BASE }).taskUrl).toBe(SELF_URL)
+    })
+
+    it('keeps the current-conversation marker through normalize and collect, without a URL', () => {
+        const { delegatedTask } = withDelegatedTaskLink(managed, { baseUrl: BASE, currentThread: inReportedTask })
+        expect(normalizeDelegatedTaskHandoff(normalizeDelegatedTaskHandoff(delegatedTask))).toEqual(delegatedTask)
+        expect(normalizeDelegatedTaskHandoff({ ...delegatedTask, url: 'https://evil.example/x' })).toEqual(
+            delegatedTask
+        )
+        expect(collectDelegatedTaskHandoffs([], { success: true, delegatedTask })).toEqual([delegatedTask])
+    })
+
+    it('removes the link the model wrote to the task it is replying in (the reported reply)', () => {
+        const marker = { projectId: PROJECT, taskId: REPORTED_TASK, currentConversation: true }
+        expect(ensureDelegatedTaskLinksInResponse(reportedReply, [marker], inReportedTask)).toBe(
+            'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+                'foreground—no merge or deployment. The result will appear here.'
+        )
+        // Also when the hand-off reference still has its URL (a delegate joined the caller's task).
+        const fromDelegate = buildDelegatedTaskHandoff({ baseUrl: BASE, projectId: PROJECT, taskId: REPORTED_TASK })
+        expect(ensureDelegatedTaskLinksInResponse(reportedReply, [fromDelegate], inReportedTask)).not.toContain(
+            SELF_URL
+        )
+    })
+
+    it('keeps a link to a different execution task in the same reply, and still adds its own', () => {
+        const marker = { projectId: PROJECT, taskId: REPORTED_TASK, currentConversation: true }
+        const reply = `Waiting here: ${SELF_URL}\nThe fix itself runs in ${URL}`
+        expect(ensureDelegatedTaskLinksInResponse(reply, [marker, handoff], inReportedTask)).toBe(
+            `Waiting here.\nThe fix itself runs in ${URL}`
+        )
+        expect(
+            ensureDelegatedTaskLinksInResponse('Queued.', [marker, handoff], inReportedTask, { language: 'de' })
+        ).toBe(`Queued.\n\nHier geht es weiter: ${URL}`)
+    })
+
+    it('a marker from another conversation neither links nor strips anything', () => {
+        const marker = { projectId: PROJECT, taskId: REPORTED_TASK, currentConversation: true }
+        const reply = `Status: ${SELF_URL}`
+        expect(ensureDelegatedTaskLinksInResponse(reply, [marker], chat)).toBe(reply)
+        expect(ensureDelegatedTaskLinksInResponse('Queued.', [marker], chat)).toBe('Queued.')
+    })
+
+    it('leaves a self-link alone when the run handed nothing to this task', () => {
+        // E.g. the user asked "what is the link of this task?": no hand-off, nothing removed.
+        const reply = `Here it is: ${SELF_URL}`
+        expect(ensureDelegatedTaskLinksInResponse(reply, [handoff], inReportedTask)).toBe(
+            `${reply}\n\nFollow it here: ${URL}`
+        )
+    })
+})
+
+describe('removeCurrentThreadLinks', () => {
+    const thread = { projectId: PROJECT, objectType: 'tasks', objectId: TASK }
+    const strip = text => removeCurrentThreadLinks(text, thread)
+
+    it('tidies what the removed link leaves behind', () => {
+        expect(strip(`Läuft weiter: ${URL}`)).toBe('Läuft weiter.')
+        expect(strip(`Follow it in AT-3093 (${URL}).`)).toBe('Follow it in AT-3093.')
+        expect(strip(`See [this task](${URL}) for updates.`)).toBe('See this task for updates.')
+        expect(strip(`Link: <${URL}>\n\nNext steps:\n- a`)).toBe('Link.\n\nNext steps:\n- a')
+        expect(strip(`Done.\n\n**${URL}**\n\nBye.`)).toBe('Done.\n\nBye.')
+        expect(strip(`- Task: ${URL}\n- Other: ${BASE}/projects/${PROJECT}/tasks/other/chat`)).toBe(
+            `- Task.\n- Other: ${BASE}/projects/${PROJECT}/tasks/other/chat`
+        )
+    })
+
+    it('matches the task in any project form and leaves every other link and colon alone', () => {
+        expect(strip(`a ${BASE}/projects/wrong/tasks/${TASK} b`)).toBe('a b')
+        const untouched = `Steps:\n\n- one\n\nSee https://example.com/tasks/${TASK}x and ${BASE}/projects/${PROJECT}/tasks/other`
+        expect(strip(untouched)).toBe(untouched)
+    })
+
+    it('handles a topic chat by its chats route', () => {
+        const topic = { projectId: PROJECT, objectType: 'topics', objectId: 'chat-1' }
+        expect(removeCurrentThreadLinks(`Here: ${BASE}/projects/${PROJECT}/chats/chat-1/chat`, topic)).toBe('Here.')
+        expect(removeCurrentThreadLinks(`Task: ${URL}`, topic)).toBe(`Task: ${URL}`)
+    })
+})
+
+describe('ensureVmHostThreadLinksInResponse with a VM in the current thread', () => {
+    const vmJob = { hostProjectId: PROJECT, hostObjectId: TASK, hostObjectType: 'tasks', hostThreadUrl: URL }
+    const inTask = { projectId: PROJECT, objectType: 'tasks', objectId: TASK }
+
+    it('removes the host link the model copied from the start result', () => {
+        expect(ensureVmHostThreadLinksInResponse(`VM started. The work lives here: ${URL}`, [vmJob], inTask)).toBe(
+            'VM started. The work lives here.'
+        )
+    })
+
+    it('still links a VM hosted in another thread', () => {
+        expect(ensureVmHostThreadLinksInResponse('VM started.', [vmJob], chat)).toBe(
+            `VM started.\n\nFollow it here: ${URL}`
+        )
+    })
+})
+
 describe('wiring in assistantHelper (source ratchet)', () => {
     const source = require('fs').readFileSync(require('path').join(__dirname, 'assistantHelper.js'), 'utf8')
 
@@ -146,6 +288,10 @@ describe('wiring in assistantHelper (source ratchet)', () => {
     it('links delegated tasks on both assistant run paths and passes a delegate’s tasks on', () => {
         expect(source.match(/collectDelegatedTaskHandoffs\(delegatedTaskResults, toolResult\)/g)).toHaveLength(2)
         expect(source.match(/ensureDelegatedTaskLinksInResponse\(/g)).toHaveLength(2)
+        // Every execute_task_in_vm hand-off knows the conversation it answers in (AT-3096 follow-up).
+        expect(source.match(/withDelegatedTaskLink\(/g)).toHaveLength(4)
+        expect(source.match(/currentThread: currentVmCallerThread/g)).toHaveLength(3)
+        expect(source).toContain('callerThread: currentVmCallerThread,')
         expect(source).toContain('delegatedTaskResults: Array.isArray(delegationRun?.delegatedTaskResults)')
     })
 })

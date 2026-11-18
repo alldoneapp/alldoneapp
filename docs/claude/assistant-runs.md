@@ -38,6 +38,33 @@ Coverage: `delegatedTaskLinks.test.js`, the AT-3096 cases in `assistantHelper.te
 results, the end-to-end German reply, the frozen VM introduction, the delegate receipt) and
 `annaTaskDelegation.test.js`. Ships with the Functions deploy; the runner image is not involved.
 
+### No link to the task the user is already in (AT-3096 follow-up, 2026-11-18)
+
+Regression after the deploy: in the chat of task `Q2XA2dxekAsf9QjI24yS` (AT-3093) Karsten wrote
+"please try again"; the reply ended "The result will appear here: <link to that same task>". Logs
+(execution `m869zj6c0crc`): `execute_task_in_vm` ran in the task's own chat, joined it as a delegated
+workflow task (`workflow_managed`), and `withDelegatedTaskLink` put a `taskUrl` of that task into the
+result. The model passed it on. The server line was not involved: the safety net already skipped the
+current task. The VM start result had the same flaw ("The work lives in this thread: <url> — include
+that link") for every VM started in the conversation the assistant answers in.
+
+- `withDelegatedTaskLink(..., { currentThread })` (all three `execute_task_in_vm` hand-offs) returns
+  no URL for the current task: `continuesInCurrentConversation`, a `linkInstruction`, and
+  `delegatedTask: { projectId, taskId, currentConversation: true }` (a marker without URL; nothing is
+  ever appended for it). `move_task_workflow_step` in the task's own chat returns the same marker.
+- `startVmJob({ callerThread })`: a VM in the caller's thread gets a hint that says not to link it.
+  `hostThreadUrl` stays in the result for the notification guard.
+- Safety net: when a run's hand-off (marker, delegated reference or started VM) is the current thread,
+  `removeCurrentThreadLinks` takes links to that thread out of the reply and tidies the sentence
+  ("…here: <link>" → "…here."). The frozen in-thread VM introduction gets the same treatment. Links to
+  other tasks stay; a self-link in a reply with no hand-off (the user asked for the link) is kept.
+- Only a **task** chat is "the task". A topic chat (CTO chat, Anna) still gets hand-off and result links.
+  Result notices were already safe: they go to the stored origin, which is never the task itself.
+
+Coverage: the "gets no link to itself", `removeCurrentThreadLinks` and in-thread VM cases in
+`delegatedTaskLinks.test.js`, the two Q2XA2-style cases in `assistantHelper.test.js` (Anna VM message
+order), `vmJob.test.js` (host hint) and `workflowStepMove.test.js` (marker only in the own chat).
+
 ## A template started in the Anna chat announces its task there (AT-3082, 2026-11-18)
 
 The Anna composer's **Templates** button (for example Anna's "Historical fact of the day" prompt)
