@@ -29,34 +29,22 @@ jest.mock('firebase-admin', () => ({
 }))
 
 jest.mock('openai', () => jest.fn())
-jest.mock(
-    '@dqbd/tiktoken/lite',
-    () => ({
-        Tiktoken: jest.fn().mockImplementation(() => ({
-            encode: jest.fn(() => []),
-            free: jest.fn(),
-        })),
-    }),
-    { virtual: true }
-)
+jest.mock('@dqbd/tiktoken/lite', () => ({
+    Tiktoken: jest.fn().mockImplementation(() => ({
+        encode: jest.fn(() => []),
+        free: jest.fn(),
+    })),
+}))
 
 const { buildGmailContactTargetFromRuntimeContext } = require('./assistantHelper')
-jest.mock(
-    '@dqbd/tiktoken/encoders/cl100k_base.json',
-    () => ({
-        bpe_ranks: {},
-        special_tokens: {},
-        pat_str: '',
-    }),
-    { virtual: true }
-)
-jest.mock(
-    'firebase-functions/params',
-    () => ({
-        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-    }),
-    { virtual: true }
-)
+jest.mock('@dqbd/tiktoken/encoders/cl100k_base.json', () => ({
+    bpe_ranks: {},
+    special_tokens: {},
+    pat_str: '',
+}))
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+}))
 
 describe('assistant Gmail runtime context helpers', () => {
     test('extracts Gmail contact target data from runtime context', () => {

@@ -1,14 +1,10 @@
 let mockParamValues = {}
 
-jest.mock(
-    'firebase-functions/params',
-    () => ({
-        defineString: jest.fn(name => ({
-            value: jest.fn(() => mockParamValues[name] || ''),
-        })),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(name => ({
+        value: jest.fn(() => mockParamValues[name] || ''),
+    })),
+}))
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: {} })),

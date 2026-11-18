@@ -6,19 +6,26 @@ import TaskEstimation from '../../Tags/TaskEstimation'
 import { OPEN_STEP, RECURRENCE_NEVER, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
 import { useSelector } from 'react-redux'
 import SharedHelper from '../../../utils/SharedHelper'
-import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
+import { FEED_PUBLIC_FOR_ALL, FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
 import PrivacyTag from '../../Tags/PrivacyTag'
 import ProjectTag from '../../Tags/ProjectTag'
 import TaskIdTag from '../../Tags/TaskIdTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
-import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import DvBotButton from '../../UIControls/DvBotButton'
-import DvSearchButton from '../../UIControls/DvSearchButton'
+import TaskHeaderOverflowButton from './TaskHeaderOverflowButton'
 // NOTE: the calendar chip is deliberately NOT rendered here. SocialText already renders it inline
 // in front of the task name (LeftTagsAndIcons), so a copy in this row was a duplicate that also
 // pushed the metadata row onto an extra line on mobile (AT-2341).
+//
+// AT-3081 — compact header: the row keeps the project, the task ID and the primary actions
+// (Copy link and the assistant). Search, Open in new window and the default "Project-wide"
+// visibility live in the "⋯" menu. A PRIVATE task keeps its visibility chip here, because a
+// restricted audience is the exception a reader must not miss.
+
+export const isTaskProjectWide = task =>
+    Array.isArray(task?.isPublicFor) && task.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
 
 export default function TagList({ projectId, task, assistantId, setAssistantId, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -33,41 +40,49 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+    const privacyDisabled = !accessGranted || !loggedUserCanUpdateObject || isAssistant
+    const isProjectWide = isTaskProjectWide(task)
 
     return (
         <DetailViewHeaderTags
             projectTag={<ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} truncate />}
             privacyTag={
-                <PrivacyTag
-                    projectId={projectId}
-                    object={task}
-                    objectType={FEED_TASK_OBJECT_TYPE}
-                    disabled={!accessGranted || !loggedUserCanUpdateObject || isAssistant}
-                    isMobile={isMobile}
-                />
+                isProjectWide ? null : (
+                    <PrivacyTag
+                        projectId={projectId}
+                        object={task}
+                        objectType={FEED_TASK_OBJECT_TYPE}
+                        disabled={privacyDisabled}
+                        isMobile={isMobile}
+                    />
+                )
             }
             actions={
                 <>
                     <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                     {accessGranted && (
-                        <>
-                            <DvSearchButton style={{ top: -5 }} />
-                            <DvBotButton
-                                style={{ top: -5 }}
-                                navItem={DV_TAB_TASK_CHAT}
-                                projectId={projectId}
-                                assistantId={assistantId}
-                                setAssistantId={setAssistantId}
-                                objectId={task.id}
-                                showThreadModelBadge={true}
-                                objectType={FEED_TASK_OBJECT_TYPE}
-                                parentObject={task}
-                                updateObjectState={updateObjectState}
-                                resolveProjectAssistant={true}
-                            />
-                        </>
+                        <DvBotButton
+                            style={{ top: -5 }}
+                            navItem={DV_TAB_TASK_CHAT}
+                            projectId={projectId}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
+                            objectId={task.id}
+                            showThreadModelBadge={true}
+                            objectType={FEED_TASK_OBJECT_TYPE}
+                            parentObject={task}
+                            updateObjectState={updateObjectState}
+                            resolveProjectAssistant={true}
+                        />
                     )}
-                    <OpenInNewWindowButton style={{ top: -5 }} />
+                    <TaskHeaderOverflowButton
+                        style={{ top: -5 }}
+                        projectId={projectId}
+                        task={task}
+                        showVisibility={isProjectWide}
+                        visibilityDisabled={privacyDisabled}
+                        canSearch={accessGranted}
+                    />
                 </>
             }
         >

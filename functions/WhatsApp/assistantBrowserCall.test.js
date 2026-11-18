@@ -1,26 +1,18 @@
 jest.mock('firebase-admin', () => ({ firestore: jest.fn() }))
 const mockEnqueue = jest.fn()
-jest.mock(
-    'firebase-admin/functions',
-    () => ({
-        getFunctions: jest.fn(() => ({
-            taskQueue: jest.fn(() => ({ enqueue: mockEnqueue })),
-        })),
-    }),
-    { virtual: true }
-)
-jest.mock(
-    'firebase-functions/v2/https',
-    () => ({
-        HttpsError: class HttpsError extends Error {
-            constructor(code, message) {
-                super(message)
-                this.code = code
-            }
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin/functions', () => ({
+    getFunctions: jest.fn(() => ({
+        taskQueue: jest.fn(() => ({ enqueue: mockEnqueue })),
+    })),
+}))
+jest.mock('firebase-functions/v2/https', () => ({
+    HttpsError: class HttpsError extends Error {
+        constructor(code, message) {
+            super(message)
+            this.code = code
+        }
+    },
+}))
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
 jest.mock('./assistantLiveController', () => ({ closeLiveSession: jest.fn(async () => true) }))
 jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 90 })) }))

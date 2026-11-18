@@ -179,7 +179,7 @@ const buildClassifierInput = (task, goals) => ({
 })
 
 async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL_ROUTING_MODEL, learnedRules = '' }) {
-    const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
+    const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantModelRuntime')
     const { OPEN_AI_KEY } = getCachedEnvFunctions()
     if (!OPEN_AI_KEY) throw new Error('OPEN_AI_KEY is not configured')
 
@@ -528,7 +528,7 @@ async function routeNewTaskToGoal({
 
     // The routing user's model preference; upstream id for the API, key for Gold metering.
     const { resolveFeatureModelKey } = require('../Assistant/featureModelPreferences')
-    const { getModel } = require('../Assistant/assistantHelper')
+    const { getModel } = require('../Assistant/assistantModelRuntime')
     const routingModelKey = resolveFeatureModelKey('taskGoalRouting', userSnapshot.data() || {})
     const routingModel = getModel(routingModelKey)
 
@@ -595,7 +595,7 @@ async function routeNewTaskToGoal({
         let goldSpent = 0
         let charge = { success: true }
         if (!usesExactCalendarGoalRoute) {
-            const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
+            const { calculateGoldCostFromTokens } = require('../Assistant/assistantModelRuntime')
             const { deductGold } = require('../Gold/goldHelper')
             const estimatedGold = calculateGoldCostFromTokens(classified.totalTokens, routingModelKey)
             goldSpent = Math.max(MINIMUM_GOLD_COST, estimatedGold)

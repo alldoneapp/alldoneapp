@@ -1,15 +1,11 @@
-jest.mock(
-    'firebase-functions/v2/https',
-    () => ({
-        HttpsError: class HttpsError extends Error {
-            constructor(code, message) {
-                super(message)
-                this.code = code
-            }
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/v2/https', () => ({
+    HttpsError: class HttpsError extends Error {
+        constructor(code, message) {
+            super(message)
+            this.code = code
+        }
+    },
+}))
 
 const mockDocuments = {}
 const mockRefs = new Map()

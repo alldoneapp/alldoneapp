@@ -94,23 +94,15 @@ jest.mock('firebase-admin', () => {
     }
 })
 
-jest.mock(
-    '@dqbd/tiktoken/lite',
-    () => ({
-        Tiktoken: jest.fn().mockImplementation(() => ({})),
-    }),
-    { virtual: true }
-)
+jest.mock('@dqbd/tiktoken/lite', () => ({
+    Tiktoken: jest.fn().mockImplementation(() => ({})),
+}))
 
-jest.mock(
-    '@dqbd/tiktoken/encoders/cl100k_base.json',
-    () => ({
-        bpe_ranks: {},
-        special_tokens: {},
-        pat_str: '',
-    }),
-    { virtual: true }
-)
+jest.mock('@dqbd/tiktoken/encoders/cl100k_base.json', () => ({
+    bpe_ranks: {},
+    special_tokens: {},
+    pat_str: '',
+}))
 
 const {
     generatePreConfigTaskResult,

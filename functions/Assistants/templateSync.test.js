@@ -1,13 +1,9 @@
 jest.mock('firebase-admin', () => ({
     firestore: jest.fn(),
 }))
-jest.mock(
-    'firebase-admin/firestore',
-    () => ({
-        FieldValue: { delete: jest.fn(() => '__DELETE__') },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { delete: jest.fn(() => '__DELETE__') },
+}))
 
 const admin = require('firebase-admin')
 const {

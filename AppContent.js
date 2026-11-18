@@ -40,7 +40,7 @@ import { AppContainer } from './AppNavigator'
 import URLTrigger from './URLSystem/URLTrigger'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
-import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
+import NewDayPopupHost from './components/UIComponents/FloatModals/NewDayPopupHost'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
@@ -471,9 +471,10 @@ export default function AppContent() {
                             <GlobalModalsContainerApp />
                             <WorkspaceOverlayLayer>
                                 <UndoActionBar />
-                                {/* Keep the day lifecycle mounted across assistant layout changes. */}
-                                <EndDayStatisticsModal />
                             </WorkspaceOverlayLayer>
+                            {/* One New Day instance for every layout: the Alldone pane in App mode, the whole
+                                window in Assistant and Both (AT-3083). Never unmounted by a layout change. */}
+                            <NewDayPopupHost />
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

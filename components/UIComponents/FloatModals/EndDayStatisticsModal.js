@@ -1,5 +1,14 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react'
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import {
+    ActivityIndicator,
+    Dimensions,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
 import moment from 'moment'
@@ -45,6 +54,8 @@ import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
 import { createNewDayProjectLoader } from '../../../utils/newDayProjectLoader'
 import { reportNewDayStatisticsError } from '../../../utils/backends/Users/reportNewDayStatisticsError'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
+import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
+import { getNewDayFullWindowLayout } from './newDayPopupScope'
 import {
     CONNECTION_HEALTH_LIVE,
     CONNECTION_HEALTH_OFFLINE,
@@ -87,8 +98,18 @@ const RECONNECT_PROBING = 'probing'
 const RECONNECT_RELOADING = 'reloading'
 const RECONNECT_FAILED = 'failed'
 
-export default function EndDayStatisticsModal() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
+/**
+ * @param {{ fullWindow?: boolean }} props `fullWindow` (Assistant and Both modes,
+ * AT-3083, set by `NewDayPopupHost`) sizes the card and its safe-area padding
+ * against the browser window instead of the Alldone pane.
+ */
+export default function EndDayStatisticsModal({ fullWindow = false } = {}) {
+    // Always called: it also re-renders the popup on a resize or rotation.
+    const paneOverlayPadding = useSafeAreaOverlayPadding()
+    const fullWindowLayout = fullWindow
+        ? getNewDayFullWindowLayout({ windowWidth: Dimensions.get('window').width, insets: getSafeAreaInsets() })
+        : null
+    const safeAreaOverlayPadding = fullWindowLayout ? fullWindowLayout.overlayPadding : paneOverlayPadding
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
     const serverStatisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -813,7 +834,7 @@ export default function EndDayStatisticsModal() {
         loggedUserId,
         loggedUser.defaultCurrency || 'EUR'
     )
-    const compactModalLayout = smallScreenNavigation || isMiddleScreen
+    const compactModalLayout = fullWindowLayout ? fullWindowLayout.compact : smallScreenNavigation || isMiddleScreen
     const getProjectDoneTasks = projectId => getSafeStatisticNumber(doneTasksByProject[projectId])
     const maxProjectDoneTasks = happinessProjects.reduce(
         (maxDoneTasks, project) => Math.max(maxDoneTasks, getProjectDoneTasks(project.id)),
@@ -870,12 +891,12 @@ export default function EndDayStatisticsModal() {
         !showNewVersionMandtoryNotifcation &&
         needToShowYesterdayStats() &&
         (dataLoaded !== null || isReconnecting) && (
-            <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+            <View testID="newDayPopup" style={[localStyles.parent, safeAreaOverlayPadding]}>
                 <View
                     style={[
                         localStyles.container,
                         compactModalLayout && localStyles.mobileContainer,
-                        applyPopoverWidth(),
+                        fullWindowLayout ? fullWindowLayout.cardStyle : applyPopoverWidth(),
                     ]}
                 >
                     <ScrollView showsVerticalScrollIndicator={false}>

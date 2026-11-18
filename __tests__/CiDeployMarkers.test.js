@@ -111,8 +111,54 @@ function makeFixture() {
         return line ? line.split(/\s+/)[0] : ''
     }
     const forcePush = (source, ref) => git(work, 'push', '-q', '--force', remote, `${source}:${ref}`)
+    const AUTHOR = [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        '-c',
+        'core.hooksPath=/dev/null',
+    ]
+    // A merge request: `branch` into the checked-out branch, always with a merge commit.
+    // `edit` writes files into the merge itself, as a conflict resolution does.
+    const merge = (branch, edit) => {
+        git(work, ...AUTHOR, 'merge', '-q', '--no-ff', '--no-commit', branch)
+        if (edit) {
+            edit()
+            git(work, 'add', '-A')
+        }
+        git(work, ...AUTHOR, 'commit', '-qm', `Merge branch '${branch}'`)
+        return git(work, 'rev-parse', 'HEAD')
+    }
+    // What a GitLab job starts from: a clone that ends `depth` commits behind the tip.
+    const shallowClone = depth => {
+        const clone = path.join(dir, `shallow-${depth}`)
+        execFileSync(
+            'git',
+            ['clone', '-q', '--depth', String(depth), '--branch', 'master', `file://${remote}`, clone],
+            {
+                env: GIT_ENV,
+            }
+        )
+        return clone
+    }
     const cleanup = () => fs.rmSync(dir, { recursive: true, force: true })
-    return { dir, remote, work, git, commit, run, record, hasChanges, markerRead, remoteMarker, forcePush, cleanup }
+    return {
+        dir,
+        remote,
+        work,
+        git,
+        commit,
+        merge,
+        shallowClone,
+        run,
+        record,
+        hasChanges,
+        markerRead,
+        remoteMarker,
+        forcePush,
+        cleanup,
+    }
 }
 
 describe('a signed production marker scopes the deploy', () => {
@@ -321,6 +367,111 @@ describe('marker plumbing', () => {
         for (const verifier of tools) {
             expect(f.markerRead(RULES, head, { DEPLOY_MARKER_HMAC_TOOL: verifier }).stdout.trim()).toBe(head)
         }
+    })
+})
+
+// The range behind a marker has to hold what shipped SINCE it and nothing else. Two ways it
+// used to hold far more made merge requests redeploy targets they had not touched: in eight
+// days of 2026-11, all 303 Functions twice (pipelines 9705 and 9808, both web-only merges)
+// and the runner image 13 times without a functions/ change.
+describe('merging a branch does not make work that already shipped look new', () => {
+    let f
+    beforeEach(() => {
+        f = makeFixture()
+    })
+    afterEach(() => f.cleanup())
+
+    // master: ... fork ... rulesB (deployed, marker) - merge
+    //               \                                 /
+    //                feature (touches components/ only)
+    const mergeAfterDeploy = ({ before = 0, between = 0 } = {}) => {
+        f.commit('firestore.rules', 'A')
+        for (let i = 0; i < before; i++) f.commit('notes.txt', `before ${i}`)
+        const fork = f.git(f.work, 'rev-parse', 'HEAD')
+        f.git(f.work, 'checkout', '-q', '-b', 'feature')
+        f.commit('components/Feature.js', 'ui only')
+        f.git(f.work, 'checkout', '-q', 'master')
+        for (let i = 0; i < between; i++) f.commit('notes.txt', `between ${i}`)
+        const deployed = f.commit('firestore.rules', 'B')
+        f.git(f.work, 'push', '-q', 'origin', 'master')
+        f.record(RULES, deployed)
+        return { fork, deployed }
+    }
+
+    it('does not count what master changed before the marker when a merge brings in an older branch', () => {
+        // The merge differs from its second parent (the branch) by everything master did
+        // since the branch forked, here the rules change that the marker already covers.
+        mergeAfterDeploy()
+        const head = f.merge('feature')
+        const result = f.hasChanges(RULES, head)
+        expect(result.all).not.toContain('firestore.rules')
+        expect(result.status).toBe(NOT_NEEDED)
+    })
+
+    it('still counts what a merge commit itself wrote, even when a later commit takes it back', () => {
+        const { deployed } = mergeAfterDeploy()
+        f.merge('feature', () => fs.writeFileSync(path.join(f.work, 'firestore.rules'), 'written in the merge'))
+        const head = f.commit('firestore.rules', 'B', 'back to the deployed rules')
+        expect(f.git(f.work, 'diff', '--name-only', deployed, head)).not.toContain('firestore.rules')
+        const result = f.hasChanges(RULES, head)
+        expect(result.status).toBe(0)
+        expect(result.all).toContain('firestore.rules')
+    })
+
+    it('keeps the history behind a marker that is already inside the shallow clone', () => {
+        // The clone holds the marker with its parents. A depth-1 fetch of the marker cut it
+        // off from them, so the fork point and everything older were no longer "before the
+        // marker", and the commit the clone ends on lists every file in the repository.
+        const { deployed } = mergeAfterDeploy({ before: 10 })
+        const head = f.merge('feature')
+        f.git(f.work, 'push', '-q', 'origin', 'master')
+
+        const shallow = f.shallowClone(5)
+        expect(f.git(shallow, 'rev-parse', '--is-shallow-repository')).toBe('true')
+        expect(f.git(shallow, 'rev-list', '--count', `${deployed}..${head}`)).toBe('2')
+
+        const result = f.hasChanges(RULES, head, { CI_PROJECT_DIR: shallow })
+        expect(result.all).not.toContain('firestore.rules')
+        expect(result.status).toBe(NOT_NEEDED)
+        expect(f.git(shallow, 'rev-list', '--count', `${deployed}..${head}`)).toBe('2')
+        expect(fs.readFileSync(path.join(shallow, '.git', 'shallow'), 'utf8')).not.toContain(deployed)
+    })
+
+    it('reads a second marker without cutting or deepening the clone', () => {
+        // `compute` verifies one marker per target in the same checkout. A newer marker
+        // grafted in front of an older one hid the older marker from the commit under
+        // test, and proving it an ancestor again cost a 1,000-commit fetch per target.
+        const { deployed } = mergeAfterDeploy({ before: 10 })
+        const webDeployed = f.commit('components/View.js', 'shipped later')
+        const head = f.commit('README.md', 'docs')
+        f.git(f.work, 'push', '-q', 'origin', 'master')
+        f.record('web-production', webDeployed)
+
+        const shallow = f.shallowClone(5)
+        const commitsHeld = f.git(shallow, 'rev-list', '--count', head)
+        expect(f.hasChanges('web-production', head, { CI_PROJECT_DIR: shallow }).status).toBe(NOT_NEEDED)
+        const result = f.hasChanges(RULES, head, { CI_PROJECT_DIR: shallow })
+        expect(result.all).not.toContain('firestore.rules')
+        expect(result.status).toBe(NOT_NEEDED)
+        expect(f.git(shallow, 'rev-list', '--count', `${deployed}..${head}`)).toBe('2')
+        expect(f.git(shallow, 'rev-list', '--count', head)).toBe(commitsHeld)
+    })
+
+    it('deepens the clone when a merged branch forked before the point where the clone ends', () => {
+        // The branch reaches its fork point in two steps; master needs more than the clone
+        // holds. From the marker the fork point is out of reach, so without more history it
+        // and the commits behind it count as changes.
+        const { fork, deployed } = mergeAfterDeploy({ before: 3, between: 8 })
+        const head = f.merge('feature')
+        f.git(f.work, 'push', '-q', 'origin', 'master')
+
+        const shallow = f.shallowClone(5)
+        expect(f.git(shallow, 'rev-list', `${deployed}..${head}`)).toContain(fork)
+
+        const result = f.hasChanges(RULES, head, { CI_PROJECT_DIR: shallow })
+        expect(result.all).not.toContain('firestore.rules')
+        expect(result.status).toBe(NOT_NEEDED)
+        expect(f.git(shallow, 'rev-list', '--count', `${deployed}..${head}`)).toBe('2')
     })
 })
 

@@ -62,6 +62,7 @@ stages:
               - ci/Dockerfile_web_bundler
               - ci/selectTargetedJestFiles.js
               - ci/runWebTests.js
+              - ci/listRelatedJestTests.js
               - ci/web-test-smoke.json
               - ci/jest.web.config.js
               - ci/jestSetup.js
@@ -151,8 +152,15 @@ deploy_scope:
 #
 # GIT_DEPTH: 0 because pushing real history to a repository that has it requires a complete
 # local history; the old script paid for that with an --unshallow plus a gc/repack.
+#
+# `needs: []` starts it with the pipeline, as before. It sits in the last stage because the
+# jobs of a stage wait for the whole stage before it: in build_base a mirror run that had to
+# rebuild (3.5 to 5 minutes, three times in eight days of 2026-11) held back the web build
+# and every test, and a mirror that failed stopped the production deploy for a copy on GitHub.
+# Nothing waits for it now; a failed mirror still fails the pipeline.
 mirror:github:
-    stage: build_base
+    stage: update_version
+    needs: []
     image:
         name: alpine/git
         entrypoint: ['']
@@ -318,9 +326,16 @@ test:web:changed:
 # artifact freezes that comparison for this pipeline. Small changes run related
 # suites and source-reading guards that depend on changed inputs. Global changes
 # or uncertain dependency mapping retain complete-suite validation.
+#
+# The job runs as four copies. Jest runs one process on these 2-vCPU runners, and in one job
+# the suite took nine minutes (median of the 46 long runs in 2026-11-10..17) while the web
+# build beside it was done after three and a half, so every web release waited on the tests.
+# ci/runWebTests.js gives each copy the suites whose path hashes to its number; `needs` on
+# this job waits for all copies, so one failing copy still blocks the deploy.
 test:web:deployment:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_base:latest
+    parallel: 4
     before_script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
@@ -977,13 +992,19 @@ update:version:staging:
 # on a stale bundle, which is exactly the symptom the guard was added to avoid. Use an image
 # where both git and curl can be installed (curlimages/curl runs as a non-root user, so it
 # cannot apk add).
+#
+# It follows the web deploy alone (`needs`), not the whole deploy stage: the runner image
+# build next to it takes three minutes and has nothing to do with the bundle clients load.
 update:version:production:
     image: node:22-alpine
     stage: 'update_version'
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     interruptible: false
-    dependencies:
+    needs:
+        - job: 'deploy:web'
+          artifacts: false
+        # Carries deploy-scope.env for the check below.
         - 'deploy_scope'
     before_script:
         - apk add --no-cache git

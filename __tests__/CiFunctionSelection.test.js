@@ -3,9 +3,10 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { execFileSync, spawnSync } = require('child_process')
-const { selectDeployment, makePlan } = require('../ci/selectFunctionsDeployment')
+const { ASSET_READERS, selectDeployment, makePlan } = require('../ci/selectFunctionsDeployment')
 const { validatePlan } = require('../ci/functionsDeploymentPlan')
 const {
+    DEPLOY_BATCH_SIZE,
     REDEPLOY_BATCH_SIZE,
     QUOTA_RETRIES,
     QUOTA_RETRY_DELAY_MS,
@@ -95,6 +96,58 @@ describe('function dependency selection', () => {
             'functions/data.test.js': 'exports.value = 1',
         }
         expect(select({ 'functions/data.test.js': 'exports.value = 2' }, base).names).toEqual(['alpha', 'beta'])
+    })
+    describe('files that no import leads to', () => {
+        it('still redeploys everything for a runtime file nobody is known to own', () => {
+            expect(select({ 'functions/EmailTemplates/Base.html': '<p>new</p>' }).mode).toBe('full')
+        })
+        it('treats the shared doubles in functions/Tests as test code, unless a function imports one', () => {
+            expect(select({ 'functions/Tests/fakeFirestore.js': 'module.exports = {}' }).mode).toBe('none')
+            const base = {
+                ...fixture,
+                'functions/shared.js': "module.exports = require('./Tests/double')",
+                'functions/Tests/double.js': 'exports.value = 1',
+            }
+            expect(select({ 'functions/Tests/double.js': 'exports.value = 2' }, base).names).toEqual(['alpha', 'beta'])
+        })
+        it('skips a directory that firebase.json keeps out of the uploaded source', () => {
+            const ignoring = patterns => ({
+                ...fixture,
+                'firebase.json': JSON.stringify({ functions: { runtime: 'nodejs22', ignore: patterns } }),
+            })
+            const base = ignoring(['node_modules', 'e2b-template/**', '**/*-key.json'])
+            expect(select({ 'functions/e2b-template/build.ts': 'export {}' }, base).mode).toBe('none')
+            expect(select({ 'functions/other-template/build.ts': 'export {}' }, base).mode).toBe('full')
+            // Only the literal `dir/**` form is trusted, and the shared deployment files win over it.
+            expect(select({ 'functions/keys/prod-key.json': '{}' }, base).mode).toBe('full')
+            expect(
+                select({ 'functions/service_accounts/setup_functions.sh': 'echo' }, ignoring(['service_accounts/**']))
+                    .mode
+            ).toBe('full')
+        })
+        it('maps a file read from disk to the functions that load its reader', () => {
+            const bridge = 'functions/Assistant/vm-agent-bridge/claude-agent-sdk.mjs'
+            const base = {
+                ...fixture,
+                'functions/index.js':
+                    fixture['functions/index.js'] + "\nexports.vm = () => require('./Assistant/vmJobRunner')",
+                'functions/Assistant/vmJobRunner.js':
+                    "exports.bridge = () => require('fs').readFileSync(__dirname + '/vm-agent-bridge/a.mjs')",
+                [bridge]: 'export const version = 1',
+            }
+            const plan = select({ [bridge]: 'export const version = 2' }, base)
+            expect(plan.names).toEqual(['vm'])
+            expect(plan.reasons.vm).toEqual([bridge])
+            // No function loads the reader: nobody can vouch for the directory.
+            expect(select({ [bridge]: 'export const version = 2' }).mode).toBe('full')
+        })
+        it('only names readers that exist and mention the directory they read', () => {
+            const root = path.join(__dirname, '..')
+            for (const [directory, reader] of ASSET_READERS) {
+                expect(fs.statSync(path.join(root, directory)).isDirectory()).toBe(true)
+                expect(fs.readFileSync(path.join(root, reader), 'utf8')).toContain(`'${path.basename(directory)}'`)
+            }
+        })
     })
     it('follows static dynamic imports, re-exports, directory imports and cycles', () => {
         const base = {
@@ -483,13 +536,23 @@ describe('serialized deployment marker refresh', () => {
 })
 
 describe('function deployment execution and completion', () => {
-    const names = Array.from({ length: 23 }, (_, i) => `fn${i}`)
+    // Two full batches and a rest, whatever the batch size is.
+    const B = DEPLOY_BATCH_SIZE
+    const names = Array.from({ length: B * 2 + 3 }, (_, i) => `fn${i}`)
     const plan = { version: 1, mode: 'partial', head: 'abc', names }
-    it('batches explicit function names, at most ten per Firebase command', () => {
+    it('batches explicit function names, one batch per Firebase command', () => {
         const filters = deploymentFilters(plan)
-        expect(filters.map(filter => filter.split(',').length)).toEqual([10, 10, 3])
+        expect(filters.map(filter => filter.split(',').length)).toEqual([B, B, 3])
         expect(filters.join(',').split(',')).toEqual(names.map(name => `functions:${name}`))
         expect(deploymentFilters({ ...plan, mode: 'full' })).toEqual(['functions'])
+    })
+    it('keeps a batch under the write quota while the assistant core still fits in two commands', () => {
+        // Cloud Run functions allows 60 write calls per minute per region and does not raise it.
+        // One command costs about 140 seconds however many functions it names, so the 89 that
+        // every assistant-core change selects took 9 commands (21 minutes) at 10 per batch.
+        expect(B).toBeLessThan(60)
+        const core = Array.from({ length: 89 }, (_, i) => `core${i}`)
+        expect(deploymentFilters({ ...plan, names: core })).toHaveLength(2)
     })
     it('rejects stale, unknown, empty and duplicated selections', () => {
         expect(() => validatePlan(plan, names, 'another')).toThrow('another commit')
@@ -519,7 +582,7 @@ describe('function deployment execution and completion', () => {
         await withRoot(async root => {
             const exec = jest
                 .fn()
-                .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, B)) })
                 .mockResolvedValueOnce({ status: 17, output: 'failed' })
             await expect(run({ root, head: 'abc', args: ['--non-interactive'], exec })).resolves.toBe(17)
             expect(exec).toHaveBeenCalledTimes(2)
@@ -554,10 +617,10 @@ describe('function deployment execution and completion', () => {
             await withRoot(async root => {
                 const exec = jest
                     .fn()
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, B)) })
                     .mockResolvedValueOnce(quotaFailure)
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(10, 20)) })
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(20)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(B, B * 2)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(B * 2)) })
                 const wait = jest.fn().mockResolvedValue()
                 await quiet(() => expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(0))
                 const filters = deploymentFilters(plan)
@@ -571,7 +634,7 @@ describe('function deployment execution and completion', () => {
             await withRoot(async root => {
                 const exec = jest
                     .fn()
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, B)) })
                     .mockResolvedValue(quotaFailure)
                 const wait = jest.fn().mockResolvedValue()
                 await quiet(() => expect(run({ root, head: 'abc', args: [], exec, wait })).resolves.toBe(1))
@@ -595,10 +658,10 @@ describe('function deployment execution and completion', () => {
         it('redeploys a group a full deploy lost with exit 0 by name, once (2026-11-09)', async () => {
             const full = { version: 1, mode: 'full', head: 'abc', names }
             await withRoot(async root => {
-                const lost = names.slice(18)
+                const lost = names.slice(-5)
                 const exec = jest
                     .fn()
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 18)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, -5)) })
                     .mockResolvedValueOnce({ status: 0, output: done(lost) + '\nDeploy complete!' })
                 const log = jest.spyOn(console, 'log').mockImplementation(() => {})
                 try {
@@ -617,10 +680,10 @@ describe('function deployment execution and completion', () => {
             await withRoot(async root => {
                 const exec = jest
                     .fn()
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, 10)) })
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(10, 17)) })
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(20)) })
-                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(17, 20)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(0, B)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(B, B * 2 - 3)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(B * 2)) })
+                    .mockResolvedValueOnce({ status: 0, output: done(names.slice(B * 2 - 3, B * 2)) })
                 const log = jest.spyOn(console, 'log').mockImplementation(() => {})
                 try {
                     await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
@@ -628,14 +691,20 @@ describe('function deployment execution and completion', () => {
                     log.mockRestore()
                 }
                 expect(exec).toHaveBeenCalledTimes(4)
-                expect(filterOf(exec.mock.calls[3])).toBe('functions:fn17,functions:fn18,functions:fn19')
+                expect(filterOf(exec.mock.calls[3])).toBe(
+                    names
+                        .slice(B * 2 - 3, B * 2)
+                        .map(name => `functions:${name}`)
+                        .join(',')
+                )
             })
         })
 
         it('does not redeploy when every function reported a result, skipped ones included', async () => {
             await withRoot(async root => {
                 const output =
-                    done(names.slice(0, 22)) + `\nfunctions[${names[22]}(europe-west1)] Skipped (No changes detected)`
+                    done(names.slice(0, -1)) +
+                    `\nfunctions[${names[names.length - 1]}(europe-west1)] Skipped (No changes detected)`
                 const exec = jest.fn().mockResolvedValue({ status: 0, output })
                 await expect(run({ root, head: 'abc', args: [], exec })).resolves.toBe(0)
                 expect(exec).toHaveBeenCalledTimes(3)

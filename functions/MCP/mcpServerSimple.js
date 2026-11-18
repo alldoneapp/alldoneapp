@@ -5,6 +5,7 @@ const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
 const { buildMcpServerInstructions } = require('./mcpAgentInstructions')
 const { Timestamp } = require('firebase-admin/firestore')
+const { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } = require('../shared/taskExecutionMode')
 
 // ---------------------------------------------------------------------------
 // Native assistant tool delegation
@@ -181,6 +182,24 @@ const MCP_DESCRIPTION_NOTES = {
         " Over MCP pass projectId (and optionally assistantId; default: the project's assistant); without a name it lists the skills.",
 }
 
+// A task an MCP client (Claude Code, Codex, a browser agent) creates skips the owner's workflow
+// unless the client asks for it: the agent tracks its own work there, and a review step would only
+// park that bookkeeping task with a reviewer. In-app assistants keep the workflow default
+// (assistant-runs.md, "Delegated work stays user-owned"), so the default is set here, not in the
+// shared create_task code.
+const MCP_CREATE_TASK_EXECUTION_MODE_DESCRIPTION =
+    "Optional task completion mode. Over MCP the default is direct: the task skips the workflow and goes straight to Done when completed. Pass workflow only when the user wants the task to go through the owner's configured workflow."
+
+const applyMcpCreateTaskDefaults = toolArgs => {
+    if (
+        toolArgs.executionMode !== TASK_EXECUTION_MODE_DIRECT &&
+        toolArgs.executionMode !== TASK_EXECUTION_MODE_WORKFLOW
+    ) {
+        toolArgs.executionMode = TASK_EXECUTION_MODE_DIRECT
+    }
+    return toolArgs
+}
+
 function adaptToolSchemaForMcp(schema) {
     const { name, description, parameters } = schema.function
     if (MCP_TOOLS_ACTING_ON_A_NAMED_ASSISTANT.has(name)) {
@@ -219,6 +238,22 @@ function adaptToolSchemaForMcp(schema) {
     }
     if (MCP_DESCRIPTION_NOTES[name]) {
         return { name, description: `${description}${MCP_DESCRIPTION_NOTES[name]}`, inputSchema: parameters }
+    }
+    if (name === 'create_task' && parameters.properties?.executionMode) {
+        return {
+            name,
+            description,
+            inputSchema: {
+                ...parameters,
+                properties: {
+                    ...parameters.properties,
+                    executionMode: {
+                        ...parameters.properties.executionMode,
+                        description: MCP_CREATE_TASK_EXECUTION_MODE_DESCRIPTION,
+                    },
+                },
+            },
+        }
     }
     if (!MCP_KNOWLEDGE_BASE_TOOL_SET.has(name)) return { name, description, inputSchema: parameters }
     const properties = { ...(parameters.properties || {}) }
@@ -1168,6 +1203,8 @@ class AlldoneSimpleMCPServer {
         ) {
             toolArgs.projectId = contextProjectId
         }
+
+        if (name === 'create_task') applyMcpCreateTaskDefaults(toolArgs)
 
         // An assistant's "current project" is the project of its thread. An MCP client has none, and
         // the default project it would otherwise fall back to is a guess: a project's description is

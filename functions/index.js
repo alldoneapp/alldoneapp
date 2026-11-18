@@ -1631,6 +1631,53 @@ exports.requestKnowledgeBaseRefresh = onCall(
     }
 )
 
+// Assistant profile (AT-3072): the private profile every assistant of the user reads, kept up to
+// date every night. The tree is server-written only; these act on the caller's own profile. See
+// AssistantProfile/assistantProfileModel.js.
+exports.setAssistantProfileSettings = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setAssistantProfileSettings } = require('./AssistantProfile/assistantProfileSettings')
+        return await setAssistantProfileSettings({ userId: auth.uid, settings: data && data.settings })
+    }
+)
+
+exports.requestAssistantProfileRefresh = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { requestAssistantProfileRefresh } = require('./AssistantProfile/assistantProfileSettings')
+        return await requestAssistantProfileRefresh({ userId: request.auth.uid })
+    }
+)
+
+exports.restoreAssistantProfileRevision = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { restoreAssistantProfileRevision } = require('./AssistantProfile/assistantProfileSettings')
+        return await restoreAssistantProfileRevision({ userId: auth.uid, revision: data && data.revision })
+    }
+)
+
 // Every version of an artifact, and every byte of it, is written here and never by a client. The
 // files arrive base64-encoded in the request, which is why an upload is capped at 20 MB.
 exports.commitArtifactVersion = onCall(
@@ -6609,6 +6656,55 @@ exports.applyKnowledgeBaseDefaults = onSchedule(
     async () => {
         const { applyKnowledgeBaseDefaultsForActiveUsers } = require('./KnowledgeBase/knowledgeBaseDefaults')
         await applyKnowledgeBaseDefaultsForActiveUsers()
+    }
+)
+
+// ASSISTANT PROFILE (AT-3072)
+// One nightly run per user: folds what the user did into their private assistant profile with one
+// model conversation. Delivered through Cloud Tasks; the run's own wall clock is 10 minutes.
+exports.runAssistantProfileUpdate = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
+    },
+    async req => {
+        const { runAssistantProfileUpdate } = require('./AssistantProfile/assistantProfileRun')
+        const data = req.data || {}
+        return await runAssistantProfileUpdate({ userId: data.userId, trigger: data.trigger })
+    }
+)
+
+// Only enqueues due profile runs; the run itself lives in runAssistantProfileUpdate.
+exports.dispatchAssistantProfileRuns = onSchedule(
+    {
+        schedule: '*/15 * * * *',
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { dispatchDueAssistantProfileRuns } = require('./AssistantProfile/assistantProfileDispatcher')
+        await dispatchDueAssistantProfileRuns()
+    }
+)
+
+// The assistant profile is on by default for every active user; the sweep also resumes profiles
+// paused while their user was away. Returning users are handled by the user trigger. See
+// AssistantProfile/assistantProfileDefaults.js.
+exports.applyAssistantProfileDefaults = onSchedule(
+    {
+        schedule: '53 1 * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { applyAssistantProfileDefaultsForActiveUsers } = require('./AssistantProfile/assistantProfileDefaults')
+        await applyAssistantProfileDefaultsForActiveUsers()
     }
 )
 

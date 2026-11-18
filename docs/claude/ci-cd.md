@@ -107,6 +107,29 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   `__tests__/CiDeployMarkers.test.js` (real git: replay, forgery, copied and non-ancestor
   markers, shallow clones, HMAC tools agreeing) and the marker case in
   `__tests__/CiFunctionSelection.test.js`.
+- **The range behind a marker must hold what shipped since it and nothing else
+  (fixed 2026-11-18).** Two things made merge requests redeploy targets they had not
+  touched. In eight days: all 303 Functions twice for web-only merges (pipelines 9705 and
+  9808, 9 and 14 minutes, with the web deploy waiting behind them), the runner image 13 of
+  33 times without a `functions/` change, and rules and the emulator suite along with them.
+  (1) `fetch_marker` fetched every marker with `--depth=1` in GitLab's depth-50 clone.
+  `--depth` also re-cuts history that is already there: a marker commit inside the clone
+  became a shallow boundary, nothing behind it was reachable from it any more, and
+  `marker..HEAD` stopped excluding the marker's own ancestors. Merging a branch that
+  forked before the last deploy then pulled the rest of the clone into the range, down to
+  boundary commits that git shows as adding every file (40 changed paths became 6,407 for
+  9808). It now uses `--depth=1` only for a marker the checkout does not already have in
+  its history; otherwise a normal fetch transfers just the tag object. (2) The range was
+  listed with `git log -m`, which diffs a merge against each parent; against the merged
+  branch that is everything master changed since the branch forked, already shipped. It
+  is `-c` now: a merge contributes only the paths where its result differs from all its
+  parents, which keeps the replay protection for anything a merge itself wrote. (3) A
+  merged branch that forked further back than the clone reaches has the same effect
+  without any graft, so `changed_paths` deepens the clone (as `is_ancestor` does) while a
+  parentless commit sits in the range. An incomplete range can only list too much, which
+  deploys. Replaying 9808 in a depth-50 clone: the old script marks all five targets and
+  plans 304 functions, the new one marks the web deploy alone. Pinned by the "merging a
+  branch" cases in `__tests__/CiDeployMarkers.test.js`.
 - **Firebase deploys use one service account per environment, never a login token
   (security audit 2026-11, NV-32).** Everything used to authenticate with one
   `firebase login:ci` token (`GOOGLE_FIREBASE_DEPLOY_TOKEN`) that could deploy both projects
@@ -153,14 +176,43 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   token only for a verified service account of its own project and only with its own URL as
   audience (`functions/WebApp/versionBumpAuth.js`); the administrator's Firebase ID token still
   works. Pinned by `__tests__/CiBumpAppVersion.test.js` and `versionBumpAuth.test.js`.
+  `update:version:production` follows `deploy:web` through `needs` (2026-11-18), not the
+  whole deploy stage, so it no longer waits for the runner image build beside the deploy.
 - **Functions deploy only affected exports.** `ci/selectFunctionsDeployment.js` parses
   committed `functions/index.js`, follows entrypoint helpers and transitive local imports,
   and compares both trees against `deployed/functions-production` (or `functions-staging`).
   Shared modules select every importing export, including imports outside `functions/`.
   Unreferenced tests/docs and unrelated frontend changes do not select backend functions.
   `functions-deploy-scope.json` records names and reasons; partial selections deploy in
-  batches of at most ten via `ci/runFunctionsDeployment.js`. The isolated, pinned parser
-  dependencies live in `ci/function-scope-tools/`.
+  batches of at most `DEPLOY_BATCH_SIZE` (50) via `ci/runFunctionsDeployment.js`. The
+  isolated, pinned parser dependencies live in `ci/function-scope-tools/`.
+  **The batch size is bounded by time on one side and a quota on the other.** One
+  `firebase deploy` takes about 140 seconds whether it names 1 function or 20, because
+  Firebase builds and rolls out its functions in parallel. At 10 per batch (until
+  2026-11-18) the 89 functions that every change to the assistant core selects needed 9
+  commands: 21 minutes on average over ten such deploys in eight days, twice as long as
+  deploying all 303 in one command (9 to 10 minutes), and long enough that the web deploy
+  waiting behind it was superseded in six pipelines. The ceiling is the Cloud Run functions
+  write quota, 60 API calls per minute per region, which Google does not raise; 50 stays
+  under it and each following batch starts on a fresh quota minute.
+  The block itself shrank to 70 functions when the model helpers left `assistantHelper.js`
+  (see `assistant-models-and-tools.md`).
+  **A file no import leads to has to be given an owner, or it redeploys everything.** A
+  changed file under `functions/` that is neither in the dependency graph nor test code is
+  an "unmapped runtime asset" and selects all functions. Five of the six full deploys in
+  that week came from three such files. Three rules now place them:
+  `functions/Tests/` is test code (shared doubles such as `fakeFirestore.js`); a directory
+  that `firebase.json` `functions.ignore` excludes as `dir/**` is never uploaded, so it
+  cannot change a function (`e2b-template/`; only that literal pattern form is read, and
+  the shared deployment files such as `service_accounts/` still force a full deploy); and
+  `ASSET_READERS` names the module that reads a directory from disk
+  (`Assistant/vm-agent-bridge/` is read by `vmJobRunner.js`), so a change there selects
+  the functions loading that module. A module a function really imports stays a runtime
+  file wherever it lives. A new directory of files read through `fs` needs an
+  `ASSET_READERS` entry; a test checks that each named reader mentions its directory.
+  **The selector reads a tree's sources with one `git cat-file --batch`.** One process per
+  file was two thirds of its run time (643 processes per plan), and the plan is computed
+  up to four times per pipeline, twice before any other job may start.
   Selection refreshes inside the serialized Functions job, since an earlier deployment
   can finish after the pipeline's initial scope calculation. Before Firebase starts,
   `functions-begin` must successfully record `deployed/<target>-attempt`. If that attempt
@@ -225,6 +277,37 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   it is self-correcting. `commit-tree` also fixed a latent bug: the old
   `git checkout <c> -- . && git add -A` loop restored files but never removed them, so the
   public mirror had been accumulating files master had deleted.
+  It sits in the last stage with `needs: []` (2026-11-18): it still starts with the
+  pipeline, but nothing waits for it. In the first stage a mirror run that had to rebuild
+  (3.5 to 5 minutes, three times in eight days) held back the web build and every test,
+  because the jobs of a stage wait for the whole stage before it, and a failed mirror
+  stopped the production deploy. A failed mirror still fails the pipeline.
+- **`test:web:deployment` runs as four parallel copies (`parallel: 4`, 2026-11-18).** Jest
+  runs one process on the 2-vCPU runners, and in one job the suite took nine minutes
+  (median of 46 long runs in eight days) while the web build beside it took three and a
+  half, so nearly every web release waited on the tests. A full run is triggered by any
+  translation or style change, and a "targeted" run still covers about 775 of 1,256 suites
+  when a hub module changes. `ci/runWebTests.js` reads `CI_NODE_INDEX`/`CI_NODE_TOTAL`
+  and gives each copy the suites whose path hashes to its number. The split is by path,
+  not by position in the list, on purpose: a copy whose dependency discovery failed falls
+  back to every suite, and its share of that longer list still contains what the other
+  copies leave to it. A copy with none of the selected suites passes and says so; a copy
+  that cannot list the suites runs all of them. `needs` on the job waits for all copies.
+  A job without `parallel` has `CI_NODE_TOTAL=1` and no index, which reads as "not split".
+  The cost is three more job start-ups (about 45 seconds each) per pipeline.
+- **The suites related to the changed files are found in one Jest process
+  (`ci/listRelatedJestTests.js`, 2026-11-18).** The runner needs the answer per file, because
+  a changed file that no suite depends on makes it run every suite, and it used to start
+  `jest --listTests --findRelatedTests <file>` once per file, about 1.7 seconds each on the
+  CI runners. The functions test job of pipeline 9824 (67 changed files) spent 114 seconds
+  finding its 134 suites and 49 running them, which is also why splitting that job into
+  parallel copies was dropped: every copy would have repeated the search. The script builds
+  the file map and dependency resolver once (`SearchSource.findRelatedTests`, the code
+  behind that command line) and asks it for every file: 64 inputs in 9 seconds instead of
+  165 locally, with identical lists. Those are not documented Jest APIs, so
+  `runWebTests.js` falls back to the command line whenever the script fails or its answer is
+  incomplete; a Jest upgrade can make discovery slow again but not wrong. The same runner
+  serves `test:web:deployment`, `test:web:changed` and `test:functions:deployment`.
 - **CI images bake `node_modules`, so a branch that changes dependencies needs its own
   image.** `build_base` (node:12, `npm ci` on the v1 lockfile) and `build_web_bundler`
   (node:22 tooling + the app tree copied from the base image) are built by the

@@ -68,6 +68,7 @@ function getTransactionLabel(source) {
         task_result_summary: 'Task result summary',
         mcp_tool_call: 'MCP tool call',
         knowledge_base_ingest: 'Project wiki update',
+        assistant_profile_update: 'Assistant profile update',
         browser_automation: 'Website visit',
         whatsapp_voice: 'WhatsApp voice message',
         whatsapp_call: 'WhatsApp assistant call',

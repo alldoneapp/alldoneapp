@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const { PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
-const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('../Assistant/assistantHelper')
+const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('../Assistant/assistantModelRuntime')
 const {
     extractJsonFromText,
     isGpt5ReasoningModel,

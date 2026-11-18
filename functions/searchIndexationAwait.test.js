@@ -17,19 +17,13 @@
  * So this suite asserts the property directly: after any builder runs, the
  * list must contain resolved records and never a thenable.
  */
-jest.mock(
-    'firebase-admin',
-    () => ({
-        firestore: () => ({}),
-        // addNotesToList → getNoteContent reaches storage; exists:false short-circuits
-        // to '' so the notes builder can run without real note content.
-        storage: () => ({ bucket: () => ({ file: () => ({ exists: async () => [false] }) }) }),
-    }),
-    { virtual: true }
-)
-jest.mock('firebase-functions/params', () => ({ defineString: () => ({ value: () => 'test-bucket' }) }), {
-    virtual: true,
-})
+jest.mock('firebase-admin', () => ({
+    firestore: () => ({}),
+    // addNotesToList → getNoteContent reaches storage; exists:false short-circuits
+    // to '' so the notes builder can run without real note content.
+    storage: () => ({ bucket: () => ({ file: () => ({ exists: async () => [false] }) }) }),
+}))
+jest.mock('firebase-functions/params', () => ({ defineString: () => ({ value: () => 'test-bucket' }) }))
 
 const searchHelper = require('./searchHelper')
 

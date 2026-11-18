@@ -16,18 +16,14 @@ jest.mock('firebase-admin', () => ({
     firestore: mockFirestore,
 }))
 
-jest.mock(
-    'firebase-functions/v2/https',
-    () => ({
-        HttpsError: class HttpsError extends Error {
-            constructor(code, message) {
-                super(message)
-                this.code = code
-            }
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-functions/v2/https', () => ({
+    HttpsError: class HttpsError extends Error {
+        constructor(code, message) {
+            super(message)
+            this.code = code
+        }
+    },
+}))
 
 // The catalog module is exercised in vmAgentModelCatalog.test.js; here it is stubbed so the
 // settings tests never touch a provider or the cache doc.
