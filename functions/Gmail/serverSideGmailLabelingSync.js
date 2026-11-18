@@ -13,7 +13,6 @@ const {
 } = require('../Integrations/providerConnections')
 const {
     addBaseInstructions,
-    addChatCommentFromAssistantTool,
     calculateTokens,
     calculateGoldCostFromTokens,
     collectAssistantTextWithToolCalls,
@@ -59,7 +58,6 @@ const {
     shouldArchiveForUnreadSettings,
 } = require('./unreadEmailSettings')
 const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
-const { shouldWriteDailyAdsLine, writeDailyAdsLine } = require('./dailyAdsDigest')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { Timestamp } = require('firebase-admin/firestore')
@@ -1503,33 +1501,6 @@ async function executePostLabelPrompt({
           }
         : null
 
-    // An ad no prompt handles (the built-in Ads label has none) is a line in the private
-    // "Daily ads <date>" topic, written without a model (AT-3101, dailyAdsDigest.js).
-    if (
-        shouldWriteDailyAdsLine({
-            labelKey: selectedDefinition?.key || '',
-            emailKind,
-            direction,
-            hasPrompt: promptRunsForDirection && !!prompt,
-        })
-    ) {
-        return writeDailyAdsLineForMessage({
-            userId,
-            userData,
-            selectedDefinition,
-            normalizedMessage,
-            gmailEmail,
-            direction,
-            connectionId,
-            connectionProjectId,
-            archivedByLabeling,
-            emailKind,
-            suppressUnread,
-            prompt,
-            promptHash,
-        })
-    }
-
     if (!promptRunsForDirection || !prompt) {
         return {
             ...buildPostLabelActionSkipped({
@@ -1747,91 +1718,6 @@ async function executePostLabelPrompt({
             tokenUsage: null,
             executedAt: Timestamp.now(),
         }
-    }
-}
-
-// The "Daily ads" line of an ad (AT-3101): no model and no Gold. Authored by the default project's
-// assistant like every digest line; without a default project or assistant there is nobody to
-// write it, which is reported as blocked, as for a prompt.
-async function writeDailyAdsLineForMessage({
-    userId,
-    userData,
-    selectedDefinition,
-    normalizedMessage,
-    gmailEmail,
-    direction,
-    connectionId,
-    connectionProjectId,
-    archivedByLabeling,
-    emailKind,
-    suppressUnread,
-    prompt,
-    promptHash,
-}) {
-    const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
-    if (!assistantProjectId || !assistantId || !assistant) {
-        return buildPostLabelActionSkipped({
-            prompt,
-            promptHash,
-            status: 'blocked',
-            error: 'No assistant could be resolved for the user default project.',
-            assistantProjectId,
-            assistantId,
-        })
-    }
-
-    try {
-        const gmailContext = buildPostLabelGmailContext({
-            normalizedMessage,
-            gmailEmail,
-            assistantProjectId,
-            connectionId,
-            connectionProjectId,
-            direction,
-            archivedByLabeling,
-            labelKey: selectedDefinition?.key || '',
-            labelName: selectedDefinition?.gmailLabelName || '',
-            emailKind,
-            suppressUnread,
-        })
-        const line = await writeDailyAdsLine({
-            database: admin.firestore(),
-            projectId: assistantProjectId,
-            userId,
-            assistantId,
-            formattedDate: formatDefaultFollowUpTopicDate(userData),
-            normalizedMessage,
-            gmailContext,
-            addChatComment: addChatCommentFromAssistantTool,
-        })
-        return {
-            ...buildPostLabelActionSkipped({
-                prompt,
-                promptHash,
-                status: 'completed',
-                assistantProjectId,
-                assistantId,
-            }),
-            // Lifted onto the audit record for the server-side read sync (AT-2376), like a prompt's.
-            createdChatCommentResults: line.commentId
-                ? [{ projectId: line.projectId, chatId: line.chatId, commentId: line.commentId }]
-                : [],
-            dailyAdsLine: { chatId: line.chatId, chatTitle: line.chatTitle, commentId: line.commentId },
-        }
-    } catch (error) {
-        console.warn('[gmailLabeling] Could not write the Daily ads line', {
-            userId,
-            messageId: normalizedMessage?.messageId || '',
-            error: error.message,
-        })
-        return buildPostLabelActionSkipped({
-            prompt,
-            promptHash,
-            status: 'failed',
-            error: error.message || 'Failed to write the Daily ads line.',
-            assistantProjectId,
-            assistantId,
-        })
     }
 }
 
@@ -2205,8 +2091,6 @@ async function processSingleMessage({
             postLabelAction: action,
             threadContinuationPending: !!action.threadContinuationPending,
             ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
-            // An unlabeled ad still gets its "Daily ads" line; map it for the read sync (AT-2376).
-            ...buildEmailCommentAuditPatch(action.createdChatCommentResults),
         })
         return {
             labeled: 0,

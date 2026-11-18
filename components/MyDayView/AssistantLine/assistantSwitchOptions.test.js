@@ -4,6 +4,7 @@ import {
     buildProjectScopeAssistantGroups,
     buildSingleAssistantGroup,
     countAssistantOptions,
+    filterAssistantGroups,
     findAssistantOption,
     flattenAssistantGroups,
     getToggleTargetOption,
@@ -270,5 +271,53 @@ describe('isAllProjectsAssistantOption', () => {
             false
         )
         expect(isAllProjectsAssistantOption(null, DEFAULT_PROJECT_ID, 'anna')).toBe(false)
+    })
+})
+
+describe('filterAssistantGroups (AT-3100)', () => {
+    const opt = (projectId, uid, displayName) => ({
+        key: `${projectId}:${uid}`,
+        assistantId: uid,
+        projectId,
+        assistant: assistant(uid, displayName),
+    })
+    const groups = [
+        {
+            projectId: 'p1',
+            projectName: 'Privat',
+            options: [opt('p1', 'anna', 'Anna Alldone'), opt('p1', 'judy', 'Judy Job')],
+        },
+        { projectId: 'p2', projectName: 'JTL Software', options: [opt('p2', 'jtl', 'JTL Assistant')] },
+        { projectId: 'p3', projectName: 'Alldone Team', options: [opt('p3', 'paul', 'Paul Product Manager')] },
+    ]
+
+    it('returns the very same list for a blank query, so clearing restores everything', () => {
+        expect(filterAssistantGroups(groups, '')).toBe(groups)
+        expect(filterAssistantGroups(groups, '   ')).toBe(groups)
+        expect(filterAssistantGroups(groups)).toBe(groups)
+    })
+
+    it('matches anywhere in the name, case-insensitively, keeping group order', () => {
+        const result = filterAssistantGroups(groups, 'ALLDONE')
+        expect(result.map(group => group.projectId)).toEqual(['p1'])
+        expect(result[0].options.map(option => option.assistantId)).toEqual(['anna'])
+        expect(result[0].projectName).toBe('Privat')
+    })
+
+    it('drops groups without a match and keeps every matching group', () => {
+        const result = filterAssistantGroups(groups, 'j')
+        expect(result.map(group => group.projectId)).toEqual(['p1', 'p2'])
+        expect(result[0].options.map(option => option.assistantId)).toEqual(['judy'])
+    })
+
+    it('matches assistant names only, not project names', () => {
+        expect(filterAssistantGroups(groups, 'team')).toEqual([])
+    })
+
+    it('does not mutate the input and tolerates a missing display name', () => {
+        const withNameless = [{ projectId: 'p4', projectName: 'X', options: [{ key: 'k', assistant: { uid: 'n' } }] }]
+        expect(filterAssistantGroups(withNameless, 'a')).toEqual([])
+        filterAssistantGroups(groups, 'anna')
+        expect(groups[0].options).toHaveLength(2)
     })
 })
