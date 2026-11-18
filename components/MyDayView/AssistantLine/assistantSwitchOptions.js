@@ -200,21 +200,3 @@ export const getToggleTargetOption = (groups = [], activeProjectId, activeAssist
     )
     return other || options[0]
 }
-
-/**
- * AT-3100 — the switch popup's search. Keeps the project grouping, drops every group with no
- * match, and matches the assistant's display name only, case-insensitively. A blank query hands
- * back the original `groups` array, so clearing the search restores the full list as it was.
- */
-export const filterAssistantGroups = (groups = [], query = '') => {
-    const needle = (query || '').trim().toLocaleLowerCase()
-    if (!needle) return groups
-
-    return groups.reduce((filtered, group) => {
-        const options = group.options.filter(option =>
-            (option.assistant?.displayName || '').toLocaleLowerCase().includes(needle)
-        )
-        if (options.length > 0) filtered.push(options.length === group.options.length ? group : { ...group, options })
-        return filtered
-    }, [])
-}

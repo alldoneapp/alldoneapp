@@ -1967,6 +1967,7 @@
     "Gmail sync archived": "Archiviert: %{count}",
     "Gmail sync gold spent": "Gold verbraucht: %{count}",
     "Gmail sync state": "Status: %{state}",
+    "Gmail fallback label": "%{label} (Fallback, kein Label passte)",
     "Gmail cost estimate": "Kostenschätzung",
     "Gmail estimated emails checked per day": "Geschätzte täglich geprüfte E-Mails: %{count}",
     "Gmail gold per email check": "Gold pro E-Mail-Prüfung: %{count}",

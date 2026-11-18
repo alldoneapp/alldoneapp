@@ -200,10 +200,11 @@ chat comment is "From people" or "Assistant"; one an MCP client wrote in the use
 **`users/{uid}.unreadEmailSettings`** (`{ newsletter, ads }`, each `show` | `archive`, default
 show; whitelisted in `mapUserData`). With `archive` the labeling sync archives an incoming,
 informational, no-reply-owed email of that kind in Gmail (on top of the label's own
-`autoArchive`, also when no label matched) and passes `suppressUnread`, so `add_chat_comment`
+`autoArchive`, also under a fallback label, AT-3102 below) and passes `suppressUnread`, so `add_chat_comment`
 writes the comment without its `chatNotifications` doc and without the MyDay "last assistant
-comment" pointer. Actionable mail and mail needing a reply are never affected. A failed archive of
-an unlabeled email leaves it in the inbox and unread. The audit record keeps `emailKind` and
+comment" pointer. Actionable mail and mail needing a reply are never affected. The archive rides on
+the same Gmail call as the label, so a failed write leaves the email in the inbox, unread and
+unlabeled, and is retried (AT-3102 below). The audit record keeps `emailKind` and
 `archivedForUnreadSettings`, and a pending thread continuation replays both.
 
 **One ads switch.** The per-connection "Auto-archive Ads" (`adsAutoArchive` on the gmailLabeling
@@ -218,7 +219,7 @@ as that fallback.
 **Ads reach the unread list as "Daily ads" lines (AT-3101, decided with Karsten 2026-11-18).** The
 built-in Ads label has no post-label prompt, so until then an ad produced no chat comment and never
 appeared under Chats > Unread, whatever the ads setting said. Now every incoming ad no prompt
-handles (the Ads label, or an unlabeled email with `emailKind: 'ads'`; a label with its own prompt
+handles (the Ads label, or a fallback-labeled email with `emailKind: 'ads'`; a label with its own prompt
 keeps its prompt) gets one line in a **private** topic `Daily ads <date>` in the user's default
 project (`functions/Gmail/dailyAdsDigest.js`, called from `executePostLabelPrompt` after thread
 continuation). Choices: its own topic rather than the project's "Daily emails" digest; **no model**,
@@ -228,13 +229,91 @@ not project content) with a deterministic chat id per user and day (`DailyAds_<s
 because `add_chat_comment`'s lookup by title would find another member's topic of the same name.
 The ads setting decides read or unread exactly as for newsletters: `show` writes it unread, `archive`
 archives the mail and stores the line read (`suppressUnread`). The author is the default project's
-assistant; without one the action is `blocked` and nothing is written. The no-match path now also
-stamps `emailComments` for the read sync, so a line for an unlabeled ad clears once Gmail reads it.
+assistant; without one the action is `blocked` and nothing is written. The fallback-label path also
+stamps `emailComments` for the read sync, so a line for an ad no label matched clears once Gmail reads it.
 
 Pinned by `functions/Gmail/dailyAdsDigest.test.js`, the AT-3101 block of
 `serverSideGmailLabelingSync.test.js`, `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
 label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
 tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
+
+## Every email gets a Gmail label: fallback labels and bounded retries (AT-3102, 2026-11-18)
+
+**The invariant.** The project wiki (Email Management) says every incoming email gets a label, with a
+default when nothing matches; there is no "no label" outcome. Until AT-3102 the code did not do that:
+a `matched:false` result, or a pick below the confidence threshold (`coerceClassifierResult` in
+`gmailPromptClassifier.js` turns it into `matched:false`), wrote **no** Gmail label and an audit record
+with `skippedReason: 'no_match'`. The reported case was a subscribed Modash newsletter in
+karsten@alldone.app (`emailKind: 'newsletter'`, confidence 0.9, "not Ads, no configured project"); in
+the week before, about 16% of that account's incoming mail stayed unlabeled the same way.
+
+**Fallback label** (`resolveFallbackLabelDefinition` in `serverSideGmailLabelingSync.js`), chosen
+with Karsten:
+
+- `emailKind: 'newsletter'` → the built-in **`Newsletter`** label (key `newsletter`, top-level like
+  `Ads`). A configured label with key `newsletter` (custom mode) is reused instead.
+- anything else → the connection's **default project label**: the label whose `sourceProjectId` is
+  the effective config's `defaultProjectId` (the config's `projectId`, else the user's default
+  project; `resolveEffectiveGmailLabelingConfig` returns it).
+- no default project label (custom prompt mode, or the default project archived, inactive, a
+  template, or gone) → the built-in catch-all **`Alldone/Other`** (key `alldone_other`). Never no
+  label.
+
+The prompt is unchanged: the classifier may still answer `matched:false`, and the sync labels anyway.
+The fallback applies to `no_match`, `below_threshold` and `missing_label_definition` (a key that no
+eligible definition has), for incoming and sent mail alike.
+
+**What a fallback label does and does not do.**
+
+- It runs **no follow-up prompt**: the definition is passed with `postLabelPrompt: ''`, so no model
+  run, no Gold beyond the classification, no project task and no "Daily emails" line. What unlabeled
+  mail always got still happens: thread continuation, the thread topic, and the "Daily ads" line for
+  an ad. A pending continuation replay of a fallback record strips the prompt too
+  (`labelSource === 'fallback'`). A user's follow-up-type correction in the feedback UI is explicit
+  and may still run the label's prompt.
+- It **never archives on its own**: neither the label's `autoArchive` nor `autoArchiveAllLabeled`
+  applies, so unsure mail does not leave the inbox. Only the user's unread setting for newsletters
+  and ads archives it, in the same `messages.modify` call as the label.
+- The selected project is not passed to the post-label step, so nothing is routed into the project.
+
+**Audit record.** A fallback write has `labelSource: 'fallback'` (a classifier match has
+`'classifier'`), `selectedLabelKey`/`selectedGmailLabelName` of the fallback, `selectedProjectId` +
+`selectedProjectSource: 'fallback_label'` for the default project label, `applied: true`,
+`skippedReason: null`, `fallbackReason` (`no_match` | `below_threshold` | `missing_label_definition`),
+`fallbackKind` (`newsletter` | `default_project` | `other`), and the classifier's own decision:
+`classifierMatched`, `classifierLabelKey`, `classifierRawLabelKey`, `classifierRawMatched`,
+`confidence`, `reasoning`, `emailKind`, `consistencyCheck`. The settings audit list shows
+"<label> (fallback, no label matched)" (`Gmail fallback label`). The sync counts a fallback label as
+`labeled`. Records written before AT-3102 keep `skippedReason: 'no_match'`; there is no backfill, and
+the email line's "No label" section stays for that mail and for mail outside the sync scope.
+
+**Bounded retries.** The audit record is also the "already processed" marker
+(`getExistingAuditIds`), and the history cursor moves on, so a failed email used to stay unlabeled
+for good (`processing_error`). Now `recordMessageProcessingError` counts `processingAttempts` and sets
+`processingErrorRetryPending: true` for a **retryable** error; every sync queries that flag
+(`loadProcessingRetryMessageIds`, up to 20), fetches those emails past the history cursor, the
+candidate filter and the processed marker, and processes them again. After
+`MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS` (3, the first run included) it sets
+`processingErrorRetryExhausted: true`, stops, and the run's `lastError` says so. An email that can no
+longer be fetched uses up an attempt (`processingStage: 'fetch'`). A successful write sets
+`processingErrorRetryPending: false`.
+
+Only errors **before any side effect** are retryable (`markRetryableProcessingError`):
+
+- `classification`: the classifier threw; no Gold was charged.
+- `label_write`: resolving or writing the label (with its archive) failed, and the classification
+  Gold was refunded (`applyLabelWithRefundOnFailure`). A retry classifies and charges again, so the
+  user pays once per labeled email.
+
+Not retryable: a failed refund (`label_write_refund_failed`, a retry would charge twice), and
+anything after the label was written (follow-up run, final audit write), which could otherwise create
+a task or charge Gold twice. Insufficient Gold leaves a pending retry pending without counting an
+attempt, because it never reaches the classifier.
+
+Pinned by `functions/Gmail/gmailLabelingFallbackAndRetry.test.js` (fallback choice, diagnostics,
+follow-up suppression, archive and unread settings, the retry/exhaustion cycle across real
+`syncGmailLabeling` runs on an in-memory Firestore) and the updated no-match cases in
+`serverSideGmailLabelingSync.test.js`.
 
 ## The email a task was created from opens the task's chat (AT-3022)
 

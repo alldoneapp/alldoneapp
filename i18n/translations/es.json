@@ -1901,6 +1901,7 @@
     "Gmail sync archived": "Archivados: %{count}",
     "Gmail sync gold spent": "Oro gastado: %{count}",
     "Gmail sync state": "Estado: %{state}",
+    "Gmail fallback label": "%{label} (alternativa, ninguna etiqueta coincidió)",
     "Gmail labeling settings saved.": "La configuración de etiquetado de Gmail se ha guardado.",
     "Gmail labeling settings saved": "La configuración de etiquetado de Gmail se ha guardado.",
     "Unsaved changes": "Cambios sin guardar",

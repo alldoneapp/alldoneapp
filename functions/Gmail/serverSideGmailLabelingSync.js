@@ -26,6 +26,7 @@ const { deductGold, refundGold } = require('../Gold/goldHelper')
 const { buildEmailCommentAuditPatch, reconcileEmailCommentReadState } = require('./emailCommentReadSync')
 const { getGmailPostLabelAllowedTools } = require('./gmailPostLabelTools')
 const {
+    DEFAULT_CONFIDENCE_THRESHOLD,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
     GMAIL_DIRECTION_SCOPE_BOTH,
@@ -66,7 +67,6 @@ const { Timestamp } = require('firebase-admin/firestore')
 
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
-const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
 // Minimum Gold a user must hold before we'll invoke the classifier LLM. The
 // actual billed cost is computed from the classifier's token usage AFTER the
 // call and deducted in a single ledger entry; see processSingleMessage for the
@@ -104,6 +104,35 @@ const DEFAULT_ADS_LABEL_DEFINITION = {
     autoArchive: false,
     postLabelPrompt: '',
 }
+
+// Every incoming email gets a label (AT-3102, decided with Karsten 2026-11-18). When the classifier
+// finds no label, or its pick is below the confidence threshold, the sync applies a fallback label
+// instead of leaving the email unlabeled:
+//   - `emailKind: 'newsletter'` → the built-in "Newsletter" label (a configured `newsletter` label wins);
+//   - anything else → the connection's default project label;
+//   - no default project label (custom prompt mode, default project archived/inactive/missing)
+//     → the built-in catch-all "Alldone/Other".
+// A fallback label never runs a label's follow-up prompt and never archives on its own.
+const FALLBACK_NEWSLETTER_LABEL_DEFINITION = {
+    key: 'newsletter',
+    gmailLabelName: 'Newsletter',
+    directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
+    autoArchive: false,
+    postLabelPrompt: '',
+}
+const FALLBACK_OTHER_LABEL_DEFINITION = {
+    key: 'alldone_other',
+    gmailLabelName: 'Alldone/Other',
+    directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
+    autoArchive: false,
+    postLabelPrompt: '',
+}
+const LABEL_SOURCE_CLASSIFIER = 'classifier'
+const LABEL_SOURCE_FALLBACK = 'fallback'
+// Total tries for an email whose classification or label write failed before any side effect
+// (the first run included). The audit record carries the count; the last failure is final.
+const MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS = 3
+const PROCESSING_RETRY_QUERY_LIMIT = 20
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -418,7 +447,62 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         prompt: appendLearnedRulesToPrompt(defaultConfig.prompt, config.learnedRules),
         labelDefinitions,
         userDescription,
+        // The project whose label is the fallback for an email no label matched (AT-3102).
+        defaultProjectId,
     }
+}
+
+function normalizeClassifierConfidenceThreshold(value) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 1) : DEFAULT_CONFIDENCE_THRESHOLD
+}
+
+// Why the classifier's result did not label the email, kept on the audit record next to the
+// fallback label so the original decision stays diagnosable.
+function getFallbackReason(classifierResult = {}, config = {}) {
+    if (classifierResult.matched) return 'missing_label_definition'
+    const confidence = Number(classifierResult.confidence)
+    if (
+        classifierResult.rawMatched === true &&
+        classifierResult.rawLabelKey &&
+        Number.isFinite(confidence) &&
+        confidence < normalizeClassifierConfidenceThreshold(config.confidenceThreshold)
+    ) {
+        return 'below_threshold'
+    }
+    return 'no_match'
+}
+
+/**
+ * The label an email gets when the classifier picked none (AT-3102): Newsletter for newsletters,
+ * the connection's default project label otherwise, and "Alldone/Other" when there is no default
+ * project label. The returned definition has no follow-up prompt and never archives by itself, so
+ * a fallback label adds no model run, no Gold and no project task; archiving still follows the
+ * user's unread settings.
+ */
+function resolveFallbackLabelDefinition({ config = {}, labelDefinitions = [], emailKind = null } = {}) {
+    const definitions = Array.isArray(labelDefinitions) ? labelDefinitions.filter(label => label?.key) : []
+    const asFallback = (definition, fallbackKind) => ({
+        ...definition,
+        autoArchive: false,
+        postLabelPrompt: '',
+        fallbackKind,
+    })
+
+    if (emailKind === 'newsletter') {
+        const configuredNewsletter = definitions.find(
+            label => label.key === FALLBACK_NEWSLETTER_LABEL_DEFINITION.key && label.gmailLabelName
+        )
+        return asFallback(configuredNewsletter || FALLBACK_NEWSLETTER_LABEL_DEFINITION, 'newsletter')
+    }
+
+    const defaultProjectId = typeof config.defaultProjectId === 'string' ? config.defaultProjectId.trim() : ''
+    const defaultProjectLabel = defaultProjectId
+        ? definitions.find(label => label.sourceProjectId === defaultProjectId && label.gmailLabelName)
+        : null
+    if (defaultProjectLabel) return asFallback(defaultProjectLabel, 'default_project')
+
+    return asFallback(FALLBACK_OTHER_LABEL_DEFINITION, 'other')
 }
 
 async function loadConfig(userId, projectId, gmailEmail = '') {
@@ -805,6 +889,92 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
             },
             { merge: true }
         )
+}
+
+// The audit record is also the "already processed" marker, so an email whose processing failed
+// would never be looked at again. A retryable failure (see markRetryableProcessingError) therefore
+// sets `processingErrorRetryPending`, which the sync queries on every run regardless of the history
+// cursor and the processed-marker check, until the email is processed or the attempts run out.
+async function loadProcessingRetryMessageIds(userId, projectId) {
+    const snapshot = await getMessagesAuditCollectionRef(userId, projectId)
+        .where('processingErrorRetryPending', '==', true)
+        .limit(PROCESSING_RETRY_QUERY_LIMIT)
+        .get()
+    return new Set(snapshot.docs.map(doc => doc.id))
+}
+
+function buildRetryExhaustedError() {
+    return `An email could not be labeled after ${MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS} attempts; see the processing errors in the audit log.`
+}
+
+function getPreviousProcessingAttempts(auditEntry) {
+    if (!auditEntry) return 0
+    if (auditEntry.processingErrorRetryPending !== true && auditEntry.skippedReason !== 'processing_error') return 0
+    const attempts = Number(auditEntry.processingAttempts)
+    return Number.isFinite(attempts) && attempts > 0 ? Math.floor(attempts) : 1
+}
+
+/**
+ * Writes the `processing_error` audit record for a failed email and decides whether a later sync
+ * retries it. Only errors marked retryable count toward a retry (nothing happened yet, or the label
+ * write failed and its Gold was refunded); anything after the label was written (follow-up, audit
+ * write) is final, because repeating it could create a task or charge Gold twice.
+ * `rawMessage` is null when the email could not even be fetched for its retry.
+ */
+async function recordMessageProcessingError({
+    userId,
+    projectId,
+    messageId,
+    rawMessage = null,
+    error,
+    syncRunId,
+    promptVersion,
+}) {
+    let previousEntry = null
+    try {
+        previousEntry = await loadAuditEntry(userId, projectId, messageId)
+    } catch (loadError) {
+        console.warn('[gmailLabeling] Could not load the audit record of a failed email', {
+            userId,
+            projectId,
+            messageId,
+            error: loadError.message,
+        })
+    }
+    const attempts = getPreviousProcessingAttempts(previousEntry) + 1
+    const retryable = error?.gmailLabelingRetryable === true
+    const retryPending = retryable && attempts < MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS
+    const retryExhausted = retryable && !retryPending
+    const patch = {
+        syncRunId,
+        selectedLabelKey: null,
+        selectedGmailLabelName: null,
+        autoArchive: false,
+        confidence: null,
+        reasoning: error?.message || 'Unknown Gmail labeling error',
+        applied: false,
+        archived: false,
+        skippedReason: 'processing_error',
+        processingStage: error?.gmailLabelingStage || null,
+        processingAttempts: attempts,
+        processingErrorRetryPending: retryPending,
+        processingErrorRetryExhausted: retryExhausted,
+        promptVersion,
+        postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
+    }
+
+    if (rawMessage) {
+        await writeAuditRecord(userId, projectId, normalizeGmailMessage(rawMessage), {
+            direction: getGmailMessageDirection(rawMessage),
+            ...patch,
+        })
+    } else {
+        await getMessagesAuditCollectionRef(userId, projectId)
+            .doc(messageId)
+            .set({ gmailMessageId: messageId, processedAt: Timestamp.now(), ...patch }, { merge: true })
+    }
+
+    return { attempts, retryable, retryPending, retryExhausted }
 }
 
 async function loadRecentAuditEntries(userId, projectId, limit = 20) {
@@ -1835,28 +2005,6 @@ async function writeDailyAdsLineForMessage({
     }
 }
 
-// Archives an email that matched no label because the user archives its kind automatically
-// (users/{uid}.unreadEmailSettings). A failure leaves the email in the inbox and its comment unread:
-// showing something the user wanted hidden is the safe side of that mistake.
-async function archiveMessageForUnreadSettings(gmail, normalizedMessage, logContext = {}) {
-    if (!normalizedMessage.labelIds.includes('INBOX')) return true
-    try {
-        await gmail.users.messages.modify({
-            userId: 'me',
-            id: normalizedMessage.messageId,
-            requestBody: { removeLabelIds: ['INBOX'] },
-        })
-        return true
-    } catch (error) {
-        console.warn('[gmailLabeling] Could not archive email for the unread settings', {
-            ...logContext,
-            messageId: normalizedMessage.messageId,
-            error: error.message,
-        })
-        return false
-    }
-}
-
 async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive, direction) {
     const shouldArchive = direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && autoArchive
     const removeLabelIds = shouldArchive && normalizedMessage.labelIds.includes('INBOX') ? ['INBOX'] : []
@@ -1872,6 +2020,85 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
     return {
         applied: true,
         archived: shouldArchive && removeLabelIds.includes('INBOX'),
+    }
+}
+
+// Marks an error that happened before any side effect (no follow-up ran, no Gold kept), so the sync
+// may process the email again on a later run (see recordMessageProcessingError).
+function markRetryableProcessingError(error, stage) {
+    const marked = error instanceof Error ? error : new Error(String(error || 'Unknown Gmail labeling error'))
+    marked.gmailLabelingRetryable = true
+    marked.gmailLabelingStage = stage
+    return marked
+}
+
+// Resolves the Gmail label and writes it (plus INBOX removal when archiving) in one call. On failure
+// the classification Gold is refunded and the error is retryable: the email then has no label and
+// no follow-up, so a retry can classify, charge and label it once. If the refund itself fails the
+// error is NOT retryable, so a retry can never charge the same email twice.
+async function applyLabelWithRefundOnFailure({
+    gmail,
+    labelMap,
+    normalizedMessage,
+    labelDefinition,
+    autoArchive,
+    direction,
+    classificationGoldSpent,
+    userId,
+    projectId,
+    goldProjectId,
+    model,
+    labelSource,
+}) {
+    try {
+        const labelId = await createOrGetGmailLabelId(gmail, labelMap, labelDefinition.gmailLabelName)
+        logSync('Applying Gmail label to message', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            threadId: normalizedMessage.threadId,
+            selectedLabelKey: labelDefinition.key,
+            selectedGmailLabelName: labelDefinition.gmailLabelName,
+            labelSource,
+            labelId,
+            autoArchive,
+            direction,
+        })
+        return await applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive, direction)
+    } catch (error) {
+        if (classificationGoldSpent > 0) {
+            try {
+                await refundGold(userId, classificationGoldSpent, {
+                    source: 'gmail_labeling',
+                    projectId: goldProjectId,
+                    objectId: normalizedMessage.messageId,
+                    channel: 'gmail',
+                    model: model || '',
+                    note: 'Refund real classifier cost after Gmail label apply failure',
+                })
+            } catch (refundError) {
+                console.error('[gmailLabeling] Could not refund gold after Gmail label apply failure', {
+                    userId,
+                    projectId,
+                    messageId: normalizedMessage.messageId,
+                    goldSpent: classificationGoldSpent,
+                    error: error.message,
+                    refundError: refundError.message,
+                })
+                error.gmailLabelingRetryable = false
+                error.gmailLabelingStage = 'label_write_refund_failed'
+                throw error
+            }
+        }
+        console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            refundedGold: classificationGoldSpent,
+            labelSource,
+            error: error.message,
+        })
+        throw markRetryableProcessingError(error, 'label_write')
     }
 }
 
@@ -1989,14 +2216,24 @@ async function processSingleMessage({
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
     if (existingAuditEntry?.threadContinuationPending) {
+        const storedDefinition =
+            config.labelDefinitions.find(label => label.key === existingAuditEntry.selectedLabelKey) || {}
         const action = await executePostLabelPrompt({
             userId,
             userData,
             normalizedMessage,
             gmailEmail,
             direction,
+            // A fallback label never runs the label's follow-up prompt, not on a replay either.
             selectedDefinition:
-                config.labelDefinitions.find(label => label.key === existingAuditEntry.selectedLabelKey) || {},
+                existingAuditEntry.labelSource === LABEL_SOURCE_FALLBACK
+                    ? {
+                          key: existingAuditEntry.selectedLabelKey || '',
+                          gmailLabelName: existingAuditEntry.selectedGmailLabelName || '',
+                          ...storedDefinition,
+                          postLabelPrompt: '',
+                      }
+                    : storedDefinition,
             connectionId: projectId,
             connectionProjectId: goldProjectId,
             selectedProjectId: existingAuditEntry.selectedProjectId,
@@ -2080,7 +2317,8 @@ async function processSingleMessage({
             messageId: normalizedMessage.messageId,
             error: error.message,
         })
-        throw error
+        // Nothing happened yet (no Gold, no label, no follow-up), so a later sync may try again.
+        throw markRetryableProcessingError(error, 'classification')
     }
 
     logSync('Classified Gmail message', {
@@ -2160,58 +2398,111 @@ async function processSingleMessage({
 
     const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
     if (!classifierResult.matched || !selectedDefinition) {
-        // No label to apply, but the user may still archive this kind of email automatically.
-        const archivedForUnreadSettings = shouldArchiveForUnreadSettings({
+        // Every email gets a label (AT-3102): no match, a below-threshold pick or an unknown label
+        // key gets the fallback label. The classifier's own decision stays on the audit record.
+        const fallbackDefinition = resolveFallbackLabelDefinition({
+            config,
+            labelDefinitions: eligibleLabelDefinitions,
+            emailKind,
+        })
+        const fallbackReason = getFallbackReason(classifierResult, config)
+        const fallbackProjectId =
+            typeof fallbackDefinition.sourceProjectId === 'string' && fallbackDefinition.sourceProjectId.trim()
+                ? fallbackDefinition.sourceProjectId.trim()
+                : null
+        // A fallback label never archives by itself (no label autoArchive, no "archive all labeled"):
+        // only the user's unread setting for newsletters and ads does, exactly as for unlabeled mail
+        // before. The archive rides on the same Gmail call as the label.
+        const archiveForUnreadSettings = shouldArchiveForUnreadSettings({
             userData,
+            labelKey: fallbackDefinition.key,
             emailKind,
             direction,
             followUpType,
             needsReply,
         })
-            ? await archiveMessageForUnreadSettings(gmail, normalizedMessage, { userId, projectId })
-            : false
+        const fallbackModifyResult = await applyLabelWithRefundOnFailure({
+            gmail,
+            labelMap,
+            normalizedMessage,
+            labelDefinition: fallbackDefinition,
+            autoArchive: archiveForUnreadSettings,
+            direction,
+            classificationGoldSpent,
+            userId,
+            projectId,
+            goldProjectId,
+            model: config?.model,
+            labelSource: LABEL_SOURCE_FALLBACK,
+        })
+        logSync('Applied fallback Gmail label', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            fallbackReason,
+            fallbackKind: fallbackDefinition.fallbackKind,
+            selectedGmailLabelName: fallbackDefinition.gmailLabelName,
+            classifierRawLabelKey: classifierResult.rawLabelKey || null,
+            confidence: classifierResult.confidence,
+            emailKind,
+        })
+        // The definition carries no follow-up prompt, so this only does what unlabeled mail always
+        // got: thread continuation, the thread topic and the "Daily ads" line. The selected project
+        // is not passed on, so the fallback label routes nothing into that project.
         const action = await executePostLabelPrompt({
             userId,
             userData,
             normalizedMessage,
             gmailEmail,
             direction,
-            selectedDefinition: {},
+            selectedDefinition: fallbackDefinition,
             connectionId: projectId,
             connectionProjectId: goldProjectId,
             followUpType,
             needsReply,
             emailKind,
-            archivedByLabeling: archivedForUnreadSettings,
-            suppressUnread: archivedForUnreadSettings,
+            archivedByLabeling: fallbackModifyResult.archived,
+            suppressUnread: archiveForUnreadSettings,
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
             direction,
-            selectedLabelKey: classifierResult.matched ? classifierResult.labelKey : null,
-            selectedGmailLabelName: null,
-            autoArchive: false,
+            selectedLabelKey: fallbackDefinition.key,
+            selectedGmailLabelName: fallbackDefinition.gmailLabelName,
+            selectedProjectId: fallbackProjectId,
+            selectedProjectSource: fallbackProjectId ? 'fallback_label' : null,
+            labelSource: LABEL_SOURCE_FALLBACK,
+            fallbackReason,
+            fallbackKind: fallbackDefinition.fallbackKind,
+            // The classifier's original decision, kept for diagnosis (the label above is not it).
+            classifierMatched: !!classifierResult.matched,
+            classifierLabelKey: classifierResult.labelKey || null,
+            classifierRawLabelKey: classifierResult.rawLabelKey || null,
+            classifierRawMatched: classifierResult.rawMatched === true,
+            autoArchive: archiveForUnreadSettings,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
             followUpType,
             needsReply,
             emailKind,
-            archivedForUnreadSettings,
+            archivedForUnreadSettings: archiveForUnreadSettings,
             consistencyCheck: classifierResult.consistencyCheck || null,
-            applied: false,
-            archived: archivedForUnreadSettings,
-            skippedReason: classifierResult.matched ? 'missing_label_definition' : 'no_match',
+            applied: fallbackModifyResult.applied,
+            archived: fallbackModifyResult.archived,
+            skippedReason: null,
+            processingErrorRetryPending: false,
             promptVersion,
             postLabelAction: action,
             threadContinuationPending: !!action.threadContinuationPending,
             ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
-            // An unlabeled ad still gets its "Daily ads" line; map it for the read sync (AT-2376).
+            // An ad under a fallback label still gets its "Daily ads" line; map it for the read sync (AT-2376).
             ...buildEmailCommentAuditPatch(action.createdChatCommentResults),
         })
         return {
-            labeled: 0,
-            archived: archivedForUnreadSettings ? 1 : 0,
-            skipped: 1,
+            labeled: 1,
+            fallbackLabeled: 1,
+            archived: fallbackModifyResult.archived ? 1 : 0,
+            skipped: 0,
             goldSpent: classificationGoldSpent + (action.goldSpent || 0),
             estimatedNormalGoldCost: estimatedNormalGoldCost + (action.estimatedNormalGoldCost || 0),
             insufficientGold: insufficientGoldForClassification,
@@ -2236,46 +2527,20 @@ async function processSingleMessage({
     const autoArchive =
         shouldAutoArchiveLabeledMessage(config, selectedDefinition, direction) || archiveForUnreadSettings
 
-    let labelId
-    let modifyResult
-    try {
-        labelId = selectedDefinition.gmailLabelName.startsWith(ALDDONE_MANAGED_LABEL_PREFIX)
-            ? await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
-            : await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
-
-        logSync('Applying Gmail label to message', {
-            userId,
-            projectId,
-            messageId: normalizedMessage.messageId,
-            threadId: normalizedMessage.threadId,
-            selectedLabelKey: selectedDefinition.key,
-            selectedGmailLabelName: selectedDefinition.gmailLabelName,
-            labelId,
-            autoArchive,
-            direction,
-        })
-
-        modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive, direction)
-    } catch (error) {
-        if (classificationGoldSpent > 0) {
-            await refundGold(userId, classificationGoldSpent, {
-                source: 'gmail_labeling',
-                projectId: goldProjectId,
-                objectId: normalizedMessage.messageId,
-                channel: 'gmail',
-                model: config?.model || '',
-                note: 'Refund real classifier cost after Gmail label apply failure',
-            })
-        }
-        console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
-            userId,
-            projectId,
-            messageId: normalizedMessage.messageId,
-            refundedGold: classificationGoldSpent,
-            error: error.message,
-        })
-        throw error
-    }
+    const modifyResult = await applyLabelWithRefundOnFailure({
+        gmail,
+        labelMap,
+        normalizedMessage,
+        labelDefinition: selectedDefinition,
+        autoArchive,
+        direction,
+        classificationGoldSpent,
+        userId,
+        projectId,
+        goldProjectId,
+        model: config?.model,
+        labelSource: LABEL_SOURCE_CLASSIFIER,
+    })
 
     const targetContactEmails =
         direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? getExternalRecipientEmails(normalizedMessage, gmailEmail) : ['']
@@ -2331,6 +2596,11 @@ async function processSingleMessage({
         applied: modifyResult.applied,
         archived: modifyResult.archived,
         skippedReason: null,
+        labelSource: LABEL_SOURCE_CLASSIFIER,
+        // A reprocessed email (force bootstrap) may carry an earlier fallback's fields; clear them.
+        fallbackReason: null,
+        fallbackKind: null,
+        processingErrorRetryPending: false,
         promptVersion,
         recipientEmails: targetContactEmails.filter(Boolean),
         postLabelAction: primaryPostLabelAction,
@@ -2525,7 +2795,20 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             .limit(20)
             .get()
         const pendingIds = new Set(pendingSnapshot.docs.map(doc => doc.id))
-        const fetchedMessages = await fetchMessagesByIds(gmail, [...new Set([...pendingIds, ...messageIds])])
+        // Emails whose label write (or classification) failed are retried a bounded number of
+        // times, past the history cursor and the processed marker (recordMessageProcessingError).
+        let retryIds = new Set()
+        try {
+            retryIds = await loadProcessingRetryMessageIds(userId, projectId)
+        } catch (error) {
+            console.warn('[gmailLabeling] Could not load emails pending a processing retry', {
+                ...logContext,
+                error: error.message,
+            })
+        }
+        const fetchedMessages = await fetchMessagesByIds(gmail, [
+            ...new Set([...pendingIds, ...retryIds, ...messageIds]),
+        ])
         logSync('Fetched Gmail messages by id', {
             ...logContext,
             syncMode,
@@ -2533,10 +2816,31 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             fetchedMessageCount: fetchedMessages.length,
         })
 
+        let syncLastError = null
+        const fetchedIds = new Set(fetchedMessages.map(message => message.id))
+        for (const messageId of retryIds) {
+            if (fetchedIds.has(messageId)) continue
+            // An email that cannot be fetched still uses up an attempt, so a deleted email ends.
+            const outcome = await recordMessageProcessingError({
+                userId,
+                projectId,
+                messageId,
+                error: markRetryableProcessingError(
+                    new Error('The Gmail message could not be fetched for its retry.'),
+                    'fetch'
+                ),
+                syncRunId: logContext.runId,
+                promptVersion: effectiveConfig.updatedAt || Timestamp.now(),
+            })
+            if (outcome.retryExhausted) syncLastError = buildRetryExhaustedError()
+        }
+
+        // Retries keep their place like failed continuations: the email already passed the
+        // candidate filter on its first run, the failure was ours.
         const candidateMessages = [
             ...new Map(
                 [
-                    ...fetchedMessages.filter(message => pendingIds.has(message.id)),
+                    ...fetchedMessages.filter(message => pendingIds.has(message.id) || retryIds.has(message.id)),
                     ...filterCandidateMessages(fetchedMessages, effectiveConfig),
                 ].map(message => [message.id, message])
             ).values(),
@@ -2561,7 +2865,10 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
               )
         const messagesToProcess = options.forceBootstrap
             ? candidateMessages
-            : candidateMessages.filter(message => pendingIds.has(message.id) || !processedMessageIds.has(message.id))
+            : candidateMessages.filter(
+                  message =>
+                      pendingIds.has(message.id) || retryIds.has(message.id) || !processedMessageIds.has(message.id)
+              )
 
         logSync('Prepared Gmail messages for processing', {
             ...logContext,
@@ -2569,6 +2876,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             candidateMessageCount: candidateMessages.length,
             alreadyProcessedCount: processedMessageIds.size,
             messageCountToProcess: messagesToProcess.length,
+            retryMessageCount: retryIds.size,
         })
 
         let labeled = 0
@@ -2576,7 +2884,6 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         let skipped = candidateMessages.length - messagesToProcess.length
         let goldSpent = 0
         let estimatedNormalGoldSpent = 0
-        let syncLastError = null
 
         for (const rawMessage of messagesToProcess) {
             try {
@@ -2633,22 +2940,22 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     error: error.message,
                 })
 
-                const normalizedMessage = normalizeGmailMessage(rawMessage)
-                const direction = getGmailMessageDirection(rawMessage)
-                await writeAuditRecord(userId, projectId, normalizedMessage, {
+                const outcome = await recordMessageProcessingError({
+                    userId,
+                    projectId,
+                    messageId: rawMessage.id,
+                    rawMessage,
+                    error,
                     syncRunId: logContext.runId,
-                    direction,
-                    selectedLabelKey: null,
-                    selectedGmailLabelName: null,
-                    autoArchive: false,
-                    confidence: null,
-                    reasoning: error.message,
-                    applied: false,
-                    archived: false,
-                    skippedReason: 'processing_error',
                     promptVersion: effectiveConfig.updatedAt || Timestamp.now(),
-                    postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
+                logSync('Recorded Gmail message processing error', {
+                    ...logContext,
+                    messageId: rawMessage.id,
+                    stage: error?.gmailLabelingStage || null,
+                    ...outcome,
+                })
+                if (outcome.retryExhausted) syncLastError = buildRetryExhaustedError()
                 skipped += 1
             }
         }
@@ -2911,7 +3218,10 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 }
 
 module.exports = {
+    FALLBACK_NEWSLETTER_LABEL_DEFINITION,
+    FALLBACK_OTHER_LABEL_DEFINITION,
     GmailSyncLockedError,
+    MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS,
     applyGmailLabelingModelMigration,
     applyGmailThreadLabelCorrection,
     buildThreadLabelModification,
@@ -2928,12 +3238,16 @@ module.exports = {
     getGmailLabelingLookupKeys,
     getDefaultAssistantIdForProject,
     getExternalRecipientEmails,
+    getFallbackReason,
     loadAuditEntry,
+    loadProcessingRetryMessageIds,
     loadConfig,
     processEnabledGmailLabelingConfigs,
     reconcileEmailCommentReadStateOnPollTick,
     processSingleMessage,
+    recordMessageProcessingError,
     resolveEffectiveGmailLabelingConfig,
+    resolveFallbackLabelDefinition,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantModel,
     resolvePostLabelAssistantContext,

@@ -111,7 +111,7 @@ jest.mock('../Email/emailThreadTopicStore', () => ({
 const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
-const { deductGold } = require('../Gold/goldHelper')
+const { deductGold, refundGold } = require('../Gold/goldHelper')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildConnectionId } = require('../Integrations/providerConnections')
@@ -285,7 +285,15 @@ describe('serverSideGmailLabelingSync helpers', () => {
             projectId: 'original-project',
             goldCost: 3,
         })
+        const gmail = {
+            users: {
+                messages: { modify: jest.fn().mockResolvedValue({}) },
+                labels: { create: jest.fn().mockResolvedValue({ data: { id: 'label-other' } }) },
+            },
+        }
         const result = await processSingleMessage({
+            gmail,
+            labelMap: new Map(),
             userId: 'u',
             userData: {},
             projectId: 'connection',
@@ -294,8 +302,14 @@ describe('serverSideGmailLabelingSync helpers', () => {
             rawMessage: { id: 'm2', threadId: 'thread', internalDate: '123', labelIds: [], payload: {} },
         })
         expect(result.goldSpent).toBeGreaterThanOrEqual(3)
+        // No labels and no default project: the catch-all fallback label (AT-3102).
+        expect(gmail.users.messages.modify).toHaveBeenCalledWith(
+            expect.objectContaining({ requestBody: { addLabelIds: ['label-other'], removeLabelIds: [] } })
+        )
         expect(auditSet).toHaveBeenCalledWith(
             expect.objectContaining({
+                selectedGmailLabelName: 'Alldone/Other',
+                labelSource: 'fallback',
                 taskCreated: expect.objectContaining({ taskId: 'original' }),
                 postLabelAction: expect.objectContaining({ status: 'completed' }),
             }),
@@ -1350,13 +1364,23 @@ describe('serverSideGmailLabelingSync helpers', () => {
             const result = await processWith(gmail, { unreadEmailSettings: { newsletter: 'archive' } })
 
             expect(result.archived).toBe(1)
+            expect(gmail.users.labels.create).toHaveBeenCalledWith(
+                expect.objectContaining({ requestBody: expect.objectContaining({ name: 'Newsletter' }) })
+            )
+            expect(gmail.users.messages.modify).toHaveBeenCalledTimes(1)
             expect(gmail.users.messages.modify).toHaveBeenCalledWith({
                 userId: 'me',
                 id: 'message-1',
-                requestBody: { removeLabelIds: ['INBOX'] },
+                requestBody: { addLabelIds: ['label-ads'], removeLabelIds: ['INBOX'] },
             })
             expect(auditSet).toHaveBeenCalledWith(
-                expect.objectContaining({ emailKind: 'newsletter', archivedForUnreadSettings: true, archived: true }),
+                expect.objectContaining({
+                    emailKind: 'newsletter',
+                    selectedGmailLabelName: 'Newsletter',
+                    labelSource: 'fallback',
+                    archivedForUnreadSettings: true,
+                    archived: true,
+                }),
                 { merge: true }
             )
         })
@@ -1454,7 +1478,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 )
             })
 
-            test('an unlabeled ad gets its line too, mapped for the read sync', async () => {
+            test('an ad no label matched gets the fallback label and its line, mapped for the read sync', async () => {
                 classifyGmailMessage.mockResolvedValue({
                     ...adClassification,
                     matched: false,
@@ -1471,7 +1495,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 )
                 expect(auditSet).toHaveBeenCalledWith(
                     expect.objectContaining({
-                        skippedReason: 'no_match',
+                        skippedReason: null,
+                        labelSource: 'fallback',
+                        fallbackReason: 'no_match',
+                        selectedGmailLabelName: 'Alldone/Other',
                         archivedForUnreadSettings: true,
                         emailCommentReadPending: true,
                     }),
@@ -1479,7 +1506,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 )
             })
 
-            test('an unlabeled newsletter without a prompt still gets no line', async () => {
+            test('a newsletter under the fallback label gets no line', async () => {
                 classifyGmailMessage.mockResolvedValue({
                     ...adClassification,
                     matched: false,
@@ -1506,7 +1533,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             })
         })
 
-        test('a failed archive keeps the newsletter in the inbox and unread', async () => {
+        test('a failed fallback label write (with its archive) refunds, runs nothing and is retryable', async () => {
             classifyGmailMessage.mockResolvedValue({
                 matched: false,
                 labelKey: null,
@@ -1516,16 +1543,25 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 emailKind: 'newsletter',
                 usage: { totalTokens: 100 },
             })
+            deductGold.mockResolvedValueOnce({ success: true })
             const gmail = buildGmail()
             gmail.users.messages.modify.mockRejectedValueOnce(new Error('quota'))
 
-            const result = await processWith(gmail, { unreadEmailSettings: { newsletter: 'archive' } })
-
-            expect(result.archived).toBe(0)
-            expect(auditSet).toHaveBeenCalledWith(
-                expect.objectContaining({ archivedForUnreadSettings: false, archived: false }),
-                { merge: true }
+            const error = await processWith(gmail, { unreadEmailSettings: { newsletter: 'archive' } }).catch(
+                caught => caught
             )
+
+            expect(error).toBeInstanceOf(Error)
+            expect(error.message).toBe('quota')
+            expect(error.gmailLabelingRetryable).toBe(true)
+            expect(error.gmailLabelingStage).toBe('label_write')
+            expect(refundGold).toHaveBeenCalledWith(
+                'user-1',
+                1,
+                expect.objectContaining({ source: 'gmail_labeling', objectId: 'message-1' })
+            )
+            expect(auditSet).not.toHaveBeenCalled()
+            expect(require('../Email/emailThreadContinuation').continueEmailThread).not.toHaveBeenCalled()
         })
     })
 
