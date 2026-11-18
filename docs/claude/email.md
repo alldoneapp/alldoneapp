@@ -183,6 +183,16 @@ or path breaks inside the column; the action icons sit at the top of the row (ne
 instead of centred, so they stay in the same place however tall a row gets. A line height or clamp
 on SocialText has to count the 6px word margins. Pinned by `UnreadMessageRow.test.js`.
 
+**The preview is capped by characters again (AT-3106, 2026-11-18).** The product owner then asked
+for a maximum length with "...": a row previews at most 320 characters (160 on a phone,
+`getUnreadSummaryLimit`) via `shortenUnreadSummary` in `unreadMessageTags.js`. The character limit
+is the only cap: still no line clamp and no height cap (see above). The cut falls between words,
+because mentions, hashtags, links and encoded images/attachments are single words and half of one
+renders as a broken chip or a wrong link; only a preview with no space at all is cut inside the
+word. `row.summary` stays whole: the row's accessibility label and the opened chat keep the full
+message. The chat list's per-topic previews (`ChatItemUnreadMessage`) are not shortened; they render
+the thread body on purpose. Pinned by `UnreadMessageRow.test.js` and `unreadMessageTags.test.js`.
+
 **Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
 email that needs a reply goes to Messages (UNIFIED_INBOX_PLAN.md), so an unread email comment is
 informational by construction. The classifier now also returns `emailKind` (`person`, `newsletter`,

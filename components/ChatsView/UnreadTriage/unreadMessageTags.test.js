@@ -15,6 +15,10 @@ import {
     getUnreadMessageTag,
     isEmailMessage,
     parseEmailCommentLine,
+    UNREAD_SUMMARY_CHARACTER_LIMIT,
+    UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE,
+    getUnreadSummaryLimit,
+    shortenUnreadSummary,
     sortRows,
     toOneLineSummary,
 } from './unreadMessageTags'
@@ -175,5 +179,55 @@ describe('toOneLineSummary', () => {
 
     test('copes with empty input', () => {
         expect(toOneLineSummary(undefined)).toBe('')
+    })
+})
+
+describe('shortenUnreadSummary (AT-3106)', () => {
+    test('uses 320 characters on a desktop and 160 on a phone', () => {
+        expect(UNREAD_SUMMARY_CHARACTER_LIMIT).toBe(320)
+        expect(UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE).toBe(160)
+        expect(getUnreadSummaryLimit(false)).toBe(320)
+        expect(getUnreadSummaryLimit(true)).toBe(160)
+    })
+
+    test('leaves a summary within the limit as it is', () => {
+        expect(shortenUnreadSummary('Hallo Karsten', 13)).toBe('Hallo Karsten')
+        expect(shortenUnreadSummary('x'.repeat(320))).toBe('x'.repeat(320))
+        expect(shortenUnreadSummary('')).toBe('')
+        expect(shortenUnreadSummary(undefined)).toBe('')
+    })
+
+    test('cuts a longer summary between words and closes it with "..."', () => {
+        expect(shortenUnreadSummary('eins zwei drei vier', 12)).toBe('eins zwei...')
+        expect(shortenUnreadSummary('eins zwei drei vier', 9)).toBe('eins zwei...')
+        expect(shortenUnreadSummary('eins zwei drei vier', 10)).toBe('eins zwei...')
+    })
+
+    test('drops a dangling separator before the dots', () => {
+        expect(shortenUnreadSummary('Erledigt, danach kommt mehr', 10)).toBe('Erledigt...')
+        expect(shortenUnreadSummary('Fertig - danach kommt mehr', 9)).toBe('Fertig...')
+    })
+
+    test('never keeps half of a mention, hashtag or link', () => {
+        const text = 'Bitte prüfen: https://alldone.app/projects/abc/tasks/def/properties und melden'
+        expect(shortenUnreadSummary(text, 40)).toBe('Bitte prüfen...')
+        expect(shortenUnreadSummary('Siehe #release-notes-november', 15)).toBe('Siehe...')
+    })
+
+    test('cuts inside the word only when the preview has no space at all', () => {
+        expect(shortenUnreadSummary('a'.repeat(30), 10)).toBe(`${'a'.repeat(10)}...`)
+    })
+
+    test('counts an emoji as one character and never splits it', () => {
+        expect(shortenUnreadSummary('😀😀😀😀', 3)).toBe('😀😀😀...')
+        expect(shortenUnreadSummary('ok 😀😀', 4)).toBe('ok...')
+    })
+
+    test('stays within limit + "..." for a long message', () => {
+        const long = 'Wort '.repeat(200).trim()
+        const preview = shortenUnreadSummary(long, 160)
+        expect(preview.endsWith('...')).toBe(true)
+        expect(preview.length).toBeLessThanOrEqual(163)
+        expect(long.startsWith(preview.slice(0, -3))).toBe(true)
     })
 })

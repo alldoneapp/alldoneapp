@@ -14,15 +14,23 @@ import { onOpenChat } from '../Utils/ChatHelper'
 import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
 import { runWithLastUnreadRedirect } from '../lastUnreadRedirect'
-import { UNREAD_TAG_ADS, UNREAD_TAG_LABEL_KEYS, UNREAD_TAG_PEOPLE } from './unreadMessageTags'
+import {
+    UNREAD_TAG_ADS,
+    UNREAD_TAG_LABEL_KEYS,
+    UNREAD_TAG_PEOPLE,
+    getUnreadSummaryLimit,
+    shortenUnreadSummary,
+} from './unreadMessageTags'
 
 const AVATAR_SIZE = 32
 
-// The row shows the whole message and grows with it (AT-3094, decided 2026-11-18): no character
-// limit, no line clamp, no height cap. The earlier cap (maxHeight 3 x body2.lineHeight, overflow
-// hidden) cut the third line in half, because SocialText's wrapped words carry 3px margins above
-// and below, so a wrapped line is 28px, not 22px. Do not reintroduce a fixed or maximum height here.
-// A token wider than the column (a long hash or path) breaks instead of pushing the actions out.
+// The row previews at most UNREAD_SUMMARY_CHARACTER_LIMIT characters (320, 160 on a phone) and ends
+// a longer message with "..." (AT-3106, decided 2026-11-18; see shortenUnreadSummary). The character
+// limit is the only cap: no line clamp and no height cap. The cap before AT-3094 (maxHeight
+// 3 x body2.lineHeight, overflow hidden) cut the third line in half, because SocialText's wrapped
+// words carry 3px margins above and below, so a wrapped line is 28px, not 22px. Do not reintroduce a
+// fixed or maximum height here. A token wider than the column (a long hash or path) breaks instead
+// of pushing the actions out.
 export const UNREAD_SUMMARY_WORD_STYLE = { whiteSpace: 'normal', maxWidth: '100%', overflowWrap: 'anywhere' }
 
 // The same link the thread's "Email" chip opens (GmailTag): the message in Gmail, account-aware.
@@ -53,7 +61,7 @@ export const formatRowTime = time => {
 }
 
 /**
- * One unread message in the unread list: who sent it, its tag, the whole message and three
+ * One unread message in the unread list: who sent it, its tag, a preview of the message and three
  * actions - archive (emails only), mark as read, open. Pressing the row opens it too.
  *
  * Archive goes through the chat list's shared archive (the same call and optimistic state as the
@@ -167,7 +175,7 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                     wrapText
                     projectId={projectId}
                 >
-                    {row.summary || ''}
+                    {shortenUnreadSummary(row.summary, getUnreadSummaryLimit(mobile))}
                 </SocialText>
             </View>
 

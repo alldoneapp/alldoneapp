@@ -99,6 +99,43 @@ export const getEmailRowContent = message => {
 // One line of plain text for the row's summary (the shared preview rule, see parseTextUtils).
 export const toOneLineSummary = value => stripMarkdownForPreview(value)
 
+// How much of a message a row previews (AT-3106, decided 2026-11-18): about three to four lines in
+// the desktop column, and half that on a phone, where a line holds about half as many characters.
+// Only the preview is shortened; the row's accessibility label and the opened chat keep the whole
+// message.
+export const UNREAD_SUMMARY_CHARACTER_LIMIT = 320
+export const UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE = 160
+export const UNREAD_SUMMARY_ELLIPSIS = '...'
+
+export const getUnreadSummaryLimit = mobile =>
+    mobile ? UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE : UNREAD_SUMMARY_CHARACTER_LIMIT
+
+/**
+ * The preview text of a row: the summary as it is when it fits, otherwise its first `limit`
+ * characters cut at a word boundary and closed with "...". Counted in code points, so an emoji is
+ * never split in half.
+ *
+ * The cut always falls between words, even when that drops a long last word: a mention, hashtag,
+ * link or encoded image/attachment is one word (see stripMarkdownForPreview), and half of one would
+ * render as a broken chip or a link to the wrong address. Only a preview without any space in its
+ * first `limit` characters (one giant token) is cut inside the word.
+ */
+export const shortenUnreadSummary = (value, limit = UNREAD_SUMMARY_CHARACTER_LIMIT) => {
+    const textValue = typeof value === 'string' ? value : ''
+    const characters = Array.from(textValue)
+    if (characters.length <= limit) return textValue
+
+    let cut = characters.slice(0, limit).join('')
+    // A cut right before a space already ends on a whole word.
+    if (!/\s/.test(characters[limit])) {
+        const lastSpace = cut.search(/\s\S*$/)
+        if (lastSpace > 0) cut = cut.slice(0, lastSpace)
+    }
+    // No dangling separator in front of the dots ("word, ..." / "word -...").
+    cut = cut.replace(/[\s.,;:!?\-–—]+$/u, '')
+    return `${cut}${UNREAD_SUMMARY_ELLIPSIS}`
+}
+
 export const getMessageTime = message => {
     const toMs = value => {
         if (typeof value === 'number') return value

@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import UnreadMessageRow, { UNREAD_SUMMARY_WORD_STYLE } from './UnreadMessageRow'
 import { buildUnreadRows } from './UnreadMessagesList'
+import { UNREAD_SUMMARY_CHARACTER_LIMIT, UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE } from './unreadMessageTags'
 
 jest.mock('react-redux', () => ({ useSelector: () => undefined }))
 jest.mock('../../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
@@ -63,8 +64,8 @@ const message = {
     commentText: LONG_MESSAGE,
 }
 
-const renderRow = ({ mobile }) => {
-    const [row] = buildUnreadRows('project-1', [chat], { [chat.id]: [message] })
+const renderRow = ({ mobile, commentText = LONG_MESSAGE }) => {
+    const [row] = buildUnreadRows('project-1', [chat], { [chat.id]: [{ ...message, commentText }] })
     let tree
     act(() => {
         tree = renderer.create(<UnreadMessageRow projectId="project-1" row={row} accessGranted mobile={mobile} />)
@@ -77,21 +78,38 @@ const findSocialText = tree =>
     tree.root.find(node => node.props.wrapText !== undefined && node.props.textStyle !== undefined)
 
 describe.each([
-    ['desktop', false],
-    ['mobile', true],
-])('a long unread message on %s (AT-3094)', (_, mobile) => {
-    it('hands SocialText the whole message, not a shortened summary', () => {
-        const { tree } = renderRow({ mobile })
+    ['desktop', false, UNREAD_SUMMARY_CHARACTER_LIMIT],
+    ['mobile', true, UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE],
+])('a long unread message on %s (AT-3094, AT-3106)', (_, mobile, limit) => {
+    it('previews at most the character limit and ends with "..."', () => {
+        const { tree, row } = renderRow({ mobile })
         const social = findSocialText(tree)
         const text = social.props.children
 
-        expect(text).toContain('Gepusht nach main')
-        expect(text.endsWith('LETZTES_WORT')).toBe(true)
-        expect(text).not.toContain('...')
-        // Plain text: the markdown heading marker is still stripped.
-        expect(text.startsWith('Pushed Gepusht')).toBe(true)
+        // The row data keeps the whole message; only the rendered preview is shortened.
+        expect(row.summary.endsWith('LETZTES_WORT')).toBe(true)
+        expect(row.summary.length).toBeGreaterThan(UNREAD_SUMMARY_CHARACTER_LIMIT)
+
+        expect(text.startsWith('Pushed Gepusht nach main')).toBe(true)
+        expect(text.endsWith('...')).toBe(true)
+        expect(text).not.toContain('LETZTES_WORT')
+        expect(text.length).toBeLessThanOrEqual(limit + '...'.length)
+        // Cut between words: what precedes the dots is the start of the whole message.
+        expect(row.summary.startsWith(text.slice(0, -3))).toBe(true)
+        expect(row.summary[text.length - 3]).toMatch(/[\s.,;:!?)-]/)
         expect(social.props.numberOfLines).toBeUndefined()
         expect(social.props.wrapText).toBe(true)
+    })
+
+    it('keeps the whole message in the accessibility label', () => {
+        const { tree } = renderRow({ mobile })
+        const rowNode = tree.root.find(node => node.props.testID === 'unread-row-c-long' && node.props.onPress)
+        expect(rowNode.props.accessibilityLabel).toContain('LETZTES_WORT')
+    })
+
+    it('shows a message within the limit unchanged, without dots', () => {
+        const { tree } = renderRow({ mobile, commentText: 'Kurze Nachricht: passt in die Zeile.' })
+        expect(findSocialText(tree).props.children).toBe('Kurze Nachricht: passt in die Zeile.')
     })
 
     it('puts no fixed or maximum height and no clipping on the text or the row', () => {
