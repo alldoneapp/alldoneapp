@@ -4167,6 +4167,25 @@ function buildDeterministicGmailChatCommentId(chatId = '', gmailContext = {}) {
     return `gmail-${crypto.createHash('sha1').update(`${chatId}:${messageId}`).digest('hex').slice(0, 24)}`
 }
 
+// The unread list's sender and tag for an email comment (see components/ChatsView/UnreadTriage).
+// Only non-empty values are written, so a comment from an older sync simply has no tag fields.
+const GMAIL_COMMENT_EMAIL_KINDS = new Set(['person', 'newsletter', 'notification', 'ads'])
+function buildGmailCommentTagFields(gmailContext = {}) {
+    const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+    const labelKey = text(gmailContext.labelKey, 120)
+    const labelName = text(gmailContext.labelName, 120)
+    const emailKind = GMAIL_COMMENT_EMAIL_KINDS.has(gmailContext.emailKind) ? gmailContext.emailKind : ''
+    const fromName = text(gmailContext.fromName, 200)
+    const fromEmail = text(gmailContext.fromEmail, 320).toLowerCase()
+    return {
+        ...(labelKey ? { labelKey } : {}),
+        ...(labelName ? { labelName } : {}),
+        ...(emailKind ? { emailKind } : {}),
+        ...(fromName ? { fromName } : {}),
+        ...(fromEmail ? { fromEmail } : {}),
+    }
+}
+
 function isInformationalGmailChatComment(gmailContext = {}) {
     return gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN && gmailContext?.followUpType === 'informational'
 }
@@ -4364,20 +4383,29 @@ async function addChatCommentFromAssistantTool({
             // Parsed List-Unsubscribe metadata ({ httpsUrl, mailto }) so the chat UI can
             // render an Unsubscribe action next to Archive. Omitted when the email has none.
             ...(gmailContext.unsubscribe ? { unsubscribe: gmailContext.unsubscribe } : {}),
+            // What the unread list shows as the row's sender and tag: the label the classifier
+            // picked, its emailKind (person/newsletter/notification/ads) and the From header.
+            ...buildGmailCommentTagFields(gmailContext),
         }
     }
 
+    // The user archives this kind of email automatically (users/{uid}.unreadEmailSettings): the
+    // labeling sync already took it out of the inbox, so the comment is stored as read - no unread
+    // notification and no "last assistant comment" pointer for the MyDay line.
+    const suppressUnread = gmailContext?.origin === 'gmail_label_follow_up' && gmailContext.suppressUnread === true
+
     await Promise.all([
         commentRef.set(commentData),
-        db.doc(`chatNotifications/${projectId}/${userId}/${commentId}`).set({
-            chatId: resolved.chatId,
-            chatType: 'topics',
-            followed: isFollowedNotification,
-            date: now,
-            creatorId: authorId,
-            creatorType: fromAssistant ? 'assistant' : 'user',
-            ...authorChannelFields,
-        }),
+        !suppressUnread &&
+            db.doc(`chatNotifications/${projectId}/${userId}/${commentId}`).set({
+                chatId: resolved.chatId,
+                chatType: 'topics',
+                followed: isFollowedNotification,
+                date: now,
+                creatorId: authorId,
+                creatorType: fromAssistant ? 'assistant' : 'user',
+                ...authorChannelFields,
+            }),
         db.doc(`chatObjects/${projectId}/chats/${resolved.chatId}`).set(
             {
                 lastEditionDate: now,
@@ -4411,6 +4439,7 @@ async function addChatCommentFromAssistantTool({
         ),
         // The "last assistant comment" pointers (MyDay assistant line) only follow an assistant's comment.
         fromAssistant &&
+            !suppressUnread &&
             db.doc(`users/${userId}`).update({
                 [`lastAssistantCommentData.${projectId}`]: {
                     objectType: 'topics',
@@ -13292,7 +13321,15 @@ async function getUserDescriptionContextMessage(projectId, userId) {
               .catch(() => null)
         : Promise.resolve(null)
 
-    const [userDoc, projectDoc] = await Promise.all([userDocPromise, projectDocPromise])
+    // AT-3072: the private profile kept up to date every night, for this user's own runs only.
+    const { getAssistantProfileContextLines } = require('../AssistantProfile/assistantProfileContext')
+    const profileLinesPromise = getAssistantProfileContextLines({ userId })
+
+    const [userDoc, projectDoc, profileLines] = await Promise.all([
+        userDocPromise,
+        projectDocPromise,
+        profileLinesPromise,
+    ])
 
     if (!userDoc?.exists) return ''
 
@@ -13330,6 +13367,8 @@ async function getUserDescriptionContextMessage(projectId, userId) {
             projectDescription || '(empty)'
         )
     }
+
+    if (profileLines.length > 0) lines.push('', ...profileLines)
 
     return lines.join('\n')
 }

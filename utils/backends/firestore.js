@@ -140,6 +140,11 @@ import {
     WIKI_FEED_OBJECTS_TYPE,
     generateWikiFeedObjectModel,
 } from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
+import {
+    ASSISTANT_PROFILE_FEED_OBJECT_TYPE,
+    generateAssistantProfileFeedObjectModel,
+    getAssistantProfileFeedObjectId,
+} from '../../functions/AssistantProfile/assistantProfileFeedModel'
 import { ARTIFACT_FEED_OBJECTS_TYPE, generateArtifactObjectModel } from '../../functions/Artifacts/artifactFeedModel'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
@@ -3960,6 +3965,10 @@ export function mapUserData(userId, user) {
             user.featureModelPreferences && typeof user.featureModelPreferences === 'object'
                 ? user.featureModelPreferences
                 : {},
+        // Newsletters and ads in Chats > Unread: shown, or archived by the Gmail labeling sync
+        // (components/ChatsView/UnreadTriage/unreadEmailSettings.js). Absent means show both.
+        unreadEmailSettings:
+            user.unreadEmailSettings && typeof user.unreadEmailSettings === 'object' ? user.unreadEmailSettings : {},
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],
@@ -6499,6 +6508,11 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         feedObject = generateAssistantObjectModel(lastChangeDate, assistant, objectId)
     } else if (objectType === WIKI_FEED_OBJECTS_TYPE) {
         feedObject = generateWikiFeedObjectModel(lastChangeDate)
+    } else if (objectType === ASSISTANT_PROFILE_FEED_OBJECT_TYPE) {
+        // Only the owner ever receives its entries, so only the owner's own object is rebuilt.
+        const { loggedUser } = store.getState()
+        if (!loggedUser?.uid || objectId !== getAssistantProfileFeedObjectId(loggedUser.uid)) return null
+        feedObject = generateAssistantProfileFeedObjectModel(lastChangeDate, loggedUser.uid)
     } else if (objectType === ARTIFACT_FEED_OBJECTS_TYPE) {
         // Required on use: the artifacts backend imports this file.
         const { getArtifactData } = require('./Artifacts/artifactsFirestore')

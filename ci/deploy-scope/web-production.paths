@@ -38,6 +38,7 @@
 ^ci/Dockerfile_web_bundler$
 ^ci/selectTargetedJestFiles\.js$
 ^ci/runWebTests\.js$
+^ci/listRelatedJestTests\.js$
 ^ci/web-test-smoke\.json$
 ^ci/jest\.web\.config\.js$
 ^ci/jestSetup\.js$

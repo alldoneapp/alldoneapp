@@ -136,6 +136,15 @@ class KnowledgeFirestoreDouble {
         const pending = []
         const transaction = {
             get: async ref => snapshotFor(ref.path, this.documents.get(ref.path)),
+            // Like Firestore, a create of an existing document fails the whole transaction.
+            create: (ref, data) => {
+                if (this.documents.has(ref.path)) {
+                    const error = new Error(`Document already exists: ${ref.path}`)
+                    error.code = 6
+                    throw error
+                }
+                pending.push(() => this.write(ref.path, data))
+            },
             set: (ref, data, options = {}) => pending.push(() => this.write(ref.path, data, options)),
             update: (ref, data) => pending.push(() => this.update(ref.path, data)),
             delete: ref => pending.push(() => this.documents.delete(ref.path)),
@@ -158,6 +167,11 @@ class KnowledgeQueryDouble {
         this.orders = orders
         this.limitValue = limitValue
         this.selectFields = selectFields
+    }
+
+    // collection('projects').doc(id), as shared helpers such as filterMemberProjectIds write it.
+    doc(id) {
+        return this.store.doc(`${this.collectionPath}/${id}`)
     }
 
     with(changes) {
