@@ -288,11 +288,6 @@
     border: 0;
     background: transparent;
 }
-/* AT-3085: with no reroll button after it (the roll of "Get a focus task") the content gets the same
-   padding on both sides, so icon and text sit in the middle of the pill. */
-.anna-focus-pill > .anna-focus-task:last-child {
-    padding-right: 12px;
-}
 .anna-focus-reroll {
     flex: none;
     display: inline-flex;
@@ -394,8 +389,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* One tick long: FAST_TICK_MS in AnnaFocusTask.js (AT-3085). */
-    animation: anna-focus-reel-fast 130ms ease-out both;
+    animation: anna-focus-reel-fast 70ms linear both;
 }
 .anna-focus-rolling-slow .anna-focus-reel-item {
     animation: anna-focus-reel-slow 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;

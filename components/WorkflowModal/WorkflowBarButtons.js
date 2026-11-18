@@ -17,6 +17,10 @@ export const getWorkflowBarActionLabels = ({ currentStep, backwardStepName, forw
         backwardAction,
         forwardLabel: withTarget(forwardAction, forwardStepName),
         backwardLabel: withTarget(backwardAction, backwardStepName),
+        // What the buttons show: the destination step itself; the arrow already says which way.
+        // Only a destination without a name falls back to the action text.
+        forwardTitle: forwardStepName || forwardAction,
+        backwardTitle: backwardStepName || backwardAction,
     }
 }
 
@@ -25,9 +29,10 @@ export const getWorkflowBarActionLabels = ({ currentStep, backwardStepName, forw
  *
  * Same moves and the same visibility rules as `MainButtons` (no Back on Open, no Forward on Done),
  * but 32px tall and on the same row as the current-step selector instead of a 52px two-line pair
- * under it. On desktop both buttons name their destination ("Send forward: Check what AI did");
- * on narrow screens Back shrinks to an arrow and Forward keeps its action text, so the main next
- * action stays readable. The full "action: destination" text is always the accessible name.
+ * under it. Each button shows only the name of the step it moves the task to, behind an arrow
+ * ("← AI: please build", "→ Check what AI did"): the words "Send back" / "Send forward" cost the
+ * room the step name needs. On narrow screens Back shrinks to its arrow and Forward keeps the step
+ * name. The full "action: destination" text is always the accessible name.
  */
 export default function WorkflowBarButtons({
     currentStep,
@@ -38,7 +43,7 @@ export default function WorkflowBarButtons({
     forwardStepName,
     hideForwardButton = false,
 }) {
-    const { forwardAction, backwardLabel, forwardLabel } = getWorkflowBarActionLabels({
+    const { backwardLabel, forwardLabel, backwardTitle, forwardTitle } = getWorkflowBarActionLabels({
         currentStep,
         backwardStepName,
         forwardStepName,
@@ -54,7 +59,7 @@ export default function WorkflowBarButtons({
                     icon={'arrow-left'}
                     iconSize={16}
                     iconGap={6}
-                    title={narrow ? null : backwardLabel}
+                    title={narrow ? null : backwardTitle}
                     disabled={disabled}
                     onPress={() => onDonePress(WORKFLOW_BACKWARD)}
                     buttonStyle={[localStyles.button, !narrow && localStyles.labelledButton]}
@@ -72,7 +77,7 @@ export default function WorkflowBarButtons({
                     icon={'arrow-right'}
                     iconSize={16}
                     iconGap={6}
-                    title={narrow ? forwardAction : forwardLabel}
+                    title={forwardTitle}
                     disabled={disabled}
                     onPress={() => onDonePress(WORKFLOW_FORWARD)}
                     buttonStyle={[localStyles.button, localStyles.labelledButton]}

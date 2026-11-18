@@ -1,4 +1,4 @@
-import { findKey, includes } from 'lodash'
+import { findKey, includes, orderBy } from 'lodash'
 import moment from 'moment'
 import momentTz from 'moment-timezone'
 
@@ -83,7 +83,6 @@ import {
     previewProjectJoin,
 } from '../../../utils/backends/Users/usersFirestore'
 import { generateSortIndex } from '../../../utils/backends/firestore'
-import { sortProjectsInListOrder } from '../../../functions/shared/projectListOrder'
 import { normalizeGoalMilestonesConfig } from '../../../utils/GoalMilestonesHelper'
 
 export const PROJECT_COLORS = {
@@ -817,8 +816,13 @@ class ProjectHelper {
         return sortedNormalAndGuideProjectIds
     }
 
-    // AT-3085: the one project-list order, shared with the focus-task pick (app and server).
-    static sortProjects = (projects, userId) => sortProjectsInListOrder(projects, userId)
+    static sortProjects = (projects, userId) => {
+        return orderBy(
+            projects,
+            [project => project.sortIndexByUser[userId], project => project.name.toLowerCase()],
+            ['desc', 'asc']
+        )
+    }
 
     static projectHasContactStatuses = projectId => {
         const project = ProjectHelper.getProjectById(projectId)

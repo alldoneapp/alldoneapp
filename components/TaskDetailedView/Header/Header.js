@@ -14,6 +14,7 @@ import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 import { TASK_HEADER_BOTTOM_PADDING, TASK_HEADER_TITLE_GAP } from './headerLayout'
+import { useTaskChatShowsWorkflowBar } from '../TaskChatWorkflowControls'
 
 import { themed } from '../../../Themes/colorMode'
 
@@ -34,17 +35,21 @@ const Header = ({
     const taskTitleInEditMode = useSelector(state => state.taskTitleInEditMode)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
+    const showsWorkflowBar = useTaskChatShowsWorkflowBar(projectId, task)
+    // The fullscreen chat's assistant line (close, assistant, gold) gives way to the workflow bar
+    // right under it: with workflow buttons there, the header is just the title.
+    const showAssistantLine = isFullscreen && selectedTab === DV_TAB_TASK_CHAT && accessGranted && !showsWorkflowBar
     return (
         <View
             style={[
                 localStyles.container,
                 isFullscreen && { paddingBottom: 8 },
-                // AT-3081: only the fullscreen assistant bar still reserves its height; the regular
+                // AT-3081: only the fullscreen assistant line still reserves its height; the regular
                 // header is exactly as tall as its two rows.
-                isFullscreen && accessGranted && localStyles.fullscreenAssistantContainer,
+                showAssistantLine && localStyles.fullscreenAssistantContainer,
             ]}
         >
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: showAssistantLine ? 16 : 8 }]}>
                 {inlineBackButton && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton projectId={projectId} task={task} />
@@ -89,7 +94,7 @@ const Header = ({
                     />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && accessGranted && (
+            {showAssistantLine && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}

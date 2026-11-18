@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux'
 import Header from './Header'
 import SharedHelper from '../../../utils/SharedHelper'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
+import { useTaskChatShowsWorkflowBar } from '../TaskChatWorkflowControls'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: jest.fn() }))
@@ -18,10 +19,12 @@ jest.mock('../../UIControls/DVHamburgButton', () => () => null)
 jest.mock('../../../assets/svg/SVGGenericUser', () => () => null)
 jest.mock('../../Icon', () => () => null)
 jest.mock('../../ChatsView/ChatDV/BotLine/BotLine', () => 'BotLine')
+jest.mock('../TaskChatWorkflowControls', () => ({ useTaskChatShowsWorkflowBar: jest.fn(() => false) }))
 
 const task = { id: 'task-1', name: 'Shared task' }
 
-const renderHeader = (isFullscreen, accessGranted) => {
+const renderHeader = (isFullscreen, accessGranted, showsWorkflowBar = false) => {
+    useTaskChatShowsWorkflowBar.mockReturnValue(showsWorkflowBar)
     useSelector.mockImplementation(selector =>
         selector({
             loggedUser: { isAnonymous: !accessGranted },
@@ -79,5 +82,23 @@ describe('compact task header (AT-3081)', () => {
         expect(headerStyle.minHeight).toBe(0)
         expect(headerStyle.paddingBottom).toBe(12)
         expect(StyleSheet.flatten(titleRow.props.style).paddingBottom).toBe(8)
+    })
+})
+
+describe('fullscreen chat header with a workflow bar', () => {
+    it('drops the assistant line and its reserved height when the workflow bar is shown', () => {
+        const tree = renderHeader(true, true, true)
+        const [header, titleRow] = tree.root.findAllByType(View)
+
+        expect(tree.root.findAllByType('BotLine')).toHaveLength(0)
+        expect(StyleSheet.flatten(header.props.style).minHeight).toBe(0)
+        expect(StyleSheet.flatten(titleRow.props.style).paddingBottom).toBe(8)
+        expect(useTaskChatShowsWorkflowBar).toHaveBeenCalledWith('project-1', task)
+    })
+
+    it('keeps the assistant line for a task without workflow buttons', () => {
+        const tree = renderHeader(true, true, false)
+
+        expect(tree.root.findAllByType('BotLine')).toHaveLength(1)
     })
 })

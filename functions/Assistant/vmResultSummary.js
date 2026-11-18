@@ -134,8 +134,6 @@ async function summarizeVmResultForChat({
     objectType = 'tasks',
     taskLabel = '',
     language = '',
-    // The Gold history label. A template run's summary (AT-3082) is not a VM summary.
-    goldSource = VM_RESULT_SUMMARY_GOLD_SOURCE,
     db = admin.firestore(),
     complete = defaultComplete,
     settle = defaultSettle,
@@ -158,7 +156,7 @@ async function summarizeVmResultForChat({
 
         // The completion ran, so it is paid for even when its answer turned out unusable.
         await settle(userId, calculateSummaryGold(totalTokens, tokensPerGold(VM_RESULT_SUMMARY_MODEL_KEY)), {
-            source: goldSource || VM_RESULT_SUMMARY_GOLD_SOURCE,
+            source: VM_RESULT_SUMMARY_GOLD_SOURCE,
             channel: 'assistant',
             projectId,
             objectId,

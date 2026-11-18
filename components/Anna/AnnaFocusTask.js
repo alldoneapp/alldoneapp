@@ -12,13 +12,10 @@ const NOTICE_MS = 4000
 // AT-3067: the slot-machine roll while a focus task is being searched. It rolls fast for at least
 // MIN_TICKS, keeps rolling until the pick has answered and (for a pick) the new task is shown, at
 // most LAND_WAIT_TICKS after the answer, then slows down over SLOW_TICKS_MS and lands.
-// AT-3085: the names flickered by every 70 ms, too fast to read; they now change every 130 ms with
-// about the same overall length (MIN_TICKS ≈ 1 s, LAND_WAIT_TICKS ≈ 3.1 s). The reel item's CSS
-// slide-in (anna-focus-reel-fast in anna.css) lasts one tick, so keep the two in step.
-export const FAST_TICK_MS = 130
-export const MIN_TICKS = 8
-export const LAND_WAIT_TICKS = 24
-export const SLOW_TICKS_MS = [170, 230, 300, 380]
+export const FAST_TICK_MS = 70
+export const MIN_TICKS = 14
+export const LAND_WAIT_TICKS = 45
+export const SLOW_TICKS_MS = [110, 160, 230, 320]
 export const LANDING_MS = 700
 const MAX_REEL_NAMES = 30
 
@@ -152,10 +149,7 @@ export default function AnnaFocusTask({ onOpen }) {
                         <Icon name="crosshair" size={16} color="currentColor" />
                     </span>
                     <span className="anna-focus-reel" aria-hidden="true">
-                        {/* AT-3085: keyed by the text, so the item only slides in when the text changes.
-                            Keyed by the tick, the static "Finding a focus task…" restarted its slide-in
-                            from above on every tick and so sat above the pill's middle most of the time. */}
-                        <span key={name} className="anna-focus-reel-item">
+                        <span key={reduced ? 'static' : tick} className="anna-focus-reel-item">
                             {name}
                         </span>
                     </span>

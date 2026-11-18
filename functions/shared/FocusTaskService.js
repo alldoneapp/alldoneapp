@@ -21,7 +21,6 @@ const {
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
 const { isTaskOnUserPlate } = require('./focusTaskEligibility')
-const { orderProjectIdsForFocusSearch } = require('./projectListOrder')
 const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
 const { compareTasksByCalendarPlacement } = require('./calendarTaskOrder')
 const {
@@ -533,25 +532,52 @@ class FocusTaskService {
             }
             const userData = userDoc.data()
 
-            // AT-3085: the user's project list order (the sidebar's, functions/shared/projectListOrder.js),
-            // shared with the app's pick. `activeProjects` already carries each `sortIndexByUser`.
-            // - If a projectId was provided (one of the user's own projects), search it first
-            // - Else start at the top of the project list
-            // A foreign id falls through to the same choice as no id at all.
-            const startProjectId =
-                currentProjectId && userProjectIds.includes(currentProjectId) ? currentProjectId : null
-            const projectSearchOrder = orderProjectIdsForFocusSearch({
-                listedProjects: activeProjects,
-                userId,
-                startProjectId,
-            })
-            const searchProjectId = projectSearchOrder[0] || userData.defaultProjectId || userProjectIds[0]
+            // Choose initial project to search:
+            // - If a projectId was provided, honor it
+            // - Else prefer the user's top-sorted project (by sortIndexByUser desc)
+            // - Fallbacks: user's default project, then first user project
+            let searchProjectId
+            // Only one of the user's own projects is a starting point; a foreign id falls through
+            // to the same choice as no id at all.
+            if (currentProjectId && userProjectIds.includes(currentProjectId)) {
+                searchProjectId = currentProjectId
+            } else {
+                try {
+                    const projectDocs = await Promise.all(
+                        userProjectIds.map(pid => this.options.database.collection('projects').doc(pid).get())
+                    )
 
-            console.log('FocusTaskService: Selected initial project for focus search', {
-                searchProjectId,
-                method: startProjectId ? 'current_project' : 'top_of_project_list',
-                totalProjects: userProjectIds.length,
-            })
+                    const projectsWithSortIndex = projectDocs
+                        .map((doc, index) => {
+                            if (doc.exists) {
+                                const data = doc.data()
+                                const sortIndexByUser = data.sortIndexByUser?.[userId] || 0
+                                return { id: userProjectIds[index], sortIndexByUser }
+                            }
+                            return { id: userProjectIds[index], sortIndexByUser: 0 }
+                        })
+                        .sort((a, b) => b.sortIndexByUser - a.sortIndexByUser)
+
+                    const topProjectId = projectsWithSortIndex.length > 0 ? projectsWithSortIndex[0].id : null
+                    searchProjectId = topProjectId || userData.defaultProjectId || userProjectIds[0]
+
+                    console.log('FocusTaskService: Selected initial project for focus search', {
+                        searchProjectId,
+                        method: topProjectId
+                            ? 'top_sorted'
+                            : userData.defaultProjectId
+                              ? 'default_project'
+                              : 'first_user_project',
+                        totalProjects: userProjectIds.length,
+                    })
+                } catch (projectSortError) {
+                    console.warn(
+                        'FocusTaskService: Failed to compute top-sorted project, using fallback:',
+                        projectSortError.message
+                    )
+                    searchProjectId = userData.defaultProjectId || userProjectIds[0]
+                }
+            }
 
             // Apply user's timezone for accurate time-based task selection
             const currentTime = this.applyTimezone(this.options.moment(), timezoneOffset)
@@ -581,8 +607,7 @@ class FocusTaskService {
             const nowMs = currentTime.valueOf()
             const calendarDueDateWindow = getCalendarFocusDueDateWindow(nowMs)
 
-            // In list order, so of two equally good calendar tasks the one higher in the list wins.
-            for (const projectId of projectSearchOrder) {
+            for (const projectId of userProjectIds) {
                 try {
                     const calendarQuery = this.options.database
                         .collection(`items/${projectId}/tasks`)
@@ -714,11 +739,52 @@ class FocusTaskService {
                 }
             }
 
-            // Phase 3: Search across the other projects in project-list order (AT-3085)
+            // Phase 3: Search across other user projects (sorted by user preference)
             // Note: When excludeTaskId is provided (force new), selects random from top 10 candidates for variety
-            const sortedOtherProjectIds = projectSearchOrder.filter(projectId => projectId !== searchProjectId)
+            const otherUserProjectIds = userProjectIds.filter(projectId => projectId !== searchProjectId)
 
-            if (sortedOtherProjectIds.length > 0) {
+            if (otherUserProjectIds.length > 0) {
+                // Fetch project metadata to get sortIndexByUser for proper ordering
+                let sortedOtherProjectIds = otherUserProjectIds
+
+                try {
+                    const projectDocs = await Promise.all(
+                        otherUserProjectIds.map(projectId =>
+                            this.options.database.collection('projects').doc(projectId).get()
+                        )
+                    )
+
+                    // Build project data with sortIndexByUser
+                    const projectsWithSortIndex = projectDocs
+                        .map((doc, index) => {
+                            if (doc.exists) {
+                                const data = doc.data()
+                                const sortIndexByUser = data.sortIndexByUser?.[userId] || 0
+                                return {
+                                    id: otherUserProjectIds[index],
+                                    sortIndexByUser,
+                                }
+                            }
+                            return {
+                                id: otherUserProjectIds[index],
+                                sortIndexByUser: 0,
+                            }
+                        })
+                        .sort((a, b) => b.sortIndexByUser - a.sortIndexByUser) // Sort descending (higher priority first)
+
+                    sortedOtherProjectIds = projectsWithSortIndex.map(p => p.id)
+
+                    console.log(
+                        `FocusTaskService: Sorted ${sortedOtherProjectIds.length} other projects by user preference for ${userId}`
+                    )
+                } catch (projectSortError) {
+                    console.warn(
+                        'FocusTaskService: Failed to sort projects by user preference, using original order:',
+                        projectSortError.message
+                    )
+                    // Fall back to original order if sorting fails
+                }
+
                 // Search through projects in sorted order (highest priority first)
                 for (const projectId of sortedOtherProjectIds) {
                     try {

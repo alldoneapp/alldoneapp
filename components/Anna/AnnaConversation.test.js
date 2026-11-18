@@ -423,18 +423,6 @@ describe('no project chip in the composer (AT-3055) and Templates beside the + (
         )
     })
 
-    it('names this chat as the origin, so a template announces its new task here (AT-3082)', () => {
-        render({
-            conversation: { projectId: 'p2', id: 'AnnaChat20261118u1', assistantId: 'a1' },
-            assistant: { uid: 'a1', displayName: 'Anna' },
-        })
-        expect(mockTemplates.originConversation).toEqual({
-            projectId: 'p2',
-            objectType: 'topics',
-            objectId: 'AnnaChat20261118u1',
-        })
-    })
-
     it('shows Templates as an icon in a narrow composer', () => {
         const originalObserver = global.ResizeObserver
         const observers = []

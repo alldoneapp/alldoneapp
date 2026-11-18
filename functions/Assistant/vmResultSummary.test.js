@@ -83,12 +83,6 @@ describe('summarizeVmResultForChat', () => {
         expect(VM_RESULT_SUMMARY_GOLD_SOURCE).toBe('vm_result_summary')
     })
 
-    test('a caller can bill under its own Gold source (AT-3082 template results)', async () => {
-        const { promise, settle } = run({ goldSource: 'task_result_summary' })
-        await promise
-        expect(settle.mock.calls[0][2].source).toBe('task_result_summary')
-    })
-
     test('starts no paid call while the balance is 0 or below', async () => {
         for (const gold of [0, -5, undefined]) {
             const { promise, complete, settle } = run({ db: makeDb({ gold }) })
