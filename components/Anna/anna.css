@@ -706,7 +706,10 @@
 }
 .anna-activity-notice a {
     position: relative;
-    display: block;
+    /* AT-3087: the type badge is a column of its own left of the content. */
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -744,8 +747,39 @@
 .anna-activity-content {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
     min-width: 0;
     gap: 3px;
+}
+/* AT-3087: every card shows what it is about (task, note, goal, chat, …) as a small grey badge
+   left of its title. Grey on purpose: blue is for the action labels and links, red for unread, and
+   the ✓✓ read button sits at the top right; a type never reads as a status or an action. The
+   badge is centred on the title line, also when the "Project · Actor" line sits above it. Anna
+   tokens only (--anna-border fill, --anna-muted glyph), so light and dark mode both follow. Two
+   classes, so .anna-context-notice span's flex: 1 never stretches it. */
+.anna-activity-card > .anna-activity-type {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    margin-top: -1px;
+    border-radius: 50%;
+    background: var(--anna-border);
+    color: var(--anna-muted);
+    font-size: 12px;
+    line-height: 1;
+}
+.anna-activity-card.anna-activity-card-has-meta > .anna-activity-type {
+    margin-top: 17px;
+}
+.anna-activity-card > .anna-activity-type[data-icon]::before {
+    /* Decorative: the badge's aria-label names the type. */
+    content: attr(data-icon);
+    content: attr(data-icon) / '';
+    font-family: alldone;
 }
 /* Title and time share the first line; a long title ellipsises, the time never wraps. */
 .anna-activity-head {
