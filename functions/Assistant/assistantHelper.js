@@ -148,6 +148,7 @@ const {
     collectDelegatedTaskHandoffs,
     ensureDelegatedTaskLinksInResponse,
     withDelegatedTaskLink,
+    removeCurrentThreadLinks,
 } = require('./delegatedTaskLinks')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { resolveThreadAssistantModel } = require('./threadAssistantModel')
@@ -10950,6 +10951,13 @@ async function executeToolNativelyImpl(
                 const tracksWorkInTasks = !!(
                     toolRuntimeContext?.annaConversation || toolRuntimeContext?.chatTaskTracking
                 )
+                // The conversation this tool answers in. Work that continues in it gets no link to it
+                // (AT-3096 follow-up: "the result will appear here: <link to this task>").
+                const currentVmCallerThread = {
+                    projectId: toolRuntimeContext?.projectId || projectId,
+                    objectType: toolRuntimeContext?.objectType || 'tasks',
+                    objectId: toolRuntimeContext?.objectId || '',
+                }
                 let effectiveProjectId = projectId
                 let effectiveObjectType = tracksWorkInTasks ? 'tasks' : toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = tracksWorkInTasks ? '' : toolRuntimeContext?.objectId || ''
@@ -11093,7 +11101,11 @@ async function executeToolNativelyImpl(
                             retryAs: { requestUserId, runtime: toolRuntimeContext },
                             reactivation: doneTaskReactivationOptions,
                         })
-                        if (managed) return withDelegatedTaskLink(managed, { baseUrl: getBaseUrl() })
+                        if (managed)
+                            return withDelegatedTaskLink(managed, {
+                                baseUrl: getBaseUrl(),
+                                currentThread: currentVmCallerThread,
+                            })
                     }
                     await resolveWorkAssistant(null, target.assignedAssistantId)
 
@@ -11154,7 +11166,7 @@ async function executeToolNativelyImpl(
                                 message: hostThread.delegation.handoffInstruction,
                                 responsibleAssistant: hostThread.responsibleAssistant,
                             },
-                            { baseUrl: getBaseUrl() }
+                            { baseUrl: getBaseUrl(), currentThread: currentVmCallerThread }
                         )
                     }
                     await resolveWorkAssistant(hostThread.responsibleAssistant)
@@ -11175,7 +11187,11 @@ async function executeToolNativelyImpl(
                         retryAs: { requestUserId, runtime: toolRuntimeContext },
                         reactivation: doneTaskReactivationOptions,
                     })
-                    if (managed) return withDelegatedTaskLink(managed, { baseUrl: getBaseUrl() })
+                    if (managed)
+                        return withDelegatedTaskLink(managed, {
+                            baseUrl: getBaseUrl(),
+                            currentThread: currentVmCallerThread,
+                        })
                 }
 
                 // A run sent into another existing thread (continuing an earlier VM run, or a task
@@ -11335,6 +11351,7 @@ async function executeToolNativelyImpl(
                     originObjectId:
                         toolRuntimeContext?.originObjectId || (tracksWorkInTasks ? toolRuntimeContext.objectId : ''),
                     originAssistantId: toolRuntimeContext?.originAssistantId || (tracksWorkInTasks ? assistantId : ''),
+                    callerThread: currentVmCallerThread,
                 })
                 if (doneTaskPlan && vmResult.success) {
                     // The VM record exists now, so the reopened AI step parks on it instead of running
@@ -11771,7 +11788,10 @@ async function storeChunks(
             )
             // AT-3096: a VM handed to another task is linked in the introduction itself, which stays
             // frozen while the VM runs; a later follow-up with the result is linked at finalization.
-            if (!vmHandoffInThread && host?.projectId) {
+            // A VM in this very thread gets no link to it, not even one the model wrote.
+            if (vmHandoffInThread) {
+                vmHandoffText = removeCurrentThreadLinks(vmHandoffText, { projectId, objectType, objectId }) || fallback
+            } else if (host?.projectId) {
                 vmHandoffText = ensureVmHostThreadLinksInResponse(
                     vmHandoffText,
                     [

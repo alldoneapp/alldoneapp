@@ -12406,6 +12406,62 @@ describe('Anna VM message order', () => {
             target.mockRestore()
         }
     })
+    // AT-3096 follow-up, reported 2026-11-18 in task Q2XA2dxekAsf9QjI24yS (AT-3093): the user asked in
+    // the delegated task's own chat to retry; execute_task_in_vm joined that same task (workflow_managed)
+    // and the reply said "The result will appear here: <link to this very task>".
+    test('a retry asked for in the delegated task’s own chat gets no link to that task', async () => {
+        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
+        const otherUrl = 'https://my.alldone.app/projects/presentation-project/tasks/other-task/chat'
+        documents.set('items/presentation-project/tasks/presentation-task', {
+            userId: 'presentation-user',
+            executionMode: 'workflow',
+            stepHistory: [-1, '~delegation-work', '~delegation-review'],
+            taskMetadata: {
+                delegation: {
+                    ownerId: 'presentation-user',
+                    assistantId: 'presentation-assistant',
+                    requiresReview: true,
+                },
+            },
+        })
+        mockResponsesCreate.mockResolvedValueOnce(
+            textResponse(
+                'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+                    `foreground—no merge or deployment. The result will appear here:\n\n${selfUrl}\n\nRelated: ${otherUrl}`
+            )
+        )
+
+        const answer = await run({ handoff_message: undefined })
+
+        expect(start).not.toHaveBeenCalled()
+        // What the model was given: no URL of the task it is answering in.
+        const toolOutput = mockResponsesCreate.mock.calls[0][0].input.find(
+            item => item.type === 'function_call_output' && item.call_id === 'launch-vm'
+        )
+        expect(JSON.parse(toolOutput.output)).toMatchObject({
+            status: 'workflow_managed',
+            continuesInCurrentConversation: true,
+        })
+        expect(toolOutput.output).not.toContain('/tasks/presentation-task/chat')
+        // What was stored: the self-link the model wrote anyway is gone, a link to another task stays.
+        expect(answer).toBe(
+            'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+                `foreground—no merge or deployment. The result will appear here.\n\nRelated: ${otherUrl}`
+        )
+        expect(messages()).toEqual([expect.objectContaining({ commentText: answer, isLoading: false })])
+    })
+    test('a VM started in this task keeps no link to this task in its frozen introduction', async () => {
+        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
+
+        // The default startVmJob mock asserts the frozen introduction is exactly `intro`.
+        expect(await run({ handoff_message: `${intro}\n\n${selfUrl}` })).toBe(intro)
+        expect(start).toHaveBeenCalledWith(
+            expect.objectContaining({
+                callerThread: { projectId: 'presentation-project', objectType: 'tasks', objectId: 'presentation-task' },
+            })
+        )
+    })
     test('a launch failure has its own Anna message and leaves the introduction intact', async () => {
         start.mockResolvedValueOnce({ success: false, message: 'The VM is unavailable.' })
         mockResponsesCreate.mockResolvedValueOnce(textResponse('The VM is unavailable. Please try again later.'))
