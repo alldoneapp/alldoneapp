@@ -13,6 +13,9 @@
  *
  * A VM the user started on a task of their own stays in the task chat and the bell.
  *
+ * The fixed words are in the asking user's app language (noticeLanguage.js, AT-3082); the VM's own
+ * questions, plan and reason are shown as the VM wrote them.
+ *
  * One line per question: the job remembers the request it announced, and a question that was
  * already answered is not announced.
  */
@@ -21,6 +24,7 @@ const admin = require('firebase-admin')
 
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
+const { loadNoticeLanguage, noticeText, quoteNotice } = require('./noticeLanguage')
 
 const QUESTION_MAX = 300
 const PLAN_SNIPPET_MAX = 600
@@ -32,37 +36,37 @@ const clip = (value, max) => {
     return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
 }
 
-const describeTask = task => {
+const describeTask = (task, language = 'en') => {
     if (!task) return ''
     const name = text(task.extendedName) || text(task.name)
-    if (task.humanReadableId && name) return `${task.humanReadableId} “${name}”`
-    return task.humanReadableId || (name ? `“${name}”` : '')
+    if (task.humanReadableId && name) return `${task.humanReadableId} ${quoteNotice(language, name)}`
+    return task.humanReadableId || (name ? quoteNotice(language, name) : '')
 }
 
-function buildVmInputNoticeText({ interaction, agentLabel, task, link }) {
-    const agent = text(agentLabel) || 'The VM'
-    const subject = describeTask(task)
-    const on = subject ? ` on ${subject}` : ''
+function buildVmInputNoticeText({ interaction, agentLabel, task, link, language = 'en' }) {
+    const agent = text(agentLabel) || noticeText(language, 'vmInput.agent')
+    const subject = describeTask(task, language)
+    const on = subject ? noticeText(language, 'vmInput.on', { subject }) : ''
     const lines = []
 
     if (interaction?.kind === 'plan_review') {
-        lines.push(`🗒️ ${agent} prepared a plan${on} and waits for your review before it runs.`)
+        lines.push(noticeText(language, 'vmInput.plan', { agent, on }))
         const plan = clip(interaction.plan, PLAN_SNIPPET_MAX)
         if (plan) lines.push('', plan)
     } else if (interaction?.kind === 'tool_approval') {
         const tool = clip(interaction.toolName, 120)
-        lines.push(`🔐 ${agent} needs your approval${on} before it continues${tool ? `: ${tool}` : ''}.`)
+        lines.push(noticeText(language, 'vmInput.approval', { agent, on, tool: tool ? `: ${tool}` : '' }))
         const reason = clip(interaction.reason, REASON_MAX)
         if (reason) lines.push('', reason)
     } else {
-        lines.push(`💬 ${agent} needs your input${on} before it continues.`)
+        lines.push(noticeText(language, 'vmInput.input', { agent, on }))
         const questions = (Array.isArray(interaction?.questions) ? interaction.questions : [])
             .map(question => clip(question?.question || question?.header, QUESTION_MAX))
             .filter(Boolean)
         if (questions.length) lines.push('', ...questions.map(question => `• ${question}`))
     }
 
-    lines.push('', `Answer it in the task chat: ${link}`)
+    lines.push('', noticeText(language, 'vmInput.answer', { link }))
     return lines.join('\n')
 }
 
@@ -125,7 +129,8 @@ async function notifyVmInputNeededInOrigin({
         if (!claimed) return false
 
         const link = `${getBaseUrl()}${buildVmChatPath(pending.projectId, pending.objectType || 'tasks', pending.objectId)}`
-        const message = buildVmInputNoticeText({ interaction, agentLabel, task, link })
+        const language = await loadNoticeLanguage(db, pending.userId)
+        const message = buildVmInputNoticeText({ interaction, agentLabel, task, link, language })
 
         const { createInitialStatusMessage } = require('./assistantStatusHelper')
         await createInitialStatusMessage(

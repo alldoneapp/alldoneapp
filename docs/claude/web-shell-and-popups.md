@@ -912,6 +912,12 @@ header rows and a one-row workflow bar.
   desktop gutter) and the TASK/SUBTASK chip all read their offsets from there, so they stay on
   the first title line. Change the constant, not one of the three components. The 140px
   `minHeight` now applies only to the fullscreen chat header that shows `BotLine`.
+- **No assistant line over the workflow bar (2026-11-18).** The fullscreen chat header shows
+  `BotLine` (close, assistant, gold) only when the task has no workflow bar.
+  `useTaskChatShowsWorkflowBar` (in `TaskChatWorkflowControls.js`) applies the same rule as
+  `getCommentPopupWorkflowTargets`, which decides whether the bar renders. Without `BotLine` the
+  reader leaves fullscreen by scrolling to either end of the thread
+  (`resolveChatFullscreenChange`).
 - **What stays in the metadata row:** project, task ID, recurrence and estimation chips, Copy link
   and the assistant button. Search, Open view in new window and the default **Project-wide**
   visibility live in the "⋯" menu (`TaskHeaderOverflowButton` → `TaskHeaderOverflowModal`). A
@@ -922,10 +928,39 @@ header rows and a one-row workflow bar.
 - **Workflow bar:** `TaskChatWorkflowControls` passes `layout="bar"` to
   `CommentPopupWorkflowControls`. It renders the current-step selector and
   `WorkflowModal/WorkflowBarButtons` (32px Back/Forward) on one row, and the step list opens
-  under it. On a phone the selector drops its "Current step:" prefix and Back becomes an arrow.
-  The full "action: destination" text is always the accessible name. The comment popup still
+  under it. The buttons show only the destination step name behind an arrow, not "Send back" /
+  "Send forward" (the action word is the fallback when a step has no name). On a phone the selector
+  drops its "Current step:" prefix and Back becomes an arrow. The full "action: destination" text
+  is always the accessible name. The comment popup still
   uses the stacked `MainButtons` panel, so leave `layout` unset there. Tests:
   `CommentPopupWorkflowControls.test.js` (slim bar block), `WorkflowBarButtons.test.js`,
   `TagListSharedActions.test.js`, `TaskHeaderOverflow*.test.js`, `HeaderSharedChat.test.js`.
 - `accessibilityHint` is dropped by react-native-web 0.21. Use `accessibilityState` (`expanded`)
   or the label instead.
+
+## Assistant header focus pick: project-list order, calmer reel (AT-3085, 2026-11-18)
+
+- **Order:** "Get a focus task" and "Show a different focus task" (`AnnaFocusTask`) walk the
+  projects from the **top of the user's project list** (the sidebar order). Before this they started
+  in the project of the last focus task, often the default project ("Privat") at the bottom of
+  the list. Both call the app's `findAndSetNewFocusedTask` with `fromTopOfList: true`, which
+  skips the "stay in the current project" phase. Completing or postponing a focus task still
+  searches its own project first, then walks the list.
+- **One order everywhere:** `functions/shared/projectListOrder.js` is the only implementation. It
+  sorts by `sortIndexByUser[uid]` (highest first), then by name. A project with no sort index sorts
+  first, as lodash `orderBy` always did. `ProjectHelper.sortProjects` (sidebar), the app pick and
+  `FocusTaskService.findAndSetNewFocusTask` all use it. The app searches the listed active projects
+  first, then other member projects (guide, archived) as the last fallback; the server only
+  searches active projects. A project with no task due today is skipped, eligibility
+  (`isTaskOnUserPlate`, due today, no calendar task) is unchanged, and an imminent calendar task
+  still beats everything. Do not reintroduce a `|| 0` sort: it sends projects without an index to
+  the end and breaks parity with the sidebar. Tests: `projectListOrder.test.js` (functions),
+  lodash parity in `ProjectHelper.test.js`, `focusListOrder.test.js`, and the AT-3085 block in
+  `FocusTaskService.test.js`.
+- **Reel timing:** names change every `FAST_TICK_MS` = 130 ms (was 70 ms; too fast to read), with
+  about the same total length: `MIN_TICKS` ≈ 1 s, `LAND_WAIT_TICKS` ≈ 3.1 s. The CSS slide-in
+  `anna-focus-reel-fast` lasts one tick, so change both together.
+- **Centring:** the reel item is keyed by its **text**, not by the tick. Keyed by the tick, the static
+  "Finding a focus task…" restarted its slide-in from above on every tick and so sat above the
+  pill's middle most of the time. The rolling pill without a reroll button pads both sides by
+  12px (`.anna-focus-pill > .anna-focus-task:last-child`).

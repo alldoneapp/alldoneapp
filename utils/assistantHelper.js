@@ -279,7 +279,8 @@ const createTopicForPreConfigTask = async (
     assistantId,
     prompt,
     aiSettings,
-    taskMetadata
+    taskMetadata,
+    originConversation = null
 ) => {
     const { loggedUser } = store.getState()
 
@@ -370,6 +371,9 @@ const createTopicForPreConfigTask = async (
             aiSettings,
             taskMetadata,
             messageId,
+            // AT-3082: the Anna chat the template was started from hears about the new task. The
+            // server accepts only the caller's own Anna chat and reads its assistant itself.
+            ...(originConversation ? { originConversation } : {}),
         }
 
         const clientSubmissionTime = Date.now()
@@ -482,6 +486,7 @@ export const executePreConfigPromptForTask = ({
     name,
     aiSettings,
     taskMetadata = null,
+    originConversation = null,
 }) => {
     const executionKey = `${projectId}:${taskId}`
     if (activePreConfigPromptTaskExecutions.has(executionKey)) return Promise.resolve(false)
@@ -520,7 +525,8 @@ export const executePreConfigPromptForTask = ({
                 assistantId,
                 prompt,
                 resolvedAiSettings,
-                mergedTaskMetadata
+                mergedTaskMetadata,
+                originConversation
             )
         })
         .catch(error => {
@@ -542,7 +548,7 @@ export const generateTaskFromPreConfig = async (
     taskMetadata = null,
     options = {}
 ) => {
-    const { skipNavigation = false, waitForDirectRun = true } = options
+    const { skipNavigation = false, waitForDirectRun = true, originConversation = null } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     // Preconfigured prompts created before execution modes existed always ran directly.
     const requestedExecutionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
@@ -704,6 +710,7 @@ export const generateTaskFromPreConfig = async (
                 name,
                 aiSettings: resolvedAiSettings,
                 taskMetadata: mergedMetadata,
+                originConversation,
             })
 
             // Old Functions deployments do not return taskCompletion, while a transient server
