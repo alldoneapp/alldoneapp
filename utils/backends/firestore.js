@@ -3907,7 +3907,7 @@ export function mapTaskData(taskId, task) {
         // VM session status only for these tasks (AT-2907).
         hasVmSession: task.hasVmSession === true,
         // The workflow runner's state for the current AI step (functions/Tasks/workflowAiStep.js).
-        // AssistantWorkflowRunTag reads it on the row, and its "Needs attention" button is how a
+        // TaskExecutionStatusTag reads it on the row, and its "Needs attention" button is how a
         // failed step is retried. It was missing here until 2026-11-18, so that tag never appeared.
         workflowAiStatus: task.workflowAiStatus || null,
     }
