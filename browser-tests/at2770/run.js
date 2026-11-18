@@ -61,27 +61,21 @@ async function main() {
             const original = await start.elementHandle()
             for (const layout of ['split', 'chat', 'alldone', 'split']) {
                 await page.evaluate(layout => window.layout(layout), layout)
-                if (layout === 'chat') {
-                    await page.waitForFunction(
-                        () =>
-                            getComputedStyle(
-                                document
-                                    .querySelector('[data-testid="startNewDayButton"]')
-                                    .closest('[data-testid="workspace-overlay-layer"]')
-                            ).visibility === 'hidden'
+                // AT-3083: visible in every layout. App mode keeps the pane; Assistant
+                // (chat) and Both (split) cover the whole window, the chat included.
+                await start.waitFor({ state: 'visible' })
+                assert.equal(await start.count(), 1)
+                assert(
+                    await original.evaluate(
+                        node => node === document.querySelector('[data-testid="startNewDayButton"]')
                     )
-                    assert.equal(await start.isVisible(), false)
-                } else {
-                    await start.waitFor({ state: 'visible' })
-                    assert.equal(await start.count(), 1)
-                    assert(
-                        await original.evaluate(
-                            node => node === document.querySelector('[data-testid="startNewDayButton"]')
-                        )
-                    )
-                    const box = await start.boundingBox()
-                    assert(box.x >= (layout === 'split' ? Math.floor(width * 0.4) : 0))
-                    assert(box.x + box.width <= width + 1)
+                )
+                const box = await start.boundingBox()
+                assert(box.x >= 0 && box.x + box.width <= width + 1)
+                if (layout !== 'alldone') {
+                    const overlay = await page.getByTestId('newDayPopup').boundingBox()
+                    assert(overlay.x <= 1 && overlay.y <= 1)
+                    assert(overlay.width >= width - 1 && overlay.height >= 899)
                 }
             }
             await page.screenshot({ path: path.join(output, `new-day-${width}.png`) })

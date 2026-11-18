@@ -11,7 +11,6 @@ import { MIN_URLS_IN_HISTORY } from '../../../URLSystem/URLTrigger'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import { getDvLink } from '../../../utils/LinkingHelper'
 import SharedHelper from '../../../utils/SharedHelper'
-import { TASK_HEADER_TITLE_ROW_HEIGHT, TASK_HEADER_TOP_SPACING } from './headerLayout'
 
 import { themed } from '../../../Themes/colorMode'
 
@@ -41,11 +40,10 @@ export default function BackButton({ projectId, task }) {
     )
 }
 
-// The arrow row lines up with the first title row, so both read the compact header rhythm.
 const localStyles = StyleSheet.create({
     upperContainer: {
         width: 57,
-        height: TASK_HEADER_TOP_SPACING,
+        height: 32,
         backgroundColor: themed.Surface,
     },
     bottomContainer: {
@@ -53,13 +51,13 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         width: 57,
-        height: TASK_HEADER_TITLE_ROW_HEIGHT,
+        height: 32,
         backgroundColor: themed.Surface,
         borderRightWidth: 1,
         borderRightColor: colors.Gray300,
     },
     touchableContainer: {
         width: 57,
-        height: TASK_HEADER_TOP_SPACING + TASK_HEADER_TITLE_ROW_HEIGHT,
+        height: 64,
     },
 })

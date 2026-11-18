@@ -13,7 +13,6 @@ import Icon from '../../Icon'
 import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
-import { TASK_HEADER_BOTTOM_PADDING, TASK_HEADER_TITLE_GAP } from './headerLayout'
 
 import { themed } from '../../../Themes/colorMode'
 
@@ -39,9 +38,7 @@ const Header = ({
             style={[
                 localStyles.container,
                 isFullscreen && { paddingBottom: 8 },
-                // AT-3081: only the fullscreen assistant bar still reserves its height; the regular
-                // header is exactly as tall as its two rows.
-                isFullscreen && accessGranted && localStyles.fullscreenAssistantContainer,
+                isFullscreen && !accessGranted && localStyles.sharedChatContainer,
             ]}
         >
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
@@ -109,21 +106,19 @@ const Header = ({
 export default Header
 
 const localStyles = StyleSheet.create({
-    // Compact header (AT-3081): row 1 is the title, row 2 the avatar, project, task ID and the
-    // primary actions. The old 140px floor and 32px/24px paddings are gone.
     container: {
-        minHeight: 0,
+        minHeight: 140,
         flexDirection: 'column',
         justifyContent: 'space-between',
-        paddingBottom: TASK_HEADER_BOTTOM_PADDING,
+        paddingBottom: 24,
     },
-    fullscreenAssistantContainer: {
-        minHeight: 140,
+    sharedChatContainer: {
+        minHeight: 0,
     },
     upperHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingBottom: TASK_HEADER_TITLE_GAP,
+        paddingBottom: 32,
     },
     bottomHeader: {
         flexDirection: 'row',

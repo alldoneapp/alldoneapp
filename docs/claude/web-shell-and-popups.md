@@ -617,6 +617,21 @@ pane changes size: drafts must survive desktop/sheet transitions. Browser covera
 `browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
 resize, mobile and zoom-in). System status-bar paint remains outside this scope.
 
+**The new-day popup covers the whole window in Assistant and Both (AT-3083, 2026-11-18).** Decided
+with the product owner. `EndDayStatisticsModal` used to sit in the pane-scoped
+`WorkspaceOverlayLayer` next to `UndoActionBar`. Whenever the assistant hid the Alldone pane
+(Assistant mode, Both on a phone or narrow window with the chat in front, the browser/VM screen)
+that layer was `visibility: hidden`: the popup was mounted, held the daily reload
+(`dayReloadCoordinator.hold()`) and could not be seen. It is now mounted once in `AppContent`
+through `NewDayPopupHost`, which reads `useAnnaLayout()`: App (`alldone`) keeps the pane; `chat`
+and `split` pass `fullWindow` to its own `WorkspaceOverlayLayer` (browser window, even while the
+pane is visible beside the chat) and to the modal, which then sizes its card, compact layout and
+safe-area padding from the window (`newDayPopupScope.js`), not from the pane-following redux flags
+and modal helpers. One instance for every layout, so Both never shows two and a layout switch keeps
+its state. Eligibility, timing and dismissal are unchanged. Pinned by `NewDayPopupHost.test.js`,
+`newDayPopupScope.test.js`, the AT-3083 cases in `__tests__/AppContentGlobalDialogs.test.js` and
+`__tests__/FloatModals/EndDayStatisticsModal.test.js`, and `browser-tests/at2770`.
+
 **The workspace frame in Both is the chat card's fine line (AT-3065, 2026-11-17).** Decided with
 the product owner: AT-2911's 6px `--anna-bezel` frame and 24-48px gutters looked heavy beside the
 chat card. The bezel (`--anna-workspace-bezel`) is now 1px in `--anna-border`, the chat card's
@@ -867,31 +882,3 @@ sidebar and Settings. XP, levels and skill points are still tracked and shown in
 ("Aufgaben" / "Tareas"); `Done tasks` ("erledigte Aufgaben") stays on the statistics pages, the export
 and the charts, which share that key. Pinned by `TopBarStatisticArea.test.js`, `TopBarMobile.test.js`
 and `AnnaTopStrip.test.js`.
-
-## Compact task header and slim workflow bar (AT-3081, 2026-11-17)
-
-The task detailed view used to spend ~250px before the first chat message. It now has two tight
-header rows and a one-row workflow bar.
-
-- **Header rhythm lives in `components/TaskDetailedView/Header/headerLayout.js`.** The title
-  spacer (`TITLE_UPPER_SPACER_HEIGHT`), the back arrow (inline on mobile/tablet, absolute in the
-  desktop gutter) and the TASK/SUBTASK chip all read their offsets from there, so they stay on
-  the first title line. Change the constant, not one of the three components. The 140px
-  `minHeight` now applies only to the fullscreen chat header that shows `BotLine`.
-- **What stays in the metadata row:** project, task ID, recurrence and estimation chips, Copy link
-  and the assistant button. Search, Open view in new window and the default **Project-wide**
-  visibility live in the "⋯" menu (`TaskHeaderOverflowButton` → `TaskHeaderOverflowModal`). A
-  **private** task keeps its visibility chip in the row, because a restricted audience must stay
-  visible. The menu's visibility entry swaps in the same `PrivacyModal` the chip opens, with the
-  same lock rules (assistant tasks, guide members, shared viewers).
-  `DetailViewHeaderTags` accepts `privacyTag={null}` and then reserves no width for it.
-- **Workflow bar:** `TaskChatWorkflowControls` passes `layout="bar"` to
-  `CommentPopupWorkflowControls`. It renders the current-step selector and
-  `WorkflowModal/WorkflowBarButtons` (32px Back/Forward) on one row, and the step list opens
-  under it. On a phone the selector drops its "Current step:" prefix and Back becomes an arrow.
-  The full "action: destination" text is always the accessible name. The comment popup still
-  uses the stacked `MainButtons` panel, so leave `layout` unset there. Tests:
-  `CommentPopupWorkflowControls.test.js` (slim bar block), `WorkflowBarButtons.test.js`,
-  `TagListSharedActions.test.js`, `TaskHeaderOverflow*.test.js`, `HeaderSharedChat.test.js`.
-- `accessibilityHint` is dropped by react-native-web 0.21. Use `accessibilityState` (`expanded`)
-  or the label instead.

@@ -3,7 +3,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { execFileSync } = require('child_process')
-const { resolveSuites, run, shardFromEnv, inShard } = require('../../ci/runWebTests')
+const { resolveSuites, run } = require('../../ci/runWebTests')
 const smokePaths = require('../../ci/web-test-smoke.json')
 
 describe('web test execution gate', () => {
@@ -147,131 +147,6 @@ describe('web test execution gate', () => {
         const runProcess = processRunner({ discoveryFails: true })
         expect(run({ root, runProcess })).toBe(0)
         expect(runProcess.mock.calls.at(-1)[1]).not.toContain('--runTestsByPath')
-    })
-
-    // `parallel: N` in .gitlab-ci.yml starts N copies of the job. Run in one process on a
-    // 2-vCPU runner the suite took nine minutes while the web build was done after three and a half.
-    describe('split over parallel copies of the job', () => {
-        const TOTAL = 4
-        const quiet = fn => {
-            const log = jest.spyOn(console, 'log').mockImplementation(() => {})
-            try {
-                return fn()
-            } finally {
-                log.mockRestore()
-            }
-        }
-        const suitesRun = runProcess => {
-            const args = runProcess.mock.calls.at(-1)[1]
-            const index = args.indexOf('--runTestsByPath')
-            return index < 0 || args.includes('--listTests') ? null : args.slice(index + 1)
-        }
-        // Every copy's share, in order; null for a copy that ran no Jest suite process.
-        const shares = runnerFor =>
-            Array.from({ length: TOTAL }, (_, i) => {
-                const runProcess = runnerFor(i + 1)
-                expect(quiet(() => run({ root, runProcess, shard: { index: i + 1, total: TOTAL } }))).toBe(0)
-                return suitesRun(runProcess)
-            })
-        const everySuite = () => [...smoke, own, dependent, sourceGuard]
-
-        it('reads the copy number GitLab sets and stays whole without it', () => {
-            expect(shardFromEnv({})).toBeNull()
-            // What GitLab sets for a job without `parallel`: a total of 1 and no index.
-            expect(shardFromEnv({ CI_NODE_TOTAL: '1' })).toBeNull()
-            expect(shardFromEnv({ CI_NODE_TOTAL: '1', CI_NODE_INDEX: '1' })).toBeNull()
-            expect(shardFromEnv({ CI_NODE_TOTAL: '4', CI_NODE_INDEX: '3' })).toEqual({ index: 3, total: 4 })
-            expect(() => shardFromEnv({ CI_NODE_TOTAL: '4', CI_NODE_INDEX: '5' })).toThrow('CI_NODE_INDEX')
-            expect(() => shardFromEnv({ CI_NODE_TOTAL: '4' })).toThrow('CI_NODE_INDEX')
-        })
-        it('is not split by the environment of the job these tests themselves run in', () => {
-            // The gate's own suite runs inside a split job, with CI_NODE_TOTAL set.
-            const saved = { total: process.env.CI_NODE_TOTAL, index: process.env.CI_NODE_INDEX }
-            process.env.CI_NODE_TOTAL = '4'
-            process.env.CI_NODE_INDEX = '2'
-            try {
-                writePlan(plan)
-                const runProcess = processRunner()
-                expect(run({ root, runProcess })).toBe(0)
-                expect(suitesRun(runProcess).sort()).toEqual([dependent, own].sort())
-            } finally {
-                for (const [key, value] of [
-                    ['CI_NODE_TOTAL', saved.total],
-                    ['CI_NODE_INDEX', saved.index],
-                ]) {
-                    if (value === undefined) delete process.env[key]
-                    else process.env[key] = value
-                }
-            }
-        })
-        it('runs every suite of the complete run exactly once across the copies', () => {
-            const parts = shares(() => processRunner())
-            const ran = parts.flatMap(part => part || [])
-            expect([...ran].sort()).toEqual(everySuite().sort())
-            expect(new Set(ran).size).toBe(ran.length)
-        })
-        it('runs every selected suite exactly once across the copies', () => {
-            writePlan(plan)
-            const ran = shares(() => processRunner()).flatMap(part => part || [])
-            expect([...ran].sort()).toEqual([dependent, own].sort())
-        })
-        it('lets a copy without any of the selected suites pass, and says so', () => {
-            writePlan(plan)
-            const empty = Array.from({ length: TOTAL }, (_, i) => i + 1).find(
-                index => ![own, dependent].some(file => inShard(root, file, { index, total: TOTAL }))
-            )
-            expect(empty).toBeDefined()
-            const runProcess = processRunner()
-            const log = jest.spyOn(console, 'log').mockImplementation(() => {})
-            try {
-                expect(run({ root, runProcess, shard: { index: empty, total: TOTAL } })).toBe(0)
-                expect(log.mock.calls.flat().join('\n')).toContain('the other parts run them')
-            } finally {
-                log.mockRestore()
-            }
-            expect(
-                runProcess.mock.calls.filter(([, args]) => !args.includes('--listTests') && args[0] !== 'rev-parse')
-            ).toHaveLength(0)
-        })
-        it('still covers its share of the selected suites when one copy falls back to every suite', () => {
-            // That copy's dependency discovery failed, the others' did not. Split by position
-            // in the list, its share of "every suite" would miss suites the others leave to it.
-            writePlan(plan)
-            const failing = 2
-            const discoveryFailsOnce = () => {
-                const working = processRunner()
-                let listed = 0
-                return jest.fn((command, args) => {
-                    if (command !== 'git' && args.includes('--listTests') && listed++ === 0) return { status: 1 }
-                    return working(command, args)
-                })
-            }
-            const parts = shares(index => (index === failing ? discoveryFailsOnce() : processRunner()))
-            const ran = parts.flatMap(part => part || [])
-            expect(ran).toEqual(expect.arrayContaining([own, dependent]))
-            for (const file of everySuite())
-                expect((parts[failing - 1] || []).includes(file)).toBe(
-                    inShard(root, file, { index: failing, total: TOTAL })
-                )
-        })
-        it('runs everything in a copy that cannot list the suites at all', () => {
-            const runProcess = processRunner({ discoveryFails: true })
-            expect(quiet(() => run({ root, runProcess, shard: { index: 1, total: TOTAL } }))).toBe(0)
-            expect(runProcess.mock.calls.at(-1)[1]).not.toContain('--runTestsByPath')
-            expect(runProcess.mock.calls.at(-1)[1].join(' ')).not.toContain('--shard')
-        })
-        it('fails rather than passes when there is no suite to split', () => {
-            const none = jest.fn((command, args) =>
-                command === 'git'
-                    ? { status: 0, stdout: head }
-                    : args.includes('--listTests')
-                      ? { status: 0, stdout: '[]' }
-                      : { status: 0 }
-            )
-            expect(() => quiet(() => run({ root, runProcess: none, shard: { index: 1, total: TOTAL } }))).toThrow(
-                'discovered no web tests'
-            )
-        })
     })
 
     it.each(['components/Foo.js', 'components/payload.json'])(

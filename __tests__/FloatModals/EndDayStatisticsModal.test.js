@@ -88,12 +88,12 @@ afterEach(() => {
     jest.useRealTimers()
 })
 
-const render = () => {
+const render = (props = {}) => {
     let tree
     renderer.act(() => {
         tree = renderer.create(
             <Provider store={store}>
-                <EndDayStatisticsModal />
+                <EndDayStatisticsModal {...props} />
             </Provider>
         )
     })
@@ -404,4 +404,50 @@ it('holds a queued daily reload until the popup is closed and the write grace ha
     })
     expect(reload).toHaveBeenCalledTimes(1)
     jest.useRealTimers()
+})
+
+// AT-3083: in Assistant and Both modes NewDayPopupHost renders the same popup over the whole
+// window. Only its size follows the window; eligibility, the "Start new day" flow and the
+// reload hold are the App-mode ones.
+describe('EndDayStatisticsModal over the whole window (Assistant and Both modes, AT-3083)', () => {
+    beforeEach(() => {
+        renderer.act(() => {
+            store.dispatch(setShowNewDayNotification(false))
+            signIn()
+        })
+    })
+
+    it('shows the popup with a card sized to the browser window', () => {
+        const tree = render({ fullWindow: true })
+        const popup = tree.root.findByProps({ testID: 'newDayPopup' })
+        const card = popup.props.children
+        const cardStyle = Object.assign({}, ...[].concat(card.props.style).filter(Boolean))
+        expect(tree.root.findAllByProps({ testID: 'startNewDayButton' }).length).toBeGreaterThan(0)
+        expect(cardStyle.width).toBeGreaterThan(0)
+        expect(cardStyle.width).toBeLessThanOrEqual(window.innerWidth)
+    })
+
+    it('stays hidden once the day is acknowledged, exactly like App mode', () => {
+        renderer.act(() =>
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, statisticsModalDate: Date.now() }))
+        )
+        const tree = render({ fullWindow: true })
+        expect(tree.toJSON()).toBeNull()
+    })
+
+    it('closes on "Start new day" and acknowledges the day once, with no reload', () => {
+        const tree = render({ fullWindow: true })
+        pressStartNewDay(tree)
+        expect(tree.toJSON()).toBeNull()
+        expect(store.getState().loggedUser.previousStatisticsModalDate).toBe(YESTERDAY)
+        expect(setUserStatisticsModalDate).toHaveBeenCalledTimes(1)
+        expect(deleteCacheAndRefresh).not.toHaveBeenCalled()
+    })
+
+    it('holds the daily reload while it is open, as in App mode', () => {
+        render({ fullWindow: true })
+        const reload = jest.fn()
+        dayReloadCoordinator.request(reload)
+        expect(reload).not.toHaveBeenCalled()
+    })
 })

@@ -138,10 +138,8 @@ describe('Task DV heading layout (AT-2341)', () => {
             expect(getCollapsedTitleMaxHeight(true)).toBe(
                 TITLE_UPPER_SPACER_HEIGHT + TITLE_LINE_HEIGHT * COLLAPSED_TITLE_LINES_MOBILE
             )
-            // Desktop shows exactly one title line under the compact 16px spacer (AT-3081; the cap
-            // was 70px under the old 32px spacer).
-            expect(TITLE_UPPER_SPACER_HEIGHT).toBe(16)
-            expect(getCollapsedTitleMaxHeight(false)).toBe(54)
+            // Desktop keeps the historic 70px cap it had before AT-2341.
+            expect(getCollapsedTitleMaxHeight(false)).toBe(70)
         })
 
         it('applies the mobile cap to the rendered title container', () => {

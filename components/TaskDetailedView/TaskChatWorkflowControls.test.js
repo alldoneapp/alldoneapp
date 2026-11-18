@@ -21,11 +21,10 @@ jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../Guides/guidesHelper', () => ({
     objectIsLockedForUser: jest.fn(),
 }))
-jest.mock('../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls', () => ({
-    __esModule: true,
-    default: 'CommentPopupWorkflowControls',
-    WORKFLOW_CONTROLS_LAYOUT_BAR: 'bar',
-}))
+jest.mock(
+    '../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls',
+    () => 'CommentPopupWorkflowControls'
+)
 
 const task = {
     id: 'task-1',
@@ -63,7 +62,6 @@ describe('TaskChatWorkflowControls', () => {
             workflow,
             disabled: false,
             appearance: 'chat',
-            layout: 'bar',
             narrow: false,
         })
     })

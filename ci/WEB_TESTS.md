@@ -24,11 +24,5 @@ marker write conservatively requires another full run. No separate scheduled
 deployment is created. Develop retains full-suite validation; feature branches
 use the same selector against their merge base, without the periodic marker.
 
-The job runs as four parallel copies (`parallel: 4`). Each copy takes the suites
-whose path hashes to its number (`CI_NODE_INDEX` of `CI_NODE_TOTAL`), so the
-copies together run every selected suite exactly once, also when one copy falls
-back to the complete suite. A copy that gets none of the selected suites passes
-and says so; `deploy:web` waits for all copies.
-
 Logs state the selection reason and selected/total suite counts. Test failures
 remain blocking, and `web-test-result.json` is written only after tests pass.
