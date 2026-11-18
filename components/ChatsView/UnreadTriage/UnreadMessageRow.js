@@ -13,6 +13,7 @@ import { getDateFormat, getTimeFormat } from '../../UIComponents/FloatModals/Dat
 import { onOpenChat } from '../Utils/ChatHelper'
 import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
+import { runWithLastUnreadRedirect } from '../lastUnreadRedirect'
 import { UNREAD_TAG_ADS, UNREAD_TAG_LABEL_KEYS, UNREAD_TAG_PEOPLE } from './unreadMessageTags'
 
 const AVATAR_SIZE = 32
@@ -90,7 +91,10 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
 
     const markRead = () => {
         setMarkReadFailed(false)
-        return markCommentRead({ projectId, chatId: chat.id, commentId: message.id }).catch(error => {
+        // The last unread message of the project opens its tasks once the read is written (AT-3104).
+        return runWithLastUnreadRedirect([projectId], () =>
+            markCommentRead({ projectId, chatId: chat.id, commentId: message.id })
+        ).catch(error => {
             console.error('[unread list] Could not mark the message as read', error)
             setMarkReadFailed(true)
         })

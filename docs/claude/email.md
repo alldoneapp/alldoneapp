@@ -237,6 +237,20 @@ Pinned by `functions/Gmail/dailyAdsDigest.test.js`, the AT-3101 block of
 label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
 tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
 
+**Clearing a project's last unread message opens its tasks (AT-3104, decided with Karsten
+2026-11-18).** `components/ChatsView/lastUnreadRedirect.js`. Armed only by a press in the Chats list
+(row Archive / Mark as read, preview Archive, project line Mark as read / Archive emails, the
+project's More > Mark as read), never by the initial load, the Gmail read sync or another device.
+Works in a single project and in All Projects (clearing project X opens X's tasks even when others
+are still unread); an action touching more than one project (the All Projects line) never
+navigates. "Nothing unread" is `totalFollowed + totalUnfollowed` of the project, not the tab's
+count. Because archive clears the unread state optimistically and restores it on failure (AT-2424),
+the redirect waits for the action to succeed and then re-checks the live count, the Chats route, the
+selected project and the user; overlapping presses of one project let the last to settle decide;
+a late local snapshot gets a 2s window. All archive presses go through the provider's wrapped
+`archiveLinkedEmails` (`lastUnreadRedirect: false` opts out). The thread view (ChatBoard) is out of
+scope. Pinned by `lastUnreadRedirect.test.js` and `lastUnreadRedirect.wiring.test.js`.
+
 ## Every email gets a Gmail label: fallback labels and bounded retries (AT-3102, 2026-11-18)
 
 **The invariant.** The project wiki (Email Management) says every incoming email gets a label, with a

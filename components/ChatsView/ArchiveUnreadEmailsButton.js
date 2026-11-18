@@ -47,7 +47,9 @@ export default function ArchiveUnreadEmailsButton({ projectId, containerStyle })
         // The hook reports failure instead of alerting, because this button shows the failure
         // itself - an alert on top of a red "try again" row would say the same thing twice. It
         // records the failed keys in the shared state, which is what `error` above reads.
-        return archive.archiveLinkedEmails(pendingEmails, { notifyOnError: false })
+        // Only the project line may open the project's tasks after clearing its last unread
+        // message (AT-3104); the All Projects line acts across projects.
+        return archive.archiveLinkedEmails(pendingEmails, { notifyOnError: false, lastUnreadRedirect: !!projectId })
     }
 
     // Nothing previewed in this scope has an email behind it: no button at all, rather than a

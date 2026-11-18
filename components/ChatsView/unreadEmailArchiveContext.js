@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
+import { getLinkedEmailsProjectIds, runWithLastUnreadRedirect } from './lastUnreadRedirect'
 
 // Lazy, like the archive action itself: the sync reaches the Firebase client, and a row rendered on
 // its own (or in a unit test) must not have to load it.
@@ -129,7 +130,20 @@ export function useEmailCommentReadSync(sources) {
 }
 
 export function UnreadEmailArchiveProvider({ children }) {
-    const archive = useLinkedEmailArchive()
+    const linkedEmailArchive = useLinkedEmailArchive()
+    // Every archive press in the chat list (row, preview, project line) goes through here, so this
+    // is where AT-3104 hooks in: archiving the last unread message of a project opens its tasks once
+    // the archive has succeeded. The All Projects line passes `lastUnreadRedirect: false`: a bulk
+    // action across projects has no single project to open.
+    const archive = {
+        ...linkedEmailArchive,
+        archiveLinkedEmails: (emails, { lastUnreadRedirect = true, ...options } = {}) => {
+            const archiveEmails = () => linkedEmailArchive.archiveLinkedEmails(emails, options)
+            return lastUnreadRedirect
+                ? runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), archiveEmails)
+                : archiveEmails()
+        },
+    }
     const [sources, setSources] = useState({})
 
     // Gmail → Alldone read sync (AT-2376). The rows have already resolved exactly the set this

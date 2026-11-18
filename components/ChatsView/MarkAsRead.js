@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import { translate } from '../../i18n/TranslationService'
 import { markMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import ProjectLineActionButton from './ProjectLineActionButton'
+import { runWithLastUnreadRedirect } from './lastUnreadRedirect'
 
 const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
@@ -17,7 +18,7 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
 
         setLoading(true)
         setError(false)
-        try {
+        const markAll = async () => {
             const failures = []
             await Promise.all(
                 idsToMark.map(async id => {
@@ -29,6 +30,12 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
                 })
             )
             if (failures.length > 0) throw failures[0].error
+        }
+        try {
+            // A project line that clears the project's last unread messages opens its tasks
+            // (AT-3104). The All Projects line (`projectIds`) acts across projects and never does.
+            if (projectIds) await markAll()
+            else await runWithLastUnreadRedirect(idsToMark, markAll)
         } catch (markReadError) {
             console.error('Failed to mark chat messages as read', markReadError)
             setError(true)
