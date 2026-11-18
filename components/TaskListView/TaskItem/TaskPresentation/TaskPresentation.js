@@ -34,12 +34,11 @@ import TranscribeTag from '../../../Tags/TranscribeTag'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
 import TaskPriorityTagButton from '../../TaskPriorityTagButton'
-import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
+import TaskExecutionStatusTag from '../../../Tags/TaskExecutionStatusTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 import { shouldShowAiStepControl } from './taskAiStepControl'
 import { shouldShowWorkflowIndicator } from './taskWorkflowIndicator'
 import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
-import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
 import { taskPresentationLayout } from './TaskPresentationLayout'
 import TaskFileDropZone from './TaskFileDropZone'
 import { canDropFilesOnTaskRow } from './taskFileDropHelper'
@@ -355,17 +354,9 @@ function TaskPresentation(
             style={{ marginRight: 8 }}
         />
     )
-    const leadingVmStatusTag = (
-        <>
-            <AssistantWorkflowRunTag projectId={projectId} task={task} />
-            <TaskVmStatusTag
-                projectId={projectId}
-                taskId={task.id}
-                hasVmSession={task.hasVmSession === true}
-                style={{ marginRight: 8 }}
-            />
-        </>
-    )
+    // AT-3099 — one execution status chip (workflow step + VM session resolved together), never
+    // a second VM tag next to it. Technical VM details live in the chip's tooltip.
+    const leadingVmStatusTag = <TaskExecutionStatusTag projectId={projectId} task={task} />
     // AT-2598 — keep the reminder in the same wrapping flow as the title. When this chip lived
     // beside `TitleContainer`, the title received only the width left after the chip, so every
     // wrapped line started after it. As a leading inline element, only the first line follows the

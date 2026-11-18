@@ -277,12 +277,6 @@ The other projects' assistants load after startup (`useDeferredStartupWork`) thr
 loader. `useProjectAssistantLine` itself loads nothing extra, because task boards and modals mount
 it without a line. Pinned by `useAllProjectsAssistantLine.test.js`,
 `assistantSwitchOptions.test.js`, `useAssistantLineSwitch.test.js` and `AssistantLine.test.js`.
-Follow-up, decided with the product owner the same day: the default project's default assistant
-(`state.defaultAssistant` in `loggedUser.defaultProjectId`, the All Projects line's own speaker,
-matched by `isAllProjectsAssistantOption`) returns to All Projects through `utils/navigateToHome.js`
-instead of opening the default project, also when picked inside the default project. The
-"From your default project" entry in another project's group carries that project's id and still
-switches in place.
 
 **Assistant mode is entered from the assistant line (AT-3034, superseded by AT-3069 above).** The
 panel button (`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sat at the top left

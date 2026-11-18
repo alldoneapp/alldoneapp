@@ -258,13 +258,25 @@ turn (`deferDelegatedWorkflowForConversation`) and continues in the same thread 
 Heartbeats, emails and workflow prompts still get the refusal, which now names the failure and the
 tag. Tests: `annaTaskDelegation.test.js`, and the in-thread case in `assistantHelper.test.js`.
 
-**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` reads
+**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` (since AT-3099
+`TaskExecutionStatusTag`) reads
 `task.workflowAiStatus`, but `mapTaskData` (`utils/backends/firestore.js`), which every task passes
 through on the client, did not name that field and so dropped it: on every row the tag rendered
 nothing, failed steps included (AT-3082 was `failed` / `vm_interrupted` and showed only the "Failed
 VM" session badge, which has no action). It is mapped now, and `uploadNewTask` deletes it from the
 copy, because that function spreads its input and recurrences or duplicates would otherwise inherit a
-"failed" step they never ran. Guardrail: `components/Tags/AssistantWorkflowRunTag.test.js`.
+"failed" step they never ran. Guardrail: now `components/Tags/TaskExecutionStatusTag.test.js`.
+
+**One execution status chip per task row (AT-3099).** The row used to show the workflow-run chip
+and a separate VM-session pill ("Aktiv" + "Paused VM", "In Warteschlange" + "Paused VM"). Both now
+resolve to one outline chip, `components/Tags/TaskExecutionStatusTag.js`, through
+`taskExecutionStatus.js`. Priority: Wartet auf dich (session `blockedByCorrelationId`; never the
+stale `lastRunStatus: 'awaiting_user'`, which survives an expired or cancelled question) > Aktiv (VM
+`busy`, step `running`/`awaiting_vm`) > In Warteschlange (step `pending`, session queue) > Benötigt
+Aufmerksamkeit (failed step, which the chip retries; failed VM run) > Pausiert (session
+`idle_running`/`paused`). A done task ignores the workflow layer but still shows a retained session
+as "Pausiert" (product decision). VM state, last run and queue go into the tooltip only. The
+VM filter in `TaskFiltersLine` still uses `getVmSessionBadgeState`.
 
 Anna's originating conversation is recorded in the server-only `delegatedTaskOrigins` collection,
 not trusted from client-editable task metadata. Workflow VM jobs use that receipt for result
@@ -281,47 +293,6 @@ still answered `workflow_managed`, so Anna announced work that never started. Ne
 `Tasks/workflowStepHelper.js`, client `WorkflowView/workflowStepHelper.js`), never `=== OPEN_STEP`.
 UIs that compare step _indexes_ work only by coincidence (`indexOf('Open')` is -1). A task that is
 neither Open nor in the workflow now returns `task_changed` instead of a false `workflow_managed`.
-
-## Renewed assistant work reopens a done task into its workflow (AT-3098, 2026-11-18)
-
-Karsten commented on a task that was already Done; the assistant started a VM on it and the task
-stayed Done for the whole run, and the result never went through the workflow's review. Two holes:
-`getDelegatedTaskExecution` returned `null` for a done delegated task (so the chat VM ran outside
-the workflow), and nothing looked at `done` for ordinary tasks. `move_task_workflow_step` still
-refuses Done on purpose (a chat approval must not reopen anything).
-
-Product decisions (Karsten): **only actual work reopens** a task, meaning a VM job hosted in it
-(`execute_task_in_vm` in its chat, `target_task_id`, or a continuation). A plain answer, a status
-question or a small tool edit leaves it Done. The task goes to the **first AI step of the working
-assistant** (else the first AI step), so every later step, human review included, runs again. With
-no AI step (or no workflow) it goes back to **Open** with its owner, who completes it afterwards.
-
-`functions/Tasks/doneTaskReactivation.js` writes the reopen in a transaction that only acts on a
-task that is still done (idempotent against retries, concurrent runs and the user reopening it in
-the app). The write mirrors the client's `moveTasksFromDone` (rebuilt `stepHistory`/`userIds`,
-subtasks, a `workflowStepMove` stamp with the entry time and **no** `runLockId`). The assistant is the
-editor (`lastEditorId`, `lastEditorName`), so a `taskStatisticsTransition` marker lets the fan-out
-reverse the owner's completion statistics. The fan-out also writes the "changed task to Open" feed,
-reopens the delegation receipt and tells the origin conversation.
-
-- **Ordinary task:** `execute_task_in_vm` plans the reopen before the VM brief (the VM is told to
-  leave the task open) and writes it only after `startVmJob` succeeds. The VM record therefore
-  exists when the trigger enqueues the AI step, so the step parks on it (`task_ai_run_already_active`)
-  and, when the job settles, hands the task to the next (human) step without running its prompt.
-  A refused launch reopens nothing.
-- **Delegated task:** only the workflow starts the VM, so the guard reopens the task into the
-  assistant's step, enqueues it at once and returns `workflow_step_reopened`. The VM brief is
-  appended to the step prompt (`workflowAiPromptOverride`, mode `append`). Only the owner's request
-  reopens it (the workflow runs and pays as the owner); others, and workflows without an AI step,
-  get `task_done` and no VM.
-- **Enqueue trap:** a done task keeps the history it was completed from. Reopening it onto that same
-  last step (the final AI step completed it) used to enqueue nothing, because the step id had not
-  changed. `enqueueWorkflowAiRunIfNeeded` now treats a reopen as a landing when the move stamp entered
-  that step at the new `completed`. Unchecking the checkbox (`setTaskStatus`, stamp without entry time)
-  still runs nothing. A done task never enqueues.
-
-Tests: `functions/Tasks/doneTaskReactivation.test.js`, the AT-3098 blocks of `workflowAiStep.test.js`,
-`annaTaskDelegation.test.js` and `assistantHelper.test.js`.
 
 ## Assistants know where the tasks they delegated stand, including what happened in their own chats (2026-11-17)
 

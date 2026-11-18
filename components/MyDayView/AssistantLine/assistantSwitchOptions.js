@@ -144,23 +144,6 @@ export const buildProjectScopeAssistantGroups = ({ projectId, projectGroups = []
     return [...currentGroups, ...otherGroups]
 }
 
-/**
- * AT-3093 follow-up — the one choice that means "back to All Projects": the default assistant in
- * the default project's own group. That pair is exactly what the All Projects line speaks as
- * (`state.defaultAssistant` in `loggedUser.defaultProjectId`), so picking it from a project's
- * line returns to that line instead of opening the default project.
- *
- * The "From your default project" entry inside another project's group does NOT match: its
- * `projectId` is the current project, and it keeps meaning "answer here as the default assistant"
- * (decided with the product owner).
- */
-export const isAllProjectsAssistantOption = (option, defaultProjectId, defaultAssistantId) =>
-    !!option &&
-    !!defaultProjectId &&
-    !!defaultAssistantId &&
-    option.projectId === defaultProjectId &&
-    option.assistantId === defaultAssistantId
-
 /** One group, for the single-project case, so both scopes render through the same component. */
 export const buildSingleAssistantGroup = (project, options) =>
     options.length > 0

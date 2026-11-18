@@ -20,13 +20,8 @@ import { FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import { useProjectsData } from '../../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../../utils/InitialLoad/projectDataLoader'
-import {
-    buildAllProjectsAssistantGroups,
-    buildProjectScopeAssistantGroups,
-    isAllProjectsAssistantOption,
-} from './assistantSwitchOptions'
+import { buildAllProjectsAssistantGroups, buildProjectScopeAssistantGroups } from './assistantSwitchOptions'
 import useDeferredStartupWork from '../../../hooks/useDeferredStartupWork'
-import navigateToHome from '../../../utils/navigateToHome'
 
 const EMPTY_ARRAY = []
 const EMPTY_OBJECT = {}
@@ -119,23 +114,6 @@ const useSwitchToProjectWithAssistant = () => {
 }
 
 /**
- * AT-3093 follow-up — back to All Projects, where the line speaks as the default assistant.
- *
- * Reuses `navigateToHome`, the "All projects" navigation of the Anna top strip's home button, so
- * this lands exactly where that button does (the All Projects open task list). The sidebar is
- * hidden on small screens for the same reason `useSwitchToProjectWithAssistant` hides it.
- */
-const useSwitchToAllProjects = () => {
-    const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-
-    return useCallback(() => {
-        navigateToHome(dispatch)
-        if (smallScreenNavigation) dispatch(hideWebSideBar())
-    }, [dispatch, smallScreenNavigation])
-}
-
-/**
  * The assistants of every active project, grouped by project in the All Projects order. Shared by
  * the home line and (AT-3093) the in-project line, so both popups list exactly the same set.
  *
@@ -192,7 +170,7 @@ export const useAllProjectsAssistantLine = () => {
             if (!option) return
             // Selecting the assistant that is already answering here keeps the user on the home
             // page — only a DIFFERENT assistant means "take me to its project".
-            if (isAllProjectsAssistantOption(option, defaultProjectId, activeAssistantId)) return
+            if (option.assistantId === activeAssistantId && option.projectId === defaultProjectId) return
             switchToProjectWithAssistant(option)
         },
         [activeAssistantId, defaultProjectId, switchToProjectWithAssistant]
@@ -228,9 +206,6 @@ export const useProjectScopeAssistantSwitch = projectSwitch => {
     const enabled = projectSwitch?.scope === 'project' && !!projectSwitch?.activeProjectId
     const allProjectsGroups = useAllProjectsAssistantGroups({ enabled })
     const switchToProjectWithAssistant = useSwitchToProjectWithAssistant()
-    const switchToAllProjects = useSwitchToAllProjects()
-    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const defaultAssistantId = useSelector(state => state.defaultAssistant?.uid || null)
 
     const projectId = projectSwitch?.activeProjectId || null
     const projectGroups = projectSwitch?.groups
@@ -245,28 +220,13 @@ export const useProjectScopeAssistantSwitch = projectSwitch => {
     const onSelect = useCallback(
         option => {
             if (!option) return
-            // AT-3093 follow-up (decided with the product owner): the default project's default
-            // assistant is the All Projects line's assistant, so choosing it returns to All
-            // Projects instead of opening the default project, also from inside the default
-            // project. Its "From your default project" entry in another project stays in place.
-            if (isAllProjectsAssistantOption(option, defaultProjectId, defaultAssistantId)) {
-                switchToAllProjects()
-                return
-            }
             if (option.projectId === projectId) {
                 selectInProject?.(option)
                 return
             }
             switchToProjectWithAssistant(option)
         },
-        [
-            projectId,
-            selectInProject,
-            switchToProjectWithAssistant,
-            switchToAllProjects,
-            defaultProjectId,
-            defaultAssistantId,
-        ]
+        [projectId, selectInProject, switchToProjectWithAssistant]
     )
 
     return useMemo(() => {
