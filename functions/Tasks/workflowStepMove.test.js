@@ -651,6 +651,23 @@ describe('notifyDelegationOriginOnHumanStep', () => {
     it('ignores tasks that were not delegated', async () => {
         expect(await notify(taskAt(IMPLEMENT), taskAt(REVIEW))).toBe(false)
     })
+
+    // AT-3082: the fixed words follow the owner's app language; the step names are the owner's own.
+    it('speaks the owner’s app language', async () => {
+        mockStore.set(`users/${OWNER}`, { ...mockStore.get(`users/${OWNER}`), language: 'de' })
+        mockSummarizeVmResultForChat.mockResolvedValueOnce('')
+
+        expect(await notify()).toBe(true)
+
+        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toBe(
+            [
+                '📋 AT-1 „Fix the popup“ ist bei „Review“ bereit für dich.',
+                '',
+                'Als Nächstes: „Merge“ (Assistent). Antworte hier zur Freigabe, zum Beispiel „mach weiter“, oder sag mir, was ich ändern soll.',
+                `https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`,
+            ].join('\n')
+        )
+    })
 })
 
 describe('notifyDelegationOriginOnStepChange', () => {
@@ -709,6 +726,20 @@ describe('notifyDelegationOriginOnStepChange', () => {
         expect(posted()[0]).toContain('moved from “Open” to “Implement”; the assistant works on it now.')
         expect(posted()[0]).not.toContain('You moved it')
         expect(posted()[1]).toContain('✅ AT-1 “Fix the popup” is done (it was at “Merge”).')
+    })
+
+    it('speaks the owner’s app language (AT-3082)', async () => {
+        mockStore.set(`users/${OWNER}`, { ...mockStore.get(`users/${OWNER}`), language: 'de' })
+        expect(await notify(delegatedAt(REVIEW), delegatedAt(MERGE, movedByOwner(MERGE)))).toBe(true)
+        expect(await notify(delegatedAt(MERGE), delegatedAt(MERGE, { done: true, completed: 9000 }))).toBe(true)
+        expect(posted()[0]).toBe(
+            [
+                '🔀 AT-1 „Fix the popup“ ist von „Review“ zu „Merge“ gewechselt; der Assistent arbeitet jetzt daran.',
+                'Du hast ihn selbst verschoben.',
+                `https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`,
+            ].join('\n')
+        )
+        expect(posted()[1]).toContain('✅ AT-1 „Fix the popup“ ist erledigt (vorher bei „Merge“).')
     })
 
     it('says when the user sent it back to their own step', async () => {

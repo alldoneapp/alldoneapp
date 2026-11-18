@@ -148,6 +148,16 @@ describe('notifyVmInputNeededInOrigin', () => {
         expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
     })
 
+    it('asks in the user’s app language (AT-3082)', async () => {
+        mockStore.set(`users/${OWNER}`, { language: 'de' })
+        expect(await notify()).toBe(true)
+        const text = mockCreateInitialStatusMessage.mock.calls[0][4]
+        expect(text).toContain('💬 Claude braucht deine Antwort zu AT-1 „Fix the popup“, bevor es weitergeht.')
+        // The VM's own questions are shown as the VM wrote them.
+        expect(text).toContain('• Should the fix also cover the mobile popup?')
+        expect(text).toContain(`Antworte im Task-Chat: https://my.alldone.app/projects/${PROJECT}/tasks/${TASK}/chat`)
+    })
+
     it('never throws when posting fails', async () => {
         mockCreateInitialStatusMessage.mockRejectedValueOnce(new Error('boom'))
         expect(await notify()).toBe(false)
@@ -168,6 +178,25 @@ describe('buildVmInputNoticeText', () => {
         expect(text).toContain('1. Change the popup')
         expect(text.length).toBeLessThan(900)
         expect(text.endsWith(`Answer it in the task chat: ${link}`)).toBe(true)
+    })
+
+    it('writes the fixed words in Spanish and German', () => {
+        const es = buildVmInputNoticeText({
+            interaction: { kind: 'plan_review', plan: 'Plan' },
+            agentLabel: '',
+            task: { name: 'Arreglar' },
+            link,
+            language: 'es',
+        })
+        expect(es).toContain('🗒️ La VM preparó un plan en “Arreglar” y espera tu revisión antes de ejecutarlo.')
+        const de = buildVmInputNoticeText({
+            interaction: { kind: 'tool_approval', toolName: 'git push' },
+            agentLabel: 'Claude',
+            task: null,
+            link,
+            language: 'de',
+        })
+        expect(de).toContain('🔐 Claude braucht deine Freigabe, bevor es weitergeht: git push.')
     })
 
     it('names the operation to approve without its command', () => {

@@ -527,6 +527,9 @@ export async function uploadNewTask(
         const taskId = task.id ? task.id : getId()
         const taskCopy = { ...task }
         delete taskCopy.id
+        // Server-owned state of the source task's workflow run. A copy (recurrence, duplicate) has no
+        // run, and a copied "failed" would offer to retry a step this task never ran.
+        delete taskCopy.workflowAiStatus
 
         // Initialize task fields if not present
         taskCopy.name = taskCopy.name.trim()

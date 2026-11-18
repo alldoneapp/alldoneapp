@@ -50,7 +50,12 @@ const getTaskMetadata = task => ({
     executionMode: task.executionMode,
 })
 
-export default function AssistantTaskSearchModal({ closeModal, preferredAssistantId, preferredProjectId }) {
+export default function AssistantTaskSearchModal({
+    closeModal,
+    preferredAssistantId,
+    preferredProjectId,
+    originConversation = null,
+}) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isMobile = useSelector(state => state.smallScreenNavigation)
@@ -92,7 +97,7 @@ export default function AssistantTaskSearchModal({ closeModal, preferredAssistan
                     task.prompt,
                     getAiSettings(task),
                     getTaskMetadata(task),
-                    { skipNavigation: true }
+                    { skipNavigation: true, originConversation }
                 )
             }
         } else if (task.type === TASK_TYPE_WEBHOOK) {
@@ -106,7 +111,7 @@ export default function AssistantTaskSearchModal({ closeModal, preferredAssistan
                 task.prompt,
                 getAiSettings(task),
                 getTaskMetadata(task),
-                { skipNavigation: true }
+                { skipNavigation: true, originConversation }
             )
         } else if (task.type === TASK_TYPE_IFRAME) {
             executingTaskRef.current = true
@@ -201,6 +206,7 @@ export default function AssistantTaskSearchModal({ closeModal, preferredAssistan
                 }}
                 task={selectedTask}
                 assistant={selectedTask.assistant}
+                originConversation={originConversation}
             />
         )
     }

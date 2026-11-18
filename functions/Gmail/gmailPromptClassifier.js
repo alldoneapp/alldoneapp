@@ -19,6 +19,8 @@ const { resolveClassifierClient } = require('../Assistant/classifierModelClient'
 const {
     GMAIL_ACTIONABILITY_GUIDANCE,
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
+    GMAIL_EMAIL_KIND_GUIDANCE,
+    GMAIL_EMAIL_KINDS,
     GMAIL_NEEDS_REPLY_GUIDANCE,
     buildClassifierLabelDefinitions,
     buildClassifierMessage,
@@ -34,7 +36,8 @@ const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
     'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. ' +
     GMAIL_ACTIONABILITY_GUIDANCE +
     GMAIL_NEEDS_REPLY_GUIDANCE +
-    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, needsReply, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
+    GMAIL_EMAIL_KIND_GUIDANCE +
+    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, needsReply, emailKind, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT6_SOL',
@@ -140,6 +143,7 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
     const followUpType = result?.followUpType === 'actionable' ? 'actionable' : 'informational'
     // Only an explicit true counts: a model that omits the field answered "no reply needed".
     const needsReply = result?.needsReply === true
+    const emailKind = normalizeEmailKind(result?.emailKind)
     const usage = result?.usage || null
 
     // rawLabelKey/rawMatched preserve the model's pre-coercion decision so demotions are
@@ -154,6 +158,7 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
             reasoning: reasoning || 'No configured label clearly matched.',
             followUpType,
             needsReply,
+            emailKind,
             usage,
         }
     }
@@ -167,8 +172,16 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
         reasoning,
         followUpType,
         needsReply,
+        emailKind,
         usage,
     }
+}
+
+// null when the model left the field out or answered something else: an unknown kind must not
+// read as "newsletter" or "ads", because the user's auto-archive setting acts on those two.
+function normalizeEmailKind(value) {
+    const kind = typeof value === 'string' ? value.trim().toLowerCase() : ''
+    return GMAIL_EMAIL_KINDS.includes(kind) ? kind : null
 }
 
 function normalizeConfidenceThreshold(value) {
@@ -355,6 +368,7 @@ async function verifyClassificationConsistency(
                 reasoning: firstResult.reasoning,
                 followUpType: firstResult.followUpType,
                 needsReply: !!firstResult.needsReply,
+                emailKind: firstResult.emailKind || null,
             },
             null,
             2
@@ -363,7 +377,7 @@ async function verifyClassificationConsistency(
         `${buildNoMatchResponseGuidance(
             config
         )} The reasoning must be consistent with the final labelKey you choose. ` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","needsReply":false,"confidence":0.92,"reasoning":"..."}.'
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","needsReply":false,"emailKind":"newsletter","confidence":0.92,"reasoning":"..."}.'
 
     const { parsed, usage } = await runClassifierCompletion(openai, {
         selectedModel,
@@ -385,12 +399,17 @@ async function verifyClassificationConsistency(
         isOpenRouter,
     })
 
-    // The auditor exists to fix the LABEL. When it leaves needsReply out, keep the first pass's
-    // answer instead of letting the omission read as "no reply needed".
-    const auditParsed =
-        parsed && typeof parsed === 'object' && typeof parsed.needsReply !== 'boolean'
-            ? { ...parsed, needsReply: !!firstResult.needsReply }
-            : parsed
+    // The auditor exists to fix the LABEL. When it leaves needsReply or emailKind out, keep the
+    // first pass's answer instead of letting the omission read as "no reply needed" / "unknown".
+    let auditParsed = parsed
+    if (auditParsed && typeof auditParsed === 'object') {
+        if (typeof auditParsed.needsReply !== 'boolean') {
+            auditParsed = { ...auditParsed, needsReply: !!firstResult.needsReply }
+        }
+        if (!normalizeEmailKind(auditParsed.emailKind) && firstResult.emailKind) {
+            auditParsed = { ...auditParsed, emailKind: firstResult.emailKind }
+        }
+    }
     const verified = coerceClassifierResult({ ...auditParsed }, labelDefinitions, confidenceThreshold)
     return { verified, usage, parsed }
 }
@@ -410,6 +429,7 @@ async function classifyGmailMessage({ config, message }) {
             reasoning: 'Classifier unavailable or no labels configured.',
             followUpType: 'informational',
             needsReply: false,
+            emailKind: null,
         }
     }
 

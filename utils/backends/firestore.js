@@ -3906,6 +3906,10 @@ export function mapTaskData(taskId, task) {
         // Set by the server when the task's thread first hosts a VM job. The task list watches
         // VM session status only for these tasks (AT-2907).
         hasVmSession: task.hasVmSession === true,
+        // The workflow runner's state for the current AI step (functions/Tasks/workflowAiStep.js).
+        // AssistantWorkflowRunTag reads it on the row, and its "Needs attention" button is how a
+        // failed step is retried. It was missing here until 2026-11-18, so that tag never appeared.
+        workflowAiStatus: task.workflowAiStatus || null,
     }
 
     // Only include humanReadableId if it has a value
@@ -3961,6 +3965,10 @@ export function mapUserData(userId, user) {
             user.featureModelPreferences && typeof user.featureModelPreferences === 'object'
                 ? user.featureModelPreferences
                 : {},
+        // Newsletters and ads in Chats > Unread: shown, or archived by the Gmail labeling sync
+        // (components/ChatsView/UnreadTriage/unreadEmailSettings.js). Absent means show both.
+        unreadEmailSettings:
+            user.unreadEmailSettings && typeof user.unreadEmailSettings === 'object' ? user.unreadEmailSettings : {},
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],
