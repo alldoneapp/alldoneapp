@@ -2,13 +2,9 @@ jest.mock('firebase-admin', () => ({
     firestore: jest.fn(),
     app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
 }))
-jest.mock(
-    'firebase-admin/functions',
-    () => ({
-        getFunctions: jest.fn(() => ({ taskQueue: jest.fn() })),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin/functions', () => ({
+    getFunctions: jest.fn(() => ({ taskQueue: jest.fn() })),
+}))
 
 const {
     dispatchDueHeartbeats,

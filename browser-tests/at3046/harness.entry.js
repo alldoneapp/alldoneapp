@@ -3,7 +3,8 @@
  *
  * Mounts the REAL `AnnaActivityGroup` with the REAL `anna.css` and Anna's theme variables inside
  * the same DOM skeleton the assistant shell renders, at the chat width and colour mode chosen by
- * `run.js` (`?width=380&mode=dark`). Covers every kind of row the sidebar shows: a single reply,
+ * `run.js` (`?width=380&mode=dark`). Covers every kind of row the sidebar shows (and, since AT-3087, a
+ * note and a chat topic for the type icons): a single reply,
  * several replies to one object, a state change, a row from another project, a row from another
  * actor, a row that is not enriched yet, long titles/previews, and the system notices in between.
  * AT-3075: unread rows get the "Mark as read" button; a press is recorded in `window.__annaMarkRead`
@@ -51,8 +52,11 @@ store.dispatch({ type: 'Init anonymous sesion', loggedUser: user, currentUser: u
 const at = (hours, minutes) => new Date(2026, 10, 13, hours, minutes).getTime()
 // `userId` is not the logged user: rows render from their saved content and never try to
 // enrich or publish (both read Firestore, which nothing answers here).
-const row = (id, { kind = 'chat', projectId = PROJECT_ID, projectName = 'Alldone Product', created, content }) => ({
-    id: kind === 'chat' ? `chat/${projectId}/${id}/c-${id}` : `feed/${projectId}/tasks/${id}/f-${id}`,
+const row = (
+    id,
+    { kind = 'chat', objectType = 'tasks', projectId = PROJECT_ID, projectName = 'Alldone Product', created, content }
+) => ({
+    id: kind === 'chat' ? `chat/${projectId}/${id}/c-${id}` : `feed/${projectId}/${objectType}/${id}/f-${id}`,
     userId: 'someone-else',
     kind,
     projectId: PROJECT_ID,
@@ -61,7 +65,7 @@ const row = (id, { kind = 'chat', projectId = PROJECT_ID, projectName = 'Alldone
     projectName,
     created,
     path: '/',
-    content: content && { version: 1, objectType: 'tasks', ...content },
+    content: content && { version: 1, objectType, ...content },
 })
 const reply = (title, preview) => ({ objectName: title, preview, actorName: ASSISTANT })
 
@@ -158,6 +162,30 @@ const ROWS = [
             }),
         ],
         false,
+    ],
+    // AT-3087: other object types get their own type icon.
+    [
+        'note-update',
+        [
+            row('n1', {
+                kind: 'feed',
+                objectType: 'notes',
+                created: at(19, 35),
+                content: { objectName: 'Q1-Planung Juno', actorName: ASSISTANT, entryText: 'updated note' },
+            }),
+        ],
+        false,
+    ],
+    [
+        'topic-chat',
+        [
+            row('c1', {
+                objectType: 'topics',
+                created: at(19, 40),
+                content: reply('Release-Abstimmung', 'Passt, dann geht es morgen früh raus.'),
+            }),
+        ],
+        true,
     ],
     ['not-enriched', [row('t7', { created: at(19, 45) })], true],
 ]

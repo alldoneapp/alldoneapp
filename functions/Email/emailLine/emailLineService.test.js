@@ -157,6 +157,8 @@ jest.mock('../../Gold/goldHelper', () => ({
 jest.mock('../../Assistant/assistantHelper', () => ({
     calculateGoldCostFromTokens: jest.fn(() => 5),
 }))
+// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
+jest.mock('../../Assistant/assistantModelRuntime', () => jest.requireMock('../../Assistant/assistantHelper'))
 
 jest.mock('../../Gmail/assistantGmailDrafts', () => ({
     createGmailReplyDraftForAssistantRequest: jest.fn(),

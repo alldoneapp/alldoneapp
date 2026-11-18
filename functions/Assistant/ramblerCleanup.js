@@ -134,7 +134,7 @@ async function cleanupRamble({
         getCachedEnvFunctions,
         getModel,
         logOpenAiCacheUsage,
-    } = require('./assistantHelper')
+    } = require('./assistantModelRuntime')
 
     const envFunctions = getCachedEnvFunctions()
     const modelKey = resolveCleanupModelKey(userData)

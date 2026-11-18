@@ -12,8 +12,9 @@
  * hand-copied provider decision on top of that is precisely how a model ends up working in email
  * labeling and silently falling back to `gpt-5.2` in calendar labeling.
  *
- * `getOpenAIClient` is required lazily from `assistantHelper` because that module is ~13k lines and
- * pulls firebase-admin in behind it; the OpenRouter path must not pay for that.
+ * `getOpenAIClient` comes from `assistantModelRuntime`, not from `assistantHelper`: that file is
+ * ~15k lines and pulls firebase-admin and the whole assistant in behind it. It is still required
+ * lazily, so the OpenRouter path does not load the OpenAI SDK either.
  */
 
 const { resolveAssistantModelProvider, PROVIDER_OPENROUTER } = require('./assistantModelRouting')
@@ -39,7 +40,7 @@ function resolveClassifierClient(modelKey, { openAiKey, openRouterKey } = {}) {
         return { client: getOpenRouterClient(openRouterKey), model: route.model, isOpenRouter: true }
     }
 
-    const { getOpenAIClient } = require('./assistantHelper')
+    const { getOpenAIClient } = require('./assistantModelRuntime')
     return { client: getOpenAIClient(openAiKey), model: null, isOpenRouter: false }
 }
 
