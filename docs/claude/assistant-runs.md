@@ -125,6 +125,27 @@ wait for the VM before advancing to review. Delegates inside a workflow inherit 
 Task-chat replies on managed delegations leave the actual workflow prompt queued rather than
 substituting for it: asking for status must not skip the work and send an empty result to review.
 
+**"Continue" restarts a failed step instead of being refused (2026-11-18).** The guard
+(`getDelegatedTaskExecution`) left no way on once the step's own run had failed: on task
+`nFzDtx2oPmJOsH5ztdGF` the VM restarted under the agent at a lease boundary, its notice said "reply
+in this thread to continue", and the reply "please continue" was refused while the only control was
+the "Needs attention" tag in the task list (`retryWorkflowAiRunSecondGen`), which Anna has no tool
+for. Now, when `workflowAiStatus` is `failed` for the current step and the turn is one the user
+typed (`isHumanTurn`, the same check as `move_task_workflow_step`), the guard calls
+`retryFailedWorkflowAiRun` with the requesting user as payer and returns `workflow_step_restarted`.
+The workflow still is the only thing that starts the VM: the restarted run waits for the replying
+turn (`deferDelegatedWorkflowForConversation`) and continues in the same thread and VM session.
+Heartbeats, emails and workflow prompts still get the refusal, which now names the failure and the
+tag. Tests: `annaTaskDelegation.test.js`, and the in-thread case in `assistantHelper.test.js`.
+
+**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` reads
+`task.workflowAiStatus`, but `mapTaskData` (`utils/backends/firestore.js`), which every task passes
+through on the client, did not name that field and so dropped it: on every row the tag rendered
+nothing, failed steps included (AT-3082 was `failed` / `vm_interrupted` and showed only the "Failed
+VM" session badge, which has no action). It is mapped now, and `uploadNewTask` deletes it from the
+copy, because that function spreads its input and recurrences or duplicates would otherwise inherit a
+"failed" step they never ran. Guardrail: `components/Tags/AssistantWorkflowRunTag.test.js`.
+
 Anna's originating conversation is recorded in the server-only `delegatedTaskOrigins` collection,
 not trusted from client-editable task metadata. Workflow VM jobs use that receipt for result
 notifications. Task deletion removes the receipt. No credentials, indexes or rules deployment is

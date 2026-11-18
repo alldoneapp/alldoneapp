@@ -1276,15 +1276,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Assistant profile (AT-3072): what the user's own assistants know about them, compiled every
-    // night from the user's activity in all their projects, so it has exactly one reader, the user.
-    // Only Cloud Functions write it; settings and edits go through the setAssistantProfileSettings
-    // callable. `{document=**}` matches the profile document itself as well as its revisions and runs.
-    match /assistantProfiles/{userId}/{document=**} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow write: if false;
-    }
-
     match /statistics/{projectId}/{userId}/{dayId} {
       allow read: if isProjectMember(projectId);
       allow write: if canReadUserScopedProjectData(projectId, userId);

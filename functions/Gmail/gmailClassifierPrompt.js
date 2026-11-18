@@ -12,18 +12,10 @@ const GMAIL_ACTIONABILITY_GUIDANCE =
 const GMAIL_NEEDS_REPLY_GUIDANCE =
     ' Also decide needsReply (true or false): true only when an incoming email from a real person directly asks the user something or clearly expects a written answer from the user personally (a question, a request for a decision, confirmation or information). It is false for outgoing mail, newsletters, notifications, automated or bulk mail, mail where the user is only in Cc, and mail that merely informs. When uncertain, choose false.'
 
-// What kind of sender and mail this is, independent of the label (which in the default mode is a
-// project) and of followUpType. It is what the unread list's tags and the user's "show or
-// auto-archive newsletters and ads" setting read (users/{uid}.unreadEmailSettings).
-const GMAIL_EMAIL_KINDS = ['person', 'newsletter', 'notification', 'ads']
-const GMAIL_EMAIL_KIND_GUIDANCE =
-    ' Also decide emailKind, exactly one of "person", "newsletter", "notification", "ads": "person" when a real person wrote it to the user (also a reply in a conversation); "newsletter" for recurring editorial, digest or community content the user subscribed to; "notification" for automated messages from a service or system, such as calendar, account, security, billing, receipts, orders, shipping, reminders, or social network alerts; "ads" for promotional, marketing, sales or unsolicited commercial mail, including cold sales outreach. When uncertain between newsletter and ads, choose newsletter; between notification and anything else, choose notification.'
-
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify Gmail messages into exactly one configured label or no match, and classify the follow-up as actionable or informational. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, followUpType, needsReply, emailKind, confidence, reasoning. Never invent labels. followUpType must always be either "actionable" or "informational". ' +
+    'You classify Gmail messages into exactly one configured label or no match, and classify the follow-up as actionable or informational. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, followUpType, needsReply, confidence, reasoning. Never invent labels. followUpType must always be either "actionable" or "informational". ' +
     GMAIL_ACTIONABILITY_GUIDANCE +
     GMAIL_NEEDS_REPLY_GUIDANCE +
-    GMAIL_EMAIL_KIND_GUIDANCE +
     ' Informational means the email does not meet both actionable conditions, including useful updates, notifications, newsletters, automated messages, and irrelevant email. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision.'
 
 function buildDecisionGuidance(confidenceThreshold) {
@@ -100,10 +92,10 @@ function buildFirstPassClassifierPromptSections({ config = {}, message = {}, con
         `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}`
     const dynamicUserContent =
         `Email:\n${JSON.stringify(classifierMessage)}\n\n` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","needsReply":false,"emailKind":"newsletter","confidence":0.92,"reasoning":"..."}. ' +
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}. ' +
         `${buildNoMatchResponseGuidance(
             config
-        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"followUpType":"informational","needsReply":false,"emailKind":"notification","confidence":0.2,"reasoning":"..."}.`
+        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"followUpType":"informational","confidence":0.2,"reasoning":"..."}.`
 
     return {
         systemPrompt: GMAIL_CLASSIFIER_SYSTEM_PROMPT,
@@ -116,8 +108,6 @@ function buildFirstPassClassifierPromptSections({ config = {}, message = {}, con
 
 module.exports = {
     GMAIL_ACTIONABILITY_GUIDANCE,
-    GMAIL_EMAIL_KIND_GUIDANCE,
-    GMAIL_EMAIL_KINDS,
     GMAIL_NEEDS_REPLY_GUIDANCE,
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
     buildClassifierLabelDefinitions,
