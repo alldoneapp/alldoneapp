@@ -266,3 +266,15 @@ describe('Last comment preview shows the end of long comments (AT-2872)', () => 
         act(() => tree.unmount())
     })
 })
+
+describe('LastCommentText markdown (2026-11-18)', () => {
+    it('shows an assistant heading as text, not as a "##" hashtag, and drops inline markdown', () => {
+        const tree = render(
+            <LastCommentText
+                projectId={PROJECT_ID}
+                commentText={'## Ergebnis: Gemergt\nDer Job `deploy:web` lief **nicht**. #release'}
+            />
+        )
+        expect(textOf(tree.root)).toBe('Ergebnis: Gemergt Der Job deploy:web lief nicht. #release')
+    })
+})

@@ -6,10 +6,7 @@
 from superseded pipelines, and works for reverts or non-ancestor markers.
 
 For a small change, `runWebTests.js` asks Jest for the suites depending on **each**
-changed source, JSON file, test or snapshot. `listRelatedJestTests.js` answers for
-all of them from one Jest process; if it fails or leaves an input out, the runner
-asks the Jest command line once per input instead, which gives the same answer
-more slowly. A changed co-located test never
+changed source, JSON file, test or snapshot. A changed co-located test never
 replaces the source input. It also runs `web-test-smoke.json` (startup, login,
 navigation, lifecycle and assistant chat) and all suites that read source files
 directly, since those checks bypass Jest's import graph.

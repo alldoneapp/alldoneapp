@@ -4565,36 +4565,23 @@ function isWhatsAppTriggeredVmJob(pendingWebhook) {
 
 const VM_NOTICE_REASON_MAX = 300
 
-// The fixed words are in the requesting user's app language (noticeLanguage.js, AT-3082).
 function getVmNoticeStatus(notificationType) {
-    if (notificationType === 'completed') return { icon: '✅', verbKey: 'vmResult.completed' }
-    if (notificationType === 'cancelled') return { icon: '🛑', verbKey: 'vmResult.cancelled' }
-    if (notificationType === VM_JOB_INTERRUPTED_STATUS) return { icon: '⚠️', verbKey: 'vmResult.interrupted' }
-    return { icon: '❌', verbKey: 'vmResult.failed' }
+    if (notificationType === 'completed') return { icon: '✅', verb: 'finished' }
+    if (notificationType === 'cancelled') return { icon: '🛑', verb: 'was cancelled' }
+    if (notificationType === VM_JOB_INTERRUPTED_STATUS) return { icon: '⚠️', verb: 'was interrupted' }
+    return { icon: '❌', verb: 'failed' }
 }
 
-function buildVmNoticeTaskLabel(task, language = 'en') {
+function buildVmNoticeTaskLabel(task) {
     const name = String(task?.extendedName || task?.name || '').trim()
     if (!name) return ''
-    const { quoteNotice } = require('./noticeLanguage')
-    const quoted = quoteNotice(language, name)
-    return task.humanReadableId ? `${task.humanReadableId} ${quoted}` : quoted
+    return task.humanReadableId ? `${task.humanReadableId} “${name}”` : `“${name}”`
 }
 
-function buildVmResultNoticeText({
-    notificationType = 'completed',
-    taskLabel = '',
-    summary = '',
-    link = '',
-    language = 'en',
-} = {}) {
-    const { noticeText: translateNotice } = require('./noticeLanguage')
-    const { icon, verbKey } = getVmNoticeStatus(notificationType)
-    const subject = taskLabel
-        ? translateNotice(language, 'vmResult.subject', { label: taskLabel })
-        : translateNotice(language, 'vmResult.subjectGeneric')
-    const status = `${icon} ${subject} ${translateNotice(language, verbKey)}.`
-    return [status, String(summary || '').trim(), link].filter(Boolean).join('\n\n')
+function buildVmResultNoticeText({ notificationType = 'completed', taskLabel = '', summary = '', link = '' } = {}) {
+    const { icon, verb } = getVmNoticeStatus(notificationType)
+    const subject = taskLabel ? `The VM task ${taskLabel}` : 'The VM task you requested'
+    return [`${icon} ${subject} ${verb}.`, String(summary || '').trim(), link].filter(Boolean).join('\n\n')
 }
 
 // A failed, cancelled or interrupted run carries the runner's own status line (no report exists),
@@ -4855,15 +4842,12 @@ async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
     }
     if (!wantsWhatsApp && !postOriginNote) return
 
-    const { loadNoticeLanguage } = require('./noticeLanguage')
-    const language = await loadNoticeLanguage(admin.firestore(), pendingWebhook.userId)
-    const taskLabel = buildVmNoticeTaskLabel(task, language)
+    const taskLabel = buildVmNoticeTaskLabel(task)
     const summary = await buildVmNoticeSummary(pendingWebhook, text, notificationType, taskLabel)
     const noticeText = buildVmResultNoticeText({
         notificationType,
         taskLabel,
         summary,
-        language,
         link: buildVmChatLink(pendingWebhook.projectId, pendingWebhook.objectType || 'tasks', pendingWebhook.objectId),
     })
 

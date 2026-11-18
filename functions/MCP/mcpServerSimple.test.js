@@ -292,20 +292,6 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         expect(tool.inputSchema.properties.comment.description).toContain('context-specific reason')
     })
 
-    test('tells MCP clients that create_task skips the workflow by default', async () => {
-        const tool = (await listTools()).find(entry => entry.name === 'create_task')
-        const executionMode = tool.inputSchema.properties.executionMode
-
-        expect(executionMode.enum).toEqual(['workflow', 'direct'])
-        expect(executionMode.description).toContain('Over MCP the default is direct')
-        expect(executionMode.description).not.toContain('workflow (default)')
-        // The shared schema the in-app assistants get is not changed by the MCP wording.
-        const { toolSchemas } = require('../Assistant/toolSchemas')
-        expect(toolSchemas.create_task.function.parameters.properties.executionMode.description).toContain(
-            'workflow (default)'
-        )
-    })
-
     test('exposes get_local_recommendations with its coordinate schema over MCP', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'get_local_recommendations')
@@ -468,60 +454,13 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
 
         expect(mockExecuteToolNatively).toHaveBeenCalledWith(
             'create_task',
-            { name: 'Buy milk', projectId: 'default-project', executionMode: 'direct' },
+            { name: 'Buy milk', projectId: 'default-project' },
             'default-project',
             null,
             'user-1',
             {},
             expect.objectContaining({ sourceChannel: 'mcp' })
         )
-    })
-
-    // An agent's task skips the workflow unless the agent asks for it; in-app assistants keep the
-    // shared create_task default (workflow), so the MCP layer is the only place that sets it.
-    test.each([
-        ['no executionMode', {}, 'direct'],
-        ['an empty executionMode', { executionMode: '' }, 'direct'],
-        ['an unknown executionMode', { executionMode: 'skip' }, 'direct'],
-        ['an explicit direct', { executionMode: 'direct' }, 'direct'],
-        ['an explicit workflow', { executionMode: 'workflow' }, 'workflow'],
-    ])('create_task over MCP with %s is created with executionMode %s', async (label, extraArgs, expected) => {
-        const server = buildServer()
-        mockExecuteToolNatively.mockResolvedValue({ success: true, taskId: 't1' })
-
-        await server.handleSingleJsonRpc(
-            {
-                jsonrpc: '2.0',
-                id: 9,
-                method: 'tools/call',
-                params: {
-                    name: 'create_task',
-                    arguments: { name: 'Track work', projectId: 'project-2', ...extraArgs },
-                },
-            },
-            {}
-        )
-
-        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
-        expect(mockExecuteToolNatively.mock.calls[0][0]).toBe('create_task')
-        expect(mockExecuteToolNatively.mock.calls[0][1].executionMode).toBe(expected)
-    })
-
-    test('leaves executionMode alone for update_task over MCP', async () => {
-        const server = buildServer()
-        mockExecuteToolNatively.mockResolvedValue({ success: true })
-
-        await server.handleSingleJsonRpc(
-            {
-                jsonrpc: '2.0',
-                id: 10,
-                method: 'tools/call',
-                params: { name: 'update_task', arguments: { taskId: 'AT-1', projectId: 'project-2', name: 'Renamed' } },
-            },
-            {}
-        )
-
-        expect(mockExecuteToolNatively.mock.calls[0][1]).not.toHaveProperty('executionMode')
     })
 
     test('runs a wiki tool through executeToolNatively in the requested project', async () => {

@@ -1,3 +1,6 @@
+import { stripMarkdownForPreview } from '../../../functions/Utils/parseTextUtils'
+import { isMcpActor } from '../../../functions/shared/mcpActor'
+
 // The unread list (Chats > Unread): one row per unread message, each with a tag the user can filter
 // by. Pure helpers only - no redux, no Firestore - so the rules are testable on their own.
 //
@@ -8,7 +11,9 @@
 //   user configured it; the same rule decides the server's auto-archive
 //   (functions/Gmail/unreadEmailSettings.js `resolveUnreadEmailKind`). Comments from before these
 //   fields existed have neither and fall back to "Emails".
-// - Any other comment is from a person or from an assistant.
+// - Any other comment is from a person or from an assistant. A comment an MCP client (Claude Code,
+//   Codex, ...) wrote in the user's name keeps the user as creator but carries `via: 'mcp'`
+//   (functions/shared/mcpActor.js); it is an agent's message, so it counts as an assistant one.
 
 export const UNREAD_TAG_ALL = 'all'
 export const UNREAD_TAG_PEOPLE = 'people'
@@ -64,7 +69,7 @@ export const getUnreadMessageTag = message => {
         if (labelKey === 'newsletter') return UNREAD_TAG_NEWSLETTER
         return EMAIL_KIND_TAGS[text(message.gmailData.emailKind)] || UNREAD_TAG_EMAIL
     }
-    return message?.fromAssistant ? UNREAD_TAG_ASSISTANT : UNREAD_TAG_PEOPLE
+    return message?.fromAssistant || isMcpActor(message) ? UNREAD_TAG_ASSISTANT : UNREAD_TAG_PEOPLE
 }
 
 // The labeling sync writes informational emails as "Email from [sender name] ([sender email]):
@@ -90,6 +95,9 @@ export const getEmailRowContent = message => {
     const senderName = text(message?.gmailData?.fromName) || parsed?.senderName || senderEmail
     return { senderName, senderEmail, summary: parsed ? parsed.summary : text(message?.commentText) }
 }
+
+// One line of plain text for the row's summary (the shared preview rule, see parseTextUtils).
+export const toOneLineSummary = value => stripMarkdownForPreview(value)
 
 export const getMessageTime = message => {
     const toMs = value => {

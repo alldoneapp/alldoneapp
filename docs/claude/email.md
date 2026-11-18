@@ -155,12 +155,23 @@ in `emailThreadContinuation.test.js` and `linkedEmailActions.test.js`.
 
 Decided with the product owner from mockups (variant A). The "Unread" chat filter no longer lists
 topics with previews: each project shows every unread message of its unread chats as one row
-(sender, tag, one-line summary, time; archive for emails, mark as read, open), filtered by tag
+(sender, tag, summary, time; archive for emails, mark as read, open the chat), filtered by tag
 chips and sorted by newest or sender (`components/ChatsView/UnreadTriage/`). The "All" filter is
 unchanged. The "Unread" chip counts **messages**, not chats (`getUnreadMessageCount`: per chat
 unread for the tab, the messages the list shows - followed ones if any, else unfollowed), so it
 equals the "All" tag chip and the red chats badge in the top bar; for that the list loads every
-unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first page. "Mark as read" on a project line marks only the filtered rows while a tag is selected
+unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first page. Layout
+(2026-11-18, second round): one filter row - "All | Unread N", a divider, the tag chips (Unread
+itself means every tag, a tag chip toggles), sort and settings as icons at the right end; each row
+has the avatar top-aligned with a short time under it (`formatRowTime`: time today, day and month
+this year, two-digit year before), and the summary runs to two or three lines (320 characters,
+160 on a phone, capped at three lines) as plain text: `stripMarkdownForPreview` in
+`functions/Utils/parseTextUtils.js`, because SocialText turned an assistant's "## Heading" into a
+"##" hashtag chip. The MyDay "Last comment" block uses the same helper, applied before the line
+breaks are joined (`LastAssistantCommentWrapper`, `LastCommentText`). Pressing an email row opens the
+email in Gmail in a new tab (`getRowEmailUrl`, the link the thread's "Email" chip opens); the chat
+icon at the right end opens the thread, and any other row opens its chat. Opening the email marks
+nothing read here; the Gmail read sync clears the row once the mail is read or archived there. "Mark as read" on a project line marks only the filtered rows while a tag is selected
 (`UnreadTriageMarkAsRead`); the "Archive emails" buttons already act on what the rows register.
 
 **Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
@@ -172,7 +183,10 @@ comment's `gmailData` (`buildGmailCommentTagFields` in assistantHelper). Tag rul
 both sides (`resolveUnreadEmailKind` / `getUnreadMessageTag`): label `ads` → Ads, label
 `newsletter` → Newsletters, otherwise `emailKind`; in the default mode every other label is a
 project and says nothing about the kind. Comments from before this have no fields and show as
-"Other emails"; the row then reads the sender back from the "Email from X (x@y): summary" line.
+"Other emails"; the row then reads the sender back from the "Email from X (x@y): summary" line. A
+chat comment is "From people" or "Assistant"; one an MCP client wrote in the user's name
+(`via: 'mcp'`, mcp.md) counts as "Assistant" and its sender reads "Karsten Wysk (via Claude)"
+(`withMcpActorLabel`), as in the thread.
 
 **`users/{uid}.unreadEmailSettings`** (`{ newsletter, ads }`, each `show` | `archive`, default
 show; whitelisted in `mapUserData`). With `archive` the labeling sync archives an incoming,

@@ -29,28 +29,26 @@ const renderButtons = props =>
 const byTestId = (tree, testID) => tree.root.findAll(node => node.props.testID === testID && node.type === 'Button')
 
 describe('WorkflowBarButtons (AT-3081)', () => {
-    it('shows only the destination step names, with the action in the accessible name', () => {
+    it('names both destinations on desktop and in the accessible name', () => {
         const tree = renderButtons()
         const [back] = byTestId(tree, 'workflow-bar-backward')
         const [forward] = byTestId(tree, 'workflow-bar-forward')
 
         expect(back.props).toMatchObject({
             type: 'secondary',
-            icon: 'arrow-left',
-            title: 'AI: please build',
+            title: 'Send back: AI: please build',
             accessible: true,
             accessibilityRole: 'button',
             accessibilityLabel: 'Send back: AI: please build',
         })
         expect(forward.props).toMatchObject({
             type: 'primary',
-            icon: 'arrow-right',
-            title: 'Check what AI did',
+            title: 'Send forward: Check what AI did',
             accessibilityLabel: 'Send forward: Check what AI did',
         })
     })
 
-    it('keeps the next step readable on a phone and shrinks Back to an arrow', () => {
+    it('keeps the main next action readable on a phone and shrinks Back to an arrow', () => {
         const tree = renderButtons({ narrow: true })
         const [back] = byTestId(tree, 'workflow-bar-backward')
         const [forward] = byTestId(tree, 'workflow-bar-forward')
@@ -58,7 +56,7 @@ describe('WorkflowBarButtons (AT-3081)', () => {
         expect(back.props.title).toBeNull()
         expect(back.props.icon).toBe('arrow-left')
         expect(back.props.accessibilityLabel).toBe('Send back: AI: please build')
-        expect(forward.props.title).toBe('Check what AI did')
+        expect(forward.props.title).toBe('Send forward')
         expect(forward.props.accessibilityLabel).toBe('Send forward: Check what AI did')
     })
 
@@ -88,11 +86,9 @@ describe('WorkflowBarButtons (AT-3081)', () => {
 
     it('hides Back on Open and words Forward as entering the workflow', () => {
         const tree = renderButtons({ currentStep: -1, backwardStepName: undefined })
-        const [forward] = byTestId(tree, 'workflow-bar-forward')
 
         expect(byTestId(tree, 'workflow-bar-backward')).toHaveLength(0)
-        expect(forward.props.title).toBe('Check what AI did')
-        expect(forward.props.accessibilityLabel).toBe('Go to next step: Check what AI did')
+        expect(byTestId(tree, 'workflow-bar-forward')[0].props.title).toBe('Go to next step: Check what AI did')
     })
 
     it('hides Forward on Done', () => {
@@ -117,12 +113,6 @@ describe('WorkflowBarButtons (AT-3081)', () => {
             backwardAction: 'Send back',
             forwardLabel: 'Send forward',
             backwardLabel: 'Send back',
-            forwardTitle: 'Send forward',
-            backwardTitle: 'Send back',
         })
-
-        const tree = renderButtons({ backwardStepName: undefined, forwardStepName: '' })
-        expect(byTestId(tree, 'workflow-bar-backward')[0].props.title).toBe('Send back')
-        expect(byTestId(tree, 'workflow-bar-forward')[0].props.title).toBe('Send forward')
     })
 })

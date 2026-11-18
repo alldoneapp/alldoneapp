@@ -6,7 +6,9 @@ import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { getUnreadMessageCount } from './Utils/unreadChatFilter'
-import UnreadTriageFilters from './UnreadTriage/UnreadTriageFilters'
+import { UnreadTriageTagChips, UnreadTriageTools } from './UnreadTriage/UnreadTriageFilters'
+import { useUnreadTriage } from './UnreadTriage/UnreadTriageContext'
+import { UNREAD_TAG_ALL } from './UnreadTriage/unreadMessageTags'
 
 export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly }) {
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
@@ -15,6 +17,20 @@ export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly 
         () => getUnreadMessageCount(projectChatNotifications, projectIds, chatsActiveTab),
         [projectChatNotifications, projectIds, chatsActiveTab]
     )
+
+    // The unread list's tag filter lives in the same row: "Unread" is every tag, a tag chip one of
+    // them, and leaving or re-entering Unread starts from every tag again.
+    const triage = useUnreadTriage()
+    const tagFilter = triage?.tagFilter || UNREAD_TAG_ALL
+    const resetTagFilter = () => triage?.setTagFilter(UNREAD_TAG_ALL)
+    const showAll = () => {
+        resetTagFilter()
+        setUnreadOnly(false)
+    }
+    const showUnread = () => {
+        resetTagFilter()
+        setUnreadOnly(true)
+    }
 
     useEffect(() => {
         if (unreadCount === 0 && unreadOnly) setUnreadOnly(false)
@@ -29,22 +45,25 @@ export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly 
                 <Text style={[styles.caption1, localStyles.headerText]}>{translate('Chat Filters')}</Text>
             </View>
             <View style={localStyles.filtersRow}>
-                <FilterChip
-                    selected={!unreadOnly}
-                    onPress={() => setUnreadOnly(false)}
-                    testID="chat-filter-all"
-                    label={translate('All')}
-                />
-                <FilterChip
-                    selected={unreadOnly}
-                    onPress={() => setUnreadOnly(true)}
-                    testID="chat-filter-unread"
-                    label={translate('Unread')}
-                    count={unreadCount}
-                />
+                <View style={localStyles.chips}>
+                    <FilterChip
+                        selected={!unreadOnly}
+                        onPress={showAll}
+                        testID="chat-filter-all"
+                        label={translate('All')}
+                    />
+                    <FilterChip
+                        selected={unreadOnly && tagFilter === UNREAD_TAG_ALL}
+                        onPress={showUnread}
+                        testID="chat-filter-unread"
+                        label={translate('Unread')}
+                        count={unreadCount}
+                    />
+                    {/* Chats > Unread is the flat list of unread messages: its tags, in this row. */}
+                    {unreadOnly && <UnreadTriageTagChips projectIds={projectIds} />}
+                </View>
+                {unreadOnly && <UnreadTriageTools />}
             </View>
-            {/* Chats > Unread is the flat list of unread messages; its tags, sort and settings. */}
-            {unreadOnly && <UnreadTriageFilters projectIds={projectIds} />}
         </View>
     )
 }
@@ -69,7 +88,8 @@ const localStyles = StyleSheet.create({
     header: { minHeight: 24, flexDirection: 'row', alignItems: 'center' },
     headerIcon: { marginRight: 6 },
     headerText: { flex: 1, color: colors.Text03, marginRight: 8 },
-    filtersRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', marginTop: 8 },
+    filtersRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 },
+    chips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
     filterItem: {
         flexDirection: 'row',
         alignItems: 'center',

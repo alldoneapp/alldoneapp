@@ -16,6 +16,7 @@ import {
     isEmailMessage,
     parseEmailCommentLine,
     sortRows,
+    toOneLineSummary,
 } from './unreadMessageTags'
 import { isAdsArchived, isUnreadEmailKindArchived, normalizeUnreadEmailSettings } from './unreadEmailSettings'
 
@@ -46,6 +47,18 @@ describe('getUnreadMessageTag', () => {
     test('chat comments are from a person or from an assistant', () => {
         expect(getUnreadMessageTag({ id: 'c2', fromAssistant: false, commentText: 'Hi' })).toBe(UNREAD_TAG_PEOPLE)
         expect(getUnreadMessageTag({ id: 'c3', fromAssistant: true, commentText: 'Done' })).toBe(UNREAD_TAG_ASSISTANT)
+    })
+
+    test('a comment an MCP client wrote in the user\'s name is an assistant message, not "From people"', () => {
+        expect(
+            getUnreadMessageTag({
+                id: 'c4',
+                fromAssistant: false,
+                via: 'mcp',
+                viaClient: 'Claude',
+                commentText: 'Done',
+            })
+        ).toBe(UNREAD_TAG_ASSISTANT)
     })
 
     test("the owner's own sent mail is not an email row", () => {
@@ -144,5 +157,23 @@ describe('unread email settings', () => {
         expect(isAdsArchived({ ads: 'archive' }, false)).toBe(true)
         expect(isAdsArchived({}, true)).toBe(true)
         expect(isAdsArchived(undefined)).toBe(false)
+    })
+})
+
+describe('toOneLineSummary', () => {
+    test('drops markdown so a heading does not become a "##" hashtag chip', () => {
+        expect(
+            toOneLineSummary(
+                '## Ergebnis: Gemergt\nMR 893 ist **gemergt**. Der Job `deploy:web` lief, *nicht* aber:\n- [Pipeline](https://x.y/1)\n> Zitat'
+            )
+        ).toBe('Ergebnis: Gemergt MR 893 ist gemergt. Der Job deploy:web lief, nicht aber: Pipeline Zitat')
+    })
+
+    test('keeps hashtags, mentions and code block content', () => {
+        expect(toOneLineSummary('#release für @Jana\n```js\nrun()\n```')).toBe('#release für @Jana run()')
+    })
+
+    test('copes with empty input', () => {
+        expect(toOneLineSummary(undefined)).toBe('')
     })
 })

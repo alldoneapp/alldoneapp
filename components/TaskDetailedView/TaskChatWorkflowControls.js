@@ -7,18 +7,7 @@ import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import CommentPopupWorkflowControls, {
     WORKFLOW_CONTROLS_LAYOUT_BAR,
-    getCommentPopupWorkflowTargets,
 } from '../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
-
-/**
- * Does the chat tab show the workflow bar for this task? Same rule `CommentPopupWorkflowControls`
- * uses to render nothing, so the header can drop the assistant line exactly when the bar takes
- * its place.
- */
-export function useTaskChatShowsWorkflowBar(projectId, task) {
-    const workflow = useGetTaskWorkflow(projectId, task)
-    return !!getCommentPopupWorkflowTargets(task, workflow)
-}
 
 export default function TaskChatWorkflowControls({ projectId, task }) {
     const loggedUser = useSelector(state => state.loggedUser)

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import { useSelector } from 'react-redux'
 import { pickDifferentFocusTask, pickNewFocusTask } from '../../utils/backends/Tasks/tasksFirestore'
-import AnnaFocusTask, { FAST_TICK_MS, LAND_WAIT_TICKS, MIN_TICKS } from './AnnaFocusTask'
+import AnnaFocusTask from './AnnaFocusTask'
 import { resetFocusRerollSession } from './annaFocusReroll'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
@@ -161,7 +161,7 @@ describe('the focus task in the assistant header', () => {
         )
         const seen = new Set()
         for (let i = 0; i < 6; i++) {
-            advance(FAST_TICK_MS)
+            advance(70)
             seen.add(reelText())
         }
         expect([...seen].sort()).toEqual(['Call Ben', 'Pay invoice'])
@@ -178,38 +178,6 @@ describe('the focus task in the assistant header', () => {
         expect(container.querySelector('.anna-focus-pill').className).toContain('anna-focus-landed')
         advance(800)
         expect(container.querySelector('.anna-focus-pill').className).not.toContain('anna-focus-landed')
-    })
-
-    // AT-3085: the roll was too fast to read and the waiting text sat above the pill's middle.
-    it('rolls at a readable pace for about as long as before', () => {
-        expect(FAST_TICK_MS).toBeGreaterThanOrEqual(120)
-        // At least about a second of rolling, at most about three more seconds waiting for the task.
-        expect(FAST_TICK_MS * MIN_TICKS).toBeGreaterThanOrEqual(1000)
-        expect(FAST_TICK_MS * MIN_TICKS).toBeLessThan(1500)
-        expect(FAST_TICK_MS * LAND_WAIT_TICKS).toBeLessThan(3500)
-    })
-
-    it('keeps the waiting text in place instead of sliding it in again on every tick', async () => {
-        pickNewFocusTask.mockReturnValue(new Promise(() => {}))
-        render({})
-        await act(async () => button().click())
-        const item = container.querySelector('.anna-focus-reel-item')
-        expect(item.textContent).toBe('Finding a focus task…')
-        for (let i = 0; i < 5; i++) advance(FAST_TICK_MS)
-        // The same element: its slide-in animation is not restarted, so it stays centred.
-        expect(container.querySelector('.anna-focus-reel-item')).toBe(item)
-
-        // Names slide in, one per tick, once candidates are known.
-        act(() =>
-            pickNewFocusTask.mock.calls[0][2].onCandidates([
-                { id: 'a', name: 'Call Ben' },
-                { id: 'b', name: 'Pay invoice' },
-            ])
-        )
-        advance(FAST_TICK_MS)
-        const first = container.querySelector('.anna-focus-reel-item')
-        advance(FAST_TICK_MS)
-        expect(container.querySelector('.anna-focus-reel-item')).not.toBe(first)
     })
 
     it('says so when no open task is left for today, and when the pick fails', async () => {
@@ -375,7 +343,7 @@ describe('a different focus task from the assistant header', () => {
         await act(async () => reroll().click())
         act(() => pickDifferentFocusTask.mock.calls[0][1].onCandidates([{ id: 't2', name: 'Write offer' }]))
         for (let i = 0; i < 4; i++) {
-            advance(FAST_TICK_MS)
+            advance(70)
             expect(reelText()).toBe('Finding a focus task…')
         }
     })

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import styles, { colors } from '../../styles/global'
@@ -8,22 +8,47 @@ import SocialText from '../../UIControls/SocialText/SocialText'
 import SVGGenericUser from '../../../assets/svg/SVGGenericUser'
 import { translate } from '../../../i18n/TranslationService'
 import useGetUserPresentationData from '../../ContactsView/Utils/useGetUserPresentationData'
+import { withMcpActorLabel } from '../../../utils/mcpActorLabel'
 import { getDateFormat, getTimeFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
-import { CHAT_LAST_COMMENT_PREVIEW_CHARACTER_LIMIT, shrinkTagText } from '../../../functions/Utils/parseTextUtils'
+import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 import { onOpenChat } from '../Utils/ChatHelper'
+import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
 import { UNREAD_TAG_ADS, UNREAD_TAG_LABEL_KEYS, UNREAD_TAG_PEOPLE } from './unreadMessageTags'
 
 const AVATAR_SIZE = 32
+// The summary may run to two or three lines (decided 2026-11-18): enough to decide without opening.
+// Fewer characters on a phone, where a line holds about half as many. The height cap is the
+// backstop for a long word run, since SocialText wraps word by word and cannot clamp lines itself.
+export const UNREAD_SUMMARY_CHARACTER_LIMIT = 320
+export const UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE = 160
+const SUMMARY_MAX_LINES = 3
 
-// Lazy: the backend module pulls the redux store and the Firebase client (see linkedEmailActions).
+// The same link the thread's "Email" chip opens (GmailTag): the message in Gmail, account-aware.
+export const getRowEmailUrl = message =>
+    getGmailTaskWebUrl(message?.gmailData, {
+        platform: Platform.OS,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0,
+    })
+
+// Lazy: the email line helpers and the backend module pull in the redux store and the Firebase
+// client (see linkedEmailActions); a row test should not need either.
+const openInNewTab = url => require('../../TaskListView/EmailLine/emailLineHelper').openUrlInNewTab(url)
+
 const markCommentRead = ref =>
     require('../../../utils/backends/Chats/markChatCommentsAsRead').markChatCommentsAsRead([ref])
 
+// Sits under the avatar, so it has to stay short: the time today, the day and month this year,
+// and a two-digit year before that - in the user's own date order (DD.MM or MM.DD).
 export const formatRowTime = time => {
     if (!time) return ''
     const date = moment(time)
-    return date.isSame(moment(), 'day') ? date.format(getTimeFormat()) : date.format(getDateFormat())
+    const now = moment()
+    if (date.isSame(now, 'day')) return date.format(getTimeFormat())
+    const dateFormat = getDateFormat()
+    if (date.isSame(now, 'year')) return date.format(dateFormat.replace(/[./-]?YYYY[./-]?/, ''))
+    return date.format(dateFormat.replace('YYYY', 'YY'))
 }
 
 /**
@@ -44,7 +69,10 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
     const archive = archiveContext?.archive
     const [markReadFailed, setMarkReadFailed] = useState(false)
 
-    const senderName = isEmail ? row.senderName || translate('Email') : creatorData?.displayName || row.senderName
+    // An MCP client's comment reads "Karsten Wysk (via Claude)", as in the thread (mcpActorLabel).
+    const senderName = isEmail
+        ? row.senderName || translate('Email')
+        : withMcpActorLabel(creatorData?.displayName, message) || row.senderName
     const canArchive = isEmail && accessGranted && !!linkedEmail && !!archive
     const archiving = canArchive && archive.isArchivingEmail(linkedEmail.key)
     const archiveFailed = canArchive && archive.isFailedEmail(linkedEmail.key)
@@ -52,7 +80,13 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
     // task comment or a conversation topic says where it was written.
     const showChatTitle = !!chat?.title && !(isEmail && /^daily emails/i.test(chat.title))
 
-    const open = () => onOpenChat(projectId, chat)
+    // Pressing an email row opens the email itself in a new tab; the chat icon at the right end opens
+    // the thread it was posted in (decided 2026-11-18). Any other row opens its chat. Opening the
+    // email changes nothing here: once it is read or archived in Gmail, the read sync (AT-2376)
+    // clears the row.
+    const openChat = () => onOpenChat(projectId, chat)
+    const emailUrl = isEmail ? getRowEmailUrl(message) : ''
+    const openRow = emailUrl ? () => openInNewTab(emailUrl) : openChat
 
     const markRead = () => {
         setMarkReadFailed(false)
@@ -70,21 +104,27 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
     return (
         <TouchableOpacity
             style={localStyles.row}
-            onPress={open}
+            onPress={openRow}
             activeOpacity={0.7}
-            accessibilityLabel={`${senderName}: ${row.summary}`}
+            accessibilityLabel={`${emailUrl ? `${translate('Open in Gmail')} - ` : ''}${senderName}: ${row.summary}`}
             testID={`unread-row-${message.id}`}
         >
-            <View style={localStyles.avatar}>
-                {isEmail ? (
-                    <View style={localStyles.emailAvatar}>
-                        <Icon name="mail" size={16} color={colors.Text03} />
-                    </View>
-                ) : creatorData?.photoURL ? (
-                    <Image source={{ uri: creatorData.photoURL }} style={localStyles.avatarImage} />
-                ) : (
-                    <SVGGenericUser width={AVATAR_SIZE} height={AVATAR_SIZE} svgid={`unread_${message.id}`} />
-                )}
+            {/* Avatar at the top, the time under it (decided 2026-11-18). */}
+            <View style={localStyles.leftColumn}>
+                <View style={localStyles.avatar}>
+                    {isEmail ? (
+                        <View style={localStyles.emailAvatar}>
+                            <Icon name="mail" size={16} color={colors.Text03} />
+                        </View>
+                    ) : creatorData?.photoURL ? (
+                        <Image source={{ uri: creatorData.photoURL }} style={localStyles.avatarImage} />
+                    ) : (
+                        <SVGGenericUser width={AVATAR_SIZE} height={AVATAR_SIZE} svgid={`unread_${message.id}`} />
+                    )}
+                </View>
+                <Text style={localStyles.time} numberOfLines={1}>
+                    {formatRowTime(row.time)}
+                </Text>
             </View>
 
             <View style={localStyles.content}>
@@ -121,15 +161,17 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                     textStyle={localStyles.summaryText}
                     normalStyle={{ whiteSpace: 'normal' }}
                     wrapText
-                    numberOfLines={1}
+                    numberOfLines={SUMMARY_MAX_LINES}
                     projectId={projectId}
                 >
-                    {shrinkTagText(row.summary || '', CHAT_LAST_COMMENT_PREVIEW_CHARACTER_LIMIT)}
+                    {shrinkTagText(
+                        row.summary || '',
+                        mobile ? UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE : UNREAD_SUMMARY_CHARACTER_LIMIT
+                    )}
                 </SocialText>
             </View>
 
             <View style={localStyles.actions}>
-                <Text style={localStyles.time}>{formatRowTime(row.time)}</Text>
                 {canArchive && (
                     <RowAction
                         icon={archiveFailed ? 'x' : 'archive'}
@@ -145,7 +187,7 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                     onPress={markRead}
                     error={markReadFailed}
                 />
-                <RowAction icon="arrow-up-right" label={translate('Open message')} onPress={open} />
+                <RowAction icon="message-circle" label={translate('Open chat')} onPress={openChat} />
             </View>
         </TouchableOpacity>
     )
@@ -172,7 +214,7 @@ function RowAction({ icon, label, onPress, error, busy }) {
 const localStyles = StyleSheet.create({
     row: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         paddingVertical: 8,
         paddingLeft: 8,
         paddingRight: 4,
@@ -182,10 +224,14 @@ const localStyles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: colors.Grey300,
     },
+    leftColumn: {
+        width: 48,
+        alignItems: 'center',
+        marginRight: 8,
+    },
     avatar: {
         width: AVATAR_SIZE,
         height: AVATAR_SIZE,
-        marginRight: 12,
     },
     avatarImage: {
         width: AVATAR_SIZE,
@@ -247,12 +293,15 @@ const localStyles = StyleSheet.create({
     },
     summary: {
         marginTop: 2,
+        maxHeight: SUMMARY_MAX_LINES * styles.body2.lineHeight,
+        overflow: 'hidden',
     },
     summaryText: {
         ...styles.body2,
         color: colors.Text02,
     },
     actions: {
+        alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 8,
@@ -261,7 +310,8 @@ const localStyles = StyleSheet.create({
     time: {
         ...styles.caption2,
         color: colors.Text03,
-        marginRight: 4,
+        marginTop: 4,
+        textAlign: 'center',
     },
     action: {
         width: 32,

@@ -3992,30 +3992,6 @@ describe('VM result notices keep the report in the task thread (AT-3074)', () =>
         expect(note).toBe(`✅ The VM task AT-3073 “Reorder top-bar buttons” finished.\n\n${HOST_LINK}`)
     })
 
-    test('the status line is in the requesting user’s app language (AT-3082)', async () => {
-        useDocs({ 'items/project-X/tasks/host-task-1': plainTask, [`users/${OWNER}`]: { language: 'de' } })
-
-        await __private__.notifyVmResultChannels(job(), FULL_REPORT, { notificationType: 'completed' })
-
-        expect(mockSummarizeVmResultForChat).toHaveBeenCalledWith(
-            expect.objectContaining({ taskLabel: 'AT-3073 „Reorder top-bar buttons“' })
-        )
-        expect(mockCreateInitialStatusMessage.mock.calls[0][4]).toBe(
-            `✅ Die VM-Aufgabe AT-3073 „Reorder top-bar buttons“ ist abgeschlossen.\n\n${SUMMARY}\n\n${HOST_LINK}`
-        )
-    })
-
-    test('every VM outcome has a German status line', () => {
-        const line = (notificationType, taskLabel = '') =>
-            __private__.buildVmResultNoticeText({ notificationType, taskLabel, language: 'de' })
-        expect(line('completed')).toBe('✅ Die angeforderte VM-Aufgabe ist abgeschlossen.')
-        expect(line('cancelled', 'AT-1 „X“')).toBe('🛑 Die VM-Aufgabe AT-1 „X“ wurde abgebrochen.')
-        expect(line('failed')).toBe('❌ Die angeforderte VM-Aufgabe ist fehlgeschlagen.')
-        expect(__private__.buildVmResultNoticeText({ notificationType: 'completed' })).toBe(
-            '✅ The VM task you requested finished.'
-        )
-    })
-
     test('WhatsApp and its daily-topic mirror get the same short notice, without the report or file links', async () => {
         useDocs({ 'items/project-X/tasks/host-task-1': plainTask })
 

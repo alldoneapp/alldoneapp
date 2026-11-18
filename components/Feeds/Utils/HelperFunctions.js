@@ -57,10 +57,6 @@ import { getAssistant, getAssistantInProject } from '../../AdminPanel/Assistants
 import { removeColor } from '../../../functions/Utils/hashtagUtils'
 import { FEED_WIKI_TYPES, WIKI_FEED_OBJECTS_TYPE } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import {
-    ASSISTANT_PROFILE_FEED_OBJECT_TYPE,
-    FEED_ASSISTANT_PROFILE_TYPES,
-} from '../../../functions/AssistantProfile/assistantProfileFeedModel'
-import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN,
     LAST_COMMENT_CHARACTER_LIMIT_IN_SMALL_SCREEN,
@@ -493,9 +489,6 @@ export const getFeedObjectTypes = feedType => {
     }
     if (FEED_WIKI_TYPES.includes(feedType)) {
         return WIKI_FEED_OBJECTS_TYPE
-    }
-    if (FEED_ASSISTANT_PROFILE_TYPES.includes(feedType)) {
-        return ASSISTANT_PROFILE_FEED_OBJECT_TYPE
     }
     // MCP feed parity: artifacts
     if (FEED_ARTIFACT_TYPES.includes(feedType)) {

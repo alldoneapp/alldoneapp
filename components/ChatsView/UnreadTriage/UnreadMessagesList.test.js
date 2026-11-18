@@ -12,6 +12,7 @@ import { UnreadEmailArchiveProvider, useUnreadLinkedEmailsScope } from '../unrea
 import useGetUnreadChatMessages from '../../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatCommentsAsRead } from '../../../utils/backends/Chats/markChatCommentsAsRead'
 import { onOpenChat } from '../Utils/ChatHelper'
+import { openUrlInNewTab } from '../../TaskListView/EmailLine/emailLineHelper'
 import { UNREAD_SORT_SENDER, UNREAD_TAG_ADS, UNREAD_TAG_PEOPLE } from './unreadMessageTags'
 
 jest.mock('../../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
@@ -30,8 +31,11 @@ jest.mock('../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
     markChatCommentsAsRead: jest.fn(async () => {}),
     clearChatCommentsForLinkedEmails: jest.fn(async () => async () => {}),
 }))
-jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
+jest.mock('../../../i18n/TranslationService', () => ({
+    translate: (key, vars = {}) => (key === 'Actor via MCP client' ? `${vars.name} (via ${vars.client})` : key),
+}))
 jest.mock('../Utils/ChatHelper', () => ({ onOpenChat: jest.fn() }))
+jest.mock('../../TaskListView/EmailLine/emailLineHelper', () => ({ openUrlInNewTab: jest.fn() }))
 jest.mock('../../UIComponents/FloatModals/DateFormatPickerModal', () => ({
     getDateFormat: () => 'DD.MM.YYYY',
     getTimeFormat: () => 'HH:mm',
@@ -56,7 +60,13 @@ const MESSAGES = {
             creatorId: 'anna',
             created: 300,
             commentText: 'Email from Zalando (deals@zalando.de): Black week, 50% off.',
-            gmailData: { messageId: 'm-ad', connectionId: 'conn-1', labelKey: 'ads', emailKind: 'ads' },
+            gmailData: {
+                messageId: 'm-ad',
+                connectionId: 'conn-1',
+                gmailEmail: 'me@example.com',
+                labelKey: 'ads',
+                emailKind: 'ads',
+            },
         },
         {
             id: 'c-news',
@@ -167,6 +177,48 @@ describe('UnreadMessagesList', () => {
     })
 })
 
+describe("a comment an MCP client wrote in the user's name", () => {
+    it('is tagged Assistant and its sender reads "(via Claude)", as in the thread', () => {
+        mockState = {
+            loggedUser: { uid: 'user-1' },
+            smallScreenNavigation: false,
+            projectChatNotifications: {
+                'project-1': { 'chat-task': { totalFollowed: 1, followedNotifications: [{ commentId: 'c-mcp' }] } },
+            },
+        }
+        useGetUnreadChatMessages.mockImplementation(() => ({
+            messages: [
+                {
+                    id: 'c-mcp',
+                    fromAssistant: false,
+                    creatorId: 'jana',
+                    via: 'mcp',
+                    viaClient: 'Claude',
+                    created: 100,
+                    commentText: 'Implemented locally, not committed yet.',
+                },
+            ],
+            loaded: true,
+        }))
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <UnreadEmailArchiveProvider>
+                    <UnreadTriageProvider>
+                        <TriageProbe />
+                        <UnreadMessagesList project={project} chats={[taskChat]} />
+                    </UnreadTriageProvider>
+                </UnreadEmailArchiveProvider>
+            )
+        })
+
+        const row = tree.root.findByType(UnreadMessageRow)
+        expect(row.props.row.tag).toBe('assistant')
+        expect(JSON.stringify(tree.toJSON())).toContain('Jana Becker (via Claude)')
+        expect(sumTagCounts(triage.projects)).toEqual({ all: 1, assistant: 1 })
+    })
+})
+
 describe('UnreadMessageRow actions', () => {
     beforeEach(() => jest.clearAllMocks())
 
@@ -196,7 +248,29 @@ describe('UnreadMessageRow actions', () => {
         ).not.toHaveLength(0)
         expect(chatRow.findAll(node => node.props.accessibilityLabel === 'Archive email')).toHaveLength(0)
 
-        act(() => findAction(chatRow, 'Open message').props.onPress({ stopPropagation: jest.fn() }))
+        act(() => findAction(chatRow, 'Open chat').props.onPress({ stopPropagation: jest.fn() }))
         expect(onOpenChat).toHaveBeenCalledWith('project-1', taskChat)
+    })
+
+    it('opens an email row in Gmail in a new tab, and its chat icon opens the thread', () => {
+        const tree = renderList()
+        const emailRow = tree.root.findAllByType(UnreadMessageRow).find(node => node.props.row.message.id === 'c-ad')
+        const rowTouchable = emailRow.find(node => node.props.testID === 'unread-row-c-ad' && node.props.onPress)
+
+        act(() => rowTouchable.props.onPress())
+        expect(openUrlInNewTab).toHaveBeenCalledTimes(1)
+        expect(openUrlInNewTab.mock.calls[0][0]).toContain('m-ad')
+        expect(onOpenChat).not.toHaveBeenCalled()
+
+        act(() => findAction(emailRow, 'Open chat').props.onPress({ stopPropagation: jest.fn() }))
+        expect(onOpenChat).toHaveBeenCalledWith('project-1', dailyEmails)
+    })
+
+    it('a chat row opens its chat when pressed', () => {
+        const tree = renderList()
+        const chatRow = tree.root.findAllByType(UnreadMessageRow).find(node => node.props.row.message.id === 'c-jana')
+        act(() => chatRow.find(node => node.props.testID === 'unread-row-c-jana' && node.props.onPress).props.onPress())
+        expect(onOpenChat).toHaveBeenCalledWith('project-1', taskChat)
+        expect(openUrlInNewTab).not.toHaveBeenCalled()
     })
 })

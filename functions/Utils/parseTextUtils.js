@@ -181,6 +181,31 @@ const removeFormatTagsFromText = text => {
         : ''
 }
 
+/**
+ * Markdown out of a comment for a short preview (the MyDay "Last comment" block, Chats > Unread).
+ * Assistant answers are markdown; a preview renders them as text plus Alldone tags, so a
+ * "## Result" heading came out as a "##" hashtag chip and backticks/asterisks as they are. Works
+ * line by line before the lines are joined, since headings, quotes and list markers only mean
+ * something at a line start. Hashtags (#tag, no space), mentions and the encoded image/attachment
+ * tokens (single words without these characters) are left alone. Returns one line.
+ */
+const stripMarkdownForPreview = (text = '') =>
+    String(text || '')
+        .replace(/```[^\n`]*\n?([\s\S]*?)```/g, ' $1 ')
+        .split(/\r\n|\n|\r/)
+        .map(line =>
+            line
+                .replace(/^\s{0,3}#{1,6}\s+/, '')
+                .replace(/^\s*>\s?/, '')
+                .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
+        )
+        .join(' ')
+        .replace(/!?\[([^\]\n]*)\]\((?:[^)\s]+)\)/g, '$1')
+        .replace(/\*\*|`/g, '')
+        .replace(/(^|[\s(])\*(\S(?:[^*]*\S)?)\*(?=[\s.,;:!?)]|$)/g, '$1$2')
+        .replace(/\s+/g, ' ')
+        .trim()
+
 const cleanTextMetaData = (text = '', removeLineBreaks, preserveMentionMeta = false) => {
     const linealText = removeLineBreaks ? text.replace(/(\r\n|\n|\r)/gm, ' ') : text
     const words = linealText.replace(/<\/?[^>]+>/gi, '').split(' ')
@@ -219,6 +244,7 @@ module.exports = {
     REGEX_IMAGE,
     REGEX_VIDEO,
     removeFormatTagsFromText,
+    stripMarkdownForPreview,
     cleanTextMetaData,
     shrinkTagText,
     getMilestoneTagData,

@@ -295,19 +295,6 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   that cannot list the suites runs all of them. `needs` on the job waits for all copies.
   A job without `parallel` has `CI_NODE_TOTAL=1` and no index, which reads as "not split".
   The cost is three more job start-ups (about 45 seconds each) per pipeline.
-- **The suites related to the changed files are found in one Jest process
-  (`ci/listRelatedJestTests.js`, 2026-11-18).** The runner needs the answer per file, because
-  a changed file that no suite depends on makes it run every suite, and it used to start
-  `jest --listTests --findRelatedTests <file>` once per file, about 1.7 seconds each on the
-  CI runners. The functions test job of pipeline 9824 (67 changed files) spent 114 seconds
-  finding its 134 suites and 49 running them, which is also why splitting that job into
-  parallel copies was dropped: every copy would have repeated the search. The script builds
-  the file map and dependency resolver once (`SearchSource.findRelatedTests`, the code
-  behind that command line) and asks it for every file: 64 inputs in 9 seconds instead of
-  165 locally, with identical lists. Those are not documented Jest APIs, so
-  `runWebTests.js` falls back to the command line whenever the script fails or its answer is
-  incomplete; a Jest upgrade can make discovery slow again but not wrong. The same runner
-  serves `test:web:deployment`, `test:web:changed` and `test:functions:deployment`.
 - **CI images bake `node_modules`, so a branch that changes dependencies needs its own
   image.** `build_base` (node:12, `npm ci` on the v1 lockfile) and `build_web_bundler`
   (node:22 tooling + the app tree copied from the base image) are built by the

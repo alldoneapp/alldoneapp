@@ -30,7 +30,6 @@ export default function PreConfigTaskGeneratorModal({
     task,
     processPromp,
     defaultContext,
-    originConversation = null,
 }) {
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
@@ -68,15 +67,7 @@ export default function PreConfigTaskGeneratorModal({
                 sendWhatsApp: !!task.sendWhatsApp,
                 executionMode: task.executionMode,
             }
-            generateTaskFromPreConfig(
-                projectId,
-                name,
-                assistant.uid,
-                generatedPrompt,
-                aiSettings,
-                taskMetadata,
-                originConversation ? { originConversation } : undefined
-            )
+            generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt, aiSettings, taskMetadata)
         }
     }
 

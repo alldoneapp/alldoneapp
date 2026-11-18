@@ -5,26 +5,15 @@ const { spawnSync } = require('child_process')
 const { makePlan, full } = require('./selectTargetedJestFiles')
 const { sourceTestAffected } = require('./sourceTestDependencies')
 
-// `listRelated(inputs)` answers for all inputs from one Jest process (ci/listRelatedJestTests.js)
-// as { input: [suites] }. Without it, or for an input it does not answer, Jest is asked once per
-// input on the command line: the same answer, about 1.7 seconds apiece.
-function resolveSuites(root, plan, listTests, listRelated) {
+function resolveSuites(root, plan, listTests) {
     if (plan.mode !== 'targeted') return plan
     const all = listTests([])
     const available = new Set(all)
     if (!all.length) throw new Error('Jest discovered no web tests')
     const sourceChecks = all.filter(file => sourceTestAffected(root, file, plan.inputs))
-    let known = {}
-    if (listRelated) {
-        try {
-            known = listRelated(plan.inputs) || {}
-        } catch (error) {
-            console.log(`Asking Jest once per changed file: ${error.message}`)
-        }
-    }
     const related = []
     for (const input of plan.inputs) {
-        const affected = Array.isArray(known[input]) ? known[input] : listTests(['--findRelatedTests', input])
+        const affected = listTests(['--findRelatedTests', input])
         const sourceReaders = sourceChecks.filter(file => sourceTestAffected(root, file, [input]))
         if (
             !affected.length &&
@@ -116,27 +105,8 @@ function run({
             throw new Error('Invalid Jest test discovery')
         return files
     }
-    const listRelated = inputs => {
-        const result = runProcess(
-            process.execPath,
-            [path.join(__dirname, 'listRelatedJestTests.js'), path.join(__dirname, `jest.${kind}.config.js`)],
-            { cwd: root, encoding: 'utf8', input: JSON.stringify(inputs), maxBuffer: 256 * 1024 * 1024 }
-        )
-        if (result.error || result.status !== 0) throw new Error('related tests could not be listed in one process')
-        let related
-        try {
-            related = JSON.parse(result.stdout).related
-        } catch (_) {
-            throw new Error('related tests were listed in an unreadable form')
-        }
-        // Anything but a list of paths for an input is no answer for that input.
-        const valid = value => Array.isArray(value) && value.every(file => typeof file === 'string')
-        if (!related || typeof related !== 'object' || !inputs.every(input => valid(related[input])))
-            throw new Error('related tests were listed incompletely')
-        return related
-    }
     try {
-        plan = resolveSuites(root, plan, listTests, listRelated)
+        plan = resolveSuites(root, plan, listTests)
     } catch (error) {
         plan = full(plan.head, `${error.message}; run every suite`, plan.base, kind)
     }
