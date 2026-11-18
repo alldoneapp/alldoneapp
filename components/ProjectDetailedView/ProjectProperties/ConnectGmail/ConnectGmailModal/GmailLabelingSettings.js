@@ -27,6 +27,12 @@ import {
     normalizeConfig,
     sanitizeConfigForSave,
 } from './GmailLabelingSettings.helpers'
+import {
+    UNREAD_EMAIL_SETTING_ARCHIVE,
+    UNREAD_EMAIL_SETTING_SHOW,
+    isAdsArchived,
+    setUnreadEmailSetting,
+} from '../../../../ChatsView/UnreadTriage/unreadEmailSettings'
 
 const DIRECTION_OPTIONS = [
     { key: 'incoming', label: 'Incoming' },
@@ -368,6 +374,8 @@ export default function GmailLabelingSettings({
     onRegisterCloseHandlers,
 }) {
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const unreadEmailSettings = useSelector(state => state.loggedUser.unreadEmailSettings)
     const userDescription = useSelector(state => state.loggedUser.extendedDescription || '')
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
@@ -393,6 +401,13 @@ export default function GmailLabelingSettings({
     const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
     const needsReconnect = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope === false
     const canManage = isPremiumUser && isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
+
+    // The ads switch is the user's, shared with Chats > Unread (users/{uid}.unreadEmailSettings.ads),
+    // and saves at once: it is not part of this connection's config any more.
+    const setAdsSetting = value =>
+        setUnreadEmailSetting(loggedUserId, 'ads', value).catch(error =>
+            console.error('[gmailLabeling] Could not save the ads setting', error)
+        )
     const currentConfigSnapshot = sanitizeConfigForSave(config)
     const hasUnsavedChanges =
         !!savedConfigSnapshot && JSON.stringify(currentConfigSnapshot) !== JSON.stringify(savedConfigSnapshot)
@@ -704,12 +719,12 @@ export default function GmailLabelingSettings({
                                     <View style={localStyles.section}>
                                         <View style={localStyles.switchRow}>
                                             <Text style={[localStyles.inputLabel, localStyles.rowText]}>
-                                                {translate('Auto-archive Ads')}
+                                                {translate('Archive ads automatically')}
                                             </Text>
                                             <Switch
-                                                active={config.adsAutoArchive}
-                                                activeSwitch={() => updateConfig({ adsAutoArchive: true })}
-                                                deactiveSwitch={() => updateConfig({ adsAutoArchive: false })}
+                                                active={isAdsArchived(unreadEmailSettings, config.adsAutoArchive)}
+                                                activeSwitch={() => setAdsSetting(UNREAD_EMAIL_SETTING_ARCHIVE)}
+                                                deactiveSwitch={() => setAdsSetting(UNREAD_EMAIL_SETTING_SHOW)}
                                                 disabled={!canManage}
                                             />
                                         </View>

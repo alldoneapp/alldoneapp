@@ -9,6 +9,8 @@ export const isUnreadChat = (projectNotifications, chatId, chatsActiveTab) => {
         : chatNotifications.totalFollowed > 0
 }
 
+// Kept for callers that need the number of unread chats; the Unread chip counts messages
+// (getUnreadMessageCount below).
 export const getUnreadThreadCount = (projectChatNotifications, projectIds, chatsActiveTab) =>
     projectIds.reduce((total, projectId) => {
         const projectNotifications = projectChatNotifications[projectId] || {}
@@ -94,3 +96,21 @@ export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActi
 
 export const filterStickyChatsByUnread = (chats, projectNotifications, chatsActiveTab) =>
     chats.filter(chat => isUnreadChat(projectNotifications, chat.id, chatsActiveTab))
+
+/**
+ * How many unread messages the Unread filter lists for these projects - the number on its chip
+ * (decided 2026-11-18: messages, not chats). Per chat that is unread for the tab it counts exactly
+ * the messages the unread list shows (`getUnreadNotifications`: the followed ones if there are any,
+ * otherwise the unfollowed ones), so the chip, the "All" tag chip and the red chats badge in the
+ * top bar agree.
+ */
+export const getUnreadMessageCount = (projectChatNotifications, projectIds, chatsActiveTab) =>
+    projectIds.reduce((total, projectId) => {
+        const projectNotifications = projectChatNotifications?.[projectId] || {}
+        return (
+            total +
+            Object.keys(projectNotifications)
+                .filter(chatId => isUnreadChat(projectNotifications, chatId, chatsActiveTab))
+                .reduce((sum, chatId) => sum + getUnreadNotifications(projectNotifications[chatId]).length, 0)
+        )
+    }, 0)

@@ -2983,6 +2983,89 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
+    const runInformationalEmailComment = async extraGmailContext => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+        }))
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+        mockDocGet.mockResolvedValueOnce({ exists: false })
+
+        return executeToolNatively(
+            'add_chat_comment',
+            {
+                chatTitle: 'Daily emails Inbox 18.11.2026',
+                comment: 'Email from Quora Digest (digest@quora.com): Daily digest, no action needed.',
+                createIfMissing: true,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            {
+                gmailContext: {
+                    origin: 'gmail_label_follow_up',
+                    topicChatTitle: 'Daily emails Inbox 18.11.2026',
+                    gmailEmail: 'karsten@example.com',
+                    connectionId: 'email_google_123',
+                    connectionProjectId: 'connection-project-1',
+                    messageId: 'message-tags',
+                    threadId: 'thread-tags',
+                    followUpType: 'informational',
+                    ...extraGmailContext,
+                },
+            }
+        )
+    }
+
+    test('stores the label, email kind and sender of an email comment for the unread list', async () => {
+        await runInformationalEmailComment({
+            labelKey: 'ads',
+            labelName: 'Ads',
+            emailKind: 'newsletter',
+            fromName: 'Quora Digest',
+            fromEmail: 'Digest@Quora.com',
+        })
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                gmailData: expect.objectContaining({
+                    labelKey: 'ads',
+                    labelName: 'Ads',
+                    emailKind: 'newsletter',
+                    fromName: 'Quora Digest',
+                    fromEmail: 'digest@quora.com',
+                }),
+            })
+        )
+    })
+
+    test('an unknown email kind and empty sender fields are not stored', async () => {
+        await runInformationalEmailComment({ emailKind: 'spam', fromName: '  ', labelKey: '' })
+
+        const commentWrite = mockDocSet.mock.calls.map(([data]) => data).find(data => data?.gmailData)
+        expect(commentWrite.gmailData).not.toHaveProperty('emailKind')
+        expect(commentWrite.gmailData).not.toHaveProperty('fromName')
+        expect(commentWrite.gmailData).not.toHaveProperty('labelKey')
+    })
+
+    test('an email the user archives automatically is stored as read', async () => {
+        const result = await runInformationalEmailComment({ emailKind: 'ads', suppressUnread: true })
+
+        expect(result).toMatchObject({ success: true })
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({ gmailData: expect.objectContaining({ messageId: 'message-tags' }) })
+        )
+        // No chatNotifications doc: that doc IS the unread state.
+        expect(mockDocSet).not.toHaveBeenCalledWith(
+            expect.objectContaining({ chatId: result.chatId, chatType: 'topics', creatorId: 'assistant-1' })
+        )
+        // No MyDay "last assistant comment" pointer either.
+        expect(mockDocUpdate).not.toHaveBeenCalledWith(
+            expect.objectContaining({ 'lastAssistantCommentData.project-1': expect.anything() })
+        )
+    })
+
     test('a Gmail conversation line goes to its own topic, whatever chat or project the model names', async () => {
         mockDocGet
             .mockResolvedValueOnce({ exists: true, data: () => ({ type: 'topics', title: 'Offer for Q4' }) })
@@ -10283,8 +10366,6 @@ describe('assistant shared user context', () => {
                     },
                 }),
             })
-            // assistantProfiles/user-1 (AT-3072): none yet.
-            .mockResolvedValueOnce({ exists: false, data: () => undefined })
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
@@ -10312,33 +10393,6 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
         expect(systemMessages).toContain('include create_task.projectRoutingReason')
-        expect(systemMessages).not.toContain('Private assistant profile of this user:')
-    })
-
-    test('adds the private assistant profile of the requesting user next to the descriptions (AT-3072)', async () => {
-        mockDocGet
-            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
-            .mockResolvedValueOnce({
-                exists: true,
-                data: () => ({ enabled: true, text: 'Top of mind: launching the new onboarding.' }),
-            })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
-
-        const messages = []
-        await addBaseInstructions(messages, 'General Bot', 'en', 'Be helpful.', [], null, {
-            projectId: 'project-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        })
-
-        const systemMessages = messages
-            .filter(message => message[0] === 'system')
-            .map(message => message[1])
-            .join('\n')
-        expect(systemMessages).toContain('Private assistant profile of this user:')
-        expect(systemMessages).toContain('Top of mind: launching the new onboarding.')
     })
 })
 

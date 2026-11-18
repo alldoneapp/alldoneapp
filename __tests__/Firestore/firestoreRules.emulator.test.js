@@ -2772,47 +2772,6 @@ describe('project wiki', () => {
     })
 })
 
-// AT-3072: the profile holds what the user did in all their projects, so a teammate who shares a
-// project with its owner must not read it the way they can read users/{uid}.
-describe('assistant profile', () => {
-    const paths = [
-        `assistantProfiles/${MEMBER_ID}`,
-        `assistantProfiles/${MEMBER_ID}/revisions/r000001`,
-        `assistantProfiles/${MEMBER_ID}/runs/run-1`,
-    ]
-
-    beforeEach(async () => {
-        await testEnv.withSecurityRulesDisabled(async context => {
-            for (const documentPath of paths) {
-                await setDoc(doc(context.firestore(), documentPath), { value: documentPath })
-            }
-        })
-    })
-
-    it.each(paths)('lets its owner read %s', async documentPath => {
-        await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(MEMBER_ID).firestore(), documentPath)))
-    })
-
-    it.each(paths)('keeps %s from teammates and outsiders', async documentPath => {
-        await assertFails(getDoc(doc(testEnv.authenticatedContext(TEAMMATE_ID).firestore(), documentPath)))
-        await assertFails(getDoc(doc(testEnv.authenticatedContext(OUTSIDER_ID).firestore(), documentPath)))
-        await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), documentPath)))
-    })
-
-    it.each(paths)('lets no client write %s, its owner included', async documentPath => {
-        const ownerDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-        await assertFails(setDoc(doc(ownerDb, documentPath), { value: 'forged' }))
-        await assertFails(updateDoc(doc(ownerDb, documentPath), { value: 'forged' }))
-        await assertFails(deleteDoc(doc(ownerDb, documentPath)))
-    })
-
-    it('lists the revisions for their owner only', async () => {
-        const revisions = `assistantProfiles/${MEMBER_ID}/revisions`
-        await assertSucceeds(getDocs(collection(testEnv.authenticatedContext(MEMBER_ID).firestore(), revisions)))
-        await assertFails(getDocs(collection(testEnv.authenticatedContext(TEAMMATE_ID).firestore(), revisions)))
-    })
-})
-
 describe('project artifacts', () => {
     const PUBLIC_ARTIFACT = `artifactItems/${PROJECT_ID}/artifacts/public-artifact`
     const PRIVATE_ARTIFACT = `artifactItems/${PROJECT_ID}/artifacts/private-artifact`

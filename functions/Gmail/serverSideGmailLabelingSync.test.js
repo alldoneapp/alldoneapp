@@ -414,7 +414,49 @@ describe('serverSideGmailLabelingSync helpers', () => {
             targetContactEmail: '',
             targetContactName: '',
             topicChatTitle: '',
+            labelKey: '',
+            labelName: '',
+            emailKind: null,
+            fromName: '',
+            fromEmail: '',
+            suppressUnread: false,
         })
+    })
+
+    test('carries the label, email kind, sender and unread suppression for the unread list', () => {
+        const context = buildPostLabelGmailContext({
+            normalizedMessage: {
+                messageId: 'message-1',
+                threadId: 'thread-1',
+                from: '"Quora Digest" <Digest@Quora.com>',
+            },
+            gmailEmail: 'person@example.com',
+            assistantProjectId: 'project-1',
+            labelKey: 'ads',
+            labelName: 'Ads',
+            emailKind: 'newsletter',
+            suppressUnread: true,
+        })
+
+        expect(context).toMatchObject({
+            labelKey: 'ads',
+            labelName: 'Ads',
+            emailKind: 'newsletter',
+            fromName: 'Quora Digest',
+            fromEmail: 'digest@quora.com',
+            suppressUnread: true,
+        })
+    })
+
+    test('sent mail has no sender for the unread list', () => {
+        const context = buildPostLabelGmailContext({
+            normalizedMessage: { messageId: 'message-1', threadId: 'thread-1', from: 'me@example.com' },
+            gmailEmail: 'me@example.com',
+            assistantProjectId: 'project-1',
+            direction: 'outgoing',
+        })
+
+        expect(context).toMatchObject({ fromName: '', fromEmail: '' })
     })
 
     // UNIFIED_INBOX_PLAN.md: create_task reads this to make a private reply task.
@@ -602,6 +644,35 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 postLabelPrompt: '',
             })
         )
+    })
+
+    test('the Ads label archives by the user ads setting, the connection value only until the user chose', async () => {
+        admin.firestore.mockImplementation(() => ({
+            collection: jest.fn(path => {
+                if (path === 'projects') {
+                    return {
+                        doc: jest.fn(() => ({
+                            get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Active Client' }) }),
+                        })),
+                    }
+                }
+                return buildDefaultCollectionMock(path)
+            }),
+            doc: admin.__mock.doc,
+            getAll: admin.__mock.getAll,
+        }))
+        const adsAutoArchiveFor = async (configAdsAutoArchive, unreadEmailSettings) => {
+            const config = await resolveEffectiveGmailLabelingConfig(
+                { enabled: true, promptMode: 'default', adsAutoArchive: configAdsAutoArchive },
+                { projectIds: ['active'], ...(unreadEmailSettings ? { unreadEmailSettings } : {}) }
+            )
+            return config.labelDefinitions.find(label => label.key === 'ads').autoArchive
+        }
+
+        expect(await adsAutoArchiveFor(false, { ads: 'archive' })).toBe(true)
+        expect(await adsAutoArchiveFor(true, { ads: 'show' })).toBe(false)
+        expect(await adsAutoArchiveFor(true, undefined)).toBe(true)
+        expect(await adsAutoArchiveFor(false, undefined)).toBe(false)
     })
 
     test('skips inbound-only default follow-up prompts for outgoing messages', async () => {
@@ -832,6 +903,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
                         topicChatTitle: '',
+                        labelKey: 'urgent',
+                        labelName: 'Alldone/Urgent',
+                        emailKind: null,
+                        fromName: 'Eva-Maria Würz',
+                        fromEmail: 'sender@example.com',
+                        suppressUnread: false,
                         emailContext: expect.objectContaining({
                             messageId: 'message-1',
                             bodyText: 'Please respond today',
@@ -1122,6 +1199,188 @@ describe('serverSideGmailLabelingSync helpers', () => {
             }),
             { merge: true }
         )
+    })
+
+    describe('the unread setting for newsletters and ads (users/{uid}.unreadEmailSettings)', () => {
+        let auditSet
+
+        beforeEach(() => {
+            auditSet = jest.fn().mockResolvedValue(undefined)
+            admin.firestore.mockImplementation(() => ({
+                getAll: admin.__mock.getAll,
+                doc: admin.__mock.doc,
+                collection: jest.fn(path => {
+                    if (path === 'users') {
+                        return {
+                            doc: jest.fn(() => ({
+                                get: jest.fn().mockResolvedValue({ data: () => ({ gold: 99 }) }),
+                                collection: jest.fn(collectionName => {
+                                    if (collectionName !== 'private') return { doc: jest.fn() }
+                                    return {
+                                        doc: jest.fn(() => ({
+                                            collection: jest.fn(nestedCollectionName => {
+                                                if (nestedCollectionName !== 'messages') return { doc: jest.fn() }
+                                                return {
+                                                    doc: jest.fn(() => ({
+                                                        get: jest.fn().mockResolvedValue({ exists: false }),
+                                                        set: auditSet,
+                                                    })),
+                                                }
+                                            }),
+                                        })),
+                                    }
+                                }),
+                            })),
+                        }
+                    }
+                    return { limit: () => ({ get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) }) }
+                }),
+            }))
+        })
+
+        const buildGmail = () => ({
+            users: {
+                messages: { modify: jest.fn().mockResolvedValue({}) },
+                labels: { create: jest.fn().mockResolvedValue({ data: { id: 'label-ads' } }) },
+            },
+        })
+
+        const processWith = (gmail, userData) =>
+            processSingleMessage({
+                gmail,
+                labelMap: new Map(),
+                config: {
+                    model: 'MODEL_GPT5_5',
+                    autoArchiveAllLabeled: false,
+                    labelDefinitions: [
+                        {
+                            key: 'ads',
+                            gmailLabelName: 'Ads',
+                            autoArchive: false,
+                            directionScope: 'incoming',
+                            postLabelPrompt: '',
+                        },
+                    ],
+                    updatedAt: 'prompt-version',
+                },
+                userId: 'user-1',
+                userData: { defaultProjectId: 'default-project', ...userData },
+                projectId: 'connected-project',
+                gmailEmail: 'me@example.com',
+                rawMessage: {
+                    id: 'message-1',
+                    threadId: 'thread-1',
+                    internalDate: '1710000000000',
+                    labelIds: ['INBOX'],
+                    payload: {
+                        headers: [
+                            { name: 'From', value: 'Shop <deals@shop.example>' },
+                            { name: 'To', value: 'Me <me@example.com>' },
+                            { name: 'Subject', value: 'Black week' },
+                        ],
+                        mimeType: 'text/plain',
+                        body: { data: Buffer.from('50% off').toString('base64url') },
+                    },
+                    snippet: '50% off',
+                },
+                syncRunId: 'sync-1',
+            })
+
+        test('archives an ad when the user chose to archive ads', async () => {
+            classifyGmailMessage.mockResolvedValue({
+                matched: true,
+                labelKey: 'ads',
+                confidence: 0.95,
+                reasoning: 'Promotion.',
+                followUpType: 'informational',
+                emailKind: 'ads',
+                usage: { totalTokens: 100 },
+            })
+            const gmail = buildGmail()
+
+            const result = await processWith(gmail, { unreadEmailSettings: { ads: 'archive' } })
+
+            expect(result.archived).toBe(1)
+            expect(gmail.users.messages.modify).toHaveBeenCalledWith(
+                expect.objectContaining({ requestBody: expect.objectContaining({ removeLabelIds: ['INBOX'] }) })
+            )
+            expect(auditSet).toHaveBeenCalledWith(
+                expect.objectContaining({ emailKind: 'ads', archivedForUnreadSettings: true, archived: true }),
+                { merge: true }
+            )
+        })
+
+        test('leaves an ad in the inbox by default', async () => {
+            classifyGmailMessage.mockResolvedValue({
+                matched: true,
+                labelKey: 'ads',
+                confidence: 0.95,
+                reasoning: 'Promotion.',
+                followUpType: 'informational',
+                emailKind: 'ads',
+                usage: { totalTokens: 100 },
+            })
+            const gmail = buildGmail()
+
+            const result = await processWith(gmail, {})
+
+            expect(result.archived).toBe(0)
+            expect(gmail.users.messages.modify).toHaveBeenCalledWith(
+                expect.objectContaining({ requestBody: expect.objectContaining({ removeLabelIds: [] }) })
+            )
+            expect(auditSet).toHaveBeenCalledWith(
+                expect.objectContaining({ archivedForUnreadSettings: false, archived: false }),
+                { merge: true }
+            )
+        })
+
+        test('archives an unlabeled newsletter when the user chose to archive newsletters', async () => {
+            classifyGmailMessage.mockResolvedValue({
+                matched: false,
+                labelKey: null,
+                confidence: 0.3,
+                reasoning: 'No project.',
+                followUpType: 'informational',
+                emailKind: 'newsletter',
+                usage: { totalTokens: 100 },
+            })
+            const gmail = buildGmail()
+
+            const result = await processWith(gmail, { unreadEmailSettings: { newsletter: 'archive' } })
+
+            expect(result.archived).toBe(1)
+            expect(gmail.users.messages.modify).toHaveBeenCalledWith({
+                userId: 'me',
+                id: 'message-1',
+                requestBody: { removeLabelIds: ['INBOX'] },
+            })
+            expect(auditSet).toHaveBeenCalledWith(
+                expect.objectContaining({ emailKind: 'newsletter', archivedForUnreadSettings: true, archived: true }),
+                { merge: true }
+            )
+        })
+
+        test('a failed archive keeps the newsletter in the inbox and unread', async () => {
+            classifyGmailMessage.mockResolvedValue({
+                matched: false,
+                labelKey: null,
+                confidence: 0.3,
+                reasoning: 'No project.',
+                followUpType: 'informational',
+                emailKind: 'newsletter',
+                usage: { totalTokens: 100 },
+            })
+            const gmail = buildGmail()
+            gmail.users.messages.modify.mockRejectedValueOnce(new Error('quota'))
+
+            const result = await processWith(gmail, { unreadEmailSettings: { newsletter: 'archive' } })
+
+            expect(result.archived).toBe(0)
+            expect(auditSet).toHaveBeenCalledWith(
+                expect.objectContaining({ archivedForUnreadSettings: false, archived: false }),
+                { merge: true }
+            )
+        })
     })
 
     test('outgoing processing runs follow-up only for external To recipients and stores them in audit', async () => {

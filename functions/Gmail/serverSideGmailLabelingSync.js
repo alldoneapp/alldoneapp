@@ -51,6 +51,12 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const {
+    UNREAD_EMAIL_SETTING_ARCHIVE,
+    migrateAdsAutoArchiveSetting,
+    resolveAdsUnreadSetting,
+    shouldArchiveForUnreadSettings,
+} = require('./unreadEmailSettings')
 const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
@@ -396,12 +402,12 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         throw new Error('Default Gmail labeling requires at least one active project.')
     }
 
-    // The built-in Ads label is regenerated every sync; the user's auto-archive choice
-    // for it lives on the config and is applied here.
+    // The built-in Ads label is regenerated every sync. Whether it archives is the user's ads
+    // choice (users/{uid}.unreadEmailSettings.ads, one switch for the Gmail settings and the unread
+    // list since 2026-11-18); the connection's old `adsAutoArchive` only counts until the user chose.
+    const archiveAds = resolveAdsUnreadSetting(userData, config) === UNREAD_EMAIL_SETTING_ARCHIVE
     const labelDefinitions = defaultConfig.labelDefinitions.map(label =>
-        label.key === DEFAULT_ADS_LABEL_DEFINITION.key
-            ? { ...label, autoArchive: config.adsAutoArchive === true }
-            : label
+        label.key === DEFAULT_ADS_LABEL_DEFINITION.key ? { ...label, autoArchive: archiveAds } : label
     )
 
     return {
@@ -1064,6 +1070,10 @@ function buildPostLabelGmailContext({
     archivedByLabeling = false,
     needsReply = false,
     threadTopic = null,
+    labelKey = '',
+    labelName = '',
+    emailKind = null,
+    suppressUnread = false,
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1074,6 +1084,9 @@ function buildPostLabelGmailContext({
     // a meaningful unsubscribe target.
     const unsubscribe =
         direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? null : parseListUnsubscribe(normalizedMessage?.listUnsubscribe)
+    // The unread list shows the sender from these instead of parsing it back out of the comment.
+    const sender =
+        direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? null : parseEmailHeaderAddresses(normalizedMessage?.from)[0]
 
     return {
         origin: 'gmail_label_follow_up',
@@ -1106,6 +1119,14 @@ function buildPostLabelGmailContext({
         // messageData, which puts it in the Messages section (UNIFIED_INBOX_PLAN.md).
         needsReply: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && needsReply === true,
         ...(unsubscribe ? { unsubscribe } : {}),
+        // Tag and sender of the comment in the unread list, and whether it is stored read because
+        // the user archives this kind automatically (users/{uid}.unreadEmailSettings).
+        labelKey: typeof labelKey === 'string' ? labelKey : '',
+        labelName: typeof labelName === 'string' ? labelName : '',
+        emailKind: emailKind || null,
+        fromName: sender?.displayName || '',
+        fromEmail: sender?.email || '',
+        suppressUnread: suppressUnread === true,
     }
 }
 
@@ -1322,6 +1343,8 @@ async function executePostLabelPrompt({
     consistencyCheck = null,
     archivedByLabeling = false,
     needsReply = false,
+    emailKind = null,
+    suppressUnread = false,
 }) {
     // A later email in a thread that already has a task reopens a done task only when it asks
     // something of the user (decided 2026-11-09, changes the AT-2709 rule): a plain "thanks" is
@@ -1557,6 +1580,11 @@ async function executePostLabelPrompt({
             archivedByLabeling,
             needsReply: needsReply && !ambiguousThread,
             threadTopic: routedThreadTopic,
+            labelKey: selectedDefinition?.key || '',
+            labelName: selectedDefinition?.gmailLabelName || '',
+            emailKind,
+            // Never for an ambiguous thread: that run creates a task for the user to review.
+            suppressUnread: suppressUnread === true && !ambiguousThread,
         })
         gmailContext.emailContext = normalizedMessage
         const toolRuntimeContext = {
@@ -1690,6 +1718,28 @@ async function executePostLabelPrompt({
             tokenUsage: null,
             executedAt: Timestamp.now(),
         }
+    }
+}
+
+// Archives an email that matched no label because the user archives its kind automatically
+// (users/{uid}.unreadEmailSettings). A failure leaves the email in the inbox and its comment unread:
+// showing something the user wanted hidden is the safe side of that mistake.
+async function archiveMessageForUnreadSettings(gmail, normalizedMessage, logContext = {}) {
+    if (!normalizedMessage.labelIds.includes('INBOX')) return true
+    try {
+        await gmail.users.messages.modify({
+            userId: 'me',
+            id: normalizedMessage.messageId,
+            requestBody: { removeLabelIds: ['INBOX'] },
+        })
+        return true
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not archive email for the unread settings', {
+            ...logContext,
+            messageId: normalizedMessage.messageId,
+            error: error.message,
+        })
+        return false
     }
 }
 
@@ -1839,6 +1889,8 @@ async function processSingleMessage({
             archivedByLabeling: existingAuditEntry.archived,
             followUpType: existingAuditEntry.followUpType === 'actionable' ? 'actionable' : 'informational',
             needsReply: existingAuditEntry.needsReply === true,
+            emailKind: existingAuditEntry.emailKind || null,
+            suppressUnread: existingAuditEntry.archivedForUnreadSettings === true,
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             postLabelAction: action,
@@ -1941,6 +1993,7 @@ async function processSingleMessage({
     // Mail the user sent never needs the user's own reply. The email line's "needs reply" count
     // reads this flag from the audit record (loadNeedsReplyFlagsFromAudit).
     const needsReply = direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && classifierResult.needsReply === true
+    const emailKind = classifierResult.emailKind || null
 
     // Charge the real token-based cost in a single ledger entry. If tokens round
     // to 0 Gold we still charge a minimum of 1 so usage is reflected somewhere.
@@ -1993,6 +2046,16 @@ async function processSingleMessage({
 
     const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
     if (!classifierResult.matched || !selectedDefinition) {
+        // No label to apply, but the user may still archive this kind of email automatically.
+        const archivedForUnreadSettings = shouldArchiveForUnreadSettings({
+            userData,
+            emailKind,
+            direction,
+            followUpType,
+            needsReply,
+        })
+            ? await archiveMessageForUnreadSettings(gmail, normalizedMessage, { userId, projectId })
+            : false
         const action = await executePostLabelPrompt({
             userId,
             userData,
@@ -2004,6 +2067,9 @@ async function processSingleMessage({
             connectionProjectId: goldProjectId,
             followUpType,
             needsReply,
+            emailKind,
+            archivedByLabeling: archivedForUnreadSettings,
+            suppressUnread: archivedForUnreadSettings,
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
@@ -2015,9 +2081,11 @@ async function processSingleMessage({
             reasoning: classifierResult.reasoning,
             followUpType,
             needsReply,
+            emailKind,
+            archivedForUnreadSettings,
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
-            archived: false,
+            archived: archivedForUnreadSettings,
             skippedReason: classifierResult.matched ? 'missing_label_definition' : 'no_match',
             promptVersion,
             postLabelAction: action,
@@ -2026,7 +2094,7 @@ async function processSingleMessage({
         })
         return {
             labeled: 0,
-            archived: 0,
+            archived: archivedForUnreadSettings ? 1 : 0,
             skipped: 1,
             goldSpent: classificationGoldSpent + (action.goldSpent || 0),
             estimatedNormalGoldCost: estimatedNormalGoldCost + (action.estimatedNormalGoldCost || 0),
@@ -2039,7 +2107,18 @@ async function processSingleMessage({
         typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
             ? selectedDefinition.sourceProjectId.trim()
             : null
-    const autoArchive = shouldAutoArchiveLabeledMessage(config, selectedDefinition, direction)
+    // The user's unread setting archives newsletters and ads on top of the label's own rule; its
+    // comment is then stored read (the inbox is where "unread" lives for an email).
+    const archiveForUnreadSettings = shouldArchiveForUnreadSettings({
+        userData,
+        labelKey: selectedDefinition.key,
+        emailKind,
+        direction,
+        followUpType,
+        needsReply,
+    })
+    const autoArchive =
+        shouldAutoArchiveLabeledMessage(config, selectedDefinition, direction) || archiveForUnreadSettings
 
     let labelId
     let modifyResult
@@ -2108,6 +2187,8 @@ async function processSingleMessage({
             consistencyCheck: classifierResult.consistencyCheck || null,
             archivedByLabeling: modifyResult.archived,
             needsReply,
+            emailKind,
+            suppressUnread: archiveForUnreadSettings,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0
@@ -2128,6 +2209,8 @@ async function processSingleMessage({
         reasoning: classifierResult.reasoning,
         followUpType,
         needsReply,
+        emailKind,
+        archivedForUnreadSettings: archiveForUnreadSettings,
         consistencyCheck: classifierResult.consistencyCheck || null,
         applied: modifyResult.applied,
         archived: modifyResult.archived,
@@ -2212,10 +2295,17 @@ function assertPremiumAccess(userData) {
 }
 
 async function syncGmailLabeling(userId, projectId, options = {}) {
-    const { gmailEmail, userData, connectionProjectId } = await getConnectedGmailEmail(userId, projectId)
+    const {
+        gmailEmail,
+        userData: storedUserData,
+        connectionProjectId,
+    } = await getConnectedGmailEmail(userId, projectId)
     const logContext = createSyncLogContext(userId, projectId, gmailEmail)
-    assertPremiumAccess(userData)
+    assertPremiumAccess(storedUserData)
     const { config, exists } = await loadConfig(userId, projectId, gmailEmail)
+    const userData = exists
+        ? await migrateAdsAutoArchiveSetting({ db: admin.firestore(), userId, userData: storedUserData, config })
+        : storedUserData
     const effectiveConfig = exists ? await resolveEffectiveGmailLabelingConfig(config, userData) : config
 
     logSync('Starting Gmail labeling sync', {
