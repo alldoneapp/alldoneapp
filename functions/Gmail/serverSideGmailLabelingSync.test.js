@@ -67,6 +67,7 @@ jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: jest.fn(() => Promise.resolve()),
+    addChatCommentFromAssistantTool: jest.fn(),
     calculateTokens: jest.fn(() => 0),
     calculateGoldCostFromTokens: jest.fn(() => 0),
     collectAssistantTextWithToolCalls: jest.fn(),
@@ -1358,6 +1359,151 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 expect.objectContaining({ emailKind: 'newsletter', archivedForUnreadSettings: true, archived: true }),
                 { merge: true }
             )
+        })
+
+        describe('ads get a "Daily ads" line in the unread list (AT-3101)', () => {
+            const adClassification = {
+                matched: true,
+                labelKey: 'ads',
+                confidence: 0.95,
+                reasoning: 'Promotion.',
+                followUpType: 'informational',
+                emailKind: 'ads',
+                usage: { totalTokens: 100 },
+            }
+            let chatCreate
+
+            beforeEach(() => {
+                chatCreate = jest.fn().mockResolvedValue(undefined)
+                admin.__mock.getAll.mockResolvedValue([{ exists: true }, { exists: false }])
+                admin.__mock.doc.mockImplementation(path => {
+                    if (path === 'projects/default-project') {
+                        return {
+                            get: jest.fn().mockResolvedValue({
+                                exists: true,
+                                data: () => ({ assistantId: 'assistant-1' }),
+                            }),
+                        }
+                    }
+                    if (path.startsWith('chatObjects/default-project/chats/DailyAds_')) {
+                        return { get: jest.fn().mockResolvedValue({ exists: false }), create: chatCreate }
+                    }
+                    return { path, get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }) }
+                })
+                assistantHelper.getAssistantForChat.mockResolvedValue({ displayName: 'Anna', allowedTools: [] })
+                assistantHelper.addChatCommentFromAssistantTool.mockImplementation(async ({ projectId, chatId }) => ({
+                    success: true,
+                    projectId,
+                    chatId,
+                    commentId: 'gmail-ad-comment',
+                }))
+            })
+
+            test('by default the line is written unread, without a model run, and the mail stays', async () => {
+                classifyGmailMessage.mockResolvedValue(adClassification)
+                const gmail = buildGmail()
+
+                const result = await processWith(gmail, {})
+
+                expect(result.archived).toBe(0)
+                expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+                expect(chatCreate).toHaveBeenCalledWith(
+                    expect.objectContaining({ isPublicFor: ['user-1'], title: expect.stringMatching(/^Daily ads /) })
+                )
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        projectId: 'default-project',
+                        chatId: expect.stringMatching(/^DailyAds_/),
+                        comment: 'Email from Shop (deals@shop.example): Black week',
+                        assistantId: 'assistant-1',
+                        userId: 'user-1',
+                        gmailContext: expect.objectContaining({
+                            origin: 'gmail_label_follow_up',
+                            labelKey: 'ads',
+                            emailKind: 'ads',
+                            followUpType: 'informational',
+                            archivedByLabeling: false,
+                            suppressUnread: false,
+                        }),
+                    })
+                )
+                expect(auditSet).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        archived: false,
+                        postLabelAction: expect.objectContaining({ status: 'completed', goldSpent: 0 }),
+                        emailComments: [
+                            expect.objectContaining({ projectId: 'default-project', commentId: 'gmail-ad-comment' }),
+                        ],
+                        emailCommentReadPending: true,
+                    }),
+                    { merge: true }
+                )
+            })
+
+            test('with "archive ads" on, the mail is archived and the line stored read', async () => {
+                classifyGmailMessage.mockResolvedValue(adClassification)
+                const gmail = buildGmail()
+
+                const result = await processWith(gmail, { unreadEmailSettings: { ads: 'archive' } })
+
+                expect(result.archived).toBe(1)
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        gmailContext: expect.objectContaining({ archivedByLabeling: true, suppressUnread: true }),
+                    })
+                )
+            })
+
+            test('an unlabeled ad gets its line too, mapped for the read sync', async () => {
+                classifyGmailMessage.mockResolvedValue({
+                    ...adClassification,
+                    matched: false,
+                    labelKey: null,
+                })
+                const gmail = buildGmail()
+
+                await processWith(gmail, { unreadEmailSettings: { ads: 'archive' } })
+
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        gmailContext: expect.objectContaining({ emailKind: 'ads', suppressUnread: true }),
+                    })
+                )
+                expect(auditSet).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        skippedReason: 'no_match',
+                        archivedForUnreadSettings: true,
+                        emailCommentReadPending: true,
+                    }),
+                    { merge: true }
+                )
+            })
+
+            test('an unlabeled newsletter without a prompt still gets no line', async () => {
+                classifyGmailMessage.mockResolvedValue({
+                    ...adClassification,
+                    matched: false,
+                    labelKey: null,
+                    emailKind: 'newsletter',
+                })
+
+                await processWith(buildGmail(), {})
+
+                expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
+            })
+
+            test('without a default project assistant the line is reported as blocked', async () => {
+                classifyGmailMessage.mockResolvedValue(adClassification)
+                assistantHelper.getAssistantForChat.mockResolvedValue(null)
+
+                await processWith(buildGmail(), {})
+
+                expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
+                expect(auditSet).toHaveBeenCalledWith(
+                    expect.objectContaining({ postLabelAction: expect.objectContaining({ status: 'blocked' }) }),
+                    { merge: true }
+                )
+            })
         })
 
         test('a failed archive keeps the newsletter in the inbox and unread', async () => {

@@ -258,13 +258,25 @@ turn (`deferDelegatedWorkflowForConversation`) and continues in the same thread 
 Heartbeats, emails and workflow prompts still get the refusal, which now names the failure and the
 tag. Tests: `annaTaskDelegation.test.js`, and the in-thread case in `assistantHelper.test.js`.
 
-**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` reads
+**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` (since AT-3099
+`TaskExecutionStatusTag`) reads
 `task.workflowAiStatus`, but `mapTaskData` (`utils/backends/firestore.js`), which every task passes
 through on the client, did not name that field and so dropped it: on every row the tag rendered
 nothing, failed steps included (AT-3082 was `failed` / `vm_interrupted` and showed only the "Failed
 VM" session badge, which has no action). It is mapped now, and `uploadNewTask` deletes it from the
 copy, because that function spreads its input and recurrences or duplicates would otherwise inherit a
-"failed" step they never ran. Guardrail: `components/Tags/AssistantWorkflowRunTag.test.js`.
+"failed" step they never ran. Guardrail: now `components/Tags/TaskExecutionStatusTag.test.js`.
+
+**One execution status chip per task row (AT-3099).** The row used to show the workflow-run chip
+and a separate VM-session pill ("Aktiv" + "Paused VM", "In Warteschlange" + "Paused VM"). Both now
+resolve to one outline chip, `components/Tags/TaskExecutionStatusTag.js`, through
+`taskExecutionStatus.js`. Priority: Wartet auf dich (session `blockedByCorrelationId`; never the
+stale `lastRunStatus: 'awaiting_user'`, which survives an expired or cancelled question) > Aktiv (VM
+`busy`, step `running`/`awaiting_vm`) > In Warteschlange (step `pending`, session queue) > Benötigt
+Aufmerksamkeit (failed step, which the chip retries; failed VM run) > Pausiert (session
+`idle_running`/`paused`). A done task ignores the workflow layer but still shows a retained session
+as "Pausiert" (product decision). VM state, last run and queue go into the tooltip only. The
+VM filter in `TaskFiltersLine` still uses `getVmSessionBadgeState`.
 
 Anna's originating conversation is recorded in the server-only `delegatedTaskOrigins` collection,
 not trusted from client-editable task metadata. Workflow VM jobs use that receipt for result

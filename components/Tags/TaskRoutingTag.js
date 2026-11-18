@@ -11,7 +11,7 @@ import { ROUTING_SUBJECT_GOAL, ROUTING_SUBJECT_PROJECT } from '../../utils/taskR
  * AT-2381 — the in-row badge for "the server is still deciding where this task belongs" and for
  * "it just decided, and something changed".
  *
- * Shape deliberately copies `InProgressVmTag`: same 24px pill, same `windowTagStyle()` responsive
+ * Shape deliberately copied the former `InProgressVmTag` (replaced in AT-3099): same 24px pill, same `windowTagStyle()` responsive
  * text. A new visual language for this would read as a different KIND of thing, when in fact it is
  * the same kind — a transient status the row is reporting about background work.
  *

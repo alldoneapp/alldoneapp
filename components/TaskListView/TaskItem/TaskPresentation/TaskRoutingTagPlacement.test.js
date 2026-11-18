@@ -98,8 +98,7 @@ jest.mock('../../TagsArea/taskTagSummaryHelper', () => ({ doTrailingTagsCrowdTas
 jest.mock('../../../Tags/GmailTag', () => 'GmailTag')
 jest.mock('../../../Tags/AlertTag', () => 'AlertTag')
 jest.mock('../../../Tags/TranscribeTag', () => 'TranscribeTag')
-jest.mock('../../../Tags/InProgressVmTag', () => 'TaskVmStatusTag')
-jest.mock('../../../Tags/AssistantWorkflowRunTag', () => 'AssistantWorkflowRunTag')
+jest.mock('../../../Tags/TaskExecutionStatusTag', () => 'TaskExecutionStatusTag')
 jest.mock('../../../Tags/TaskRoutingTag', () => 'TaskRoutingTag')
 jest.mock(
     '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls',
@@ -321,14 +320,13 @@ describe('routing badge placement (AT-2453)', () => {
             expect(contains(title.props.leadingVmStatusTag, 'TaskRoutingTag')).toBe(false)
         })
 
-        it('leaves the VM and workflow tags in the leading slot', async () => {
+        it('leaves the single execution status tag in the leading slot', async () => {
             mockRoutingActivity = { processing: { subject: 'project' }, confirmation: null }
 
             const tree = await renderRow()
             const leading = tree.root.findByType('TitleContainer').props.leadingVmStatusTag
 
-            expect(contains(leading, 'TaskVmStatusTag')).toBe(true)
-            expect(contains(leading, 'AssistantWorkflowRunTag')).toBe(true)
+            expect(contains(leading, 'TaskExecutionStatusTag')).toBe(true)
         })
     })
 
