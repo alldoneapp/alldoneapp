@@ -9607,6 +9607,161 @@ describe('execute_task_in_vm existing task routing', () => {
         })
     })
 
+    // AT-3098: VM work on a done task reopens it into its workflow, but only once the work actually
+    // starts. Talking about a done task (no VM) never reaches this; a refused launch reopens nothing.
+    describe('VM work on a task that is already done (AT-3098)', () => {
+        let doneTaskReactivation
+        let planSpy
+        let reactivateSpy
+        // A fresh runtime per call: one runtime dedupes repeated VM calls of the same answer.
+        let messageCount = 0
+        const inTaskChat = () => ({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            messageId: `msg-${++messageCount}`,
+        })
+        const startFollowUp = (runtime = inTaskChat()) =>
+            executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug the user reported', task_type: 'prototype' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'There is still a bug, please fix it' },
+                runtime
+            )
+
+        beforeEach(() => {
+            doneTaskReactivation = require('../Tasks/doneTaskReactivation')
+            planSpy = jest
+                .spyOn(doneTaskReactivation, 'planDoneTaskReactivation')
+                .mockResolvedValue({ targetStepId: 'build', landsOnAiStep: true })
+            reactivateSpy = jest.spyOn(doneTaskReactivation, 'reactivateDoneTaskForAssistantWork').mockResolvedValue({
+                reactivated: true,
+                stepId: 'build',
+                stepLabel: 'AI: please build',
+                landsOnAiStep: true,
+            })
+            startVmJobSpy.mockResolvedValue({ success: true, correlationId: 'vm-1', status: 'started' })
+        })
+
+        afterEach(() => {
+            planSpy.mockRestore()
+            reactivateSpy.mockRestore()
+        })
+
+        test('reopens the task into its AI step once the job is accepted, and tells the VM to leave it open', async () => {
+            const order = []
+            startVmJobSpy.mockImplementation(async () => {
+                order.push('vm')
+                return { success: true, correlationId: 'vm-1', status: 'started' }
+            })
+            reactivateSpy.mockImplementation(async () => {
+                order.push('reopen')
+                return { reactivated: true, stepId: 'build', stepLabel: 'AI: please build', landsOnAiStep: true }
+            })
+
+            const result = await startFollowUp()
+
+            expect(planSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'project-1', taskId: 'task-1', assistantId: 'assistant-1' })
+            )
+            // After the VM record exists, so the reopened step parks on it instead of running twice.
+            expect(order).toEqual(['vm', 'reopen'])
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'project-1',
+                    taskId: 'task-1',
+                    assistantId: 'assistant-1',
+                    actorUserId: 'user-1',
+                    fromConversation: null,
+                })
+            )
+            expect(result).toMatchObject({
+                success: true,
+                correlationId: 'vm-1',
+                taskReopened: { stepId: 'build', step: 'AI: please build' },
+            })
+            const context = startVmJobSpy.mock.calls[0][0].threadContext
+            expect(context).toContain('already done and is reopened into its workflow')
+            expect(context).toContain('leave the task open')
+        })
+
+        test('a task without an AI step goes back to Open; its owner completes it afterwards', async () => {
+            planSpy.mockResolvedValue({ targetStepId: -1, landsOnAiStep: false })
+            reactivateSpy.mockResolvedValue({ reactivated: true, stepId: -1, stepLabel: 'Open', landsOnAiStep: false })
+
+            const result = await startFollowUp()
+
+            expect(result.taskReopened.message).toContain('back in Open')
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).toContain('its owner completes it')
+        })
+
+        test('a refused launch reopens nothing', async () => {
+            startVmJobSpy.mockResolvedValue({ success: false, message: 'Not enough Gold.' })
+
+            const result = await startFollowUp()
+
+            expect(result.success).toBe(false)
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('an open task is left alone', async () => {
+            planSpy.mockResolvedValue(null)
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).not.toContain('reopened')
+        })
+
+        test('work sent from another conversation (target_task_id) reopens the task too, naming that conversation', async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'Please fix the bug in that task' },
+                { projectId: 'private', objectType: 'topics', objectId: 'anna-daily', messageId: 'msg-2' }
+            )
+
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    taskId: 'task-1',
+                    fromConversation: { projectId: 'private', objectType: 'topics', objectId: 'anna-daily' },
+                })
+            )
+        })
+
+        test("the workflow's own step run never reopens anything (it owns the task)", async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Run the build step', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                {},
+                { onVmJobStarted: jest.fn(), workflowTaskId: 'task-1', workflowTaskProjectId: 'project-1' }
+            )
+
+            expect(planSpy).not.toHaveBeenCalled()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('a failed reopen does not fail the running work', async () => {
+            reactivateSpy.mockRejectedValue(new Error('Firestore unavailable'))
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+        })
+    })
+
     test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
         const onVmJobStarted = jest.fn()
         startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })

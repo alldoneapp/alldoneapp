@@ -220,14 +220,110 @@ async function retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs }
     }
 }
 
+const resolveEditorName = async (reactivation, assistantId) => {
+    if (typeof reactivation?.editorName === 'string') return reactivation.editorName
+    if (typeof reactivation?.resolveEditorName !== 'function') return ''
+    try {
+        return (await reactivation.resolveEditorName(assistantId)) || ''
+    } catch (error) {
+        return ''
+    }
+}
+
+const doneTaskRefusal = message => ({ success: true, status: 'task_done', message })
+
+/**
+ * New VM work asked for on a done delegated task (AT-3098). The task must not stay Done while it is
+ * worked on, and only its workflow may start the VM, so the task goes back to the first AI step of
+ * its assistant; that step runs the request (appended to its prompt) after this reply, and every
+ * later step, human review included, follows again. Only the owner's request reopens it: the
+ * workflow runs, and is paid for, as the owner.
+ */
+async function reopenDoneDelegatedTask({ db, projectId, taskId, task, retryAs, reactivation }) {
+    const requestUserId = retryAs?.requestUserId || ''
+    if (!requestUserId || requestUserId !== task.userId) {
+        return doneTaskRefusal(
+            "This task is done and is handled by its owner's workflow. Only the task owner's request reopens it for more work. Do not start a VM on it; tell the user that the owner can reopen it."
+        )
+    }
+    const { planDoneTaskReactivation, reactivateDoneTaskForAssistantWork } = require('../Tasks/doneTaskReactivation')
+    const assistantId = task.taskMetadata?.delegation?.assistantId || task.assistantId || ''
+    const plan = await planDoneTaskReactivation({ db, projectId, taskId, assistantId })
+    if (plan && !plan.landsOnAiStep) {
+        return doneTaskRefusal(
+            'This task is done and its workflow has no assistant step to do more work in. Do not start a VM on it; offer to configure the workflow, or to switch this task to direct execution.'
+        )
+    }
+    const runtime = retryAs.runtime || {}
+    const result = await reactivateDoneTaskForAssistantWork({
+        db,
+        projectId,
+        taskId,
+        assistantId,
+        actorUserId: requestUserId,
+        note: reactivation?.note || '',
+        editorName: await resolveEditorName(reactivation, assistantId),
+        // The task's own chat is where the user sees it happen; any other conversation is named so
+        // the origin is not told twice about a move it asked for itself.
+        fromConversation:
+            runtime.objectId && runtime.objectId !== taskId
+                ? { projectId: runtime.projectId, objectType: runtime.objectType, objectId: runtime.objectId }
+                : null,
+    })
+    if (!result.reactivated) return null
+    // The task trigger makes the same deterministic enqueue; this closes the gap before it arrives,
+    // so the next look at the task sees its workflow working (as startDelegatedTaskWorkflow does).
+    try {
+        const { enqueueWorkflowAiRunIfNeeded } = require('../Tasks/workflowAiStep')
+        await enqueueWorkflowAiRunIfNeeded(projectId, taskId, result.oldTask, result.task)
+    } catch (error) {
+        console.warn('Could not enqueue the reopened step of a delegated task; the task trigger will', {
+            projectId,
+            taskId,
+            error: error.message,
+        })
+    }
+    return {
+        success: true,
+        projectId,
+        taskId,
+        status: 'workflow_step_reopened',
+        stepId: result.stepId,
+        message: `This task was done. It is back on its workflow step “${result.stepLabel}”, which works on this request in the task's conversation as soon as this reply is finished; its result then goes through the workflow's review steps again. Do not start a VM yourself. Tell the user briefly that the task was reopened and the step is working on it.`,
+    }
+}
+
 /**
  * Whether execute_task_in_vm must leave this task to its workflow, and what to tell the assistant.
- * `retryAs` ({ requestUserId, runtime }) lets a request the user typed restart a failed AI step.
+ * `retryAs` ({ requestUserId, runtime }) lets a request the user typed restart a failed AI step, and
+ * lets the owner's request reopen a done task into its workflow (`reactivation`: { note, editorName |
+ * resolveEditorName(assistantId) }).
  */
-async function getDelegatedTaskExecution({ db, projectId, taskId, retryAs = null }) {
+async function getDelegatedTaskExecution({
+    db,
+    projectId,
+    taskId,
+    retryAs = null,
+    reactivation = null,
+    allowReopen = true,
+}) {
     const snapshot = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
     const task = snapshot.exists ? snapshot.data() : null
-    if (!isDelegatedWorkflowTask(task) || task.done) return null
+    if (!isDelegatedWorkflowTask(task)) return null
+    if (task.done) {
+        const reopened = allowReopen
+            ? await reopenDoneDelegatedTask({ db, projectId, taskId, task, retryAs, reactivation })
+            : null
+        if (reopened) return reopened
+        if (!allowReopen) {
+            return doneTaskRefusal(
+                'This task changed while it was being reopened. Read its current state before continuing; do not start a VM on it.'
+            )
+        }
+        // Reopened by someone else in the meantime (the app, a concurrent run): judge it as it stands
+        // now, which normally means its workflow already handles it.
+        return getDelegatedTaskExecution({ db, projectId, taskId, retryAs, allowReopen: false })
+    }
     const restarted = await retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs })
     if (restarted) return restarted
     const managed = task.stepHistory?.length > 1

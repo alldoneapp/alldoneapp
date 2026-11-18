@@ -7,6 +7,7 @@ import {
     findAssistantOption,
     flattenAssistantGroups,
     getToggleTargetOption,
+    isAllProjectsAssistantOption,
     orderProjectsForAssistantSwitch,
 } from './assistantSwitchOptions'
 
@@ -222,5 +223,52 @@ describe('counting and toggling', () => {
     it('has nothing to toggle to with an empty list', () => {
         expect(getToggleTargetOption([], 'p1', 'a1')).toBeNull()
         expect(buildSingleAssistantGroup(project('p1', 'Marketing'), [])).toEqual([])
+    })
+})
+
+// AT-3093 follow-up: the one pick that returns to All Projects.
+describe('isAllProjectsAssistantOption', () => {
+    it('matches the default assistant in the default project’s own group', () => {
+        expect(
+            isAllProjectsAssistantOption(
+                { projectId: DEFAULT_PROJECT_ID, assistantId: 'anna' },
+                DEFAULT_PROJECT_ID,
+                'anna'
+            )
+        ).toBe(true)
+    })
+
+    it('does not match the “From your default project” entry, which belongs to another project', () => {
+        const [, entry] = buildProjectAssistantOptions({
+            project: project('p1', 'Marketing'),
+            projectAssistants: [assistant('a1', 'Marty Marketing')],
+            defaultProjectId: DEFAULT_PROJECT_ID,
+            defaultAssistant,
+        })
+        expect(entry.isDefaultProjectAssistant).toBe(true)
+        expect(isAllProjectsAssistantOption(entry, DEFAULT_PROJECT_ID, 'anna')).toBe(false)
+    })
+
+    it('does not match another assistant of the default project, or the default assistant elsewhere', () => {
+        expect(
+            isAllProjectsAssistantOption(
+                { projectId: DEFAULT_PROJECT_ID, assistantId: 'a9' },
+                DEFAULT_PROJECT_ID,
+                'anna'
+            )
+        ).toBe(false)
+        expect(isAllProjectsAssistantOption({ projectId: 'p1', assistantId: 'anna' }, DEFAULT_PROJECT_ID, 'anna')).toBe(
+            false
+        )
+    })
+
+    it('never matches while the default project or assistant is unknown', () => {
+        expect(isAllProjectsAssistantOption({ projectId: undefined, assistantId: undefined }, undefined, null)).toBe(
+            false
+        )
+        expect(isAllProjectsAssistantOption({ projectId: DEFAULT_PROJECT_ID, assistantId: 'anna' }, '', 'anna')).toBe(
+            false
+        )
+        expect(isAllProjectsAssistantOption(null, DEFAULT_PROJECT_ID, 'anna')).toBe(false)
     })
 })

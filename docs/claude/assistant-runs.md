@@ -294,6 +294,47 @@ still answered `workflow_managed`, so Anna announced work that never started. Ne
 UIs that compare step _indexes_ work only by coincidence (`indexOf('Open')` is -1). A task that is
 neither Open nor in the workflow now returns `task_changed` instead of a false `workflow_managed`.
 
+## Renewed assistant work reopens a done task into its workflow (AT-3098, 2026-11-18)
+
+Karsten commented on a task that was already Done; the assistant started a VM on it and the task
+stayed Done for the whole run, and the result never went through the workflow's review. Two holes:
+`getDelegatedTaskExecution` returned `null` for a done delegated task (so the chat VM ran outside
+the workflow), and nothing looked at `done` for ordinary tasks. `move_task_workflow_step` still
+refuses Done on purpose (a chat approval must not reopen anything).
+
+Product decisions (Karsten): **only actual work reopens** a task, meaning a VM job hosted in it
+(`execute_task_in_vm` in its chat, `target_task_id`, or a continuation). A plain answer, a status
+question or a small tool edit leaves it Done. The task goes to the **first AI step of the working
+assistant** (else the first AI step), so every later step, human review included, runs again. With
+no AI step (or no workflow) it goes back to **Open** with its owner, who completes it afterwards.
+
+`functions/Tasks/doneTaskReactivation.js` writes the reopen in a transaction that only acts on a
+task that is still done (idempotent against retries, concurrent runs and the user reopening it in
+the app). The write mirrors the client's `moveTasksFromDone` (rebuilt `stepHistory`/`userIds`,
+subtasks, a `workflowStepMove` stamp with the entry time and **no** `runLockId`). The assistant is the
+editor (`lastEditorId`, `lastEditorName`), so a `taskStatisticsTransition` marker lets the fan-out
+reverse the owner's completion statistics. The fan-out also writes the "changed task to Open" feed,
+reopens the delegation receipt and tells the origin conversation.
+
+- **Ordinary task:** `execute_task_in_vm` plans the reopen before the VM brief (the VM is told to
+  leave the task open) and writes it only after `startVmJob` succeeds. The VM record therefore
+  exists when the trigger enqueues the AI step, so the step parks on it (`task_ai_run_already_active`)
+  and, when the job settles, hands the task to the next (human) step without running its prompt.
+  A refused launch reopens nothing.
+- **Delegated task:** only the workflow starts the VM, so the guard reopens the task into the
+  assistant's step, enqueues it at once and returns `workflow_step_reopened`. The VM brief is
+  appended to the step prompt (`workflowAiPromptOverride`, mode `append`). Only the owner's request
+  reopens it (the workflow runs and pays as the owner); others, and workflows without an AI step,
+  get `task_done` and no VM.
+- **Enqueue trap:** a done task keeps the history it was completed from. Reopening it onto that same
+  last step (the final AI step completed it) used to enqueue nothing, because the step id had not
+  changed. `enqueueWorkflowAiRunIfNeeded` now treats a reopen as a landing when the move stamp entered
+  that step at the new `completed`. Unchecking the checkbox (`setTaskStatus`, stamp without entry time)
+  still runs nothing. A done task never enqueues.
+
+Tests: `functions/Tasks/doneTaskReactivation.test.js`, the AT-3098 blocks of `workflowAiStep.test.js`,
+`annaTaskDelegation.test.js` and `assistantHelper.test.js`.
+
 ## Assistants know where the tasks they delegated stand, including what happened in their own chats (2026-11-17)
 
 The user hands work to an assistant (Anna, or a project assistant in its chat, AT-3071), the work gets
