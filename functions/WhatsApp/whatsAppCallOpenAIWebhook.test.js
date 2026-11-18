@@ -1,8 +1,12 @@
 const mockTaskEnqueue = jest.fn()
 const mockTaskQueue = jest.fn(() => ({ enqueue: mockTaskEnqueue }))
-jest.mock('firebase-admin/functions', () => ({
-    getFunctions: jest.fn(() => ({ taskQueue: mockTaskQueue })),
-}))
+jest.mock(
+    'firebase-admin/functions',
+    () => ({
+        getFunctions: jest.fn(() => ({ taskQueue: mockTaskQueue })),
+    }),
+    { virtual: true }
+)
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
 jest.mock('./whatsAppCallConfig', () => ({
     REGION: 'europe-west1',

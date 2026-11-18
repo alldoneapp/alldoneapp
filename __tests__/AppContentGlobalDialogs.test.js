@@ -132,23 +132,3 @@ it('does not nest the global dialog host inside the hidden workspace layer', () 
     render(<Harness />)
     expect(screen.getByLabelText('Global dialog draft').closest('[data-testid="workspace-overlay-layer"]')).toBeNull()
 })
-
-// AT-3083: the New Day popup used to share the pane-scoped layer, which is `visibility: hidden`
-// whenever the assistant hides the Alldone pane, so it never showed in Assistant mode.
-it.each([
-    ['App', 'alldone', pane, true, 'flex'],
-    ['Assistant', 'chat', pane, false, 'contents'],
-    ['Both', 'split', pane, true, 'contents'],
-    ['Both with the chat in front', 'split', pane, false, 'contents'],
-])('mounts one visible New Day popup in %s mode', (_mode, layout, rect, visible, display) => {
-    setAnnaLayout(layout)
-    setWorkspaceViewport(rect, visible)
-    render(<Harness />)
-    const button = screen.getByRole('button', { name: 'Start new day' })
-    const layer = button.closest('[data-testid="workspace-overlay-layer"]')
-    expect(screen.getAllByText('Start new day')).toHaveLength(1)
-    expect(layer.getAttribute('aria-hidden')).toBeNull()
-    expect(getComputedStyle(layer).visibility).not.toBe('hidden')
-    expect(getComputedStyle(layer).display).toBe(display)
-    expect(mockNewDayMounted).toHaveBeenCalledTimes(1)
-})

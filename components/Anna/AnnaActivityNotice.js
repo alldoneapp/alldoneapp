@@ -8,7 +8,7 @@ import { loadAnnaActivityContent } from './annaActivityContent'
 import { annaActivityHistory } from './annaActivityHistory'
 import { getAnnaActivityAction, getAnnaActivityLabel } from './annaActivityText'
 import { publishAnnaActivityContext } from './annaActivityContext'
-import { getAnnaActivityObject, getAnnaActivityTarget, getAnnaActivityType } from './annaActivityGroups'
+import { getAnnaActivityObject, getAnnaActivityTarget } from './annaActivityGroups'
 import { splitActivityPreview } from './annaActivityLinks'
 import AnnaActivityMarkReadButton from './AnnaActivityMarkReadButton'
 
@@ -143,7 +143,6 @@ export function isForeignAnnaActivity({ projectId, actors }, context) {
 // line, a red edge marks a row whose item is still unread (AT-3075: the red of the followed unread
 // badges that created it; a grey one when read), and the type of the update is a small label at
 // the bottom. An unread card with `onMarkRead` offers "Mark as read" beside its link (AT-3075).
-// Every card starts with a grey badge naming its object type (AT-3087, `getAnnaActivityType`).
 export function AnnaActivityGroup({ notices, onChange, unread = false, context = null, onMarkRead = null }) {
     const contents = useAnnaActivityContents(notices, onChange)
     const entries = notices.map((notice, index) => ({ ...notice, content: contents[index] }))
@@ -161,8 +160,6 @@ export function AnnaActivityGroup({ notices, onChange, unread = false, context =
     const target = getAnnaActivityTarget(entries)
     const markRead = unread && onMarkRead
     const cardTitle = objectName || actionsText
-    const type = getAnnaActivityType(entries)
-    const typeLabel = translate(type.label)
 
     return (
         <p
@@ -175,19 +172,8 @@ export function AnnaActivityGroup({ notices, onChange, unread = false, context =
                 data-anna-activity-link=""
                 className={`anna-activity-card${unread ? ' anna-activity-card-unread' : ''}${
                     markRead ? ' anna-activity-card-has-action' : ''
-                }${showMetadata ? ' anna-activity-card-has-meta' : ''}`}
+                }`}
             >
-                {/* AT-3087: what the card is about (task, note, chat, …), on every card, before
-                    the title. A grey badge drawn by CSS from the icon font, so it never reads as
-                    one of the blue action labels or the read-state button. */}
-                <span
-                    className="anna-activity-type"
-                    role="img"
-                    aria-label={typeLabel}
-                    title={typeLabel}
-                    data-anna-activity-type={type.type}
-                    data-icon={getIconGlyph(type.icon) || undefined}
-                />
                 <span className="anna-activity-content">
                     {showMetadata ? (
                         <span className="anna-activity-meta" title={metadata}>

@@ -46,8 +46,6 @@ jest.mock('../Assistant/assistantHelper', () => ({
     })),
     logOpenAiCacheUsage: jest.fn(),
 }))
-// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
-jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 
 jest.mock('./gmailPromptClassifier', () => ({
     extractJsonFromText: jest.fn(text => JSON.parse(text)),

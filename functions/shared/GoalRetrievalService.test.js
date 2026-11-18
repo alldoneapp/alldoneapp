@@ -1,6 +1,10 @@
-jest.mock('firebase-functions/params', () => ({
-    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-}))
+jest.mock(
+    'firebase-functions/params',
+    () => ({
+        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+    }),
+    { virtual: true }
+)
 
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { GoalRetrievalService } = require('./GoalRetrievalService')

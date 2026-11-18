@@ -1,7 +1,8 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
-import NewDayPopupHost from '../../components/UIComponents/FloatModals/NewDayPopupHost'
+import WorkspaceOverlayLayer from '../../components/UIComponents/WorkspaceOverlayLayer'
+import EndDayStatisticsModal from '../../components/UIComponents/FloatModals/EndDayStatisticsModal'
 import {
     CONFIRM_POPUP_MANDATORY_NOTIFICATION,
     CONFIRM_POPUP_TRIGGER_INFO,
@@ -66,7 +67,9 @@ function Harness() {
                 </aside>
             </div>
             <GlobalModalsContainerApp />
-            <NewDayPopupHost />
+            <WorkspaceOverlayLayer>
+                <EndDayStatisticsModal />
+            </WorkspaceOverlayLayer>
         </Provider>
     )
 }

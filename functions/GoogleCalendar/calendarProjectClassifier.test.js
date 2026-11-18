@@ -9,8 +9,6 @@ jest.mock('../Assistant/assistantHelper', () => ({
     logOpenAiCacheUsage: jest.fn(),
     normalizeModelKey: jest.fn(model => model),
 }))
-// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
-jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 
 const assistantHelper = require('../Assistant/assistantHelper')
 const {

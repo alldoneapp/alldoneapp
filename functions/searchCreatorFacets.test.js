@@ -13,7 +13,7 @@
  * These tests pin all three together, because drift between them fails only at runtime as
  * a swallowed per-search error — the tab simply renders "no results".
  */
-jest.mock('firebase-admin', () => ({ firestore: () => ({}) }))
+jest.mock('firebase-admin', () => ({ firestore: () => ({}) }), { virtual: true })
 jest.mock('./envFunctionsHelper', () => ({ getEnvFunctions: () => ({}) }))
 
 const { mapChatData, mapGoalData } = require('./ParsingTextHelper')

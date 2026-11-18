@@ -1,5 +1,5 @@
 import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 import { sortBy } from 'lodash'
@@ -22,6 +22,7 @@ import {
     switchProject,
 } from '../../redux/actions'
 import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
+import MarkAsRead from './MarkAsRead'
 import StickyChats from './StickyChats'
 import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import useLoadingMore from '../../hooks/useLoadingMore'
@@ -32,16 +33,10 @@ import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
-import UnreadMessagesList from './UnreadTriage/UnreadMessagesList'
-import UnreadTriageMarkAsRead from './UnreadTriage/UnreadTriageMarkAsRead'
 
 // The page this list grows by. Was an unnamed literal `10` repeated in three places
 // (initial window, expand, contract); AT-2382 needed it a fourth time to size the ghosts.
 const CHATS_PAGE_SIZE = 10
-// Chats > Unread lists the messages of every unread chat, so its chip ("Unread N", messages) and
-// its tag chips count the same thing. The cap only guards against an extreme backlog: each chat is
-// one document read and one comment listener.
-export const UNREAD_LIST_CHAT_LIMIT = 50
 
 function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -62,21 +57,9 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const shouldUseInitialViewCache = toRender === initialToRender
     const loadedChats = useGetChats(project.id, toRender, chatsActiveTab, shouldUseInitialViewCache)
     const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab, shouldUseInitialViewCache)
-    const unreadChatsLimit = Math.max(toRender, UNREAD_LIST_CHAT_LIMIT)
-    const unreadChats = useGetUnreadChats(
-        project.id,
-        projectNotifications,
-        chatsActiveTab,
-        unreadOnly,
-        unreadChatsLimit
-    )
+    const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly, toRender)
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
-    // Chats > Unread lists messages, not topics: every unread chat of the project, in one list.
-    const flatUnreadChats = useMemo(
-        () => (unreadOnly ? [...unreadChats.stickyChats, ...Object.values(unreadChats.chats).flat()] : []),
-        [unreadOnly, unreadChats.chats, unreadChats.stickyChats]
-    )
     // The watchers rebuild this map on every delivery, so its identity is the "a snapshot
     // arrived" edge that retires the ghosts. See hooks/useLoadingMore.js.
     const [loadingMoreChats, startLoadingMoreChats] = useLoadingMore(chats)
@@ -85,7 +68,6 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const { [today]: todayChats, ...rest } = chats
     const isThereChats = Object.keys(chats).length > 0 || Object.keys(stickyChats).length > 0
     const totalVisibleChats = unreadOnly ? unreadChats.total : totalChats
-    const renderedChatsLimit = unreadOnly ? unreadChatsLimit : toRender
     const inSelectedProject = !isInAllProjects
 
     useEffect(() => {
@@ -125,7 +107,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
             // rows already on screen are deliberately kept until the wider snapshot lands.
             // Ghost rows fill that gap instead of leaving the press with no feedback at all.
             startLoadingMoreChats()
-            setToRender(renderedChatsLimit + CHATS_PAGE_SIZE)
+            setToRender(toRender + CHATS_PAGE_SIZE)
             setExpanded(true)
         }
     }
@@ -155,7 +137,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                                 projectId={project.id}
                                 containerStyle={localStyles.archiveEmailsInline}
                             />
-                            <UnreadTriageMarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                            <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
                             <ChatsMoreButton
                                 projectId={project.id}
                                 userId={loggedUser.uid}
@@ -170,7 +152,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                                 projectId={project.id}
                                 containerStyle={localStyles.archiveEmailsInline}
                             />
-                            <UnreadTriageMarkAsRead
+                            <MarkAsRead
                                 projectId={project.id}
                                 userId={loggedUser.uid}
                                 containerStyle={localStyles.markAsReadInline}
@@ -189,42 +171,33 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
             />
             <ProjectSectionBody>
                 {inSelectedProject && <ProjectAssistantLine project={project} />}
-                {unreadOnly ? (
-                    <UnreadMessagesList project={project} chats={flatUnreadChats} />
-                ) : (
-                    <>
-                        <StickyChats
-                            stickyChats={sortBy(stickyChats, [item => item.stickyData.days])}
-                            project={project}
-                        />
+                <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
 
-                        <ChatsByDate
-                            project={project}
-                            dateString={'TODAY'}
-                            date={moment()}
-                            data={sortBy(todayChats, [item => -item.lastEditionDate])}
-                        />
+                <ChatsByDate
+                    project={project}
+                    dateString={'TODAY'}
+                    date={moment()}
+                    data={sortBy(todayChats, [item => -item.lastEditionDate])}
+                />
 
-                        {Object.keys(rest)
-                            .sort((a, b) => b - a)
-                            .map(date => {
-                                const timestamp = moment(`${date}`)
-                                const dateString = timestamp.format(getDateFormat())
-                                return (
-                                    <ChatsByDate
-                                        key={date}
-                                        project={project}
-                                        dateString={dateString}
-                                        date={timestamp}
-                                        data={sortBy(rest[date], [item => -item.lastEditionDate])}
-                                    />
-                                )
-                            })}
-                    </>
-                )}
+                {Object.keys(rest)
+                    .sort((a, b) => b - a)
+                    .map(date => {
+                        const timestamp = moment(`${date}`)
+                        const dateString = timestamp.format(getDateFormat())
+                        return (
+                            <ChatsByDate
+                                key={date}
+                                project={project}
+                                dateString={dateString}
+                                date={timestamp}
+                                data={sortBy(rest[date], [item => -item.lastEditionDate])}
+                            />
+                        )
+                    })}
                 {loadingMoreChats && <ChatsListSkeleton rowCount={resolveGhostRowCount(CHATS_PAGE_SIZE)} />}
                 <View style={localStyles.container}>
-                    {totalVisibleChats > renderedChatsLimit && isThereChats && (
+                    {totalVisibleChats > toRender && isThereChats && (
                         <ShowMoreButton
                             expanded={false}
                             expand={expandChat}

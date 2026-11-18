@@ -1,4 +1,4 @@
-const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantModelRuntime')
+const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
 const { extractPptxText, extractXlsxText, isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 
 const MAX_EXTRACTED_TEXT_PER_FILE = 8000

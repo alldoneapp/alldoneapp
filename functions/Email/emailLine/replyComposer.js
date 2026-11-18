@@ -5,7 +5,7 @@ const {
     getCachedEnvFunctions,
     getModel,
     logOpenAiCacheUsage,
-} = require('../../Assistant/assistantModelRuntime')
+} = require('../../Assistant/assistantHelper')
 const { resolveClassifierClient } = require('../../Assistant/classifierModelClient')
 const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
 

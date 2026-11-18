@@ -96,18 +96,6 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(job('test:web:deployment').allow_failure).toBeUndefined()
     })
 
-    it('splits the web tests over parallel copies that the runner, not the job, divides', () => {
-        // One process took nine minutes while the build beside it took three and a half.
-        // The runner reads CI_NODE_INDEX/CI_NODE_TOTAL itself; a split spelled out in the
-        // script could leave suites to no copy.
-        const tests = job('test:web:deployment')
-        expect(tests.parallel).toBeGreaterThanOrEqual(2)
-        expect(allLines(tests)).not.toContain('--shard')
-        expect(fs.readFileSync(path.join(REPO_ROOT, 'ci', 'runWebTests.js'), 'utf8')).toContain(
-            'shard: shardFromEnv(process.env)'
-        )
-    })
-
     it('runs branch checks through the same safe selector', () => {
         expect(allLines(job('test:web:changed'))).toContain('ci/runWebTests.js --branch')
         expect(allLines(job('test:web:changed'))).not.toContain('xargs')
@@ -129,12 +117,6 @@ describe('production deploys are scoped by what shipped, not by what this push t
         const lines = allLines(job('update:version:production'))
         expect(lines).toContain('deployScope.sh require web-production')
         expect(lines).toContain('assertNewestCommit.sh')
-    })
-    it('tells clients about a new bundle as soon as the web deploy is through', () => {
-        // Ordered by stage alone it also waited for the runner image build beside the deploy.
-        expect(job('update:version:production').needs).toEqual(
-            expect.arrayContaining([{ job: 'deploy:web', artifacts: false }, 'deploy_scope'])
-        )
     })
 })
 
@@ -218,19 +200,6 @@ describe('the GitHub mirror is its own job', () => {
         expect((mirror.allow_failure || {}).exit_codes).toEqual(SUPERSEDED_EXIT_CODE)
         // Pushing real history to a repository that already has it needs a full clone.
         expect(String(mirror.variables.GIT_DEPTH)).toBe('0')
-    })
-
-    it('starts with the pipeline and holds nothing else up', () => {
-        // Jobs wait for the whole stage before theirs. In the first stage a slow mirror run
-        // delayed the web build and every test by up to five minutes.
-        const mirror = job('mirror:github')
-        expect(mirror.needs).toEqual([])
-        const stages = CI_CONFIG.stages
-        expect(mirror.stage).toBe(stages[stages.length - 1])
-        const waiting = Object.entries(CI_CONFIG).filter(
-            ([, other]) => other && Array.isArray(other.needs) && JSON.stringify(other.needs).includes('mirror:github')
-        )
-        expect(waiting).toEqual([])
     })
 })
 

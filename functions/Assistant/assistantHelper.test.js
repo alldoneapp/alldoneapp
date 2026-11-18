@@ -368,20 +368,32 @@ jest.mock('openai', () =>
     }))
 )
 const mockTiktokenEncode = jest.fn(() => [])
-jest.mock('@dqbd/tiktoken/lite', () => ({
-    Tiktoken: jest.fn().mockImplementation(() => ({
-        encode: mockTiktokenEncode,
-        free: jest.fn(),
-    })),
-}))
-jest.mock('@dqbd/tiktoken/encoders/cl100k_base.json', () => ({
-    bpe_ranks: {},
-    special_tokens: {},
-    pat_str: '',
-}))
-jest.mock('firebase-functions/params', () => ({
-    defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
-}))
+jest.mock(
+    '@dqbd/tiktoken/lite',
+    () => ({
+        Tiktoken: jest.fn().mockImplementation(() => ({
+            encode: mockTiktokenEncode,
+            free: jest.fn(),
+        })),
+    }),
+    { virtual: true }
+)
+jest.mock(
+    '@dqbd/tiktoken/encoders/cl100k_base.json',
+    () => ({
+        bpe_ranks: {},
+        special_tokens: {},
+        pat_str: '',
+    }),
+    { virtual: true }
+)
+jest.mock(
+    'firebase-functions/params',
+    () => ({
+        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+    }),
+    { virtual: true }
+)
 
 const { ProjectService } = require('../shared/ProjectService')
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
@@ -2980,89 +2992,6 @@ describe('assistant attachment handoff helpers', () => {
                 creatorId: 'assistant-1',
                 creatorType: 'assistant',
             })
-        )
-    })
-
-    const runInformationalEmailComment = async extraGmailContext => {
-        ProjectService.mockImplementationOnce(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
-        }))
-        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
-        mockDocGet.mockResolvedValueOnce({ exists: false })
-
-        return executeToolNatively(
-            'add_chat_comment',
-            {
-                chatTitle: 'Daily emails Inbox 18.11.2026',
-                comment: 'Email from Quora Digest (digest@quora.com): Daily digest, no action needed.',
-                createIfMissing: true,
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null,
-            {
-                gmailContext: {
-                    origin: 'gmail_label_follow_up',
-                    topicChatTitle: 'Daily emails Inbox 18.11.2026',
-                    gmailEmail: 'karsten@example.com',
-                    connectionId: 'email_google_123',
-                    connectionProjectId: 'connection-project-1',
-                    messageId: 'message-tags',
-                    threadId: 'thread-tags',
-                    followUpType: 'informational',
-                    ...extraGmailContext,
-                },
-            }
-        )
-    }
-
-    test('stores the label, email kind and sender of an email comment for the unread list', async () => {
-        await runInformationalEmailComment({
-            labelKey: 'ads',
-            labelName: 'Ads',
-            emailKind: 'newsletter',
-            fromName: 'Quora Digest',
-            fromEmail: 'Digest@Quora.com',
-        })
-
-        expect(mockDocSet).toHaveBeenCalledWith(
-            expect.objectContaining({
-                gmailData: expect.objectContaining({
-                    labelKey: 'ads',
-                    labelName: 'Ads',
-                    emailKind: 'newsletter',
-                    fromName: 'Quora Digest',
-                    fromEmail: 'digest@quora.com',
-                }),
-            })
-        )
-    })
-
-    test('an unknown email kind and empty sender fields are not stored', async () => {
-        await runInformationalEmailComment({ emailKind: 'spam', fromName: '  ', labelKey: '' })
-
-        const commentWrite = mockDocSet.mock.calls.map(([data]) => data).find(data => data?.gmailData)
-        expect(commentWrite.gmailData).not.toHaveProperty('emailKind')
-        expect(commentWrite.gmailData).not.toHaveProperty('fromName')
-        expect(commentWrite.gmailData).not.toHaveProperty('labelKey')
-    })
-
-    test('an email the user archives automatically is stored as read', async () => {
-        const result = await runInformationalEmailComment({ emailKind: 'ads', suppressUnread: true })
-
-        expect(result).toMatchObject({ success: true })
-        expect(mockDocSet).toHaveBeenCalledWith(
-            expect.objectContaining({ gmailData: expect.objectContaining({ messageId: 'message-tags' }) })
-        )
-        // No chatNotifications doc: that doc IS the unread state.
-        expect(mockDocSet).not.toHaveBeenCalledWith(
-            expect.objectContaining({ chatId: result.chatId, chatType: 'topics', creatorId: 'assistant-1' })
-        )
-        // No MyDay "last assistant comment" pointer either.
-        expect(mockDocUpdate).not.toHaveBeenCalledWith(
-            expect.objectContaining({ 'lastAssistantCommentData.project-1': expect.anything() })
         )
     })
 
@@ -10011,57 +9940,6 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
-    // 2026-11-18: the VM restarted under the agent and its notice said "reply to continue"; the
-    // reply in the task chat was refused because only the workflow may start a VM there.
-    test('a reply asking to continue a failed delegated step restarts that step instead of refusing', async () => {
-        const retry = jest
-            .spyOn(require('../Tasks/workflowAiStep'), 'retryFailedWorkflowAiRun')
-            .mockResolvedValue('run-2')
-        mockDocGet.mockImplementation(function () {
-            if (this.path === 'chatComments/project-1/tasks/task-1/comments/msg-1') {
-                return Promise.resolve({ exists: true, data: () => ({ creatorId: 'user-1', text: 'please continue' }) })
-            }
-            return Promise.resolve({
-                exists: true,
-                data: () => ({
-                    name: 'Improve Historical Fact of the Day',
-                    userId: 'user-1',
-                    assistantId: 'assistant-1',
-                    currentReviewerId: 'user-1',
-                    stepHistory: [-1, 'build'],
-                    executionMode: 'workflow',
-                    workflowAiStatus: { runId: 'run-1', stepId: 'build', status: 'failed' },
-                    taskMetadata: {
-                        delegation: { ownerId: 'user-1', assistantId: 'assistant-1', requiresReview: true },
-                    },
-                }),
-            })
-        })
-        try {
-            const result = await executeToolNatively(
-                'execute_task_in_vm',
-                { objective: 'Continue the build', task_type: 'coding' },
-                'project-1',
-                'assistant-1',
-                'user-1',
-                { message: 'please continue' },
-                {
-                    humanTurn: true,
-                    projectId: 'project-1',
-                    objectType: 'tasks',
-                    objectId: 'task-1',
-                    messageId: 'msg-1',
-                    assistantId: 'assistant-1',
-                }
-            )
-            expect(retry).toHaveBeenCalledWith('project-1', 'task-1', 'user-1')
-            expect(result).toMatchObject({ success: true, taskId: 'task-1', status: 'workflow_step_restarted' })
-            expect(startVmJobSpy).not.toHaveBeenCalled()
-        } finally {
-            retry.mockRestore()
-        }
-    })
-
     // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if
     // it is given the user's own words. Model-authored arguments must never be part of that text.
     test('forwards the user-authored request text so per-run overrides can be corroborated', async () => {
@@ -10417,8 +10295,6 @@ describe('assistant shared user context', () => {
                     },
                 }),
             })
-            // assistantProfiles/user-1 (AT-3072): none yet.
-            .mockResolvedValueOnce({ exists: false, data: () => undefined })
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
@@ -10446,33 +10322,6 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
         expect(systemMessages).toContain('include create_task.projectRoutingReason')
-        expect(systemMessages).not.toContain('Private assistant profile of this user:')
-    })
-
-    test('adds the private assistant profile of the requesting user next to the descriptions (AT-3072)', async () => {
-        mockDocGet
-            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
-            .mockResolvedValueOnce({
-                exists: true,
-                data: () => ({ enabled: true, text: 'Top of mind: launching the new onboarding.' }),
-            })
-            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
-
-        const messages = []
-        await addBaseInstructions(messages, 'General Bot', 'en', 'Be helpful.', [], null, {
-            projectId: 'project-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        })
-
-        const systemMessages = messages
-            .filter(message => message[0] === 'system')
-            .map(message => message[1])
-            .join('\n')
-        expect(systemMessages).toContain('Private assistant profile of this user:')
-        expect(systemMessages).toContain('Top of mind: launching the new onboarding.')
     })
 })
 

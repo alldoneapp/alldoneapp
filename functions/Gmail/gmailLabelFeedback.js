@@ -2,7 +2,7 @@
 
 const admin = require('firebase-admin')
 
-const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('../Assistant/assistantModelRuntime')
+const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('../Assistant/assistantHelper')
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 const { invalidateResolvedThreadIds } = require('../Email/emailLine/gmailResolvedThreadCache')

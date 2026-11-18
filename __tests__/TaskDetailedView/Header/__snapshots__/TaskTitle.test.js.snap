@@ -2,7 +2,7 @@
 
 exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-flex-13awgt0 r-minHeight-1pl7oy7 r-overflow-1udh08x"
+  className="css-view-g5y9jx r-flex-13awgt0 r-minHeight-adacv r-overflow-1udh08x"
   data-anna-object-id="task-1"
   data-anna-object-type="task"
   data-anna-object-view="detail"
@@ -10,12 +10,12 @@ exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`]
   dir={null}
   style={
     {
-      "maxHeight": "54px",
+      "maxHeight": "70px",
     }
   }
 >
   <div
-    className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-10ptun7"
+    className="css-view-g5y9jx r-backgroundColor-nl0xfs r-height-mabqd8"
     dir={null}
   />
   <div

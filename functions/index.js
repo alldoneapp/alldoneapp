@@ -1631,53 +1631,6 @@ exports.requestKnowledgeBaseRefresh = onCall(
     }
 )
 
-// Assistant profile (AT-3072): the private profile every assistant of the user reads, kept up to
-// date every night. The tree is server-written only; these act on the caller's own profile. See
-// AssistantProfile/assistantProfileModel.js.
-exports.setAssistantProfileSettings = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { setAssistantProfileSettings } = require('./AssistantProfile/assistantProfileSettings')
-        return await setAssistantProfileSettings({ userId: auth.uid, settings: data && data.settings })
-    }
-)
-
-exports.requestAssistantProfileRefresh = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { requestAssistantProfileRefresh } = require('./AssistantProfile/assistantProfileSettings')
-        return await requestAssistantProfileRefresh({ userId: request.auth.uid })
-    }
-)
-
-exports.restoreAssistantProfileRevision = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { restoreAssistantProfileRevision } = require('./AssistantProfile/assistantProfileSettings')
-        return await restoreAssistantProfileRevision({ userId: auth.uid, revision: data && data.revision })
-    }
-)
-
 // Every version of an artifact, and every byte of it, is written here and never by a client. The
 // files arrive base64-encoded in the request, which is why an upload is capped at 20 MB.
 exports.commitArtifactVersion = onCall(
@@ -4178,6 +4131,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 taskMetadata,
                 messageId,
                 objectType: requestedObjectType,
+                originConversation: requestedOriginConversation,
             } = data
             const objectType = requestedObjectType === 'topics' ? 'topics' : 'tasks'
             const userId = auth.uid
@@ -4269,6 +4223,31 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 { userIdsToNotify }
             )
 
+            // AT-3082: a template started in the Anna chat says there that it started its task, and
+            // again when the task has its result. Only the run that owns the lock gets here, so a
+            // replayed request posts neither line twice. The origin is the caller's own Anna chat or
+            // nothing (resolvePreConfigOrigin); a VM the template starts reports there as well.
+            const preConfigOriginNotice = require('./Assistant/preConfigOriginNotice')
+            const originConversation =
+                objectType === 'tasks' && requestedOriginConversation
+                    ? await preConfigOriginNotice.resolvePreConfigOrigin({
+                          db: admin.firestore(),
+                          userId,
+                          requestedOrigin: requestedOriginConversation,
+                          projectId,
+                          taskId,
+                      })
+                    : null
+            const startNotice = originConversation
+                ? preConfigOriginNotice.postPreConfigStartNotice({
+                      db: admin.firestore(),
+                      origin: originConversation,
+                      projectId,
+                      taskId,
+                      userId,
+                  })
+                : null
+
             let result
             try {
                 result = await generatePreConfigTaskResult(
@@ -4284,7 +4263,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                     taskMetadata,
                     functionEntryTime, // Pass entry time for time-to-first-token tracking
                     objectType,
-                    { triggerMessageId: messageId }
+                    { triggerMessageId: messageId, ...(originConversation || {}) }
                 )
                 // Released before the task completion below so a crash in between leaves a settled
                 // lock the duplicate branch can reconcile, rather than a running one that would make
@@ -4294,6 +4273,17 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 // Also releases the coarse per-task slot; leaving it held would block workflow AI
                 // steps on this task for the rest of the lease.
                 await failAssistantRunLock(assistantRunLock.lockRef, error)
+                if (originConversation) {
+                    await startNotice
+                    await preConfigOriginNotice.postPreConfigResultNotice({
+                        db: admin.firestore(),
+                        origin: originConversation,
+                        projectId,
+                        taskId,
+                        userId,
+                        error,
+                    })
+                }
                 throw error
             }
 
@@ -4305,6 +4295,20 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 assistantId,
                 taskMetadata,
             })
+
+            if (originConversation) {
+                // After the completion, so the line can say "done" when the task is.
+                await startNotice
+                await preConfigOriginNotice.postPreConfigResultNotice({
+                    db: admin.firestore(),
+                    origin: originConversation,
+                    projectId,
+                    taskId,
+                    userId,
+                    result,
+                    taskCompletion,
+                })
+            }
 
             const totalFunctionTime = Date.now() - functionEntryTime
             console.log('🎯 [TIMING] generatePreConfigTaskResultSecondGen COMPLETE', {
@@ -6605,55 +6609,6 @@ exports.applyKnowledgeBaseDefaults = onSchedule(
     async () => {
         const { applyKnowledgeBaseDefaultsForActiveUsers } = require('./KnowledgeBase/knowledgeBaseDefaults')
         await applyKnowledgeBaseDefaultsForActiveUsers()
-    }
-)
-
-// ASSISTANT PROFILE (AT-3072)
-// One nightly run per user: folds what the user did into their private assistant profile with one
-// model conversation. Delivered through Cloud Tasks; the run's own wall clock is 10 minutes.
-exports.runAssistantProfileUpdate = onTaskDispatched(
-    {
-        region: 'europe-west1',
-        timeoutSeconds: 900,
-        memory: '512MiB',
-        retryConfig: { maxAttempts: 1 },
-        rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
-    },
-    async req => {
-        const { runAssistantProfileUpdate } = require('./AssistantProfile/assistantProfileRun')
-        const data = req.data || {}
-        return await runAssistantProfileUpdate({ userId: data.userId, trigger: data.trigger })
-    }
-)
-
-// Only enqueues due profile runs; the run itself lives in runAssistantProfileUpdate.
-exports.dispatchAssistantProfileRuns = onSchedule(
-    {
-        schedule: '*/15 * * * *',
-        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async () => {
-        const { dispatchDueAssistantProfileRuns } = require('./AssistantProfile/assistantProfileDispatcher')
-        await dispatchDueAssistantProfileRuns()
-    }
-)
-
-// The assistant profile is on by default for every active user; the sweep also resumes profiles
-// paused while their user was away. Returning users are handled by the user trigger. See
-// AssistantProfile/assistantProfileDefaults.js.
-exports.applyAssistantProfileDefaults = onSchedule(
-    {
-        schedule: '53 1 * * *',
-        timeZone: 'UTC',
-        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
-        memory: '256MiB',
-        region: 'europe-west1',
-    },
-    async () => {
-        const { applyAssistantProfileDefaultsForActiveUsers } = require('./AssistantProfile/assistantProfileDefaults')
-        await applyAssistantProfileDefaultsForActiveUsers()
     }
 )
 

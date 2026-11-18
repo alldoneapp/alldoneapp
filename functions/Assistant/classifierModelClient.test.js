@@ -8,16 +8,16 @@ jest.mock('./openRouterChatClient', () => ({
     }),
 }))
 
-// `classifierModelClient` takes the OpenAI client from `assistantModelRuntime`, lazily and only on
-// the OpenAI branch, so the OpenRouter path loads no OpenAI SDK. It used to come from
-// `assistantHelper`, a 15k-line module with firebase-admin and the whole assistant behind it.
-jest.mock('./assistantModelRuntime', () => ({
+// `classifierModelClient` requires `assistantHelper` lazily and only on the OpenAI branch. Mocking
+// it keeps this suite from pulling a 13k-line module (and firebase-admin) in behind it, which is
+// exactly the reason the real require is lazy.
+jest.mock('./assistantHelper', () => ({
     getOpenAIClient: jest.fn(apiKey => ({ kind: 'openai', apiKey })),
 }))
 
 const { resolveClassifierClient } = require('./classifierModelClient')
 const { getOpenRouterClient } = require('./openRouterChatClient')
-const { getOpenAIClient } = require('./assistantModelRuntime')
+const { getOpenAIClient } = require('./assistantHelper')
 
 const KEYS = { openAiKey: 'sk-openai', openRouterKey: 'sk-openrouter' }
 

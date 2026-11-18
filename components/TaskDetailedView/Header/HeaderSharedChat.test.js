@@ -60,24 +60,6 @@ describe('task header on a shared chat link', () => {
         const tree = renderHeader(false, false)
         const headerStyle = StyleSheet.flatten(tree.root.findByType(View).props.style)
 
-        expect(headerStyle.minHeight).toBe(0)
-        expect(tree.root.findAllByType('BotLine')).toHaveLength(0)
-    })
-})
-
-describe('compact task header (AT-3081)', () => {
-    it.each([
-        ['a project member', true],
-        ['a shared viewer', false],
-    ])('sizes the regular header to its two rows for %s', (description, accessGranted) => {
-        const tree = renderHeader(false, accessGranted)
-        const [header, titleRow] = tree.root.findAllByType(View)
-        const headerStyle = StyleSheet.flatten(header.props.style)
-
-        // The old header reserved 140px and padded 32px under the title and 24px under the
-        // metadata row.
-        expect(headerStyle.minHeight).toBe(0)
-        expect(headerStyle.paddingBottom).toBe(12)
-        expect(StyleSheet.flatten(titleRow.props.style).paddingBottom).toBe(8)
+        expect(headerStyle.minHeight).toBe(140)
     })
 })

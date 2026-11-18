@@ -8,7 +8,7 @@ const {
     resolveScopedSearchParentKey,
 } = require('./scopedSearchParentKey')
 // typesenseHelper only needs the typesense SDK to build a client, which these tests never do.
-jest.mock('typesense', () => ({ Client: jest.fn() }))
+jest.mock('typesense', () => ({ Client: jest.fn() }), { virtual: true })
 const { ALL_COLLECTIONS } = require('../typesenseHelper')
 
 const makeClient = create => ({ keys: () => ({ create }) })

@@ -19,21 +19,27 @@
  * success — search simply stopped seeing note bodies.
  */
 
-jest.mock('firebase-admin', () => {
-    const download = jest.fn(() => Promise.resolve([Buffer.alloc(0)]))
-    const exists = jest.fn(() => Promise.resolve([false]))
-    const file = jest.fn(() => ({ exists, download }))
-    const bucket = jest.fn(() => ({ file }))
-    return {
-        storage: jest.fn(() => ({ bucket })),
-        firestore: jest.fn(() => ({})),
-        __mock: { bucket, file, exists, download },
-    }
-})
+jest.mock(
+    'firebase-admin',
+    () => {
+        const download = jest.fn(() => Promise.resolve([Buffer.alloc(0)]))
+        const exists = jest.fn(() => Promise.resolve([false]))
+        const file = jest.fn(() => ({ exists, download }))
+        const bucket = jest.fn(() => ({ file }))
+        return {
+            storage: jest.fn(() => ({ bucket })),
+            firestore: jest.fn(() => ({})),
+            __mock: { bucket, file, exists, download },
+        }
+    },
+    { virtual: true }
+)
 
 // The parameter still holds the misconfigured value; the resolver is what must
 // refuse to use it.
-jest.mock('firebase-functions/params', () => ({ defineString: jest.fn(() => ({ value: () => 'notescontentdev' })) }))
+jest.mock('firebase-functions/params', () => ({ defineString: jest.fn(() => ({ value: () => 'notescontentdev' })) }), {
+    virtual: true,
+})
 
 const admin = require('firebase-admin')
 const { getNoteContent } = require('./searchHelper')

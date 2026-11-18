@@ -21,8 +21,6 @@ jest.mock('../Assistant/assistantHelper', () => ({
     logOpenAiCacheUsage: jest.fn(),
     normalizeModelKey: jest.fn(modelKey => modelKey),
 }))
-// The model helpers moved to assistantModelRuntime; this suite stubs them on the mock above.
-jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assistant/assistantHelper'))
 
 const {
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
@@ -648,56 +646,5 @@ describe('needsReply verdict', () => {
         )
         const result = await classifyGmailMessage({ config, message: { subject: 'Juno', direction: 'incoming' } })
         expect(result.needsReply).toBe(false)
-    })
-})
-
-describe('emailKind verdict (unread list tags and the newsletter/ads setting)', () => {
-    const completion = content => ({
-        choices: [{ message: { content: JSON.stringify(content) } }],
-        usage: { total_tokens: 100, prompt_tokens: 80, completion_tokens: 20 },
-    })
-    const config = {
-        prompt: 'Classify by active project.',
-        model: 'MODEL_GPT5_4_NANO',
-        confidenceThreshold: 0.7,
-        labelDefinitions: [{ key: 'project_juno', gmailLabelName: 'Juno' }],
-    }
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        jest.spyOn(console, 'warn').mockImplementation(() => {})
-    })
-
-    test('asks the model for emailKind', () => {
-        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('emailKind')
-    })
-
-    test('passes a known kind through, case-insensitively, also for a no-match', async () => {
-        mockCreateCompletion.mockResolvedValueOnce(
-            completion({
-                matched: false,
-                labelKey: null,
-                emailKind: 'Newsletter',
-                confidence: 0.2,
-                reasoning: 'A digest unrelated to any project.',
-            })
-        )
-        const result = await classifyGmailMessage({ config, message: { subject: 'Digest', direction: 'incoming' } })
-        expect(result.emailKind).toBe('newsletter')
-    })
-
-    test('reads a missing or unknown kind as null, never as newsletter or ads', async () => {
-        mockCreateCompletion.mockResolvedValueOnce(
-            completion({
-                matched: true,
-                labelKey: 'project_juno',
-                followUpType: 'informational',
-                emailKind: 'spam',
-                confidence: 0.9,
-                reasoning: 'Juno update.',
-            })
-        )
-        const result = await classifyGmailMessage({ config, message: { subject: 'Juno', direction: 'incoming' } })
-        expect(result.emailKind).toBeNull()
     })
 })

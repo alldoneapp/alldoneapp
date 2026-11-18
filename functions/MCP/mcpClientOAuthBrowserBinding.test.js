@@ -11,14 +11,18 @@ jest.mock('firebase-admin', () => ({
         }),
     }),
 }))
-jest.mock('firebase-functions/v2/https', () => ({
-    HttpsError: class HttpsError extends Error {
-        constructor(code, message) {
-            super(message)
-            this.code = code
-        }
-    },
-}))
+jest.mock(
+    'firebase-functions/v2/https',
+    () => ({
+        HttpsError: class HttpsError extends Error {
+            constructor(code, message) {
+                super(message)
+                this.code = code
+            }
+        },
+    }),
+    { virtual: true }
+)
 
 const { hashBrowserNonce } = require('../Utils/oauthBrowserBinding')
 const { beginMcpOAuth, exchangeMcpOAuthCode } = require('./mcpClientOAuth')

@@ -170,7 +170,7 @@ async function continueEmailThread({
         },
     })
     if (!comment.existing) {
-        const { calculateGoldCostFromTokens } = require('../Assistant/assistantModelRuntime')
+        const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
         const { deductGold } = require('../Gold/goldHelper')
         const goldCost = calculateGoldCostFromTokens(summary.totalTokens, summary.modelKey)
         if (goldCost > 0) {
