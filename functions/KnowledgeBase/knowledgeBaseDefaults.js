@@ -21,16 +21,15 @@
 // template, parentTemplateId) and templates are left out: a guide's creatorId is the template's
 // author, who would otherwise pay for the wiki of every guide anybody ever started.
 //
-// Archived projects get ONE complete wiki build (AT-2893), and are not kept current after that
-// (AT-3095). Archiving (users/{uid}.archivedProjectIds, per member) means "I am done with this
-// project", not "forget what we learned in it": the one build is what makes a past project's
-// knowledge searchable and readable for its members and their assistants. Once a wiki has caught up
-// (hasKnowledgeBaseCaughtUp), a run for a payer who archived the project stops with
-// `project_archived` and clears nextRunAt. Archiving is per member, so the project may still be in
-// use by others: a wiki the default switched on then moves to an active member who has NOT archived
-// it, and the creator is only preferred as payer while they have not archived it either. A member
-// who archived a project only takes a wiki over that has not had its complete build yet. The payer reactivating the project resumes the
-// wiki here (the sweep, or the user trigger when they come back).
+// Archived projects get a wiki too (AT-2893). Archiving (users/{uid}.archivedProjectIds, per member)
+// means "I am done with this project", not "forget what we learned in it": the wiki is what keeps
+// a past project's knowledge searchable and readable for its members and their assistants. Once it
+// has caught up, an archived project costs next to nothing, because a nightly run that finds no
+// changed source makes no model call; when something does change there, the wiki follows it like
+// any other. What still stops a wiki is its payer not using Alldone (owner_inactive).
+// Until AT-2893 a member who archived a project neither switched its wiki on nor paid for it, and
+// a run for such a payer stopped with `project_archived` and cleared nextRunAt. No run writes that
+// reason any more; a wiki left in that state is resumed by this default like an owner_inactive one.
 //
 // The first run waits for the payer's next nightly slot instead of starting at once: the default
 // reaches every project of a user in the same pass, and the worker runs three wikis at a time.
@@ -49,7 +48,6 @@ const {
     DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
     getKnowledgeBasePath,
-    hasKnowledgeBaseCaughtUp,
     isKnowledgeBasePausedForArchivedProject,
     isKnowledgeBasePausedForInactiveOwner,
     isKnowledgeBasePausedForDepartedOwner,
@@ -94,13 +92,14 @@ async function resolveDefaultOwner({ projectId, project, userId, userData, loadU
     const creatorId = project.creatorId
     if (creatorId && creatorId !== userId && getProjectMemberIds(project).includes(creatorId)) {
         const creator = await loadUser(creatorId)
-        if (isKnowledgeBaseOwnerActive(creator, now) && !isProjectArchivedForUser(creator, projectId)) {
+        if (isKnowledgeBaseOwnerActive(creator, now)) {
             return { ownerUserId: creatorId, ownerData: creator }
         }
     }
     return { ownerUserId: userId, ownerData: userData }
 }
 
+// isKnowledgeBasePausedForArchivedProject only matches wikis paused before AT-2893.
 function isKnowledgeBasePaused(data) {
     return (
         isKnowledgeBasePausedForInactiveOwner(data) ||
@@ -125,13 +124,11 @@ function buildDefaultKnowledgeBase({ projectId, ownerUserId, ownerData, now }) {
     }
 }
 
-// Gone: left the project, stopped using Alldone, or archived a project whose wiki has had its one
-// complete build (from then on the payer's wiki would stand still while others still use it).
-async function isPayerGone(current, projectId, project, loadUser, now) {
+// Gone: left the project or stopped using Alldone. Archiving the project is not leaving it.
+async function isPayerGone(current, project, loadUser, now) {
     if (!current.ownerUserId || !getProjectMemberIds(project).includes(current.ownerUserId)) return true
     const payer = await loadUser(current.ownerUserId)
-    if (!isKnowledgeBaseOwnerActive(payer, now)) return true
-    return isProjectArchivedForUser(payer, projectId) && hasKnowledgeBaseCaughtUp(current)
+    return !isKnowledgeBaseOwnerActive(payer, now)
 }
 
 // Applies the default to one project for one member: 'enabled', 'resumed', 'taken_over' or why not.
@@ -158,13 +155,9 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
     const current = existing.data() || {}
     if (current.enabled !== true) return 'unchanged'
 
-    const archivedForUser = isProjectArchivedForUser(userData, projectId)
-
-    // The payer is active (checked above): a paused wiki runs again, unless the payer still has the
-    // project archived and the wiki already had its complete build (the run would stop again).
+    // The payer is active (checked above): a paused wiki runs again.
     if (current.ownerUserId === userId) {
         if (!isKnowledgeBasePaused(current)) return 'unchanged'
-        if (archivedForUser && hasKnowledgeBaseCaughtUp(current)) return 'unchanged'
         return db.runTransaction(async transaction => {
             const snapshot = await transaction.get(ref)
             const latest = snapshot.exists ? snapshot.data() || {} : {}
@@ -175,9 +168,7 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
     }
 
     if (current.enabledBy !== KNOWLEDGE_BASE_ENABLED_BY_DEFAULT) return 'unchanged'
-    // Somebody who archived the project only takes a wiki over to finish its one complete build.
-    if (archivedForUser && hasKnowledgeBaseCaughtUp(current)) return 'unchanged'
-    if (!(await isPayerGone(current, projectId, project, loadUser, now))) return 'unchanged'
+    if (!(await isPayerGone(current, project, loadUser, now))) return 'unchanged'
 
     const owner = await resolveDefaultOwner({ projectId, project, userId, userData, loadUser, now })
     return db.runTransaction(async transaction => {

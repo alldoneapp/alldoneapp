@@ -76,22 +76,6 @@ const KNOWLEDGE_CONTRIBUTION_TITLE_MAX_CHARS = 200
 // 'partial' processed what it could and continues soon, and is progress too.
 const KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES = ['completed', 'partial']
 
-// The automatic update of the project description (AT-3095, projectDescriptionRefresh.js) is a step
-// of the wiki run; its settings sit on the wiki document. Kept here, free of server imports, because
-// the wiki settings in the browser read them too.
-const DAY_MS = 24 * 60 * 60 * 1000
-// Daily (1) was added on review; the default stays weekly. Daily skips a night whose wiki and
-// description are the same as at the last decision (projectDescriptionRefresh.js), so it costs
-// nothing on quiet days.
-const PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS = [1, 7, 14, 28]
-const DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS = 7
-const DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS = 1
-// Nightly runs start at slightly different minutes; a week is a week even when this night's run
-// started an hour earlier than last week's. Daily is due 18 hours after the last decision, so every
-// night's 03:00 run qualifies (also across a DST change), while a manual "Update now" in the
-// afternoon after a nightly decision does not run it a second time that day.
-const DESCRIPTION_UPDATE_DUE_SLACK_MS = 6 * 60 * 60 * 1000
-
 // A `chat` source is one comment thread, keyed by its chat object's id: chatObjects/{projectId}/chats
 // holds the threads of tasks, notes, goals, contacts and artifacts next to the project's topics, and
 // a thread's chat object has the id of the object it belongs to, so the id is unique in the project.
@@ -257,45 +241,6 @@ function getKnowledgeBaseLastSuccessfulRunAt(data = {}) {
     return null
 }
 
-// Whether a run has ever worked through everything (`caughtUpAt`, written by the first completed
-// run; wikis older than the field count when their last run completed). An archived project's wiki
-// pauses once this is true (AT-3095): it gets one complete build, then is no longer kept current.
-function hasKnowledgeBaseCaughtUp(data = {}) {
-    if (Number.isFinite(data.caughtUpAt)) return true
-    return Number.isFinite(data.lastRunAt) && data.lastRunStatus === 'completed'
-}
-
-function resolveProjectDescriptionUpdateIntervalDays(value) {
-    const days = Number(value)
-    return PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS.includes(days)
-        ? days
-        : DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS
-}
-
-// Missing settings mean the default: on, weekly. That is how the projects that existed before
-// AT-3095 get it without a migration; switching it off is a stored `enabled: false`.
-function resolveProjectDescriptionUpdateSettings(data = {}) {
-    const stored = (data && data.descriptionUpdate) || {}
-    return {
-        enabled: stored.enabled !== false,
-        intervalDays: resolveProjectDescriptionUpdateIntervalDays(stored.intervalDays),
-    }
-}
-
-// When the next automatic description update is due: 0 when it never ran, null when switched off.
-function getProjectDescriptionUpdateNextDueAt(data = {}) {
-    const { enabled, intervalDays } = resolveProjectDescriptionUpdateSettings(data)
-    if (!enabled) return null
-    const lastRunAt = Number(data?.descriptionUpdateState?.lastRunAt)
-    if (!Number.isFinite(lastRunAt)) return 0
-    return lastRunAt + intervalDays * DAY_MS - DESCRIPTION_UPDATE_DUE_SLACK_MS
-}
-
-function isProjectDescriptionUpdateDue(data = {}, now = Date.now()) {
-    const dueAt = getProjectDescriptionUpdateNextDueAt(data)
-    return dueAt !== null && now >= dueAt
-}
-
 // A page waiting for a rebuild still contains what the source it lost contributed, so it is
 // shown to nobody, people or assistants, until the rebuild has run.
 function isKnowledgePageVisible(page) {
@@ -365,23 +310,6 @@ function normalizeKnowledgeBaseSettingsInput(input) {
         patch.monthlyGoldCap = cap
     }
 
-    if (settings.descriptionUpdateEnabled !== undefined) {
-        if (typeof settings.descriptionUpdateEnabled !== 'boolean') {
-            throw new KnowledgeBaseSettingsError('descriptionUpdateEnabled must be a boolean.')
-        }
-        patch.descriptionUpdateEnabled = settings.descriptionUpdateEnabled
-    }
-
-    if (settings.descriptionUpdateIntervalDays !== undefined) {
-        const days = Number(settings.descriptionUpdateIntervalDays)
-        if (!PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS.includes(days)) {
-            throw new KnowledgeBaseSettingsError(
-                `descriptionUpdateIntervalDays must be one of ${PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS.join(', ')}.`
-            )
-        }
-        patch.descriptionUpdateIntervalDays = days
-    }
-
     return patch
 }
 
@@ -410,10 +338,10 @@ function isProjectArchivedForUser(userData, projectId) {
     return Array.isArray(userData?.archivedProjectIds) && userData.archivedProjectIds.includes(projectId)
 }
 
-// A wiki whose payer archived its project pauses once it has caught up (AT-3095; AT-2893 had kept
-// archived projects running): the run clears nextRunAt and records `project_archived`. The payer
-// reactivating the project, a member who still uses it taking a default wiki over
-// (knowledgeBaseDefaults.js), or a save in the settings resumes it.
+// Before AT-2893 a wiki whose payer had archived its project stopped running: the run cleared
+// nextRunAt and recorded `project_archived`. No run writes that reason any more (archived projects
+// keep their wiki), but documents paused that way may still exist; the default sweep and a save in
+// the settings resume them, so this only recognises that leftover state.
 function isKnowledgeBasePausedForArchivedProject(data = {}) {
     return (
         data.enabled === true &&
@@ -460,17 +388,6 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
         nextRunAt: Number.isFinite(data.nextRunAt) ? data.nextRunAt : null,
         lastRunAt: Number.isFinite(data.lastRunAt) ? data.lastRunAt : null,
         lastSuccessfulRunAt: getKnowledgeBaseLastSuccessfulRunAt(data),
-        pausedForArchivedProject: isKnowledgeBasePausedForArchivedProject(data),
-        descriptionUpdate: {
-            ...resolveProjectDescriptionUpdateSettings(data),
-            lastRunAt: Number.isFinite(data.descriptionUpdateState?.lastRunAt)
-                ? data.descriptionUpdateState.lastRunAt
-                : null,
-            lastChangedAt: Number.isFinite(data.descriptionUpdateState?.lastChangedAt)
-                ? data.descriptionUpdateState.lastChangedAt
-                : null,
-            lastResult: data.descriptionUpdateState?.lastResult || null,
-        },
     }
 }
 
@@ -521,15 +438,6 @@ module.exports = {
     KNOWLEDGE_CONTRIBUTION_TITLE_MAX_CHARS,
     KNOWLEDGE_BASE_SUCCESSFUL_RUN_STATUSES,
     KNOWLEDGE_SOURCE_TYPES,
-    PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
-    DEFAULT_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
-    DAILY_PROJECT_DESCRIPTION_UPDATE_INTERVAL_DAYS,
-    DESCRIPTION_UPDATE_DUE_SLACK_MS,
-    hasKnowledgeBaseCaughtUp,
-    resolveProjectDescriptionUpdateIntervalDays,
-    resolveProjectDescriptionUpdateSettings,
-    getProjectDescriptionUpdateNextDueAt,
-    isProjectDescriptionUpdateDue,
     KnowledgeBaseSettingsError,
     getKnowledgeBasePath,
     getKnowledgePagesPath,

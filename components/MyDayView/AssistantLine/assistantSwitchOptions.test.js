@@ -1,6 +1,7 @@
 import {
     buildAllProjectsAssistantGroups,
     buildProjectAssistantOptions,
+    buildProjectScopeAssistantGroups,
     buildSingleAssistantGroup,
     countAssistantOptions,
     findAssistantOption,
@@ -141,6 +142,47 @@ describe('orderProjectsForAssistantSwitch', () => {
 
     it('ignores unloaded entries', () => {
         expect(orderProjectsForAssistantSwitch([null, undefined, project('a', 'A')], 'a').map(p => p.id)).toEqual(['a'])
+    })
+})
+
+// AT-3093: the in-project popup lists every project, the current one first.
+describe('buildProjectScopeAssistantGroups', () => {
+    const group = (projectId, uids) => ({
+        projectId,
+        projectName: projectId,
+        isDefaultProject: false,
+        options: uids.map(uid => ({ key: `${projectId}:${uid}`, projectId, assistantId: uid })),
+    })
+
+    it('puts the current project first and drops its duplicate from the All Projects list', () => {
+        const groups = buildProjectScopeAssistantGroups({
+            projectId: 'jtl',
+            // The project's own group keeps the "From your default project" entry (anna).
+            projectGroups: [group('jtl', ['jtl-assistant', 'anna'])],
+            allProjectsGroups: [
+                group(DEFAULT_PROJECT_ID, ['anna']),
+                group('alldone', ['marty']),
+                group('jtl', ['jtl-assistant']),
+            ],
+        })
+
+        expect(groups.map(g => g.projectId)).toEqual(['jtl', DEFAULT_PROJECT_ID, 'alldone'])
+        expect(groups[0].options.map(o => o.assistantId)).toEqual(['jtl-assistant', 'anna'])
+    })
+
+    it('still lists the other projects when the current one offers nothing', () => {
+        const groups = buildProjectScopeAssistantGroups({
+            projectId: 'empty',
+            projectGroups: [],
+            allProjectsGroups: [group('alldone', ['marty']), group('other', [])],
+        })
+
+        expect(groups.map(g => g.projectId)).toEqual(['alldone'])
+    })
+
+    it('is the project list alone before the other projects have loaded', () => {
+        const projectGroups = [group('jtl', ['jtl-assistant', 'anna'])]
+        expect(buildProjectScopeAssistantGroups({ projectId: 'jtl', projectGroups })).toEqual(projectGroups)
     })
 })
 

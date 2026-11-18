@@ -164,7 +164,8 @@ unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first pag
 (2026-11-18, second round): one filter row - "All | Unread N", a divider, the tag chips (Unread
 itself means every tag, a tag chip toggles), sort and settings as icons at the right end; each row
 has the avatar top-aligned with a short time under it (`formatRowTime`: time today, day and month
-this year, two-digit year before), and the message text as plain text: `stripMarkdownForPreview` in
+this year, two-digit year before), and the summary runs to two or three lines (320 characters,
+160 on a phone, capped at three lines) as plain text: `stripMarkdownForPreview` in
 `functions/Utils/parseTextUtils.js`, because SocialText turned an assistant's "## Heading" into a
 "##" hashtag chip. The MyDay "Last comment" block uses the same helper, applied before the line
 breaks are joined (`LastAssistantCommentWrapper`, `LastCommentText`). Pressing an email row opens the
@@ -172,16 +173,6 @@ email in Gmail in a new tab (`getRowEmailUrl`, the link the thread's "Email" chi
 icon at the right end opens the thread, and any other row opens its chat. Opening the email marks
 nothing read here; the Gmail read sync clears the row once the mail is read or archived there. "Mark as read" on a project line marks only the filtered rows while a tag is selected
 (`UnreadTriageMarkAsRead`); the "Archive emails" buttons already act on what the rows register.
-
-**A row shows the whole message and grows with it (AT-3094, 2026-11-18).** The second round capped
-the summary at 320/160 characters and `maxHeight: 3 * body2.lineHeight` with `overflow: hidden`. That
-cut the third line in half: SocialText with `wrapText` renders each word as its own flex item with
-`marginTop`/`marginBottom: 3` (`WordsList` `wrappedText`), so a wrapped line is 28px, not 22px, and
-66px holds about 2.4 lines. The product owner then chose the whole message over a summary: no
-character limit, no line clamp, no height cap; words carry `overflowWrap: 'anywhere'` so a long hash
-or path breaks inside the column; the action icons sit at the top of the row (next to the sender)
-instead of centred, so they stay in the same place however tall a row gets. A line height or clamp
-on SocialText has to count the 6px word margins. Pinned by `UnreadMessageRow.test.js`.
 
 **Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
 email that needs a reply goes to Messages (UNIFIED_INBOX_PLAN.md), so an unread email comment is

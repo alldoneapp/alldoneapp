@@ -130,6 +130,20 @@ export const buildAllProjectsAssistantGroups = ({
         .filter(group => group.options.length > 0)
 }
 
+/**
+ * AT-3093 — the popup inside a project offers the same assistants as the All Projects one, with
+ * the current project's own group first. That group keeps its in-place meaning (the project's
+ * assistants, the enabled global ones and the "From your default project" entry), so choosing
+ * one of those still switches only who answers HERE. The other projects follow in the All
+ * Projects order, minus the current project, whose assistants would otherwise appear twice.
+ * Empty groups are dropped, as in All Projects.
+ */
+export const buildProjectScopeAssistantGroups = ({ projectId, projectGroups = [], allProjectsGroups = [] } = {}) => {
+    const currentGroups = projectGroups.filter(group => group.options.length > 0)
+    const otherGroups = allProjectsGroups.filter(group => group.projectId !== projectId && group.options.length > 0)
+    return [...currentGroups, ...otherGroups]
+}
+
 /** One group, for the single-project case, so both scopes render through the same component. */
 export const buildSingleAssistantGroup = (project, options) =>
     options.length > 0
