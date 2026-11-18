@@ -10996,29 +10996,6 @@ async function executeToolNativelyImpl(
                     }
                 }
 
-                // AT-3098: VM work on a done task reopens it into its workflow (doneTaskReactivation.js).
-                // A done delegated task is reopened by its guard, and its workflow runs this brief.
-                const loadAssistantDisplayName = async (assistantProjectId, workAssistantId) =>
-                    (
-                        await resolveCurrentAssistantDocForToolExecution(
-                            assistantProjectId,
-                            workAssistantId,
-                            requestUserId
-                        ).catch(() => null)
-                    )?.assistant?.displayName || ''
-                const doneTaskReactivationOptions = {
-                    note: [
-                        typeof toolArgs.objective === 'string' ? toolArgs.objective.trim() : '',
-                        typeof toolArgs.deliverable === 'string' && toolArgs.deliverable.trim()
-                            ? `Deliverable: ${toolArgs.deliverable.trim()}`
-                            : '',
-                    ]
-                        .filter(Boolean)
-                        .join('\n'),
-                    resolveEditorName: workAssistantId =>
-                        loadAssistantDisplayName(projectId, workAssistantId || assistantId),
-                }
-
                 const requestedTargetTaskId =
                     typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
                 if (toolArgs.target_project_id && !requestedTargetTaskId) {
@@ -11099,7 +11076,6 @@ async function executeToolNativelyImpl(
                             projectId: effectiveProjectId,
                             taskId: effectiveObjectId,
                             retryAs: { requestUserId, runtime: toolRuntimeContext },
-                            reactivation: doneTaskReactivationOptions,
                         })
                         if (managed)
                             return withDelegatedTaskLink(managed, {
@@ -11185,7 +11161,6 @@ async function executeToolNativelyImpl(
                         projectId: effectiveProjectId,
                         taskId: effectiveObjectId,
                         retryAs: { requestUserId, runtime: toolRuntimeContext },
-                        reactivation: doneTaskReactivationOptions,
                     })
                     if (managed)
                         return withDelegatedTaskLink(managed, {
@@ -11239,28 +11214,6 @@ async function executeToolNativelyImpl(
                     }
                 }
 
-                // AT-3098: work is about to start on this task. A task that is already Done goes back into
-                // its workflow (first AI step of the working assistant, else Open) once the job is
-                // accepted, so it is not shown finished while it is worked on. Planned here so the VM
-                // brief already knows; written after startVmJob, so a refused launch reopens nothing.
-                let doneTaskPlan = null
-                if (effectiveObjectType === 'tasks' && effectiveObjectId && !workflowOwnsTask()) {
-                    const { planDoneTaskReactivation } = require('../Tasks/doneTaskReactivation')
-                    doneTaskPlan = await planDoneTaskReactivation({
-                        db: admin.firestore(),
-                        projectId: effectiveProjectId,
-                        taskId: effectiveObjectId,
-                        assistantId: responsibleAssistant.assistantId,
-                    }).catch(error => {
-                        console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: Could not check whether the host task is done', {
-                            projectId: effectiveProjectId,
-                            objectId: effectiveObjectId,
-                            error: error.message,
-                        })
-                        return null
-                    })
-                }
-
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
@@ -11281,20 +11234,11 @@ async function executeToolNativelyImpl(
                     return ''
                 })
 
-                const reopenedInstruction = doneTaskPlan
-                    ? doneTaskPlan.landsOnAiStep
-                        ? 'This task was already done and is reopened into its workflow for this work. Its workflow manages completion and human review: report the result and leave the task open.'
-                        : 'This task was already done and is reopened for this work. Report the result and leave the task open; its owner completes it after checking the result.'
-                    : ''
                 if ((tracksWorkInTasks || toolRuntimeContext?.onVmJobStarted) && effectiveObjectType === 'tasks') {
-                    const completionInstruction =
-                        reopenedInstruction ||
-                        (workflowOwnsTask()
-                            ? 'Its workflow manages completion and human review: report the result and leave the task open.'
-                            : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.')
+                    const completionInstruction = workflowOwnsTask()
+                        ? 'Its workflow manages completion and human review: report the result and leave the task open.'
+                        : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.'
                     threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. ${completionInstruction} For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
-                } else if (reopenedInstruction) {
-                    threadContext += `\n${reopenedInstruction}`
                 }
 
                 // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/
@@ -11353,48 +11297,6 @@ async function executeToolNativelyImpl(
                     originAssistantId: toolRuntimeContext?.originAssistantId || (tracksWorkInTasks ? assistantId : ''),
                     callerThread: currentVmCallerThread,
                 })
-                if (doneTaskPlan && vmResult.success) {
-                    // The VM record exists now, so the reopened AI step parks on it instead of running
-                    // its prompt as well (AT-2222) and hands the task to the next review step when the
-                    // job settles. Best-effort: the work is already running.
-                    try {
-                        const { reactivateDoneTaskForAssistantWork } = require('../Tasks/doneTaskReactivation')
-                        const reopened = await reactivateDoneTaskForAssistantWork({
-                            db: admin.firestore(),
-                            projectId: effectiveProjectId,
-                            taskId: effectiveObjectId,
-                            assistantId: responsibleAssistant.assistantId,
-                            actorUserId: requestUserId,
-                            editorName: await loadAssistantDisplayName(
-                                responsibleAssistant.projectId,
-                                responsibleAssistant.assistantId
-                            ),
-                            fromConversation:
-                                toolRuntimeContext?.objectId && toolRuntimeContext.objectId !== effectiveObjectId
-                                    ? {
-                                          projectId: toolRuntimeContext.projectId || projectId,
-                                          objectType: toolRuntimeContext.objectType,
-                                          objectId: toolRuntimeContext.objectId,
-                                      }
-                                    : null,
-                        })
-                        if (reopened.reactivated) {
-                            vmResult.taskReopened = {
-                                stepId: reopened.stepId,
-                                step: reopened.stepLabel,
-                                message: reopened.landsOnAiStep
-                                    ? `The task was done and is back on its workflow step “${reopened.stepLabel}” while this work runs; its review steps follow again afterwards.`
-                                    : 'The task was done and is back in Open while this work runs; its owner completes it again afterwards.',
-                            }
-                        }
-                    } catch (error) {
-                        console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: Could not reopen the done host task', {
-                            projectId: effectiveProjectId,
-                            objectId: effectiveObjectId,
-                            error: error.message,
-                        })
-                    }
-                }
                 // A workflow can end the turn once it has recorded the VM as responsible for the step.
                 if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {
                     try {

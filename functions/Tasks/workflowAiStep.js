@@ -253,18 +253,7 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     if (newTask.parentId) return null
 
     const stepId = getCurrentStepId(newTask)
-    if (!stepId || newTask.done) return null
-    // A done task keeps the stepHistory it was completed from. Reopening it onto that same last step
-    // (AT-3098: the final AI step completed it, or the user completed it from there) is still a
-    // landing on the step. The run id carries the reopen's `completed`, so it stays unique per entry.
-    // Only a reopen that entered the step counts (its move stamp carries the entry time): unchecking
-    // the checkbox keeps the old history but hands the task to its owner and must not run the step.
-    const reopened =
-        !!oldTask.done &&
-        Number.isFinite(newTask.completed) &&
-        newTask.workflowStepMove?.stepId === stepId &&
-        newTask.workflowStepMove?.enteredAt === newTask.completed
-    if (stepId === getCurrentStepId(oldTask) && !reopened) return null
+    if (!stepId || stepId === getCurrentStepId(oldTask)) return null
 
     const workflowOwnerId = newTask.userId
     if (!workflowOwnerId || workflowOwnerId.startsWith(WORKSTREAM_ID_PREFIX)) return null
