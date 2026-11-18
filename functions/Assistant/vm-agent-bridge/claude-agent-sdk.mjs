@@ -117,9 +117,84 @@ if (input.permissionMode !== 'bypassPermissions') {
     }
 }
 
+// The answers to canUseTool travel to the CLI over its stdin, so in a gated run stdin has to stay
+// open until the agent is done (AT-3093). Given a plain string prompt, the SDK treats the run as
+// one turn and closes stdin at the first result. A background command that ends later starts
+// another turn in the same process, and every permission check in that turn then fails with
+// "Tool permission request failed: AbortError: Stream closed": the interactive run on AT-3093
+// finished its change and failed to push it five times. So a gated run sends its prompt as a
+// stream that this bridge closes itself, once the last turn has ended and no background task is
+// left. Ungated runs keep the string prompt; nothing travels back to the CLI there.
+const INPUT_SETTLE_MS = Number.isFinite(input.inputSettleMs) ? input.inputSettleMs : 5000
+// Background tasks keep the CLI running either way (it waits for them with stdin closed, too).
+// This cap is for the case where the tracking below misses a task's end: then the CLI would wait
+// for input that never comes. After this long without any message, stdin closes and the CLI goes
+// on as it did with the string prompt.
+const INPUT_IDLE_CAP_MS = Number.isFinite(input.inputIdleCapMs) ? input.inputIdleCapMs : 60 * 60 * 1000
+let inputOpen = Boolean(options.canUseTool)
+let releaseInput = () => {}
+const inputReleased = new Promise(resolve => {
+    releaseInput = resolve
+})
+let inputTimer = null
+let turnOpen = true
+let taskSetReported = false
+const liveTasks = new Set()
+
+async function* promptStream() {
+    // The message the SDK itself writes for a string prompt.
+    yield {
+        type: 'user',
+        session_id: '',
+        message: { role: 'user', content: [{ type: 'text', text: input.prompt }] },
+        parent_tool_use_id: null,
+    }
+    await inputReleased
+}
+
+function closeInput() {
+    clearTimeout(inputTimer)
+    inputTimer = null
+    if (!inputOpen) return
+    inputOpen = false
+    releaseInput()
+}
+
+function trackRunState(message) {
+    if (message?.type === 'result') {
+        turnOpen = false
+    } else if (message?.type === 'system' && message.subtype === 'init') {
+        // Every turn, including the one a finished background task starts, opens with init.
+        turnOpen = true
+    } else if (message?.type === 'assistant' && !message.parent_tool_use_id) {
+        turnOpen = true
+    } else if (message?.type === 'system' && message.subtype === 'background_tasks_changed') {
+        // The full set of live tasks, so it replaces whatever the edge events added.
+        taskSetReported = true
+        liveTasks.clear()
+        for (const task of Array.isArray(message.tasks) ? message.tasks : []) {
+            if (task?.task_id && !task.ambient) liveTasks.add(task.task_id)
+        }
+    } else if (message?.type === 'system' && message.subtype === 'task_started') {
+        // CLIs that predate background_tasks_changed only send these edges.
+        if (!taskSetReported && message.task_id && message.is_backgrounded !== false && !message.skip_transcript) {
+            liveTasks.add(message.task_id)
+        }
+    } else if (message?.type === 'system' && message.subtype === 'task_notification') {
+        if (message.task_id) liveTasks.delete(message.task_id)
+    }
+
+    clearTimeout(inputTimer)
+    inputTimer = null
+    if (!inputOpen || turnOpen) return
+    inputTimer = setTimeout(closeInput, liveTasks.size === 0 ? INPUT_SETTLE_MS : INPUT_IDLE_CAP_MS)
+}
+
 try {
-    for await (const message of query({ prompt: input.prompt, options })) {
+    const prompt = inputOpen ? promptStream() : input.prompt
+    for await (const message of query({ prompt, options })) {
         emit(message)
+        trackRunState(message)
         if (message?.session_id) sessionId = message.session_id
         if (message?.type === 'assistant' && Array.isArray(message?.message?.content)) {
             assistantText += message.message.content
@@ -164,4 +239,7 @@ try {
 } catch (error) {
     emit({ type: 'alldone.bridge_error', message: error?.message || String(error), providerState: { sessionId } })
     process.exitCode = 1
+} finally {
+    // A pending close timer would otherwise keep the process alive after the query ended.
+    closeInput()
 }
