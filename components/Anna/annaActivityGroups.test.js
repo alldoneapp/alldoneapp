@@ -1,4 +1,10 @@
-import { groupAnnaTimeline, getAnnaActivityTarget, ANNA_ACTIVITY_GROUP_WINDOW_MS } from './annaActivityGroups'
+import {
+    groupAnnaTimeline,
+    getAnnaActivityTarget,
+    getAnnaActivityType,
+    ANNA_ACTIVITY_TYPES,
+    ANNA_ACTIVITY_GROUP_WINDOW_MS,
+} from './annaActivityGroups'
 
 const feed = (feedId, created, objectId = 'task1', objectType = 'tasks') => ({
     notice: {
@@ -106,5 +112,51 @@ describe('getAnnaActivityTarget (AT-2906)', () => {
     it('never builds a path from a malformed id', () => {
         const bad = { id: 'chat/p1/bad id/c', kind: 'chat', created: 1, path: '/projects/p1/user/u1/chats/followed' }
         expect(getAnnaActivityTarget([bad])).toBe(bad.path)
+    })
+})
+
+describe('getAnnaActivityType (AT-3087)', () => {
+    const typeOf = (...entries) => getAnnaActivityType(entries.map(entry => entry.notice))
+
+    it('names the object type of a feed notice, whatever its object', () => {
+        expect(typeOf(feed('a', 1))).toMatchObject({ type: 'tasks', icon: 'check-square' })
+        expect(typeOf(feed('a', 1, 'n1', 'notes'))).toMatchObject({ type: 'notes', icon: 'file-text' })
+        expect(typeOf(feed('a', 1, 'g1', 'goals'))).toMatchObject({ type: 'goals', icon: 'target' })
+        expect(typeOf(feed('a', 1, 'c1', 'contacts'))).toMatchObject({ type: 'contacts', icon: 'user' })
+        expect(typeOf(feed('a', 1, 'a1', 'artifacts'))).toMatchObject({ type: 'artifacts', icon: 'layers' })
+        expect(typeOf(feed('a', 1, 'x1', 'assistants'))).toMatchObject({ type: 'assistants', icon: 'cpu' })
+    })
+
+    it("takes a chat message's type once known, and calls it a chat before that", () => {
+        expect(typeOf(chat('topic1', 'c', 1, 'topics'))).toMatchObject({ type: 'topics', icon: 'comments-thread' })
+        expect(typeOf(chat('task1', 'c', 1, 'tasks'))).toMatchObject({ type: 'tasks' })
+        expect(typeOf(chat('chat1', 'c', 1))).toMatchObject({ type: 'chat', icon: 'comments-thread' })
+        // The type the source saved, before the row is enriched.
+        expect(
+            getAnnaActivityType([{ id: 'chat/p1/n1/c', kind: 'chat', source: { chatType: 'notes' } }])
+        ).toMatchObject({ type: 'notes' })
+    })
+
+    it('takes the type from any notice of a group: a reply on a task is a task card', () => {
+        expect(typeOf(feed('a', 1), chat('task1', 'c', 2))).toMatchObject({ type: 'tasks' })
+    })
+
+    it('falls back to a notification for custom objects and notices without an object', () => {
+        expect(typeOf(feed('a', 1, 'x1', 'customs'))).toMatchObject({ type: 'update', icon: 'bell' })
+        expect(getAnnaActivityType([{ id: 'odd', kind: 'feed' }])).toMatchObject({ type: 'update', icon: 'bell' })
+    })
+
+    it('never uses an icon of the action labels (check, message-circle) as a type', () => {
+        Object.values(ANNA_ACTIVITY_TYPES).forEach(({ icon, label }) => {
+            expect(['check', 'message-circle', 'check-check', 'double-check']).not.toContain(icon)
+            expect(label).toMatch(/^Anna activity type /)
+        })
+    })
+
+    it('has a label for every type in en, de and es', () => {
+        ;['en', 'de', 'es'].forEach(language => {
+            const translations = require(`../../i18n/translations/${language}.json`)
+            Object.values(ANNA_ACTIVITY_TYPES).forEach(({ label }) => expect(translations[label]).toBeTruthy())
+        })
     })
 })
