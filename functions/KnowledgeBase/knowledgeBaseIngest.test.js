@@ -32,6 +32,8 @@ function createDb(extra = {}, knowledgeBase = {}) {
             // The weekly health check ran just now, so it stays out of the tests about everything
             // else; the `health check` block below sets its own state.
             lint: { lastLlmLintAt: NOW },
+            // Same for the automatic project description update (AT-3095); its own block sets it.
+            descriptionUpdateState: { lastRunAt: NOW },
             ...knowledgeBase,
         },
         ...extra,
@@ -627,7 +629,7 @@ describe('runKnowledgeBaseIngest', () => {
         expect(db.read(KB_PATH).monthlyGold).toEqual({ month: '2026-10', spent: 2 })
     })
 
-    // AT-2893: an archived project keeps its wiki, built and kept current like any other.
+    // AT-2893: an archived project gets its wiki built; AT-3095: until the first complete build.
     it('builds the wiki of a project its payer has archived', async () => {
         const db = createDb({
             ['users/owner']: {
@@ -647,6 +649,39 @@ describe('runKnowledgeBaseIngest', () => {
         expect(Number.isFinite(result.nextRunAt)).toBe(true)
         expect(db.read(KB_PATH).lastRunStopReason).not.toBe('project_archived')
         expect(Number.isFinite(db.read(KB_PATH).nextRunAt)).toBe(true)
+        // The complete build is recorded, so the next run of this archived project pauses it.
+        expect(db.read(KB_PATH).caughtUpAt).toBe(NOW)
+    })
+
+    // AT-3095: archived projects get one complete wiki build for search, and are not kept current.
+    it('pauses the built wiki of a project its payer has archived, before any model call', async () => {
+        const db = createDb(
+            {
+                ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - DAY, archivedProjectIds: [PROJECT_ID] },
+                [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            },
+            { caughtUpAt: NOW - 7 * DAY }
+        )
+        const { runConversation } = scriptedModel()
+        const charge = jest.fn()
+
+        const result = await run(db, { runConversation, charge })
+
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(charge).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'project_archived', nextRunAt: null })
+        expect(db.read(KB_PATH)).toMatchObject({ lastRunStopReason: 'project_archived', nextRunAt: null })
+    })
+
+    it('treats a wiki whose last run completed before the field existed as built', async () => {
+        const db = createDb(
+            { ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - DAY, archivedProjectIds: [PROJECT_ID] } },
+            { lastRunAt: NOW - DAY, lastRunStatus: 'completed' }
+        )
+
+        const result = await run(db, { runConversation: scriptedModel().runConversation })
+
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'project_archived', nextRunAt: null })
     })
 
     it('spends nothing on an archived project in which nothing changed', async () => {
@@ -1401,5 +1436,363 @@ describe('the weekly health check', () => {
 
         expect(result.status).toBe('failed')
         expect(db.read(KB_PATH).lastSuccessfulRunAt).toBe(NOW - 3 * DAY)
+    })
+})
+
+describe('automatic project description update (AT-3095)', () => {
+    const CURRENT =
+        'Alldone Product entwickelt alldone.app. Hierher gehören Produktstrategie, UX und Entwicklung. Unternehmensverwaltung gehört zu Alldone Business.'
+    const page = (slug, data = {}) => ({
+        title: slug,
+        summary: `About ${slug}.`,
+        body: `About ${slug} [[task:${slug}-source|the ${slug} task]], see [[other-page]].`,
+        sourceKeys: [`task:${slug}-source`],
+        revision: 1,
+        archived: false,
+        needsRebuild: false,
+        updatedAt: NOW - DAY,
+        ...data,
+    })
+    const descriptionDb = ({ knowledgeBase = {}, project = {}, pages = { team: page('team') }, extra = {} } = {}) =>
+        createDb(
+            {
+                [`projects/${PROJECT_ID}`]: {
+                    name: 'Alldone Product',
+                    userIds: ['owner', 'teammate'],
+                    description: CURRENT,
+                    ...project,
+                },
+                ...Object.fromEntries(Object.entries(pages).map(([slug, data]) => [pagePath(slug), data])),
+                ...extra,
+            },
+            { descriptionUpdateState: {}, ...knowledgeBase }
+        )
+    const writer = (result = { success: true, updated: true }) => jest.fn(async () => result)
+
+    it('revises the description from the wiki once due, bills it as its own source and records the change', async () => {
+        const db = descriptionDb()
+        const writeDescription = writer()
+        const charge = jest.fn(async () => ({ success: true }))
+        const revised = `${CURRENT} Karla verantwortet die Roadmap.`
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.save_project_description({ description: revised, reason: 'Neue Rolle' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription, charge })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].toolNames).toEqual(['save_project_description', 'keep_project_description'])
+        expect(calls[0].system).toContain('NOT a status report')
+        expect(calls[0].system).toContain('Keep everything in it that is still true')
+        expect(calls[0].user).toContain(CURRENT)
+        // Citations and links reach the model as plain labels, never as tokens it could copy.
+        expect(calls[0].user).toContain('About team the team task, see other-page.')
+        expect(calls[0].user).not.toContain('[[')
+
+        expect(writeDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: PROJECT_ID,
+                ownerUserId: 'owner',
+                description: revised,
+                expected: CURRENT,
+            })
+        )
+        expect(charge).toHaveBeenCalledWith(
+            expect.objectContaining({ source: 'project_description_update', userId: 'owner' })
+        )
+        expect(result.descriptionUpdate).toMatchObject({
+            result: 'changed',
+            previousDescription: CURRENT,
+            description: revised,
+        })
+        expect(db.read(KB_PATH).descriptionUpdateState).toEqual({
+            lastRunAt: NOW,
+            lastRunId: 'run-1',
+            lastResult: 'changed',
+            lastChangedAt: NOW,
+            inputsFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+        })
+        expect(db.read(`${KB_PATH}/runs/run-1`).descriptionUpdate).toMatchObject({ result: 'changed' })
+    })
+
+    it('writes nothing when the model keeps the description, and waits for the next interval', async () => {
+        const db = descriptionDb({ knowledgeBase: { descriptionUpdateState: { lastChangedAt: NOW - 30 * DAY } } })
+        const writeDescription = writer()
+        const { runConversation } = scriptedModel(async tools => {
+            await tools.keep_project_description({ reason: 'Profil unverändert' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription })
+
+        expect(writeDescription).not.toHaveBeenCalled()
+        expect(result.descriptionUpdate).toEqual({ result: 'unchanged', reason: 'Profil unverändert' })
+        expect(db.read(KB_PATH).descriptionUpdateState).toEqual({
+            lastRunAt: NOW,
+            lastRunId: 'run-1',
+            lastResult: 'unchanged',
+            lastChangedAt: NOW - 30 * DAY,
+            inputsFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+        })
+    })
+
+    it('treats a save of the same text as keeping it', async () => {
+        const db = descriptionDb()
+        const writeDescription = writer()
+        const { runConversation } = scriptedModel(async tools => {
+            await tools.save_project_description({ description: `  ${CURRENT}\n`, reason: 'x' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription })
+
+        expect(writeDescription).not.toHaveBeenCalled()
+        expect(result.descriptionUpdate.result).toBe('unchanged')
+    })
+
+    it('runs only once per interval: weekly by default, or as configured', async () => {
+        const cases = [
+            [{ descriptionUpdateState: { lastRunAt: NOW - 6 * DAY } }, 0],
+            // A nightly run that starts a little earlier than last week's still counts as a week.
+            [{ descriptionUpdateState: { lastRunAt: NOW - 7 * DAY + 60 * 60 * 1000 } }, 1],
+            [{ descriptionUpdate: { intervalDays: 14 }, descriptionUpdateState: { lastRunAt: NOW - 10 * DAY } }, 0],
+            [{ descriptionUpdate: { intervalDays: 14 }, descriptionUpdateState: { lastRunAt: NOW - 14 * DAY } }, 1],
+            [
+                {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { lastRunAt: NOW - 12 * 60 * 60 * 1000 },
+                },
+                0,
+            ],
+            [
+                {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { lastRunAt: NOW - DAY + 60 * 60 * 1000 },
+                },
+                1,
+            ],
+            [{ descriptionUpdate: { enabled: false }, descriptionUpdateState: {} }, 0],
+        ]
+        for (const [knowledgeBase, expectedCalls] of cases) {
+            const { runConversation } = scriptedModel(async tools => tools.keep_project_description({ reason: 'x' }))
+            await run(descriptionDb({ knowledgeBase }), { runConversation, writeDescription: writer() })
+            expect([knowledgeBase, runConversation.mock.calls.length]).toEqual([knowledgeBase, expectedCalls])
+        }
+    })
+
+    describe('daily (added on review)', () => {
+        const keep = () => scriptedModel(async tools => tools.keep_project_description({ reason: 'x' }))
+        // The state a first daily run leaves, read back for the next night's run.
+        async function firstNight({ knowledgeBase = {}, project = {}, pages, turn } = {}) {
+            const db = descriptionDb({
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, ...knowledgeBase },
+                project,
+                ...(pages ? { pages } : {}),
+            })
+            const { runConversation } = turn ? scriptedModel(turn) : keep()
+            await run(db, { runConversation, writeDescription: writer() })
+            expect(runConversation).toHaveBeenCalledTimes(1)
+            return db.read(KB_PATH).descriptionUpdateState
+        }
+        // Tonight is 23 hours after the last decision, as between two nightly runs.
+        const tonight = state => ({ ...state, lastRunAt: NOW - 23 * 60 * 60 * 1000 })
+
+        it('runs every night while something changed, and skips a quiet night at no cost', async () => {
+            const state = await firstNight()
+            expect(state.inputsFingerprint).toMatch(/^[0-9a-f]{64}$/)
+
+            // Nothing changed: no model call, no Gold, and lastRunAt stays, so it stays due.
+            const quietDb = descriptionDb({
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: tonight(state) },
+            })
+            const quiet = keep()
+            const charge = jest.fn(async () => ({ success: true }))
+            const result = await run(quietDb, {
+                runConversation: quiet.runConversation,
+                writeDescription: writer(),
+                charge,
+            })
+            expect(quiet.runConversation).not.toHaveBeenCalled()
+            expect(charge).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'no_changes' })
+            expect(quietDb.read(KB_PATH).descriptionUpdateState).toEqual(tonight(state))
+
+            // A wiki page changed, a member edited the description, or the wiki instructions
+            // changed: the next night runs.
+            const changes = [
+                {
+                    pages: {
+                        team: page('team', { body: 'Karla verantwortet jetzt die Roadmap.', updatedAt: NOW - 1 }),
+                    },
+                },
+                { project: { description: `${CURRENT} Von Hand ergänzt.` } },
+                { knowledgeBase: { instructions: 'Schreibe auf Englisch.' } },
+            ]
+            for (const change of changes) {
+                const db = descriptionDb({
+                    ...change,
+                    knowledgeBase: {
+                        descriptionUpdate: { intervalDays: 1 },
+                        descriptionUpdateState: tonight(state),
+                        ...change.knowledgeBase,
+                    },
+                })
+                const next = keep()
+                await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+                expect([change, next.runConversation.mock.calls.length]).toEqual([change, 1])
+            }
+        })
+
+        it('counts its own save as the new starting point, not as a change', async () => {
+            const revised = `${CURRENT} Karla verantwortet die Roadmap.`
+            const state = await firstNight({
+                turn: tools => tools.save_project_description({ description: revised, reason: 'Neue Rolle' }),
+            })
+            expect(state.lastResult).toBe('changed')
+
+            const db = descriptionDb({
+                project: { description: revised },
+                knowledgeBase: { descriptionUpdate: { intervalDays: 1 }, descriptionUpdateState: tonight(state) },
+            })
+            const next = keep()
+            const result = await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'no_changes' })
+        })
+
+        it('is not due again within the same day', async () => {
+            const state = await firstNight()
+            const db = descriptionDb({
+                pages: { team: page('team', { body: 'Neu.', updatedAt: NOW - 1 }) },
+                knowledgeBase: {
+                    descriptionUpdate: { intervalDays: 1 },
+                    descriptionUpdateState: { ...state, lastRunAt: NOW - 12 * 60 * 60 * 1000 },
+                },
+            })
+            const next = keep()
+            const result = await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toBeNull()
+        })
+
+        it('leaves weekly as it was: due after a week even when nothing changed', async () => {
+            const state = await firstNight({ knowledgeBase: { descriptionUpdate: { intervalDays: 7 } } })
+            const db = descriptionDb({
+                knowledgeBase: {
+                    descriptionUpdate: { intervalDays: 7 },
+                    descriptionUpdateState: { ...state, lastRunAt: NOW - 7 * DAY },
+                },
+            })
+            const next = keep()
+            await run(db, { runConversation: next.runConversation, writeDescription: writer() })
+            expect(next.runConversation).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    it('leaves inactive projects, templates, archived projects and empty wikis alone at no cost', async () => {
+        const cases = [
+            [{ project: { active: false } }, 'project_inactive'],
+            [{ project: { isTemplate: true } }, 'template'],
+            [{ pages: {} }, 'empty_wiki'],
+            [{ pages: { team: page('team', { archived: true }) } }, 'empty_wiki'],
+            [
+                {
+                    extra: {
+                        ['users/owner']: {
+                            gold: 1000,
+                            timezone: 2,
+                            lastLogin: NOW - DAY,
+                            archivedProjectIds: [PROJECT_ID],
+                        },
+                    },
+                },
+                'project_archived',
+            ],
+        ]
+        for (const [setup, reason] of cases) {
+            const db = descriptionDb(setup)
+            const { runConversation } = scriptedModel()
+            const result = await run(db, { runConversation, writeDescription: writer() })
+            expect(runConversation).not.toHaveBeenCalled()
+            expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason })
+            // Not a decision: the next run looks again.
+            expect(db.read(KB_PATH).descriptionUpdateState).toEqual({})
+        }
+    })
+
+    it('waits while the month is past the share of the cap the ingest keeps for itself', async () => {
+        const db = descriptionDb({ knowledgeBase: { monthlyGold: { month: '2026-10', spent: 450 } } })
+        const { runConversation } = scriptedModel()
+
+        const result = await run(db, { runConversation, writeDescription: writer() })
+
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'budget' })
+    })
+
+    it('refuses citations, a gutted description and an overlong one, then accepts the model keeping it', async () => {
+        const long =
+            'Alldone Product ist ein Projekt mit einer sehr langen Beschreibung über Zweck und Rollen. '.repeat(4)
+        const db = descriptionDb({ project: { description: long } })
+        const writeDescription = writer()
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.save_project_description({ description: `${long} Siehe [[task:t1]].`, reason: 'x' })
+            await tools.save_project_description({ description: 'Alldone Product.', reason: 'x' })
+            await tools.save_project_description({ description: 'x'.repeat(3000), reason: 'x' })
+            await tools.keep_project_description({ reason: 'lieber nicht' })
+            await tools.save_project_description({ description: `${long} Neu.`, reason: 'zu spät' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription })
+
+        const errors = calls[0].results.map(({ result }) => result.error || null)
+        expect(errors[0]).toContain('wiki links or citations')
+        expect(errors[1]).toContain('drops most of the current description')
+        expect(errors[2]).toContain('must stay under')
+        expect(errors[3]).toBeNull()
+        expect(errors[4]).toContain('already decided')
+        expect(writeDescription).not.toHaveBeenCalled()
+        expect(result.descriptionUpdate.result).toBe('unchanged')
+    })
+
+    it("keeps a member's edit made while the model was working", async () => {
+        const db = descriptionDb()
+        const writeDescription = writer({ success: false, updated: false, conflict: true })
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.save_project_description({ description: `${CURRENT} Neu.`, reason: 'x' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription })
+
+        expect(calls[0].results[0].result).toMatchObject({ success: false })
+        expect(result.descriptionUpdate.result).toBe('conflict')
+        expect(db.read(KB_PATH).descriptionUpdateState).toMatchObject({ lastRunAt: NOW, lastResult: 'conflict' })
+        expect(db.read(KB_PATH).descriptionUpdateState).not.toHaveProperty('lastChangedAt')
+        // The member's text is new input, so a daily update looks again the next night.
+        expect(db.read(KB_PATH).descriptionUpdateState.inputsFingerprint).toBeNull()
+    })
+
+    it('writes a first profile for a project without a description', async () => {
+        const db = descriptionDb({ project: { description: '' } })
+        const writeDescription = writer()
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.save_project_description({ description: 'Kurzes Profil.', reason: 'erste Fassung' })
+        })
+
+        const result = await run(db, { runConversation, writeDescription })
+
+        expect(calls[0].user).toContain('Current project description:\n(empty)')
+        expect(writeDescription).toHaveBeenCalledWith(
+            expect.objectContaining({ description: 'Kurzes Profil.', expected: '' })
+        )
+        expect(result.descriptionUpdate.result).toBe('changed')
+    })
+
+    it('tries again on the next run when the model made no decision', async () => {
+        const db = descriptionDb()
+        const { runConversation } = scriptedModel(async () => {})
+
+        const result = await run(db, { runConversation, writeDescription: writer() })
+
+        expect(result.descriptionUpdate).toEqual({ result: 'no_decision' })
+        expect(db.read(KB_PATH).descriptionUpdateState).toEqual({})
     })
 })

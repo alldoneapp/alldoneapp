@@ -5,8 +5,9 @@
 // through what changed since the last run, a prompt-sized chunk at a time, and let the model fold
 // it into the pages with three tools of its own (read_page, write_page, archive_page). Last comes
 // the health check (knowledgeLint.js): rule-based checks whenever pages changed, and at most once a
-// week a bounded model pass that may only spend below the reserve it leaves for the ingest. Runs
-// unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
+// week a bounded model pass that may only spend below the reserve it leaves for the ingest. The very
+// last step is the automatic update of the project description (projectDescriptionRefresh.js), weekly
+// by default, daily on request. Runs unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
 //
 // Order matters: rebuilds come first so that the ingest prompts never see a page that still repeats
 // a withdrawn source, not even in the index.
@@ -24,6 +25,10 @@
 //     which knowledgeBaseDefaults.js notices; nothing is spent on a member who is not there;
 //   - the owner has archived the project → paused the same way until they reactivate it (or the
 //     default hands the wiki to a member for whom it is active); nothing is spent on it;
+//   - the owner has archived the project and the wiki has caught up once → paused (nextRunAt null)
+//     until they reactivate it or the default hands it to a member who still uses the project
+//     (AT-3095). An archived project still gets ONE complete build, so its knowledge is searchable;
+//     after that it is not kept current any more;
 //   - nothing changed → no model call at all, the next nightly slot;
 //   - the model request broke off transiently (a lost connection, a 5xx or 429 from the provider)
 //     even after the transport's own retries → the run fails, and another run is scheduled and
@@ -48,12 +53,15 @@ const {
     KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON,
+    KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON,
     getKnowledgeBaseMonthKey,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
     getKnowledgeRunsPath,
+    hasKnowledgeBaseCaughtUp,
     isKnowledgePageVisible,
+    isProjectArchivedForUser,
     normalizeKnowledgePageSlug,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
@@ -80,6 +88,21 @@ const {
     withLintReason,
 } = require('./knowledgeLint')
 const { isKnowledgeBaseOwnerActive, nextNightlyRunAt } = require('./knowledgeBaseSchedule')
+const {
+    DESCRIPTION_GOLD_SOURCE,
+    DESCRIPTION_RESULT_CHANGED,
+    DESCRIPTION_RESULT_CONFLICT,
+    DESCRIPTION_RESULT_NO_DECISION,
+    buildDescriptionInputsFingerprint,
+    buildDescriptionSystemPrompt,
+    buildDescriptionUserPrompt,
+    buildDescriptionWikiMaterial,
+    createDescriptionTools,
+    getProjectDescriptionUpdateSkipReason,
+    isDescriptionUpdateInputUnchanged,
+    isProjectDescriptionUpdateDue,
+    writeProjectDescriptionDefault,
+} = require('./projectDescriptionRefresh')
 
 // The run shares the heartbeat's budget for the same reason: it is delivered through Cloud Tasks,
 // whose dispatch deadline tops out at 30 minutes.
@@ -488,10 +511,10 @@ function measureRoundGold({ assistantText, conversation, modelKey }) {
     return { tokens, gold: helper.calculateGoldCostFromTokens(tokens, modelKey) }
 }
 
-async function chargeIngestGold({ userId, gold, idempotencyKey, projectId, model }) {
+async function chargeIngestGold({ userId, gold, idempotencyKey, projectId, model, source = GOLD_SOURCE }) {
     const { deductGold } = require('../Gold/goldHelper')
     return deductGold(userId, gold, {
-        source: GOLD_SOURCE,
+        source,
         channel: 'assistant',
         projectId,
         objectId: projectId,
@@ -521,6 +544,7 @@ async function runKnowledgeBaseIngest({
     maxRunWallClockMs = KNOWLEDGE_BASE_INGEST_MAX_RUN_WALL_CLOCK_MS,
     notifyCapReached = args => require('./knowledgeBaseCapNotice').notifyKnowledgeBaseCapReached(args),
     enqueueRun = defaultEnqueueRun,
+    writeDescription = writeProjectDescriptionDefault,
 }) {
     if (!projectId) throw new Error('projectId is required')
     const startedAt = clock()
@@ -556,9 +580,12 @@ async function runKnowledgeBaseIngest({
         rewriteUnchanged: 0,
         lintEdits: 0,
         lintStop: null,
+        descriptionUpdate: null,
         goldSpent: 0,
         truncated: [],
     }
+    // Set only when the description step reached a decision (changed, unchanged, conflict).
+    let descriptionUpdateState = null
     let lintReport = null
     let lintState = null
     let cursor = knowledgeBase.cursor || {}
@@ -574,8 +601,16 @@ async function runKnowledgeBaseIngest({
         await runRef.set({ status: 'running', trigger, startedAt, model: modelKey, ownerUserId })
     }
 
-    // `spendLimit`: the lint pass only spends while the month is below its share of the cap.
-    const conversation = async ({ systemPrompt, userPrompt, tools, label, spendLimit = null }) => {
+    // `spendLimit`: the lint pass and the description update only spend while the month is below
+    // their share of the cap. `goldSource`: what the Gold ledger calls the spending.
+    const conversation = async ({
+        systemPrompt,
+        userPrompt,
+        tools,
+        label,
+        spendLimit = null,
+        goldSource = GOLD_SOURCE,
+    }) => {
         if (clock() + MIN_CONVERSATION_TIME_MS > deadline) throw new KnowledgeBaseRunStop('time')
         if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
         if (spendLimit !== null && monthlyGold.spent >= spendLimit) throw new LintBudgetStop()
@@ -606,9 +641,10 @@ async function runKnowledgeBaseIngest({
                     const result = await charge({
                         userId: ownerUserId,
                         gold,
-                        idempotencyKey: `${GOLD_SOURCE}:${leaseId}:${label}:${round}`,
+                        idempotencyKey: `${goldSource}:${leaseId}:${label}:${round}`,
                         projectId,
                         model: modelKey,
+                        ...(goldSource !== GOLD_SOURCE ? { source: goldSource } : {}),
                     })
                     if (!result || result.success === false) throw new KnowledgeBaseRunStop('insufficient_gold')
                     if (!result.alreadyProcessed) {
@@ -636,8 +672,12 @@ async function runKnowledgeBaseIngest({
         if (ownerSnapshot.exists && !isKnowledgeBaseOwnerActive(ownerData, startedAt)) {
             throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON)
         }
-        // A payer who archived the project still pays for its wiki (AT-2893): an archived project's
-        // knowledge stays usable, and once caught up a run without changed sources calls no model.
+        // A payer who archived the project pays for ONE complete build of its wiki (AT-2893), so an
+        // archived project's knowledge is searchable; after that the wiki is not kept current any
+        // more (AT-3095) and pauses here before any model call.
+        if (isProjectArchivedForUser(ownerData, projectId) && hasKnowledgeBaseCaughtUp(knowledgeBase)) {
+            throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON)
+        }
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
         if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
@@ -885,6 +925,103 @@ async function runKnowledgeBaseIngest({
                 lintState = { ...lintState, lastLlmLintEdits: lintEdits.made }
             }
         }
+
+        // 5. The automatic update of the project description (projectDescriptionRefresh.js): once
+        //    the wiki has caught up, at most once per interval, below the same share of the cap as
+        //    the health check. The model either keeps the description or saves a revision of it.
+        //    Daily skips a night whose inputs are the ones the last decision left (no_changes).
+        if (!moreWork && isProjectDescriptionUpdateDue(knowledgeBase, clock())) {
+            const skipReason = getProjectDescriptionUpdateSkipReason({ projectId, projectData, ownerData })
+            const material = buildDescriptionWikiMaterial(pages)
+            const spendLimit = getLintSpendLimit(goldCap)
+            const currentDescription = typeof projectData.description === 'string' ? projectData.description.trim() : ''
+            const descriptionSystemPrompt = buildDescriptionSystemPrompt({
+                projectName,
+                instructions: knowledgeBase.instructions,
+            })
+            if (skipReason) {
+                stats.descriptionUpdate = { result: 'skipped', reason: skipReason }
+            } else if (!material.pageCount) {
+                // Nothing to learn from yet; tried again on the next run, at no cost.
+                stats.descriptionUpdate = { result: 'skipped', reason: 'empty_wiki' }
+            } else if (
+                isDescriptionUpdateInputUnchanged(
+                    knowledgeBase,
+                    buildDescriptionInputsFingerprint({
+                        systemPrompt: descriptionSystemPrompt,
+                        currentDescription,
+                        material,
+                    })
+                )
+            ) {
+                // Daily, and nothing new since the last decision: looked at again tomorrow, at no cost.
+                stats.descriptionUpdate = { result: 'skipped', reason: 'no_changes' }
+            } else if (monthlyGold.spent >= spendLimit) {
+                stats.descriptionUpdate = { result: 'skipped', reason: 'budget' }
+            } else {
+                const decision = {}
+                try {
+                    await conversation({
+                        label: 'description',
+                        spendLimit,
+                        goldSource: DESCRIPTION_GOLD_SOURCE,
+                        systemPrompt: descriptionSystemPrompt,
+                        userPrompt: buildDescriptionUserPrompt({ currentDescription, material }),
+                        tools: createDescriptionTools({
+                            currentDescription,
+                            decision,
+                            writeDescription: ({ description }) =>
+                                writeDescription({
+                                    db,
+                                    projectId,
+                                    ownerUserId,
+                                    ownerData,
+                                    description,
+                                    expected: currentDescription,
+                                }),
+                        }),
+                    })
+                } catch (error) {
+                    if (!(error instanceof LintBudgetStop)) throw error
+                    if (!decision.result) stats.descriptionUpdate = { result: 'skipped', reason: 'budget' }
+                } finally {
+                    // A decision counts even when the run stops right after it (cap, time).
+                    if (decision.result) {
+                        const decidedAt = clock()
+                        stats.descriptionUpdate = {
+                            result: decision.result,
+                            reason: decision.reason || '',
+                            ...(decision.result === 'changed'
+                                ? { previousDescription: currentDescription, description: decision.description }
+                                : {}),
+                        }
+                        descriptionUpdateState = {
+                            ...(knowledgeBase.descriptionUpdateState || {}),
+                            lastRunAt: decidedAt,
+                            lastRunId: leaseId,
+                            lastResult: decision.result,
+                            ...(decision.result === DESCRIPTION_RESULT_CHANGED ? { lastChangedAt: decidedAt } : {}),
+                            // What the next run would see if nothing changes: the description as it
+                            // now stands. After a conflict the member's text is unknown here, so
+                            // the next daily run looks again.
+                            inputsFingerprint:
+                                decision.result === DESCRIPTION_RESULT_CONFLICT
+                                    ? null
+                                    : buildDescriptionInputsFingerprint({
+                                          systemPrompt: descriptionSystemPrompt,
+                                          currentDescription:
+                                              decision.result === DESCRIPTION_RESULT_CHANGED
+                                                  ? decision.description
+                                                  : currentDescription,
+                                          material,
+                                      }),
+                        }
+                    } else if (!stats.descriptionUpdate) {
+                        stats.descriptionUpdate = { result: DESCRIPTION_RESULT_NO_DECISION }
+                    }
+                }
+            }
+        }
     } catch (error) {
         if (error instanceof KnowledgeBaseRunStop) {
             stopReason = error.reason
@@ -916,7 +1053,8 @@ async function runKnowledgeBaseIngest({
     const transientFailureRetries = retryTransientFailure ? previousTransientRetries + 1 : 0
     const nextRunAt =
         stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON ||
-        stopReason === KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON
+        stopReason === KNOWLEDGE_BASE_OWNER_NOT_MEMBER_STOP_REASON ||
+        stopReason === KNOWLEDGE_BASE_PROJECT_ARCHIVED_STOP_REASON
             ? null
             : stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON
               ? startOfNextMonthUtc(finishedAt)
@@ -964,6 +1102,10 @@ async function runKnowledgeBaseIngest({
             ...(status === 'completed' || status === 'partial' ? { lastSuccessfulRunAt: finishedAt } : {}),
             ...(lintReport ? { lintReport } : {}),
             ...(lintState ? { lint: lintState } : {}),
+            ...(descriptionUpdateState ? { descriptionUpdateState } : {}),
+            // The first time a run worked through everything; what lets an archived project's wiki
+            // pause after its one complete build.
+            ...(status === 'completed' && !Number.isFinite(knowledgeBase.caughtUpAt) ? { caughtUpAt: finishedAt } : {}),
             lastRunStopReason: stopReason,
             ...(runDocWritten ? { lastRunId: leaseId } : {}),
             nextRunAt,
