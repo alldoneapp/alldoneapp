@@ -151,51 +151,6 @@ whole thread (`getGmailThreadLinkData`). Pinned by `emailThreadTopicStore.test.j
 conversations get their own topic" block of `serverSideGmailLabelingSync.test.js`, the sent-mail case
 in `emailThreadContinuation.test.js` and `linkedEmailActions.test.js`.
 
-## Chats > Unread is a list of messages with tags; newsletters and ads can archive themselves (2026-11-18)
-
-Decided with the product owner from mockups (variant A). The "Unread" chat filter no longer lists
-topics with previews: each project shows every unread message of its unread chats as one row
-(sender, tag, one-line summary, time; archive for emails, mark as read, open), filtered by tag
-chips and sorted by newest or sender (`components/ChatsView/UnreadTriage/`). The "All" filter is
-unchanged. The "Unread" chip counts **messages**, not chats (`getUnreadMessageCount`: per chat
-unread for the tab, the messages the list shows - followed ones if any, else unfollowed), so it
-equals the "All" tag chip and the red chats badge in the top bar; for that the list loads every
-unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first page. "Mark as read" on a project line marks only the filtered rows while a tag is selected
-(`UnreadTriageMarkAsRead`); the "Archive emails" buttons already act on what the rows register.
-
-**Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
-email that needs a reply goes to Messages (UNIFIED_INBOX_PLAN.md), so an unread email comment is
-informational by construction. The classifier now also returns `emailKind` (`person`, `newsletter`,
-`notification`, `ads`; `null` when missing or unknown, kept from the first pass when the auditor
-omits it). The sync writes `labelKey`, `labelName`, `emailKind`, `fromName`, `fromEmail` onto the
-comment's `gmailData` (`buildGmailCommentTagFields` in assistantHelper). Tag rule, the same on
-both sides (`resolveUnreadEmailKind` / `getUnreadMessageTag`): label `ads` → Ads, label
-`newsletter` → Newsletters, otherwise `emailKind`; in the default mode every other label is a
-project and says nothing about the kind. Comments from before this have no fields and show as
-"Other emails"; the row then reads the sender back from the "Email from X (x@y): summary" line.
-
-**`users/{uid}.unreadEmailSettings`** (`{ newsletter, ads }`, each `show` | `archive`, default
-show; whitelisted in `mapUserData`). With `archive` the labeling sync archives an incoming,
-informational, no-reply-owed email of that kind in Gmail (on top of the label's own
-`autoArchive`, also when no label matched) and passes `suppressUnread`, so `add_chat_comment`
-writes the comment without its `chatNotifications` doc and without the MyDay "last assistant
-comment" pointer. Actionable mail and mail needing a reply are never affected. A failed archive of
-an unlabeled email leaves it in the inbox and unread. The audit record keeps `emailKind` and
-`archivedForUnreadSettings`, and a pending thread continuation replays both.
-
-**One ads switch.** The per-connection "Auto-archive Ads" (`adsAutoArchive` on the gmailLabeling
-config) is merged into `unreadEmailSettings.ads`: the Gmail labeling settings show the same user
-switch (`isAdsArchived`) and save it at once, and `resolveEffectiveGmailLabelingConfig` sets the
-built-in Ads label's `autoArchive` from it (`resolveAdsUnreadSetting`), so a label correction to
-Ads archives by it too. A user who never chose keeps the connection's old value; the first sync
-copies it onto the user once (`migrateAdsAutoArchiveSetting`; an explicit `show` is never
-overwritten, a failed copy still applies for that run). `adsAutoArchive` stays in the config only
-as that fallback.
-
-Pinned by `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
-label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
-tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
-
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the
