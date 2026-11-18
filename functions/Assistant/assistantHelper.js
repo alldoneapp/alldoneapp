@@ -13318,7 +13318,15 @@ async function getUserDescriptionContextMessage(projectId, userId) {
               .catch(() => null)
         : Promise.resolve(null)
 
-    const [userDoc, projectDoc] = await Promise.all([userDocPromise, projectDocPromise])
+    // AT-3072: the private profile kept up to date every night, for this user's own runs only.
+    const { getAssistantProfileContextLines } = require('../AssistantProfile/assistantProfileContext')
+    const profileLinesPromise = getAssistantProfileContextLines({ userId })
+
+    const [userDoc, projectDoc, profileLines] = await Promise.all([
+        userDocPromise,
+        projectDocPromise,
+        profileLinesPromise,
+    ])
 
     if (!userDoc?.exists) return ''
 
@@ -13356,6 +13364,8 @@ async function getUserDescriptionContextMessage(projectId, userId) {
             projectDescription || '(empty)'
         )
     }
+
+    if (profileLines.length > 0) lines.push('', ...profileLines)
 
     return lines.join('\n')
 }

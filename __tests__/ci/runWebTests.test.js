@@ -149,6 +149,148 @@ describe('web test execution gate', () => {
         expect(runProcess.mock.calls.at(-1)[1]).not.toContain('--runTestsByPath')
     })
 
+    // One Jest process per changed file took 114 seconds to find the suites of a 67-file
+    // functions deploy that then ran in 49 (pipeline 9824). ci/listRelatedJestTests.js answers
+    // for all files at once; the command line stays as the fallback.
+    describe('related suites from one Jest process', () => {
+        const RELATED_SCRIPT = path.join(__dirname, '..', '..', 'ci', 'listRelatedJestTests.js')
+        const quiet = fn => {
+            const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+            try {
+                return fn()
+            } finally {
+                log.mockRestore()
+            }
+        }
+        const perInput = jest.fn(extra => listTests(extra))
+        beforeEach(() => perInput.mockClear())
+        const asked = () => perInput.mock.calls.filter(([extra]) => extra.length).map(([extra]) => extra[1])
+
+        it('takes the answer for every input and asks the command line for none', () => {
+            const listRelated = jest.fn(() => ({
+                'components/Foo.js': [own, dependent],
+                'components/Foo.test.js': [own],
+            }))
+            const result = resolveSuites(root, plan, perInput, listRelated)
+            expect(listRelated).toHaveBeenCalledWith(plan.inputs)
+            expect(result.suites).toEqual([dependent, own].sort())
+            expect(asked()).toEqual([])
+        })
+        it('asks the command line for an input the one process did not answer', () => {
+            const result = resolveSuites(root, plan, perInput, () => ({ 'components/Foo.test.js': [own] }))
+            expect(asked()).toEqual(['components/Foo.js'])
+            expect(result.suites).toEqual([dependent, own].sort())
+        })
+        it('asks the command line for everything when the one process fails', () => {
+            const failing = () => {
+                throw new Error('moved in a Jest upgrade')
+            }
+            const result = quiet(() => resolveSuites(root, plan, perInput, failing))
+            expect(asked()).toEqual(plan.inputs)
+            expect(result.suites).toEqual([dependent, own].sort())
+        })
+        it('still runs every suite when an input has no related suite either way', () => {
+            const result = resolveSuites(root, plan, perInput, () => ({
+                'components/Foo.js': [],
+                'components/Foo.test.js': [own],
+            }))
+            expect(result.mode).toBe('full')
+            expect(asked()).toEqual([])
+        })
+
+        const withRelated = answer =>
+            jest.fn((command, args, options) => {
+                if (command === 'git') return { status: 0, stdout: head }
+                if (args[0] === RELATED_SCRIPT) return answer(JSON.parse(options.input), args)
+                if (args.includes('--listTests')) {
+                    const index = args.indexOf('--findRelatedTests')
+                    return { status: 0, stdout: JSON.stringify(listTests(index >= 0 ? args.slice(index) : [])) }
+                }
+                return { status: 0 }
+            })
+        const perInputCalls = runProcess =>
+            runProcess.mock.calls.filter(([, args]) => args.includes('--findRelatedTests')).length
+
+        it('hands all inputs to one process and runs what it names', () => {
+            writePlan(plan)
+            const runProcess = withRelated((inputs, args) => {
+                expect(inputs).toEqual(plan.inputs)
+                expect(args[1]).toMatch(/jest\.web\.config\.js$/)
+                return {
+                    status: 0,
+                    stdout: JSON.stringify({
+                        related: { 'components/Foo.js': [dependent], 'components/Foo.test.js': [own] },
+                    }),
+                }
+            })
+            expect(quiet(() => run({ root, runProcess }))).toBe(0)
+            expect(perInputCalls(runProcess)).toBe(0)
+            const args = runProcess.mock.calls.at(-1)[1]
+            expect(args.slice(args.indexOf('--runTestsByPath') + 1).sort()).toEqual([dependent, own].sort())
+        })
+        it.each([
+            ['a failing process', () => ({ status: 1, stdout: '' })],
+            ['output that is not JSON', () => ({ status: 0, stdout: 'Determining test suites to run...' })],
+            [
+                'an answer missing an input',
+                () => ({ status: 0, stdout: JSON.stringify({ related: { 'components/Foo.js': [] } }) }),
+            ],
+            [
+                'an answer that is not a list of paths',
+                inputs => ({
+                    status: 0,
+                    stdout: JSON.stringify({ related: Object.fromEntries(inputs.map(input => [input, 'all'])) }),
+                }),
+            ],
+        ])('falls back to the command line on %s', (_, answer) => {
+            writePlan(plan)
+            const runProcess = withRelated(answer)
+            expect(quiet(() => run({ root, runProcess }))).toBe(0)
+            expect(perInputCalls(runProcess)).toBe(plan.inputs.length)
+            const args = runProcess.mock.calls.at(-1)[1]
+            expect(args.slice(args.indexOf('--runTestsByPath') + 1).sort()).toEqual([dependent, own].sort())
+        })
+
+        it('answers what the command line answers, on a real dependency graph', () => {
+            write('components/payload.json', '{"value":1}')
+            write('components/Foo.js', "module.exports = require('./payload.json').value")
+            write('components/Bar.js', "module.exports = require('./Foo')")
+            write('components/Lonely.js', 'module.exports = 1')
+            write('components/Foo.test.js', "require('./Foo'); test('foo', () => {})")
+            write('components/Bar.test.js', "require('./Bar'); test('bar', () => {})")
+            fs.unlinkSync(sourceGuard)
+            const config = write('jest.config.js', "module.exports = { rootDir: __dirname, testEnvironment: 'node' }")
+            const inputs = ['components/payload.json', 'components/Foo.js', 'components/Bar.js', 'components/Lonely.js']
+            const one = JSON.parse(
+                execFileSync(process.execPath, [RELATED_SCRIPT, config], {
+                    cwd: root,
+                    encoding: 'utf8',
+                    input: JSON.stringify(inputs),
+                })
+            ).related
+            for (const input of inputs) {
+                const commandLine = JSON.parse(
+                    execFileSync(
+                        process.execPath,
+                        [
+                            require.resolve('jest/bin/jest'),
+                            '--config',
+                            config,
+                            '--listTests',
+                            '--json',
+                            '--findRelatedTests',
+                            input,
+                        ],
+                        { cwd: root, encoding: 'utf8' }
+                    )
+                )
+                expect([...one[input]].sort()).toEqual(commandLine.sort())
+            }
+            expect(one['components/payload.json'].sort()).toEqual([dependent, own].sort())
+            expect(one['components/Lonely.js']).toEqual([])
+        }, 60000)
+    })
+
     // `parallel: N` in .gitlab-ci.yml starts N copies of the job. Run in one process on a
     // 2-vCPU runner the suite took nine minutes while the web build was done after three and a half.
     describe('split over parallel copies of the job', () => {
@@ -229,9 +371,9 @@ describe('web test execution gate', () => {
             } finally {
                 log.mockRestore()
             }
-            expect(
-                runProcess.mock.calls.filter(([, args]) => !args.includes('--listTests') && args[0] !== 'rev-parse')
-            ).toHaveLength(0)
+            // Discovery may ask Jest; no suite is run.
+            expect(suitesRun(runProcess)).toBeNull()
+            expect(runProcess.mock.calls.filter(([, args]) => args.includes('--runTestsByPath'))).toHaveLength(0)
         })
         it('still covers its share of the selected suites when one copy falls back to every suite', () => {
             // That copy's dependency discovery failed, the others' did not. Split by position

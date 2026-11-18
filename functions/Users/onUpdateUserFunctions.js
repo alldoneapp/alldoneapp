@@ -47,6 +47,20 @@ async function applyKnowledgeBaseDefaultsOnReturn(userId, newUser) {
     }
 }
 
+// Switches the assistant profile on for a user who has none yet, or resumes the one paused while they
+// were away (AssistantProfile/assistantProfileDefaults.js). Never throws.
+async function applyAssistantProfileDefaultOnReturn(userId, newUser) {
+    try {
+        const { applyAssistantProfileDefaultForUser } = require('../AssistantProfile/assistantProfileDefaults')
+        await applyAssistantProfileDefaultForUser({ userId, userData: newUser })
+    } catch (error) {
+        console.error('[assistant profile] Could not apply the default for a returning user', {
+            userId,
+            error: error.message,
+        })
+    }
+}
+
 // The only user fields the search index stores (see mapUserData in ParsingTextHelper.js plus the
 // per-project role/company/description merged from the project document). Every other write to
 // the user document — lastLogin, gold, xp, statistics, settings — used to re-send the full record
@@ -93,7 +107,10 @@ const onUpdateUser = async (userId, change) => {
         )
     }
 
-    if (userBecameActive(oldUser, newUser)) promises.push(applyKnowledgeBaseDefaultsOnReturn(userId, newUser))
+    if (userBecameActive(oldUser, newUser)) {
+        promises.push(applyKnowledgeBaseDefaultsOnReturn(userId, newUser))
+        promises.push(applyAssistantProfileDefaultOnReturn(userId, newUser))
+    }
 
     // Check for WhatsApp phone number update
     if (newUser.phone && newUser.phone !== oldUser.phone) {

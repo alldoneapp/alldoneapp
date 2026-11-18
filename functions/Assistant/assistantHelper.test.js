@@ -10366,6 +10366,8 @@ describe('assistant shared user context', () => {
                     },
                 }),
             })
+            // assistantProfiles/user-1 (AT-3072): none yet.
+            .mockResolvedValueOnce({ exists: false, data: () => undefined })
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
@@ -10393,6 +10395,33 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
         expect(systemMessages).toContain('include create_task.projectRoutingReason')
+        expect(systemMessages).not.toContain('Private assistant profile of this user:')
+    })
+
+    test('adds the private assistant profile of the requesting user next to the descriptions (AT-3072)', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ displayName: 'Anna Alldone' }) })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ enabled: true, text: 'Top of mind: launching the new onboarding.' }),
+            })
+            .mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Operations' }) })
+
+        const messages = []
+        await addBaseInstructions(messages, 'General Bot', 'en', 'Be helpful.', [], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+        expect(systemMessages).toContain('Private assistant profile of this user:')
+        expect(systemMessages).toContain('Top of mind: launching the new onboarding.')
     })
 })
 

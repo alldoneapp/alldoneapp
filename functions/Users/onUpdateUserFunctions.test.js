@@ -22,6 +22,10 @@ const mockApplyKnowledgeBaseDefaultsForUser = jest.fn()
 jest.mock('../KnowledgeBase/knowledgeBaseDefaults', () => ({
     applyKnowledgeBaseDefaultsForUser: (...args) => mockApplyKnowledgeBaseDefaultsForUser(...args),
 }))
+const mockApplyAssistantProfileDefaultForUser = jest.fn()
+jest.mock('../AssistantProfile/assistantProfileDefaults', () => ({
+    applyAssistantProfileDefaultForUser: (...args) => mockApplyAssistantProfileDefaultForUser(...args),
+}))
 
 const { onUpdateUser, searchIndexedFieldsChanged } = require('./onUpdateUserFunctions')
 
@@ -40,6 +44,34 @@ beforeEach(() => {
     mockUpdateUserRecord.mockReset()
     mockGenerateUserWarnings.mockReset()
     mockApplyKnowledgeBaseDefaultsForUser.mockReset()
+    mockApplyAssistantProfileDefaultForUser.mockReset()
+})
+
+describe('assistant profile default (AT-3072)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    test('a login after 30 days away switches the profile on or resumes it', async () => {
+        const now = Date.now()
+        const returning = { ...baseUser, lastLogin: now }
+        await onUpdateUser('u1', change({ ...baseUser, lastLogin: now - 40 * DAY }, returning))
+        expect(mockApplyAssistantProfileDefaultForUser).toHaveBeenCalledWith({
+            userId: 'u1',
+            userData: { ...returning, uid: 'u1' },
+        })
+    })
+
+    test('an ordinary login leaves it to the daily sweep, and a failure never fails the trigger', async () => {
+        const now = Date.now()
+        await onUpdateUser('u1', change({ ...baseUser, lastLogin: now - DAY }, { ...baseUser, lastLogin: now }))
+        expect(mockApplyAssistantProfileDefaultForUser).not.toHaveBeenCalled()
+
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        mockApplyAssistantProfileDefaultForUser.mockRejectedValue(new Error('unavailable'))
+        await expect(
+            onUpdateUser('u1', change({ ...baseUser, lastLogin: 0 }, { ...baseUser, lastLogin: now }))
+        ).resolves.toBeUndefined()
+        consoleError.mockRestore()
+    })
 })
 
 describe('project wiki default', () => {
