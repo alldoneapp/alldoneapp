@@ -6,6 +6,12 @@ import styles, { colors } from '../styles/global'
 import { showGlobalSearchPopup, setSearchText } from '../../redux/actions'
 import { translate } from '../../i18n/TranslationService'
 
+// Shared with the task header overflow menu (AT-3081), which offers the same search entry.
+export const openGlobalSearch = dispatch => {
+    dispatch(setSearchText(''))
+    dispatch(showGlobalSearchPopup(false))
+}
+
 export default function DvSearchButton({ style }) {
     const dispatch = useDispatch()
     const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
@@ -15,10 +21,7 @@ export default function DvSearchButton({ style }) {
     const mobileCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
     const isMobile = sidebarExpanded ? tablet || tabletNoteDV : mobile || mobileCollapsed
 
-    const openSearch = () => {
-        dispatch(setSearchText(''))
-        dispatch(showGlobalSearchPopup(false))
-    }
+    const openSearch = () => openGlobalSearch(dispatch)
 
     return (
         <TouchableOpacity onPress={openSearch} style={[localStyles.container, style]} accessible={false}>
