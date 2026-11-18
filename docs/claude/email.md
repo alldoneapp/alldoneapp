@@ -193,6 +193,14 @@ word. `row.summary` stays whole: the row's accessibility label and the opened ch
 message. The chat list's per-topic previews (`ChatItemUnreadMessage`) are not shortened; they render
 the thread body on purpose. Pinned by `UnreadMessageRow.test.js` and `unreadMessageTags.test.js`.
 
+**On a phone the row's actions stack (AT-3107, 2026-11-18).** Side by side, archive / mark as read /
+open chat took 3 x 32px + 8px of a ~390px screen; the message wrapped into a narrow column and the
+sender + tag (both `flexShrink: 0`) ran under the archive icon. With `smallScreenNavigation` the
+actions are one column at the top right (`actionsMobile`), each still a 32 x 32 touch target, and
+the tag may shrink with "..." (`tagMobile`; the chat title that gives way on desktop is hidden on a
+phone). Desktop is unchanged. These are the per-message actions, not the project line's header
+buttons. Pinned by the AT-3107 block in `UnreadMessageRow.test.js`.
+
 **Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
 email that needs a reply goes to Messages (UNIFIED_INBOX_PLAN.md), so an unread email comment is
 informational by construction. The classifier now also returns `emailKind` (`person`, `newsletter`,

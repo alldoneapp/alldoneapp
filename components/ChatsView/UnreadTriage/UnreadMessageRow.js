@@ -147,9 +147,11 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                     <View
                         style={[
                             localStyles.tag,
+                            mobile && localStyles.tagMobile,
                             tag === UNREAD_TAG_PEOPLE && localStyles.tagPeople,
                             tag === UNREAD_TAG_ADS && localStyles.tagAds,
                         ]}
+                        testID={`unread-row-tag-${message.id}`}
                     >
                         <Text
                             style={[
@@ -179,7 +181,10 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                 </SocialText>
             </View>
 
-            <View style={localStyles.actions} testID={`unread-row-actions-${message.id}`}>
+            <View
+                style={[localStyles.actions, mobile && localStyles.actionsMobile]}
+                testID={`unread-row-actions-${message.id}`}
+            >
                 {canArchive && (
                     <RowAction
                         icon={archiveFailed ? 'x' : 'archive'}
@@ -277,6 +282,13 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Grey200,
         flexShrink: 0,
     },
+    // On a phone the chat title is hidden, so the tag is what gives way when the sender and the tag
+    // do not fit: it ends with "..." instead of running under the action icons (AT-3107). Desktop
+    // keeps the tag whole and lets the chat title shrink, as before.
+    tagMobile: {
+        flexShrink: 1,
+        minWidth: 0,
+    },
     tagPeople: {
         backgroundColor: colors.UtilityBlue100,
     },
@@ -314,6 +326,15 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginLeft: 8,
         flexShrink: 0,
+    },
+    // Phone widths (AT-3107): the icons stack in one column at the right edge. Side by side they
+    // took 3 x 32px + 8px of a ~390px screen, which squeezed the sender, tag and message into a
+    // narrow column and pushed the tag under the icons. Stacked they take one icon's width, and a
+    // mobile row is usually as tall as three icons anyway (a 160-character preview wraps to several
+    // lines). Each icon keeps its 32 x 32 touch area.
+    actionsMobile: {
+        flexDirection: 'column',
+        marginLeft: 4,
     },
     time: {
         ...styles.caption2,

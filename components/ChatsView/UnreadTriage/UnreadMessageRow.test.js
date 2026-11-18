@@ -153,3 +153,116 @@ describe.each([
         expect(json).toContain('https://example.com/karsten.png')
     })
 })
+
+// AT-3107: on a phone the three actions of a message (archive, mark as read, open chat) stack at the
+// right edge instead of sitting side by side, so the sender, tag and message get the width back.
+describe('the action icons on a phone and on a desktop (AT-3107)', () => {
+    const UnreadEmailArchiveContext = require('../unreadEmailArchiveContext').default
+    const { TouchableOpacity } = require('react-native')
+
+    const emailRow = {
+        key: 'chat-1:c-mail',
+        message: { id: 'c-mail', created: 100, gmailData: {} },
+        chat: { id: 'chat-1', type: 'topics', title: 'Daily emails' },
+        isEmail: true,
+        tag: 'notification',
+        senderName: 'LinkedIn Jobalerts',
+        summary: 'LinkedIn-Jobalert für „Client Experience Partner – AI & Agentic Experience“',
+        time: 100,
+        linkedEmail: { key: 'gmail-1' },
+    }
+
+    const archive = {
+        isArchivingEmail: () => false,
+        isFailedEmail: () => false,
+        archiveLinkedEmails: jest.fn(async () => {}),
+    }
+
+    const renderEmailRow = mobile => {
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <UnreadEmailArchiveContext.Provider value={{ archive }}>
+                    <UnreadMessageRow projectId="project-1" row={emailRow} accessGranted mobile={mobile} />
+                </UnreadEmailArchiveContext.Provider>
+            )
+        })
+        return tree
+    }
+
+    const styleOf = (tree, testID) =>
+        StyleSheet.flatten(tree.root.find(node => node.type === View && node.props.testID === testID).props.style)
+
+    const actionButtons = tree => {
+        const actions = tree.root.find(node => node.type === View && node.props.testID === 'unread-row-actions-c-mail')
+        // One node per button: TouchableOpacity also hands its props to the View it renders.
+        return actions.findAll(node => node.type === TouchableOpacity && node.props.accessibilityRole === 'button')
+    }
+
+    it('stacks archive, mark as read and open chat in one column at the top right on a phone', () => {
+        const tree = renderEmailRow(true)
+        const actionsStyle = styleOf(tree, 'unread-row-actions-c-mail')
+        expect(actionsStyle.flexDirection).toBe('column')
+        expect(actionsStyle.alignSelf).toBe('flex-start')
+        expect(actionsStyle.flexShrink).toBe(0)
+
+        expect(actionButtons(tree).map(node => node.props.accessibilityLabel)).toEqual([
+            'Archive email',
+            'mark as read',
+            'Open chat',
+        ])
+    })
+
+    it('keeps every action a 32 x 32 touch target on a phone', () => {
+        const tree = renderEmailRow(true)
+        actionButtons(tree).forEach(node => {
+            const style = StyleSheet.flatten(node.props.style)
+            expect(style.width).toBeGreaterThanOrEqual(32)
+            expect(style.height).toBeGreaterThanOrEqual(32)
+        })
+    })
+
+    it('still runs each action on a phone without opening the row', () => {
+        const tree = renderEmailRow(true)
+        const { onOpenChat } = require('../Utils/ChatHelper')
+        const { markChatCommentsAsRead } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
+        const { openUrlInNewTab } = require('../../TaskListView/EmailLine/emailLineHelper')
+        onOpenChat.mockClear()
+        openUrlInNewTab.mockClear()
+        const [archiveButton, markReadButton, openChatButton] = actionButtons(tree)
+        const event = { stopPropagation: jest.fn() }
+
+        act(() => {
+            archiveButton.props.onPress(event)
+            markReadButton.props.onPress(event)
+            openChatButton.props.onPress(event)
+        })
+
+        expect(archive.archiveLinkedEmails).toHaveBeenCalledWith([emailRow.linkedEmail])
+        expect(markChatCommentsAsRead).toHaveBeenCalledWith([
+            { projectId: 'project-1', chatId: 'chat-1', commentId: 'c-mail' },
+        ])
+        expect(onOpenChat).toHaveBeenCalledWith('project-1', emailRow.chat)
+        expect(event.stopPropagation).toHaveBeenCalledTimes(3)
+        expect(openUrlInNewTab).not.toHaveBeenCalled()
+    })
+
+    it('lets the tag shrink with "..." on a phone instead of running under the icons', () => {
+        const tree = renderEmailRow(true)
+        const tagStyle = styleOf(tree, 'unread-row-tag-c-mail')
+        expect(tagStyle.flexShrink).toBe(1)
+        expect(tagStyle.minWidth).toBe(0)
+    })
+
+    it('leaves the desktop row as it was: icons side by side, the tag whole', () => {
+        const tree = renderEmailRow(false)
+        const actionsStyle = styleOf(tree, 'unread-row-actions-c-mail')
+        expect(actionsStyle.flexDirection).toBe('row')
+        expect(actionsStyle.marginLeft).toBe(8)
+        expect(actionButtons(tree)).toHaveLength(3)
+
+        const tagStyle = styleOf(tree, 'unread-row-tag-c-mail')
+        expect(tagStyle.flexShrink).toBe(0)
+        expect(tagStyle.minWidth).toBeUndefined()
+    })
+})
