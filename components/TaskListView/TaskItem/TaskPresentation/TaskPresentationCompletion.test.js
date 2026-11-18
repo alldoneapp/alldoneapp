@@ -85,7 +85,8 @@ jest.mock('../../TagsArea/taskTagSummaryHelper', () => ({ doTrailingTagsCrowdTas
 jest.mock('../../../Tags/GmailTag', () => 'GmailTag')
 jest.mock('../../../Tags/AlertTag', () => 'AlertTag')
 jest.mock('../../../Tags/TranscribeTag', () => 'TranscribeTag')
-jest.mock('../../../Tags/TaskExecutionStatusTag', () => 'TaskExecutionStatusTag')
+jest.mock('../../../Tags/InProgressVmTag', () => 'TaskVmStatusTag')
+jest.mock('../../../Tags/AssistantWorkflowRunTag', () => 'AssistantWorkflowRunTag')
 jest.mock('../../../Tags/TaskRoutingTag', () => 'TaskRoutingTag')
 jest.mock(
     '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls',

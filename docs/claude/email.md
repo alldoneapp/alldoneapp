@@ -215,7 +215,24 @@ copies it onto the user once (`migrateAdsAutoArchiveSetting`; an explicit `show`
 overwritten, a failed copy still applies for that run). `adsAutoArchive` stays in the config only
 as that fallback.
 
-Pinned by `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
+**Ads reach the unread list as "Daily ads" lines (AT-3101, decided with Karsten 2026-11-18).** The
+built-in Ads label has no post-label prompt, so until then an ad produced no chat comment and never
+appeared under Chats > Unread, whatever the ads setting said. Now every incoming ad no prompt
+handles (the Ads label, or an unlabeled email with `emailKind: 'ads'`; a label with its own prompt
+keeps its prompt) gets one line in a **private** topic `Daily ads <date>` in the user's default
+project (`functions/Gmail/dailyAdsDigest.js`, called from `executePostLabelPrompt` after thread
+continuation). Choices: its own topic rather than the project's "Daily emails" digest; **no model**,
+the line is `Email from <name> (<email>): <subject>`, so no Gold per ad and the promotional text never
+reaches a model with tools; `isPublicFor: [owner]` (the digests are project-wide, someone's ads are
+not project content) with a deterministic chat id per user and day (`DailyAds_<sha1(uid:date)>`),
+because `add_chat_comment`'s lookup by title would find another member's topic of the same name.
+The ads setting decides read or unread exactly as for newsletters: `show` writes it unread, `archive`
+archives the mail and stores the line read (`suppressUnread`). The author is the default project's
+assistant; without one the action is `blocked` and nothing is written. The no-match path now also
+stamps `emailComments` for the read sync, so a line for an unlabeled ad clears once Gmail reads it.
+
+Pinned by `functions/Gmail/dailyAdsDigest.test.js`, the AT-3101 block of
+`serverSideGmailLabelingSync.test.js`, `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
 label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
 tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
 
