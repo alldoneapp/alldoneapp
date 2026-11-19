@@ -5,6 +5,13 @@ import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper
 export const MAX_VISIBLE_CHIPS = 8
 export const EMAIL_LINE_NO_LABEL_ID = '__NO_LABEL__'
 
+// Header rows use the app's existing responsive layout states. Keep their chip count bounded so
+// project names and row actions always retain space, and slice before rendering to avoid hidden
+// chip wrappers contributing margins or width.
+export function getProjectLineEmailChipLimit(mobile = false, tablet = false) {
+    return mobile ? 1 : tablet ? 2 : 3
+}
+
 // Today key for the "Done for today" behavior. Reuses the OKR timezone-aware
 // day key so the email line hides/resets on the same daily boundary as OKRs.
 export function getEmailLineTodayKey(loggedUser = {}) {

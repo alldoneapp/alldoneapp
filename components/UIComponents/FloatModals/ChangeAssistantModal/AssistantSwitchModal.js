@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
@@ -14,7 +13,6 @@ import Icon from '../../../Icon'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 import { themed } from '../../../../Themes/colorMode'
-import { useModalShellPresentation } from '../../ModalShell/ModalShellContext'
 import { filterAssistantGroups, flattenAssistantGroups } from '../../../MyDayView/AssistantLine/assistantSwitchOptions'
 
 export const ASSISTANT_SWITCH_SEARCH_TEST_ID = 'assistant-switch-search'
@@ -33,15 +31,10 @@ export const ASSISTANT_SWITCH_SEARCH_TEST_ID = 'assistant-switch-search'
  *
  * AT-3100 — a search field under the header filters the rows by assistant name as you type
  * (`filterAssistantGroups`: case-insensitive, groups without a match disappear). The header and
- * the field sit outside the scroll view so they stay put while the list scrolls. Enter picks the
- * first match; Escape clears a non-empty query before anything else gets the key.
- *
- * AT-3113 — on desktop the field takes focus as soon as the popup opens, like the assistant
- * line's "Templates" search (`AssistantTaskSearchModal`, same deferred `focus()`), so the user can
- * type straight away. On phones it stays unfocused (AT-3100 product decision): the keyboard would
- * cover the list the user opened the popup to look at. "Phone" is `smallScreenNavigation` (the
- * flag the trigger and the Templates popup use) or the bottom-sheet presentation, so a sheet
- * never raises the keyboard even where the navigation flag says desktop.
+ * the field sit outside the scroll view so they stay put while the list scrolls. Deliberately not
+ * autofocused (product decision): on phones the keyboard would cover the list the user opened
+ * the popup to look at. Enter picks the first match; Escape clears a non-empty query before
+ * anything else gets the key.
  */
 export default function AssistantSwitchModal({
     closeModal,
@@ -54,18 +47,6 @@ export default function AssistantSwitchModal({
     const [width, height] = useWindowSize()
     const [query, setQuery] = useState('')
     const inputRef = useRef(null)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const inSheet = useModalShellPresentation() === 'sheet'
-    const focusOnOpen = !smallScreenNavigation && !inSheet
-
-    // Decided once per opening: a later resize must not pull the keyboard up mid-browse.
-    useEffect(() => {
-        if (!focusOnOpen) return
-        // Deferred like the Templates popup, so the popover has placed the card first.
-        const focusTimer = setTimeout(() => inputRef.current?.focus?.(), 0)
-        return () => clearTimeout(focusTimer)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
 
     const visibleGroups = useMemo(() => filterAssistantGroups(groups, query), [groups, query])
     const hasQuery = query.trim() !== ''

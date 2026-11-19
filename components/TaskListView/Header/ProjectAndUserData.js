@@ -7,9 +7,17 @@ import { colors } from '../../styles/global'
 import ProjectLine from './ProjectLine'
 import UserLine from './UserLine'
 import NotificationBubble from './NotificationBubble'
+import ProjectEmailLabelChips from '../EmailLine/ProjectEmailLabelChips'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 
-export default function ProjectAndUserData({ projectIndex, projectId, badge, userInHeader, headerTextColor }) {
+export default function ProjectAndUserData({
+    projectIndex,
+    projectId,
+    badge,
+    userInHeader,
+    showEmailLabels = false,
+    headerTextColor,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { showFollowedBubble, showUnfollowedBubble, totalFollowed, totalUnfollowed } =
         useShowNewCommentsBubbleInBoard(projectId)
@@ -60,6 +68,7 @@ export default function ProjectAndUserData({ projectIndex, projectId, badge, use
                     <Icon name="compass" color="white" size={19} />
                 </View>
             </View>
+            {showEmailLabels && <ProjectEmailLabelChips projectId={projectId} />}
         </View>
     )
 }
@@ -76,8 +85,8 @@ const localStyles = StyleSheet.create({
     titleSubContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        // Allow the project/user name block to shrink (and truncate) instead of overflowing the
-        // header row.
+        // Allow the project/user name block to shrink (and truncate) so an inline email-label
+        // chip placed after it stays visible on the header row instead of overflowing.
         flexShrink: 1,
         minWidth: 0,
     },

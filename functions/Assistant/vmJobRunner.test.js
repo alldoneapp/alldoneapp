@@ -388,6 +388,103 @@ describe('VM runner prompt', () => {
         expect(codex).not.toHaveProperty('disallowedTools')
     })
 
+    describe('project tools through vmMcpProxy (AM-1317)', () => {
+        const mcpAccess = { serverName: 'project_tools', url: 'https://proxy.example/vmMcpProxy', token: 'vmpx_tok' }
+        const bridgeBase = {
+            pendingWebhook: {},
+            workdir: '/home/user',
+            prompt: 'Build the story',
+            agentCredentials: { mode: 'proxy', baseUrl: 'https://proxy.example/vmLlmProxy' },
+        }
+
+        test('automatic Claude runs load the MCP config file only when the run has project tools', () => {
+            expect(__private__.buildClaudeRunCommand(false, 'opus', 'high')).not.toContain('--mcp-config')
+            const command = __private__.buildClaudeRunCommand(false, 'opus', 'high', __private__.VM_MCP_CONFIG_PATH)
+            expect(command).toContain(`--mcp-config '/home/user/.alldone/mcp/claude-mcp.json' -p `)
+        })
+
+        test('the Claude config carries the per-job token in a header, never the real credentials', () => {
+            expect(__private__.buildClaudeMcpServers(mcpAccess)).toEqual({
+                project_tools: {
+                    type: 'http',
+                    url: 'https://proxy.example/vmMcpProxy',
+                    headers: { Authorization: 'Bearer vmpx_tok' },
+                },
+            })
+            expect(__private__.buildClaudeMcpServers(null)).toEqual({})
+        })
+
+        test('Codex reads the token from the environment, not from a config flag', () => {
+            const overrides = __private__.buildCodexMcpConfigOverrides(mcpAccess)
+            expect(overrides).toEqual([
+                'mcp_servers.project_tools.url="https://proxy.example/vmMcpProxy"',
+                'mcp_servers.project_tools.bearer_token_env_var="ALLDONE_VM_MCP_TOKEN"',
+                'mcp_servers.project_tools.startup_timeout_sec=30',
+                'mcp_servers.project_tools.tool_timeout_sec=540',
+            ])
+            expect(overrides.join(' ')).not.toContain('vmpx_tok')
+            expect(__private__.buildVmMcpEnv(mcpAccess)).toMatchObject({ ALLDONE_VM_MCP_TOKEN: 'vmpx_tok' })
+            expect(__private__.buildVmMcpEnv(null)).toBeNull()
+
+            const command = __private__.buildCodexRunCommand(
+                false,
+                'gpt-6.1-sol',
+                'medium',
+                'https://proxy.example/vmLlmProxy',
+                false,
+                [],
+                mcpAccess
+            )
+            expect(command).toContain(`-c 'mcp_servers.project_tools.url="https://proxy.example/vmMcpProxy"'`)
+            expect(command).not.toContain('vmpx_tok')
+            expect(
+                __private__.buildCodexRunCommand(false, 'gpt-6.1-sol', 'medium', 'https://proxy.example/vmLlmProxy')
+            ).not.toContain('mcp_servers')
+        })
+
+        test('interactive runs hand the server to the Claude bridge and to Codex app-server', () => {
+            const claude = __private__.buildVmAgentBridgeInput({
+                ...bridgeBase,
+                vmJob: { agent: 'claude', executionMode: 'interactive' },
+                runDetails: { model: 'opus', effort: 'high' },
+                mcpAccess,
+            })
+            expect(claude.mcpServers).toEqual(__private__.buildClaudeMcpServers(mcpAccess))
+
+            const codex = __private__.buildVmAgentBridgeInput({
+                ...bridgeBase,
+                vmJob: { agent: 'codex', executionMode: 'interactive' },
+                runDetails: { model: 'gpt-6.1-sol', effort: 'medium' },
+                mcpAccess,
+            })
+            expect(codex.codexArgs).toEqual(
+                expect.arrayContaining(['-c', 'mcp_servers.project_tools.bearer_token_env_var="ALLDONE_VM_MCP_TOKEN"'])
+            )
+
+            const withoutTools = __private__.buildVmAgentBridgeInput({
+                ...bridgeBase,
+                vmJob: { agent: 'claude', executionMode: 'interactive' },
+                runDetails: { model: 'opus', effort: 'high' },
+            })
+            expect(withoutTools).not.toHaveProperty('mcpServers')
+        })
+
+        test('the prompt names the apps and forbids reaching the services directly', () => {
+            const vmJob = { taskType: 'research', objective: 'Build a LinkedIn story' }
+            const projectTools = {
+                enabled: true,
+                serverName: 'project_tools',
+                toolCount: 42,
+                apps: [{ name: 'Story Builder', summary: 'Short videos', toolCount: 42 }],
+            }
+            const prompt = __private__.buildAgentPrompt(vmJob, null, null, null, projectTools)
+            expect(prompt).toContain('# Project tools')
+            expect(prompt).toContain('- Story Builder (42 tools): Short videos')
+            expect(prompt).toContain('Never try to reach these services (for example alldone.team) directly')
+            expect(__private__.buildAgentPrompt(vmJob)).not.toContain('# Project tools')
+        })
+    })
+
     test('resolveAgentRunDetails restores a previously observed concrete model', () => {
         expect(
             __private__.resolveAgentRunDetails({

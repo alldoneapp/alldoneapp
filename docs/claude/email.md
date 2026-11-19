@@ -173,18 +173,6 @@ icon at the right end opens the thread, and any other row opens its chat. Openin
 nothing read here; the Gmail read sync clears the row once the mail is read or archived there. "Mark as read" on a project line marks only the filtered rows while a tag is selected
 (`UnreadTriageMarkAsRead`); the "Archive emails" buttons already act on what the rows register.
 
-**A tag that matches nothing in a project hides the project (AT-3112, 2026-11-19).** In All Projects,
-a selected tag chip with no row left in a project hides that project's whole section (header and the
-"Nothing unread with this tag" line): `UnreadMessagesList` reports `onFilteredEmptyChange` and
-`ChatsByProject` sets `display: 'none'` on the `ProjectSection`. Hidden, not unmounted: the list
-holds the comment subscriptions that bring the section back when the tag changes or a matching
-message arrives, and keeps feeding the email registry. Without a tag nothing is hidden, so an unread
-chat whose messages are missing keeps its "Mark as read". When the tag matches nothing anywhere,
-`UnreadTriageEmptyState` (via `isTagFilterEmptyEverywhere`) shows one global "Nothing unread with
-this tag", but only once every project with unread chats has registered `loaded` (all its chats'
-first snapshots), so it does not flash while messages arrive. The single-project view keeps its
-header (it carries the page navigation) and the local line.
-
 **A row shows the whole message and grows with it (AT-3094, 2026-11-18).** The second round capped
 the summary at 320/160 characters and `maxHeight: 3 * body2.lineHeight` with `overflow: hidden`. That
 cut the third line in half: SocialText with `wrapText` renders each word as its own flex item with
@@ -605,14 +593,3 @@ Changing an all-day event into a timed one also needs the replaced field cleared
 `dateTime` (`clearReplacedEventTimeFields`), and Graph needs `isAllDay: false`. Pinned by the
 calendar-event blocks of `emailAssistantBridge.test.js`, `emailDailyTopic.test.js`,
 `emailChannelHelpers.test.js`, `assistantCalendarTools.test.js` and `microsoftCalendarProvider.test.js`.
-
-## No email pill in the task headers; messages are reached through Chats (AT-3110, 2026-11-19)
-
-The All Projects header line and every project header no longer show the email summary pill
-(envelope + Inbox/Newsletter/label counts). It duplicated the Chats entry point and confused
-navigation, so the header-only `AllProjectsEmailLabelChips` / `ProjectEmailLabelChips` components
-and the `showEmailLabels` prop on `AllProjectsLine`, `ProjectHeader` and `ProjectAndUserData` were
-removed. Email handling is unchanged: labeling, Chats > Unread, the email label modal and the
-standalone Email line (`EMAIL_LINE_ENABLED`, still off) remain. Do not re-add email counts to the
-headers; `AllProjectsLineAddTask.test.js` and `ProjectAndUserData.test.js` pin that neither header
-renders an `EmailLabelChip` or loads `useEmailLabelGroups`.

@@ -7103,6 +7103,22 @@ exports.vmLlmProxy = onRequest(
     }
 )
 
+// VM MCP PROXY - Public MCP endpoint the sandbox agent calls for its project's assistant tools
+// (an alldone.team specialist's app, the invoking assistant's own MCP servers). It authenticates a
+// short-lived per-job token, decides the tools from the job's stored state and calls them as the
+// requesting user, so no MCP credential enters the VM (see functions/Assistant/vmMcpProxy.js).
+exports.vmMcpProxy = onRequest(
+    {
+        timeoutSeconds: 600,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleVmMcpRequest } = require('./Assistant/vmMcpProxy')
+        await handleVmMcpRequest(req, res)
+    }
+)
+
 // LEGACY RUN VM JOB - retained only as a manual rollback target. New tasks always
 // launch the detached Cloud Run Job directly.
 exports.runVmJob = onTaskDispatched(

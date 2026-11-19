@@ -286,12 +286,7 @@ switches in place.
 
 **The switch popup has a search field (AT-3100, 2026-11-18).** Decided with the product owner:
 it is always shown in `AssistantSwitchModal` (the popup only opens from three options), never
-autofocused on phones (the keyboard would cover the list), and Enter picks the first match.
-**On desktop it takes focus on open (AT-3113, 2026-11-19)**, matching the Templates popup
-(`AssistantTaskSearchModal`, same deferred `setTimeout(focus, 0)`). Skipped when
-`smallScreenNavigation` is set or the popup renders as a bottom sheet (`useModalShellPresentation()
-=== 'sheet'`); decided once per opening, so a resize never raises the keyboard mid-browse. Never use
-`autoFocus` for it: that would fire on phones too.
+autofocused (on phones the keyboard would cover the list), and Enter picks the first match.
 `filterAssistantGroups` (`assistantSwitchOptions.js`) matches the assistant's display name only,
 case-insensitively, keeps the project grouping and drops groups with no match; a blank query hands
 back the same `groups` array. The title and the field sit outside `CustomScrollView`, so they stay
@@ -299,7 +294,7 @@ put while the list scrolls. Escape clears a non-empty query first (`useEscapeKey
 while there is text), on the desktop popover and in the bottom sheet. Empty state: `EmptyResults` with "No assistants found"
 (shared with `AnnaProjectSwitcher`). Pinned by `AssistantSwitchModal.test.js`,
 `assistantSwitchOptions.test.js` and `browser-tests/at3100` (real Chromium: sticky field, filter,
-empty state, clear, Escape, Enter, focus on open at 1280 and none at 390 px).
+empty state, clear, Escape, Enter, at 1280 and 390 px).
 
 **Assistant mode is entered from the assistant line (AT-3034, superseded by AT-3069 above).** The
 panel button (`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sat at the top left

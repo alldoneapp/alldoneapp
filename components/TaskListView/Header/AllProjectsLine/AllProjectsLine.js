@@ -8,9 +8,15 @@ import AllProjectData from './AllProjectData'
 import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
+import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
 import { alphaColor, themed } from '../../../../Themes/colorMode'
 
-export default function AllProjectsLine({ showActions = true, customRight, bottomSpacing = 16 }) {
+export default function AllProjectsLine({
+    showActions = true,
+    showEmailLabels = false,
+    customRight,
+    bottomSpacing = 16,
+}) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -35,6 +41,7 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
                             containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
                         />
                     </View>
+                    {showEmailLabels && <AllProjectsEmailLabelChips />}
                 </View>
                 <View style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}>
                     {customRight}

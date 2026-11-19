@@ -15,21 +15,17 @@ import { UNREAD_SORT_NEWEST, UNREAD_TAG_ALL } from './unreadMessageTags'
 const UnreadTriageContext = createContext(null)
 
 const sameProjectEntry = (previous, next) =>
-    !!previous &&
-    previous.countsKey === next.countsKey &&
-    previous.refsKey === next.refsKey &&
-    previous.loaded === next.loaded
+    !!previous && previous.countsKey === next.countsKey && previous.refsKey === next.refsKey
 
 export function UnreadTriageProvider({ children }) {
     const [tagFilter, setTagFilter] = useState(UNREAD_TAG_ALL)
     const [sortMode, setSortMode] = useState(UNREAD_SORT_NEWEST)
     const [projects, setProjects] = useState({})
 
-    const registerProject = useCallback((projectId, counts, visibleCommentRefs, loaded = true) => {
+    const registerProject = useCallback((projectId, counts, visibleCommentRefs) => {
         const entry = {
             counts,
             visibleCommentRefs,
-            loaded: !!loaded,
             countsKey: JSON.stringify(counts),
             refsKey: visibleCommentRefs.map(ref => ref.commentId).join('|'),
         }
@@ -71,17 +67,3 @@ export const sumTagCounts = (projects, projectIds) => {
 
 export const collectVisibleCommentRefs = (projects, projectIds) =>
     (projectIds || Object.keys(projects || {})).flatMap(projectId => projects?.[projectId]?.visibleCommentRefs || [])
-
-/**
- * True when a tag filter is selected and leaves nothing in any of `projectIds` (the projects that
- * have unread chats), once every one of them has loaded its messages. All Projects then shows one
- * global empty state instead of the hidden project sections (AT-3112). Waiting for every project to
- * register and load keeps it from flashing while the messages are still arriving.
- */
-export const isTagFilterEmptyEverywhere = (triage, projectIds) => {
-    if (!triage || triage.tagFilter === UNREAD_TAG_ALL || !projectIds || projectIds.length === 0) return false
-    return projectIds.every(projectId => {
-        const entry = triage.projects?.[projectId]
-        return !!entry && entry.loaded && entry.visibleCommentRefs.length === 0
-    })
-}

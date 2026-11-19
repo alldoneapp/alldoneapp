@@ -6,9 +6,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import { StyleSheet } from 'react-native'
 import ChatsByProject, { UNREAD_LIST_CHAT_LIMIT } from './ChatsByProject'
-import ProjectSection from '../TaskListView/ProjectSection'
 import { watchChatsAmount, unwatchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import useGetChats from '../../hooks/Chats/useGetChats'
 import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
@@ -245,44 +243,5 @@ describe('ChatsByProject bulk email archive', () => {
 
         expect(tree.root.findByProps({ testID: 'archive-unread-emails' }).props.projectId).toBe('project-1')
         expect(tree.root.findByType('ChatsMoreButton').props.projectId).toBe('project-1')
-    })
-})
-
-// AT-3112: a tag filter with no match in a project hides its whole section in All Projects.
-describe('ChatsByProject on a tag filter with no match in the project', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        useGetUnreadChats.mockReturnValue({
-            chats: { 20261118: [{ id: 'chat-1', lastEditionDate: 1794989380988 }] },
-            stickyChats: [],
-            total: 1,
-        })
-    })
-
-    const sectionDisplay = tree => StyleSheet.flatten(tree.root.findByType(ProjectSection).props.style)?.display
-    const reportEmpty = (tree, empty) => {
-        const list = tree.root.findAll(node => node.props && node.props.onFilteredEmptyChange)[0]
-        act(() => list.props.onFilteredEmptyChange(empty))
-    }
-
-    it('hides the section, header included, and keeps the list mounted to bring it back', () => {
-        const tree = renderView(buildState(3), { unreadOnly: true })
-        expect(sectionDisplay(tree)).not.toBe('none')
-
-        reportEmpty(tree, true)
-        expect(sectionDisplay(tree)).toBe('none')
-        // Still mounted: its subscriptions notice the filter change or a new matching message.
-        expect(JSON.stringify(tree.toJSON())).toContain('UnreadMessagesList')
-
-        reportEmpty(tree, false)
-        expect(sectionDisplay(tree)).not.toBe('none')
-        act(() => tree.unmount())
-    })
-
-    it('keeps the section of the selected project, whose header carries the page navigation', () => {
-        const tree = renderView(buildState(undefined, 0), { unreadOnly: true, isInAllProjects: false })
-        reportEmpty(tree, true)
-        expect(sectionDisplay(tree)).not.toBe('none')
-        act(() => tree.unmount())
     })
 })

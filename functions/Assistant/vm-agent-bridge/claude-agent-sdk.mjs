@@ -42,6 +42,10 @@ const options = {
         ? { disallowedTools: input.disallowedTools }
         : {}),
     ...(sessionId ? { resume: sessionId } : {}),
+    // The project's assistant tools (vmMcpProxy); the runner sets this only when there are any.
+    ...(input.mcpServers && typeof input.mcpServers === 'object' && Object.keys(input.mcpServers).length
+        ? { mcpServers: input.mcpServers }
+        : {}),
 }
 // Under bypassPermissions the SDK approves every tool before consulting canUseTool and warns
 // on stderr when one is passed anyway (CLAUDE_SDK_CAN_USE_TOOL_SHADOWED), so only gated modes

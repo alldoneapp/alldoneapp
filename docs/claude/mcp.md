@@ -233,6 +233,10 @@ touch it, and the MCP servers modal shows it without remove or on/off controls. 
 `mcpAppGroups.test.js`, `mcpAppViews.test.js`, `mcpAssistantConnect.test.js` and
 `components/UIComponents/FloatModals/AddAssistantModal/specialistTemplates.test.js`.
 
+A VM run gets the specialists' tools too, whichever assistant started it: `vmMcpProxy` offers
+every specialist entry of the project to the run, as the requesting user, without any token in the
+sandbox (AM-1317, details in `vm.md`).
+
 ## Goals, milestones and OKRs can be written by assistants and MCP clients (AT-53)
 
 Five tools follow the create_task/update_task pattern: `create_goal`, `update_goal`,

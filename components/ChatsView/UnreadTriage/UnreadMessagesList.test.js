@@ -7,8 +7,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import UnreadMessagesList from './UnreadMessagesList'
 import UnreadMessageRow from './UnreadMessageRow'
-import UnreadTriageEmptyState from './UnreadTriageEmptyState'
-import { UnreadTriageProvider, isTagFilterEmptyEverywhere, sumTagCounts, useUnreadTriage } from './UnreadTriageContext'
+import { UnreadTriageProvider, sumTagCounts, useUnreadTriage } from './UnreadTriageContext'
 import { UnreadEmailArchiveProvider, useUnreadLinkedEmailsScope } from '../unreadEmailArchiveContext'
 import useGetUnreadChatMessages from '../../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatCommentsAsRead } from '../../../utils/backends/Chats/markChatCommentsAsRead'
@@ -94,7 +93,7 @@ function ArchiveProbe() {
     return null
 }
 
-const renderList = (listProps = {}) => {
+const renderList = () => {
     useGetUnreadChatMessages.mockImplementation((projectId, chatId) => ({ messages: MESSAGES[chatId], loaded: true }))
     let tree
     act(() => {
@@ -103,7 +102,7 @@ const renderList = (listProps = {}) => {
                 <UnreadTriageProvider>
                     <TriageProbe />
                     <ArchiveProbe />
-                    <UnreadMessagesList project={project} chats={[dailyEmails, taskChat]} {...listProps} />
+                    <UnreadMessagesList project={project} chats={[dailyEmails, taskChat]} />
                 </UnreadTriageProvider>
             </UnreadEmailArchiveProvider>
         )
@@ -175,132 +174,6 @@ describe('UnreadMessagesList', () => {
         expect(text).toContain('Zalando')
         expect(text).toContain('Black week, 50% off.')
         expect(text).not.toContain('Email from Zalando')
-    })
-})
-
-// AT-3112: All Projects hides a project section whose messages the tag filter removes entirely,
-// and shows one global empty state when no project has a match.
-describe('projects the tag filter leaves empty', () => {
-    const otherProject = { id: 'project-2' }
-    const otherChat = { id: 'chat-other', type: 'topics', title: 'Business' }
-    let messages
-    let loaded
-
-    const renderTwoProjects = (onEmpty1, onEmpty2) => {
-        useGetUnreadChatMessages.mockImplementation((projectId, chatId) => ({
-            messages: messages[chatId] || [],
-            loaded: loaded[chatId] !== false,
-        }))
-        const element = () => (
-            <UnreadEmailArchiveProvider>
-                <UnreadTriageProvider>
-                    <TriageProbe />
-                    <UnreadTriageEmptyState projectIds={['project-1', 'project-2']} />
-                    <UnreadMessagesList project={project} chats={[dailyEmails]} onFilteredEmptyChange={onEmpty1} />
-                    <UnreadMessagesList project={otherProject} chats={[otherChat]} onFilteredEmptyChange={onEmpty2} />
-                </UnreadTriageProvider>
-            </UnreadEmailArchiveProvider>
-        )
-        let tree
-        act(() => {
-            tree = renderer.create(element())
-        })
-        return { tree, rerender: () => act(() => tree.update(element())) }
-    }
-    const lastCall = mock => mock.mock.calls[mock.mock.calls.length - 1][0]
-    const showsGlobalEmpty = tree => tree.root.findAll(node => node.props.testID === 'unread-tag-empty').length > 0
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockState = { loggedUser: { uid: 'user-1' }, smallScreenNavigation: false, projectChatNotifications: {} }
-        messages = {
-            'chat-emails': MESSAGES['chat-emails'],
-            'chat-other': [{ id: 'c-biz', fromAssistant: false, creatorId: 'jana', created: 50, commentText: 'Hi' }],
-        }
-        loaded = {}
-    })
-
-    it('reports a project empty only while a tag filter leaves it no message', () => {
-        const onEmpty1 = jest.fn()
-        const onEmpty2 = jest.fn()
-        const { tree } = renderTwoProjects(onEmpty1, onEmpty2)
-        // Unread without a tag: nothing is hidden.
-        expect(lastCall(onEmpty1)).toBe(false)
-        expect(lastCall(onEmpty2)).toBe(false)
-
-        // "Ads" (Werbung): project-1 has the ad, project-2 has none and is hidden.
-        act(() => triage.setTagFilter(UNREAD_TAG_ADS))
-        expect(lastCall(onEmpty1)).toBe(false)
-        expect(lastCall(onEmpty2)).toBe(true)
-        expect(showsGlobalEmpty(tree)).toBe(false)
-
-        // Switching the tag back brings it back.
-        act(() => triage.setTagFilter(UNREAD_TAG_PEOPLE))
-        expect(lastCall(onEmpty1)).toBe(true)
-        expect(lastCall(onEmpty2)).toBe(false)
-    })
-
-    it('hides the last project and shows the global empty state once its match is read or archived', () => {
-        const onEmpty1 = jest.fn()
-        const { tree, rerender } = renderTwoProjects(onEmpty1, jest.fn())
-        act(() => triage.setTagFilter(UNREAD_TAG_ADS))
-        expect(lastCall(onEmpty1)).toBe(false)
-        expect(showsGlobalEmpty(tree)).toBe(false)
-
-        // The ad is marked read (or its email archived): it leaves the unread messages.
-        messages = { ...messages, 'chat-emails': messages['chat-emails'].filter(m => m.id !== 'c-ad') }
-        rerender()
-        expect(lastCall(onEmpty1)).toBe(true)
-        expect(showsGlobalEmpty(tree)).toBe(true)
-        expect(JSON.stringify(tree.toJSON())).toContain('Nothing unread with this tag')
-
-        // A new ad arrives: the project and its rows come back, the global state goes.
-        messages = { ...messages, 'chat-emails': MESSAGES['chat-emails'] }
-        rerender()
-        expect(lastCall(onEmpty1)).toBe(false)
-        expect(showsGlobalEmpty(tree)).toBe(false)
-    })
-
-    it('waits for every project to load before showing the global empty state', () => {
-        loaded = { 'chat-other': false }
-        messages = { ...messages, 'chat-other': [] }
-        const { tree, rerender } = renderTwoProjects(jest.fn(), jest.fn())
-        act(() => triage.setTagFilter('assistant'))
-        expect(triage.projects['project-2'].loaded).toBe(false)
-        expect(showsGlobalEmpty(tree)).toBe(false)
-
-        loaded = {}
-        rerender()
-        expect(triage.projects['project-2'].loaded).toBe(true)
-        expect(showsGlobalEmpty(tree)).toBe(true)
-    })
-
-    it('resets the hidden state when the list unmounts (leaving Unread)', () => {
-        const onEmpty2 = jest.fn()
-        const { tree } = renderTwoProjects(jest.fn(), onEmpty2)
-        act(() => triage.setTagFilter(UNREAD_TAG_ADS))
-        expect(lastCall(onEmpty2)).toBe(true)
-        act(() => tree.unmount())
-        expect(lastCall(onEmpty2)).toBe(false)
-    })
-})
-
-describe('isTagFilterEmptyEverywhere', () => {
-    const entry = (refs, loaded = true) => ({ counts: {}, visibleCommentRefs: refs, loaded })
-    const ref = { projectId: 'p1', chatId: 'c', commentId: 'x' }
-
-    it('is false without a tag filter or without projects', () => {
-        expect(isTagFilterEmptyEverywhere({ tagFilter: 'all', projects: { p1: entry([]) } }, ['p1'])).toBe(false)
-        expect(isTagFilterEmptyEverywhere({ tagFilter: 'ads', projects: {} }, [])).toBe(false)
-        expect(isTagFilterEmptyEverywhere(null, ['p1'])).toBe(false)
-    })
-
-    it('is true only when every project registered, loaded and shows nothing', () => {
-        const triageOf = projects => ({ tagFilter: 'ads', projects })
-        expect(isTagFilterEmptyEverywhere(triageOf({ p1: entry([]), p2: entry([]) }), ['p1', 'p2'])).toBe(true)
-        expect(isTagFilterEmptyEverywhere(triageOf({ p1: entry([]), p2: entry([ref]) }), ['p1', 'p2'])).toBe(false)
-        expect(isTagFilterEmptyEverywhere(triageOf({ p1: entry([]) }), ['p1', 'p2'])).toBe(false)
-        expect(isTagFilterEmptyEverywhere(triageOf({ p1: entry([]), p2: entry([], false) }), ['p1', 'p2'])).toBe(false)
     })
 })
 

@@ -31,12 +31,12 @@ import {
  * needs every chat's messages in one place to sort and filter them across chats.
  */
 function UnreadChatMessagesSource({ projectId, chat, unreadCommentIds, onMessages }) {
-    const { messages, loaded } = useGetUnreadChatMessages(projectId, chat.id, chat.type, unreadCommentIds)
+    const { messages } = useGetUnreadChatMessages(projectId, chat.id, chat.type, unreadCommentIds)
     const signature = messages.map(message => `${message.id}:${getMessageTime(message)}`).join('|')
 
     useEffect(() => {
-        onMessages(chat.id, messages, loaded)
-    }, [chat.id, signature, loaded])
+        onMessages(chat.id, messages)
+    }, [chat.id, signature])
 
     useEffect(() => () => onMessages(chat.id, null), [chat.id])
 
@@ -67,13 +67,8 @@ export const buildUnreadRows = (projectId, chats, messagesByChat) =>
 /**
  * The unread list of one project (Chats > Unread): every unread message of the project's unread
  * chats as one row, filtered by the selected tag and sorted by the selected order.
- *
- * `onFilteredEmptyChange(true)` tells the project section that the selected tag leaves nothing in
- * this project, so All Projects hides the whole section (AT-3112). The list itself stays mounted
- * while hidden: it holds the comment subscriptions that bring the project back when the filter
- * changes or a matching message arrives.
  */
-export default function UnreadMessagesList({ project, chats, onFilteredEmptyChange }) {
+export default function UnreadMessagesList({ project, chats }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const projectNotifications = useSelector(state => state.projectChatNotifications?.[project.id])
@@ -81,20 +76,11 @@ export default function UnreadMessagesList({ project, chats, onFilteredEmptyChan
     const tagFilter = triage?.tagFilter || UNREAD_TAG_ALL
     const sortMode = triage?.sortMode || UNREAD_SORT_NEWEST
     const [messagesByChat, setMessagesByChat] = useState({})
-    const [loadedByChat, setLoadedByChat] = useState({})
 
     // Only a member may archive, as in the thread and the previews (SharedHelper.accessGranted).
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
 
-    const reportMessages = useCallback((chatId, messages, loaded) => {
-        setLoadedByChat(current => {
-            if (messages === null) {
-                if (!(chatId in current)) return current
-                const { [chatId]: removed, ...rest } = current
-                return rest
-            }
-            return current[chatId] === !!loaded ? current : { ...current, [chatId]: !!loaded }
-        })
+    const reportMessages = useCallback((chatId, messages) => {
         setMessagesByChat(current => {
             if (messages === null) {
                 if (!current[chatId]) return current
@@ -113,23 +99,12 @@ export default function UnreadMessagesList({ project, chats, onFilteredEmptyChan
         () => visibleRows.map(row => ({ projectId: project.id, chatId: row.chat.id, commentId: row.message.id })),
         [project.id, visibleRows]
     )
-    // Every chat's first snapshot has arrived, so "nothing visible" is final, not "still loading".
-    const loaded = chats.every(chat => loadedByChat[chat.id])
     const registerProject = triage?.registerProject
     const unregisterProject = triage?.unregisterProject
     useEffect(() => {
-        if (registerProject) registerProject(project.id, counts, visibleCommentRefs, loaded)
-    }, [registerProject, project.id, counts, visibleCommentRefs, loaded])
+        if (registerProject) registerProject(project.id, counts, visibleCommentRefs)
+    }, [registerProject, project.id, counts, visibleCommentRefs])
     useEffect(() => () => unregisterProject && unregisterProject(project.id), [unregisterProject, project.id])
-
-    // Only a tag filter hides a project. Without one, an unread chat whose messages are not (yet)
-    // there keeps its section and its "Mark as read" button, as before.
-    const filteredEmpty = tagFilter !== UNREAD_TAG_ALL && visibleRows.length === 0
-    useEffect(() => {
-        if (onFilteredEmptyChange) onFilteredEmptyChange(filteredEmpty)
-    }, [onFilteredEmptyChange, filteredEmpty])
-    // Leaving Unread unmounts the list; a stale "empty" must not hide the section on the way back.
-    useEffect(() => () => onFilteredEmptyChange && onFilteredEmptyChange(false), [onFilteredEmptyChange])
 
     // Feeds the chat list's email registry: the "Archive emails" buttons act on the emails this
     // view shows (the filtered rows), and the Gmail read sync (AT-2376) checks every unread email

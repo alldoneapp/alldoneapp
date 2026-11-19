@@ -3,8 +3,7 @@
  *
  * jsdom has no layout, so the "search stays visible while the list scrolls" requirement can only
  * be checked here. Also covers filtering, group hiding, the empty state, clearing, Enter and
- * Escape on the real react-native-web TextInput, on desktop (popover) and phone (bottom sheet),
- * and AT-3113's focus on open (desktop only).
+ * Escape on the real react-native-web TextInput, on desktop (popover) and phone (bottom sheet).
  *
  *   node browser-tests/at3100/run.js [--skip-build]
  */
@@ -90,16 +89,7 @@ async function main() {
             const search = page.locator(SEARCH)
             assert.equal(await search.getAttribute('placeholder'), 'Search assistants')
             assert.equal(await search.getAttribute('aria-label'), 'Search assistants')
-            // AT-3113: focused at once on desktop (like Templates); never on a phone (keyboard).
-            if (width >= 1000) {
-                await page.waitForFunction(
-                    selector => document.activeElement === document.querySelector(selector),
-                    SEARCH
-                )
-            } else {
-                await page.waitForTimeout(100)
-                assert.equal(await search.evaluate(node => node === document.activeElement), false, 'not autofocused')
-            }
+            assert.equal(await search.evaluate(node => node === document.activeElement), false, 'not autofocused')
             assert.equal(await rows().count(), 11)
 
             // Sticky search: scroll the list to the bottom, the field must not move. Wait out

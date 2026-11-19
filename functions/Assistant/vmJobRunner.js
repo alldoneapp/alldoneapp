@@ -1319,7 +1319,37 @@ async function writeStatusComment(
 /**
  * Build the prompt fed to Claude Code inside the sandbox.
  */
-function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null, repoApiContext = null) {
+/**
+ * The prompt section for the project's assistant tools (vmMcpProxy). Names the apps so the agent
+ * knows what is there before it lists the tools, and says how they authenticate, so it never tries
+ * to reach those services with credentials of its own (AM-1317).
+ */
+function buildProjectToolsPromptLines(projectToolsContext) {
+    const serverName = projectToolsContext.serverName || 'project_tools'
+    const apps = (Array.isArray(projectToolsContext.apps) ? projectToolsContext.apps : []).map(
+        app =>
+            `- ${app.name} (${app.toolCount} tool${app.toolCount === 1 ? '' : 's'})${
+                app.summary ? `: ${app.summary}` : ''
+            }`
+    )
+    return [
+        "# Project tools (the project's assistants)",
+        `The MCP server "${serverName}" gives you the tools of this project's assistants, for example an alldone.team specialist's app:`,
+        ...apps,
+        'Every call runs as the user who started this task, with their own accounts, data and permissions, and some actions cost them Gold. ' +
+            'Use these tools when the objective needs them; do not call them just to explore, and do not repeat a paid action without a reason.',
+        `The "${serverName}" server is already signed in. Never try to reach these services (for example alldone.team) directly ` +
+            'or with credentials of your own: there are none in this VM, and the MCP server is the only way in.',
+    ]
+}
+
+function buildAgentPrompt(
+    vmJob,
+    gitContext = null,
+    gcpContext = null,
+    repoApiContext = null,
+    projectToolsContext = null
+) {
     const profile = TASK_TYPE_PROFILES[vmJob.taskType] || TASK_TYPE_PROFILES.research
     const parts = [profile, '', `# Objective`, vmJob.objective]
     if (vmJob.deliverable) {
@@ -1435,6 +1465,9 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null, repoApiCo
                 'header and a JSON body like {"resourceNames":["projects/$GOOGLE_CLOUD_PROJECT"],"filter":"resource.type=\\"cloud_run_revision\\"","orderBy":"timestamp desc","pageSize":50} ' +
                 '(resource.type="cloud_run_revision" targets 2nd-gen Cloud Functions / Cloud Run; substitute the real project id for $GOOGLE_CLOUD_PROJECT inside the JSON).'
         )
+    }
+    if (projectToolsContext && projectToolsContext.enabled) {
+        parts.push('', ...buildProjectToolsPromptLines(projectToolsContext))
     }
     parts.push(
         '',
@@ -1854,15 +1887,54 @@ function renderVmInteractionStatus(interaction, agentLabel) {
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
 // matching E2B prebuilt template, API key, sandbox env, headless command, and parser.
 // E2B_*_TEMPLATE env vars are optional overrides — they default to E2B's prebuilt names.
-function buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort) {
+function buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort, mcpConfigPath = '') {
     const resumeFlag = isResume ? '--continue ' : ''
     const modelFlag = agentModel ? `--model ${agentModel} ` : ''
     const effortFlag = agentReasoningEffort ? `--effort ${agentReasoningEffort} ` : ''
     const disallowedFlag = `--disallowedTools ${shellQuoteArg(VM_CLAUDE_DISALLOWED_TOOLS.join(','))} `
-    return `claude ${resumeFlag}${modelFlag}${effortFlag}${disallowedFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
+    const mcpFlag = mcpConfigPath ? `--mcp-config ${shellQuoteArg(mcpConfigPath)} ` : ''
+    return `claude ${resumeFlag}${modelFlag}${effortFlag}${disallowedFlag}${mcpFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
 }
 
 const CODEX_VM_PROXY_PROVIDER = 'alldone_vm_proxy'
+
+// Project tools (vmMcpProxy). The per-job token reaches Codex through this variable and Claude
+// through its MCP config file, which lives outside every working directory (never in a checkout).
+const VM_MCP_TOKEN_ENV = 'ALLDONE_VM_MCP_TOKEN'
+const VM_MCP_CONFIG_PATH = '/home/user/.alldone/mcp/claude-mcp.json'
+// Story Builder exports and similar tools can take minutes; the proxy function allows 600 s.
+const VM_MCP_TOOL_TIMEOUT_MS = 9 * 60 * 1000
+
+/** Claude's `mcpServers` entry for the project tools server (CLI config file and Agent SDK alike). */
+function buildClaudeMcpServers(mcpAccess) {
+    if (!mcpAccess || !mcpAccess.url || !mcpAccess.token) return {}
+    return {
+        [mcpAccess.serverName || 'project_tools']: {
+            type: 'http',
+            url: mcpAccess.url,
+            headers: { Authorization: `Bearer ${mcpAccess.token}` },
+        },
+    }
+}
+
+/** Write Claude Code's MCP config (it carries the per-job token) readable only by the sandbox user. */
+async function writeClaudeMcpConfig(sandbox, mcpAccess) {
+    const dir = path.posix.dirname(VM_MCP_CONFIG_PATH)
+    await sandbox.commands.run(`mkdir -p ${shellQuoteArg(dir)} && chmod 700 ${shellQuoteArg(dir)}`)
+    await sandbox.files.write(VM_MCP_CONFIG_PATH, JSON.stringify({ mcpServers: buildClaudeMcpServers(mcpAccess) }))
+    await sandbox.commands.run(`chmod 600 ${shellQuoteArg(VM_MCP_CONFIG_PATH)}`)
+}
+
+/** Environment for the agent process when the run has project tools. */
+function buildVmMcpEnv(mcpAccess) {
+    if (!mcpAccess || !mcpAccess.token) return null
+    return {
+        [VM_MCP_TOKEN_ENV]: mcpAccess.token,
+        // Claude Code's own MCP limits (ms): server start-up and a single tool call.
+        MCP_TIMEOUT: '30000',
+        MCP_TOOL_TIMEOUT: String(VM_MCP_TOOL_TIMEOUT_MS),
+    }
+}
 
 function shellQuoteArg(value) {
     return `'${String(value).replace(/'/g, `'\\''`)}'`
@@ -1947,13 +2019,30 @@ function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
     ]
 }
 
+/**
+ * Codex config for the project tools server (vmMcpProxy). The token is read from the environment
+ * (`bearer_token_env_var`), never written into a config flag. Only documented keys: Codex refuses to
+ * start on an unknown key in an `mcp_servers` entry.
+ */
+function buildCodexMcpConfigOverrides(mcpAccess) {
+    if (!mcpAccess || !mcpAccess.url) return []
+    const name = mcpAccess.serverName || 'project_tools'
+    return [
+        `mcp_servers.${name}.url=${JSON.stringify(mcpAccess.url)}`,
+        `mcp_servers.${name}.bearer_token_env_var=${JSON.stringify(VM_MCP_TOKEN_ENV)}`,
+        `mcp_servers.${name}.startup_timeout_sec=30`,
+        `mcp_servers.${name}.tool_timeout_sec=${Math.round(VM_MCP_TOOL_TIMEOUT_MS / 1000)}`,
+    ]
+}
+
 function buildCodexRunCommand(
     isResume,
     agentModel,
     agentReasoningEffort,
     proxyBaseUrl,
     subscriptionUsed = false,
-    additionalWritableRoots = []
+    additionalWritableRoots = [],
+    mcpAccess = null
 ) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
     // `route.model` is the bare provider id — the `openrouter:` prefix is Alldone's routing marker
@@ -1969,7 +2058,10 @@ function buildCodexRunCommand(
         : buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter: route.source === 'openrouter' })
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
-    return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
+    const mcpFlags = buildCodexMcpConfigOverrides(mcpAccess)
+        .map(override => ` -c ${shellQuoteArg(override)}`)
+        .join('')
+    return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags}${mcpFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
 function buildLatestAgentCliInstallCommand(packageName, binaryName, options = {}) {
@@ -2335,6 +2427,7 @@ function buildVmAgentBridgeInput({
     agentCredentials,
     additionalWritableRoots = [],
     gitContext = null,
+    mcpAccess = null,
 }) {
     const executionMode = vmJob.executionMode || 'automatic'
     const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
@@ -2375,6 +2468,7 @@ function buildVmAgentBridgeInput({
         input.approvalAllowlist = Array.isArray(pendingWebhook?.approvalAllowlist)
             ? pendingWebhook.approvalAllowlist
             : []
+        if (mcpAccess) input.mcpServers = buildClaudeMcpServers(mcpAccess)
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
@@ -2385,7 +2479,8 @@ function buildVmAgentBridgeInput({
                 : buildCodexProxyConfigOverrides(agentCredentials.baseUrl, {
                       openRouter: modelRoute.source === 'openrouter',
                   }).flatMap(override => ['-c', override])
-        input.codexArgs = [...sandboxArgs, ...providerArgs]
+        const mcpArgs = buildCodexMcpConfigOverrides(mcpAccess).flatMap(override => ['-c', override])
+        input.codexArgs = [...sandboxArgs, ...providerArgs, ...mcpArgs]
     }
     return input
 }
@@ -2416,8 +2511,8 @@ const AGENT_CONFIGS = {
         apiKeyField: 'ANTHROPIC_API_KEY',
         installGuard: buildClaudeInstallGuard,
         // On resume, `--continue` continues the most recent session in the working dir.
-        buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
-            buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort),
+        buildRun: (isResume, { agentModel, agentReasoningEffort, mcpConfigPath } = {}) =>
+            buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort, mcpConfigPath),
         // `apiKey` is a short-lived per-job proxy token. Claude Code is pointed at the proxy,
         // and the real key stays server-side (see vmLlmProxy.js).
         sandboxEnv: ({ apiKey, baseUrl, mode, credential }) => ({
@@ -2450,7 +2545,14 @@ const AGENT_CONFIGS = {
         // network access for package installs, git push, and PR creation.
         buildRun: (
             isResume,
-            { agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed, additionalWritableRoots } = {}
+            {
+                agentModel,
+                agentReasoningEffort,
+                proxyBaseUrl,
+                subscriptionUsed,
+                additionalWritableRoots,
+                mcpAccess,
+            } = {}
         ) =>
             buildCodexRunCommand(
                 isResume,
@@ -2458,7 +2560,8 @@ const AGENT_CONFIGS = {
                 agentReasoningEffort,
                 proxyBaseUrl,
                 subscriptionUsed,
-                additionalWritableRoots
+                additionalWritableRoots,
+                mcpAccess
             ),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
@@ -3608,7 +3711,8 @@ async function runAgentInSandbox(
     subscriptionAuth = null,
     allowAuthRecovery = true,
     sharedRunDetails = null,
-    repoApiContext = null
+    repoApiContext = null,
+    projectToolsContext = null
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
@@ -3831,7 +3935,22 @@ async function runAgentInSandbox(
         if (interactionPhase) {
             await pendingRef?.set({ interactionPhase }, { merge: true }).catch(() => {})
         }
-        const prompt = buildAgentPrompt(vmJob, gitContext, gcpContext, repoApiContext)
+        // Project tools only when the proxy can be configured: the prompt must not promise a server the
+        // agent will not get.
+        const mcpAccess =
+            projectToolsContext && projectToolsContext.enabled
+                ? require('./vmMcpProxy').buildVmMcpAccess({
+                      vmJob,
+                      ttlMs: MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS,
+                  })
+                : null
+        const prompt = buildAgentPrompt(
+            vmJob,
+            gitContext,
+            gcpContext,
+            repoApiContext,
+            mcpAccess ? projectToolsContext : null
+        )
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
         await sandbox.files.write('/home/user/context.md', contextFileContent)
@@ -4043,8 +4162,13 @@ async function runAgentInSandbox(
             gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null,
             repoApiContext && repoApiContext.enabled && !(gitContext && gitContext.enabled)
                 ? buildGithubApiEnv(repoApiContext)
-                : null
+                : null,
+            buildVmMcpEnv(mcpAccess)
         )
+        const usesClaudeMcpConfigFile = !!mcpAccess && !usesAgentBridge && (vmJob.agent || DEFAULT_AGENT) === 'claude'
+        if (usesClaudeMcpConfigFile) {
+            await writeClaudeMcpConfig(sandbox, mcpAccess)
+        }
         let agentCommand
         if (usesAgentBridge) {
             const bridgeInput = buildVmAgentBridgeInput({
@@ -4056,6 +4180,7 @@ async function runAgentInSandbox(
                 agentCredentials,
                 additionalWritableRoots,
                 gitContext,
+                mcpAccess,
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
@@ -4068,6 +4193,8 @@ async function runAgentInSandbox(
                 proxyBaseUrl: agentCredentials.baseUrl,
                 subscriptionUsed: !!subscriptionAuth,
                 additionalWritableRoots,
+                mcpAccess,
+                mcpConfigPath: usesClaudeMcpConfigFile ? VM_MCP_CONFIG_PATH : '',
             })
         }
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${agentCommand}`
@@ -5078,6 +5205,21 @@ async function runVmJobByCorrelationId(correlationId) {
         })
     }
 
+    // The project's assistant tools through vmMcpProxy (AM-1317). Best-effort: null means a run
+    // without them.
+    const projectToolsContext = await require('./vmMcpProxy').describeVmProjectTools({
+        projectId: vmJob.projectId,
+        assistantId: vmJob.assistantId,
+        requestUserId: vmJob.requestUserId,
+    })
+    if (projectToolsContext) {
+        console.log('🖥️ VM JOB RUNNER: project tools available', {
+            correlationId,
+            toolCount: projectToolsContext.toolCount,
+            apps: projectToolsContext.apps.map(app => app.name),
+        })
+    }
+
     try {
         const credentialMode = subscriptionAuth ? 'subscription' : wantsByok ? 'byok' : 'api'
         const tokenBillingExempt = credentialMode !== 'api'
@@ -5111,7 +5253,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 subscriptionAuth,
                 allowAuthRecovery,
                 runDetails,
-                repoApiContext
+                repoApiContext,
+                projectToolsContext
             )
         let agentResult
         try {
@@ -5519,6 +5662,12 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        buildCodexMcpConfigOverrides,
+        buildClaudeMcpServers,
+        buildVmMcpEnv,
+        buildProjectToolsPromptLines,
+        VM_MCP_TOKEN_ENV,
+        VM_MCP_CONFIG_PATH,
         AGENT_CONFIGS,
         buildClaudeRunCommand,
         isInteractiveVmExecutionEnabled,
