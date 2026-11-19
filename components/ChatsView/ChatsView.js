@@ -23,6 +23,7 @@ import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
 import { UnreadTriageProvider } from './UnreadTriage/UnreadTriageContext'
 import UnreadTriageMarkAsRead from './UnreadTriage/UnreadTriageMarkAsRead'
+import UnreadTriageEmptyState from './UnreadTriage/UnreadTriageEmptyState'
 import ChatsEmailConnectionStatus from './ChatsEmailConnectionStatus'
 import {
     buildSecondaryViewCacheKey,
@@ -167,6 +168,13 @@ function ChatsView() {
         })
     }, [areThereChats, filteredProjectIds, loggedUserId, presenceCacheKey])
 
+    // The projects that show a section in All Projects; with a tag filter that matches nothing in
+    // any of them, one global empty state replaces their (hidden) sections (AT-3112).
+    const projectIdsWithChats = useMemo(
+        () => sortedProjectIds.filter(projectId => !!areThereChats[projectId]),
+        [sortedProjectIds, areThereChats]
+    )
+
     const setUnreadOnly = value => dispatch(setChatsUnreadOnly(value))
 
     useEffect(() => () => dispatch(setChatsUnreadOnly(false)), [])
@@ -251,6 +259,7 @@ function ChatsView() {
                             {presenceComplete && !Object.values(areThereChats).includes(true) && (
                                 <NothingToShowOnChats isInChats />
                             )}
+                            {unreadOnly && <UnreadTriageEmptyState projectIds={projectIdsWithChats} />}
                             {sortedProjects.map(project => (
                                 <ChatsByProject
                                     key={project.id}
