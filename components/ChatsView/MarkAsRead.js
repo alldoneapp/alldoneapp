@@ -32,10 +32,9 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
             if (failures.length > 0) throw failures[0].error
         }
         try {
-            // A project line that clears the project's last unread messages opens its tasks
-            // (AT-3104). The All Projects line (`projectIds`) acts across projects and never does.
-            if (projectIds) await markAll()
-            else await runWithLastUnreadRedirect(idsToMark, markAll)
+            // Clearing the last unread messages of the view moves on: grey unread first, then the
+            // tasks (AT-3104). The view decides, so the All Projects line arms it too.
+            await runWithLastUnreadRedirect(idsToMark, markAll)
         } catch (markReadError) {
             console.error('Failed to mark chat messages as read', markReadError)
             setError(true)

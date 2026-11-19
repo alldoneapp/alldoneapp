@@ -36,10 +36,9 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
             projectIdsToClear = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
         }
         const markAll = () => Promise.all(projectIdsToClear.map(id => markMessagesAsRead(id, userId, chatsActiveTab)))
-        // In a single project, clearing its last unread messages opens its tasks (AT-3104). The All
-        // Projects variant clears every project and never navigates.
-        const allProjects = checkIfSelectedAllProjects(selectedProjectIndex)
-        ;(allProjects ? markAll() : runWithLastUnreadRedirect(projectIdsToClear, markAll)).catch(error => {
+        // Clearing the view's last unread messages moves on: grey unread first, then the tasks
+        // (AT-3104), in a single project and in All Projects.
+        runWithLastUnreadRedirect(projectIdsToClear, markAll).catch(error => {
             console.error('[chat read] Could not clear project notifications', {
                 projectIds: projectIdsToClear,
                 code: error?.code,

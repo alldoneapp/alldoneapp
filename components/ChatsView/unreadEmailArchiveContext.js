@@ -131,18 +131,15 @@ export function useEmailCommentReadSync(sources) {
 
 export function UnreadEmailArchiveProvider({ children }) {
     const linkedEmailArchive = useLinkedEmailArchive()
-    // Every archive press in the chat list (row, preview, project line) goes through here, so this
-    // is where AT-3104 hooks in: archiving the last unread message of a project opens its tasks once
-    // the archive has succeeded. The All Projects line passes `lastUnreadRedirect: false`: a bulk
-    // action across projects has no single project to open.
+    // Every archive press in the chat list (row, preview, project line, All Projects line) goes
+    // through here, so this is where AT-3104 hooks in: once the archive has succeeded, a view with no
+    // red unread left moves on to its grey unread messages, and one with nothing unread to its tasks.
     const archive = {
         ...linkedEmailArchive,
-        archiveLinkedEmails: (emails, { lastUnreadRedirect = true, ...options } = {}) => {
-            const archiveEmails = () => linkedEmailArchive.archiveLinkedEmails(emails, options)
-            return lastUnreadRedirect
-                ? runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), archiveEmails)
-                : archiveEmails()
-        },
+        archiveLinkedEmails: (emails, options) =>
+            runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), () =>
+                linkedEmailArchive.archiveLinkedEmails(emails, options)
+            ),
     }
     const [sources, setSources] = useState({})
 

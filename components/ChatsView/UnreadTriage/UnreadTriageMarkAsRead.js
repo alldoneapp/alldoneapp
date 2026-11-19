@@ -35,10 +35,9 @@ export default function UnreadTriageMarkAsRead({ projectId, projectIds, userId, 
         setLoading(true)
         setError(false)
         try {
-            // From a project line only (AT-3104): if the filtered messages were the project's last
-            // unread ones, open its tasks. The All Projects line (`projectIds`) never navigates.
-            if (projectIds) await markCommentsRead(refs)
-            else await runWithLastUnreadRedirect([projectId], () => markCommentsRead(refs))
+            // If the filtered messages were the view's last unread ones, move on (AT-3104). Messages
+            // the filter hides still count, so they keep the user here.
+            await runWithLastUnreadRedirect(projectIds || [projectId], () => markCommentsRead(refs))
         } catch (markReadError) {
             console.error('Failed to mark the filtered messages as read', markReadError)
             setError(true)

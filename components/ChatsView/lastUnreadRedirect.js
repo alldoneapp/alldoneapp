@@ -1,38 +1,48 @@
 import { DV_TAB_ROOT_CHATS, DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
+import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
+import { getFollowedAndUnfollowedChatNotificationsAmount } from '../../utils/notificationBadges'
 
 /**
- * AT-3104 (decided with Karsten 2026-11-18): when the user archives or marks as read the LAST
- * unread message of a project from the Chats list, the app moves on to that project's open tasks
- * instead of leaving the user in an empty chat list.
+ * AT-3104: after the user clears unread messages from the Chats list, move on instead of leaving
+ * them in an empty list.
  *
- * Decisions this pins:
+ * Red unread is an unread chat notification with `followed: true`, grey unread one with
+ * `followed: false` (`projectChatNotifications[pid].totalFollowed` / `totalUnfollowed`, the counts
+ * the red and grey badges are drawn from). The Followed tab of Chats lists only chats with red
+ * unread messages; the All tab lists red and grey.
  *
- * - **Only after a user action in the Chats list.** A redirect is armed by the press itself (row
- *   Archive / Mark as read, the email previews' Archive, the project line's Mark as read / Archive
- *   emails). Nothing that clears unread state on its own - the initial load, the Gmail read sync
- *   (AT-2376), another device, opening a thread - can ever navigate.
- * - **Single project and All Projects.** In All Projects, clearing project X's last message opens X's
- *   tasks even if other projects still have unread messages. An action that touches more than one
- *   project (the All Projects line's bulk buttons) never navigates: there is no single project to
- *   open.
- * - **"No unread left" means every unread message of the project**, followed and unfollowed, not
- *   just the active tab's count. On the Followed tab, unread messages of unfollowed topics keep the
- *   user in Chats.
+ * Decisions this pins (Karsten, 2026-11-18 and 2026-11-19):
+ *
+ * - **The view decides, not the project that was touched.** The scope is what the Chats list shows:
+ *   the selected project, or every project in All Projects (counted like the Chats tab chips and the
+ *   top bar badge). The first version (!909) checked only the touched project, so in All Projects
+ *   clearing project X opened X's tasks while other projects still had unread messages - the
+ *   "still unread, but it sent me to the task list" report of 2026-11-19 (production logs: emails
+ *   of "Privat" and "Alldone Business" archived seconds apart from All Projects).
+ * - **Red, then grey, then tasks.** When an action clears the last red message of the scope on
+ *   the Followed tab and grey ones remain, Chats switches to the All tab (keeping the Unread filter
+ *   on or off as it was), so the grey messages show. The tasks open only when the scope has neither
+ *   red nor grey unread left: the selected project's open tasks, or the All Projects task list.
+ * - **Only after a user action in the Chats list.** Armed by the press itself (row Archive / Mark as
+ *   read, the previews' Archive, a project line's or the All Projects line's Mark as read / Archive
+ *   emails, More > Mark as read). Nothing that clears unread state on its own - the initial load,
+ *   the Gmail read sync (AT-2376), another device, opening a thread - can ever navigate.
  *
  * Races it handles:
  *
  * - **Archive failures.** Archiving clears the unread state optimistically and puts it back if the
- *   mailbox refuses (AT-2424), 4-8s later. The count therefore reaches 0 before we know the archive
- *   worked, so the redirect waits for the action to SUCCEED and re-checks the live count then.
- * - **Overlapping presses.** Several rows marked in quick succession: only the last action of the
- *   project to settle decides, and it decides on the live count.
- * - **The user moved on.** The view (Chats list on screen), the selected project and the logged-in
- *   user are captured at the press and must be unchanged when the action settles, or nothing
- *   happens. A newer press anywhere cancels an older pending check.
+ *   mailbox refuses (AT-2424), 4-8s later. The redirect waits for the action to SUCCEED and then
+ *   re-checks the live counts.
+ * - **Overlapping presses.** While any armed action is still running, nothing is decided: in All
+ *   Projects a pending archive of project Y has already cleared Y optimistically, and could still
+ *   put it back. The last action to settle decides on the live counts; if it failed, nothing happens.
+ * - **The user moved on.** The view (Chats list on screen), the selected project, the Chats tab,
+ *   the Unread filter and the logged-in user are captured at the press and must be unchanged when
+ *   the action settles. A newer press cancels an older pending check.
+ * - **New unread messages** arriving before the action settles keep the user where they are.
  * - **A late local snapshot.** Offline, `awaitWriteAck` returns before the listener has delivered
- *   the delete. If the count is not 0 yet when the action settles, the store is watched for a short
- *   window (LAST_UNREAD_SETTLE_MS) and the redirect happens only if it reaches 0 in that window
- *   with the view still unchanged.
+ *   the delete. If the scope is not settled yet, the store is watched for a short window
+ *   (LAST_UNREAD_SETTLE_MS) with the same checks.
  */
 
 export const LAST_UNREAD_SETTLE_MS = 2000
@@ -41,23 +51,62 @@ export const LAST_UNREAD_SETTLE_MS = 2000
 // client, and this module is pulled into rows that are unit-tested on their own.
 const ALL_PROJECTS_INDEX = -1
 
-/** Every unread message of the project (followed and unfollowed), or null when not loaded. */
+/** Every unread message of the project (red and grey), or null when not loaded. */
 export const getProjectUnreadTotal = (projectChatNotifications, projectId) => {
     const projectNotifications = projectChatNotifications?.[projectId]
     if (!projectNotifications) return null
     return (Number(projectNotifications.totalFollowed) || 0) + (Number(projectNotifications.totalUnfollowed) || 0)
 }
 
+/**
+ * The red and grey unread counts of what the Chats list shows: the selected project, or every
+ * project in All Projects (the same count as the Chats tab chips and the top bar badge). Null when
+ * the selected project's notifications are not loaded.
+ */
+export const getChatsScopeUnread = state => {
+    const index = state?.selectedProjectIndex
+    const projectChatNotifications = state?.projectChatNotifications || {}
+    if (index === ALL_PROJECTS_INDEX) {
+        const { totalFollowed, totalUnfollowed } = getFollowedAndUnfollowedChatNotificationsAmount(
+            true,
+            '',
+            projectChatNotifications,
+            state?.loggedUser?.archivedProjectIds || [],
+            state?.loggedUser?.templateProjectIds || []
+        )
+        return { red: Number(totalFollowed) || 0, grey: Number(totalUnfollowed) || 0 }
+    }
+    const projectId = index > ALL_PROJECTS_INDEX ? state?.loggedUserProjects?.[index]?.id : null
+    const projectNotifications = projectId ? projectChatNotifications[projectId] : null
+    if (!projectNotifications) return null
+    return {
+        red: Number(projectNotifications.totalFollowed) || 0,
+        grey: Number(projectNotifications.totalUnfollowed) || 0,
+    }
+}
+
 /** What has to stay the same between the press and the redirect; null when the Chats list is not on screen. */
 export const getChatsViewContext = state => {
     if (!state || state.route !== DV_TAB_ROOT_CHATS || state.selectedSidebarTab !== DV_TAB_ROOT_CHATS) return null
-    return { selectedProjectIndex: state.selectedProjectIndex, userId: state.loggedUser?.uid || '' }
+    return {
+        selectedProjectIndex: state.selectedProjectIndex,
+        projectId:
+            state.selectedProjectIndex === ALL_PROJECTS_INDEX
+                ? null
+                : state.loggedUserProjects?.[state.selectedProjectIndex]?.id || null,
+        chatsActiveTab: state.chatsActiveTab,
+        unreadOnly: !!state.chatsUnreadOnly,
+        userId: state.loggedUser?.uid || '',
+    }
 }
 
 const sameContext = (previous, next) =>
     !!previous &&
     !!next &&
     previous.selectedProjectIndex === next.selectedProjectIndex &&
+    previous.projectId === next.projectId &&
+    previous.chatsActiveTab === next.chatsActiveTab &&
+    previous.unreadOnly === next.unreadOnly &&
     previous.userId === next.userId
 
 /** The project is on screen: All Projects, or the selected project is this one. */
@@ -79,7 +128,24 @@ export const getLinkedEmailsProjectIds = linkedEmails =>
     )
 
 /**
+ * What to do now that an action settled, from the live state: 'tasks' (nothing unread left in the
+ * scope), 'grey' (the action cleared the last red message on the Followed tab, grey ones remain),
+ * 'wait' (unread left that the user still sees) or 'cancel' (the user moved on).
+ */
+export const decideAfterUnreadAction = (state, context, { redAtPress = 0 } = {}) => {
+    if (!sameContext(context, getChatsViewContext(state))) return 'cancel'
+    const unread = getChatsScopeUnread(state)
+    if (!unread) return 'cancel'
+    if (unread.red + unread.grey === 0) return 'tasks'
+    if (unread.red === 0 && redAtPress > 0 && context.chatsActiveTab === FOLLOWED_TAB) return 'grey'
+    return 'wait'
+}
+
+/**
  * Builds the runner. Dependencies are injected so the race handling is testable without the store.
+ *
+ * `openTasks(projectId)` opens the project's tasks, or the All Projects task list for null.
+ * `showGreyUnread(context)` switches Chats to the All tab.
  *
  * Returns `run(projectIds, action)`: runs `action` (sync or async) and returns its result unchanged.
  * An action that resolves to `false` (the archive hook's "failed") or throws never redirects.
@@ -87,12 +153,16 @@ export const getLinkedEmailsProjectIds = linkedEmails =>
 export function createLastUnreadRedirect({
     getState,
     subscribe,
-    openProjectTasks,
+    openTasks,
+    showGreyUnread,
     settleMs = LAST_UNREAD_SETTLE_MS,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
 }) {
-    const inFlight = new Map()
+    let inFlight = 0
+    // The armed presses still running or settling: the view they were made in and the most red
+    // unread the scope had at any of them.
+    let batch = null
     let waiter = null
 
     const cancelWaiter = () => {
@@ -102,21 +172,23 @@ export function createLastUnreadRedirect({
         current.cancel()
     }
 
-    // 'done' (navigated), 'wait' (count not 0 yet) or 'cancel' (the user moved on).
-    const tryRedirect = (projectId, context) => {
-        const state = getState()
-        if (!sameContext(context, getChatsViewContext(state))) return 'cancel'
-        if (!isProjectInChatsView(state, projectId)) return 'cancel'
-        const total = getProjectUnreadTotal(state.projectChatNotifications, projectId)
-        if (total === null) return 'cancel'
-        if (total > 0) return 'wait'
-        openProjectTasks(projectId)
-        return 'done'
+    // 'done' (navigated or switched tab), 'wait' or 'cancel'.
+    const tryRedirect = pending => {
+        const decision = decideAfterUnreadAction(getState(), pending.context, pending)
+        if (decision === 'tasks') {
+            openTasks(pending.context.projectId)
+            return 'done'
+        }
+        if (decision === 'grey') {
+            showGreyUnread(pending.context)
+            return 'done'
+        }
+        return decision
     }
 
-    const settle = (projectId, context) => {
+    const settle = pending => {
         cancelWaiter()
-        if (tryRedirect(projectId, context) !== 'wait') return
+        if (tryRedirect(pending) !== 'wait') return
 
         let unsubscribe = null
         let timer = null
@@ -129,7 +201,7 @@ export function createLastUnreadRedirect({
         waiter = self
         unsubscribe = subscribe(() => {
             if (waiter !== self) return
-            if (tryRedirect(projectId, context) !== 'wait') cancelWaiter()
+            if (tryRedirect(pending) !== 'wait') cancelWaiter()
         })
         timer = setTimer(() => {
             if (waiter === self) cancelWaiter()
@@ -140,24 +212,29 @@ export function createLastUnreadRedirect({
         const ids = uniqueProjectIds(projectIds)
         const state = getState()
         const context = getChatsViewContext(state)
-        const projectId = ids.length === 1 ? ids[0] : null
+        const unread = context ? getChatsScopeUnread(state) : null
         const armed =
-            !!projectId &&
             !!context &&
-            isProjectInChatsView(state, projectId) &&
-            getProjectUnreadTotal(state.projectChatNotifications, projectId) > 0
+            !!unread &&
+            unread.red + unread.grey > 0 &&
+            ids.some(projectId => isProjectInChatsView(state, projectId))
         if (!armed) return action()
 
-        // A newer press supersedes an older pending check, in this project or another.
+        // A newer press supersedes an older pending check.
         cancelWaiter()
-        inFlight.set(projectId, (inFlight.get(projectId) || 0) + 1)
+        inFlight += 1
+        batch =
+            batch && sameContext(batch.context, context)
+                ? { context, redAtPress: Math.max(batch.redAtPress, unread.red) }
+                : { context, redAtPress: unread.red }
 
         const finish = succeeded => {
-            const left = inFlight.get(projectId) - 1
-            if (left > 0) inFlight.set(projectId, left)
-            else inFlight.delete(projectId)
-            // An earlier action of the same project still running decides when it settles.
-            if (succeeded && left <= 0) settle(projectId, context)
+            inFlight -= 1
+            if (inFlight > 0) return
+            // The last armed action to settle decides, on the live counts.
+            const pending = batch
+            batch = null
+            if (succeeded && pending) settle(pending)
         }
 
         let result
@@ -202,6 +279,24 @@ export function openProjectTasksFromChats(store, projectId) {
     ])
 }
 
+/** The All Projects task list (open tasks), as the thread view's "back to tasks" does. */
+export function openAllProjectsTasksFromChats(store) {
+    const actions = require('../../redux/actions')
+    const { dismissAllPopups } = require('../../utils/HelperFunctions')
+
+    dismissAllPopups(true, true, true)
+    store.dispatch([actions.hideFloatPopup(), actions.navigateToAllProjectsTasks()])
+}
+
+/**
+ * Chats > All tab, where the grey unread messages are listed. `Set chats active tab` turns the
+ * Unread filter off, so it is put back as it was.
+ */
+export function showGreyUnreadInChats(store, context) {
+    const actions = require('../../redux/actions')
+    store.dispatch([actions.setChatsActiveTab(ALL_TAB), actions.setChatsUnreadOnly(!!context?.unreadOnly)])
+}
+
 let configuredStore = null
 let defaultRunner = null
 
@@ -222,13 +317,15 @@ export function configureLastUnreadRedirect(store) {
     defaultRunner = createLastUnreadRedirect({
         getState: store.getState,
         subscribe: store.subscribe,
-        openProjectTasks: projectId => openProjectTasksFromChats(store, projectId),
+        openTasks: projectId =>
+            projectId ? openProjectTasksFromChats(store, projectId) : openAllProjectsTasksFromChats(store),
+        showGreyUnread: context => showGreyUnreadInChats(store, context),
     })
 }
 
 /**
- * Runs a Chats-list archive / mark-as-read action and, if it cleared the last unread message of
- * the one project it touched, opens that project's tasks. See the notes at the top of this file.
+ * Runs a Chats-list archive / mark-as-read action and then moves on if it emptied what the user is
+ * looking at. See the notes at the top of this file.
  */
 export function runWithLastUnreadRedirect(projectIds, action) {
     return defaultRunner ? defaultRunner(projectIds, action) : action()

@@ -255,21 +255,27 @@ Pinned by `functions/Gmail/dailyAdsDigest.test.js`, the AT-3101 block of
 label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
 tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
 
-**Clearing a project's last unread message opens its tasks (AT-3104, decided with Karsten
-2026-11-18).** `components/ChatsView/lastUnreadRedirect.js`. Armed only by a press in the Chats list
-(row Archive / Mark as read, preview Archive, project line Mark as read / Archive emails, the
-project's More > Mark as read), never by the initial load, the Gmail read sync or another device.
-Works in a single project and in All Projects (clearing project X opens X's tasks even when others
-are still unread); an action touching more than one project (the All Projects line) never
-navigates. "Nothing unread" is `totalFollowed + totalUnfollowed` of the project, not the tab's
-count. Because archive clears the unread state optimistically and restores it on failure (AT-2424),
-the redirect waits for the action to succeed and then re-checks the live count, the Chats route, the
-selected project and the user; overlapping presses of one project let the last to settle decide;
-a late local snapshot gets a 2s window. All archive presses go through the provider's wrapped
-`archiveLinkedEmails` (`lastUnreadRedirect: false` opts out). The thread view (ChatBoard) is out of
-scope. App.js hands the store in (`configureLastUnreadRedirect`); the module must not require
-the store itself: that cost ~4.4s in a cold Jest cache and timed out the first archive test on
-master pipeline 3085791241. Pinned by `lastUnreadRedirect.test.js` and
+**Clearing the last unread messages of the Chats view: grey unread, then tasks (AT-3104, decided
+with Karsten 2026-11-18, revised 2026-11-19).** `components/ChatsView/lastUnreadRedirect.js`. Red
+unread = chat notification `followed: true` (`totalFollowed`), grey = `followed: false`
+(`totalUnfollowed`); the Followed tab lists only red, the All tab both. **The view decides**: the
+selected project, or in All Projects every project counted like the Chats tab chips (archived and
+template projects excluded). The first version checked only the touched project, so in All Projects
+clearing "Privat" opened Privat's tasks while "Alldone Business" was still unread (the 2026-11-19
+report; production logs showed archives of both projects seconds apart). Now: nothing red or grey
+left in the view -> the selected project's open tasks, or the All Projects task list; the press
+cleared the last red message on the Followed tab and grey remain -> switch to the All tab (the
+Unread filter kept as it was, since `Set chats active tab` resets it); anything else -> stay. Armed
+only by a press in the Chats list (row Archive / Mark as read, preview Archive, project line and All
+Projects line Mark as read / Archive emails, More > Mark as read), never by the initial load, the
+Gmail read sync or another device. Waits for the action to succeed (archive restores on failure,
+AT-2424); while any armed action is still running nothing is decided (a pending archive in another
+project has cleared it optimistically); the last to settle decides on the live counts and the
+captured view (route, project, Chats tab, Unread filter, user); a late local snapshot gets a 2s
+window. All archive presses go through the provider's wrapped `archiveLinkedEmails`. The thread view
+(ChatBoard) is out of scope. App.js hands the store in (`configureLastUnreadRedirect`); the module
+must not require the store itself: that cost ~4.4s in a cold Jest cache and timed out the first
+archive test on master pipeline 3085791241. Pinned by `lastUnreadRedirect.test.js` and
 `lastUnreadRedirect.wiring.test.js`.
 
 ## Every email gets a Gmail label: fallback labels and bounded retries (AT-3102, 2026-11-18)
