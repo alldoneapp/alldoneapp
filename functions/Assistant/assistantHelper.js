@@ -3225,10 +3225,28 @@ async function interactWithChatStream(
         console.log('📞 [TIMING] Calling OpenAI API...')
         let activeRequestParams = requestParams
         const requestOptions = toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : null
-        const dispatchResponsesRequest = () =>
+        const sendResponsesRequest = () =>
             requestOptions
                 ? openai.responses.create(activeRequestParams, requestOptions)
                 : openai.responses.create(activeRequestParams)
+        // One image the provider cannot download fails the whole request; retry once without them.
+        const dispatchResponsesRequest = async () => {
+            try {
+                return await sendResponsesRequest()
+            } catch (error) {
+                const { isImageDownloadError, stripInputImagesFromResponsesInput } = require('./imageDownloadFallback')
+                if (!isImageDownloadError(error)) throw error
+                const { input, removedCount } = stripInputImagesFromResponsesInput(activeRequestParams.input)
+                if (removedCount === 0) throw error
+                console.warn('Assistant: provider could not download an image; retrying without images', {
+                    model,
+                    removedCount,
+                    error: error.message,
+                })
+                activeRequestParams = { ...activeRequestParams, input }
+                return sendResponsesRequest()
+            }
+        }
         const createResponsesStream = async () => {
             try {
                 enforceOpenAiInputTokenPreflight(activeRequestParams, {

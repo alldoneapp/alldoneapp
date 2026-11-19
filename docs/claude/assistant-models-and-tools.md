@@ -68,6 +68,19 @@ model takes the whole request down). The transport counts the replacements and w
 dropped image is otherwise invisible: the request succeeds and the only symptom is an answer that
 ignores the attachment the user is looking at.
 
+**A `create_task` image URL written by the model is a guess** (2026-11). The model sees an
+attached image as pixels, never as an address, yet the `images` schema told it to copy "exact URLs
+from the current user message", and model-supplied URLs used to win over the real upload. One run
+wrote `https://storage.googleapis.com/alldonealeph.appspot.com/...` (a literal `...`); it was
+embedded in the task and its request comment, and every later run of that task, the workflow AI
+step included, failed with OpenAI `400 Error while downloading file. Upstream status code: 403`.
+`injectCurrentMessageImagesIntoCreateTaskArgs` (`createTaskImageHelper.js`) now drops abbreviated
+URLs and, while the message carries images, any Storage URL that is not one of them, and puts the
+real images in their place; the schema says to leave the field empty for attached images. Separately,
+`interactWithChatStream` retries a Responses request once with every `input_image` replaced by a
+note when the provider cannot download an image (`imageDownloadFallback.js`), so one broken link no
+longer blocks a whole thread. The OpenRouter transport has no such retry.
+
 **A chat image is fetchable, and `get_chat_attachment` used to say otherwise.** The tool and its
 fallback filtered `media.kind === 'file'`, while WhatsApp and web uploads store a photo as
 `kind: 'image'` — and `list_recent_chat_media` advertises those images together with their

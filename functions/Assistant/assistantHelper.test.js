@@ -4169,6 +4169,73 @@ describe('assistant create_task image helpers', () => {
             usedCurrentMessageImages: true,
         })
     })
+
+    // The model sees an attached image as pixels, not as an address, so a URL it writes for it is a
+    // guess. A guessed `.../alldonealeph.appspot.com/...` replaced the real upload on a task and
+    // made every later run of that task fail (OpenAI could not download it).
+    const REAL_UPLOAD =
+        'https://firebasestorage.googleapis.com/v0/b/alldonealeph.appspot.com/o/feedAttachments%2Fshot.png?alt=media&token=t'
+    const withCurrentImage = { currentMessageImageUrls: [REAL_UPLOAD] }
+
+    test('replaces an abbreviated image URL the model made up with the real attached image', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Remove email pill', images: ['https://storage.googleapis.com/alldonealeph.appspot.com/...'] },
+                withCurrentImage
+            )
+        ).toEqual({
+            toolArgs: { name: 'Remove email pill', images: [REAL_UPLOAD] },
+            usedCurrentMessageImages: true,
+        })
+    })
+
+    test('replaces a storage URL that is not one of the attached images', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Task', images: ['https://storage.googleapis.com/alldonealeph.appspot.com/screenshot.png'] },
+                withCurrentImage
+            ).toolArgs.images
+        ).toEqual([REAL_UPLOAD])
+    })
+
+    test('keeps the attached image and other real URLs the model passed', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Task', images: [REAL_UPLOAD, 'https://cdn.example.com/diagram.png'] },
+                withCurrentImage
+            )
+        ).toEqual({
+            toolArgs: { name: 'Task', images: [REAL_UPLOAD, 'https://cdn.example.com/diagram.png'] },
+            usedCurrentMessageImages: false,
+        })
+    })
+
+    test('drops an abbreviated URL even when the message has no image', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Task', images: ['https://cdn.example.com/a…png', 'https://cdn.example.com/b.png'] },
+                {}
+            ).toolArgs.images
+        ).toEqual(['https://cdn.example.com/b.png'])
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Task', images: ['https://storage.googleapis.com/bucket/...'] },
+                {}
+            ).toolArgs
+        ).toEqual({ name: 'Task' })
+    })
+
+    test('keeps a storage URL when the message has no image to confuse it with', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs('create_task', { name: 'Task', images: [REAL_UPLOAD] }, {})
+                .toolArgs.images
+        ).toEqual([REAL_UPLOAD])
+    })
 })
 
 describe('assistant chat media helpers', () => {

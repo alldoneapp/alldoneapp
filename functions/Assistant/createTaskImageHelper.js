@@ -64,6 +64,39 @@ function extractImageUrlsFromMessageContent(content) {
     return imageUrls
 }
 
+const STORAGE_HOSTS = ['firebasestorage.googleapis.com', 'storage.googleapis.com']
+
+function isStorageHostUrl(url) {
+    try {
+        return STORAGE_HOSTS.includes(new URL(url).hostname.toLowerCase())
+    } catch (_) {
+        return false
+    }
+}
+
+/**
+ * Whether an image URL the model passed to create_task was made up rather than copied.
+ *
+ * The model sees an attached image as pixels, never as an address, so when it fills `images` for
+ * the screenshot it was sent it can only guess. One guess was
+ * `https://storage.googleapis.com/alldonealeph.appspot.com/...`, with a literal "...": it replaced
+ * the real upload, was embedded in the task and its request comment, and every later run of the
+ * task failed because the model provider could not download it (OpenAI 400 "Error while
+ * downloading file. Upstream status code: 403"). Two kinds of URL are treated as guesses:
+ * - one that is visibly abbreviated ("..." or "…"), whatever the message carried;
+ * - one in Alldone's own Storage while the current message carries images but not that URL: it
+ *   can only be an attempt at naming those images.
+ */
+function isInventedCreateTaskImageUrl(url, contextImages = []) {
+    if (contextImages.includes(url)) return false
+    let decoded = url
+    try {
+        decoded = decodeURIComponent(url)
+    } catch (_) {}
+    if (decoded.includes('...') || decoded.includes('…')) return true
+    return contextImages.length > 0 && isStorageHostUrl(url)
+}
+
 function injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext = null) {
     if (toolName !== 'create_task') {
         return {
@@ -73,20 +106,32 @@ function injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userCo
     }
 
     const normalizedToolArgs = toolArgs && typeof toolArgs === 'object' ? { ...toolArgs } : {}
+    const contextImages = normalizeCreateTaskImageUrls(
+        userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
+    )
     const providedImages = normalizeCreateTaskImageUrls(normalizedToolArgs.images)
-    if (providedImages.length > 0) {
-        normalizedToolArgs.images = providedImages
+    const keptImages = providedImages.filter(url => !isInventedCreateTaskImageUrl(url, contextImages))
+    const droppedImages = providedImages.filter(url => !keptImages.includes(url))
+    if (droppedImages.length > 0) {
+        console.warn('create_task: dropped image URLs the model made up', { droppedImages })
+    }
+
+    if (keptImages.length > 0 && droppedImages.length === 0) {
+        normalizedToolArgs.images = keptImages
         return {
             toolArgs: normalizedToolArgs,
             usedCurrentMessageImages: false,
         }
     }
 
-    const contextImages = normalizeCreateTaskImageUrls(
-        userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
-    )
-
     if (contextImages.length === 0) {
+        if (keptImages.length > 0) {
+            normalizedToolArgs.images = keptImages
+            return {
+                toolArgs: normalizedToolArgs,
+                usedCurrentMessageImages: false,
+            }
+        }
         delete normalizedToolArgs.images
         return {
             toolArgs: normalizedToolArgs,
@@ -94,7 +139,8 @@ function injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userCo
         }
     }
 
-    normalizedToolArgs.images = contextImages
+    // A made-up URL was an attempt at the attached images, so they take its place.
+    normalizedToolArgs.images = [...new Set([...keptImages, ...contextImages])]
     return {
         toolArgs: normalizedToolArgs,
         usedCurrentMessageImages: true,
@@ -106,5 +152,6 @@ module.exports = {
     buildCreateTaskImageTokens,
     mergeTaskDescriptionWithImages,
     extractImageUrlsFromMessageContent,
+    isInventedCreateTaskImageUrl,
     injectCurrentMessageImagesIntoCreateTaskArgs,
 }

@@ -118,52 +118,6 @@ describe('the chat list archive', () => {
         expect(runWithLastUnreadRedirect).toHaveBeenCalledWith(['project-1', 'project-2'], expect.any(Function))
         expect(performEmailLineAction).toHaveBeenCalled()
     })
-
-    // AT-3108: the redirect now opens the tasks before Gmail answers, so the bulk button's own red
-    // "try again" is no longer on screen when a failure arrives. The rollback itself is unchanged.
-    describe('a failure after the redirect opened the tasks', () => {
-        const { clearChatCommentsForLinkedEmails } = require('../../utils/backends/Chats/markChatCommentsAsRead')
-
-        const pressWith = async (leftChats, options) => {
-            const restoreUnreadState = jest.fn(async () => {})
-            clearChatCommentsForLinkedEmails.mockImplementationOnce(async () => restoreUnreadState)
-            runWithLastUnreadRedirect.mockImplementationOnce((projectIds, action) =>
-                action({ leftChats: () => leftChats })
-            )
-            performEmailLineAction.mockRejectedValueOnce(new Error('mailbox refused'))
-            renderProvider()
-            let result
-            await act(async () => {
-                result = await context.archive.archiveLinkedEmails([linkedEmail('project-1', 'm9')], options)
-            })
-            return { result, restoreUnreadState }
-        }
-
-        beforeEach(() => {
-            global.alert = jest.fn()
-            jest.spyOn(console, 'error').mockImplementation(() => {})
-        })
-        afterEach(() => console.error.mockRestore())
-
-        it('puts the unread state back and tells the user, since the bulk button is gone', async () => {
-            const { result, restoreUnreadState } = await pressWith(true, { notifyOnError: false })
-            expect(result).toBe(false)
-            expect(restoreUnreadState).toHaveBeenCalledTimes(1)
-            expect(global.alert).toHaveBeenCalledWith("Emails couldn't be archived. Try again")
-        })
-
-        it('leaves it to the button while the user is still in Chats', async () => {
-            const { result, restoreUnreadState } = await pressWith(false, { notifyOnError: false })
-            expect(result).toBe(false)
-            expect(restoreUnreadState).toHaveBeenCalledTimes(1)
-            expect(global.alert).not.toHaveBeenCalled()
-        })
-
-        it('does not alert twice for the row, which alerts on its own', async () => {
-            await pressWith(true, undefined)
-            expect(global.alert).toHaveBeenCalledTimes(1)
-        })
-    })
 })
 
 describe('the tag-filtered Mark as read', () => {

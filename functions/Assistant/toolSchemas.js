@@ -138,7 +138,7 @@ const toolSchemas = {
                             type: 'string',
                         },
                         description:
-                            'Optional: image URLs to embed in the task description. Use exact URLs from the current user message when the task should include attached images.',
+                            'Optional: image URLs to embed in the task description, each copied character for character from text you can read (a message, tool result or web page). Never construct, guess or shorten a URL. Images attached to the current user message are added automatically: leave this empty for them.',
                     },
                     dueDate: {
                         oneOf: [
