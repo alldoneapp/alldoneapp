@@ -714,14 +714,60 @@ the save "wasn't executed". Nothing failed in the logs; the tell is
 
 The final reply now gets every tool that acts (`toolsForFinalReply`) and none that looks things up:
 the guard's research set, any `get_`/`read_`/`search_`/`list_`/`find_`/`fetch_`/`browser_` tool,
-`load_skill` and `compact_thread_context`. Delegation, external-app and MCP tools and the channel's
-`additionalToolSchemas` stay out, because they are open-ended rather than one action.
+`load_skill` and `compact_thread_context`. Delegation and external-app tools and the channel's
+`additionalToolSchemas` stay out, because they are open-ended rather than one action. MCP tools that
+act are offered since 2026-11-19 (next section); MCP lookups are not.
 `FINAL_REPLY_INSTRUCTION` tells the model to make the requested change if it can, and not to claim
 an action it did not run. A successful write counts as workflow progress and resets the guard, so
 the turn after it has its full tools again. The preflight-recovery request (oversized input) still
 goes out without tools. Pinned by `keeps action tools on the final reply…` in
 `assistantHelper.test.js` and `offers the final reply only tools that act` in
 `assistantResearchGuard.test.js`.
+
+## MCP reads count as research; big results keep their shape; Stop stays on a silent reply (2026-11-19)
+
+A task-chat reply (Connor Consultant with the Story Builder MCP, task `U9YNeoIWylrBg3ubwaNz`, production
+execution `nv4n836qsdsc`) ran for 34 minutes with an empty bubble: ~111 tool calls, `story_get` 85 times
+(62 with the same storyId), `story_list` 21 times, no text. It was stopped by setting the run lock to
+`cancel_requested` by hand. Three bugs together:
+
+- **The guard did not see MCP tools.** MCP tools reach the model as `mcp_<server>_<tool>_<12 hex>`
+  (`buildMcpToolName`), so `RESEARCH_TOOLS` and the `get_`/`list_` prefix never matched, and
+  `isWorkflowProgress` treated every successful MCP read as progress, resetting the budget each call.
+  `assistantResearchGuard.js` now splits the name into words: an MCP tool is an **action** only if a
+  word is in `MCP_ACTION_VERBS` (create, update, delete, generate, …); every other MCP tool
+  (`story_get`, `story_list_voices`, `story_capabilities`, `job_get`) is a **lookup**. Lookups count
+  toward `MAX_RESEARCH_CALLS`, never reset the guard, and the same call answered the same way twice
+  stops the research (`duplicate_research_call`). Duplicates are judged on call **and** result,
+  because Story Builder polls `job_get` with the same jobId: a result that describes pending work
+  (`status` queued/running/pending/processing/in_progress within three levels) is neither a
+  duplicate nor counted. `open_mcp_app` is neither research nor progress. MCP actions still reset the
+  guard. The final reply now gets the MCP tools that act (`mcpToolsForFinalReply` filters the cached
+  schemas and app groups), so "find the voice in use and delete the other one" can still delete;
+  MCP lookups are not offered.
+- **Compaction hid the field the model needed.** The ceiling (`attachmentToolHandoff.js`) cut lists to
+  20 items, and the guard's compaction kept 8,000 bytes of the newest result, cut lists to 5 items
+  and then fell back to the first 2,000 characters of the JSON. A 24-scene `story_get` (47k
+  characters) keeps each `voiceId` after long `transcript`/`visualPrompt` strings, so the model never
+  saw it and read the story again. `toolResultFit.js` now shrinks structurally: long strings first
+  (2000 → 60 characters), list items last, every key kept; a long string that is JSON is shrunk as
+  data. Both the ceiling and the compaction use it before their old fallbacks. The newest result keeps
+  the full 40k ceiling, the one before it 8,000 bytes, older ones share 40,000; on the final reply
+  (aggressive) the newest keeps at least 8,000.
+- **No Stop on a running reply without text.** `resolveEffectiveMessageLoading` expired a spinner 5
+  minutes after the comment's `lastChangeDate`, but a chat run never touches `lastChangeDate` while it
+  calls tools; it writes `assistantRun.activity`/`activityHistory` each round. The chat therefore hid
+  the working indicator and the Stop button after 5 minutes. The rule now measures from the newest of
+  `lastChangeDate` and the live run's activity times (`getAssistantRunLastActivityTime`), so a dead
+  run still expires after 5 minutes of silence. Known gap: one tool call that runs longer than 5
+  minutes without a status change still looks stale.
+
+Coverage: the `MCP lookups count as research` and `compaction keeps a large latest result usable`
+blocks in `assistantResearchGuard.test.js` (47 KB, 24-scene story through ceiling and compaction),
+`keeps MCP tools that act on the final reply…` in `assistantHelper.test.js`, the updated 82-task case
+in `taskListingContext.test.js` (the newest listing now stays complete), `messageLoadingState.test.js`
+and the old-comment case in `CommentsList.test.js`. Out of scope: Story Builder's `story_get` size
+(alldone_team).
 
 ## get_goals is shaped for a model, not mirrored from the document (2026-11-11)
 

@@ -236,6 +236,24 @@ describe('RichCommentModal CommentsList stop control', () => {
         expect(findButton(tree, 'Stop')).toBeTruthy()
     })
 
+    test('keeps Stop on a reply with no text whose comment is old but whose run is still active', () => {
+        // 2026-11-19: a reply looped through tools for 34 minutes. Its comment kept the creation time,
+        // but the run wrote a new activity every few seconds; the chat showed only the author line.
+        const now = Date.now()
+        const assistantRun = runningRun({
+            activity: { phase: 'tool', toolName: 'mcp_story_builder__story_get_3d970dad804d', startedAt: now - 15000 },
+            activityHistory: [{ phase: 'thinking', startedAt: now - 29 * 60 * 1000 }],
+        })
+        const tree = renderPopupComments(assistantRun, {
+            isLoading: true,
+            commentText: '',
+            lastChangeDate: now - 29 * 60 * 1000,
+        })
+
+        expect(findButton(tree, 'Stop')).toBeTruthy()
+        expect(tree.root.findAllByType(AssistantProgress)).toHaveLength(1)
+    })
+
     test('hides Stop whenever the run is not stoppable', () => {
         const cases = [
             ['settled run', runningRun({ status: 'completed' }), { isLoading: true }],
@@ -244,6 +262,11 @@ describe('RichCommentModal CommentsList stop control', () => {
             ['another user’s run', runningRun({ requestUserId: 'user-2' }), { isLoading: true }],
             ['not loading', runningRun(), {}],
             ['stale spinner', runningRun(), { isLoading: true, lastChangeDate: Date.now() - 6 * 60 * 1000 }],
+            [
+                'stale run activity',
+                runningRun({ activity: { phase: 'tool', startedAt: Date.now() - 7 * 60 * 1000 } }),
+                { isLoading: true, lastChangeDate: Date.now() - 30 * 60 * 1000 },
+            ],
         ]
 
         cases.forEach(([label, assistantRun, overrides]) => {

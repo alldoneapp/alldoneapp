@@ -2,6 +2,8 @@
 const { createHash } = require('crypto')
 const { compactTaskListing } = require('./taskListingContext')
 const { compactGoalListing } = require('./goalListingContext')
+const { fitToolResultToBudget, shrinkValue } = require('./toolResultFit')
+const { MAX_TOOL_RESULT_CONTEXT_CHARS } = require('./attachmentToolHandoff')
 
 const RESEARCH_TOOLS = new Set([
     'read_knowledge_page',
@@ -43,16 +45,78 @@ const FINAL_REPLY_INSTRUCTION =
 // Tools that only look things up. Once research has stopped the final reply is offered every other
 // tool the run has, so the requested change can still be made, but none of these.
 const LOOKUP_TOOL_PREFIX = /^(get|read|search|list|find|fetch)_|^browser_/
-const NON_ACTION_TOOLS = new Set(['load_skill', 'compact_thread_context'])
+const NON_ACTION_TOOLS = new Set(['load_skill', 'compact_thread_context', 'open_mcp_app'])
+
+// MCP tools reach the model as `mcp_<server>_<tool>_<12 hex>` (buildMcpToolName in assistantHelper.js),
+// for example `mcp_story_builder__story_get_3d970dad804d`, so the verb is not a prefix and the
+// built-in research set never matched them. Every MCP read then counted as workflow progress and
+// reset the guard: on 2026-11-19 a task-chat reply called story_get 85 times (62 with the same
+// storyId) and story_list 21 times in 34 minutes without the guard noticing. An MCP tool is an
+// action only when its name carries a verb that changes something; every other MCP tool
+// (story_get, story_list_voices, story_capabilities, job_get) is a lookup.
+const MCP_TOOL_NAME_PATTERN = /^mcp_(.+)_[0-9a-f]{12}$/
+const MCP_ACTION_VERBS = new Set(
+    (
+        'accept add append apply approve archive assign attach book cancel change clone close commit complete ' +
+        'connect convert create decline delete deploy detach disable disconnect draft duplicate edit enable ' +
+        'execute export forward generate import insert invite join label link mark merge modify move patch pin ' +
+        'plan post prepare publish purchase put rematch remove rename reorder replace reply reset resolve ' +
+        'respond restore retire revert revise rewrite run save schedule select send set share start submit ' +
+        'sync toggle transcribe trash trigger undo unlabel unlink unmark unpin unshare untrash update upload ' +
+        'upsert write'
+    ).split(' ')
+)
+
+function mcpToolNameWords(toolName) {
+    const match = typeof toolName === 'string' ? MCP_TOOL_NAME_PATTERN.exec(toolName) : null
+    return match ? match[1].split('_').filter(Boolean) : null
+}
+
+function isMcpActionTool(toolName) {
+    const words = mcpToolNameWords(toolName)
+    return !!words && words.some(word => MCP_ACTION_VERBS.has(word))
+}
+
+function isMcpLookupTool(toolName) {
+    return !!mcpToolNameWords(toolName) && !isMcpActionTool(toolName)
+}
 
 function isLookupTool(toolName) {
-    return RESEARCH_TOOLS.has(toolName) || NON_ACTION_TOOLS.has(toolName) || LOOKUP_TOOL_PREFIX.test(toolName)
+    return (
+        RESEARCH_TOOLS.has(toolName) ||
+        NON_ACTION_TOOLS.has(toolName) ||
+        LOOKUP_TOOL_PREFIX.test(toolName) ||
+        isMcpLookupTool(toolName)
+    )
 }
 
 function toolsForFinalReply(toolNames = []) {
     return (Array.isArray(toolNames) ? toolNames : []).filter(
         toolName => typeof toolName === 'string' && toolName && !isLookupTool(toolName)
     )
+}
+
+// The final reply keeps the MCP tools that act (story_delete_voice after the voices were looked up),
+// never an MCP lookup, so it cannot read on.
+function mcpToolsForFinalReply({ mcpToolSchemas = [], mcpApps = [] } = {}) {
+    const schemas = (Array.isArray(mcpToolSchemas) ? mcpToolSchemas : []).filter(schema =>
+        isMcpActionTool(schema?.function?.name)
+    )
+    const kept = new Set(schemas.map(schema => schema.function.name))
+    const apps = (Array.isArray(mcpApps) ? mcpApps : [])
+        .map(app => ({ ...app, toolNames: (app.toolNames || []).filter(toolName => kept.has(toolName)) }))
+        .filter(app => app.toolNames.length > 0)
+    return { mcpToolSchemas: schemas, mcpApps: apps }
+}
+
+// A job that is still queued or running is polled with the same arguments until it ends
+// (Story Builder's job_get). Such a poll is neither a duplicate nor research.
+const PENDING_STATUSES = new Set(['queued', 'running', 'pending', 'processing', 'in_progress'])
+
+function describesPendingWork(value, depth = 0) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 3) return false
+    if (typeof value.status === 'string' && PENDING_STATUSES.has(value.status.toLowerCase())) return true
+    return Object.values(value).some(item => describesPendingWork(item, depth + 1))
 }
 
 function roleOf(entry) {
@@ -84,20 +148,19 @@ function fingerprint(value, ignoreQueryMetadata = false) {
         .digest('hex')
 }
 
-function compactValue(value, maxStringLength, depth = 0) {
-    if (typeof value === 'string') {
-        return value.length <= maxStringLength
-            ? value
-            : `${value.slice(0, maxStringLength)} [excerpt; remaining text omitted]`
-    }
-    if (!value || typeof value !== 'object') return value
-    if (depth > 8) return '[nested details omitted]'
-    if (Array.isArray(value)) return value.slice(0, 5).map(item => compactValue(item, maxStringLength, depth + 1))
-    return Object.fromEntries(
-        Object.entries(value)
-            .slice(0, 40)
-            .map(([key, item]) => [key, compactValue(item, maxStringLength, depth + 1)])
-    )
+// The newest result is what the model is about to act on: it keeps the full per-result ceiling.
+// The one before it keeps 8,000 bytes; older ones share 40,000 bytes. The final reply (aggressive)
+// shares 40,000 bytes across all results but still gives the newest at least 8,000.
+const LATEST_RESULT_BUDGET = MAX_TOOL_RESULT_CONTEXT_CHARS
+const RECENT_RESULT_BUDGET = 8000
+const TRUNCATION_MARKER_BYTES = 32
+const TIGHTEST_SHAPE = { maxString: 40, maxItems: 5 }
+
+function resultBudget(index, count, perResultBudget, aggressive) {
+    if (aggressive) return index === count ? Math.max(perResultBudget, RECENT_RESULT_BUDGET) : perResultBudget
+    if (index === count) return LATEST_RESULT_BUDGET
+    if (index === count - 1) return RECENT_RESULT_BUDGET
+    return perResultBudget
 }
 
 // Retain complete tool call/result pairs (including mutation outcomes), original instructions,
@@ -113,7 +176,7 @@ function compactResearchConversation(conversation, aggressive = false) {
     return conversation.map(entry => {
         if (roleOf(entry) === 'tool') {
             toolIndex++
-            const budget = !aggressive && toolIndex > toolEntries.length - 2 ? 8000 : perResultBudget
+            const budget = resultBudget(toolIndex, toolEntries.length, perResultBudget, aggressive)
             let result
             try {
                 result = JSON.parse(contentOf(entry))
@@ -127,12 +190,16 @@ function compactResearchConversation(conversation, aggressive = false) {
             if (toolNames.get(entry.tool_call_id) === 'get_goals' && Array.isArray(result?.goals)) {
                 return replaceContent(entry, JSON.stringify(compactGoalListing(result, budget)))
             }
-            let compacted = compactValue(result, Math.min(2000, budget / 2))
-            if (!compacted || typeof compacted !== 'object' || Array.isArray(compacted)) {
-                compacted = { result: compacted }
-            }
+            // Shrink the structure (long strings first, list items last) so every record keeps its
+            // keys, ids and short fields. A prefix of the JSON hid every scene's voiceId after the
+            // second one of a 24-scene story_get (2026-11-19).
+            const wrap = value =>
+                value && typeof value === 'object' && !Array.isArray(value) ? value : { result: value }
+            let compacted = fitToolResultToBudget(wrap(result), budget - TRUNCATION_MARKER_BYTES, {
+                maxString: Math.min(2000, budget / 2),
+            })
             // Keep valid JSON even when many short fields still exceed the budget.
-            if (Buffer.byteLength(JSON.stringify(compacted), 'utf8') > budget) {
+            if (!compacted) {
                 compacted = {
                     success: result.success,
                     status: result.status,
@@ -141,7 +208,7 @@ function compactResearchConversation(conversation, aggressive = false) {
                     projectId: result.projectId,
                     url: result.url,
                     sourceRecords: collectSourceRecords(result).slice(0, 3),
-                    excerpt: JSON.stringify(compacted).slice(0, Math.floor(budget / 4)),
+                    excerpt: JSON.stringify(shrinkValue(wrap(result), TIGHTEST_SHAPE)).slice(0, Math.floor(budget / 4)),
                 }
             }
             return replaceContent(entry, JSON.stringify({ ...compacted, contextTruncated: true }))
@@ -176,6 +243,8 @@ function createResearchGuard() {
     let stalledSearches = 0
     return {
         beforeTool(toolName, args) {
+            // MCP lookups are counted once their result is known (recordResult): a poll of a
+            // pending job repeats the same call legitimately.
             if (!RESEARCH_TOOLS.has(toolName)) return null
             const key = `${toolName}:${fingerprint(args)}`
             if (calls.has(key)) return 'duplicate_research_call'
@@ -184,13 +253,22 @@ function createResearchGuard() {
             researchCalls++
             return researchCalls >= MAX_RESEARCH_CALLS ? 'research_call_limit' : null
         },
-        recordResult(toolName, result) {
+        recordResult(toolName, result, args) {
             collectSourceRecords(result).forEach(record => sources.set(record.url, record))
             if (isWorkflowProgress(toolName, result)) {
                 researchCalls = 0
                 stalledSearches = 0
                 calls.clear()
                 evidence.clear()
+            }
+            if (isMcpLookupTool(toolName)) {
+                if (describesPendingWork(result)) return null
+                // The same call answered the same way before: the model is re-reading, not learning.
+                const key = `${toolName}:${fingerprint(args ?? null)}:${fingerprint(result, true)}`
+                if (calls.has(key)) return 'duplicate_research_call'
+                calls.add(key)
+                researchCalls++
+                return researchCalls >= MAX_RESEARCH_CALLS ? 'research_call_limit' : null
             }
             if (!RESEARCH_TOOLS.has(toolName)) return null
             const key = `${toolName}:${fingerprint(result?.results || result, true)}`
@@ -228,7 +306,8 @@ function createResearchGuard() {
 function isWorkflowProgress(toolName, result) {
     return (
         !RESEARCH_TOOLS.has(toolName) &&
-        !['load_skill', 'compact_thread_context'].includes(toolName) &&
+        !NON_ACTION_TOOLS.has(toolName) &&
+        !isMcpLookupTool(toolName) &&
         result?.success !== false &&
         !result?.error &&
         !['failed', 'blocked', 'skipped'].includes(result?.status)
@@ -258,7 +337,7 @@ function prepareResearchRequest(conversation) {
             continue
         }
         const callStopReason = guard.beforeTool(call.name, args)
-        const resultStopReason = guard.recordResult(call.name, result)
+        const resultStopReason = guard.recordResult(call.name, result, args)
         if (isWorkflowProgress(call.name, result)) stopReason = null
         stopReason ||= callStopReason || resultStopReason
     }
@@ -278,6 +357,9 @@ module.exports = {
     compactResearchConversation,
     FINAL_REPLY_INSTRUCTION,
     toolsForFinalReply,
+    mcpToolsForFinalReply,
+    isMcpLookupTool,
+    isMcpActionTool,
     MAX_RESEARCH_CALLS,
     MAX_STALLED_SEARCHES,
 }
