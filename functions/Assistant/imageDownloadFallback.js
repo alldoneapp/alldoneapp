@@ -12,6 +12,57 @@
  */
 
 const OMITTED_IMAGE_NOTE = '[An attached image could not be loaded and was left out.]'
+const DUPLICATE_IMAGE_NOTE = '[This image is also attached to a later message in this conversation.]'
+
+/**
+ * Old task descriptions/comments can contain the same image or a model-abbreviated URL.
+ * Keep the most recent occurrence of each image (at the same detail level), replacing older
+ * copies and visibly abbreviated links with notes before either token counting or dispatch.
+ * This only changes the outgoing request, never the saved conversation or attachment bytes.
+ */
+function normalizeResponsesImageInput(input) {
+    if (!Array.isArray(input)) return { input, omittedCount: 0, duplicateCount: 0 }
+    const normalized = [...input]
+    const seen = new Set()
+    let omittedCount = 0
+    let duplicateCount = 0
+
+    for (let i = input.length - 1; i >= 0; i--) {
+        const item = input[i]
+        if (!Array.isArray(item?.content)) continue
+        const content = [...item.content]
+        let changed = false
+        for (let j = content.length - 1; j >= 0; j--) {
+            const part = content[j]
+            if (part?.type !== 'input_image') continue
+            let abbreviated = false
+            if (typeof part.image_url === 'string' && /^https?:\/\//i.test(part.image_url)) {
+                try {
+                    const path = decodeURIComponent(new URL(part.image_url).pathname)
+                    abbreviated = path.split('/').some(segment => segment === '...' || segment === '…')
+                } catch (_) {}
+            }
+            if (abbreviated) {
+                content[j] = { type: 'input_text', text: OMITTED_IMAGE_NOTE }
+                omittedCount++
+                changed = true
+                continue
+            }
+            const key = JSON.stringify([part.image_url || '', part.file_id || '', part.detail || 'auto'])
+            if (!part.image_url && !part.file_id) continue
+            if (seen.has(key)) {
+                content[j] = { type: 'input_text', text: DUPLICATE_IMAGE_NOTE }
+                duplicateCount++
+                changed = true
+            } else {
+                seen.add(key)
+            }
+        }
+        if (changed) normalized[i] = { ...item, content }
+    }
+
+    return { input: omittedCount || duplicateCount ? normalized : input, omittedCount, duplicateCount }
+}
 
 function isImageDownloadError(error) {
     if (!error) return false
@@ -49,6 +100,8 @@ function stripInputImagesFromResponsesInput(input) {
 
 module.exports = {
     OMITTED_IMAGE_NOTE,
+    DUPLICATE_IMAGE_NOTE,
+    normalizeResponsesImageInput,
     isImageDownloadError,
     stripInputImagesFromResponsesInput,
 }

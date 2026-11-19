@@ -255,6 +255,7 @@ const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
 const mockFirestoreGetAll = jest.fn()
 const mockResponsesCreate = jest.fn()
+const mockResponsesInputTokensCount = jest.fn()
 const mockFirestoreTimestamp = { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) }
 const mockFirestoreFieldValue = {
     increment: jest.fn(value => ({ __op: 'increment', value })),
@@ -364,6 +365,7 @@ jest.mock('openai', () =>
     jest.fn().mockImplementation(() => ({
         responses: {
             create: mockResponsesCreate,
+            inputTokens: { count: mockResponsesInputTokensCount },
         },
     }))
 )
@@ -955,6 +957,7 @@ describe('project wiki wiring', () => {
 describe('Responses API compatibility helpers', () => {
     beforeEach(() => {
         mockResponsesCreate.mockReset()
+        mockResponsesInputTokensCount.mockReset()
     })
 
     test('passes the WhatsApp deadline signal to the SDK for cancellation of the active HTTP stream', async () => {
@@ -1350,6 +1353,129 @@ describe('Responses API compatibility helpers', () => {
         warnSpy.mockRestore()
     })
 
+    const imageHeavyPrompt = () => [
+        [
+            'user',
+            [
+                { type: 'text', text: 'Work on this task in the VM.' },
+                ...Array.from({ length: 4 }, (_, index) => ({
+                    type: 'image_url',
+                    image_url: { url: `https://example.com/screenshot-${index}.png` },
+                })),
+            ],
+        ],
+    ]
+
+    test('recovers the broken task screenshot history before counting or dispatching', async () => {
+        const broken = { type: 'image_url', image_url: { url: 'https://storage.googleapis.com/b/...' } }
+        const screenshot = { type: 'image_url', image_url: { url: 'https://example.com/reuploaded.png' } }
+        const prompt = [
+            ['user', [broken, screenshot]],
+            ['user', [broken, screenshot, { type: 'text', text: 'Try again' }]],
+        ]
+        const original = JSON.stringify(prompt)
+        mockResponsesCreate.mockResolvedValue([])
+        await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        expect(mockResponsesInputTokensCount).not.toHaveBeenCalled()
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
+        const images = mockResponsesCreate.mock.calls[0][0].input.flatMap(item =>
+            Array.isArray(item.content) ? item.content.filter(part => part.type === 'input_image') : []
+        )
+        expect(images).toEqual([{ type: 'input_image', image_url: screenshot.image_url.url, detail: 'auto' }])
+        expect(JSON.stringify(prompt)).toBe(original)
+    })
+
+    test('verifies a 231953-token image reserve with the provider before allowing generation', async () => {
+        mockTiktokenEncode.mockReturnValueOnce({ length: 31953 })
+        mockResponsesInputTokensCount.mockResolvedValue({ input_tokens: 38000 })
+        mockResponsesCreate.mockResolvedValue([])
+        const controller = new AbortController()
+        await interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'], {
+            abortSignal: controller.signal,
+            disableToolSearch: true,
+        })
+        expect(mockResponsesInputTokensCount).toHaveBeenCalledTimes(1)
+        const [countRequest, countOptions] = mockResponsesInputTokensCount.mock.calls[0]
+        const generationRequest = mockResponsesCreate.mock.calls[0][0]
+        expect(countRequest.model).toBe('gpt-6.1-sol')
+        expect(countRequest.input).toEqual(generationRequest.input)
+        expect(countRequest.tools).toEqual(generationRequest.tools)
+        expect(countRequest.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'get_tasks' })]))
+        expect(countRequest).not.toHaveProperty('stream')
+        expect(countOptions).toEqual(
+            expect.objectContaining({ signal: controller.signal, maxRetries: 0, timeout: 20000 })
+        )
+        expect(mockResponsesInputTokensCount.mock.invocationCallOrder[0]).toBeLessThan(
+            mockResponsesCreate.mock.invocationCallOrder[0]
+        )
+    })
+
+    test.each([200000, 210000])('blocks a provider count of %i without generating', async inputTokens => {
+        mockResponsesInputTokensCount.mockResolvedValue({ input_tokens: inputTokens })
+        await expect(
+            interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        ).rejects.toMatchObject({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT', estimatedInputTokens: inputTokens })
+        expect(mockResponsesCreate).not.toHaveBeenCalled()
+    })
+
+    test.each([undefined, { input_tokens: -1 }, { input_tokens: '1000' }, { input_tokens: NaN }])(
+        'keeps the guard when the count response is invalid: %p',
+        async countResponse => {
+            mockResponsesInputTokensCount.mockResolvedValue(countResponse)
+            await expect(
+                interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+            ).rejects.toMatchObject({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' })
+            expect(mockResponsesCreate).not.toHaveBeenCalled()
+        }
+    )
+
+    test('keeps the guard when provider token counting fails', async () => {
+        mockResponsesInputTokensCount.mockRejectedValue(
+            Object.assign(new Error('Service unavailable'), { status: 503 })
+        )
+        await expect(
+            interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        ).rejects.toMatchObject({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' })
+        expect(mockResponsesCreate).not.toHaveBeenCalled()
+    })
+
+    test('honors cancellation during provider token counting without generating', async () => {
+        const controller = new AbortController()
+        const abortError = Object.assign(new Error('Request aborted'), { name: 'AbortError' })
+        mockResponsesInputTokensCount.mockImplementation(async () => {
+            controller.abort()
+            throw abortError
+        })
+        await expect(
+            interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [], {
+                abortSignal: controller.signal,
+            })
+        ).rejects.toBe(abortError)
+        expect(mockResponsesCreate).not.toHaveBeenCalled()
+    })
+
+    test('recovers an image download failure during token counting without losing the user request', async () => {
+        mockResponsesInputTokensCount.mockRejectedValue(
+            Object.assign(new Error('400 Error while downloading file. Upstream status code: 403.'), { status: 400 })
+        )
+        mockResponsesCreate.mockResolvedValue([])
+        await interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
+        const serialized = JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)
+        expect(serialized).not.toContain('input_image')
+        expect(serialized).toContain('Work on this task in the VM.')
+        expect(serialized).toContain('An attached image could not be loaded')
+    })
+
+    test('does not call the provider counter or generate when text alone exceeds the limit', async () => {
+        mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
+        await expect(
+            interactWithChatStream(imageHeavyPrompt(), 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        ).rejects.toMatchObject({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' })
+        expect(mockResponsesInputTokensCount).not.toHaveBeenCalled()
+        expect(mockResponsesCreate).not.toHaveBeenCalled()
+    })
+
     test('blocks an oversized OpenAI request during preflight before dispatch', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
         expect(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT).toBe(200000)
@@ -1671,53 +1797,68 @@ describe('Responses API compatibility helpers', () => {
         expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
     })
 
-    test('retries a rejected deferred-tool request with the full function schemas', async () => {
-        const deferredToolsError = new Error('tool_search and defer_loading are not supported for this request')
-        deferredToolsError.status = 400
-        mockResponsesCreate.mockRejectedValueOnce(deferredToolsError).mockResolvedValueOnce([
-            { type: 'response.output_text.delta', delta: 'Recovered after the tool fallback.' },
-            {
-                type: 'response.completed',
-                response: {
-                    model: 'gpt-5.6-terra',
-                    output: [],
-                    usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+    test.each([false, true])(
+        'retries a rejected deferred-tool request with the full function schemas (images: %s)',
+        async withImages => {
+            const deferredToolsError = new Error('tool_search and defer_loading are not supported for this request')
+            deferredToolsError.status = 400
+            mockResponsesInputTokensCount.mockResolvedValue({ input_tokens: 38000 })
+            mockResponsesCreate.mockRejectedValueOnce(deferredToolsError).mockResolvedValueOnce([
+                { type: 'response.output_text.delta', delta: 'Recovered after the tool fallback.' },
+                {
+                    type: 'response.completed',
+                    response: {
+                        model: 'gpt-5.6-terra',
+                        output: [],
+                        usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+                    },
                 },
-            },
-        ])
-        const allowedTools = [
-            'update_task',
-            'get_tasks',
-            'create_task',
-            'create_note',
-            'get_focus_task',
-            'update_note',
-            'get_user_projects',
-            'search',
-            'get_notes',
-            'web_search',
-            'search_gmail',
-            'create_gmail_reply_draft',
-        ]
+            ])
+            const allowedTools = [
+                'update_task',
+                'get_tasks',
+                'create_task',
+                'create_note',
+                'get_focus_task',
+                'update_note',
+                'get_user_projects',
+                'search',
+                'get_notes',
+                'web_search',
+                'search_gmail',
+                'create_gmail_reply_draft',
+            ]
 
-        const stream = await interactWithChatStream(
-            [['user', 'Please help with this request.']],
-            'MODEL_GPT5_6_TERRA',
-            'TEMPERATURE_NORMAL',
-            allowedTools
-        )
-        const chunks = []
-        let next = await stream.next()
-        while (!next.done) {
-            chunks.push(next.value)
-            next = await stream.next()
+            const stream = await interactWithChatStream(
+                withImages ? imageHeavyPrompt() : [['user', 'Please help with this request.']],
+                'MODEL_GPT5_6_TERRA',
+                'TEMPERATURE_NORMAL',
+                allowedTools
+            )
+            const chunks = []
+            let next = await stream.next()
+            while (!next.done) {
+                chunks.push(next.value)
+                next = await stream.next()
+            }
+
+            expect(chunks).toEqual([{ content: 'Recovered after the tool fallback.', additional_kwargs: {} }])
+            expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+            expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
+            expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
+            if (withImages) {
+                expect(mockResponsesInputTokensCount).toHaveBeenCalledTimes(2)
+                for (let i = 0; i < 2; i++) {
+                    const countRequest = mockResponsesInputTokensCount.mock.calls[i][0]
+                    const generationRequest = mockResponsesCreate.mock.calls[i][0]
+                    expect(countRequest.input).toEqual(generationRequest.input)
+                    expect(countRequest.tools).toEqual(generationRequest.tools)
+                }
+            } else {
+                expect(mockResponsesInputTokensCount).not.toHaveBeenCalled()
+            }
         }
-
-        expect(chunks).toEqual([{ content: 'Recovered after the tool fallback.', additional_kwargs: {} }])
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
-        expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
-        expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
-    })
+    )
 
     test('replaces the loading placeholder with a clear failure after two empty responses', async () => {
         mockDocGet.mockResolvedValue({ exists: false })

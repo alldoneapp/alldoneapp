@@ -3231,10 +3231,33 @@ async function interactWithChatStream(
                 : openai.responses.create(activeRequestParams)
         // One image the provider cannot download fails the whole request; retry once without them.
         const dispatchResponsesRequest = async () => {
+            const {
+                normalizeResponsesImageInput,
+                isImageDownloadError,
+                stripInputImagesFromResponsesInput,
+            } = require('./imageDownloadFallback')
+            const normalized = normalizeResponsesImageInput(activeRequestParams.input)
+            if (normalized.omittedCount || normalized.duplicateCount) {
+                console.log('Assistant: normalized image context before token preflight', {
+                    omittedCount: normalized.omittedCount,
+                    duplicateCount: normalized.duplicateCount,
+                })
+                activeRequestParams = { ...activeRequestParams, input: normalized.input }
+            }
+            const checkInputTokens = () =>
+                enforceOpenAiResponsesInputTokenPreflight(activeRequestParams, openai, {
+                    route:
+                        toolRuntimeContext?.promptCacheScope ||
+                        toolRuntimeContext?.sourceChannel ||
+                        toolRuntimeContext?.objectType ||
+                        'assistant',
+                    model,
+                    requestOptions,
+                })
             try {
+                await checkInputTokens()
                 return await sendResponsesRequest()
             } catch (error) {
-                const { isImageDownloadError, stripInputImagesFromResponsesInput } = require('./imageDownloadFallback')
                 if (!isImageDownloadError(error)) throw error
                 const { input, removedCount } = stripInputImagesFromResponsesInput(activeRequestParams.input)
                 if (removedCount === 0) throw error
@@ -3244,19 +3267,12 @@ async function interactWithChatStream(
                     error: error.message,
                 })
                 activeRequestParams = { ...activeRequestParams, input }
+                await checkInputTokens()
                 return sendResponsesRequest()
             }
         }
         const createResponsesStream = async () => {
             try {
-                enforceOpenAiInputTokenPreflight(activeRequestParams, {
-                    route:
-                        toolRuntimeContext?.promptCacheScope ||
-                        toolRuntimeContext?.sourceChannel ||
-                        toolRuntimeContext?.objectType ||
-                        'assistant',
-                    model,
-                })
                 return await dispatchResponsesRequest()
             } catch (error) {
                 if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
@@ -3274,14 +3290,6 @@ async function interactWithChatStream(
                     ...responsesToolConfig,
                     toolSearchEnabled: false,
                 }
-                enforceOpenAiInputTokenPreflight(activeRequestParams, {
-                    route:
-                        toolRuntimeContext?.promptCacheScope ||
-                        toolRuntimeContext?.sourceChannel ||
-                        toolRuntimeContext?.objectType ||
-                        'assistant',
-                    model,
-                })
                 return dispatchResponsesRequest()
             }
         }
@@ -15131,6 +15139,71 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
 
 function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', model = '' } = {}) {
     const estimate = estimateOpenAiRequestInputTokens(requestParams)
+    return assertOpenAiInputTokenEstimate(estimate, { route, model })
+}
+
+// Only image-heavy requests that would otherwise be blocked need the provider's model-aware
+// count. The 50K/image reserve is a worst-case budget, not evidence of a 200K-token prompt.
+// The installed SDK's /responses/input_tokens endpoint counts text, images and tool schemas
+// without generating a response. Keep the local guard if counting is unavailable or fails.
+async function enforceOpenAiResponsesInputTokenPreflight(requestParams, openai, context) {
+    const estimate = estimateOpenAiRequestInputTokens(requestParams)
+    const estimatedTextTokens = estimate.estimatedInputTokens - estimate.imageTokenReserve
+    if (
+        estimate.estimatedInputTokens >= OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT &&
+        estimate.imageCount > 0 &&
+        estimatedTextTokens < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT &&
+        typeof openai.responses.inputTokens?.count === 'function'
+    ) {
+        const countParams = {}
+        for (const key of [
+            'model',
+            'input',
+            'tools',
+            'instructions',
+            'reasoning',
+            'text',
+            'tool_choice',
+            'parallel_tool_calls',
+        ]) {
+            if (requestParams[key] !== undefined) countParams[key] = requestParams[key]
+        }
+        let counted
+        try {
+            counted = await openai.responses.inputTokens.count(countParams, {
+                ...context.requestOptions,
+                timeout: 20000,
+                maxRetries: 0,
+            })
+        } catch (error) {
+            const { isImageDownloadError } = require('./imageDownloadFallback')
+            // A broken image can fail counting too: let the normal image fallback recover it.
+            if (
+                context.requestOptions?.signal?.aborted ||
+                isImageDownloadError(error) ||
+                shouldRetryWithoutToolSearch(error)
+            )
+                throw error
+            console.warn('Assistant: could not verify image token budget; keeping local limit', {
+                status: error.status || null,
+                code: error.code || null,
+            })
+        }
+        if (Number.isInteger(counted?.input_tokens) && counted.input_tokens >= 0) {
+            console.log('Assistant: verified image-heavy input token count', {
+                route: context.route,
+                model: context.model,
+                imageCount: estimate.imageCount,
+                estimatedInputTokens: estimate.estimatedInputTokens,
+                inputTokens: counted.input_tokens,
+            })
+            return assertOpenAiInputTokenEstimate({ ...estimate, estimatedInputTokens: counted.input_tokens }, context)
+        }
+    }
+    return assertOpenAiInputTokenEstimate(estimate, context)
+}
+
+function assertOpenAiInputTokenEstimate(estimate, { route = 'unknown', model = '' } = {}) {
     if (estimate.estimatedInputTokens < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) return estimate
 
     console.warn('🚨 OPENAI INPUT TOKEN PREFLIGHT BLOCK: Request not sent', {
@@ -15138,6 +15211,8 @@ function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', mo
         model,
         estimatedInputTokens: estimate.estimatedInputTokens,
         payloadBytes: estimate.payloadBytes,
+        imageCount: estimate.imageCount,
+        imageTokenReserve: estimate.imageTokenReserve,
         hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     })
     const error = new Error(

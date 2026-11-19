@@ -81,6 +81,22 @@ real images in their place; the schema says to leave the field empty for attache
 note when the provider cannot download an image (`imageDownloadFallback.js`), so one broken link no
 longer blocks a whole thread. The OpenRouter transport has no such retry.
 
+**Image reserves must not block the image fallback (2026-11-19).** The email-pill task's next
+retry failed before dispatch with an estimate of 231,953 tokens on a 145,749-byte request. The
+preflight reserves 50K tokens per image, so repeated screenshot references can exhaust the 200K
+limit without a large conversation. `normalizeResponsesImageInput` (`imageDownloadFallback.js`)
+now removes visibly abbreviated URLs and retains only the latest copy of an identical image at
+the same detail level in the outgoing Responses input; saved comments and descriptions stay intact.
+If the image reserve still takes an otherwise smaller prompt over the limit,
+`enforceOpenAiResponsesInputTokenPreflight` verifies the same model, input and tools through
+`responses.inputTokens.count` before generation. A real count at/above 200K still blocks; unavailable,
+failed or invalid counts retain the conservative guard. Counting has no retries, a 20s timeout and
+the run's abort signal. Image-download errors from counting and generation share the existing
+one-time text fallback, which is checked again before dispatch. Ordinary smaller requests make no
+counting call. Coverage: `imageDownloadFallback.test.js` and the Responses compatibility cases in
+`assistantHelper.test.js` (including workflow-style full tools, the exact 231,953 estimate,
+the 200K boundary, failed counting, cancellation and a 403 during counting).
+
 **A chat image is fetchable, and `get_chat_attachment` used to say otherwise.** The tool and its
 fallback filtered `media.kind === 'file'`, while WhatsApp and web uploads store a photo as
 `kind: 'image'` — and `list_recent_chat_media` advertises those images together with their
