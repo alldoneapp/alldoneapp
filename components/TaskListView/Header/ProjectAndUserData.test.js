@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux'
 
 import ProjectAndUserData from './ProjectAndUserData'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
+import useEmailLabelGroups from '../EmailLine/useEmailLabelGroups'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
@@ -19,7 +20,8 @@ jest.mock('../../styles/global', () => ({
 jest.mock('./ProjectLine', () => 'ProjectLine')
 jest.mock('./UserLine', () => 'UserLine')
 jest.mock('./NotificationBubble', () => 'NotificationBubble')
-jest.mock('../EmailLine/ProjectEmailLabelChips', () => 'ProjectEmailLabelChips')
+jest.mock('../EmailLine/EmailLabelChip', () => 'EmailLabelChip')
+jest.mock('../EmailLine/useEmailLabelGroups', () => jest.fn())
 jest.mock('../../../hooks/Chats/useShowNewCommentsBubbleInBoard', () => jest.fn())
 
 const projectId = 'project-1'
@@ -57,5 +59,16 @@ describe('ProjectAndUserData comment badges', () => {
 
         expect(badge.props).toEqual(expect.objectContaining({ amount: 3, projectId }))
         expect(badge.props.isFollowedNotification).toBeUndefined()
+    })
+})
+
+describe('ProjectAndUserData email pill (AT-3110)', () => {
+    it('does not show the email pill on a project header; messages are reached through Chats', () => {
+        const tree = renderProjectData({})
+
+        expect(tree.root.findAllByType('EmailLabelChip')).toHaveLength(0)
+        expect(useEmailLabelGroups).not.toHaveBeenCalled()
+        expect(tree.root.findAllByType('ProjectLine')).toHaveLength(1)
+        expect(tree.root.findAllByType('UserLine')).toHaveLength(1)
     })
 })
