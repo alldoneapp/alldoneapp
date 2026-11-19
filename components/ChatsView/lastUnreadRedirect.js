@@ -4,7 +4,7 @@ import { getFollowedAndUnfollowedChatNotificationsAmount } from '../../utils/not
 
 /**
  * AT-3104: after the user clears unread messages from the Chats list, move on instead of leaving
- * them in an empty list.
+ * them in an empty list. AT-3108: move on at once, and back to the task list they came from.
  *
  * Red unread is an unread chat notification with `followed: true`, grey unread one with
  * `followed: false` (`projectChatNotifications[pid].totalFollowed` / `totalUnfollowed`, the counts
@@ -22,7 +22,22 @@ import { getFollowedAndUnfollowedChatNotificationsAmount } from '../../utils/not
  * - **Red, then grey, then tasks.** When an action clears the last red message of the scope on
  *   the Followed tab and grey ones remain, Chats switches to the All tab (keeping the Unread filter
  *   on or off as it was), so the grey messages show. The tasks open only when the scope has neither
- *   red nor grey unread left: the selected project's open tasks, or the All Projects task list.
+ *   red nor grey unread left.
+ * - **At once, not after the mailbox (AT-3108).** Archive clears the unread state locally first
+ *   (AT-2424) and only then archives in Gmail: two round trips (the archive plus a forced summary
+ *   refresh), 4-8s, longer on a cold function. !914 decided only after that, so the list emptied
+ *   and then nothing happened for seconds, and any click meanwhile cancelled the jump. The store is
+ *   now watched from the press on and the decision is taken as soon as the local counts allow it.
+ *   If the archive fails afterwards, the unread state comes back (AT-2424) and the user is told:
+ *   the row alerts as always; the bulk buttons, whose red "try again" is then no longer on screen,
+ *   alert through `leftChats()` (unreadEmailArchiveContext).
+ * - **Back to the task list the user came from (AT-3108).** The last task list on screen is
+ *   remembered: All Projects or one project, whose board (the user's own, a colleague's, a
+ *   contact's, an assistant's or a workstream's - Karsten, 2026-11-19: "genau dieses Board") and
+ *   its Open / Workflow / Done (an assistant's In progress) toggle. Without one (the session started
+ *   in Chats, or that project is gone) the !914 target opens: the selected project's open tasks, or
+ *   the All Projects task list. A board owner no longer found in the project opens the user's own
+ *   tasks of that project.
  * - **Only after a user action in the Chats list.** Armed by the press itself (row Archive / Mark as
  *   read, the previews' Archive, a project line's or the All Projects line's Mark as read / Archive
  *   emails, More > Mark as read). Nothing that clears unread state on its own - the initial load,
@@ -30,18 +45,19 @@ import { getFollowedAndUnfollowedChatNotificationsAmount } from '../../utils/not
  *
  * Races it handles:
  *
- * - **Archive failures.** Archiving clears the unread state optimistically and puts it back if the
- *   mailbox refuses (AT-2424), 4-8s later. The redirect waits for the action to SUCCEED and then
- *   re-checks the live counts.
- * - **Overlapping presses.** While any armed action is still running, nothing is decided: in All
- *   Projects a pending archive of project Y has already cleared Y optimistically, and could still
- *   put it back. The last action to settle decides on the live counts; if it failed, nothing happens.
+ * - **Failures before the clear.** An action that fails (rejects, throws, or resolves to `false`,
+ *   the archive hook's "failed") before anything was decided ends the watch: nothing happens.
+ * - **Overlapping presses** in the same view share one watch, which stays open until the last of
+ *   them settles; it decides once. A press in another view replaces it.
  * - **The user moved on.** The view (Chats list on screen), the selected project, the Chats tab,
- *   the Unread filter and the logged-in user are captured at the press and must be unchanged when
- *   the action settles. A newer press cancels an older pending check.
- * - **New unread messages** arriving before the action settles keep the user where they are.
+ *   the Unread filter and the logged-in user are captured at the press; any change ends the watch.
+ * - **New unread messages** arriving before the counts reach the target keep the user where they
+ *   are.
+ * - **A grey step in the middle of a bulk action.** Clearing several projects lands one project at
+ *   a time, so "no red, grey left" can be a step on the way to "nothing left". After its own switch
+ *   to the All tab the watch therefore keeps going in the new view and can still open the tasks.
  * - **A late local snapshot.** Offline, `awaitWriteAck` returns before the listener has delivered
- *   the delete. If the scope is not settled yet, the store is watched for a short window
+ *   the delete. After the last action settled, the store is watched for a short window
  *   (LAST_UNREAD_SETTLE_MS) with the same checks.
  */
 
@@ -128,8 +144,8 @@ export const getLinkedEmailsProjectIds = linkedEmails =>
     )
 
 /**
- * What to do now that an action settled, from the live state: 'tasks' (nothing unread left in the
- * scope), 'grey' (the action cleared the last red message on the Followed tab, grey ones remain),
+ * What to do now, from the live state: 'tasks' (nothing unread left in the scope), 'grey' (the
+ * armed presses cleared the last red message on the Followed tab, grey ones remain),
  * 'wait' (unread left that the user still sees) or 'cancel' (the user moved on).
  */
 export const decideAfterUnreadAction = (state, context, { redAtPress = 0 } = {}) => {
@@ -142,13 +158,52 @@ export const decideAfterUnreadAction = (state, context, { redAtPress = 0 } = {})
 }
 
 /**
+ * The task list on screen (AT-3108), or null when it is not the current view: All Projects
+ * (`projectId: null`) or one project, whose board (`ownerId`, the `currentUser` the list shows) and
+ * Open / Workflow / Done toggle. Both `route` and the sidebar tab must say Tasks: opening Chats
+ * switches the tab in the same dispatch, before ChatsView replaces the route, and a task opened from
+ * the list replaces the route.
+ */
+export const getTaskListView = state => {
+    if (!state || state.route !== DV_TAB_ROOT_TASKS || state.selectedSidebarTab !== DV_TAB_ROOT_TASKS) return null
+    const userId = state.loggedUser?.uid || ''
+    if (!userId) return null
+    const index = state.selectedProjectIndex
+    const projectId = index === ALL_PROJECTS_INDEX ? null : state.loggedUserProjects?.[index]?.id || ''
+    if (projectId === '') return null
+    return {
+        userId,
+        projectId,
+        ownerId: projectId ? state.currentUser?.uid || userId : userId,
+        taskViewToggleIndex: state.taskViewToggleIndex,
+        taskViewToggleSection: state.taskViewToggleSection,
+    }
+}
+
+/** Remembers the last task list on screen; `observe` runs on every store change. */
+export function createTaskListMemory() {
+    let last = null
+    let lastState = null
+    return {
+        observe: state => {
+            if (state === lastState) return
+            lastState = state
+            const view = getTaskListView(state)
+            if (view) last = view
+        },
+        get: userId => (last && userId && last.userId === userId ? last : null),
+    }
+}
+
+/**
  * Builds the runner. Dependencies are injected so the race handling is testable without the store.
  *
- * `openTasks(projectId)` opens the project's tasks, or the All Projects task list for null.
- * `showGreyUnread(context)` switches Chats to the All tab.
+ * `openTasks(projectId)` opens the task list (the remembered one; `projectId` is the !914 fallback:
+ * the selected project, or null for All Projects). `showGreyUnread(context)` switches Chats to the
+ * All tab.
  *
  * Returns `run(projectIds, action)`: runs `action` (sync or async) and returns its result unchanged.
- * An action that resolves to `false` (the archive hook's "failed") or throws never redirects.
+ * The action receives `{ leftChats }`, telling whether its press has already opened the tasks.
  */
 export function createLastUnreadRedirect({
     getState,
@@ -159,53 +214,53 @@ export function createLastUnreadRedirect({
     setTimer = setTimeout,
     clearTimer = clearTimeout,
 }) {
-    let inFlight = 0
-    // The armed presses still running or settling: the view they were made in and the most red
-    // unread the scope had at any of them.
-    let batch = null
-    let waiter = null
+    // The watch of the armed presses still running or settling: the view they were made in, the
+    // most red unread the scope had at any of them, and how many are still running.
+    let current = null
 
-    const cancelWaiter = () => {
-        if (!waiter) return
-        const current = waiter
-        waiter = null
-        current.cancel()
+    const stop = watch => {
+        if (!watch || watch.stopped) return
+        watch.stopped = true
+        if (current === watch) current = null
+        if (watch.unsubscribe) watch.unsubscribe()
+        if (watch.timer !== null) clearTimer(watch.timer)
+        watch.timer = null
     }
 
-    // 'done' (navigated or switched tab), 'wait' or 'cancel'.
-    const tryRedirect = pending => {
-        const decision = decideAfterUnreadAction(getState(), pending.context, pending)
-        if (decision === 'tasks') {
-            openTasks(pending.context.projectId)
-            return 'done'
-        }
+    const check = watch => {
+        // `switching`: our own tab switch dispatches, which calls this listener again mid-change.
+        if (watch.stopped || watch.switching) return
+        const decision = decideAfterUnreadAction(getState(), watch.context, watch)
+        if (decision === 'wait') return
         if (decision === 'grey') {
-            showGreyUnread(pending.context)
-            return 'done'
+            watch.switching = true
+            showGreyUnread(watch.context)
+            watch.switching = false
+            // Keep watching in the All tab: a bulk action may still clear the grey ones (see top).
+            watch.redAtPress = 0
+            watch.context = getChatsViewContext(getState())
+            if (!watch.context) stop(watch)
+            else check(watch)
+            return
         }
-        return decision
+        // Stopped before navigating: the navigation dispatches, which calls this listener again.
+        stop(watch)
+        if (decision === 'tasks') {
+            watch.leftChats = true
+            openTasks(watch.context.projectId)
+        }
     }
 
-    const settle = pending => {
-        cancelWaiter()
-        if (tryRedirect(pending) !== 'wait') return
-
-        let unsubscribe = null
-        let timer = null
-        const self = {
-            cancel: () => {
-                if (unsubscribe) unsubscribe()
-                if (timer !== null) clearTimer(timer)
-            },
+    const finish = (watch, succeeded) => {
+        watch.inFlight -= 1
+        if (watch.stopped) return
+        if (!succeeded) {
+            stop(watch)
+            return
         }
-        waiter = self
-        unsubscribe = subscribe(() => {
-            if (waiter !== self) return
-            if (tryRedirect(pending) !== 'wait') cancelWaiter()
-        })
-        timer = setTimer(() => {
-            if (waiter === self) cancelWaiter()
-        }, settleMs)
+        if (watch.inFlight > 0) return
+        check(watch)
+        if (!watch.stopped) watch.timer = setTimer(() => stop(watch), settleMs)
     }
 
     return function runWithLastUnreadRedirect(projectIds, action) {
@@ -218,74 +273,147 @@ export function createLastUnreadRedirect({
             !!unread &&
             unread.red + unread.grey > 0 &&
             ids.some(projectId => isProjectInChatsView(state, projectId))
-        if (!armed) return action()
+        if (!armed) return action(NOT_ARMED)
 
-        // A newer press supersedes an older pending check.
-        cancelWaiter()
-        inFlight += 1
-        batch =
-            batch && sameContext(batch.context, context)
-                ? { context, redAtPress: Math.max(batch.redAtPress, unread.red) }
-                : { context, redAtPress: unread.red }
-
-        const finish = succeeded => {
-            inFlight -= 1
-            if (inFlight > 0) return
-            // The last armed action to settle decides, on the live counts.
-            const pending = batch
-            batch = null
-            if (succeeded && pending) settle(pending)
+        let watch = current
+        if (watch && sameContext(watch.context, context)) {
+            watch.inFlight += 1
+            watch.redAtPress = Math.max(watch.redAtPress, unread.red)
+            if (watch.timer !== null) clearTimer(watch.timer)
+            watch.timer = null
+        } else {
+            // A press in another view supersedes an older watch.
+            stop(watch)
+            watch = {
+                context,
+                redAtPress: unread.red,
+                inFlight: 1,
+                stopped: false,
+                switching: false,
+                leftChats: false,
+                unsubscribe: null,
+                timer: null,
+            }
+            current = watch
+            // Watching from the press on: the clear lands in the local cache within the press,
+            // seconds before the mailbox answers (AT-3108).
+            watch.unsubscribe = subscribe(() => check(watch))
         }
+        const handle = { leftChats: () => watch.leftChats }
 
         let result
         try {
-            result = action()
+            result = action(handle)
         } catch (error) {
-            finish(false)
+            finish(watch, false)
             throw error
         }
+        check(watch)
         return Promise.resolve(result).then(
             value => {
-                finish(value !== false)
+                finish(watch, value !== false)
                 return value
             },
             error => {
-                finish(false)
+                finish(watch, false)
                 throw error
             }
         )
     }
 }
 
-/** The same dispatches as pressing the project in the sidebar: the project's open tasks. */
-export function openProjectTasksFromChats(store, projectId) {
+const NOT_ARMED = Object.freeze({ leftChats: () => false })
+
+/**
+ * The board owner of a remembered task list (AT-3108): the logged user, or the colleague, contact,
+ * assistant or workstream as currently loaded for that project; null when not found there.
+ */
+export const findBoardOwner = (state, project, ownerId) => {
+    const loggedUser = state?.loggedUser
+    if (!ownerId || ownerId === loggedUser?.uid) return loggedUser || null
+    const projectId = project?.id
+    const byId = list => (Array.isArray(list) ? list.find(item => item?.uid === ownerId) : null)
+    return (
+        byId(state?.projectUsers?.[projectId]) ||
+        byId(state?.projectContacts?.[projectId]) ||
+        byId(state?.projectAssistants?.[projectId]) ||
+        byId(state?.projectWorkstreams?.[projectId]) ||
+        ((project?.globalAssistantIds || []).includes(ownerId) ? byId(state?.globalAssistants) : null) ||
+        null
+    )
+}
+
+const OPEN_TOGGLE = { index: 0, section: 'Open' }
+
+const rememberedToggle = view => ({
+    index: Number.isInteger(view?.taskViewToggleIndex) ? view.taskViewToggleIndex : OPEN_TOGGLE.index,
+    section:
+        typeof view?.taskViewToggleSection === 'string' && view.taskViewToggleSection
+            ? view.taskViewToggleSection
+            : OPEN_TOGGLE.section,
+})
+
+/**
+ * Where the redirect lands (AT-3108), from the live state: the remembered task list, else the !914
+ * target (`fallbackProjectId`'s open tasks, or All Projects for null). Returns
+ * `{ projectId: null, toggle }` for All Projects, `{ project, owner, toggle }` for a project, or
+ * null when there is nowhere to go.
+ */
+export const getTaskListTarget = (state, fallbackProjectId, rememberedView) => {
+    const projects = state?.loggedUserProjects || []
+    const findProject = id => projects.find(item => item?.id === id) || null
+
+    if (rememberedView && rememberedView.projectId === null) {
+        return { projectId: null, toggle: rememberedToggle(rememberedView) }
+    }
+    const rememberedProject = rememberedView ? findProject(rememberedView.projectId) : null
+    if (rememberedProject) {
+        const owner = findBoardOwner(state, rememberedProject, rememberedView.ownerId)
+        if (owner) return { project: rememberedProject, owner, toggle: rememberedToggle(rememberedView) }
+        // The board's owner is no longer in the project: the user's own tasks there. An assistant's
+        // In progress section does not exist on a person's board (UserLine maps it the same way).
+        const toggle = rememberedToggle(rememberedView)
+        return {
+            project: rememberedProject,
+            owner: state?.loggedUser || null,
+            toggle: toggle.section === 'In progress' ? OPEN_TOGGLE : toggle,
+        }
+    }
+    if (fallbackProjectId === null) return { projectId: null, toggle: OPEN_TOGGLE }
+    const project = findProject(fallbackProjectId)
+    return project ? { project, owner: state?.loggedUser || null, toggle: OPEN_TOGGLE } : null
+}
+
+/** Opens the task list `getTaskListTarget` picks, with the dispatches the sidebar uses. */
+export function openTaskListFromChats(store, fallbackProjectId, rememberedView) {
     const actions = require('../../redux/actions')
     const ProjectHelper = require('../SettingsView/ProjectsSettings/ProjectHelper').default
     const { dismissAllPopups } = require('../../utils/HelperFunctions')
 
-    const { loggedUser, loggedUserProjects } = store.getState()
-    const project = (loggedUserProjects || []).find(item => item.id === projectId)
-    if (!project) return
+    const state = store.getState()
+    const target = getTaskListTarget(state, fallbackProjectId, rememberedView)
+    if (!target) return
 
     dismissAllPopups(true, true, true)
+    if (!target.project) {
+        store.dispatch([
+            actions.hideFloatPopup(),
+            actions.navigateToAllProjectsTasks({
+                taskViewToggleIndex: target.toggle.index,
+                taskViewToggleSection: target.toggle.section,
+            }),
+        ])
+        return
+    }
     store.dispatch([
         actions.hideFloatPopup(),
-        actions.storeCurrentUser(loggedUser),
-        actions.switchProject(project.index),
-        actions.setSelectedTypeOfProject(ProjectHelper.getTypeOfProject(loggedUser, projectId)),
+        actions.storeCurrentUser(target.owner),
+        actions.switchProject(target.project.index),
+        actions.setSelectedTypeOfProject(ProjectHelper.getTypeOfProject(state.loggedUser, target.project.id)),
         actions.setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-        actions.setTaskViewToggleIndex(0),
-        actions.setTaskViewToggleSection('Open'),
+        actions.setTaskViewToggleIndex(target.toggle.index),
+        actions.setTaskViewToggleSection(target.toggle.section),
     ])
-}
-
-/** The All Projects task list (open tasks), as the thread view's "back to tasks" does. */
-export function openAllProjectsTasksFromChats(store) {
-    const actions = require('../../redux/actions')
-    const { dismissAllPopups } = require('../../utils/HelperFunctions')
-
-    dismissAllPopups(true, true, true)
-    store.dispatch([actions.hideFloatPopup(), actions.navigateToAllProjectsTasks()])
 }
 
 /**
@@ -302,7 +430,8 @@ let defaultRunner = null
 
 /**
  * Hands the app's redux store to the redirect; App.js calls it once at boot, next to the other
- * store observers.
+ * store observers. From then on the last task list on screen is remembered (AT-3108): one cheap
+ * comparison per store change.
  *
  * The store is passed in rather than required here on the first press. Requiring it pulls in the
  * Firebase client and most of the app, about 4.4s with a cold Jest cache, and every test that
@@ -314,19 +443,22 @@ let defaultRunner = null
 export function configureLastUnreadRedirect(store) {
     if (!store || store === configuredStore) return
     configuredStore = store
+    const taskListMemory = createTaskListMemory()
+    taskListMemory.observe(store.getState())
+    store.subscribe(() => taskListMemory.observe(store.getState()))
     defaultRunner = createLastUnreadRedirect({
         getState: store.getState,
         subscribe: store.subscribe,
         openTasks: projectId =>
-            projectId ? openProjectTasksFromChats(store, projectId) : openAllProjectsTasksFromChats(store),
+            openTaskListFromChats(store, projectId, taskListMemory.get(store.getState().loggedUser?.uid)),
         showGreyUnread: context => showGreyUnreadInChats(store, context),
     })
 }
 
 /**
- * Runs a Chats-list archive / mark-as-read action and then moves on if it emptied what the user is
- * looking at. See the notes at the top of this file.
+ * Runs a Chats-list archive / mark-as-read action and moves on as soon as it emptied what the user
+ * is looking at. See the notes at the top of this file.
  */
 export function runWithLastUnreadRedirect(projectIds, action) {
-    return defaultRunner ? defaultRunner(projectIds, action) : action()
+    return defaultRunner ? defaultRunner(projectIds, action) : action(NOT_ARMED)
 }

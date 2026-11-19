@@ -268,11 +268,25 @@ cleared the last red message on the Followed tab and grey remain -> switch to th
 Unread filter kept as it was, since `Set chats active tab` resets it); anything else -> stay. Armed
 only by a press in the Chats list (row Archive / Mark as read, preview Archive, project line and All
 Projects line Mark as read / Archive emails, More > Mark as read), never by the initial load, the
-Gmail read sync or another device. Waits for the action to succeed (archive restores on failure,
-AT-2424); while any armed action is still running nothing is decided (a pending archive in another
-project has cleared it optimistically); the last to settle decides on the live counts and the
-captured view (route, project, Chats tab, Unread filter, user); a late local snapshot gets a 2s
-window. All archive presses go through the provider's wrapped `archiveLinkedEmails`. The thread view
+Gmail read sync or another device.
+
+**AT-3108 (2026-11-19, replaces !915): at once, and back to the last task list.** !914 waited for
+the action to settle, and an archive settles only after the Gmail archive plus a forced summary
+refresh (4-8s, longer cold): the row vanished, nothing happened, and any click in between cancelled
+the jump. The store is now watched from the press on and the same view rules are applied to the
+LOCAL counts, which the archive clears first (AT-2424); the grey switch is immediate too, and after
+it the watch keeps going in the All tab (a bulk action clears one project at a time, so "no red,
+grey left" can be a step on the way to "nothing left"). Overlapping presses in the same view share
+one watch until the last settles (+2s window for a late local snapshot); a failure before the
+decision ends it; any change of the captured view (route, project, Chats tab, Unread filter, user)
+ends it. A failure after the redirect still restores the unread state; the row alerts as before, the
+bulk "Archive emails" buttons (`notifyOnError: false`) now alert too when `leftChats()`, since their
+red "try again" is off screen. Target: the task list last on screen (`createTaskListMemory`, fed
+from App.js's store): All Projects or the project, the board (`currentUser`: own, colleague,
+contact, assistant, workstream; Karsten: "genau dieses Board") and the Open/Workflow/Done (In
+progress) toggle. Board owner not loaded in the project any more -> the user's own tasks there (In
+progress mapped to Open). Nothing remembered -> the !914 target (selected project's open tasks, or
+All Projects). All archive presses go through the provider's wrapped `archiveLinkedEmails`. The thread view
 (ChatBoard) is out of scope. App.js hands the store in (`configureLastUnreadRedirect`); the module
 must not require the store itself: that cost ~4.4s in a cold Jest cache and timed out the first
 archive test on master pipeline 3085791241. Pinned by `lastUnreadRedirect.test.js` and
