@@ -287,3 +287,14 @@ a collection query is refused (the unused `getFeedObjectsLastStateList` was remo
 longer skip their last state (the `skipObjectLastState` flag of AT-3002 is gone). Pinned by the
 `feed object last states are as private as their object` block of the rules emulator suite (11 of
 its cases fail against the old member-wide rule) and `functions/Feeds/objectFeedPrivacy.test.js`.
+
+## Updates: the unread dot lives in a 16px slot inside the card (AT-3103)
+
+Every feed type gives its entry `marginLeft: 16` while read and hands that margin to `NewFeedDot`
+while unread (`0`, or `6` on middle screens), so read and unread times line up. The object bodies
+used to wrap each entry in `marginLeft: -16` to hang that slot in a page gutter; inside an Updates
+project card (body padding only 8px) that put the dot half or fully outside the card's left edge.
+Entries are now wrapped in `components/Feeds/Commons/FeedRow.js`, which drops the outdent inside a
+`ProjectSectionContext` (Updates cards: dot 12px desktop / 14px middle screen from the card edge)
+and keeps it outside (detailed-view Updates tabs). Keep `NewFeedDot`'s margins summing to the slot
+width; `Commons/FeedRow.test.js` pins both the position and the slot width.

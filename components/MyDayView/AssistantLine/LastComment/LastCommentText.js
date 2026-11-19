@@ -2,7 +2,11 @@ import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
-import { cleanTextMetaData, removeFormatTagsFromText } from '../../../../functions/Utils/parseTextUtils'
+import {
+    cleanTextMetaData,
+    removeFormatTagsFromText,
+    stripMarkdownForPreview,
+} from '../../../../functions/Utils/parseTextUtils'
 import {
     parseFeedComment,
     TEXT_ELEMENT,
@@ -42,7 +46,9 @@ export const getPreviewText = (text, fromEnd = false) => {
 // Share the existing mention/link rendering across pending, saved and compact previews. Decode
 // complete tokens: cutting serialized text first can split a space code, object id or avatar URL.
 export default function LastCommentText({ projectId, commentText, compact = false, fromEnd = false, testID }) {
-    const text = cleanTextMetaData(removeFormatTagsFromText(commentText || '').replace(/\s+/g, ' '), true, true)
+    // Markdown goes before the lines are joined: a "## Heading" line otherwise renders as a "##"
+    // hashtag chip (stripMarkdownForPreview).
+    const text = cleanTextMetaData(stripMarkdownForPreview(removeFormatTagsFromText(commentText || '')), true, true)
     let linkCounter = 0
     const getLinkCounter = () => ++linkCounter
     const previewText = getPreviewText(text, fromEnd)

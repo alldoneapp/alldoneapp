@@ -9,6 +9,7 @@ import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 import { markMessagesAsRead } from '../../../../../utils/backends/Chats/chatsComments'
+import { runWithLastUnreadRedirect } from '../../../../ChatsView/lastUnreadRedirect'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../../redux/store'
 
@@ -34,7 +35,10 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
 
             projectIdsToClear = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
         }
-        Promise.all(projectIdsToClear.map(id => markMessagesAsRead(id, userId, chatsActiveTab))).catch(error => {
+        const markAll = () => Promise.all(projectIdsToClear.map(id => markMessagesAsRead(id, userId, chatsActiveTab)))
+        // Clearing the view's last unread messages moves on: grey unread first, then the tasks
+        // (AT-3104), in a single project and in All Projects.
+        runWithLastUnreadRedirect(projectIdsToClear, markAll).catch(error => {
             console.error('[chat read] Could not clear project notifications', {
                 projectIds: projectIdsToClear,
                 code: error?.code,

@@ -117,4 +117,49 @@ describe('projectDescriptionUpdateHelper', () => {
         expect(mockCreateProjectDescriptionChangedFeed).not.toHaveBeenCalled()
         expect(mockBatchCommit).not.toHaveBeenCalled()
     })
+    describe('expectedDescription (automatic update, AT-3095)', () => {
+        const dbWith = description => ({
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({
+                        exists: true,
+                        data: () => ({ name: 'Operations', description, userIds: ['user-1'] }),
+                    }),
+                })),
+            })),
+            doc: jest.fn(path => ({ path })),
+        })
+
+        test('writes nothing when the description changed since it was read', async () => {
+            const result = await updateProjectDescription({
+                db: dbWith('A member wrote this meanwhile'),
+                projectId: 'project-1',
+                userId: 'user-1',
+                description: 'Model text',
+                feedUser: { uid: 'assistant-1' },
+                expectedDescription: 'What the run read',
+            })
+
+            expect(result).toMatchObject({ success: false, updated: false, conflict: true })
+            expect(mockBatchUpdate).not.toHaveBeenCalled()
+            expect(mockCreateProjectDescriptionChangedFeed).not.toHaveBeenCalled()
+            expect(mockBatchCommit).not.toHaveBeenCalled()
+        })
+
+        test('writes and posts the feed line as the given actor when it still matches', async () => {
+            const result = await updateProjectDescription({
+                db: dbWith('What the run read '),
+                projectId: 'project-1',
+                userId: 'user-1',
+                description: 'Model text',
+                feedUser: { uid: 'assistant-1' },
+                expectedDescription: 'What the run read',
+            })
+
+            expect(result).toMatchObject({ success: true, updated: true })
+            expect(mockBatchUpdate).toHaveBeenCalledWith({ path: 'projects/project-1' }, { description: 'Model text' })
+            expect(mockCreateProjectDescriptionChangedFeed.mock.calls[0][5]).toEqual({ uid: 'assistant-1' })
+            expect(mockGetFeedUserData).not.toHaveBeenCalled()
+        })
+    })
 })

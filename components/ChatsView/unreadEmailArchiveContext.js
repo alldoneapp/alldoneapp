@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
+import { getLinkedEmailsProjectIds, runWithLastUnreadRedirect } from './lastUnreadRedirect'
 
 // Lazy, like the archive action itself: the sync reaches the Firebase client, and a row rendered on
 // its own (or in a unit test) must not have to load it.
@@ -129,7 +130,17 @@ export function useEmailCommentReadSync(sources) {
 }
 
 export function UnreadEmailArchiveProvider({ children }) {
-    const archive = useLinkedEmailArchive()
+    const linkedEmailArchive = useLinkedEmailArchive()
+    // Every archive press in the chat list (row, preview, project line, All Projects line) goes
+    // through here, so this is where AT-3104 hooks in: once the archive has succeeded, a view with no
+    // red unread left moves on to its grey unread messages, and one with nothing unread to its tasks.
+    const archive = {
+        ...linkedEmailArchive,
+        archiveLinkedEmails: (emails, options) =>
+            runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), () =>
+                linkedEmailArchive.archiveLinkedEmails(emails, options)
+            ),
+    }
     const [sources, setSources] = useState({})
 
     // Gmail → Alldone read sync (AT-2376). The rows have already resolved exactly the set this

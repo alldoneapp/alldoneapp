@@ -151,6 +151,11 @@ function SyncSummary({ state, result }) {
 }
 
 function formatClassificationLabel(entry = {}) {
+    // No label matched and the sync applied its fallback label (AT-3102); the reasoning below is
+    // still the classifier's own.
+    if (entry.selectedGmailLabelName && entry.labelSource === 'fallback') {
+        return translate('Gmail fallback label', { label: entry.selectedGmailLabelName })
+    }
     if (entry.selectedGmailLabelName) return entry.selectedGmailLabelName
     if (entry.skippedReason === 'no_match') return 'No match'
     if (entry.skippedReason === 'missing_label_definition') return 'Missing label definition'

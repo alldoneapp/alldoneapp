@@ -2,6 +2,69 @@
 
 Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to read this file.
 
+## The commissioning chat always links the task the work continues in (AT-3096, 2026-11-18)
+
+Karsten asked in a CTO chat for weekly project-description updates; the reply was "Die Umsetzung
+läuft in **AT-3095** weiter" with no link. The **result** side already linked the task in every
+server-written line (VM result note, 📋 review notice, step-change line, VM question notice, template
+notices). The **hand-off** reply was model prose. Product decision: both moments always show the
+canonical task link (`{base}/projects/{pid}/tasks/{tid}/chat`), as platform behaviour.
+
+- **Tool results** (`functions/Assistant/delegatedTaskLinks.js`, `withDelegatedTaskLink`):
+  `create_task` with `trackAssistantWork` (workflow and direct) and every delegation answer of
+  `execute_task_in_vm` (`workflow_managed`/`task_changed` from a created host task,
+  `workflow_managed`/`workflow_step_restarted`/`needs_workflow_choice` when joining a delegated task)
+  carry `taskUrl` and `delegatedTask`, built only from the ids the tool resolved. The hand-off
+  instruction tells the model to pass `taskUrl` on and never build or placeholder a link.
+- **Safety net:** both run paths (`storeChunks` and the non-streaming collector, which also feeds
+  `talk_to_assistant` results via `delegatedTaskResults`) run `ensureDelegatedTaskLinksInResponse`
+  after the note and VM link helpers. It rewrites any URL of the same task (wrong project, no
+  `/chat`) to the canonical one, appends `Follow it here: …` / `Hier geht es weiter: …` /
+  `Síguelo aquí: …` (`noticeLanguage` key `taskLink.follow`, run language) when missing, dedupes per
+  task and against the VM host link, and adds nothing when the reply is written in that task's chat.
+  Plain `create_task` (no delegation) is untouched. The VM host link line uses the same localized key.
+- **VM hand-off to another task:** `onVmHandoff` links the frozen introduction itself, because a
+  follow-up message (result after `get_vm_job`) gets the link at finalization while the introduction
+  stays frozen.
+- **Delegates:** a `talk_to_assistant` delegate has no conversation. `executeDelegatedAssistantRequest`
+  now forwards `originTracksWork` (the caller's chat is Anna's or a tracked project chat), and
+  `resolveDelegationOrigin` (`annaTaskDelegation.js`) records that chat on the receipt, so the review
+  notice and step-change lines of a task the delegate created reach the chat the user asked in. A
+  task thread is still never an origin; nested delegates keep no origin, as before.
+- **Privacy:** only the task URL (and a known human-readable id) is added, never the task name; the
+  link opens nothing a reader could not already open.
+
+Coverage: `delegatedTaskLinks.test.js`, the AT-3096 cases in `assistantHelper.test.js` (create_task
+results, the end-to-end German reply, the frozen VM introduction, the delegate receipt) and
+`annaTaskDelegation.test.js`. Ships with the Functions deploy; the runner image is not involved.
+
+### No link to the task the user is already in (AT-3096 follow-up, 2026-11-18)
+
+Regression after the deploy: in the chat of task `Q2XA2dxekAsf9QjI24yS` (AT-3093) Karsten wrote
+"please try again"; the reply ended "The result will appear here: <link to that same task>". Logs
+(execution `m869zj6c0crc`): `execute_task_in_vm` ran in the task's own chat, joined it as a delegated
+workflow task (`workflow_managed`), and `withDelegatedTaskLink` put a `taskUrl` of that task into the
+result. The model passed it on. The server line was not involved: the safety net already skipped the
+current task. The VM start result had the same flaw ("The work lives in this thread: <url> — include
+that link") for every VM started in the conversation the assistant answers in.
+
+- `withDelegatedTaskLink(..., { currentThread })` (all three `execute_task_in_vm` hand-offs) returns
+  no URL for the current task: `continuesInCurrentConversation`, a `linkInstruction`, and
+  `delegatedTask: { projectId, taskId, currentConversation: true }` (a marker without URL; nothing is
+  ever appended for it). `move_task_workflow_step` in the task's own chat returns the same marker.
+- `startVmJob({ callerThread })`: a VM in the caller's thread gets a hint that says not to link it.
+  `hostThreadUrl` stays in the result for the notification guard.
+- Safety net: when a run's hand-off (marker, delegated reference or started VM) is the current thread,
+  `removeCurrentThreadLinks` takes links to that thread out of the reply and tidies the sentence
+  ("…here: <link>" → "…here."). The frozen in-thread VM introduction gets the same treatment. Links to
+  other tasks stay; a self-link in a reply with no hand-off (the user asked for the link) is kept.
+- Only a **task** chat is "the task". A topic chat (CTO chat, Anna) still gets hand-off and result links.
+  Result notices were already safe: they go to the stored origin, which is never the task itself.
+
+Coverage: the "gets no link to itself", `removeCurrentThreadLinks` and in-thread VM cases in
+`delegatedTaskLinks.test.js`, the two Q2XA2-style cases in `assistantHelper.test.js` (Anna VM message
+order), `vmJob.test.js` (host hint) and `workflowStepMove.test.js` (marker only in the own chat).
+
 ## A template started in the Anna chat announces its task there (AT-3082, 2026-11-18)
 
 The Anna composer's **Templates** button (for example Anna's "Historical fact of the day" prompt)
@@ -195,13 +258,25 @@ turn (`deferDelegatedWorkflowForConversation`) and continues in the same thread 
 Heartbeats, emails and workflow prompts still get the refusal, which now names the failure and the
 tag. Tests: `annaTaskDelegation.test.js`, and the in-thread case in `assistantHelper.test.js`.
 
-**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` reads
+**The "Needs attention" tag had never appeared.** `AssistantWorkflowRunTag` (since AT-3099
+`TaskExecutionStatusTag`) reads
 `task.workflowAiStatus`, but `mapTaskData` (`utils/backends/firestore.js`), which every task passes
 through on the client, did not name that field and so dropped it: on every row the tag rendered
 nothing, failed steps included (AT-3082 was `failed` / `vm_interrupted` and showed only the "Failed
 VM" session badge, which has no action). It is mapped now, and `uploadNewTask` deletes it from the
 copy, because that function spreads its input and recurrences or duplicates would otherwise inherit a
-"failed" step they never ran. Guardrail: `components/Tags/AssistantWorkflowRunTag.test.js`.
+"failed" step they never ran. Guardrail: now `components/Tags/TaskExecutionStatusTag.test.js`.
+
+**One execution status chip per task row (AT-3099).** The row used to show the workflow-run chip
+and a separate VM-session pill ("Aktiv" + "Paused VM", "In Warteschlange" + "Paused VM"). Both now
+resolve to one outline chip, `components/Tags/TaskExecutionStatusTag.js`, through
+`taskExecutionStatus.js`. Priority: Wartet auf dich (session `blockedByCorrelationId`; never the
+stale `lastRunStatus: 'awaiting_user'`, which survives an expired or cancelled question) > Aktiv (VM
+`busy`, step `running`/`awaiting_vm`) > In Warteschlange (step `pending`, session queue) > Benötigt
+Aufmerksamkeit (failed step, which the chip retries; failed VM run) > Pausiert (session
+`idle_running`/`paused`). A done task ignores the workflow layer but still shows a retained session
+as "Pausiert" (product decision). VM state, last run and queue go into the tooltip only. The
+VM filter in `TaskFiltersLine` still uses `getVmSessionBadgeState`.
 
 Anna's originating conversation is recorded in the server-only `delegatedTaskOrigins` collection,
 not trusted from client-editable task metadata. Workflow VM jobs use that receipt for result
@@ -218,6 +293,47 @@ still answered `workflow_managed`, so Anna announced work that never started. Ne
 `Tasks/workflowStepHelper.js`, client `WorkflowView/workflowStepHelper.js`), never `=== OPEN_STEP`.
 UIs that compare step _indexes_ work only by coincidence (`indexOf('Open')` is -1). A task that is
 neither Open nor in the workflow now returns `task_changed` instead of a false `workflow_managed`.
+
+## Renewed assistant work reopens a done task into its workflow (AT-3098, 2026-11-18)
+
+Karsten commented on a task that was already Done; the assistant started a VM on it and the task
+stayed Done for the whole run, and the result never went through the workflow's review. Two holes:
+`getDelegatedTaskExecution` returned `null` for a done delegated task (so the chat VM ran outside
+the workflow), and nothing looked at `done` for ordinary tasks. `move_task_workflow_step` still
+refuses Done on purpose (a chat approval must not reopen anything).
+
+Product decisions (Karsten): **only actual work reopens** a task, meaning a VM job hosted in it
+(`execute_task_in_vm` in its chat, `target_task_id`, or a continuation). A plain answer, a status
+question or a small tool edit leaves it Done. The task goes to the **first AI step of the working
+assistant** (else the first AI step), so every later step, human review included, runs again. With
+no AI step (or no workflow) it goes back to **Open** with its owner, who completes it afterwards.
+
+`functions/Tasks/doneTaskReactivation.js` writes the reopen in a transaction that only acts on a
+task that is still done (idempotent against retries, concurrent runs and the user reopening it in
+the app). The write mirrors the client's `moveTasksFromDone` (rebuilt `stepHistory`/`userIds`,
+subtasks, a `workflowStepMove` stamp with the entry time and **no** `runLockId`). The assistant is the
+editor (`lastEditorId`, `lastEditorName`), so a `taskStatisticsTransition` marker lets the fan-out
+reverse the owner's completion statistics. The fan-out also writes the "changed task to Open" feed,
+reopens the delegation receipt and tells the origin conversation.
+
+- **Ordinary task:** `execute_task_in_vm` plans the reopen before the VM brief (the VM is told to
+  leave the task open) and writes it only after `startVmJob` succeeds. The VM record therefore
+  exists when the trigger enqueues the AI step, so the step parks on it (`task_ai_run_already_active`)
+  and, when the job settles, hands the task to the next (human) step without running its prompt.
+  A refused launch reopens nothing.
+- **Delegated task:** only the workflow starts the VM, so the guard reopens the task into the
+  assistant's step, enqueues it at once and returns `workflow_step_reopened`. The VM brief is
+  appended to the step prompt (`workflowAiPromptOverride`, mode `append`). Only the owner's request
+  reopens it (the workflow runs and pays as the owner); others, and workflows without an AI step,
+  get `task_done` and no VM.
+- **Enqueue trap:** a done task keeps the history it was completed from. Reopening it onto that same
+  last step (the final AI step completed it) used to enqueue nothing, because the step id had not
+  changed. `enqueueWorkflowAiRunIfNeeded` now treats a reopen as a landing when the move stamp entered
+  that step at the new `completed`. Unchecking the checkbox (`setTaskStatus`, stamp without entry time)
+  still runs nothing. A done task never enqueues.
+
+Tests: `functions/Tasks/doneTaskReactivation.test.js`, the AT-3098 blocks of `workflowAiStep.test.js`,
+`annaTaskDelegation.test.js` and `assistantHelper.test.js`.
 
 ## Assistants know where the tasks they delegated stand, including what happened in their own chats (2026-11-17)
 

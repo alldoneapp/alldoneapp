@@ -5856,6 +5856,11 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.delegation).toEqual({ status: 'workflow_managed', directStart: true })
         expect(result.handoffInstruction).toContain('started directly')
+        // AT-3096: the hand-off carries the real task link for the commissioning conversation.
+        const taskUrl = 'https://my.alldone.app/projects/project-1/tasks/task-new/chat'
+        expect(result.taskUrl).toBe(taskUrl)
+        expect(result.delegatedTask).toEqual({ projectId: 'project-1', taskId: 'task-new', url: taskUrl })
+        expect(result.handoffInstruction).toContain('taskUrl')
         expect(enqueue).toHaveBeenCalledTimes(1)
         // The request posted into the task is what the first run of the work step answers.
         const requestComment = mockDocSet.mock.contexts.findIndex(ref =>
@@ -5898,6 +5903,23 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.delegation).toBeUndefined()
         expect(result.task.taskMetadata.delegation).toBeUndefined()
+        // Delegated, if directly: still linked (AT-3096).
+        expect(result.delegatedTask).toMatchObject({ projectId: 'project-1', url: expect.stringContaining('/tasks/') })
+    })
+
+    test('a task created without delegation gets no forced link (AT-3096)', async () => {
+        const result = await executeToolNatively(
+            'create_task',
+            { name: 'Call the dentist', projectId: 'project-1', taskOrigin: 'user_request' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+        expect(result.success).toBe(true)
+        expect(result.taskUrl).toBeUndefined()
+        expect(result.delegatedTask).toBeUndefined()
     })
 
     test('preserves user-authored MCP task creation without an assistant identity', async () => {
@@ -5957,6 +5979,8 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(result.responsibleAssistant).toEqual({ projectId: 'product', assistantId: 'cto' })
         expect(result.handoffInstruction).toContain('that assistant is now working')
+        // The link points into the destination project, not the conversation's (AT-3096).
+        expect(result.taskUrl).toBe('https://my.alldone.app/projects/product/tasks/task-new/chat')
         enqueue.mockRestore()
     })
 
@@ -9583,6 +9607,161 @@ describe('execute_task_in_vm existing task routing', () => {
         })
     })
 
+    // AT-3098: VM work on a done task reopens it into its workflow, but only once the work actually
+    // starts. Talking about a done task (no VM) never reaches this; a refused launch reopens nothing.
+    describe('VM work on a task that is already done (AT-3098)', () => {
+        let doneTaskReactivation
+        let planSpy
+        let reactivateSpy
+        // A fresh runtime per call: one runtime dedupes repeated VM calls of the same answer.
+        let messageCount = 0
+        const inTaskChat = () => ({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            messageId: `msg-${++messageCount}`,
+        })
+        const startFollowUp = (runtime = inTaskChat()) =>
+            executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug the user reported', task_type: 'prototype' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'There is still a bug, please fix it' },
+                runtime
+            )
+
+        beforeEach(() => {
+            doneTaskReactivation = require('../Tasks/doneTaskReactivation')
+            planSpy = jest
+                .spyOn(doneTaskReactivation, 'planDoneTaskReactivation')
+                .mockResolvedValue({ targetStepId: 'build', landsOnAiStep: true })
+            reactivateSpy = jest.spyOn(doneTaskReactivation, 'reactivateDoneTaskForAssistantWork').mockResolvedValue({
+                reactivated: true,
+                stepId: 'build',
+                stepLabel: 'AI: please build',
+                landsOnAiStep: true,
+            })
+            startVmJobSpy.mockResolvedValue({ success: true, correlationId: 'vm-1', status: 'started' })
+        })
+
+        afterEach(() => {
+            planSpy.mockRestore()
+            reactivateSpy.mockRestore()
+        })
+
+        test('reopens the task into its AI step once the job is accepted, and tells the VM to leave it open', async () => {
+            const order = []
+            startVmJobSpy.mockImplementation(async () => {
+                order.push('vm')
+                return { success: true, correlationId: 'vm-1', status: 'started' }
+            })
+            reactivateSpy.mockImplementation(async () => {
+                order.push('reopen')
+                return { reactivated: true, stepId: 'build', stepLabel: 'AI: please build', landsOnAiStep: true }
+            })
+
+            const result = await startFollowUp()
+
+            expect(planSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'project-1', taskId: 'task-1', assistantId: 'assistant-1' })
+            )
+            // After the VM record exists, so the reopened step parks on it instead of running twice.
+            expect(order).toEqual(['vm', 'reopen'])
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'project-1',
+                    taskId: 'task-1',
+                    assistantId: 'assistant-1',
+                    actorUserId: 'user-1',
+                    fromConversation: null,
+                })
+            )
+            expect(result).toMatchObject({
+                success: true,
+                correlationId: 'vm-1',
+                taskReopened: { stepId: 'build', step: 'AI: please build' },
+            })
+            const context = startVmJobSpy.mock.calls[0][0].threadContext
+            expect(context).toContain('already done and is reopened into its workflow')
+            expect(context).toContain('leave the task open')
+        })
+
+        test('a task without an AI step goes back to Open; its owner completes it afterwards', async () => {
+            planSpy.mockResolvedValue({ targetStepId: -1, landsOnAiStep: false })
+            reactivateSpy.mockResolvedValue({ reactivated: true, stepId: -1, stepLabel: 'Open', landsOnAiStep: false })
+
+            const result = await startFollowUp()
+
+            expect(result.taskReopened.message).toContain('back in Open')
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).toContain('its owner completes it')
+        })
+
+        test('a refused launch reopens nothing', async () => {
+            startVmJobSpy.mockResolvedValue({ success: false, message: 'Not enough Gold.' })
+
+            const result = await startFollowUp()
+
+            expect(result.success).toBe(false)
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('an open task is left alone', async () => {
+            planSpy.mockResolvedValue(null)
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+            expect(startVmJobSpy.mock.calls[0][0].threadContext).not.toContain('reopened')
+        })
+
+        test('work sent from another conversation (target_task_id) reopens the task too, naming that conversation', async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Fix the bug', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                { message: 'Please fix the bug in that task' },
+                { projectId: 'private', objectType: 'topics', objectId: 'anna-daily', messageId: 'msg-2' }
+            )
+
+            expect(reactivateSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    taskId: 'task-1',
+                    fromConversation: { projectId: 'private', objectType: 'topics', objectId: 'anna-daily' },
+                })
+            )
+        })
+
+        test("the workflow's own step run never reopens anything (it owns the task)", async () => {
+            await executeToolNatively(
+                'execute_task_in_vm',
+                { objective: 'Run the build step', task_type: 'prototype', target_task_id: 'task-1' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                {},
+                { onVmJobStarted: jest.fn(), workflowTaskId: 'task-1', workflowTaskProjectId: 'project-1' }
+            )
+
+            expect(planSpy).not.toHaveBeenCalled()
+            expect(reactivateSpy).not.toHaveBeenCalled()
+        })
+
+        test('a failed reopen does not fail the running work', async () => {
+            reactivateSpy.mockRejectedValue(new Error('Firestore unavailable'))
+
+            const result = await startFollowUp()
+
+            expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
+            expect(result.taskReopened).toBeUndefined()
+        })
+    })
+
     test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
         const onVmJobStarted = jest.fn()
         startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })
@@ -9892,6 +10071,44 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(result).toMatchObject({ success: true, taskId: 'new-host', status: 'workflow_managed' })
         expect(enqueue).toHaveBeenCalledTimes(1)
         expect(startVmJobSpy).not.toHaveBeenCalled()
+        enqueue.mockRestore()
+    })
+
+    // AT-3096: Anna asked a project assistant through talk_to_assistant; that delegate has no
+    // conversation of its own, so its task reports back to the chat the user asked in.
+    test('a delegate without a conversation links its task and records the caller chat as origin', async () => {
+        mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
+        const enqueue = serveCreatedHostTask()
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Build the export button', task_type: 'coding' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Build the export button' },
+            {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                originProjectId: 'anna-project',
+                originObjectType: 'topics',
+                originObjectId: 'anna-daily-chat',
+                originAssistantId: 'anna',
+                originTracksWork: true,
+            }
+        )
+        expect(result).toMatchObject({
+            success: true,
+            taskId: 'new-host',
+            status: 'workflow_managed',
+            taskUrl: 'https://my.alldone.app/projects/project-1/tasks/new-host/chat',
+        })
+        expect(receiptWrite()).toMatchObject({
+            originProjectId: 'anna-project',
+            originObjectType: 'topics',
+            originObjectId: 'anna-daily-chat',
+            originAssistantId: 'anna',
+        })
         enqueue.mockRestore()
     })
 
@@ -12128,14 +12345,20 @@ describe('Anna VM message order', () => {
             isPublicFor: [0],
         })
         const ensureChat = jest.spyOn(require('./assistantStatusHelper'), 'ensureChatExists').mockResolvedValue()
-        start.mockResolvedValueOnce({
-            success: true,
-            correlationId: 'vm-1',
-            status: 'started',
-            hostProjectId: 'other-project',
-            hostObjectId: 'other-task',
-            hostObjectType: 'tasks',
-            hostThreadUrl: hostUrl,
+        start.mockImplementationOnce(async () => {
+            // AT-3096: the introduction is frozen while the VM runs, so it carries the link already.
+            expect(messages()).toEqual([
+                expect.objectContaining({ commentText: `${intro}\n\nFollow it here: ${hostUrl}`, vmHandoff: true }),
+            ])
+            return {
+                success: true,
+                correlationId: 'vm-1',
+                status: 'started',
+                hostProjectId: 'other-project',
+                hostObjectId: 'other-task',
+                hostObjectType: 'tasks',
+                hostThreadUrl: hostUrl,
+            }
         })
         mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
         try {
@@ -12151,6 +12374,93 @@ describe('Anna VM message order', () => {
             target.mockRestore()
             ensureChat.mockRestore()
         }
+    })
+    test('a reply that only names the delegated task gets its canonical link in the user language (AT-3096)', async () => {
+        const taskUrl = 'https://my.alldone.app/projects/other-project/tasks/other-task/chat'
+        const target = jest.spyOn(require('./vmTargetTask'), 'resolveVmTargetTask').mockResolvedValue({
+            ok: true,
+            projectId: 'other-project',
+            objectType: 'tasks',
+            objectId: 'other-task',
+            isPublicFor: [0],
+        })
+        // A delegated task its workflow already handles: execute_task_in_vm joins it instead of a VM.
+        documents.set('items/other-project/tasks/other-task', {
+            userId: 'presentation-user',
+            executionMode: 'workflow',
+            stepHistory: [-1, '~delegation-work'],
+            taskMetadata: {
+                delegation: { ownerId: 'presentation-user', assistantId: 'cto', requiresReview: true },
+            },
+        })
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('Die Umsetzung läuft in **AT-3095** weiter.'))
+        try {
+            const answer = await run(
+                { target_task_id: 'other-task', target_project_id: 'other-project' },
+                { language: 'de' }
+            )
+            expect(start).not.toHaveBeenCalled()
+            expect(answer).toBe(`Die Umsetzung läuft in **AT-3095** weiter.\n\nHier geht es weiter: ${taskUrl}`)
+            expect(messages()).toEqual([expect.objectContaining({ commentText: answer, isLoading: false })])
+        } finally {
+            target.mockRestore()
+        }
+    })
+    // AT-3096 follow-up, reported 2026-11-18 in task Q2XA2dxekAsf9QjI24yS (AT-3093): the user asked in
+    // the delegated task's own chat to retry; execute_task_in_vm joined that same task (workflow_managed)
+    // and the reply said "The result will appear here: <link to this very task>".
+    test('a retry asked for in the delegated task’s own chat gets no link to that task', async () => {
+        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
+        const otherUrl = 'https://my.alldone.app/projects/presentation-project/tasks/other-task/chat'
+        documents.set('items/presentation-project/tasks/presentation-task', {
+            userId: 'presentation-user',
+            executionMode: 'workflow',
+            stepHistory: [-1, '~delegation-work', '~delegation-review'],
+            taskMetadata: {
+                delegation: {
+                    ownerId: 'presentation-user',
+                    assistantId: 'presentation-assistant',
+                    requiresReview: true,
+                },
+            },
+        })
+        mockResponsesCreate.mockResolvedValueOnce(
+            textResponse(
+                'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+                    `foreground—no merge or deployment. The result will appear here:\n\n${selfUrl}\n\nRelated: ${otherUrl}`
+            )
+        )
+
+        const answer = await run({ handoff_message: undefined })
+
+        expect(start).not.toHaveBeenCalled()
+        // What the model was given: no URL of the task it is answering in.
+        const toolOutput = mockResponsesCreate.mock.calls[0][0].input.find(
+            item => item.type === 'function_call_output' && item.call_id === 'launch-vm'
+        )
+        expect(JSON.parse(toolOutput.output)).toMatchObject({
+            status: 'workflow_managed',
+            continuesInCurrentConversation: true,
+        })
+        expect(toolOutput.output).not.toContain('/tasks/presentation-task/chat')
+        // What was stored: the self-link the model wrote anyway is gone, a link to another task stays.
+        expect(answer).toBe(
+            'The retry is queued through the task’s workflow: push the existing branch and open the MR in the ' +
+                `foreground—no merge or deployment. The result will appear here.\n\nRelated: ${otherUrl}`
+        )
+        expect(messages()).toEqual([expect.objectContaining({ commentText: answer, isLoading: false })])
+    })
+    test('a VM started in this task keeps no link to this task in its frozen introduction', async () => {
+        const selfUrl = 'https://my.alldone.app/projects/presentation-project/tasks/presentation-task/chat'
+        mockResponsesCreate.mockResolvedValueOnce(textResponse('Speculative result that must not replace the handoff.'))
+
+        // The default startVmJob mock asserts the frozen introduction is exactly `intro`.
+        expect(await run({ handoff_message: `${intro}\n\n${selfUrl}` })).toBe(intro)
+        expect(start).toHaveBeenCalledWith(
+            expect.objectContaining({
+                callerThread: { projectId: 'presentation-project', objectType: 'tasks', objectId: 'presentation-task' },
+            })
+        )
     })
     test('a launch failure has its own Anna message and leaves the introduction intact', async () => {
         start.mockResolvedValueOnce({ success: false, message: 'The VM is unavailable.' })

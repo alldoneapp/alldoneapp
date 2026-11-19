@@ -1,3 +1,6 @@
+import { stripMarkdownForPreview } from '../../../functions/Utils/parseTextUtils'
+import { isMcpActor } from '../../../functions/shared/mcpActor'
+
 // The unread list (Chats > Unread): one row per unread message, each with a tag the user can filter
 // by. Pure helpers only - no redux, no Firestore - so the rules are testable on their own.
 //
@@ -8,7 +11,9 @@
 //   user configured it; the same rule decides the server's auto-archive
 //   (functions/Gmail/unreadEmailSettings.js `resolveUnreadEmailKind`). Comments from before these
 //   fields existed have neither and fall back to "Emails".
-// - Any other comment is from a person or from an assistant.
+// - Any other comment is from a person or from an assistant. A comment an MCP client (Claude Code,
+//   Codex, ...) wrote in the user's name keeps the user as creator but carries `via: 'mcp'`
+//   (functions/shared/mcpActor.js); it is an agent's message, so it counts as an assistant one.
 
 export const UNREAD_TAG_ALL = 'all'
 export const UNREAD_TAG_PEOPLE = 'people'
@@ -64,7 +69,7 @@ export const getUnreadMessageTag = message => {
         if (labelKey === 'newsletter') return UNREAD_TAG_NEWSLETTER
         return EMAIL_KIND_TAGS[text(message.gmailData.emailKind)] || UNREAD_TAG_EMAIL
     }
-    return message?.fromAssistant ? UNREAD_TAG_ASSISTANT : UNREAD_TAG_PEOPLE
+    return message?.fromAssistant || isMcpActor(message) ? UNREAD_TAG_ASSISTANT : UNREAD_TAG_PEOPLE
 }
 
 // The labeling sync writes informational emails as "Email from [sender name] ([sender email]):
@@ -89,6 +94,46 @@ export const getEmailRowContent = message => {
     const senderEmail = text(message?.gmailData?.fromEmail) || parsed?.senderEmail || ''
     const senderName = text(message?.gmailData?.fromName) || parsed?.senderName || senderEmail
     return { senderName, senderEmail, summary: parsed ? parsed.summary : text(message?.commentText) }
+}
+
+// One line of plain text for the row's summary (the shared preview rule, see parseTextUtils).
+export const toOneLineSummary = value => stripMarkdownForPreview(value)
+
+// How much of a message a row previews (AT-3106, decided 2026-11-18): about three to four lines in
+// the desktop column, and half that on a phone, where a line holds about half as many characters.
+// Only the preview is shortened; the row's accessibility label and the opened chat keep the whole
+// message.
+export const UNREAD_SUMMARY_CHARACTER_LIMIT = 320
+export const UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE = 160
+export const UNREAD_SUMMARY_ELLIPSIS = '...'
+
+export const getUnreadSummaryLimit = mobile =>
+    mobile ? UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE : UNREAD_SUMMARY_CHARACTER_LIMIT
+
+/**
+ * The preview text of a row: the summary as it is when it fits, otherwise its first `limit`
+ * characters cut at a word boundary and closed with "...". Counted in code points, so an emoji is
+ * never split in half.
+ *
+ * The cut always falls between words, even when that drops a long last word: a mention, hashtag,
+ * link or encoded image/attachment is one word (see stripMarkdownForPreview), and half of one would
+ * render as a broken chip or a link to the wrong address. Only a preview without any space in its
+ * first `limit` characters (one giant token) is cut inside the word.
+ */
+export const shortenUnreadSummary = (value, limit = UNREAD_SUMMARY_CHARACTER_LIMIT) => {
+    const textValue = typeof value === 'string' ? value : ''
+    const characters = Array.from(textValue)
+    if (characters.length <= limit) return textValue
+
+    let cut = characters.slice(0, limit).join('')
+    // A cut right before a space already ends on a whole word.
+    if (!/\s/.test(characters[limit])) {
+        const lastSpace = cut.search(/\s\S*$/)
+        if (lastSpace > 0) cut = cut.slice(0, lastSpace)
+    }
+    // No dangling separator in front of the dots ("word, ..." / "word -...").
+    cut = cut.replace(/[\s.,;:!?\-–—]+$/u, '')
+    return `${cut}${UNREAD_SUMMARY_ELLIPSIS}`
 }
 
 export const getMessageTime = message => {

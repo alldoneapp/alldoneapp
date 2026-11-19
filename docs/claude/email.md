@@ -155,13 +155,51 @@ in `emailThreadContinuation.test.js` and `linkedEmailActions.test.js`.
 
 Decided with the product owner from mockups (variant A). The "Unread" chat filter no longer lists
 topics with previews: each project shows every unread message of its unread chats as one row
-(sender, tag, one-line summary, time; archive for emails, mark as read, open), filtered by tag
+(sender, tag, summary, time; archive for emails, mark as read, open the chat), filtered by tag
 chips and sorted by newest or sender (`components/ChatsView/UnreadTriage/`). The "All" filter is
 unchanged. The "Unread" chip counts **messages**, not chats (`getUnreadMessageCount`: per chat
 unread for the tab, the messages the list shows - followed ones if any, else unfollowed), so it
 equals the "All" tag chip and the red chats badge in the top bar; for that the list loads every
-unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first page. "Mark as read" on a project line marks only the filtered rows while a tag is selected
+unread chat of a project (`UNREAD_LIST_CHAT_LIMIT`, 50) instead of the first page. Layout
+(2026-11-18, second round): one filter row - "All | Unread N", a divider, the tag chips (Unread
+itself means every tag, a tag chip toggles), sort and settings as icons at the right end; each row
+has the avatar top-aligned with a short time under it (`formatRowTime`: time today, day and month
+this year, two-digit year before), and the message text as plain text: `stripMarkdownForPreview` in
+`functions/Utils/parseTextUtils.js`, because SocialText turned an assistant's "## Heading" into a
+"##" hashtag chip. The MyDay "Last comment" block uses the same helper, applied before the line
+breaks are joined (`LastAssistantCommentWrapper`, `LastCommentText`). Pressing an email row opens the
+email in Gmail in a new tab (`getRowEmailUrl`, the link the thread's "Email" chip opens); the chat
+icon at the right end opens the thread, and any other row opens its chat. Opening the email marks
+nothing read here; the Gmail read sync clears the row once the mail is read or archived there. "Mark as read" on a project line marks only the filtered rows while a tag is selected
 (`UnreadTriageMarkAsRead`); the "Archive emails" buttons already act on what the rows register.
+
+**A row shows the whole message and grows with it (AT-3094, 2026-11-18).** The second round capped
+the summary at 320/160 characters and `maxHeight: 3 * body2.lineHeight` with `overflow: hidden`. That
+cut the third line in half: SocialText with `wrapText` renders each word as its own flex item with
+`marginTop`/`marginBottom: 3` (`WordsList` `wrappedText`), so a wrapped line is 28px, not 22px, and
+66px holds about 2.4 lines. The product owner then chose the whole message over a summary: no
+character limit, no line clamp, no height cap; words carry `overflowWrap: 'anywhere'` so a long hash
+or path breaks inside the column; the action icons sit at the top of the row (next to the sender)
+instead of centred, so they stay in the same place however tall a row gets. A line height or clamp
+on SocialText has to count the 6px word margins. Pinned by `UnreadMessageRow.test.js`.
+
+**The preview is capped by characters again (AT-3106, 2026-11-18).** The product owner then asked
+for a maximum length with "...": a row previews at most 320 characters (160 on a phone,
+`getUnreadSummaryLimit`) via `shortenUnreadSummary` in `unreadMessageTags.js`. The character limit
+is the only cap: still no line clamp and no height cap (see above). The cut falls between words,
+because mentions, hashtags, links and encoded images/attachments are single words and half of one
+renders as a broken chip or a wrong link; only a preview with no space at all is cut inside the
+word. `row.summary` stays whole: the row's accessibility label and the opened chat keep the full
+message. The chat list's per-topic previews (`ChatItemUnreadMessage`) are not shortened; they render
+the thread body on purpose. Pinned by `UnreadMessageRow.test.js` and `unreadMessageTags.test.js`.
+
+**On a phone the row's actions stack (AT-3107, 2026-11-18).** Side by side, archive / mark as read /
+open chat took 3 x 32px + 8px of a ~390px screen; the message wrapped into a narrow column and the
+sender + tag (both `flexShrink: 0`) ran under the archive icon. With `smallScreenNavigation` the
+actions are one column at the top right (`actionsMobile`), each still a 32 x 32 touch target, and
+the tag may shrink with "..." (`tagMobile`; the chat title that gives way on desktop is hidden on a
+phone). Desktop is unchanged. These are the per-message actions, not the project line's header
+buttons. Pinned by the AT-3107 block in `UnreadMessageRow.test.js`.
 
 **Where a tag comes from.** "Needs action" is not a tag: an actionable email becomes a task and an
 email that needs a reply goes to Messages (UNIFIED_INBOX_PLAN.md), so an unread email comment is
@@ -172,15 +210,19 @@ comment's `gmailData` (`buildGmailCommentTagFields` in assistantHelper). Tag rul
 both sides (`resolveUnreadEmailKind` / `getUnreadMessageTag`): label `ads` → Ads, label
 `newsletter` → Newsletters, otherwise `emailKind`; in the default mode every other label is a
 project and says nothing about the kind. Comments from before this have no fields and show as
-"Other emails"; the row then reads the sender back from the "Email from X (x@y): summary" line.
+"Other emails"; the row then reads the sender back from the "Email from X (x@y): summary" line. A
+chat comment is "From people" or "Assistant"; one an MCP client wrote in the user's name
+(`via: 'mcp'`, mcp.md) counts as "Assistant" and its sender reads "Karsten Wysk (via Claude)"
+(`withMcpActorLabel`), as in the thread.
 
 **`users/{uid}.unreadEmailSettings`** (`{ newsletter, ads }`, each `show` | `archive`, default
 show; whitelisted in `mapUserData`). With `archive` the labeling sync archives an incoming,
 informational, no-reply-owed email of that kind in Gmail (on top of the label's own
-`autoArchive`, also when no label matched) and passes `suppressUnread`, so `add_chat_comment`
+`autoArchive`, also under a fallback label, AT-3102 below) and passes `suppressUnread`, so `add_chat_comment`
 writes the comment without its `chatNotifications` doc and without the MyDay "last assistant
-comment" pointer. Actionable mail and mail needing a reply are never affected. A failed archive of
-an unlabeled email leaves it in the inbox and unread. The audit record keeps `emailKind` and
+comment" pointer. Actionable mail and mail needing a reply are never affected. The archive rides on
+the same Gmail call as the label, so a failed write leaves the email in the inbox, unread and
+unlabeled, and is retried (AT-3102 below). The audit record keeps `emailKind` and
 `archivedForUnreadSettings`, and a pending thread continuation replays both.
 
 **One ads switch.** The per-connection "Auto-archive Ads" (`adsAutoArchive` on the gmailLabeling
@@ -192,9 +234,127 @@ copies it onto the user once (`migrateAdsAutoArchiveSetting`; an explicit `show`
 overwritten, a failed copy still applies for that run). `adsAutoArchive` stays in the config only
 as that fallback.
 
-Pinned by `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
+**Ads reach the unread list as "Daily ads" lines (AT-3101, decided with Karsten 2026-11-18).** The
+built-in Ads label has no post-label prompt, so until then an ad produced no chat comment and never
+appeared under Chats > Unread, whatever the ads setting said. Now every incoming ad no prompt
+handles (the Ads label, or a fallback-labeled email with `emailKind: 'ads'`; a label with its own prompt
+keeps its prompt) gets one line in a **private** topic `Daily ads <date>` in the user's default
+project (`functions/Gmail/dailyAdsDigest.js`, called from `executePostLabelPrompt` after thread
+continuation). Choices: its own topic rather than the project's "Daily emails" digest; **no model**,
+the line is `Email from <name> (<email>): <subject>`, so no Gold per ad and the promotional text never
+reaches a model with tools; `isPublicFor: [owner]` (the digests are project-wide, someone's ads are
+not project content) with a deterministic chat id per user and day (`DailyAds_<sha1(uid:date)>`),
+because `add_chat_comment`'s lookup by title would find another member's topic of the same name.
+The ads setting decides read or unread exactly as for newsletters: `show` writes it unread, `archive`
+archives the mail and stores the line read (`suppressUnread`). The author is the default project's
+assistant; without one the action is `blocked` and nothing is written. The fallback-label path also
+stamps `emailComments` for the read sync, so a line for an ad no label matched clears once Gmail reads it.
+
+Pinned by `functions/Gmail/dailyAdsDigest.test.js`, the AT-3101 block of
+`serverSideGmailLabelingSync.test.js`, `functions/Gmail/unreadEmailSettings.test.js`, the "unread setting" block and the Ads
 label case of `serverSideGmailLabelingSync.test.js`, `ChatFiltersLine.test.js` (message count), the emailKind block of `gmailPromptClassifier.test.js`, the
 tag-field cases in `assistantHelper.test.js` and `components/ChatsView/UnreadTriage/*.test.js`.
+
+**Clearing the last unread messages of the Chats view: grey unread, then tasks (AT-3104, decided
+with Karsten 2026-11-18, revised 2026-11-19).** `components/ChatsView/lastUnreadRedirect.js`. Red
+unread = chat notification `followed: true` (`totalFollowed`), grey = `followed: false`
+(`totalUnfollowed`); the Followed tab lists only red, the All tab both. **The view decides**: the
+selected project, or in All Projects every project counted like the Chats tab chips (archived and
+template projects excluded). The first version checked only the touched project, so in All Projects
+clearing "Privat" opened Privat's tasks while "Alldone Business" was still unread (the 2026-11-19
+report; production logs showed archives of both projects seconds apart). Now: nothing red or grey
+left in the view -> the selected project's open tasks, or the All Projects task list; the press
+cleared the last red message on the Followed tab and grey remain -> switch to the All tab (the
+Unread filter kept as it was, since `Set chats active tab` resets it); anything else -> stay. Armed
+only by a press in the Chats list (row Archive / Mark as read, preview Archive, project line and All
+Projects line Mark as read / Archive emails, More > Mark as read), never by the initial load, the
+Gmail read sync or another device. Waits for the action to succeed (archive restores on failure,
+AT-2424); while any armed action is still running nothing is decided (a pending archive in another
+project has cleared it optimistically); the last to settle decides on the live counts and the
+captured view (route, project, Chats tab, Unread filter, user); a late local snapshot gets a 2s
+window. All archive presses go through the provider's wrapped `archiveLinkedEmails`. The thread view
+(ChatBoard) is out of scope. App.js hands the store in (`configureLastUnreadRedirect`); the module
+must not require the store itself: that cost ~4.4s in a cold Jest cache and timed out the first
+archive test on master pipeline 3085791241. Pinned by `lastUnreadRedirect.test.js` and
+`lastUnreadRedirect.wiring.test.js`.
+
+## Every email gets a Gmail label: fallback labels and bounded retries (AT-3102, 2026-11-18)
+
+**The invariant.** The project wiki (Email Management) says every incoming email gets a label, with a
+default when nothing matches; there is no "no label" outcome. Until AT-3102 the code did not do that:
+a `matched:false` result, or a pick below the confidence threshold (`coerceClassifierResult` in
+`gmailPromptClassifier.js` turns it into `matched:false`), wrote **no** Gmail label and an audit record
+with `skippedReason: 'no_match'`. The reported case was a subscribed Modash newsletter in
+karsten@alldone.app (`emailKind: 'newsletter'`, confidence 0.9, "not Ads, no configured project"); in
+the week before, about 16% of that account's incoming mail stayed unlabeled the same way.
+
+**Fallback label** (`resolveFallbackLabelDefinition` in `serverSideGmailLabelingSync.js`), chosen
+with Karsten:
+
+- `emailKind: 'newsletter'` → the built-in **`Newsletter`** label (key `newsletter`, top-level like
+  `Ads`). A configured label with key `newsletter` (custom mode) is reused instead.
+- anything else → the connection's **default project label**: the label whose `sourceProjectId` is
+  the effective config's `defaultProjectId` (the config's `projectId`, else the user's default
+  project; `resolveEffectiveGmailLabelingConfig` returns it).
+- no default project label (custom prompt mode, or the default project archived, inactive, a
+  template, or gone) → the built-in catch-all **`Alldone/Other`** (key `alldone_other`). Never no
+  label.
+
+The prompt is unchanged: the classifier may still answer `matched:false`, and the sync labels anyway.
+The fallback applies to `no_match`, `below_threshold` and `missing_label_definition` (a key that no
+eligible definition has), for incoming and sent mail alike.
+
+**What a fallback label does and does not do.**
+
+- It runs **no follow-up prompt**: the definition is passed with `postLabelPrompt: ''`, so no model
+  run, no Gold beyond the classification, no project task and no "Daily emails" line. What unlabeled
+  mail always got still happens: thread continuation, the thread topic, and the "Daily ads" line for
+  an ad. A pending continuation replay of a fallback record strips the prompt too
+  (`labelSource === 'fallback'`). A user's follow-up-type correction in the feedback UI is explicit
+  and may still run the label's prompt.
+- It **never archives on its own**: neither the label's `autoArchive` nor `autoArchiveAllLabeled`
+  applies, so unsure mail does not leave the inbox. Only the user's unread setting for newsletters
+  and ads archives it, in the same `messages.modify` call as the label.
+- The selected project is not passed to the post-label step, so nothing is routed into the project.
+
+**Audit record.** A fallback write has `labelSource: 'fallback'` (a classifier match has
+`'classifier'`), `selectedLabelKey`/`selectedGmailLabelName` of the fallback, `selectedProjectId` +
+`selectedProjectSource: 'fallback_label'` for the default project label, `applied: true`,
+`skippedReason: null`, `fallbackReason` (`no_match` | `below_threshold` | `missing_label_definition`),
+`fallbackKind` (`newsletter` | `default_project` | `other`), and the classifier's own decision:
+`classifierMatched`, `classifierLabelKey`, `classifierRawLabelKey`, `classifierRawMatched`,
+`confidence`, `reasoning`, `emailKind`, `consistencyCheck`. The settings audit list shows
+"<label> (fallback, no label matched)" (`Gmail fallback label`). The sync counts a fallback label as
+`labeled`. Records written before AT-3102 keep `skippedReason: 'no_match'`; there is no backfill, and
+the email line's "No label" section stays for that mail and for mail outside the sync scope.
+
+**Bounded retries.** The audit record is also the "already processed" marker
+(`getExistingAuditIds`), and the history cursor moves on, so a failed email used to stay unlabeled
+for good (`processing_error`). Now `recordMessageProcessingError` counts `processingAttempts` and sets
+`processingErrorRetryPending: true` for a **retryable** error; every sync queries that flag
+(`loadProcessingRetryMessageIds`, up to 20), fetches those emails past the history cursor, the
+candidate filter and the processed marker, and processes them again. After
+`MAX_GMAIL_MESSAGE_PROCESSING_ATTEMPTS` (3, the first run included) it sets
+`processingErrorRetryExhausted: true`, stops, and the run's `lastError` says so. An email that can no
+longer be fetched uses up an attempt (`processingStage: 'fetch'`). A successful write sets
+`processingErrorRetryPending: false`.
+
+Only errors **before any side effect** are retryable (`markRetryableProcessingError`):
+
+- `classification`: the classifier threw; no Gold was charged.
+- `label_write`: resolving or writing the label (with its archive) failed, and the classification
+  Gold was refunded (`applyLabelWithRefundOnFailure`). A retry classifies and charges again, so the
+  user pays once per labeled email.
+
+Not retryable: a failed refund (`label_write_refund_failed`, a retry would charge twice), and
+anything after the label was written (follow-up run, final audit write), which could otherwise create
+a task or charge Gold twice. Insufficient Gold leaves a pending retry pending without counting an
+attempt, because it never reaches the classifier.
+
+Pinned by `functions/Gmail/gmailLabelingFallbackAndRetry.test.js` (fallback choice, diagnostics,
+follow-up suppression, archive and unread settings, the retry/exhaustion cycle across real
+`syncGmailLabeling` runs on an in-memory Firestore) and the updated no-match cases in
+`serverSideGmailLabelingSync.test.js`.
 
 ## The email a task was created from opens the task's chat (AT-3022)
 

@@ -130,6 +130,37 @@ export const buildAllProjectsAssistantGroups = ({
         .filter(group => group.options.length > 0)
 }
 
+/**
+ * AT-3093 — the popup inside a project offers the same assistants as the All Projects one, with
+ * the current project's own group first. That group keeps its in-place meaning (the project's
+ * assistants, the enabled global ones and the "From your default project" entry), so choosing
+ * one of those still switches only who answers HERE. The other projects follow in the All
+ * Projects order, minus the current project, whose assistants would otherwise appear twice.
+ * Empty groups are dropped, as in All Projects.
+ */
+export const buildProjectScopeAssistantGroups = ({ projectId, projectGroups = [], allProjectsGroups = [] } = {}) => {
+    const currentGroups = projectGroups.filter(group => group.options.length > 0)
+    const otherGroups = allProjectsGroups.filter(group => group.projectId !== projectId && group.options.length > 0)
+    return [...currentGroups, ...otherGroups]
+}
+
+/**
+ * AT-3093 follow-up — the one choice that means "back to All Projects": the default assistant in
+ * the default project's own group. That pair is exactly what the All Projects line speaks as
+ * (`state.defaultAssistant` in `loggedUser.defaultProjectId`), so picking it from a project's
+ * line returns to that line instead of opening the default project.
+ *
+ * The "From your default project" entry inside another project's group does NOT match: its
+ * `projectId` is the current project, and it keeps meaning "answer here as the default assistant"
+ * (decided with the product owner).
+ */
+export const isAllProjectsAssistantOption = (option, defaultProjectId, defaultAssistantId) =>
+    !!option &&
+    !!defaultProjectId &&
+    !!defaultAssistantId &&
+    option.projectId === defaultProjectId &&
+    option.assistantId === defaultAssistantId
+
 /** One group, for the single-project case, so both scopes render through the same component. */
 export const buildSingleAssistantGroup = (project, options) =>
     options.length > 0
@@ -168,4 +199,22 @@ export const getToggleTargetOption = (groups = [], activeProjectId, activeAssist
             (!!activeProjectId && !!option.projectId && option.projectId !== activeProjectId)
     )
     return other || options[0]
+}
+
+/**
+ * AT-3100 — the switch popup's search. Keeps the project grouping, drops every group with no
+ * match, and matches the assistant's display name only, case-insensitively. A blank query hands
+ * back the original `groups` array, so clearing the search restores the full list as it was.
+ */
+export const filterAssistantGroups = (groups = [], query = '') => {
+    const needle = (query || '').trim().toLocaleLowerCase()
+    if (!needle) return groups
+
+    return groups.reduce((filtered, group) => {
+        const options = group.options.filter(option =>
+            (option.assistant?.displayName || '').toLocaleLowerCase().includes(needle)
+        )
+        if (options.length > 0) filtered.push(options.length === group.options.length ? group : { ...group, options })
+        return filtered
+    }, [])
 }

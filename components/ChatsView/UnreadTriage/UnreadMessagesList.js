@@ -7,6 +7,7 @@ import { translate } from '../../../i18n/TranslationService'
 import SharedHelper from '../../../utils/SharedHelper'
 import useGetUnreadChatMessages from '../../../hooks/Chats/useGetUnreadChatMessages'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
+import { withMcpActorLabel } from '../../../utils/mcpActorLabel'
 import { getUnreadCommentIds } from '../Utils/unreadChatFilter'
 import { getLinkedEmailFromMessage } from '../ChatDV/linkedEmailActions'
 import { useRegisterUnreadLinkedEmails } from '../unreadEmailArchiveContext'
@@ -22,6 +23,7 @@ import {
     getUnreadMessageTag,
     isEmailMessage,
     sortRows,
+    toOneLineSummary,
 } from './unreadMessageTags'
 
 /**
@@ -54,8 +56,8 @@ export const buildUnreadRows = (projectId, chats, messagesByChat) =>
                 tag: getUnreadMessageTag(message),
                 senderName: isEmail
                     ? emailContent.senderName
-                    : getUserPresentationData(message.creatorId)?.displayName || '',
-                summary: isEmail ? emailContent.summary : message.commentText || '',
+                    : withMcpActorLabel(getUserPresentationData(message.creatorId)?.displayName || '', message),
+                summary: toOneLineSummary(isEmail ? emailContent.summary : message.commentText),
                 time: getMessageTime(message),
                 linkedEmail: isEmail ? getLinkedEmailFromMessage(message, { projectId, chatId: chat.id }) : null,
             }

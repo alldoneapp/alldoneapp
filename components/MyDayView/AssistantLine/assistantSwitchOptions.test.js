@@ -1,11 +1,14 @@
 import {
     buildAllProjectsAssistantGroups,
     buildProjectAssistantOptions,
+    buildProjectScopeAssistantGroups,
     buildSingleAssistantGroup,
     countAssistantOptions,
+    filterAssistantGroups,
     findAssistantOption,
     flattenAssistantGroups,
     getToggleTargetOption,
+    isAllProjectsAssistantOption,
     orderProjectsForAssistantSwitch,
 } from './assistantSwitchOptions'
 
@@ -144,6 +147,47 @@ describe('orderProjectsForAssistantSwitch', () => {
     })
 })
 
+// AT-3093: the in-project popup lists every project, the current one first.
+describe('buildProjectScopeAssistantGroups', () => {
+    const group = (projectId, uids) => ({
+        projectId,
+        projectName: projectId,
+        isDefaultProject: false,
+        options: uids.map(uid => ({ key: `${projectId}:${uid}`, projectId, assistantId: uid })),
+    })
+
+    it('puts the current project first and drops its duplicate from the All Projects list', () => {
+        const groups = buildProjectScopeAssistantGroups({
+            projectId: 'jtl',
+            // The project's own group keeps the "From your default project" entry (anna).
+            projectGroups: [group('jtl', ['jtl-assistant', 'anna'])],
+            allProjectsGroups: [
+                group(DEFAULT_PROJECT_ID, ['anna']),
+                group('alldone', ['marty']),
+                group('jtl', ['jtl-assistant']),
+            ],
+        })
+
+        expect(groups.map(g => g.projectId)).toEqual(['jtl', DEFAULT_PROJECT_ID, 'alldone'])
+        expect(groups[0].options.map(o => o.assistantId)).toEqual(['jtl-assistant', 'anna'])
+    })
+
+    it('still lists the other projects when the current one offers nothing', () => {
+        const groups = buildProjectScopeAssistantGroups({
+            projectId: 'empty',
+            projectGroups: [],
+            allProjectsGroups: [group('alldone', ['marty']), group('other', [])],
+        })
+
+        expect(groups.map(g => g.projectId)).toEqual(['alldone'])
+    })
+
+    it('is the project list alone before the other projects have loaded', () => {
+        const projectGroups = [group('jtl', ['jtl-assistant', 'anna'])]
+        expect(buildProjectScopeAssistantGroups({ projectId: 'jtl', projectGroups })).toEqual(projectGroups)
+    })
+})
+
 describe('counting and toggling', () => {
     const options = buildProjectAssistantOptions({
         project: project('p1', 'Marketing'),
@@ -180,5 +224,100 @@ describe('counting and toggling', () => {
     it('has nothing to toggle to with an empty list', () => {
         expect(getToggleTargetOption([], 'p1', 'a1')).toBeNull()
         expect(buildSingleAssistantGroup(project('p1', 'Marketing'), [])).toEqual([])
+    })
+})
+
+// AT-3093 follow-up: the one pick that returns to All Projects.
+describe('isAllProjectsAssistantOption', () => {
+    it('matches the default assistant in the default project’s own group', () => {
+        expect(
+            isAllProjectsAssistantOption(
+                { projectId: DEFAULT_PROJECT_ID, assistantId: 'anna' },
+                DEFAULT_PROJECT_ID,
+                'anna'
+            )
+        ).toBe(true)
+    })
+
+    it('does not match the “From your default project” entry, which belongs to another project', () => {
+        const [, entry] = buildProjectAssistantOptions({
+            project: project('p1', 'Marketing'),
+            projectAssistants: [assistant('a1', 'Marty Marketing')],
+            defaultProjectId: DEFAULT_PROJECT_ID,
+            defaultAssistant,
+        })
+        expect(entry.isDefaultProjectAssistant).toBe(true)
+        expect(isAllProjectsAssistantOption(entry, DEFAULT_PROJECT_ID, 'anna')).toBe(false)
+    })
+
+    it('does not match another assistant of the default project, or the default assistant elsewhere', () => {
+        expect(
+            isAllProjectsAssistantOption(
+                { projectId: DEFAULT_PROJECT_ID, assistantId: 'a9' },
+                DEFAULT_PROJECT_ID,
+                'anna'
+            )
+        ).toBe(false)
+        expect(isAllProjectsAssistantOption({ projectId: 'p1', assistantId: 'anna' }, DEFAULT_PROJECT_ID, 'anna')).toBe(
+            false
+        )
+    })
+
+    it('never matches while the default project or assistant is unknown', () => {
+        expect(isAllProjectsAssistantOption({ projectId: undefined, assistantId: undefined }, undefined, null)).toBe(
+            false
+        )
+        expect(isAllProjectsAssistantOption({ projectId: DEFAULT_PROJECT_ID, assistantId: 'anna' }, '', 'anna')).toBe(
+            false
+        )
+        expect(isAllProjectsAssistantOption(null, DEFAULT_PROJECT_ID, 'anna')).toBe(false)
+    })
+})
+
+describe('filterAssistantGroups (AT-3100)', () => {
+    const opt = (projectId, uid, displayName) => ({
+        key: `${projectId}:${uid}`,
+        assistantId: uid,
+        projectId,
+        assistant: assistant(uid, displayName),
+    })
+    const groups = [
+        {
+            projectId: 'p1',
+            projectName: 'Privat',
+            options: [opt('p1', 'anna', 'Anna Alldone'), opt('p1', 'judy', 'Judy Job')],
+        },
+        { projectId: 'p2', projectName: 'JTL Software', options: [opt('p2', 'jtl', 'JTL Assistant')] },
+        { projectId: 'p3', projectName: 'Alldone Team', options: [opt('p3', 'paul', 'Paul Product Manager')] },
+    ]
+
+    it('returns the very same list for a blank query, so clearing restores everything', () => {
+        expect(filterAssistantGroups(groups, '')).toBe(groups)
+        expect(filterAssistantGroups(groups, '   ')).toBe(groups)
+        expect(filterAssistantGroups(groups)).toBe(groups)
+    })
+
+    it('matches anywhere in the name, case-insensitively, keeping group order', () => {
+        const result = filterAssistantGroups(groups, 'ALLDONE')
+        expect(result.map(group => group.projectId)).toEqual(['p1'])
+        expect(result[0].options.map(option => option.assistantId)).toEqual(['anna'])
+        expect(result[0].projectName).toBe('Privat')
+    })
+
+    it('drops groups without a match and keeps every matching group', () => {
+        const result = filterAssistantGroups(groups, 'j')
+        expect(result.map(group => group.projectId)).toEqual(['p1', 'p2'])
+        expect(result[0].options.map(option => option.assistantId)).toEqual(['judy'])
+    })
+
+    it('matches assistant names only, not project names', () => {
+        expect(filterAssistantGroups(groups, 'team')).toEqual([])
+    })
+
+    it('does not mutate the input and tolerates a missing display name', () => {
+        const withNameless = [{ projectId: 'p4', projectName: 'X', options: [{ key: 'k', assistant: { uid: 'n' } }] }]
+        expect(filterAssistantGroups(withNameless, 'a')).toEqual([])
+        filterAssistantGroups(groups, 'anna')
+        expect(groups[0].options).toHaveLength(2)
     })
 })

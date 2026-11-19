@@ -15,7 +15,12 @@ import {
     getUnreadMessageTag,
     isEmailMessage,
     parseEmailCommentLine,
+    UNREAD_SUMMARY_CHARACTER_LIMIT,
+    UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE,
+    getUnreadSummaryLimit,
+    shortenUnreadSummary,
     sortRows,
+    toOneLineSummary,
 } from './unreadMessageTags'
 import { isAdsArchived, isUnreadEmailKindArchived, normalizeUnreadEmailSettings } from './unreadEmailSettings'
 
@@ -46,6 +51,18 @@ describe('getUnreadMessageTag', () => {
     test('chat comments are from a person or from an assistant', () => {
         expect(getUnreadMessageTag({ id: 'c2', fromAssistant: false, commentText: 'Hi' })).toBe(UNREAD_TAG_PEOPLE)
         expect(getUnreadMessageTag({ id: 'c3', fromAssistant: true, commentText: 'Done' })).toBe(UNREAD_TAG_ASSISTANT)
+    })
+
+    test('a comment an MCP client wrote in the user\'s name is an assistant message, not "From people"', () => {
+        expect(
+            getUnreadMessageTag({
+                id: 'c4',
+                fromAssistant: false,
+                via: 'mcp',
+                viaClient: 'Claude',
+                commentText: 'Done',
+            })
+        ).toBe(UNREAD_TAG_ASSISTANT)
     })
 
     test("the owner's own sent mail is not an email row", () => {
@@ -144,5 +161,73 @@ describe('unread email settings', () => {
         expect(isAdsArchived({ ads: 'archive' }, false)).toBe(true)
         expect(isAdsArchived({}, true)).toBe(true)
         expect(isAdsArchived(undefined)).toBe(false)
+    })
+})
+
+describe('toOneLineSummary', () => {
+    test('drops markdown so a heading does not become a "##" hashtag chip', () => {
+        expect(
+            toOneLineSummary(
+                '## Ergebnis: Gemergt\nMR 893 ist **gemergt**. Der Job `deploy:web` lief, *nicht* aber:\n- [Pipeline](https://x.y/1)\n> Zitat'
+            )
+        ).toBe('Ergebnis: Gemergt MR 893 ist gemergt. Der Job deploy:web lief, nicht aber: Pipeline Zitat')
+    })
+
+    test('keeps hashtags, mentions and code block content', () => {
+        expect(toOneLineSummary('#release für @Jana\n```js\nrun()\n```')).toBe('#release für @Jana run()')
+    })
+
+    test('copes with empty input', () => {
+        expect(toOneLineSummary(undefined)).toBe('')
+    })
+})
+
+describe('shortenUnreadSummary (AT-3106)', () => {
+    test('uses 320 characters on a desktop and 160 on a phone', () => {
+        expect(UNREAD_SUMMARY_CHARACTER_LIMIT).toBe(320)
+        expect(UNREAD_SUMMARY_CHARACTER_LIMIT_MOBILE).toBe(160)
+        expect(getUnreadSummaryLimit(false)).toBe(320)
+        expect(getUnreadSummaryLimit(true)).toBe(160)
+    })
+
+    test('leaves a summary within the limit as it is', () => {
+        expect(shortenUnreadSummary('Hallo Karsten', 13)).toBe('Hallo Karsten')
+        expect(shortenUnreadSummary('x'.repeat(320))).toBe('x'.repeat(320))
+        expect(shortenUnreadSummary('')).toBe('')
+        expect(shortenUnreadSummary(undefined)).toBe('')
+    })
+
+    test('cuts a longer summary between words and closes it with "..."', () => {
+        expect(shortenUnreadSummary('eins zwei drei vier', 12)).toBe('eins zwei...')
+        expect(shortenUnreadSummary('eins zwei drei vier', 9)).toBe('eins zwei...')
+        expect(shortenUnreadSummary('eins zwei drei vier', 10)).toBe('eins zwei...')
+    })
+
+    test('drops a dangling separator before the dots', () => {
+        expect(shortenUnreadSummary('Erledigt, danach kommt mehr', 10)).toBe('Erledigt...')
+        expect(shortenUnreadSummary('Fertig - danach kommt mehr', 9)).toBe('Fertig...')
+    })
+
+    test('never keeps half of a mention, hashtag or link', () => {
+        const text = 'Bitte prüfen: https://alldone.app/projects/abc/tasks/def/properties und melden'
+        expect(shortenUnreadSummary(text, 40)).toBe('Bitte prüfen...')
+        expect(shortenUnreadSummary('Siehe #release-notes-november', 15)).toBe('Siehe...')
+    })
+
+    test('cuts inside the word only when the preview has no space at all', () => {
+        expect(shortenUnreadSummary('a'.repeat(30), 10)).toBe(`${'a'.repeat(10)}...`)
+    })
+
+    test('counts an emoji as one character and never splits it', () => {
+        expect(shortenUnreadSummary('😀😀😀😀', 3)).toBe('😀😀😀...')
+        expect(shortenUnreadSummary('ok 😀😀', 4)).toBe('ok...')
+    })
+
+    test('stays within limit + "..." for a long message', () => {
+        const long = 'Wort '.repeat(200).trim()
+        const preview = shortenUnreadSummary(long, 160)
+        expect(preview.endsWith('...')).toBe(true)
+        expect(preview.length).toBeLessThanOrEqual(163)
+        expect(long.startsWith(preview.slice(0, -3))).toBe(true)
     })
 })

@@ -8,6 +8,42 @@ const { isDelegatedWorkflowTask, withDelegationReviewStep } = require('../shared
 const isTrackedOriginConversation = conversation =>
     !!conversation?.objectId && (conversation.annaConversation === true || conversation.chatTaskTracking === true)
 
+/**
+ * The conversation a delegated task reports back to, or null. Normally the conversation the tool
+ * runs in. A delegate reached through talk_to_assistant runs without a conversation of its own; its
+ * runtime carries the caller's conversation as `origin*` (set by the server, never by the model),
+ * and `originTracksWork` says whether that one is tracked (AT-3096). Without this the review notice
+ * of a task the delegate created never reached the chat the user asked in.
+ */
+function resolveDelegationOrigin(conversation) {
+    if (isTrackedOriginConversation(conversation)) {
+        return {
+            projectId: conversation.projectId || '',
+            objectType: conversation.objectType || 'topics',
+            objectId: conversation.objectId,
+            assistantId: conversation.assistantId || '',
+        }
+    }
+    if (
+        !conversation?.objectId &&
+        conversation?.originTracksWork === true &&
+        typeof conversation.originProjectId === 'string' &&
+        conversation.originProjectId &&
+        typeof conversation.originObjectId === 'string' &&
+        conversation.originObjectId &&
+        typeof conversation.originAssistantId === 'string' &&
+        conversation.originAssistantId
+    ) {
+        return {
+            projectId: conversation.originProjectId,
+            objectType: conversation.originObjectType || 'topics',
+            objectId: conversation.originObjectId,
+            assistantId: conversation.originAssistantId,
+        }
+    }
+    return null
+}
+
 const buildDelegatedTaskFields = (ownerId, assistantId, executionMode) => ({
     userId: executionMode === 'direct' ? assistantId : ownerId,
     assigneeType: executionMode === 'direct' ? 'assistant' : 'USER',
@@ -36,7 +72,7 @@ async function startDelegatedTaskWorkflow({
 }) {
     // Callback destinations and the request must come from the authenticated call, never mutable task
     // metadata. No client write rule exists for this collection. Subsequent workflow steps read it.
-    const trackedOrigin = isTrackedOriginConversation(originConversation)
+    const trackedOrigin = resolveDelegationOrigin(originConversation)
     const requestId = typeof requestCommentId === 'string' && requestCommentId ? requestCommentId : ''
     if (trackedOrigin || requestId) {
         // Merged: a retried start must not erase the review-notice bookkeeping of the receipt.
@@ -53,10 +89,10 @@ async function startDelegatedTaskWorkflow({
                 ...(requestId ? { requestCommentId: requestId } : {}),
                 ...(trackedOrigin
                     ? {
-                          originProjectId: originConversation.projectId || projectId,
-                          originObjectType: originConversation.objectType || 'topics',
-                          originObjectId: originConversation.objectId,
-                          originAssistantId: originConversation.assistantId || assistantId,
+                          originProjectId: trackedOrigin.projectId || projectId,
+                          originObjectType: trackedOrigin.objectType,
+                          originObjectId: trackedOrigin.objectId,
+                          originAssistantId: trackedOrigin.assistantId || assistantId,
                       }
                     : {}),
             },
@@ -135,7 +171,7 @@ async function startDelegatedTaskWorkflow({
                 : 'This existing task belongs to the requesting user and is handled by their workflow, including any prerequisite steps. ' +
                   'The workflow starts the assistant work and returns the result for human review. ') +
             'Do not separately delegate, launch a VM, or mark this task done from the coordinating conversation; that would duplicate or bypass its workflow. ' +
-            'Tell the user briefly that the work continues in that task.',
+            'Tell the user briefly that the work continues in that task and give them its link (taskUrl in this result) exactly as returned; never write a placeholder or build the link yourself.',
     }
 }
 
@@ -184,14 +220,110 @@ async function retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs }
     }
 }
 
+const resolveEditorName = async (reactivation, assistantId) => {
+    if (typeof reactivation?.editorName === 'string') return reactivation.editorName
+    if (typeof reactivation?.resolveEditorName !== 'function') return ''
+    try {
+        return (await reactivation.resolveEditorName(assistantId)) || ''
+    } catch (error) {
+        return ''
+    }
+}
+
+const doneTaskRefusal = message => ({ success: true, status: 'task_done', message })
+
+/**
+ * New VM work asked for on a done delegated task (AT-3098). The task must not stay Done while it is
+ * worked on, and only its workflow may start the VM, so the task goes back to the first AI step of
+ * its assistant; that step runs the request (appended to its prompt) after this reply, and every
+ * later step, human review included, follows again. Only the owner's request reopens it: the
+ * workflow runs, and is paid for, as the owner.
+ */
+async function reopenDoneDelegatedTask({ db, projectId, taskId, task, retryAs, reactivation }) {
+    const requestUserId = retryAs?.requestUserId || ''
+    if (!requestUserId || requestUserId !== task.userId) {
+        return doneTaskRefusal(
+            "This task is done and is handled by its owner's workflow. Only the task owner's request reopens it for more work. Do not start a VM on it; tell the user that the owner can reopen it."
+        )
+    }
+    const { planDoneTaskReactivation, reactivateDoneTaskForAssistantWork } = require('../Tasks/doneTaskReactivation')
+    const assistantId = task.taskMetadata?.delegation?.assistantId || task.assistantId || ''
+    const plan = await planDoneTaskReactivation({ db, projectId, taskId, assistantId })
+    if (plan && !plan.landsOnAiStep) {
+        return doneTaskRefusal(
+            'This task is done and its workflow has no assistant step to do more work in. Do not start a VM on it; offer to configure the workflow, or to switch this task to direct execution.'
+        )
+    }
+    const runtime = retryAs.runtime || {}
+    const result = await reactivateDoneTaskForAssistantWork({
+        db,
+        projectId,
+        taskId,
+        assistantId,
+        actorUserId: requestUserId,
+        note: reactivation?.note || '',
+        editorName: await resolveEditorName(reactivation, assistantId),
+        // The task's own chat is where the user sees it happen; any other conversation is named so
+        // the origin is not told twice about a move it asked for itself.
+        fromConversation:
+            runtime.objectId && runtime.objectId !== taskId
+                ? { projectId: runtime.projectId, objectType: runtime.objectType, objectId: runtime.objectId }
+                : null,
+    })
+    if (!result.reactivated) return null
+    // The task trigger makes the same deterministic enqueue; this closes the gap before it arrives,
+    // so the next look at the task sees its workflow working (as startDelegatedTaskWorkflow does).
+    try {
+        const { enqueueWorkflowAiRunIfNeeded } = require('../Tasks/workflowAiStep')
+        await enqueueWorkflowAiRunIfNeeded(projectId, taskId, result.oldTask, result.task)
+    } catch (error) {
+        console.warn('Could not enqueue the reopened step of a delegated task; the task trigger will', {
+            projectId,
+            taskId,
+            error: error.message,
+        })
+    }
+    return {
+        success: true,
+        projectId,
+        taskId,
+        status: 'workflow_step_reopened',
+        stepId: result.stepId,
+        message: `This task was done. It is back on its workflow step “${result.stepLabel}”, which works on this request in the task's conversation as soon as this reply is finished; its result then goes through the workflow's review steps again. Do not start a VM yourself. Tell the user briefly that the task was reopened and the step is working on it.`,
+    }
+}
+
 /**
  * Whether execute_task_in_vm must leave this task to its workflow, and what to tell the assistant.
- * `retryAs` ({ requestUserId, runtime }) lets a request the user typed restart a failed AI step.
+ * `retryAs` ({ requestUserId, runtime }) lets a request the user typed restart a failed AI step, and
+ * lets the owner's request reopen a done task into its workflow (`reactivation`: { note, editorName |
+ * resolveEditorName(assistantId) }).
  */
-async function getDelegatedTaskExecution({ db, projectId, taskId, retryAs = null }) {
+async function getDelegatedTaskExecution({
+    db,
+    projectId,
+    taskId,
+    retryAs = null,
+    reactivation = null,
+    allowReopen = true,
+}) {
     const snapshot = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
     const task = snapshot.exists ? snapshot.data() : null
-    if (!isDelegatedWorkflowTask(task) || task.done) return null
+    if (!isDelegatedWorkflowTask(task)) return null
+    if (task.done) {
+        const reopened = allowReopen
+            ? await reopenDoneDelegatedTask({ db, projectId, taskId, task, retryAs, reactivation })
+            : null
+        if (reopened) return reopened
+        if (!allowReopen) {
+            return doneTaskRefusal(
+                'This task changed while it was being reopened. Read its current state before continuing; do not start a VM on it.'
+            )
+        }
+        // Reopened by someone else in the meantime (the app, a concurrent run): judge it as it stands
+        // now, which normally means its workflow already handles it.
+        return getDelegatedTaskExecution({ db, projectId, taskId, retryAs, allowReopen: false })
+    }
     const restarted = await retryFailedDelegatedStep({ db, projectId, taskId, task, retryAs })
     if (restarted) return restarted
     const managed = task.stepHistory?.length > 1
@@ -241,6 +373,7 @@ async function claimDelegatedTaskRequest(db, projectId, task, assistantId, runId
 
 module.exports = {
     isTrackedOriginConversation,
+    resolveDelegationOrigin,
     claimDelegatedTaskRequest,
     buildDelegatedTaskFields,
     startDelegatedTaskWorkflow,

@@ -15,95 +15,98 @@ import {
     UNREAD_TAG_ORDER,
 } from './unreadMessageTags'
 
+// Chats > Unread keeps its filters in the one chat filter row (decided 2026-11-18, no second row):
+// "All | Unread N", then these tag chips, and the sort and settings icons at the right end.
+
 /**
- * Second filter row of Chats > Unread: one chip per tag with its count across the shown projects,
- * the sort (newest / sender) and the newsletter and ads setting. A tag with nothing unread is
- * hidden unless it is the selected one, so the user can always switch back.
+ * One chip per tag with its count across the shown projects. "Unread" itself is the "all tags"
+ * choice, so there is no separate "All" tag chip. A tag with nothing unread is hidden unless it is
+ * the selected one, so the user can always switch back.
  */
-export default function UnreadTriageFilters({ projectIds }) {
+export function UnreadTriageTagChips({ projectIds }) {
+    const triage = useUnreadTriage()
+    if (!triage) return null
+
+    const { tagFilter, setTagFilter, projects } = triage
+    const counts = sumTagCounts(projects, projectIds)
+    const tags = UNREAD_TAG_ORDER.filter(tag => counts[tag] > 0 || tag === tagFilter)
+    if (tags.length === 0) return null
+
+    return (
+        <>
+            <View style={localStyles.divider} />
+            {tags.map(tag => {
+                const selected = tag === tagFilter
+                return (
+                    <TouchableOpacity
+                        key={tag}
+                        style={[localStyles.chip, selected && localStyles.chipSelected]}
+                        onPress={() => setTagFilter(selected ? UNREAD_TAG_ALL : tag)}
+                        testID={`unread-tag-${tag}`}
+                    >
+                        <Text style={[localStyles.chipText, selected && localStyles.chipTextSelected]}>
+                            {translate(UNREAD_TAG_LABEL_KEYS[tag])}
+                        </Text>
+                        <Text style={[localStyles.chipCount, selected && localStyles.chipTextSelected]}>
+                            {counts[tag] || 0}
+                        </Text>
+                    </TouchableOpacity>
+                )
+            })}
+        </>
+    )
+}
+
+/** The sort (newest / sender) and the newsletter and ads setting, as icons. */
+export function UnreadTriageTools() {
     const triage = useUnreadTriage()
     const [settingsOpen, setSettingsOpen] = useState(false)
     if (!triage) return null
 
-    const { tagFilter, setTagFilter, sortMode, setSortMode, projects } = triage
-    const counts = sumTagCounts(projects, projectIds)
-    const tags = [UNREAD_TAG_ALL, ...UNREAD_TAG_ORDER.filter(tag => counts[tag] > 0 || tag === tagFilter)]
+    const { sortMode, setSortMode } = triage
     const sortBySender = sortMode === UNREAD_SORT_SENDER
+    const sortLabel = translate(sortBySender ? 'Sorted by sender' : 'Sorted by newest')
 
     return (
-        <View style={localStyles.container} testID="unread-triage-filters">
-            <View style={localStyles.chips}>
-                {tags.map(tag => (
-                    <TouchableOpacity
-                        key={tag}
-                        style={[localStyles.chip, tag === tagFilter && localStyles.chipSelected]}
-                        onPress={() => setTagFilter(tag)}
-                        testID={`unread-tag-${tag}`}
-                    >
-                        <Text style={[localStyles.chipText, tag === tagFilter && localStyles.chipTextSelected]}>
-                            {translate(UNREAD_TAG_LABEL_KEYS[tag])}
-                        </Text>
-                        <Text style={[localStyles.chipCount, tag === tagFilter && localStyles.chipTextSelected]}>
-                            {counts[tag] || 0}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-            <View style={localStyles.tools}>
+        <View style={localStyles.tools} testID="unread-triage-tools">
+            <TouchableOpacity
+                style={[localStyles.toolButton, sortBySender && localStyles.toolButtonActive]}
+                onPress={() => setSortMode(sortBySender ? UNREAD_SORT_NEWEST : UNREAD_SORT_SENDER)}
+                accessibilityLabel={sortLabel}
+                accessibilityRole="button"
+                testID="unread-sort"
+            >
+                <Icon name="sort-list" size={16} color={sortBySender ? colors.Primary100 : colors.Text03} />
+            </TouchableOpacity>
+            <AppPopover
+                isOpen={settingsOpen}
+                onClickOutside={() => setSettingsOpen(false)}
+                position={['bottom', 'left', 'top']}
+                align="end"
+                padding={4}
+                content={<UnreadEmailSettingsPopup closePopover={() => setSettingsOpen(false)} />}
+            >
                 <TouchableOpacity
-                    style={[localStyles.chip, sortBySender && localStyles.chipSelected]}
-                    onPress={() => setSortMode(sortBySender ? UNREAD_SORT_NEWEST : UNREAD_SORT_SENDER)}
-                    accessibilityLabel={translate(sortBySender ? 'Sorted by sender' : 'Sorted by newest')}
-                    testID="unread-sort"
+                    style={localStyles.toolButton}
+                    onPress={() => setSettingsOpen(true)}
+                    accessibilityLabel={translate('Newsletters and ads')}
+                    accessibilityRole="button"
+                    testID="unread-email-settings-button"
                 >
-                    <Icon
-                        name="sort-list"
-                        size={14}
-                        color={sortBySender ? '#ffffff' : colors.Text03}
-                        style={localStyles.chipIcon}
-                    />
-                    <Text style={[localStyles.chipText, sortBySender && localStyles.chipTextSelected]}>
-                        {translate(sortBySender ? 'Sender' : 'Newest')}
-                    </Text>
+                    <Icon name="sliders" size={16} color={colors.Text03} />
                 </TouchableOpacity>
-                <AppPopover
-                    isOpen={settingsOpen}
-                    onClickOutside={() => setSettingsOpen(false)}
-                    position={['bottom', 'left', 'top']}
-                    align="end"
-                    padding={4}
-                    content={<UnreadEmailSettingsPopup closePopover={() => setSettingsOpen(false)} />}
-                >
-                    <TouchableOpacity
-                        style={localStyles.settingsButton}
-                        onPress={() => setSettingsOpen(true)}
-                        accessibilityLabel={translate('Newsletters and ads')}
-                        testID="unread-email-settings-button"
-                    >
-                        <Icon name="sliders" size={16} color={colors.Text03} />
-                    </TouchableOpacity>
-                </AppPopover>
-            </View>
+            </AppPopover>
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
+    divider: {
+        width: 1,
+        height: 16,
+        backgroundColor: colors.Grey400,
+        marginRight: 8,
         marginBottom: 8,
-    },
-    chips: {
-        flex: 1,
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-    },
-    tools: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
     },
     chip: {
         flexDirection: 'row',
@@ -130,14 +133,21 @@ const localStyles = StyleSheet.create({
     chipTextSelected: {
         color: '#ffffff',
     },
-    chipIcon: {
-        marginRight: 4,
+    tools: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginBottom: 8,
     },
-    settingsButton: {
+    toolButton: {
         width: 28,
         height: 28,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 8,
+        marginLeft: 4,
+    },
+    toolButtonActive: {
+        backgroundColor: colors.UtilityBlue100,
     },
 })

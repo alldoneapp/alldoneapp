@@ -31,6 +31,7 @@ const {
     buildDelegatedTaskFields,
     startDelegatedTaskWorkflow,
     getDelegatedTaskExecution,
+    isTrackedOriginConversation,
 } = require('./annaTaskDelegation')
 
 async function isUserProjectMember(db, userId, projectId) {
@@ -122,6 +123,7 @@ const { MOVE_TASK_WORKFLOW_STEP_TOOL_NAME } = require('./toolSchemas')
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
+    buildVmChatPath,
     collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
     startsVmJobInCurrentThread,
@@ -142,6 +144,12 @@ const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
+const {
+    collectDelegatedTaskHandoffs,
+    ensureDelegatedTaskLinksInResponse,
+    withDelegatedTaskLink,
+    removeCurrentThreadLinks,
+} = require('./delegatedTaskLinks')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { resolveThreadAssistantModel } = require('./threadAssistantModel')
 const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
@@ -2416,6 +2424,7 @@ async function collectAssistantTextWithToolCalls({
     const createdNoteResults = []
     const createdChatCommentResults = []
     const startedVmJobResults = []
+    const delegatedTaskResults = []
     let pendingAttachmentPayload = null
     const maxToolCallRounds = Math.max(
         1,
@@ -2531,6 +2540,7 @@ async function collectAssistantTextWithToolCalls({
                     })
                 }
                 collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+                collectDelegatedTaskHandoffs(delegatedTaskResults, toolResult)
                 const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
                 pendingAttachmentPayload =
                     buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
@@ -2582,11 +2592,25 @@ async function collectAssistantTextWithToolCalls({
         responseText += '\n\nMaximum tool call iterations reached.'
     }
 
+    const currentThread = {
+        projectId: toolRuntimeContext?.projectId,
+        objectType: toolRuntimeContext?.objectType,
+        objectId: toolRuntimeContext?.objectId,
+    }
+    const linkLanguage = { language: toolRuntimeContext?.language }
     return {
-        assistantResponse: ensureVmHostThreadLinksInResponse(
-            ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
-            startedVmJobResults,
-            { projectId: toolRuntimeContext?.projectId, objectId: toolRuntimeContext?.objectId }
+        // Links the run must show whatever the model wrote: created notes, VM host threads and the
+        // tasks delegated work continues in (AT-3096).
+        assistantResponse: ensureDelegatedTaskLinksInResponse(
+            ensureVmHostThreadLinksInResponse(
+                ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
+                startedVmJobResults,
+                currentThread,
+                linkLanguage
+            ),
+            delegatedTaskResults,
+            currentThread,
+            linkLanguage
         ),
         executedToolCallsCount,
         executedToolNames,
@@ -2594,6 +2618,7 @@ async function collectAssistantTextWithToolCalls({
         createdNoteResults,
         createdChatCommentResults,
         startedVmJobResults,
+        delegatedTaskResults,
         reachedMaxToolIterations,
         finalResponseText: reachedMaxToolIterations
             ? 'Maximum tool call iterations reached.'
@@ -4873,6 +4898,10 @@ async function executeDelegatedAssistantRequest({
         originObjectType: callerToolRuntimeContext?.objectType || '',
         originObjectId: callerToolRuntimeContext?.objectId || '',
         originAssistantId: callerToolRuntimeContext?.assistantId || callerAssistantId || '',
+        // Whether that conversation is one delegated tasks report back to (Anna's, or a project
+        // assistant's chat). A task the delegate hands work to then records it as its origin, so the
+        // review notice and step changes reach the conversation the user asked in (AT-3096).
+        originTracksWork: isTrackedOriginConversation(callerToolRuntimeContext),
     }
 
     const messages = []
@@ -5005,6 +5034,11 @@ async function executeDelegatedAssistantRequest({
         // user to the work even if the delegate's prose didn't. The link is already appended to
         // assistantResponse by ensureVmHostThreadLinksInResponse.
         startedVmJobResults: Array.isArray(delegationRun?.startedVmJobResults) ? delegationRun.startedVmJobResults : [],
+        // Tasks the delegate handed work to, so the caller's reply links them too (AT-3096). Already
+        // linked in assistantResponse by ensureDelegatedTaskLinksInResponse.
+        delegatedTaskResults: Array.isArray(delegationRun?.delegatedTaskResults)
+            ? delegationRun.delegatedTaskResults
+            : [],
         warning,
         requiresToolExecution,
         targetAllowedToolsCount: targetAllowedTools.length,
@@ -6263,7 +6297,7 @@ async function executeToolNativelyImpl(
                     })
                 }
 
-                return {
+                const createdTaskResult = {
                     success: true,
                     taskId: resolvedTaskId,
                     projectId: resolvedProjectId,
@@ -6304,6 +6338,15 @@ async function executeToolNativelyImpl(
                         commentId: projectSelectionComment?.commentId || null,
                     },
                 }
+                // Work handed to this task continues there: the reply in the asking conversation
+                // always links it (AT-3096). Only the ids resolved above are used.
+                return trackAssistantWork
+                    ? withDelegatedTaskLink(createdTaskResult, {
+                          baseUrl: getBaseUrl(),
+                          projectId: resolvedProjectId,
+                          taskId: resolvedTaskId,
+                      })
+                    : createdTaskResult
             } catch (error) {
                 console.error('Error creating task:', error)
                 throw new Error(`Failed to create task: ${error.message}`)
@@ -10908,6 +10951,13 @@ async function executeToolNativelyImpl(
                 const tracksWorkInTasks = !!(
                     toolRuntimeContext?.annaConversation || toolRuntimeContext?.chatTaskTracking
                 )
+                // The conversation this tool answers in. Work that continues in it gets no link to it
+                // (AT-3096 follow-up: "the result will appear here: <link to this task>").
+                const currentVmCallerThread = {
+                    projectId: toolRuntimeContext?.projectId || projectId,
+                    objectType: toolRuntimeContext?.objectType || 'tasks',
+                    objectId: toolRuntimeContext?.objectId || '',
+                }
                 let effectiveProjectId = projectId
                 let effectiveObjectType = tracksWorkInTasks ? 'tasks' : toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = tracksWorkInTasks ? '' : toolRuntimeContext?.objectId || ''
@@ -10944,6 +10994,29 @@ async function executeToolNativelyImpl(
                             throw new Error('The responsible project assistant does not have VM execution enabled.')
                         }
                     }
+                }
+
+                // AT-3098: VM work on a done task reopens it into its workflow (doneTaskReactivation.js).
+                // A done delegated task is reopened by its guard, and its workflow runs this brief.
+                const loadAssistantDisplayName = async (assistantProjectId, workAssistantId) =>
+                    (
+                        await resolveCurrentAssistantDocForToolExecution(
+                            assistantProjectId,
+                            workAssistantId,
+                            requestUserId
+                        ).catch(() => null)
+                    )?.assistant?.displayName || ''
+                const doneTaskReactivationOptions = {
+                    note: [
+                        typeof toolArgs.objective === 'string' ? toolArgs.objective.trim() : '',
+                        typeof toolArgs.deliverable === 'string' && toolArgs.deliverable.trim()
+                            ? `Deliverable: ${toolArgs.deliverable.trim()}`
+                            : '',
+                    ]
+                        .filter(Boolean)
+                        .join('\n'),
+                    resolveEditorName: workAssistantId =>
+                        loadAssistantDisplayName(projectId, workAssistantId || assistantId),
                 }
 
                 const requestedTargetTaskId =
@@ -11026,8 +11099,13 @@ async function executeToolNativelyImpl(
                             projectId: effectiveProjectId,
                             taskId: effectiveObjectId,
                             retryAs: { requestUserId, runtime: toolRuntimeContext },
+                            reactivation: doneTaskReactivationOptions,
                         })
-                        if (managed) return managed
+                        if (managed)
+                            return withDelegatedTaskLink(managed, {
+                                baseUrl: getBaseUrl(),
+                                currentThread: currentVmCallerThread,
+                            })
                     }
                     await resolveWorkAssistant(null, target.assignedAssistantId)
 
@@ -11079,14 +11157,17 @@ async function executeToolNativelyImpl(
                     effectiveObjectType = hostThread.objectType
                     effectiveObjectId = hostThread.objectId
                     if (hostThread.delegation) {
-                        return {
-                            success: true,
-                            projectId: effectiveProjectId,
-                            taskId: effectiveObjectId,
-                            status: hostThread.delegation.status,
-                            message: hostThread.delegation.handoffInstruction,
-                            responsibleAssistant: hostThread.responsibleAssistant,
-                        }
+                        return withDelegatedTaskLink(
+                            {
+                                success: true,
+                                projectId: effectiveProjectId,
+                                taskId: effectiveObjectId,
+                                status: hostThread.delegation.status,
+                                message: hostThread.delegation.handoffInstruction,
+                                responsibleAssistant: hostThread.responsibleAssistant,
+                            },
+                            { baseUrl: getBaseUrl(), currentThread: currentVmCallerThread }
+                        )
                     }
                     await resolveWorkAssistant(hostThread.responsibleAssistant)
                     console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Created host task for contextless VM job', {
@@ -11104,8 +11185,13 @@ async function executeToolNativelyImpl(
                         projectId: effectiveProjectId,
                         taskId: effectiveObjectId,
                         retryAs: { requestUserId, runtime: toolRuntimeContext },
+                        reactivation: doneTaskReactivationOptions,
                     })
-                    if (managed) return managed
+                    if (managed)
+                        return withDelegatedTaskLink(managed, {
+                            baseUrl: getBaseUrl(),
+                            currentThread: currentVmCallerThread,
+                        })
                 }
 
                 // A run sent into another existing thread (continuing an earlier VM run, or a task
@@ -11153,6 +11239,28 @@ async function executeToolNativelyImpl(
                     }
                 }
 
+                // AT-3098: work is about to start on this task. A task that is already Done goes back into
+                // its workflow (first AI step of the working assistant, else Open) once the job is
+                // accepted, so it is not shown finished while it is worked on. Planned here so the VM
+                // brief already knows; written after startVmJob, so a refused launch reopens nothing.
+                let doneTaskPlan = null
+                if (effectiveObjectType === 'tasks' && effectiveObjectId && !workflowOwnsTask()) {
+                    const { planDoneTaskReactivation } = require('../Tasks/doneTaskReactivation')
+                    doneTaskPlan = await planDoneTaskReactivation({
+                        db: admin.firestore(),
+                        projectId: effectiveProjectId,
+                        taskId: effectiveObjectId,
+                        assistantId: responsibleAssistant.assistantId,
+                    }).catch(error => {
+                        console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: Could not check whether the host task is done', {
+                            projectId: effectiveProjectId,
+                            objectId: effectiveObjectId,
+                            error: error.message,
+                        })
+                        return null
+                    })
+                }
+
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
@@ -11173,11 +11281,20 @@ async function executeToolNativelyImpl(
                     return ''
                 })
 
+                const reopenedInstruction = doneTaskPlan
+                    ? doneTaskPlan.landsOnAiStep
+                        ? 'This task was already done and is reopened into its workflow for this work. Its workflow manages completion and human review: report the result and leave the task open.'
+                        : 'This task was already done and is reopened for this work. Report the result and leave the task open; its owner completes it after checking the result.'
+                    : ''
                 if ((tracksWorkInTasks || toolRuntimeContext?.onVmJobStarted) && effectiveObjectType === 'tasks') {
-                    const completionInstruction = workflowOwnsTask()
-                        ? 'Its workflow manages completion and human review: report the result and leave the task open.'
-                        : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.'
+                    const completionInstruction =
+                        reopenedInstruction ||
+                        (workflowOwnsTask()
+                            ? 'Its workflow manages completion and human review: report the result and leave the task open.'
+                            : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.')
                     threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. ${completionInstruction} For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
+                } else if (reopenedInstruction) {
+                    threadContext += `\n${reopenedInstruction}`
                 }
 
                 // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/
@@ -11234,7 +11351,50 @@ async function executeToolNativelyImpl(
                     originObjectId:
                         toolRuntimeContext?.originObjectId || (tracksWorkInTasks ? toolRuntimeContext.objectId : ''),
                     originAssistantId: toolRuntimeContext?.originAssistantId || (tracksWorkInTasks ? assistantId : ''),
+                    callerThread: currentVmCallerThread,
                 })
+                if (doneTaskPlan && vmResult.success) {
+                    // The VM record exists now, so the reopened AI step parks on it instead of running
+                    // its prompt as well (AT-2222) and hands the task to the next review step when the
+                    // job settles. Best-effort: the work is already running.
+                    try {
+                        const { reactivateDoneTaskForAssistantWork } = require('../Tasks/doneTaskReactivation')
+                        const reopened = await reactivateDoneTaskForAssistantWork({
+                            db: admin.firestore(),
+                            projectId: effectiveProjectId,
+                            taskId: effectiveObjectId,
+                            assistantId: responsibleAssistant.assistantId,
+                            actorUserId: requestUserId,
+                            editorName: await loadAssistantDisplayName(
+                                responsibleAssistant.projectId,
+                                responsibleAssistant.assistantId
+                            ),
+                            fromConversation:
+                                toolRuntimeContext?.objectId && toolRuntimeContext.objectId !== effectiveObjectId
+                                    ? {
+                                          projectId: toolRuntimeContext.projectId || projectId,
+                                          objectType: toolRuntimeContext.objectType,
+                                          objectId: toolRuntimeContext.objectId,
+                                      }
+                                    : null,
+                        })
+                        if (reopened.reactivated) {
+                            vmResult.taskReopened = {
+                                stepId: reopened.stepId,
+                                step: reopened.stepLabel,
+                                message: reopened.landsOnAiStep
+                                    ? `The task was done and is back on its workflow step “${reopened.stepLabel}” while this work runs; its review steps follow again afterwards.`
+                                    : 'The task was done and is back in Open while this work runs; its owner completes it again afterwards.',
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: Could not reopen the done host task', {
+                            projectId: effectiveProjectId,
+                            objectId: effectiveObjectId,
+                            error: error.message,
+                        })
+                    }
+                }
                 // A workflow can end the turn once it has recorded the VM as responsible for the step.
                 if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {
                     try {
@@ -11340,6 +11500,7 @@ async function storeChunks(
         let fatalToolExecutionError = null
         const createdNoteResults = []
         const startedVmJobResults = []
+        const delegatedTaskResults = []
         let vmHandoffFrozen = false
         let vmHandoffText = ''
         let vmFollowupStarted = false
@@ -11625,6 +11786,30 @@ async function storeChunks(
                     .trim()
                     .slice(0, 1500)
             )
+            // AT-3096: a VM handed to another task is linked in the introduction itself, which stays
+            // frozen while the VM runs; a later follow-up with the result is linked at finalization.
+            // A VM in this very thread gets no link to it, not even one the model wrote.
+            if (vmHandoffInThread) {
+                vmHandoffText = removeCurrentThreadLinks(vmHandoffText, { projectId, objectType, objectId }) || fallback
+            } else if (host?.projectId) {
+                vmHandoffText = ensureVmHostThreadLinksInResponse(
+                    vmHandoffText,
+                    [
+                        {
+                            hostProjectId: host.projectId,
+                            hostObjectType: host.objectType || 'tasks',
+                            hostObjectId: host.objectId,
+                            hostThreadUrl: `${getBaseUrl()}${buildVmChatPath(
+                                host.projectId,
+                                host.objectType || 'tasks',
+                                host.objectId
+                            )}`,
+                        },
+                    ],
+                    { projectId, objectId },
+                    { language }
+                )
+            }
             await commentRefRawUpdate({
                 commentText: vmHandoffText,
                 originalContent: vmHandoffText,
@@ -12070,6 +12255,7 @@ async function storeChunks(
                                         }
                                     }
                                     collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+                                    collectDelegatedTaskHandoffs(delegatedTaskResults, toolResult)
 
                                     const conversationSafeToolResult = buildConversationSafeToolResult(
                                         toolName,
@@ -12510,12 +12696,21 @@ async function storeChunks(
             await safeCommentUpdate({ commentText, isThinking: false, isLoading: false })
         }
 
-        if (createdNoteResults.length > 0 || startedVmJobResults.length > 0) {
+        if (createdNoteResults.length > 0 || startedVmJobResults.length > 0 || delegatedTaskResults.length > 0) {
             await flushPendingUpdate()
-            const responseWithLinks = ensureVmHostThreadLinksInResponse(
-                ensureCreatedNoteLinksInResponse(commentText, createdNoteResults),
-                startedVmJobResults,
-                { projectId, objectId }
+            const currentThread = { projectId, objectType, objectId }
+            const linkLanguage = { language: runtimeContextForTools.language }
+            // AT-3096: the tasks delegated work continues in are linked like VM host threads.
+            const responseWithLinks = ensureDelegatedTaskLinksInResponse(
+                ensureVmHostThreadLinksInResponse(
+                    ensureCreatedNoteLinksInResponse(commentText, createdNoteResults),
+                    startedVmJobResults,
+                    currentThread,
+                    linkLanguage
+                ),
+                delegatedTaskResults,
+                currentThread,
+                linkLanguage
             )
             if (responseWithLinks !== commentText) {
                 commentText = responseWithLinks

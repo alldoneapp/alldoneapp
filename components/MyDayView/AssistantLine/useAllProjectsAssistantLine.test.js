@@ -1,12 +1,13 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import { useAllProjectsAssistantLine } from './useAllProjectsAssistantLine'
+import { useAllProjectsAssistantLine, useProjectScopeAssistantSwitch } from './useAllProjectsAssistantLine'
 
 const mockDispatch = jest.fn()
 const mockUpdateShowAllProjectsByTime = jest.fn()
 const mockUseProjectsData = jest.fn()
 const mockUseDeferredStartupWork = jest.fn(() => true)
+const mockNavigateToHome = jest.fn()
 let mockState
 
 jest.mock('react-redux', () => ({
@@ -26,6 +27,10 @@ jest.mock('../../../hooks/useDeferredStartupWork', () => ({
 }))
 jest.mock('../../../utils/backends/Users/usersFirestore', () => ({
     updateShowAllProjectsByTime: (...args) => mockUpdateShowAllProjectsByTime(...args),
+}))
+jest.mock('../../../utils/navigateToHome', () => ({
+    __esModule: true,
+    default: (...args) => mockNavigateToHome(...args),
 }))
 jest.mock('../../Feeds/Utils/FeedsConstants', () => ({ FOLLOWED_TAB: 'FOLLOWED_TAB' }))
 jest.mock('../../../utils/TabNavigationConstants', () => ({ DV_TAB_ROOT_TASKS: 'DV_TAB_ROOT_TASKS' }))
@@ -125,6 +130,7 @@ beforeEach(() => {
     mockUpdateShowAllProjectsByTime.mockClear()
     mockUseProjectsData.mockClear()
     mockUseDeferredStartupWork.mockClear()
+    mockNavigateToHome.mockClear()
 })
 
 describe('useAllProjectsAssistantLine', () => {
@@ -189,6 +195,7 @@ describe('useAllProjectsAssistantLine', () => {
 
         expect(mockDispatch).not.toHaveBeenCalled()
         expect(mockUpdateShowAllProjectsByTime).not.toHaveBeenCalled()
+        expect(mockNavigateToHome).not.toHaveBeenCalled()
     })
 
     it('does nothing for a project that is not in the store', () => {
@@ -197,5 +204,224 @@ describe('useAllProjectsAssistantLine', () => {
         act(() => result.current.onSelect({ projectId: 'gone', assistantId: 'x' }))
 
         expect(mockDispatch).not.toHaveBeenCalled()
+    })
+})
+
+// AT-3093: the name in a project's assistant line opens the same popup as on All Projects.
+describe('useProjectScopeAssistantSwitch', () => {
+    const jtlAssistant = { uid: 'jtl-assistant', displayName: 'JTL Assistant' }
+    const option = (projectId, assistantId, extra = {}) => ({
+        key: `${projectId}:${assistantId}`,
+        projectId,
+        assistantId,
+        ...extra,
+    })
+    const buildProjectSwitch = (overrides = {}) => ({
+        scope: 'project',
+        // What useProjectAssistantLine offers inside JTL: its own assistant and the default one.
+        groups: [
+            {
+                projectId: 'p-jtl',
+                projectName: 'JTL',
+                isDefaultProject: false,
+                options: [
+                    option('p-jtl', 'jtl-assistant'),
+                    option('p-jtl', 'anna', { isDefaultProjectAssistant: true }),
+                ],
+            },
+        ],
+        grouped: false,
+        activeProjectId: 'p-jtl',
+        activeAssistantId: 'jtl-assistant',
+        onSelect: jest.fn(),
+        ...overrides,
+    })
+
+    beforeEach(() => {
+        mockState = buildState({
+            projectAssistants: {
+                [DEFAULT_PROJECT_ID]: [anna],
+                'p-alldone': [marty, derek],
+                'p-jtl': [jtlAssistant],
+            },
+        })
+    })
+
+    it('lists every project, the current one first with its in-place options', () => {
+        const projectSwitch = buildProjectSwitch()
+        const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+
+        expect(result.current.grouped).toBe(true)
+        expect(result.current.groups.map(group => group.projectId)).toEqual(['p-jtl', DEFAULT_PROJECT_ID, 'p-alldone'])
+        expect(result.current.groups[0]).toBe(projectSwitch.groups[0])
+        // Which row is live is unchanged: this project's assistant, in this project.
+        expect(result.current.activeProjectId).toBe('p-jtl')
+        expect(result.current.activeAssistantId).toBe('jtl-assistant')
+    })
+
+    it('asks for the assistants of every active project', () => {
+        renderHook(useProjectScopeAssistantSwitch, buildProjectSwitch())
+
+        expect(mockUseProjectsData).toHaveBeenCalledWith([DEFAULT_PROJECT_ID, 'p-alldone', 'p-jtl'], 'assistants', {
+            enabled: true,
+        })
+    })
+
+    it('switches in place for a choice in the current project, without touching the project settings', () => {
+        const projectSwitch = buildProjectSwitch()
+        const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+        const defaultEntry = result.current.groups[0].options[1]
+
+        act(() => result.current.onSelect(defaultEntry))
+
+        expect(projectSwitch.onSelect).toHaveBeenCalledWith(defaultEntry)
+        // No navigation, no user write: only the session-only line selection the project hook makes.
+        expect(mockDispatch).not.toHaveBeenCalled()
+        expect(mockUpdateShowAllProjectsByTime).not.toHaveBeenCalled()
+    })
+
+    it('moves to the other project with the assistant active, as on All Projects', () => {
+        const projectSwitch = buildProjectSwitch()
+        const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+        const target = result.current.groups
+            .find(group => group.projectId === 'p-alldone')
+            .options.find(item => item.assistantId === 'derek')
+
+        act(() => result.current.onSelect(target))
+
+        expect(projectSwitch.onSelect).not.toHaveBeenCalled()
+        const dispatched = mockDispatch.mock.calls.flatMap(call => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+        expect(dispatched).toContainEqual({
+            type: 'Set assistant line assistant',
+            projectId: 'p-alldone',
+            assistantId: 'derek',
+        })
+        expect(dispatched).toContainEqual({ type: 'Switch project', index: 1 })
+        // The JTL line's own choice is left alone.
+        expect(dispatched).not.toContainEqual(expect.objectContaining({ projectId: 'p-jtl' }))
+    })
+
+    // AT-3093 follow-up: the default project's default assistant is the All Projects line's own
+    // assistant, so choosing it goes back to All Projects instead of opening the default project.
+    const annaInDefaultGroup = result =>
+        result.current.groups
+            .find(group => group.projectId === DEFAULT_PROJECT_ID)
+            .options.find(item => item.assistantId === 'anna')
+
+    it('returns to All Projects for the default project’s default assistant, not to the default project', () => {
+        const projectSwitch = buildProjectSwitch()
+        const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+
+        act(() => result.current.onSelect(annaInDefaultGroup(result)))
+
+        expect(mockNavigateToHome).toHaveBeenCalledTimes(1)
+        expect(mockNavigateToHome).toHaveBeenCalledWith(mockDispatch)
+        expect(projectSwitch.onSelect).not.toHaveBeenCalled()
+        // Nothing of the switch-to-project path runs: no project switch, no line selection,
+        // no write to the user document.
+        const dispatched = mockDispatch.mock.calls.flatMap(call => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+        expect(dispatched).not.toContainEqual(expect.objectContaining({ type: 'Switch project' }))
+        expect(dispatched).not.toContainEqual(expect.objectContaining({ type: 'Set assistant line assistant' }))
+        expect(mockUpdateShowAllProjectsByTime).not.toHaveBeenCalled()
+    })
+
+    it('hides the sidebar on small screens when returning to All Projects, as the project switch does', () => {
+        mockState.smallScreenNavigation = true
+        const { result } = renderHook(useProjectScopeAssistantSwitch, buildProjectSwitch())
+
+        act(() => result.current.onSelect(annaInDefaultGroup(result)))
+
+        expect(mockNavigateToHome).toHaveBeenCalledTimes(1)
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'Hide web sidebar' })
+    })
+
+    it('keeps the in-place “From your default project” entry in place', () => {
+        const projectSwitch = buildProjectSwitch()
+        const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+        const inPlaceEntry = result.current.groups[0].options.find(item => item.isDefaultProjectAssistant)
+
+        act(() => result.current.onSelect(inPlaceEntry))
+
+        expect(projectSwitch.onSelect).toHaveBeenCalledWith(inPlaceEntry)
+        expect(mockNavigateToHome).not.toHaveBeenCalled()
+    })
+
+    it('does not send an ordinary cross-project choice to All Projects', () => {
+        const { result } = renderHook(useProjectScopeAssistantSwitch, buildProjectSwitch())
+        const derekOption = result.current.groups
+            .find(group => group.projectId === 'p-alldone')
+            .options.find(item => item.assistantId === 'derek')
+
+        act(() => result.current.onSelect(derekOption))
+
+        expect(mockNavigateToHome).not.toHaveBeenCalled()
+    })
+
+    describe('inside the default project', () => {
+        const judy = { uid: 'judy', displayName: 'Judy Job' }
+        const buildDefaultProjectSwitch = () =>
+            buildProjectSwitch({
+                groups: [
+                    {
+                        projectId: DEFAULT_PROJECT_ID,
+                        projectName: 'Personal',
+                        isDefaultProject: true,
+                        options: [option(DEFAULT_PROJECT_ID, 'anna'), option(DEFAULT_PROJECT_ID, 'judy')],
+                    },
+                ],
+                activeProjectId: DEFAULT_PROJECT_ID,
+                activeAssistantId: 'judy',
+            })
+
+        beforeEach(() => {
+            mockState.projectAssistants[DEFAULT_PROJECT_ID] = [anna, judy]
+        })
+
+        it('returns to All Projects for the default assistant', () => {
+            const projectSwitch = buildDefaultProjectSwitch()
+            const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+
+            act(() => result.current.onSelect(result.current.groups[0].options[0]))
+
+            expect(mockNavigateToHome).toHaveBeenCalledTimes(1)
+            expect(projectSwitch.onSelect).not.toHaveBeenCalled()
+        })
+
+        it('switches its other assistants in place', () => {
+            const projectSwitch = buildDefaultProjectSwitch()
+            const { result } = renderHook(useProjectScopeAssistantSwitch, projectSwitch)
+            const judyOption = result.current.groups[0].options[1]
+
+            act(() => result.current.onSelect(judyOption))
+
+            expect(projectSwitch.onSelect).toHaveBeenCalledWith(judyOption)
+            expect(mockNavigateToHome).not.toHaveBeenCalled()
+        })
+    })
+
+    it('reads the default assistant from the store rather than assuming one', () => {
+        // The default project's resolved default assistant is Judy here, so Anna (also in that
+        // project) is an ordinary choice that opens the default project.
+        const judy = { uid: 'judy', displayName: 'Judy Job' }
+        mockState.defaultAssistant = judy
+        mockState.projectAssistants[DEFAULT_PROJECT_ID] = [anna, judy]
+        const { result } = renderHook(useProjectScopeAssistantSwitch, buildProjectSwitch())
+        const defaultGroup = result.current.groups.find(group => group.projectId === DEFAULT_PROJECT_ID)
+
+        act(() => result.current.onSelect(defaultGroup.options.find(item => item.assistantId === 'anna')))
+        expect(mockNavigateToHome).not.toHaveBeenCalled()
+        const dispatched = mockDispatch.mock.calls.flatMap(call => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+        expect(dispatched).toContainEqual({ type: 'Switch project', index: 0 })
+
+        act(() => result.current.onSelect(defaultGroup.options.find(item => item.assistantId === 'judy')))
+        expect(mockNavigateToHome).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves the home line’s switch, or no switch, untouched and loads nothing for it', () => {
+        const homeSwitch = { groups: [], grouped: true, activeProjectId: DEFAULT_PROJECT_ID, onSelect: jest.fn() }
+
+        expect(renderHook(useProjectScopeAssistantSwitch, homeSwitch).result.current).toBe(homeSwitch)
+        expect(renderHook(useProjectScopeAssistantSwitch, null).result.current).toBeNull()
+        expect(mockUseProjectsData).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), { enabled: true })
     })
 })

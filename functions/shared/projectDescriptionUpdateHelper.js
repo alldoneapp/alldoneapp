@@ -15,6 +15,10 @@ async function updateProjectDescription({
     description,
     feedUser: actorFeedUser = null,
     completionWrite = null,
+    // Optional compare-and-set (the automatic update, KnowledgeBase/projectDescriptionRefresh.js):
+    // when the stored description is no longer this text, nothing is written and the result says
+    // `conflict`, so a member's edit made while the model was working is never overwritten.
+    expectedDescription = undefined,
 }) {
     if (!db) {
         throw new Error('Database instance is required')
@@ -43,6 +47,17 @@ async function updateProjectDescription({
     const projectData = projectDoc.data() || {}
     const currentDescription = normalizeProjectDescription(projectData.description)
     const projectName = projectData.name || projectId
+
+    if (expectedDescription !== undefined && currentDescription !== normalizeProjectDescription(expectedDescription)) {
+        return {
+            success: false,
+            updated: false,
+            conflict: true,
+            project: { id: projectId, name: projectName },
+            description: currentDescription,
+            message: `Project description of "${projectName}" changed meanwhile; nothing was written`,
+        }
+    }
 
     if (currentDescription === normalizedDescription) {
         if (completionWrite) await completionWrite.ref.set(completionWrite.data, { merge: true })
