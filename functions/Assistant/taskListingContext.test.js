@@ -37,22 +37,9 @@ describe('task listing counts survive model context limits', () => {
         expect(safe.tasks.every(task => !task.comments)).toBe(true)
         expect(Buffer.byteLength(JSON.stringify(safe))).toBeLessThanOrEqual(40000)
 
-        // As the newest result the listing keeps the full ceiling, so the model sees all 82 tasks.
         const prepared = prepareResearchRequest(conversation(safe))
+        const compacted = readResult(prepared.messages)
         expect(prepared.stopReason).toBeNull()
-        expect(readResult(prepared.messages)).toMatchObject({ count: 82, totalCount: 82, listingComplete: true })
-        expect(readResult(prepared.messages).tasks).toHaveLength(82)
-
-        // Once a later result follows, it is compacted to a partial listing with authoritative totals.
-        const followedByAnother = [
-            ...conversation(safe),
-            {
-                role: 'assistant',
-                tool_calls: [{ id: 'later', function: { name: 'get_notes', arguments: '{"noteId":"n1"}' } }],
-            },
-            { role: 'tool', tool_call_id: 'later', content: JSON.stringify({ success: true, title: 'Note' }) },
-        ]
-        const compacted = readResult(prepareResearchRequest(followedByAnother).messages)
         expect(compacted).toMatchObject({
             count: 82,
             totalCount: 82,

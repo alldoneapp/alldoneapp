@@ -1,4 +1,4 @@
-# E2B templates — `alldone-claude-4gb`, `alldone-codex-4gb`
+# E2B templates — `alldone-claude-8gb`, `alldone-codex-8gb`
 
 Sandbox templates for the `execute_task_in_vm` assistant tool. The runner
 ([../Assistant/vmJobRunner.js](../Assistant/vmJobRunner.js)) starts each job from the selected
@@ -8,7 +8,8 @@ agent's sized template; names and sizes live in
 **Why they exist.** E2B fixes a sandbox's RAM and vCPU count when its template is built;
 `Sandbox.create` cannot change them. E2B's managed `claude` / `codex` templates have 1 GB, which
 OOM-kills dependency installs and builds. Each sized template starts from the managed one
-(`fromTemplate`), adds the repository's pinned Node runtime, and is built with 2 vCPU / 4 GB.
+(`fromTemplate`), adds the repository's pinned Node runtime, and is built with 4 vCPU / 8 GB
+(since 2026-11-19; the earlier 2 vCPU / 4 GB `alldone-*-4gb` templates still OOM-killed some jobs).
 The runner keeps the agent CLIs current at runtime, so a CLI release needs no rebuild.
 
 **Node updates.** `../Assistant/vmNodeRuntime.js` pins Node 22.23.5, matching the repository's
@@ -23,9 +24,10 @@ next cold repo job. The startup check upgrades an old golden before its cached d
 are used, so rebuilding does not delay jobs or discard paused-session work.
 
 **Fallback.** If a sized template is missing in the E2B team behind the key in use, the runner
-logs `sized E2B template missing` and starts from the managed 1 GB template, so jobs keep working.
-A thread started that way is cold-started again on its next job, so build the templates before
-deploying.
+logs `sized E2B template missing` and tries the previous sized template (`alldone-*-4gb`), then the
+managed 1 GB one, so jobs keep working. A thread started that way is cold-started again on its next
+job, so build the templates before deploying. Keep the old 4 GB templates in E2B until the 8 GB
+ones are built in every team.
 
 This is a **Docker-free** build using E2B's Build System 2.0 — it runs remotely on E2B's
 builders. No Docker, no Dockerfile, no `e2b` CLI login.

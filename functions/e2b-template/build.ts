@@ -8,8 +8,8 @@
  *
  * Names and sizes come from ../Assistant/vmTemplates.js, the same module the runner reads.
  * Build them in EVERY E2B team the functions use (staging and production keys may differ)
- * before deploying a runner that selects them; until then the runner falls back to the managed
- * 1 GB templates and logs an error.
+ * before deploying a runner that selects them; until then the runner falls back to the previous
+ * sized templates (or the managed 1 GB ones) and logs an error.
  *
  * Run with tsx (NOT raw node — e2b v2's bundle needs tsx's ESM/`node:` interop):
  *   cd functions/e2b-template

@@ -1,5 +1,7 @@
 'use strict'
 
+const { VM_SANDBOX_CPU_COUNT, VM_SANDBOX_MEMORY_MB } = require('../Assistant/vmTemplates')
+
 // Every assumption the growth scoreboard makes, in one place.
 //
 // The scoreboard is the reward signal of the growth loop (functions/Growth/growthScoreboard.js).
@@ -21,9 +23,11 @@ const APPLE_DEFAULT_TAX_SHARE = 0.16
 
 // A VM run pays for two things: the E2B sandbox and the Cloud Run job that supervises it
 // (functions/Assistant/vmJob.js charges VM_GOLD_PER_MINUTE Gold per started minute for both).
-// ESTIMATE, from the list prices: E2B 2 vCPU + 1 GiB at $0.000014/vCPU-s and $0.0000045/GiB-s,
-// Cloud Run 1 vCPU + 1 GiB at $0.000018/vCPU-s and $0.000002/GiB-s.
-const E2B_SANDBOX_USD_PER_MINUTE = 0.00195
+// ESTIMATE, from the list prices: E2B at $0.000014/vCPU-s and $0.0000045/GiB-s for the size the
+// runner's templates are built with (vmTemplates.js; 4 vCPU + 8 GiB = $0.00552/min), Cloud Run
+// 1 vCPU + 1 GiB at $0.000018/vCPU-s and $0.000002/GiB-s.
+const E2B_SANDBOX_USD_PER_MINUTE =
+    Math.round((VM_SANDBOX_CPU_COUNT * 0.000014 + (VM_SANDBOX_MEMORY_MB / 1024) * 0.0000045) * 60 * 1e5) / 1e5
 const VM_RUNNER_USD_PER_MINUTE = 0.0012
 // Kept equal to vmJob.js's VM_GOLD_PER_MINUTE by growthCostModel.test.js.
 const VM_GOLD_PER_MINUTE = 10

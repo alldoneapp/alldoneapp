@@ -2,10 +2,7 @@ const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved 
 const { compactTaskListing } = require('./taskListingContext')
 const { compactGoalListing } = require('./goalListingContext')
 const { isDeepStrictEqual } = require('node:util')
-const { fitToolResultToBudget, measureChars } = require('./toolResultFit')
 const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
-// Room for contextTruncated/originalCharacterCount/maxContextCharacters (or the { result } wrapper).
-const CEILING_METADATA_RESERVE_CHARS = 200
 const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
 const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
 const GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS = 50
@@ -225,13 +222,7 @@ function enforceToolResultContextCeiling(toolName, toolResult) {
         return compactGoalListing(toolResult, MAX_TOOL_RESULT_CONTEXT_CHARS)
     }
 
-    // Shorten long strings before dropping list items, so every record keeps its ids and short
-    // fields (all 24 scenes of a story_get, not the first 20). The old one-pass truncation stays as
-    // the fallback for results that do not fit even at the tightest shape.
-    const compactResult =
-        fitToolResultToBudget(toolResult, MAX_TOOL_RESULT_CONTEXT_CHARS - CEILING_METADATA_RESERVE_CHARS, {
-            measure: measureChars,
-        }) ?? truncateToolResultForGlobalCeiling(toolResult)
+    const compactResult = truncateToolResultForGlobalCeiling(toolResult)
     const compactWithMetadata = isObject(compactResult)
         ? {
               ...compactResult,

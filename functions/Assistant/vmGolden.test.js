@@ -129,6 +129,17 @@ describe('resolveGoldenTemplate', () => {
             })
         ).toBeNull()
     })
+    it('returns null for a golden taken on the previous 4 GB template, so it is rebuilt at 8 GB', () => {
+        const g = {
+            status: 'ready',
+            snapshotId: 'team/g:1',
+            baseTemplate: 'alldone-claude-4gb',
+            nodeVersion: VM_NODE_VERSION,
+        }
+        expect(BASE).toBe('alldone-claude-8gb')
+        expect(vmGolden.isGoldenOnOutdatedBase(g)).toBe(true)
+        expect(vmGolden.resolveGoldenTemplate({ vmGolden: g })).toBeNull()
+    })
     it('serves a golden built on the managed fallback when the sized template is missing', () => {
         const g = {
             status: 'ready',
@@ -577,7 +588,7 @@ describe('the golden is server-owned (security audit 2026-11)', () => {
         const create = require('e2b').Sandbox.create
         const built = create.getMockImplementation()
         create.mockImplementation(async template => {
-            if (template === BASE) throw new Error("404: template 'alldone-claude-4gb' not found")
+            if (template !== 'claude') throw new Error(`404: template '${template}' not found`)
             return built(template)
         })
         global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ snapshotID: 'team/g:11' }) }))

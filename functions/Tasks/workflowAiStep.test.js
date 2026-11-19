@@ -2189,9 +2189,7 @@ describe('a VM job that stops to ask the user a question', () => {
 
     it('keeps the task active once the question expired and the job still has not settled', async () => {
         const expiredAt = Date.now() - 1000
-        // createdAt is fixed: the job's own deadline (createdAt + AWAITING_VM_TIMEOUT_MS) must not pass
-        // `now` below just because a millisecond went by between these lines (failed on slow CI).
-        seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt, createdAt: expiredAt })
+        seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt })
 
         await resolveAwaitingVmRuns({ now: expiredAt + AWAITING_VM_TIMEOUT_MS + 1000 })
 
