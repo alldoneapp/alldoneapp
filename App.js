@@ -18,7 +18,6 @@ import HelperFunctions from './utils/HelperFunctions'
 import { startDailyAppReload } from './utils/DailyAppReload'
 import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from './utils/performance/performanceLogger'
 import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
-import { configureLastUnreadRedirect } from './components/ChatsView/lastUnreadRedirect'
 import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
 import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
 import { initializeResponsiveLayout } from './AppNavigator'
@@ -37,8 +36,6 @@ initializeResponsiveLayout()
 startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
 startAppBootConnectionWait()
 installStorePerformanceObserver(store)
-// Chats: clearing a project's last unread message opens its tasks (AT-3104).
-configureLastUnreadRedirect(store)
 installBrowserPerformanceObservers()
 // A ca9/b815 Firestore assertion permanently poisons the SDK AsyncQueue. Install
 // before the app mounts so the first unhandled queue rejection can replace the

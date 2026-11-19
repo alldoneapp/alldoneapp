@@ -261,41 +261,6 @@ longer rendered anywhere but kept for the AT-3034 shell cases in `AnnaShell.test
 `openAssistantEditor.test.js` and `OpenTasksAssistantPreConfigTasks.test.js`. The paragraph below
 is the AT-3034 history.
 
-**A project's assistant name opens the All Projects picker (AT-3093, 2026-11-18).** Decided with the
-product owner. Inside a project the switch used to list only that project's options, and with two
-(its assistant and "From your default project") it toggled without a popup. `AssistantLine` now
-widens a switch marked `scope: 'project'` (from `useProjectAssistantLine`) through
-`useProjectScopeAssistantSwitch` (`useAllProjectsAssistantLine.js`) to the same grouped
-`AssistantSwitchModal` as on the home line: the current project's group first, with its in-place
-options unchanged, then every other active project in the All Projects order
-(`buildProjectScopeAssistantGroups`). A pick in the current group only sets the session-only
-`assistantLineSelection`. It never writes `project.assistantId`. A pick from another project
-navigates there with that assistant active, like the home line does. It cannot stay in place:
-`getAssistantForChat` resolves a chat's assistant from the chat's project, the global assistants and
-the user's default project only, so another project's assistant would answer as the default one.
-The other projects' assistants load after startup (`useDeferredStartupWork`) through the shared
-loader. `useProjectAssistantLine` itself loads nothing extra, because task boards and modals mount
-it without a line. Pinned by `useAllProjectsAssistantLine.test.js`,
-`assistantSwitchOptions.test.js`, `useAssistantLineSwitch.test.js` and `AssistantLine.test.js`.
-Follow-up, decided with the product owner the same day: the default project's default assistant
-(`state.defaultAssistant` in `loggedUser.defaultProjectId`, the All Projects line's own speaker,
-matched by `isAllProjectsAssistantOption`) returns to All Projects through `utils/navigateToHome.js`
-instead of opening the default project, also when picked inside the default project. The
-"From your default project" entry in another project's group carries that project's id and still
-switches in place.
-
-**The switch popup has a search field (AT-3100, 2026-11-18).** Decided with the product owner:
-it is always shown in `AssistantSwitchModal` (the popup only opens from three options), never
-autofocused (on phones the keyboard would cover the list), and Enter picks the first match.
-`filterAssistantGroups` (`assistantSwitchOptions.js`) matches the assistant's display name only,
-case-insensitively, keeps the project grouping and drops groups with no match; a blank query hands
-back the same `groups` array. The title and the field sit outside `CustomScrollView`, so they stay
-put while the list scrolls. Escape clears a non-empty query first (`useEscapeKey`, enabled only
-while there is text), on the desktop popover and in the bottom sheet. Empty state: `EmptyResults` with "No assistants found"
-(shared with `AnnaProjectSwitcher`). Pinned by `AssistantSwitchModal.test.js`,
-`assistantSwitchOptions.test.js` and `browser-tests/at3100` (real Chromium: sticky field, filter,
-empty state, clear, Escape, Enter, at 1280 and 390 px).
-
 **Assistant mode is entered from the assistant line (AT-3034, superseded by AT-3069 above).** The
 panel button (`components/Anna/AssistantModeButton.js`, moved from `TopBar/`) sat at the top left
 of the assistant line's header (`AssistantOptions`, before the assistant-board edit pencil). The

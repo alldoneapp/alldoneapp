@@ -1343,9 +1343,13 @@ class TasksHelper {
         // a note with no `parentObject` at all took that path, so a tag pointing at a contact
         // note dropped the user on the followed-notes list. An unreadable parent task falls
         // through to the standalone editor rather than leaving the click doing nothing.
+        // A visitor who may read only this note (its public link, SharedHelper.createPublicNoteLinkProject)
+        // stays in the note: the parent task is not theirs to read, and a denied read must not stop
+        // the navigation.
+        const opensThroughPublicLinkOnly = !!ProjectHelper.getProjectById(projectId)?.publicNoteLinkOnly
         const parentTask =
-            note && inSelectedProject && note.parentObject?.type === 'tasks'
-                ? await Backend.getTaskData(projectId, note.parentObject.id)
+            note && inSelectedProject && !opensThroughPublicLinkOnly && note.parentObject?.type === 'tasks'
+                ? await Backend.getTaskData(projectId, note.parentObject.id).catch(() => null)
                 : null
 
         if (parentTask) {

@@ -698,16 +698,3 @@ from 360 px up. Against the code before the fix 88 checks fail (no Gold in the t
 ```bash
 node browser-tests/at3044/run.js
 ```
-
-### `at3100/` — search in the assistant switch popup
-
-Mounts the real `AssistantSwitchControl` → `AppPopover` → `AssistantSwitchModal` with the
-screenshot's eleven assistants in four projects, at 1280 px (popover) and 390 px (bottom sheet).
-It checks that the field is labelled and not autofocused, that the field does not move while the
-list scrolls to the bottom, case-insensitive filtering with empty groups hidden, the empty state,
-the clear button, Escape clearing the query, Enter picking the first match, and that a click on a
-filtered row selects exactly that row.
-
-```bash
-node browser-tests/at3100/run.js
-```

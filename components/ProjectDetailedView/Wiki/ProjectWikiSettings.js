@@ -21,8 +21,6 @@ import {
     KNOWLEDGE_BASE_INSTRUCTIONS_MAX_CHARS,
     MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
-    PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS,
-    resolveProjectDescriptionUpdateIntervalDays,
     toKnowledgeBaseSettingsView,
 } from '../../../functions/KnowledgeBase/knowledgeBaseModel'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../functions/Assistant/selectableAssistantModels'
@@ -44,18 +42,9 @@ const RUN_STATUS_LABELS = {
 
 const STOP_REASON_LABELS = {
     monthly_cap: 'Monthly Gold limit reached',
-    project_archived: 'Project archived',
     insufficient_gold: 'Not enough Gold',
     time: 'Time limit reached',
     no_owner: 'No paying member',
-}
-
-// 1, 7, 14, 28 days, as offered by the server (knowledgeBaseModel.js).
-const DESCRIPTION_INTERVAL_LABELS = {
-    1: 'Daily',
-    7: 'Weekly',
-    14: 'Every 2 weeks',
-    28: 'Every 4 weeks',
 }
 
 function currentMonthSpent(knowledgeBase, now = Date.now()) {
@@ -103,67 +92,6 @@ export function ModelPicker({ model, disabled, onChange }) {
                 title={translate(option?.labelKey || model)}
             />
         </AppPopover>
-    )
-}
-
-// The automatic project description update (AT-3095): a step of the wiki run, so it needs the wiki
-// on and is changed by whoever may change the wiki (it is billed to the wiki's payer).
-export function ProjectDescriptionUpdateSettings({ settings, wikiEnabled, disabled, onSave }) {
-    const enabled = settings?.enabled !== false
-    const intervalDays = resolveProjectDescriptionUpdateIntervalDays(settings?.intervalDays)
-    return (
-        <View testID="project-description-update-settings" style={localStyles.descriptionBlock}>
-            <View style={localStyles.row}>
-                <Icon name="file-text" size={24} color={colors.Text03} />
-                <Text style={localStyles.label}>{translate('Update project description automatically')}</Text>
-                <View style={localStyles.right}>
-                    <Switch
-                        active={enabled}
-                        disabled={disabled}
-                        activeSwitch={() => onSave({ descriptionUpdateEnabled: true })}
-                        deactiveSwitch={() => onSave({ descriptionUpdateEnabled: false })}
-                    />
-                </View>
-            </View>
-            <Text style={localStyles.hint}>{translate('Project description update hint')}</Text>
-            {!wikiEnabled && (
-                <Text testID="project-description-update-needs-wiki" style={localStyles.hint}>
-                    {translate('Project description update needs the wiki')}
-                </Text>
-            )}
-            {enabled && (
-                <View style={[localStyles.actions, localStyles.intervalRow]}>
-                    {PROJECT_DESCRIPTION_UPDATE_INTERVAL_OPTIONS.map(days => (
-                        <Button
-                            key={days}
-                            type={days === intervalDays ? 'secondary' : 'ghost'}
-                            title={translate(DESCRIPTION_INTERVAL_LABELS[days] || String(days))}
-                            disabled={disabled || days === intervalDays}
-                            onPress={() => onSave({ descriptionUpdateIntervalDays: days })}
-                            buttonStyle={localStyles.intervalButton}
-                        />
-                    ))}
-                </View>
-            )}
-            {(settings?.lastRunAt || settings?.lastChangedAt) && (
-                <Text testID="project-description-update-status" style={localStyles.hint}>
-                    {[
-                        settings.lastRunAt
-                            ? translate('Project description last checked', {
-                                  date: formatWikiDate(settings.lastRunAt),
-                              })
-                            : null,
-                        settings.lastChangedAt
-                            ? translate('Project description last changed', {
-                                  date: formatWikiDate(settings.lastChangedAt),
-                              })
-                            : null,
-                    ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                </Text>
-            )}
-        </View>
     )
 }
 
@@ -304,21 +232,9 @@ export default function ProjectWikiSettings({ project }) {
                     {translate('Wiki paused because its payer left the project')}
                 </Text>
             )}
-            {settings.pausedForArchivedProject && (
-                <Text testID="project-wiki-archived-hint" style={localStyles.hint}>
-                    {translate('Wiki paused while its payer has archived the project')}
-                </Text>
-            )}
             {!canManage && (
                 <Text style={localStyles.hint}>{translate('Only the paying member can change the wiki')}</Text>
             )}
-
-            <ProjectDescriptionUpdateSettings
-                settings={settings.descriptionUpdate}
-                wikiEnabled={settings.enabled}
-                disabled={disabled}
-                onSave={save}
-            />
 
             <View style={localStyles.row}>
                 <Icon name="cpu" size={24} color={colors.Text03} />
@@ -451,9 +367,6 @@ export default function ProjectWikiSettings({ project }) {
                                         changes: Array.isArray(run.changes) ? run.changes.length : 0,
                                         gold: Number(run.goldSpent) || 0,
                                     }),
-                                    run.descriptionUpdate?.result === 'changed'
-                                        ? translate('Project description updated')
-                                        : null,
                                 ]
                                     .filter(Boolean)
                                     .join(' · ')}
@@ -545,16 +458,6 @@ const localStyles = StyleSheet.create({
     },
     secondAction: {
         marginLeft: 8,
-    },
-    descriptionBlock: {
-        marginTop: 8,
-    },
-    intervalRow: {
-        justifyContent: 'flex-start',
-        paddingLeft: 8,
-    },
-    intervalButton: {
-        marginRight: 8,
     },
     statusBlock: {
         marginTop: 24,

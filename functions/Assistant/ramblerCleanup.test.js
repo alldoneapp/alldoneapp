@@ -60,31 +60,6 @@ describe('system prompt contract', () => {
     // PT-4648: the semantic half of the dictation vocabulary. Deepgram's keyterm prompting biases
     // the acoustics towards the brand; only this prompt has the sentence and can tell the product
     // "Alldone" from the ordinary phrase "all done".
-    test('stays close to the original wording instead of summarizing (AT-3105)', () => {
-        expect(RAMBLER_SYSTEM_PROMPT).toContain("staying as close as possible to the speaker's original wording")
-        expect(RAMBLER_SYSTEM_PROMPT).toContain(
-            'Do not summarize, condense, shorten, paraphrase or reorder, and do not drop any detail'
-        )
-        expect(RAMBLER_SYSTEM_PROMPT).toContain('Only make light cleanups: remove filler words')
-        expect(RAMBLER_SYSTEM_PROMPT).toContain(
-            "Preserve the speaker's meaning, intent, facts, names, numbers and dates"
-        )
-        // The old prompt asked for polished prose, which is what made the model rewrite dictations.
-        expect(RAMBLER_SYSTEM_PROMPT).not.toContain('well-written')
-    })
-
-    test('no prompt part asks for brevity or restructuring (AT-3105)', () => {
-        // The per-target rules and the system prompt used to say "concise", "reasonably brief" and
-        // "structure it for readability", which made the model condense the dictation.
-        const brevity = /\b(concise|brief|briefly|succinct|terse|well-structured)\b|structure it for readability/i
-        expect(RAMBLER_SYSTEM_PROMPT).not.toMatch(brevity)
-        for (const [kind, rule] of Object.entries(TARGET_KIND_RULES)) {
-            expect([kind, rule]).toEqual([kind, expect.not.stringMatching(brevity)])
-            const content = buildRamblerUserContent({ transcript: 'hello', targetKind: kind })
-            expect(content).not.toMatch(brevity)
-        }
-    })
-
     test('carries the product glossary', () => {
         const { PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
         for (const term of PRODUCT_KEYTERMS) {
@@ -114,18 +89,6 @@ describe('buildRamblerUserContent', () => {
         expect(content).toContain('no line breaks')
     })
 
-    test('a title stays one line but is not shortened into a summary (AT-3105)', () => {
-        const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'title' })
-        expect(content).toContain('Keep everything the speaker said')
-        expect(content).toContain('do not shorten it')
-    })
-
-    test('the request asks for the full-length text, not a summary (AT-3105)', () => {
-        const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'note' })
-        expect(content).toContain('close to its original wording')
-        expect(content).toContain('not a summary')
-    })
-
     test('unknown target falls back to the generic rule', () => {
         const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'nope' })
         expect(content).toContain(TARGET_KIND_RULES.generic)
@@ -143,8 +106,7 @@ describe('buildRamblerUserContent', () => {
             projectContext: 'Project description for this chat/thread: X',
             userContext: 'Global user description from settings: Y',
         })
-        expect(full).toContain('Assistant persona, for background only')
-        expect(full).toContain('must not change the wording or length')
+        expect(full).toContain('Assistant persona for tone and style only')
         expect(full).toContain('Name: Anna')
         expect(full).toContain('Instructions: Be terse.')
         expect(full).toContain('Workspace context')

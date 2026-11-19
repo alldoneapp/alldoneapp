@@ -161,39 +161,6 @@ describe('startVmJob', () => {
         )
     })
 
-    // AT-3096 follow-up: a VM started in the conversation the assistant answers in must not ask the
-    // assistant to link that conversation; a VM in another thread still asks for the link.
-    test('asks for the host link only when the VM runs outside the caller’s conversation', async () => {
-        const base = {
-            objective: 'Push the branch',
-            taskType: 'prototype',
-            projectId: 'project-1',
-            objectType: 'tasks',
-            objectId: 'task-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        }
-        const hostUrl = 'https://my.alldone.app/projects/project-1/tasks/task-1/chat'
-
-        const inThread = await startVmJob({
-            ...base,
-            callerThread: { projectId: 'project-1', objectType: 'tasks', objectId: 'task-1' },
-        })
-        expect(inThread.success).toBe(true)
-        expect(inThread.message).not.toContain(hostUrl)
-        expect(inThread.message).toContain('do not link it')
-        // The host reference stays for the server's own bookkeeping (notification guard).
-        expect(inThread.hostThreadUrl).toBe(hostUrl)
-
-        const fromChat = await startVmJob({
-            ...base,
-            callerThread: { projectId: 'project-1', objectType: 'topics', objectId: 'chat-1' },
-        })
-        expect(fromChat.message).toContain(`The work lives in this thread: ${hostUrl} — include that link`)
-        const noCaller = await startVmJob(base)
-        expect(noCaller.message).toContain(`The work lives in this thread: ${hostUrl}`)
-    })
-
     // AT-2230 Gold pricing: the rate is resolved ONCE here and frozen onto both docs, because the two
     // charge sites (proxy mid-run, runner at settlement) must bill at the same rate and neither can
     // afford an async catalog read inside its transaction.

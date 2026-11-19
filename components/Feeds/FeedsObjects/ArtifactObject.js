@@ -7,7 +7,6 @@ import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
 import RegularFeed from '../FeedsTypes/RegularFeed'
 import { openProjectArtifacts } from '../../ArtifactsView/artifactLinks'
-import FeedRow from '../Commons/FeedRow'
 
 // One artifact's changes of a day in Updates (functions/Artifacts/artifactFeeds.js): the artifact as
 // a header that opens it, then one line per change. Every line is a plain entry text written by the
@@ -36,7 +35,7 @@ export default function ArtifactObject({ feedObjectData, projectId, feedActiveTa
             </TouchableOpacity>
             <View>
                 {feeds.map((feed, index) => (
-                    <FeedRow key={feed.id} isFirst={index === 0}>
+                    <View key={feed.id} style={[localStyles.margin, index !== 0 ? localStyles.feed : null]}>
                         <RegularFeed
                             feed={feed}
                             projectId={projectId}
@@ -44,7 +43,7 @@ export default function ArtifactObject({ feedObjectData, projectId, feedActiveTa
                             showNewFeedDot={feed.showLikeNew}
                             feedActiveTab={feedActiveTab}
                         />
-                    </FeedRow>
+                    </View>
                 ))}
             </View>
         </View>
@@ -65,5 +64,11 @@ const localStyles = StyleSheet.create({
     },
     lock: {
         marginLeft: 8,
+    },
+    feed: {
+        marginTop: 8,
+    },
+    margin: {
+        marginLeft: -16,
     },
 })

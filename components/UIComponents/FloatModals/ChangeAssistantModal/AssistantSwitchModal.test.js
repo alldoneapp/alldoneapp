@@ -1,10 +1,9 @@
 import React from 'react'
-import { Text, TextInput, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import AssistantSwitchModal, { ASSISTANT_SWITCH_SEARCH_TEST_ID } from './AssistantSwitchModal'
+import AssistantSwitchModal from './AssistantSwitchModal'
 import AssistantItem from './AssistantItem'
-import { resetEscapeStack } from '../../../../utils/escapeStack'
 
 let mockState
 
@@ -13,7 +12,6 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../ModalHeader', () => 'ModalHeader')
-jest.mock('../EmptyResults', () => 'EmptyResults')
 jest.mock('../../../UIControls/CustomScrollView', () => 'CustomScrollView')
 jest.mock('../../../AdminPanel/Assistants/AssistantAvatar', () => 'AssistantAvatar')
 jest.mock('../../../Icon', () => 'Icon')
@@ -57,8 +55,6 @@ const render = props => {
 
 beforeEach(() => {
     mockState = { smallScreen: false, smallScreenNavigation: false }
-    // Trees are not unmounted between cases; start every case with an empty Escape stack.
-    resetEscapeStack()
 })
 
 describe('AssistantSwitchModal (AT-2430)', () => {
@@ -128,114 +124,5 @@ describe('AssistantSwitchModal (AT-2430)', () => {
     it('survives an empty list rather than crashing the line', () => {
         const tree = render({ grouped: true, groups: [] })
         expect(tree.root.findAllByType(AssistantItem)).toHaveLength(0)
-    })
-
-    describe('search (AT-3100)', () => {
-        const search = (tree, text) => {
-            const input = tree.root.findByProps({ testID: ASSISTANT_SWITCH_SEARCH_TEST_ID })
-            act(() => input.props.onChangeText(text))
-            return input
-        }
-        const headerTexts = tree =>
-            tree.root
-                .findAllByType(Text)
-                .map(node => node.props.children)
-                .filter(child => typeof child === 'string')
-        const names = tree => tree.root.findAllByType(AssistantItem).map(item => item.props.assistant.displayName)
-
-        it('shows a labelled, non-autofocused search field', () => {
-            const tree = render({ grouped: true })
-            const input = tree.root.findByType(TextInput)
-
-            expect(input.props.placeholder).toBe('Search assistants')
-            expect(input.props.accessibilityLabel).toBe('Search assistants')
-            expect(input.props.autoFocus).toBeFalsy()
-        })
-
-        it('filters case-insensitively by name and hides groups without a match', () => {
-            const tree = render({ grouped: true })
-            search(tree, '  mARTY ')
-
-            expect(names(tree)).toEqual(['Marty Marketing', 'Marty Marketing'])
-            const headers = headerTexts(tree)
-            expect(headers).toEqual(expect.arrayContaining(['Alldone Product', 'JTL']))
-            expect(headers).not.toContain('Personal')
-        })
-
-        it('does not match on the project name', () => {
-            const tree = render({ grouped: true })
-            search(tree, 'JTL')
-
-            expect(tree.root.findAllByType(AssistantItem)).toHaveLength(0)
-        })
-
-        it('shows the empty state when nothing matches, and clearing restores the full list', () => {
-            const tree = render({ grouped: true })
-            search(tree, 'zzz')
-
-            expect(tree.root.findAllByType(AssistantItem)).toHaveLength(0)
-            const empty = tree.root.findByType('EmptyResults')
-            expect(empty.props.text).toBe('No assistants found')
-
-            const clear = tree.root.findByProps({ accessibilityLabel: 'Clear' })
-            act(() => clear.props.onPress())
-
-            expect(tree.root.findAllByType('EmptyResults')).toHaveLength(0)
-            expect(tree.root.findAllByType(AssistantItem)).toHaveLength(3)
-            expect(headerTexts(tree)).toEqual(expect.arrayContaining(['Personal', 'Alldone Product', 'JTL']))
-        })
-
-        it('keeps the selected row marked while filtering', () => {
-            const tree = render({ grouped: true, activeProjectId: 'p-jtl', activeAssistantId: 'jtl-marty' })
-            search(tree, 'marty')
-
-            const selected = tree.root.findAllByType(AssistantItem).filter(item => item.props.selected)
-            expect(selected).toHaveLength(1)
-            expect(selected[0].props.projectId).toBe('p-jtl')
-        })
-
-        it('selects a filtered row exactly like an unfiltered one', () => {
-            const onSelect = jest.fn()
-            const closeModal = jest.fn()
-            const tree = render({ grouped: true, onSelect, closeModal })
-            search(tree, 'marty')
-
-            act(() => tree.root.findAllByType(AssistantItem)[1].findByType(TouchableOpacity).props.onPress())
-
-            expect(onSelect).toHaveBeenCalledTimes(1)
-            expect(onSelect.mock.calls[0][0].projectId).toBe('p-jtl')
-            expect(closeModal).toHaveBeenCalled()
-        })
-
-        it('Enter picks the first match; with no query or no match it does nothing', () => {
-            const onSelect = jest.fn()
-            const closeModal = jest.fn()
-            const tree = render({ grouped: true, onSelect, closeModal })
-            const input = tree.root.findByType(TextInput)
-
-            act(() => input.props.onSubmitEditing())
-            search(tree, 'nobody')
-            act(() => tree.root.findByType(TextInput).props.onSubmitEditing())
-            expect(onSelect).not.toHaveBeenCalled()
-
-            search(tree, 'marty')
-            act(() => tree.root.findByType(TextInput).props.onSubmitEditing())
-
-            expect(onSelect).toHaveBeenCalledTimes(1)
-            expect(onSelect.mock.calls[0][0].projectId).toBe('p-alldone')
-            expect(closeModal).toHaveBeenCalled()
-        })
-
-        it('Escape clears a non-empty query', () => {
-            const tree = render({ grouped: true })
-            search(tree, 'marty')
-
-            act(() => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-            })
-
-            expect(tree.root.findByType(TextInput).props.value).toBe('')
-            expect(tree.root.findAllByType(AssistantItem)).toHaveLength(3)
-        })
     })
 })

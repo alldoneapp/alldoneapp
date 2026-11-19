@@ -13,10 +13,7 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 // The unread list's tag row has its own tests (UnreadTriage/); here only whether it shows.
-jest.mock('./UnreadTriage/UnreadTriageFilters', () => ({
-    UnreadTriageTagChips: () => 'UnreadTriageTagChips',
-    UnreadTriageTools: () => 'UnreadTriageTools',
-}))
+jest.mock('./UnreadTriage/UnreadTriageFilters', () => () => 'UnreadTriageFilters')
 
 import ChatFiltersLine from './ChatFiltersLine'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
@@ -76,7 +73,7 @@ describe('ChatFiltersLine', () => {
         expect(setUnreadOnly).toHaveBeenCalledWith(false)
     })
 
-    it('shows the unread list tags and tools in the filter row only on the Unread filter', () => {
+    it('shows the unread list tag row only on the Unread filter', () => {
         const notifications = {
             'project-1': {
                 totalFollowed: 1,
@@ -85,15 +82,10 @@ describe('ChatFiltersLine', () => {
             },
         }
         const all = renderFilter({ notifications })
-        expect(JSON.stringify(all.component.toJSON())).not.toContain('UnreadTriageTagChips')
-        expect(JSON.stringify(all.component.toJSON())).not.toContain('UnreadTriageTools')
+        expect(all.component.toJSON().children).not.toContain('UnreadTriageFilters')
 
-        // One row (decided 2026-11-18): the tags and tools sit in the same row as All | Unread.
         const unread = renderFilter({ notifications, unreadOnly: true })
-        const row = unread.component.root.findByProps({ testID: 'chat-filter-unread' }).parent.parent
-        expect(JSON.stringify(unread.component.toJSON())).toContain('UnreadTriageTagChips')
-        expect(JSON.stringify(unread.component.toJSON())).toContain('UnreadTriageTools')
-        expect(row.findAll(node => node.props.testID === 'chat-filter-all')).not.toHaveLength(0)
+        expect(JSON.stringify(unread.component.toJSON())).toContain('UnreadTriageFilters')
     })
 
     // AT-2264: the header used to carry a badge with the number of selected filters -- here a

@@ -29,31 +29,3 @@ if (require.main === module) run()
 if (typeof test === 'function') test('parseTextUtils mention parsing', run)
 
 module.exports = { run }
-
-describe('stripMarkdownForPreview', () => {
-    const { stripMarkdownForPreview } = require('../Utils/parseTextUtils')
-
-    test('a heading line does not stay a "##" for the hashtag parser, also on a later line', () => {
-        expect(stripMarkdownForPreview('Intro\n## Ergebnis: Gemergt\nMR 893 ist **gemergt**.')).toBe(
-            'Intro Ergebnis: Gemergt MR 893 ist gemergt.'
-        )
-    })
-
-    test('drops inline code, emphasis, quotes, list markers and link syntax', () => {
-        expect(stripMarkdownForPreview('> Der Job `deploy:web` lief *nicht*\n- [Pipeline](https://x.y/1)')).toBe(
-            'Der Job deploy:web lief nicht Pipeline'
-        )
-    })
-
-    test('keeps hashtags, mentions, code block content and encoded media tokens', () => {
-        const image = 'O2TI5plHBf1QfdYaO2TI5plHBf1QfdYbO2TI5plHBf1QfdYcO2TI5plHBf1QfdYd'
-        expect(stripMarkdownForPreview(`#release für @Jana_Becker ${image}\n\`\`\`js\nrun()\n\`\`\``)).toBe(
-            `#release für @Jana_Becker ${image} run()`
-        )
-    })
-
-    test('copes with empty input', () => {
-        expect(stripMarkdownForPreview(undefined)).toBe('')
-        expect(stripMarkdownForPreview('')).toBe('')
-    })
-})

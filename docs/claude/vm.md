@@ -138,22 +138,3 @@ and discarded the answer. Now any tool after the handoff other than `execute_tas
 first. Concurrent tools of one batch share a single opening, and a follow-up is never treated as an
 in-thread handoff reply, so it notifies. A turn that only waits and then writes text still ends as
 the introduction.
-
-**A gated Claude run keeps the CLI's stdin open until the agent is done (AT-3093, 2026-11-18).**
-The bridge answers `canUseTool` over the CLI's stdin, and interactive runs ask it for every Bash
-call. With a plain string prompt the Agent SDK treats the run as one turn and closes stdin at the
-first `result` ("Run ended for single-turn query, closing stdin" in SDK 0.3.327). The CLI still
-waits for background tasks after that, and a finished one starts another turn in the same process;
-every permission check in that turn failed with "Tool permission request failed: AbortError:
-Stream closed". The interactive run on AT-3093 had its full test suite running in the background
-when it answered, then failed to push the finished branch five times, although `balanced` approves
-that push by itself. Gated runs (`default` and `plan` permission mode) therefore stream the prompt
-and close the stream themselves: after a `result`, once no non-ambient background task is live
-(`background_tasks_changed`, or the `task_started`/`task_notification` edges on older CLIs) and
-5 s pass without a message. Every turn, including one a finished task starts, opens with
-`system/init`, which reopens the wait. A one-hour cap without any message covers tracking that
-misses a task's end; the CLI then goes on as it did with the string prompt. Ungated runs
-(`bypassPermissions`, the executing phase of `plan_first`) keep the string prompt.
-`vmAgentBridge.test.js` plays the AT-3093 sequence against a stub SDK that, like the real one,
-fails a permission check once the input is closed. Ships with the rebuilt `vm-job-runner`; the
-runner copies the bridge into the sandbox on every run, so paused sandboxes pick it up too.

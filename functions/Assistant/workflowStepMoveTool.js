@@ -258,20 +258,7 @@ async function executeMoveTaskWorkflowStepTool({
     if (result.success && result.moved) {
         return {
             ...result,
-            message: `Moved from “${result.from.label}” to “${result.to.label}”. ${result.outcome} Tell the user in one short sentence.${
-                inOwnThread ? " The user is in this task's chat, where the work continues: do not link this task." : ''
-            }`,
-            // Moved from the task's own chat, the work goes on where the user already is: the reply
-            // gets no link to this task, not even one copied from the thread (AT-3096 follow-up).
-            ...(inOwnThread
-                ? {
-                      delegatedTask: {
-                          projectId: reference.projectId,
-                          taskId: reference.taskId,
-                          currentConversation: true,
-                      },
-                  }
-                : {}),
+            message: `Moved from “${result.from.label}” to “${result.to.label}”. ${result.outcome} Tell the user in one short sentence.`,
         }
     }
     return result

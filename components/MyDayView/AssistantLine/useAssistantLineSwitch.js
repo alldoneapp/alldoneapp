@@ -81,9 +81,6 @@ export const useProjectAssistantLine = project => {
 
     const assistantSwitch = useMemo(
         () => ({
-            // AT-3093: the line widens this to the All Projects popup (`useProjectScopeAssistantSwitch`).
-            // `groups` and `onSelect` stay this project's: they are the in-place half of it.
-            scope: 'project',
             groups,
             grouped: false,
             activeProjectId: projectId || null,

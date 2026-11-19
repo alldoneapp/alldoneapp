@@ -5,7 +5,6 @@ import MarkAsRead from '../MarkAsRead'
 import ProjectLineActionButton from '../ProjectLineActionButton'
 import { collectVisibleCommentRefs, useUnreadTriage } from './UnreadTriageContext'
 import { UNREAD_TAG_ALL } from './unreadMessageTags'
-import { runWithLastUnreadRedirect } from '../lastUnreadRedirect'
 
 const markCommentsRead = refs =>
     require('../../../utils/backends/Chats/markChatCommentsAsRead').markChatCommentsAsRead(refs)
@@ -35,9 +34,7 @@ export default function UnreadTriageMarkAsRead({ projectId, projectIds, userId, 
         setLoading(true)
         setError(false)
         try {
-            // If the filtered messages were the view's last unread ones, move on (AT-3104). Messages
-            // the filter hides still count, so they keep the user here.
-            await runWithLastUnreadRedirect(projectIds || [projectId], () => markCommentsRead(refs))
+            await markCommentsRead(refs)
         } catch (markReadError) {
             console.error('Failed to mark the filtered messages as read', markReadError)
             setError(true)

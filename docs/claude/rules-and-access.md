@@ -17,6 +17,25 @@ open on purpose (that is what "With link" means). Ids already harvested keep wor
 project is made private. Pinned by the incident case in the `project membership authority` block of
 `__tests__/Firestore/firestoreRules.emulator.test.js`.
 
+## A note's public link opens one note of a private project (2026-11-19)
+
+Whoever may edit a note can set `publicLinkEnabled: true` on it from "Copy link" in the note view
+(`NoteCopyLinkButton` / `NotePublicLinkModal`; it asks only in a private project, or to turn an open
+link off). Then anybody who has the note's address may READ that one note, signed out included:
+`hasPublicNoteLink` in `firestore.rules` (an `allow get` only, never list, so the address stays the
+secret, as after the 2026-11-08 incident), the same clause in `storage.notes.rules` for the live body
+(signed-in only; the web client signs visitors in anonymously) and in `notesCollabAccess` (read-only
+room). Only a literal `true` counts everywhere. The project document stays unreadable, so the
+anonymous and shared boots (`SharedHelper.processUrl`, note branch) read the note first and hand the
+loaders a stand-in project (`SharedHelper.createPublicNoteLinkProject`, `publicNoteLinkOnly`) that is
+never read or watched; `usePrivateProject`, `NotesDetailedView` and `processURLNoteDetailsTab` (no
+detour to the parent task) respect it. A new or moved note starts with the link closed
+(`uploadNewNote`, `setNoteProject`). Turning the link off drops an open visitor at once (the note
+watcher errors). Pinned by the `note public link` block of the rules emulator suite,
+`ci/test-storage-rules.js` (`link4`), `notesCollabAccess.test.js`, `PublicNoteUrls.test.js` and
+`NoteCopyLinkButton.test.js`. A note attached to a task opens in the task view for members, whose
+"Copy link" copies the task, not the note.
+
 ## A member-written link only ever opens as a web link (security audit 2026-11)
 
 `window.open('javascript:…')` and `<a href="javascript:…">` run in the app's own origin, and the CSP

@@ -164,6 +164,41 @@ describe('decideNoteRoomAccess', () => {
         ).toBe(false)
     })
 
+    test('a public note link opens the room read-only, even in a private project', () => {
+        const privateProject = { isShared: 2, userIds: ['member'] }
+        const linkedNote = { readerIds: ['member'], isPublicFor: ['member'], publicLinkEnabled: true }
+        expect(decideNoteRoomAccess({ uid: 'anonymous', project: privateProject, note: linkedNote })).toEqual({
+            read: true,
+            write: false,
+        })
+        // A member the note is private from may read it through the link too, but never write.
+        expect(
+            decideNoteRoomAccess({
+                uid: 'member',
+                project: privateProject,
+                note: { readerIds: ['owner'], isPublicFor: ['owner'], publicLinkEnabled: true },
+            })
+        ).toEqual({ read: true, write: false })
+        // The member the note is visible to keeps write access.
+        expect(decideNoteRoomAccess({ uid: 'member', project: privateProject, note: linkedNote })).toEqual({
+            read: true,
+            write: true,
+        })
+    })
+
+    test('only a literal true opens a public note link', () => {
+        const privateProject = { isShared: 2, userIds: ['member'] }
+        for (const publicLinkEnabled of [false, 'true', 1, null, undefined]) {
+            expect(
+                decideNoteRoomAccess({
+                    uid: 'anonymous',
+                    project: privateProject,
+                    note: { readerIds: ['member'], publicLinkEnabled },
+                })
+            ).toEqual({ read: false, write: false })
+        }
+    })
+
     test('a missing project gives nothing', () => {
         expect(decideNoteRoomAccess({ uid: 'member', project: null, note: null })).toEqual({
             read: false,

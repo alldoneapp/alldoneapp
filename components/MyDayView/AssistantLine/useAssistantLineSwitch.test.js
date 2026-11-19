@@ -138,13 +138,6 @@ describe('useProjectAssistantLine — no user choice yet', () => {
 })
 
 describe('useProjectAssistantLine — after choosing an assistant', () => {
-    // AT-3093: the line widens only switches marked as a project's.
-    it('marks its switch as the project scope', () => {
-        const { result } = renderHook(useProjectAssistantLine, alldoneProject)
-
-        expect(result.current.assistantLineProps.assistantSwitch.scope).toBe('project')
-    })
-
     it('records the choice against the project', () => {
         const { result } = renderHook(useProjectAssistantLine, alldoneProject)
         const target = result.current.assistantLineProps.assistantSwitch.groups[0].options[1]

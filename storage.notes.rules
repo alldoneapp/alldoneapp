@@ -67,6 +67,13 @@ service firebase.storage {
       return isPublicSharedProject(projectId) && 0 in note(projectId, noteId).get('readerIds', []);
     }
 
+    // hasPublicNoteLink in firestore.rules: anybody signed in (the web client signs visitors in
+    // anonymously) may READ the body of a note whose public link is on, in any project. Reads only
+    // the note document.
+    function hasPublicNoteLink(projectId, noteId) {
+      return signedIn() && note(projectId, noteId).get('publicLinkEnabled', false) == true;
+    }
+
     // While the note document does not exist, membership is enough (canProbeMissingObject):
     // setNoteProject writes the body into the new project BEFORE the note document lands there.
     // A body without a document reveals nothing about anybody's note.
@@ -77,7 +84,8 @@ service firebase.storage {
 
     match /notesData/{projectId}/{noteId} {
       allow get: if canUseNoteBody(projectId, noteId) ||
-        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
+        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId)) ||
+        (noteExists(projectId, noteId) && hasPublicNoteLink(projectId, noteId));
       allow write: if canUseNoteBody(projectId, noteId);
     }
   }

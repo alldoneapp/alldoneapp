@@ -10,7 +10,6 @@ import EditAssistantButton from './EditAssistantButton'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
 import { AnnaSidebarCloseContext } from '../../Anna/AnnaChatNavigationContext'
-import { useProjectScopeAssistantSwitch } from './useAllProjectsAssistantLine'
 
 export default function AssistantLine({
     showLastComment = true,
@@ -44,8 +43,6 @@ export default function AssistantLine({
     // shell provides a close action exactly then (desktop split view; not on mobile, where chat and
     // app take turns, and not in chat-only mode, where the app is hidden).
     const sidebarChatVisible = !!useContext(AnnaSidebarCloseContext)
-    // AT-3093: inside a project the name opens the same popup as on the All Projects page.
-    const headerAssistantSwitch = useProjectScopeAssistantSwitch(assistantSwitch)
 
     const { assistant: selectedLineAssistant, assistantProject: selectedLineAssistantProject } = getAssistantLineData(
         selectedProject,
@@ -106,7 +103,7 @@ export default function AssistantLine({
             <View testID="assistant-line-composer" style={sidebarChatVisible ? localStyles.hidden : null}>
                 <AssistantOptions
                     onEditAssistant={onEditAssistant}
-                    assistantSwitch={headerAssistantSwitch}
+                    assistantSwitch={assistantSwitch}
                     projectOverride={selectedProject}
                     assistantIdOverride={assistantId}
                     preferAssistantIdOverride={preferAssistantIdOverride}

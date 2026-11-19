@@ -3,7 +3,7 @@ import DetailViewHeaderTags from '../../UIComponents/DetailViewHeaderTags'
 import { useSelector } from 'react-redux'
 import SharedHelper from '../../../utils/SharedHelper'
 import { FEED_NOTE_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
-import CopyLinkButton from '../../UIControls/CopyLinkButton'
+import NoteCopyLinkButton from './NoteCopyLinkButton'
 import ProjectTag from '../../Tags/ProjectTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import PrivacyTag from '../../Tags/PrivacyTag'
@@ -42,7 +42,13 @@ export default function TagList({
             }
             actions={
                 <>
-                    <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                    <NoteCopyLinkButton
+                        style={{ top: -5, marginRight: 8 }}
+                        projectId={projectId}
+                        note={note}
+                        project={project}
+                        canEdit={accessGranted && !disabled}
+                    />
                     {accessGranted && (
                         <>
                             <DvSearchButton style={{ top: -5 }} />

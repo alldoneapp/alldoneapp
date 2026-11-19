@@ -106,7 +106,7 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   task and subtask, about 100 per tab, while production held 39 session documents. The server
   now sets `hasVmSession: true` on the task when its thread first admits a VM job
   (`functions/Assistant/vmTaskSessionMarker.js`, called from `startVmJob`; no edition data, never
-  cleared), and `collectTaskVmSessionRefs` / `TaskExecutionStatusTag` (formerly `TaskVmStatusTag`) skip unmarked tasks. Sessions from
+  cleared), and `collectTaskVmSessionRefs` / `TaskVmStatusTag` skip unmarked tasks. Sessions from
   before the marker need `node migration/backfillTaskVmSessionMarker.js
 --firebase-project-id=<project> --execute` once, or their badges stay hidden.
 - **Cached-snapshot delivery (`utils/backends/cachedSnapshotGate.js`)**: the list

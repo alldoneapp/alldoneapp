@@ -21,24 +21,18 @@ also what reached the projects that existed before the default — there is no m
 is the project's creator when they are an active member, otherwise the member being processed.
 Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
 template's author, who would otherwise pay for the wiki of every guide anybody starts. **Archived
-projects get ONE complete wiki build, then pause (AT-2893, narrowed by AT-3095)**: archiving
-(`users/{uid}.archivedProjectIds`, per member) means "done with this project", not "forget what we
-learned in it", and the one build is what makes a past project's knowledge usable in search,
-`read_knowledge_page`/`search_knowledge` and global search (which includes archived projects by
-default, AT-2524). AT-2893 had kept archived projects current every night; Karsten decided on
-2026-11-18 that this was only ever meant to give them a wiki at all. So once a wiki has caught up
-(`hasKnowledgeBaseCaughtUp`: `caughtUpAt`, written by the first completed run, or a last run that
-completed on wikis older than the field), a run whose payer has the project archived stops with
-`project_archived` before any model call and clears `nextRunAt`. Archiving is per member, so others
-may still use the project: the default sweep hands a default wiki to an active member who has NOT
-archived it (`isPayerGone`), prefers the creator as payer only while they have not archived it, never
-lets a member who archived it take over a built wiki, and resumes the pause once the payer
-reactivates the project. A wiki a member switched on themselves waits for them. The settings and the
-wiki view say "Paused: the paying member has archived this project". The sweep still orders a
+projects get the wiki too (AT-2893)**: archiving (`users/{uid}.archivedProjectIds`, per member) means
+"done with this project", not "forget what we learned in it", and the wiki is what keeps a past
+project's knowledge usable in search, `read_knowledge_page`/`search_knowledge` and global search
+(which includes archived projects by default, AT-2524). An archived project is built and kept current
+by the same nightly run, with the same payer rules and the same 500-Gold monthly cap; once caught up
+it costs no Gold, because a run that finds no changed source makes no model call. The sweep orders a
 member's archived projects after the active ones, so `MAX_PROJECTS_PER_USER` cuts past projects
 first. (`project.active === false` is a different, project-wide flag — no member opened it in 30
-days — and stays excluded.) Pinned by the `archived projects after their complete build` block of
-`knowledgeBaseDefaults.test.js` and the archived cases in `knowledgeBaseIngest.test.js`. When the
+days — and stays excluded.) Until AT-2893 a member who archived a project neither switched its wiki on
+nor paid for it, and a run stopped with `project_archived` and cleared `nextRunAt`. No run writes that
+reason any more; `isKnowledgeBasePausedForArchivedProject` only recognises the leftover state, which
+the sweep and a save in the settings resume like `owner_inactive`. When the
 payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
 model call); the payer's return resumes it, and a wiki the default switched on moves to another
 active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
@@ -253,44 +247,6 @@ be cited or copied onto a page. It is free text written without a visibility fil
 source key, so `knowledgeSourceInvalidation.js` could never take a copied statement back out.
 `update_project_description` and its base instruction steer assistants the same way: status
 and recent activity stay out of the description unless the user explicitly asks for them.
-
-**The wiki run keeps the project description current, weekly by default, daily on request (AT-3095).** The last step
-of a run (`projectDescriptionRefresh.js`, after the health check) reads the description and the wiki
-(index plus the most recently updated page bodies, about 40,000 characters, citations and links
-flattened to their labels) and the model ends with exactly one of two tools of its own:
-`save_project_description` or `keep_project_description`. This is the opposite direction to the
-rule above, and the reason it is safe: the wiki only holds what the whole project may see, which is
-also the description's audience. The rules in its prompt mirror `update_project_description`: a
-short durable profile (purpose, boundaries, roles, standing rules), no status or activity, the
-current text is the base and everything still true stays, most weeks nothing changes. The save tool
-refuses `[[…]]` tokens (a citation in the description could never be withdrawn), a text that keeps
-less than half of a description of 200+ characters, and anything over 2,000 characters (or the
-current length + 300, at most 4,000). A save goes through `updateProjectDescription` with
-`expectedDescription`, so a member's edit made while the model worked wins (`conflict`) and the
-Updates feed gets the usual "changed description" line, credited to the project's assistant (the
-payer when there is none); the same text writes nothing and makes no line. Settings sit on the wiki
-document: `descriptionUpdate { enabled, intervalDays: 1|7|14|28 }`, a missing field meaning on and
-weekly (that is the default for every existing wiki, no migration), changed in the wiki settings by
-whoever may change the wiki, because it is billed to the wiki's payer (`project_description_update`
-Gold, counted in the wiki's monthly cap and only spent below the health check's 80% share). It runs
-only once the run has caught up, the interval since `descriptionUpdateState.lastRunAt` has passed
-(minus 6 hours of slack for the nightly start time), the wiki has a visible page, and the project is
-active, not a template and not archived by the payer. `lastRunAt` only moves on a decision (changed,
-unchanged, conflict); a skip, a stop or a run without a decision looks again next time, which is at
-most one conversation a night. **Daily (1) was added on review (Karsten, 2026-11-18)**: due 18
-hours after the last decision, so every nightly run qualifies but an afternoon "Update now" after a
-nightly decision does not run it again. Karsten chose that daily skips a quiet night: every decision
-stores `descriptionUpdateState.inputsFingerprint`, a SHA-256 over the system prompt (rules, project
-name, wiki instructions) and the user prompt built from the description as it now stands (the saved
-text after `changed`) and the wiki material; a daily run whose fingerprint matches is
-`skipped`/`no_changes`, before any model call, and `lastRunAt` stays so it is due again the next
-night. A `conflict` stores `null` (the member's text is new input). Weekly and longer ignore the
-fingerprint and run whenever due, as before. The run document keeps the previous and new text under
-`descriptionUpdate`. Known limits: a project without a wiki gets no automatic update, and a
-statement that came from a source later withdrawn is not taken back out of the description until a
-later update or a member removes it. Pinned by the AT-3095 blocks of `knowledgeBaseIngest.test.js`,
-`knowledgeBaseSettings.test.js`, `projectDescriptionRefresh.test.js`,
-`projectDescriptionUpdateHelper.test.js` and `ProjectWikiSettings.test.js`.
 
 **A member can hand the wiki a document: "put this deck into the wiki" (AT-2816).** The runs that
 may correct also get `add_knowledge_document` and `remove_knowledge_document`

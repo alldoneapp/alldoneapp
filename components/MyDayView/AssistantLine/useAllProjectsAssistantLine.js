@@ -20,13 +20,8 @@ import { FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import { useProjectsData } from '../../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../../utils/InitialLoad/projectDataLoader'
-import {
-    buildAllProjectsAssistantGroups,
-    buildProjectScopeAssistantGroups,
-    isAllProjectsAssistantOption,
-} from './assistantSwitchOptions'
+import { buildAllProjectsAssistantGroups } from './assistantSwitchOptions'
 import useDeferredStartupWork from '../../../hooks/useDeferredStartupWork'
-import navigateToHome from '../../../utils/navigateToHome'
 
 const EMPTY_ARRAY = []
 const EMPTY_OBJECT = {}
@@ -37,15 +32,10 @@ const EMPTY_OBJECT = {}
  * Split from `useAssistantLineSwitch` (the per-project half) on purpose: enumerating projects
  * needs `ProjectHelper`, which reaches react-native-gesture-handler through ProjectsSettings, and
  * that must not land in the import graph of every project board.
- *
- * AT-3093: `AssistantLine` imports this module for `useProjectScopeAssistantSwitch`. That adds
- * nothing new to its graph: the line already reaches `ProjectHelper` through
- * `AssistantOptions/helper.js`. `useProjectAssistantLine` itself, which the task boards and modals
- * mount without rendering a line, still stays free of it.
  */
 
 /** Active projects, in sidebar order — the same scope the all-projects task board renders. */
-const useActiveProjects = (enabled = true) => {
+const useActiveProjects = () => {
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds, shallowEqual)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds, shallowEqual)
@@ -54,7 +44,6 @@ const useActiveProjects = (enabled = true) => {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
     return useMemo(() => {
-        if (!enabled) return EMPTY_ARRAY
         const loaded = (projectIds || []).map(projectId => loggedUserProjectsMap[projectId]).filter(Boolean)
         // Guides, templates and archived projects are out for the same reason the task board
         // excludes them (AT-2337): 64 of the reporting account's projects are guides.
@@ -65,15 +54,7 @@ const useActiveProjects = (enabled = true) => {
             guideProjectIds: guideProjectIds || [],
         })
         return ProjectHelper.sortProjects(active, loggedUserId)
-    }, [
-        enabled,
-        projectIds,
-        archivedProjectIds,
-        templateProjectIds,
-        guideProjectIds,
-        loggedUserProjectsMap,
-        loggedUserId,
-    ])
+    }, [projectIds, archivedProjectIds, templateProjectIds, guideProjectIds, loggedUserProjectsMap, loggedUserId])
 }
 
 /**
@@ -119,35 +100,18 @@ const useSwitchToProjectWithAssistant = () => {
 }
 
 /**
- * AT-3093 follow-up — back to All Projects, where the line speaks as the default assistant.
- *
- * Reuses `navigateToHome`, the "All projects" navigation of the Anna top strip's home button, so
- * this lands exactly where that button does (the All Projects open task list). The sidebar is
- * hidden on small screens for the same reason `useSwitchToProjectWithAssistant` hides it.
+ * The home / "All projects" assistant line always speaks as the default assistant, so it needs no
+ * selection state of its own — any OTHER choice means leaving the home page for that assistant's
+ * project, which is where the per-project selection then lives.
  */
-const useSwitchToAllProjects = () => {
-    const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-
-    return useCallback(() => {
-        navigateToHome(dispatch)
-        if (smallScreenNavigation) dispatch(hideWebSideBar())
-    }, [dispatch, smallScreenNavigation])
-}
-
-/**
- * The assistants of every active project, grouped by project in the All Projects order. Shared by
- * the home line and (AT-3093) the in-project line, so both popups list exactly the same set.
- *
- * With `enabled` off nothing is read or loaded: the in-project line mounts this hook on every
- * board, including the ones where its switch is the home line's.
- */
-const useAllProjectsAssistantGroups = ({ enabled = true } = {}) => {
+export const useAllProjectsAssistantLine = () => {
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const globalAssistants = useSelector(state => (enabled && state.globalAssistants) || EMPTY_ARRAY, shallowEqual)
-    const assistantsByProject = useSelector(state => (enabled && state.projectAssistants) || EMPTY_OBJECT)
-    const projects = useActiveProjects(enabled)
-    const deferredStartupWorkReady = useDeferredStartupWork({ enabled })
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const globalAssistants = useSelector(state => state.globalAssistants || EMPTY_ARRAY, shallowEqual)
+    const assistantsByProject = useSelector(state => state.projectAssistants || EMPTY_OBJECT)
+    const projects = useActiveProjects()
+    const switchToProjectWithAssistant = useSwitchToProjectWithAssistant()
+    const deferredStartupWorkReady = useDeferredStartupWork()
 
     const projectIds = useMemo(() => projects.map(project => project.id), [projects])
 
@@ -156,34 +120,19 @@ const useAllProjectsAssistantGroups = ({ enabled = true } = {}) => {
     // listeners (14 extra collection reads on the reporting account). Keep the default
     // assistant, which was loaded during boot, immediately usable and fill the switch only after
     // the first task stream has published. The fallback in useDeferredStartupWork also covers a
-    // direct route that never mounts a task board. The loader shares one watcher per project, so
-    // the home line and a project line asking for the same projects cost nothing extra.
-    useProjectsData(projectIds, PROJECT_DATA_ASSISTANTS, { enabled: enabled && deferredStartupWorkReady })
+    // direct route that never mounts a task board.
+    useProjectsData(projectIds, PROJECT_DATA_ASSISTANTS, { enabled: deferredStartupWorkReady })
 
-    return useMemo(
+    const groups = useMemo(
         () =>
-            enabled
-                ? buildAllProjectsAssistantGroups({
-                      projects,
-                      assistantsByProject,
-                      globalAssistants,
-                      defaultProjectId,
-                  })
-                : EMPTY_ARRAY,
-        [enabled, projects, assistantsByProject, globalAssistants, defaultProjectId]
+            buildAllProjectsAssistantGroups({
+                projects,
+                assistantsByProject,
+                globalAssistants,
+                defaultProjectId,
+            }),
+        [projects, assistantsByProject, globalAssistants, defaultProjectId]
     )
-}
-
-/**
- * The home / "All projects" assistant line always speaks as the default assistant, so it needs no
- * selection state of its own — any OTHER choice means leaving the home page for that assistant's
- * project, which is where the per-project selection then lives.
- */
-export const useAllProjectsAssistantLine = () => {
-    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const defaultAssistant = useSelector(state => state.defaultAssistant)
-    const groups = useAllProjectsAssistantGroups()
-    const switchToProjectWithAssistant = useSwitchToProjectWithAssistant()
 
     const activeAssistantId = defaultAssistant?.uid || null
 
@@ -192,7 +141,7 @@ export const useAllProjectsAssistantLine = () => {
             if (!option) return
             // Selecting the assistant that is already answering here keeps the user on the home
             // page — only a DIFFERENT assistant means "take me to its project".
-            if (isAllProjectsAssistantOption(option, defaultProjectId, activeAssistantId)) return
+            if (option.assistantId === activeAssistantId && option.projectId === defaultProjectId) return
             switchToProjectWithAssistant(option)
         },
         [activeAssistantId, defaultProjectId, switchToProjectWithAssistant]
@@ -208,69 +157,4 @@ export const useAllProjectsAssistantLine = () => {
         }),
         [groups, defaultProjectId, activeAssistantId, onSelect]
     )
-}
-
-/**
- * AT-3093 — the in-project line's switch, widened to the All Projects popup.
- *
- * `projectSwitch` is what `useProjectAssistantLine` built (`scope: 'project'`): this project's
- * assistants and an `onSelect` that only changes who answers here. Anything else (the home
- * line's switch, or none) is returned untouched, and nothing is loaded for it.
- *
- * A choice inside the current project's group keeps that in-place behaviour: a session-only
- * selection (`setAssistantLineAssistant`), never a write to the project's configured assistant.
- * A choice from another project does what it does on the home page and moves the user to that
- * project with the assistant active. It cannot stay here: the server resolves a chat's assistant
- * from the chat's project, the global assistants and the user's default project only
- * (`getAssistantForChat`), so another project's assistant would silently answer as the default.
- */
-export const useProjectScopeAssistantSwitch = projectSwitch => {
-    const enabled = projectSwitch?.scope === 'project' && !!projectSwitch?.activeProjectId
-    const allProjectsGroups = useAllProjectsAssistantGroups({ enabled })
-    const switchToProjectWithAssistant = useSwitchToProjectWithAssistant()
-    const switchToAllProjects = useSwitchToAllProjects()
-    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const defaultAssistantId = useSelector(state => state.defaultAssistant?.uid || null)
-
-    const projectId = projectSwitch?.activeProjectId || null
-    const projectGroups = projectSwitch?.groups
-    const selectInProject = projectSwitch?.onSelect
-
-    const groups = useMemo(
-        () =>
-            enabled ? buildProjectScopeAssistantGroups({ projectId, projectGroups, allProjectsGroups }) : EMPTY_ARRAY,
-        [enabled, projectId, projectGroups, allProjectsGroups]
-    )
-
-    const onSelect = useCallback(
-        option => {
-            if (!option) return
-            // AT-3093 follow-up (decided with the product owner): the default project's default
-            // assistant is the All Projects line's assistant, so choosing it returns to All
-            // Projects instead of opening the default project, also from inside the default
-            // project. Its "From your default project" entry in another project stays in place.
-            if (isAllProjectsAssistantOption(option, defaultProjectId, defaultAssistantId)) {
-                switchToAllProjects()
-                return
-            }
-            if (option.projectId === projectId) {
-                selectInProject?.(option)
-                return
-            }
-            switchToProjectWithAssistant(option)
-        },
-        [
-            projectId,
-            selectInProject,
-            switchToProjectWithAssistant,
-            switchToAllProjects,
-            defaultProjectId,
-            defaultAssistantId,
-        ]
-    )
-
-    return useMemo(() => {
-        if (!enabled) return projectSwitch
-        return { ...projectSwitch, groups, grouped: true, onSelect }
-    }, [enabled, projectSwitch, groups, onSelect])
 }

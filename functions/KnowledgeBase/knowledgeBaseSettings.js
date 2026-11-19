@@ -16,7 +16,6 @@ const {
     normalizeKnowledgeBaseSettingsInput,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
-    resolveProjectDescriptionUpdateSettings,
     toKnowledgeBaseSettingsView,
 } = require('./knowledgeBaseModel')
 
@@ -121,22 +120,6 @@ async function setKnowledgeBaseSettings({
 
         if (!current) next.createdAt = now
 
-        // The automatic project description update (AT-3095) is billed to the wiki's payer, so it
-        // is changed by whoever may change the wiki. Only written when the save names it: the
-        // missing field IS the default (on, weekly).
-        if (patch.descriptionUpdateEnabled !== undefined || patch.descriptionUpdateIntervalDays !== undefined) {
-            const stored = resolveProjectDescriptionUpdateSettings(current || {})
-            next.descriptionUpdate = {
-                enabled: patch.descriptionUpdateEnabled !== undefined ? patch.descriptionUpdateEnabled : stored.enabled,
-                intervalDays:
-                    patch.descriptionUpdateIntervalDays !== undefined
-                        ? patch.descriptionUpdateIntervalDays
-                        : stored.intervalDays,
-                updatedAt: now,
-                updatedBy: userId,
-            }
-        }
-
         let resumedFromCap = false
         if (enabled) {
             // Switching it on, or taking over from a departed owner, makes the caller the payer, by
@@ -155,8 +138,7 @@ async function setKnowledgeBaseSettings({
                 isKnowledgeBasePausedForArchivedProject(current)
             ) {
                 // Whoever saves is using Alldone right now, and is (or just became) the payer. A run
-                // for a payer who still has the project archived stops again before any model call
-                // once the wiki has had its one complete build (AT-3095).
+                // for a payer who still has the project archived stops again before any model call.
                 next.nextRunAt = now
             } else if (
                 isKnowledgeBasePausedAtMonthlyCap(current, now) &&

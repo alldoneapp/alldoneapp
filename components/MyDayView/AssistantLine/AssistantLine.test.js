@@ -26,12 +26,6 @@ jest.mock('./AssistantOptions/AssistantOptions', () => {
     }
 })
 jest.mock('./AssistantLineSkeleton', () => 'AssistantLineSkeleton')
-// AT-3093: the real hook widens a project switch to every project; its own tests cover that.
-const mockWidenedSwitch = { widened: true }
-jest.mock('./useAllProjectsAssistantLine', () => ({
-    useProjectScopeAssistantSwitch: assistantSwitch =>
-        assistantSwitch?.scope === 'project' ? mockWidenedSwitch : assistantSwitch,
-}))
 jest.mock('./LastCommentArea', () => 'LastCommentArea')
 jest.mock('../../AdminPanel/Assistants/AssistantAvatar', () => 'AssistantAvatar')
 jest.mock('../../Icon', () => 'Icon')
@@ -124,21 +118,6 @@ describe('AssistantLine switch control (AT-2430)', () => {
         })
 
         expect(tree.root.findByType('AssistantOptions').props.assistantSwitch).toBe(assistantSwitch)
-    })
-
-    // AT-3093: inside a project the header gets the All Projects popup, not the project-only list.
-    it("hands a project's switch to the header widened to every project", () => {
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <AssistantLine
-                    projectOverride={mockProject}
-                    assistantSwitch={{ ...assistantSwitch, scope: 'project' }}
-                />
-            )
-        })
-
-        expect(tree.root.findByType('AssistantOptions').props.assistantSwitch).toBe(mockWidenedSwitch)
     })
 })
 

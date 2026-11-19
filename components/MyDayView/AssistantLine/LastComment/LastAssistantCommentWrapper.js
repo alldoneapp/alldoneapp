@@ -15,11 +15,7 @@ import {
 } from '../../../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import LastAssistantComment from './LastAssistantComment'
-import {
-    cleanTextMetaData,
-    removeFormatTagsFromText,
-    stripMarkdownForPreview,
-} from '../../../../functions/Utils/parseTextUtils'
+import { cleanTextMetaData, removeFormatTagsFromText } from '../../../../functions/Utils/parseTextUtils'
 
 export default function LastAssistantCommentWrapper({
     projectId,
@@ -105,9 +101,7 @@ export default function LastAssistantCommentWrapper({
         }
     }
 
-    // Markdown out before the line breaks go: after that a "## Heading" on a later line is no longer
-    // at a line start and would render as a "##" hashtag chip (stripMarkdownForPreview).
-    const parsedComment = cleanTextMetaData(stripMarkdownForPreview(removeFormatTagsFromText(commentText)), true, true)
+    const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true, true)
     const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
     /**

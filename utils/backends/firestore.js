@@ -3724,6 +3724,9 @@ export function mapNoteData(noteId, note) {
         commentsData: note.commentsData ? note.commentsData : '',
         projectMove: note.projectMove || null,
         movingToOtherProjectId: note.movingToOtherProjectId || null,
+        // The note's public link (hasPublicNoteLink in firestore.rules): readable by anybody who
+        // has its address. Only a literal true counts, exactly as in the rules.
+        publicLinkEnabled: note.publicLinkEnabled === true,
     }
 }
 
@@ -3907,7 +3910,7 @@ export function mapTaskData(taskId, task) {
         // VM session status only for these tasks (AT-2907).
         hasVmSession: task.hasVmSession === true,
         // The workflow runner's state for the current AI step (functions/Tasks/workflowAiStep.js).
-        // TaskExecutionStatusTag reads it on the row, and its "Needs attention" button is how a
+        // AssistantWorkflowRunTag reads it on the row, and its "Needs attention" button is how a
         // failed step is retried. It was missing here until 2026-11-18, so that tag never appeared.
         workflowAiStatus: task.workflowAiStatus || null,
     }
