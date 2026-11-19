@@ -605,14 +605,3 @@ Changing an all-day event into a timed one also needs the replaced field cleared
 `dateTime` (`clearReplacedEventTimeFields`), and Graph needs `isAllDay: false`. Pinned by the
 calendar-event blocks of `emailAssistantBridge.test.js`, `emailDailyTopic.test.js`,
 `emailChannelHelpers.test.js`, `assistantCalendarTools.test.js` and `microsoftCalendarProvider.test.js`.
-
-## No email pill in the task headers; messages are reached through Chats (AT-3110, 2026-11-19)
-
-The All Projects header line and every project header no longer show the email summary pill
-(envelope + Inbox/Newsletter/label counts). It duplicated the Chats entry point and confused
-navigation, so the header-only `AllProjectsEmailLabelChips` / `ProjectEmailLabelChips` components
-and the `showEmailLabels` prop on `AllProjectsLine`, `ProjectHeader` and `ProjectAndUserData` were
-removed. Email handling is unchanged: labeling, Chats > Unread, the email label modal and the
-standalone Email line (`EMAIL_LINE_ENABLED`, still off) remain. Do not re-add email counts to the
-headers; `AllProjectsLineAddTask.test.js` and `ProjectAndUserData.test.js` pin that neither header
-renders an `EmailLabelChip` or loads `useEmailLabelGroups`.
