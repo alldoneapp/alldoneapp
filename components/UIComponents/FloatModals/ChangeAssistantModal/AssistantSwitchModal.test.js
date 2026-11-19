@@ -5,6 +5,7 @@ import renderer, { act } from 'react-test-renderer'
 import AssistantSwitchModal, { ASSISTANT_SWITCH_SEARCH_TEST_ID } from './AssistantSwitchModal'
 import AssistantItem from './AssistantItem'
 import { resetEscapeStack } from '../../../../utils/escapeStack'
+import { ModalShellContext } from '../../ModalShell/ModalShellContext'
 
 let mockState
 
@@ -143,12 +144,13 @@ describe('AssistantSwitchModal (AT-2430)', () => {
                 .filter(child => typeof child === 'string')
         const names = tree => tree.root.findAllByType(AssistantItem).map(item => item.props.assistant.displayName)
 
-        it('shows a labelled, non-autofocused search field', () => {
+        it('shows a labelled search field', () => {
             const tree = render({ grouped: true })
             const input = tree.root.findByType(TextInput)
 
             expect(input.props.placeholder).toBe('Search assistants')
             expect(input.props.accessibilityLabel).toBe('Search assistants')
+            // Focus is a deferred effect (AT-3113), never `autoFocus`, which would fire on phones too.
             expect(input.props.autoFocus).toBeFalsy()
         })
 
@@ -237,5 +239,79 @@ describe('AssistantSwitchModal (AT-2430)', () => {
             expect(tree.root.findByType(TextInput).props.value).toBe('')
             expect(tree.root.findAllByType(AssistantItem)).toHaveLength(3)
         })
+    })
+})
+
+describe('AssistantSwitchModal focus on open (AT-3113)', () => {
+    let focus
+
+    // A TextInput host node with a spy `focus`, so the test sees what the browser would get.
+    const renderWithInputNode = ({ presentation = null, ...props } = {}) => {
+        const element = <AssistantSwitchModal groups={groups} grouped={true} {...props} />
+        let tree
+        act(() => {
+            tree = renderer.create(
+                presentation ? (
+                    <ModalShellContext.Provider value={{ presentation }}>{element}</ModalShellContext.Provider>
+                ) : (
+                    element
+                ),
+                { createNodeMock: () => ({ focus }) }
+            )
+        })
+        return tree
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers()
+        focus = jest.fn()
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
+    })
+
+    it('focuses the search on desktop as soon as the popup opens, like Templates', () => {
+        renderWithInputNode()
+
+        // Deferred one tick (same as AssistantTaskSearchModal), so the popover can place the card.
+        expect(focus).not.toHaveBeenCalled()
+        act(() => jest.runOnlyPendingTimers())
+        expect(focus).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves the search unfocused on a phone, so no keyboard covers the list', () => {
+        mockState = { ...mockState, smallScreenNavigation: true }
+        renderWithInputNode()
+
+        act(() => jest.runAllTimers())
+        expect(focus).not.toHaveBeenCalled()
+    })
+
+    it('leaves the search unfocused in the bottom sheet even when the navigation is desktop', () => {
+        renderWithInputNode({ presentation: 'sheet' })
+
+        act(() => jest.runAllTimers())
+        expect(focus).not.toHaveBeenCalled()
+    })
+
+    it('does not focus later when the viewport turns desktop while the popup is open', () => {
+        mockState = { ...mockState, smallScreenNavigation: true }
+        const tree = renderWithInputNode()
+        act(() => jest.runAllTimers())
+
+        mockState = { ...mockState, smallScreenNavigation: false }
+        act(() => tree.update(<AssistantSwitchModal groups={groups} grouped={true} />))
+        act(() => jest.runAllTimers())
+
+        expect(focus).not.toHaveBeenCalled()
+    })
+
+    it('does not focus a popup closed before the deferred focus ran', () => {
+        const tree = renderWithInputNode()
+        act(() => tree.unmount())
+
+        act(() => jest.runAllTimers())
+        expect(focus).not.toHaveBeenCalled()
     })
 })

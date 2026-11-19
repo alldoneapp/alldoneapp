@@ -87,6 +87,12 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const totalVisibleChats = unreadOnly ? unreadChats.total : totalChats
     const renderedChatsLimit = unreadOnly ? unreadChatsLimit : toRender
     const inSelectedProject = !isInAllProjects
+    // AT-3112: in All Projects, a tag filter that leaves nothing in this project hides the whole
+    // section (header and the "Nothing unread with this tag" line). Hidden, not unmounted: the
+    // unread list keeps the comment subscriptions that bring the section back. The selected-project
+    // view keeps its header, which carries the page navigation, and shows the line instead.
+    const [unreadFilteredEmpty, setUnreadFilteredEmpty] = useState(false)
+    const hiddenByUnreadFilter = unreadOnly && isInAllProjects && unreadFilteredEmpty
 
     useEffect(() => {
         const watcherKey = v4()
@@ -141,7 +147,10 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
             projectId={project.id}
             projectColor={project.color}
             selected={!isInAllProjects}
-            style={checkIfSelectedAllProjects(selectedProjectIndex) && { marginBottom: 25 }}
+            style={[
+                checkIfSelectedAllProjects(selectedProjectIndex) && { marginBottom: 25 },
+                hiddenByUnreadFilter && localStyles.hidden,
+            ]}
         >
             <ProjectHeader
                 projectIndex={project.index}
@@ -190,7 +199,11 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
             <ProjectSectionBody>
                 {inSelectedProject && <ProjectAssistantLine project={project} />}
                 {unreadOnly ? (
-                    <UnreadMessagesList project={project} chats={flatUnreadChats} />
+                    <UnreadMessagesList
+                        project={project}
+                        chats={flatUnreadChats}
+                        onFilteredEmptyChange={setUnreadFilteredEmpty}
+                    />
                 ) : (
                     <>
                         <StickyChats
@@ -261,6 +274,9 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
 }
 
 const localStyles = StyleSheet.create({
+    hidden: {
+        display: 'none',
+    },
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',

@@ -37,7 +37,6 @@ export default function ProjectHeader({
     showTaskMore,
     showGoalMore,
     showRootSectionNavigation = false,
-    showEmailLabels = false,
     allowProjectPostpone = false,
 }) {
     const dispatch = useDispatch()
@@ -101,7 +100,6 @@ export default function ProjectHeader({
                             projectId={projectId}
                             badge={badge}
                             userInHeader={userInHeader}
-                            showEmailLabels={showEmailLabels}
                             headerTextColor={headerTextColor}
                         />
                         <TagsArea

@@ -203,7 +203,6 @@ function OpenTasksByProject({
                             showWorkflowTag={!isAssistant}
                             showTaskMore={!isAssistant}
                             showRootSectionNavigation={inSelectedProject}
-                            showEmailLabels={!isAssistant}
                             allowProjectPostpone={allowProjectPostpone}
                         />
                     )}
