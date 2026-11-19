@@ -3724,6 +3724,9 @@ export function mapNoteData(noteId, note) {
         commentsData: note.commentsData ? note.commentsData : '',
         projectMove: note.projectMove || null,
         movingToOtherProjectId: note.movingToOtherProjectId || null,
+        // The note's public link (hasPublicNoteLink in firestore.rules): readable by anybody who
+        // has its address. Only a literal true counts, exactly as in the rules.
+        publicLinkEnabled: note.publicLinkEnabled === true,
     }
 }
 

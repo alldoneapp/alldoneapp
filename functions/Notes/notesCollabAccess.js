@@ -16,7 +16,9 @@
 //     (canAccessObjectWhileProjectionIsPending in firestore.rules);
 //   - a project member may use the room of a note whose document does not exist (yet): a note is
 //     opened right after it is created, and setNoteProject writes the body before the document;
-//   - a non-member of a public project (isShared != 2) may READ a note public within it.
+//   - a non-member of a public project (isShared != 2) may READ a note public within it;
+//   - anyone signed in (anonymous visitors included) may READ a note whose public link is on
+//     (`publicLinkEnabled === true`), whatever the project's or the note's own privacy.
 // The missing-document allowance is only safe because the collab server keys its rooms by
 // `${projectId}/${noteId}` once it enforces this: a member of project A asking for an id that lives
 // in project B lands in an empty room of A, never in B's.
@@ -35,6 +37,14 @@ const PROJECTION_FIELDS = [
 ]
 
 const NO_ACCESS = Object.freeze({ read: false, write: false })
+const READ_ONLY = Object.freeze({ read: true, write: false })
+
+// A note's public link (`publicLinkEnabled`, set from "Copy link" in the note view) lets anyone who
+// has the note's address READ it, even in a private project: the same override firestore.rules
+// (`hasPublicNoteLink`) and storage.notes.rules grant. Never write access.
+function hasPublicLink(note) {
+    return !!note && note.publicLinkEnabled === true
+}
 
 function secretMatches(provided, expected) {
     if (typeof provided !== 'string' || typeof expected !== 'string' || !expected) return false
@@ -77,7 +87,7 @@ function decideNoteRoomAccess({ uid, project, note }) {
         ) {
             return { read: true, write: true }
         }
-        return NO_ACCESS
+        return hasPublicLink(note) ? READ_ONLY : NO_ACCESS
     }
     const isShared = project.isShared === undefined ? PRIVATE_PROJECT : project.isShared
     if (
@@ -86,9 +96,9 @@ function decideNoteRoomAccess({ uid, project, note }) {
         Array.isArray(note.readerIds) &&
         note.readerIds.includes(PUBLIC_FOR_ALL)
     ) {
-        return { read: true, write: false }
+        return READ_ONLY
     }
-    return NO_ACCESS
+    return hasPublicLink(note) ? READ_ONLY : NO_ACCESS
 }
 
 function createNotesCollabAccessHandler({ db, auth, getSecret }) {

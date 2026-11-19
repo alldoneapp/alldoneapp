@@ -868,13 +868,30 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageData']);
     }
 
+    // A note's public link: whoever can edit a note may set `publicLinkEnabled` (from "Copy link" in
+    // the note view), and then anybody who has the note's address may open that ONE note, even in a
+    // private project and even signed out (the web client signs visitors in anonymously). It is a
+    // `get` only: nobody may LIST the notes with an open link, so the address stays the secret, as
+    // after the 2026-11-08 harvesting incident. storage.notes.rules and notesCollabAccess grant the
+    // same read of the note body; nothing grants write.
+    function hasPublicNoteLink(data) {
+      return data.get('publicLinkEnabled', false) == true;
+    }
+
+    function notePublicLinkIsFlag(data) {
+      return !('publicLinkEnabled' in data) || data.publicLinkEnabled is bool;
+    }
+
     match /noteItems/{projectId}/notes/{noteId} {
-      allow get: if canProbeMissingObject(projectId);
+      allow get: if canProbeMissingObject(projectId) ||
+        (resource != null && hasPublicNoteLink(resource.data));
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data) &&
+        notePublicLinkIsFlag(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged() &&
+        notePublicLinkIsFlag(request.resource.data);
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }

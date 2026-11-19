@@ -3958,5 +3958,13 @@
     "Sorted by sender": "Ordenado por remitente",
     "Sorted by newest": "Más recientes primero",
     "Sender": "Remitente",
-    "Newest": "Recientes"
+    "Newest": "Recientes",
+    "Turn off public link": "Desactivar el enlace público",
+    "Make public and copy": "Hacer pública y copiar",
+    "Public link is on": "El enlace público está activado",
+    "This project is private": "Este proyecto es privado",
+    "Note public link on description": "Cualquiera con el enlace puede leer esta nota sin iniciar sesión. Solo los miembros del proyecto pueden editarla. El resto del proyecto sigue siendo privado.",
+    "Note public link off description": "Solo los miembros del proyecto pueden abrir este enlace; a los demás se les pide iniciar sesión. Puedes abrir solo esta nota a cualquiera con el enlace, en modo lectura.",
+    "Note public link failed": "No ha funcionado. Comprueba tu conexión e inténtalo de nuevo.",
+    "Shared note": "Nota compartida"
 }
