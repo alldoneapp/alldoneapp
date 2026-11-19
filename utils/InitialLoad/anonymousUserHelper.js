@@ -8,14 +8,12 @@ import NavigationService from '../NavigationService'
 import { watchAdministratorUser, watchGlobalAssistants, watchProjectData } from './initialLoadHelper'
 import { ANONYMOUS_USER_DATA } from '../SharedHelper'
 
-async function loadInitialData(projectId, projectUsers, publicLinkProject) {
+async function loadInitialData(projectId, projectUsers) {
     const promises = []
     // Public shared-resource views must not enumerate private project people or
     // related collections. The project document and the specifically authorized
     // resource are sufficient; keep the other Redux collection slots present but empty.
-    // A note opened through its public link brings a stand-in project instead: the real one is
-    // private and cannot be read (SharedHelper.createPublicNoteLinkProject).
-    promises.push(publicLinkProject ? Promise.resolve(publicLinkProject) : getProjectData(projectId))
+    promises.push(getProjectData(projectId))
     promises.push(getGlobalAssistants())
     // Administrator data is optional for a shared anonymous view. A transient
     // inability to verify it must not prevent the shared project itself from opening.
@@ -32,7 +30,7 @@ async function loadInitialData(projectId, projectUsers, publicLinkProject) {
     if (administratorUser?.uid && !administratorUser.roleOnly) {
         watchAdministratorUser(administratorUser.uid)
     }
-    if (!publicLinkProject) watchProjectData(projectId, false, false)
+    watchProjectData(projectId, false, false)
 }
 
 const updateUserDateData = async loggedUser => {
@@ -58,7 +56,7 @@ const addAnonymousData = (user, projectId) => {
     }
 }
 
-export async function loadInitialDataForAnonymous(projectId, URL, users, publicLinkProject = null) {
+export async function loadInitialDataForAnonymous(projectId, URL, users) {
     let { projectUser, currentUser } = users || {}
     projectUser = projectUser || currentUser || { uid: '' }
     currentUser = currentUser || projectUser
@@ -68,6 +66,6 @@ export async function loadInitialDataForAnonymous(projectId, URL, users, publicL
 
     await updateUserDateData(loggedUser)
     store.dispatch(initAnonymousSesion(loggedUser, currentUser))
-    await loadInitialData(projectId, [projectUser], publicLinkProject)
+    await loadInitialData(projectId, [projectUser])
     URLTrigger.processUrl(NavigationService, URL)
 }

@@ -30,9 +30,6 @@ export default function usePrivateProject(projectId) {
     }
 
     useEffect(() => {
-        // A note opened through its public link: the project is a stand-in the visitor cannot read
-        // (SharedHelper.createPublicNoteLinkProject), and the note's own rules already decided.
-        if (store.getState().loggedUserProjectsMap?.[projectId]?.publicNoteLinkOnly) return undefined
         const watcherKey = v4()
         watchProject(projectId, callback, watcherKey)
         return () => {

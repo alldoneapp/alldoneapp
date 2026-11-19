@@ -4010,13 +4010,5 @@
     "Sorted by sender": "Sorted by sender",
     "Sorted by newest": "Sorted by newest",
     "Sender": "Sender",
-    "Newest": "Newest",
-    "Turn off public link": "Turn off public link",
-    "Make public and copy": "Make public and copy",
-    "Public link is on": "Public link is on",
-    "This project is private": "This project is private",
-    "Note public link on description": "Anyone with the link can read this note, without signing in. Only project members can edit it. The rest of the project stays private.",
-    "Note public link off description": "Only project members can open this link; anyone else is asked to sign in. You can open just this note to anyone with the link, read-only.",
-    "Note public link failed": "That did not work. Check your connection and try again.",
-    "Shared note": "Shared note"
+    "Newest": "Newest"
 }

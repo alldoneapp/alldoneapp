@@ -11,8 +11,6 @@
 //         pending4 just created by u4, no projection yet, isPublicFor [u4]
 //         moved    no note document yet (setNoteProject writes the body first)
 //         gone4    deleted: no note document, but its version copies are still in the bucket
-//         link4    u4's private note whose public link is on (publicLinkEnabled true)
-//         nolink4  u4's private note with publicLinkEnabled "true" (a string, not the flag)
 //   p2  public project (isShared 0), member u2, notes "pub" (readerIds has 0) and "priv"
 //         gonepub  deleted note in the public project
 //   admin1 is roles/administrator; u3 is a member of nothing
@@ -36,8 +34,6 @@ const MOCK_DATA = {
     [`${DOCS}/noteItems/p1/notes/mine4`]: { readerIds: ['u4'], isPublicFor: ['u4'] },
     [`${DOCS}/noteItems/p1/notes/pending`]: { isPublicFor: [0] },
     [`${DOCS}/noteItems/p1/notes/pending4`]: { isPublicFor: ['u4'] },
-    [`${DOCS}/noteItems/p1/notes/link4`]: { readerIds: ['u4'], isPublicFor: ['u4'], publicLinkEnabled: true },
-    [`${DOCS}/noteItems/p1/notes/nolink4`]: { readerIds: ['u4'], isPublicFor: ['u4'], publicLinkEnabled: 'true' },
     [`${DOCS}/noteItems/p2/notes/pub`]: { readerIds: [0, 'u2'], isPublicFor: [0] },
     [`${DOCS}/noteItems/p2/notes/priv`]: { readerIds: ['u2'], isPublicFor: ['u2'] },
 }
@@ -186,17 +182,6 @@ const NOTES_CASES = [
     ['ALLOW', 'get', 'notesData/p2/priv', 'u2'],
     ['DENY', 'create', 'notesData/p2/pub', 'u3'],
     ['DENY', 'get', 'notesData/p1/n1', null],
-    // A note's public link: anybody signed in (visitors sign in anonymously) may read the body of
-    // that one note, even in a private project and even when the note is private; nobody may write
-    // it through the link, and a signed-out request still gets nothing.
-    ['ALLOW', 'get', 'notesData/p1/link4', 'u3'],
-    ['ALLOW', 'get', 'notesData/p1/link4', 'u1'],
-    ['ALLOW', 'update', 'notesData/p1/link4', 'u4'],
-    ['DENY', 'update', 'notesData/p1/link4', 'u3'],
-    ['DENY', 'update', 'notesData/p1/link4', 'u1'],
-    ['DENY', 'get', 'notesData/p1/link4', null],
-    ['DENY', 'list', 'notesData/p1', 'u3'],
-    ['DENY', 'get', 'notesData/p1/nolink4', 'u3'],
     ['DENY', 'get', 'communityNotesData/p1/n1', 'u1'],
     ['DENY', 'get', 'noteDailyVersionsData/p1/n1', 'u1'],
 ]

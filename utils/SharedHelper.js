@@ -28,20 +28,14 @@ import URLsPeopleTrigger from '../URLSystem/People/URLsPeopleTrigger'
 import { URL_PEOPLE_DETAILS } from '../URLSystem/People/URLsPeople'
 import { COLORS_THEME_MODERN } from '../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../components/SidebarMenu/Collapsible/CollapsibleHelper'
-import { getDeviceLanguage, translate } from '../i18n/TranslationService'
+import { getDeviceLanguage } from '../i18n/TranslationService'
 import { WORKSTREAM_ID_PREFIX } from '../components/Workstreams/WorkstreamHelper'
 import SettingsHelper from '../components/SettingsView/SettingsHelper'
 import URLsProjectsTrigger from '../URLSystem/Projects/URLsProjectsTrigger'
 import { URL_PROJECT_DETAILS } from '../URLSystem/Projects/URLsProjects'
 import { URL_SKILL_DETAILS } from '../URLSystem/Skills/URLsSkills'
 import URLsSkillsTrigger from '../URLSystem/Skills/URLsSkillsTrigger'
-import {
-    getNoteMeta,
-    getProjectData,
-    getTaskData,
-    loginWithGoogleWebAnonymously,
-    mapProjectData,
-} from './backends/firestore'
+import { getNoteMeta, getProjectData, getTaskData, loginWithGoogleWebAnonymously } from './backends/firestore'
 import { ALL_GOALS_ID, allGoals } from '../components/AllSections/allSectionHelper'
 import URLsChatsTrigger from '../URLSystem/Chats/URLsChatsTrigger'
 import { URL_CHAT_DETAILS } from '../URLSystem/Chats/URLsChats'
@@ -350,35 +344,21 @@ class SharedHelper {
                     }
                     // Process note
                     case matchedSharedObj.key.indexOf(URL_NOTE_DETAILS) >= 0: {
-                        // Settled separately: a note whose public link is on opens even though its
-                        // private project cannot be read (hasPublicNoteLink in firestore.rules),
-                        // and a denied read must end on the private-resource page, not reject.
-                        const [noteResult, projectResult] = await Promise.allSettled([
-                            getNoteMeta(params.projectId, params.noteId),
-                            getProjectData(params.projectId),
-                        ])
-                        const note = noteResult.status === 'fulfilled' ? noteResult.value : null
-                        const project = projectResult.status === 'fulfilled' ? projectResult.value : null
-                        const sharedProject = SharedHelper.canAccessToProject(project, false) ? project : null
-                        const opensThroughProject = !!sharedProject && SharedHelper.canAccessToObject(note)
-                        const opensThroughLink = !opensThroughProject && SharedHelper.hasPublicNoteLink(note)
-                        if (opensThroughProject || opensThroughLink) {
+                        const promises = []
+                        promises.push(getNoteMeta(params.projectId, params.noteId))
+                        promises.push(getProjectData(params.projectId))
+                        const [note, project] = await Promise.all(promises)
+                        if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(note)) {
                             // Anonymous Firebase users intentionally cannot read another person's
                             // /users document. The note and public project already contain every
                             // field needed to authorize and render this read-only view, so do not
                             // make the shared-note boot depend on a private profile read.
                             const user = SharedHelper.createAnonymousResourceUser(
-                                note.creatorId || note.userId || project?.creatorId
+                                note.creatorId || note.userId || project.creatorId
                             )
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.noteId, 'notes')
-                            await onIsShared(URL, users, params, commonPath, {
-                                // Only the note is readable: the views get a stand-in project.
-                                publicLinkProject:
-                                    opensThroughLink && !sharedProject
-                                        ? SharedHelper.createPublicNoteLinkProject(params.projectId)
-                                        : null,
-                            })
+                            await onIsShared(URL, users, params, commonPath)
                         } else {
                             await onNotShared()
                         }
@@ -490,8 +470,8 @@ class SharedHelper {
     static processUrlAsAnonymous = async () => {
         const { initialUrl: URL } = store.getState()
 
-        const onIsShared = async (URL, users, params, commonPath, options = {}) => {
-            await loadInitialDataForAnonymous(params.projectId, URL, users, options.publicLinkProject)
+        const onIsShared = async (URL, users, params, commonPath) => {
+            await loadInitialDataForAnonymous(params.projectId, URL, users)
         }
 
         const onNotShared = () => {
@@ -529,11 +509,11 @@ class SharedHelper {
             store.dispatch(navigateToAllProjectsTasks())
         }
 
-        const onIsShared = (URL, users, params, commonPath, options = {}) => {
+        const onIsShared = (URL, users, params, commonPath) => {
             if (backAction && SharedHelper.isCommonSharedPath(URL, commonPath)) {
                 URLTrigger.directProcessUrl(navigation, URL)
             } else if (params.projectId) {
-                loadInitialDataForShared(params.projectId, navigation, URL, options.publicLinkProject)
+                loadInitialDataForShared(params.projectId, navigation, URL)
             }
         }
 
@@ -558,20 +538,6 @@ class SharedHelper {
     static canAccessToObject = object => {
         return object && object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
     }
-
-    // A note's public link (hasPublicNoteLink in firestore.rules): anybody with its address may read
-    // that one note, whatever the project's or the note's own privacy.
-    static hasPublicNoteLink = note => !!note && note.publicLinkEnabled === true
-
-    // What a visitor who may read only the note (its public link) gets in place of the project: the
-    // project document is not readable to them in a private project, and the read-only note view
-    // needs nothing of it but the id. `publicNoteLinkOnly` tells the loaders not to read or watch it.
-    static createPublicNoteLinkProject = projectId =>
-        mapProjectData(
-            projectId,
-            { name: translate('Shared note'), isShared: PROJECT_PRIVATE, userIds: [] },
-            { publicNoteLinkOnly: true }
-        )
 
     static canAccessToProject = (project, entryPointForJoinToProject) => {
         if (!project) return false

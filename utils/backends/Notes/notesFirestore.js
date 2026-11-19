@@ -28,7 +28,6 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
-import { awaitWriteAck } from '../offlineWriteAck'
 import { getServerNow } from '../../serverClock'
 import { queueNoteUpload } from '../../Notes/noteUploadQueue'
 import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
@@ -175,9 +174,6 @@ export async function uploadNewNote(projectId, noteData) {
         // immediately visible in the Followed notes tab — offline, the feeds
         // chain that normally establishes it only completes on reconnect.
         const noteDataCopy = stampCreatorAsFollower({ ...noteData })
-        // A new note (a copy included) never starts with an open public link: that is decided per
-        // note from "Copy link".
-        delete noteDataCopy.publicLinkEnabled
         const noteId = noteDataCopy.id ? noteDataCopy.id : getId()
 
         // Offline, every server ack in this function is deferred until reconnect,
@@ -322,18 +318,6 @@ export async function updateNoteStickyData(projectId, noteId, stickyData) {
     const { stickyEndDate, days } = stickyData
     stickyEndDate > 0 ? trackStickyNote(projectId, noteId, stickyEndDate) : untrackStickyNote(noteId)
     updateNoteStickyDataFeedsChain(projectId, days, noteId)
-}
-
-/**
- * A note's public link: with `publicLinkEnabled` on, anybody who has the note's address may READ
- * it, even in a private project and signed out (hasPublicNoteLink in firestore.rules, the same in
- * storage.notes.rules and functions/Notes/notesCollabAccess.js). Set from "Copy link" in the note
- * view. Not an edit of the note, so no edition data. Resolves once the server acked the write
- * (offline: at once), so the caller copies a link that already works.
- */
-export function setNotePublicLink(projectId, noteId, enabled) {
-    const ref = getDb().doc(`noteItems/${projectId}/notes/${noteId}`)
-    return awaitWriteAck(ref.update({ publicLinkEnabled: enabled === true }), 'note public link')
 }
 
 export async function updateNoteShared(projectId, noteId, shared) {
@@ -555,8 +539,6 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
         followersIds: uniq([creatorId, userId]),
         isPrivate: false,
         isPublicFor: [FEED_PUBLIC_FOR_ALL],
-        // The old address dies with the move, and the new project decides anew.
-        publicLinkEnabled: false,
         linkedParentTasksIds,
         stickyData: {
             days: 0,

@@ -3569,13 +3569,5 @@
     "Sorted by sender": "Nach Absender sortiert",
     "Sorted by newest": "Neueste zuerst",
     "Sender": "Absender",
-    "Newest": "Neueste",
-    "Turn off public link": "Öffentlichen Link ausschalten",
-    "Make public and copy": "Öffentlich machen und kopieren",
-    "Public link is on": "Öffentlicher Link ist an",
-    "This project is private": "Dieses Projekt ist privat",
-    "Note public link on description": "Alle mit dem Link können diese Notiz ohne Anmeldung lesen. Bearbeiten können sie nur Projektmitglieder. Der Rest des Projekts bleibt privat.",
-    "Note public link off description": "Nur Projektmitglieder können diesen Link öffnen, alle anderen werden zur Anmeldung geschickt. Du kannst nur diese Notiz für alle mit dem Link freigeben, nur zum Lesen.",
-    "Note public link failed": "Das hat nicht geklappt. Prüfe deine Verbindung und versuche es noch einmal.",
-    "Shared note": "Geteilte Notiz"
+    "Newest": "Neueste"
 }

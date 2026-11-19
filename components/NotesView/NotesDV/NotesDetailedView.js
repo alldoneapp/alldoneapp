@@ -57,11 +57,7 @@ export default function NotesDetailedView({ navigation }) {
         }
     }
 
-    // A note whose public link is on is readable by anybody who has its address, whatever its own
-    // privacy (SharedHelper.hasPublicNoteLink); the rules decide the same.
-    const checkIfIsPrivateNote = noteUpdated => {
-        if (SharedHelper.hasPublicNoteLink(noteUpdated)) return false
-        const { isPublicFor } = noteUpdated
+    const checkIfIsPrivateNote = isPublicFor => {
         const isPrivateForUser =
             !isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (isAnonymous || !isPublicFor.includes(loggedUser.uid))
         return isPrivateForUser
@@ -78,7 +74,7 @@ export default function NotesDetailedView({ navigation }) {
 
     const updateNote = noteUpdated => {
         if (noteUpdated) {
-            const isPrivateForUser = checkIfIsPrivateNote(noteUpdated)
+            const isPrivateForUser = checkIfIsPrivateNote(noteUpdated.isPublicFor)
             if (isPrivateForUser) {
                 redirectOut(true)
             } else {

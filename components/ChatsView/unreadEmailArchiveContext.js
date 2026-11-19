@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
+import { translate } from '../../i18n/TranslationService'
 import { getLinkedEmailsProjectIds, runWithLastUnreadRedirect } from './lastUnreadRedirect'
 
 // Lazy, like the archive action itself: the sync reaches the Firebase client, and a row rendered on
@@ -132,14 +133,23 @@ export function useEmailCommentReadSync(sources) {
 export function UnreadEmailArchiveProvider({ children }) {
     const linkedEmailArchive = useLinkedEmailArchive()
     // Every archive press in the chat list (row, preview, project line, All Projects line) goes
-    // through here, so this is where AT-3104 hooks in: once the archive has succeeded, a view with no
-    // red unread left moves on to its grey unread messages, and one with nothing unread to its tasks.
+    // through here, so this is where AT-3104 hooks in: as soon as the unread state is cleared
+    // (AT-3108, without waiting for Gmail), a view with no red unread left moves on to its grey
+    // unread messages, and one with nothing unread to its tasks.
     const archive = {
         ...linkedEmailArchive,
         archiveLinkedEmails: (emails, options) =>
-            runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), () =>
-                linkedEmailArchive.archiveLinkedEmails(emails, options)
-            ),
+            runWithLastUnreadRedirect(getLinkedEmailsProjectIds(emails), async redirect => {
+                const succeeded = await linkedEmailArchive.archiveLinkedEmails(emails, options)
+                // The bulk buttons show a failure on themselves instead of alerting
+                // (`notifyOnError: false`). Once the redirect has opened the tasks, that button is no
+                // longer on screen, so the failure (the email is back as unread) would go unnoticed:
+                // say it the way the row does.
+                if (succeeded === false && options?.notifyOnError === false && redirect?.leftChats?.()) {
+                    alert(translate("Emails couldn't be archived. Try again"))
+                }
+                return succeeded
+            }),
     }
     const [sources, setSources] = useState({})
 
