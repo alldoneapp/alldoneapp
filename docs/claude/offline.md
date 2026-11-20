@@ -134,6 +134,28 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
   still awaits `resolveConversation` for the authoritative project/day. A chat never
   saved on this device still needs its first online load. Pinned by
   `annaConversationCache.test.js` and `useAnnaConversation.test.js`.
+- **That first online load shows the chat's shape, not a blank card (AT-3119, 2026-11-20).**
+  Without a saved chat (new device or browser, after logout) the chat waits for
+  `getAnnaConversationSecondGen`: in production about 2.7s median and 7.6s at p90 (Cloud Run
+  request logs, 2026-11-19/20). Until 2026-11-20 that time showed only a small grey "Loading
+  conversation…" line and no composer. `AnnaShell` now renders `AnnaConversationSkeleton` while
+  `loading && !conversation`: the timeline as shimmering placeholder rows inside the real
+  `.anna-messages` box and the composer as an inert copy inside the real `.anna-composer` box, so
+  nothing moves when the chat replaces them. The placeholder composer is `aria-hidden` and has
+  nothing focusable or editable, so no draft can be lost on the swap and the shell's focus handoff
+  to the first real input (`awaitingChatInputFocus`) is unchanged. The status for assistive
+  technology stays "Loading conversation…". Offline with no saved chat still says "not available
+  offline yet" (never a skeleton that cannot finish), and a failed load still shows the error with
+  "Try again". A day whose messages have no saved copy shows `AnnaMessagesSkeleton` (label
+  "Loading your conversation…") instead of a grey line. The chat section also mounts on
+  `visited || active`: `visited` is set in an effect, so an entry that did not go through the
+  shell's own controls (a link, a restored layout, another tab) painted one empty card first. The
+  hook never reports a render with neither `loading`, `conversation`, `error` nor `offline`.
+  Nothing new is cached: the existing per-account caches (`annaConversationCache`,
+  `annaMessageCache`, both keyed and validated by uid) stay the only offline sources. Pinned by
+  "first entry into assistant mode (AT-3119)" in `AnnaShell.test.js`, "first entry without a
+  saved chat (AT-3119)" in `useAnnaConversation.test.js`, "thread loading state (AT-3119)" in
+  `AnnaConversation.test.js` and the cold-load step of `browser-tests/anna-workspace/run.js`.
 - **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
   `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
   live in web-bundler's own package). It precaches the app shell (hashed chunks,

@@ -3224,3 +3224,88 @@
 :root[data-theme='dark'] .anna-project-option-selected .anna-screen-option-icon {
     color: inherit;
 }
+/* AT-3119: the chat's first load without a saved copy. Same boxes as the real timeline and
+   composer (`.anna-messages`, `.anna-composer`), so nothing moves when the chat replaces them.
+   Fills use the theme tokens only, so light and dark mode both follow. */
+.anna-skeleton-messages {
+    overflow: hidden;
+}
+.anna-skeleton-thread {
+    padding-top: 8px;
+}
+.anna-skeleton-message {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 28px;
+}
+.anna-skeleton-message-user {
+    margin-left: 32px;
+    padding: 16px;
+    border: 1px solid var(--anna-border);
+    border-radius: 12px;
+    background: var(--anna-surface);
+}
+.anna-skeleton-author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+.anna-skeleton-block {
+    display: block;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--anna-border) 0%, var(--anna-neutral) 50%, var(--anna-border) 100%);
+    background-size: 200% 100%;
+    animation: anna-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.anna-skeleton-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+}
+.anna-skeleton-name {
+    width: 96px;
+    height: 10px;
+}
+.anna-skeleton-line {
+    height: 12px;
+    max-width: 560px;
+}
+.anna-skeleton-date {
+    width: 84px;
+    height: 10px;
+    margin: 0 auto;
+}
+.anna-composer-skeleton-text {
+    min-height: 48px;
+    padding: 0 4px;
+    color: var(--anna-placeholder);
+    font-size: 16px;
+    line-height: 24px;
+}
+.anna-composer-skeleton-icon {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: var(--anna-placeholder);
+}
+.anna-composer-skeleton .anna-send {
+    opacity: 0.4;
+}
+@keyframes anna-skeleton-shimmer {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: -100% 0;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .anna-skeleton-block {
+        animation: none;
+        background: var(--anna-border);
+    }
+}

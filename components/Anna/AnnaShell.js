@@ -4,6 +4,7 @@ import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
+import AnnaConversationSkeleton from './AnnaConversationSkeleton'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
 import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
 import { syncAnnaWorkspaceProject } from './annaWorkspaceProjectSync'
@@ -1425,13 +1426,12 @@ export default function AnnaShell({ children, routeId }) {
                             {navigationError}
                         </div>
                     )}
-                    {visited && (
+                    {/* AT-3119: `visited` is set in an effect, after the first paint in assistant mode;
+                        `active` covers that frame, which used to show an empty chat card. */}
+                    {(visited || active) && (
                         <>
-                            {loading && (
-                                <div className="anna-empty" role="status">
-                                    {translate('Loading conversation…')}
-                                </div>
-                            )}
+                            {/* AT-3119: no saved chat on this device yet: the chat's shape, not a blank card. */}
+                            {loading && !conversation && <AnnaConversationSkeleton />}
                             {projectNotice && (
                                 <div className="anna-error" role="alert">
                                     {projectNotice}
