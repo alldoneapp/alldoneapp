@@ -20,6 +20,7 @@ const {
     compactResearchConversation,
     FINAL_REPLY_INSTRUCTION,
     toolsForFinalReply,
+    mcpToolsForFinalReply,
 } = require('./assistantResearchGuard')
 const moment = require('moment')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -2843,12 +2844,25 @@ async function interactWithChatStream(
     // Research that hit its limit ends with one more reply. It gets no lookup tools, but keeps the
     // tools that act, so a run asked to research and then save can still save (the 2026-11-11
     // scheduled user description update hit the limit and could not call update_user_description).
-    // Delegation, external app and MCP tools stay out: they are open-ended, not a single action.
+    // Delegation and external app tools stay out: they are open-ended, not a single action. MCP tools
+    // that act stay (a Story Builder run asked to find the voice in use and delete the other one can
+    // still delete it); MCP lookups do not, so the reply cannot read on (2026-11-19).
     const requestToolNames = finalizeResearch ? toolsForFinalReply(runtimeAllowedTools) : runtimeAllowedTools
     const requestAdditionalToolSchemas = finalizeResearch ? [] : additionalToolSchemas
     const loadDynamicToolSchemas = () =>
         finalizeResearch
-            ? Promise.resolve({ delegationToolSchemas: [], externalToolSchemas: [], mcpToolSchemas: [], mcpApps: [] })
+            ? getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+                  .then(dynamicToolSchemas => ({
+                      delegationToolSchemas: [],
+                      externalToolSchemas: [],
+                      ...mcpToolsForFinalReply(dynamicToolSchemas),
+                  }))
+                  .catch(error => {
+                      console.warn('Assistant: MCP tools for the final research reply unavailable', {
+                          error: error.message,
+                      })
+                      return { delegationToolSchemas: [], externalToolSchemas: [], mcpToolSchemas: [], mcpApps: [] }
+                  })
             : getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
