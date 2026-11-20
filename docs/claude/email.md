@@ -185,6 +185,17 @@ this tag", but only once every project with unread chats has registered `loaded`
 first snapshots), so it does not flash while messages arrive. The single-project view keeps its
 header (it carries the page navigation) and the local line.
 
+**An emptied tag moves on to the next tag with unread messages (AT-3120, 2026-11-20).** When the
+selected tag chip (e.g. "Ads") drops to zero, the next tag in `UNREAD_TAG_ORDER` that still has
+messages is selected, wrapping around to the start (Karsten: wrap, not back to "Unread"), whatever
+emptied it (row/line actions, the Gmail read sync, another device). Only the tag changes; project
+and Unread filter stay. `useAutoAdvanceUnreadTag` (called by `UnreadTriageTagChips`) arms a tag only
+once it was seen with messages in a fully loaded scope, decides only when every registered project
+of the scope is `loaded`, and disarms when the scope (selected project) changes, so selecting a tag,
+switching project or a chat still loading never jumps. With no other tag left it does nothing: the
+tag's empty state shows and the existing flows (AT-3104/3108 redirect, ChatFiltersLine leaving
+Unread at 0) take over. Pinned by `unreadTagAutoAdvance.test.js`.
+
 **A row shows the whole message and grows with it (AT-3094, 2026-11-18).** The second round capped
 the summary at 320/160 characters and `maxHeight: 3 * body2.lineHeight` with `overflow: hidden`. That
 cut the third line in half: SocialText with `wrapText` renders each word as its own flex item with
