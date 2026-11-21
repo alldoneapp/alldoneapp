@@ -4,6 +4,11 @@ import ProjectHelper from '../../components/SettingsView/ProjectsSettings/Projec
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
 
 /**
+ * /projects/wiki: the wiki of All projects, each project's newest pages (AT-3121)
+ */
+export const URL_ALL_PROJECTS_WIKI = 'ALL_PROJECTS_WIKI'
+
+/**
  * /projects/{projectId}/wiki
  */
 export const URL_PROJECT_WIKI = 'PROJECT_WIKI'
@@ -42,6 +47,8 @@ class URLsWiki {
 
     static getPath = (urlConstant, ...params) => {
         switch (urlConstant) {
+            case URL_ALL_PROJECTS_WIKI:
+                return 'projects/wiki'
             case URL_PROJECT_WIKI:
                 return `projects/${params[0]}/wiki`
             case URL_PROJECT_WIKI_PAGE:
@@ -56,6 +63,11 @@ class URLsWiki {
     // params: projectId, slug, page title, revision (the base revision for a range)
     static setTitle = (urlConstant, internal = false, ...params) => {
         const prefix = internal ? '' : 'Alldone.app - '
+        if (urlConstant === URL_ALL_PROJECTS_WIKI) {
+            const title = `${prefix}All projects - Wiki`
+            !internal && (document.title = title)
+            return title
+        }
         const projectName = shrinkTagText(ProjectHelper.getProjectNameById(params[0], 'Project'))
         const pageTitle = shrinkTagText(params[2] || params[1] || 'Wiki', 100)
         const title =

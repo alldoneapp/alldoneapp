@@ -2470,13 +2470,26 @@
     background: var(--anna-tint);
     color: var(--anna-accent);
 }
+/* AT-3121: Alldone beside the chat with the shell's sidebar uses its pane's full width: the main
+   views' side margins (CONTENT_MARGIN in components/styles/global.js, 104px and 56px elsewhere)
+   shrink to a phone's 16px inside the pane's own gutter. */
+.anna-shell.anna-shell-owns-sidebar .anna-workspace-content {
+    --ad-content-margin: 16px;
+    --ad-content-margin-tablet: 16px;
+}
 /* AT-3121: in Both with the "Anna on top" sidebar the screen beside the chat closes with its own X,
-   in its top right corner, over the screen and clear of the bezel. */
+   at the right of a slim bar above it, so the X covers none of the screen's content (which uses the
+   pane's full width) and the screen's first card lines up with the chat header's bottom. */
+.anna-stage-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 36px;
+    padding: 4px 8px 0;
+    background: var(--ad-Surface, #ffffff);
+}
 .anna-stage-close {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 41;
     display: grid;
     place-items: center;
     width: 32px;

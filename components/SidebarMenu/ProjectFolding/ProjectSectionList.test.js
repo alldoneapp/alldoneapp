@@ -34,17 +34,23 @@ jest.mock('../../MediaBar/MediaBar', () => () => 'chat media')
 import ProjectSectionList from './ProjectSectionList'
 
 const project = { id: 'p1', index: 0, color: '#39CCCC', globalAssistantIds: [] }
-const rowsWithMarks = (route, mode, tab = route) => {
+const rowsWithMarks = (route, mode, tab = route, { allProjects = false, navItem = null } = {}) => {
     mockState = {
-        selectedNavItem: null,
+        selectedNavItem: navItem,
         selectedSidebarTab: tab,
         route,
-        selectedProjectIndex: 0,
+        selectedProjectIndex: allProjects ? -1 : 0,
         loggedUser: { sidebarNavigationMode: mode },
     }
     let tree
     act(() => {
-        tree = renderer.create(<ProjectSectionList projectData={project} projectType="active" isShared={false} />)
+        tree = renderer.create(
+            allProjects ? (
+                <ProjectSectionList projectType="active" inAllProjects />
+            ) : (
+                <ProjectSectionList projectData={project} projectType="active" isShared={false} />
+            )
+        )
     })
     const flatten = node => (typeof node === 'string' ? [node] : (node?.children || []).flatMap(flatten))
     return flatten(tree.toJSON())
@@ -86,6 +92,34 @@ describe('ProjectSectionList', () => {
         expect(marked[marked.length - 1]).toBe('section:Project Settings *')
         expect(marked.filter(row => row.endsWith('*'))).toHaveLength(1)
         expect(rows('ROOT_TASKS', 'advanced')).not.toContain('section:Project Settings')
+    })
+
+    // AT-3121: All projects has the same rows as a project, with the general settings last (the
+    // sidebar's Settings item, which the "Anna on top" sidebar leaves out further down).
+    it('gives All projects the same rows as a project in the "Anna on top" sidebar, the settings last', () => {
+        const allProjects = (route, tab, navItem) =>
+            rowsWithMarks(route, 'sectionsTop', tab, { allProjects: true, navItem })
+        expect(allProjects('ROOT_WIKI', 'ROOT_WIKI').map(row => row.replace(/ \*$/, ''))).toEqual([
+            'section:Tasks',
+            'section:Goals',
+            'section:Notes',
+            'section:Contacts',
+            'section:Chats',
+            'section:Artifacts',
+            'section:Wiki',
+            'section:Settings',
+        ])
+        expect(allProjects('ROOT_WIKI', 'ROOT_WIKI').filter(row => row.endsWith('*'))).toEqual(['section:Wiki *'])
+        // Marked on every settings screen, which All projects stays selected for.
+        for (const navItem of ['SETTINGS_CUSTOMIZATIONS', 'SETTINGS_PROFILE']) {
+            expect(allProjects('SettingsView', 'ROOT_TASKS', navItem).filter(row => row.endsWith('*'))).toEqual([
+                'section:Settings *',
+            ])
+        }
+        // The advanced sidebar keeps its All projects rows as they were.
+        expect(rowsWithMarks('ROOT_TASKS', 'advanced', 'ROOT_TASKS', { allProjects: true })).not.toContain(
+            'section:Wiki'
+        )
     })
 
     it('unfolds nothing while Anna is alone on screen', () => {

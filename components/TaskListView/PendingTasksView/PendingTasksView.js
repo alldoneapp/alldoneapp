@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import PendingTasksByProject from './PendingTasksByProject'
 
 import { themed } from '../../../Themes/colorMode'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../styles/global'
 
 export default function PendingTasksView() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -26,13 +27,13 @@ export default function PendingTasksView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
         backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,
     },
     containerForTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

@@ -33,6 +33,7 @@ import {
     probeProjectsLastNoteEdit,
     sortProjectsByLastNoteEdit,
 } from './notesProjectOrder'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
@@ -282,7 +283,7 @@ const initSortedProjects = (loggedUserProjects, user) => {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerSpace: {
         marginBottom: 32,
@@ -291,7 +292,7 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     deferredProjectReveal: {
         marginBottom: 25,

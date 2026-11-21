@@ -8,6 +8,7 @@ import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
 import { checkIfCalendarConnected } from '../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../utils/backends/EmailLine/emailLineBackend'
 import store from '../../redux/store'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export default function MyDayView() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -53,12 +54,12 @@ export default function MyDayView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

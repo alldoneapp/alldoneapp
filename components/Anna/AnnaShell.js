@@ -1639,17 +1639,20 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
                             {translate('%{assistantName} is working here', { assistantName })}
                         </div>
                     )}
+                    {/* AT-3121: the screen's own bar in Both, so its X covers none of its content. */}
                     {sidebarCardSwitches && active && !chatOnly && !singlePane && (
-                        <button
-                            type="button"
-                            className="anna-stage-close"
-                            aria-label={translate('Close %{screen}', { screen: pickerShownLabel })}
-                            title={translate('Close %{screen}', { screen: pickerShownLabel })}
-                            data-testid="anna-screen-close"
-                            onClick={() => selectLayout('chat')}
-                        >
-                            <Icon name="x" size={18} color="currentColor" />
-                        </button>
+                        <div className="anna-stage-bar">
+                            <button
+                                type="button"
+                                className="anna-stage-close"
+                                aria-label={translate('Close %{screen}', { screen: pickerShownLabel })}
+                                title={translate('Close %{screen}', { screen: pickerShownLabel })}
+                                data-testid="anna-screen-close"
+                                onClick={() => selectLayout('chat')}
+                            >
+                                <Icon name="x" size={18} color="currentColor" />
+                            </button>
+                        </div>
                     )}
                     {visibleWorkspace && pendingNotice}
                     {visibleWorkspace && navigationError && (

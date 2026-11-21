@@ -20,6 +20,7 @@ import VersionHistory from './VersionHistory'
 import SaveVersion from './SaveVersion'
 import AssistantProperty from '../../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../../styles/global'
 
 export default function PropertiesView({ projectId, note, project }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -133,13 +134,13 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         marginBottom: 92,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 0,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     panelsContainer: {
         flex: 1,

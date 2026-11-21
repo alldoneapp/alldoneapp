@@ -72,6 +72,28 @@ export function watchKnowledgePages(projectId, onChange, onError) {
     )
 }
 
+// The project's most recently updated pages, newest first, for the All projects wiki (AT-3121). It
+// reads a few more than it shows, since pages waiting for a rebuild are left out as above; a page
+// without `updatedAt` is not among them (Firestore leaves it out of the order).
+export function watchRecentKnowledgePages(projectId, limit, onChange, onError) {
+    const db = getDb()
+    if (!db || !projectId) return () => {}
+    return db
+        .collection(getKnowledgePagesPath(projectId))
+        .orderBy('updatedAt', 'desc')
+        .limit(limit * 2)
+        .onSnapshot(
+            snapshot => {
+                const pages = snapshot.docs
+                    .map(doc => mapKnowledgePage(doc.id, doc.data()))
+                    .filter(isKnowledgePageVisible)
+                    .slice(0, limit)
+                onChange(pages)
+            },
+            reportListenerError('recent pages', projectId, onError)
+        )
+}
+
 export function watchKnowledgeRuns(projectId, onChange, onError) {
     const db = getDb()
     if (!db || !projectId) return () => {}

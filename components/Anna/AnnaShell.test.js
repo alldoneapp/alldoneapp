@@ -3889,7 +3889,9 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         setAnnaLayout('split')
         render(shellWithSidebar())
         const chatClose = () => document.querySelector('.anna-header [data-testid="anna-chat-close"]')
-        const screenClose = () => document.querySelector('.anna-stage [data-testid="anna-screen-close"]')
+        // In a bar of its own above the screen, so it covers none of the screen's content.
+        const screenClose = () =>
+            document.querySelector('.anna-stage > .anna-stage-bar [data-testid="anna-screen-close"]')
         const openBoth = () => document.querySelector('.anna-header [data-testid="anna-open-both"]')
         expect(chatClose().getAttribute('aria-label')).toBe('Close chat')
         expect(screenClose().getAttribute('aria-label')).toBe('Close Alldone')

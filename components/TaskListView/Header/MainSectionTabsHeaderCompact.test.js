@@ -212,7 +212,7 @@ describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
 
         act(() => title(tree).props.onPress())
         expect(picker().props.isOpen).toBe(true)
-        // Artifacts always, the wiki only inside a project.
-        expect(picker().props.content.props).toMatchObject({ withArtifacts: true, withWiki: false })
+        // The same sections as a project, All projects included (AT-3121: it has a wiki too).
+        expect(picker().props.content.props).toMatchObject({ withArtifacts: true, withWiki: true })
     })
 })

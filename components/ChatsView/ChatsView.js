@@ -32,6 +32,7 @@ import {
     SECONDARY_VIEW_CHATS,
     setSecondaryViewCacheEntry,
 } from '../../utils/InitialLoad/secondaryViewCache'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export const getChatsPresenceCacheKey = ({
     activeTab,
@@ -279,7 +280,7 @@ function ChatsView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerSpace: {
         marginBottom: 32,
@@ -288,7 +289,7 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     allProjectsActions: {
         flexDirection: 'row',

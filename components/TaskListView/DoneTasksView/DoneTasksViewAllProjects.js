@@ -8,6 +8,7 @@ import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsA
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
 import { themed } from '../../../Themes/colorMode'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../styles/global'
 
 export default function DoneTasksViewAllProjects() {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -52,13 +53,13 @@ export default function DoneTasksViewAllProjects() {
 
 const localStyles = StyleSheet.create({
     container: {
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
         backgroundColor: themed.Surface,
     },
     containerForMobile: {
         paddingHorizontal: 16,
     },
     containerForTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

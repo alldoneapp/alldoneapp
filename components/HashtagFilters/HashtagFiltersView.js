@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import useSelectorHashtagFilters from './UseSelectorHashtagFilters'
 import TagItem from './TagItem'
 import ClearAllFilters from './ClearAllFilters'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export default function HashtagFiltersView({ handleSpaces }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -64,9 +65,9 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
     },
     containerTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     containerDesktop: {
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
 })

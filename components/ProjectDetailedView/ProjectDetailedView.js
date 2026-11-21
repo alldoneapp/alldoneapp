@@ -34,7 +34,7 @@ import LoadingData from '../UIComponents/LoadingData'
 import Assistants from './Assistants/Assistants'
 import ContactStatusSettings from './ProjectProperties/ContactStatusSettings/ContactStatusSettings'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import ProjectHappinessView from './Happiness/ProjectHappinessView'
 import ProjectOKRsView from './OKRs/ProjectOKRsView'
 import ProjectWikiSettings from './Wiki/ProjectWikiSettings'
@@ -202,13 +202,13 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         backgroundColor: themed.Surface,
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,
     },
     scrollPanelTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     navigationBar: {
         marginHorizontal: -16,

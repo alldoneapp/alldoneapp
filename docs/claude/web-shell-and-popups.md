@@ -238,8 +238,8 @@ version, which had the sections fixed at the top. The other two modes are unchan
   There is no Anna | Alldone switch (tried and dropped). Anna alone has no ✕ (she is a mode, not an
   overlay, left through the sidebar); her header has the two-columns button that opens Both
   (`anna-open-both`). In Both each side closes with its ✕ (2026-11-21): the chat header's
-  (`anna-chat-close`, AnnaShell's `closeChat`) leaves Alldone alone, the one in the screen's top right
-  corner (`anna-screen-close`, `.anna-stage-close`, "Close %{screen}") leaves Anna alone. Desktop only,
+  (`anna-chat-close`, AnnaShell's `closeChat`) leaves Alldone alone, the one at the right of the bar above
+  the screen (`anna-screen-close` in `.anna-stage-bar`, "Close %{screen}") leaves Anna alone. Desktop only,
   not when `narrow`.
 - **Projects**: the sidebar below is the advanced one (`isSimpleSidebarNavigation` is false): the
   selected project or All projects unfolds Tasks, Goals, Notes, Contacts, Chats, Artifacts and Wiki.
@@ -250,7 +250,11 @@ version, which had the sections fixed at the top. The other two modes are unchan
   project's open tasks itself. The last row of a project (own projects only) is its settings
   (`SectionItems/ProjectSettings.js`, the screen InvitePeopleWrapper opened); on that screen it is
   the only marked row. TasksBoards' Wiki and Chats rows (AT-3020) show only in the
-  simple sidebar, since the other two list them as sections.
+  simple sidebar, since the other two list them as sections. All projects has the same rows as a project
+  (2026-11-21): Artifacts and Wiki switch the section there (`allProjectsSection.js`), and where a
+  project has its settings it has the general settings (`AllProjectsSettings`, what the sidebar's
+  Settings item opens), marked on every settings screen. That sidebar therefore leaves the lower
+  Settings item out (`LoggedUserSidebarBody`). The advanced sidebar's All projects keeps its rows.
 - **With Anna alone on screen** (`useAnnaAloneSidebar`: the chat open and `AnnaAppShownContext`
   false) only the Anna button is marked, no project is marked or unfolded (`ProjectSectionList`
   renders nothing), and a project or All projects press leaves the chat for Alldone (`onLeaveChat`,
@@ -268,7 +272,9 @@ showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its 
   header), and MainViewsContainer leaves its own out for those tabs and keeps the 24px gap above the
   line. Artifacts has no such line and keeps the card on top.
 - **Picker arrows**: the section's name in that card opens the section picker (`ChangeObjectListModal`
-  with `withArtifacts`, and `withWiki` only inside a project; a bottom sheet on a phone). The names in
+  with `withArtifacts` and `withWiki`, All projects included; a bottom sheet on a phone). In this
+  mode the wiki has the card too, "Wiki" without a toggle (`RootSectionNavigation`; the project wiki
+  asks for it under its line). The names in
   the lines above that open a picker carry the same small arrow (`HeaderPickerArrow`, drawn only in
   this mode): the open project (ProjectLine; in All projects a project's name switches to it, so no
   arrow), the person (UserLine, not in Notes, Contacts, Chats and Updates, which have no person
@@ -278,8 +284,13 @@ showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its 
   itself, left of the chat (sidebar | chat | Alldone). AppNavigator passes `<CustomSideMenu>` as
   AnnaShell's `sidebar`, it sits absolute in `.anna-shell-sidebar`, the layout and strip move by
   `--anna-shell-sidebar-width` (collapsed 56px, kept open 263px), and `AnnaShellSidebarContext` makes
-  every `CustomSideMenu` inside the workspace render nothing. The workspace keeps its own 56px
-  collapsed-sidebar margin, so Alldone beside the chat starts with that gap. With the chat open the
+  every `CustomSideMenu` inside the workspace render nothing. Alldone beside the chat uses its pane's
+  full width (2026-11-21): `useCollapsibleSidebar` keeps no collapsed-sidebar room inside that pane
+  (`overlay` is false under `AnnaShellSidebarContext`), and the main views' side margins are
+  `CONTENT_MARGIN` / `CONTENT_MARGIN_TABLET` (`components/styles/global.js`): CSS variables with the
+  old 104px / 56px as fallback, which only `.anna-shell-owns-sidebar .anna-workspace-content` sets to
+  16px. A new main view takes its desktop margins from those constants, never a bare 104/56. The
+  screen's ✕ sits in a 36px bar above the screen (`.anna-stage-bar`), not over its content. With the chat open the
   strip spans everything right of the sidebar, without its own logo (in Both above both sides, as
   decided 2026-11-21); only plain Alldone puts it in the screens' slot. While Alldone is on screen
   (`alldoneShown`) its actions act there and the chat stays; with Anna alone (or another screen in

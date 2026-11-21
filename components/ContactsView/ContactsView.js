@@ -36,6 +36,7 @@ import {
 import useNearViewportMount from '../../hooks/useNearViewportMount'
 import ContactsListSkeleton from './ContactsListSkeleton'
 import { isPendingContact } from '../../utils/backends/Contacts/pendingContact'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export const CONTACTS_ALL_PROJECTS_CACHE_ROWS = 3
 export const CONTACTS_SELECTED_PROJECT_CACHE_ROWS = 10
@@ -519,7 +520,7 @@ export default function ContactsView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerSpace: {
         marginBottom: 32,
@@ -528,7 +529,7 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     deferredProjectReveal: {
         minHeight: 324,

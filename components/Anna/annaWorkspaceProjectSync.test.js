@@ -58,8 +58,8 @@ describe('planAnnaWorkspaceProjectSync', () => {
         ).toEqual({
             projectIndex: -1,
             projectId: null,
-            // All projects has no wiki.
-            tab: 'ROOT_TASKS',
+            // All projects has a wiki too (AT-3121), so the wiki stays.
+            tab: 'ROOT_WIKI',
             navigateToRoot: false,
             currentUser: loggedUser,
         })

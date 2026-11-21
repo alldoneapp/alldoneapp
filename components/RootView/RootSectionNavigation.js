@@ -22,7 +22,10 @@ import {
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
+    DV_TAB_ROOT_WIKI,
 } from '../../utils/TabNavigationConstants'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
+import { isSectionsTopSidebarNavigation } from '../../utils/SidebarNavigationModes'
 
 function NotesSectionToggle() {
     const dispatch = useDispatch()
@@ -84,6 +87,9 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    // AT-3121: in the "Anna on top" sidebar the card is the section's name with its picker, so the
+    // wiki has it too (it has no toggle); the other modes' tab row has no wiki tab.
+    const annaOnTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser?.sidebarNavigationMode))
 
     const renderSectionToggle = () => {
         switch (selectedTab) {
@@ -112,6 +118,7 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
             DV_TAB_ROOT_CONTACTS,
             DV_TAB_ROOT_CHATS,
             DV_TAB_ROOT_ARTIFACTS,
+            ...(annaOnTop ? [DV_TAB_ROOT_WIKI] : []),
         ].includes(selectedTab)
     ) {
         return null
@@ -137,12 +144,12 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 8,
     },
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

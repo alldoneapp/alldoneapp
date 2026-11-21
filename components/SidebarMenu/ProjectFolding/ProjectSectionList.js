@@ -23,6 +23,7 @@ import Goals from './SectionItems/Goals'
 import Wiki from './SectionItems/Wiki'
 import Artifacts from './SectionItems/Artifacts'
 import ProjectSettings from './SectionItems/ProjectSettings'
+import AllProjectsSettings from './SectionItems/AllProjectsSettings'
 import NavigationService from '../../../utils/NavigationService'
 import TasksBoards from './SectionItems/TasksBoards'
 import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
@@ -39,8 +40,12 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
     // the project line above the list.
     const { annaAlone } = useAnnaAloneSidebar()
     const sectionsOnly = isSectionsTopSidebarNavigation(sidebarNavigationMode)
-    // There the project's settings are the last row; on that screen it is the only one marked.
-    const onSettings = sectionsOnly && route === 'ProjectDetailedView'
+    // There the project's settings are the last row; on that screen it is the only one marked. All
+    // projects has the same rows as a project, with the general settings last (the sidebar's Settings
+    // item, which this sidebar leaves out further down).
+    const allProjectsRows = sectionsOnly && inAllProjects
+    const onSettings = sectionsOnly && route === (inAllProjects ? 'SettingsView' : 'ProjectDetailedView')
+    const ownProject = !!projectData && !isShared
 
     const projectColor = projectData?.color || PROJECT_COLOR_DEFAULT
     const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
@@ -115,23 +120,28 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                 projectId={projectData?.id}
                 inAllProjects={inAllProjects}
             />
-            {projectData && !isShared && (
+            {(ownProject || allProjectsRows) && (
                 <Artifacts
-                    projectId={projectData.id}
+                    projectId={projectData?.id}
                     projectColor={projectColor}
-                    selected={selectedSidebarTab === DV_TAB_ROOT_ARTIFACTS && route !== 'ProjectDetailedView'}
+                    navigateToRoot={navigateToRoot}
+                    selected={
+                        !onSettings && selectedSidebarTab === DV_TAB_ROOT_ARTIFACTS && route !== 'ProjectDetailedView'
+                    }
                 />
             )}
-            {projectData && !isShared && (
+            {(ownProject || allProjectsRows) && (
                 <Wiki
-                    projectId={projectData.id}
+                    projectId={projectData?.id}
                     projectColor={projectColor}
-                    selected={selectedSidebarTab === DV_TAB_ROOT_WIKI && route !== 'ProjectDetailedView'}
+                    navigateToRoot={navigateToRoot}
+                    selected={!onSettings && selectedSidebarTab === DV_TAB_ROOT_WIKI && route !== 'ProjectDetailedView'}
                 />
             )}
-            {sectionsOnly && projectData && !isShared && (
+            {sectionsOnly && ownProject && (
                 <ProjectSettings projectIndex={projectData.index} projectColor={projectColor} selected={onSettings} />
             )}
+            {allProjectsRows && <AllProjectsSettings projectColor={projectColor} selected={onSettings} />}
             {(selectedSidebarTab === DV_TAB_ROOT_CHATS || route === 'ChatDetailedView') &&
                 !isShared &&
                 projectData &&

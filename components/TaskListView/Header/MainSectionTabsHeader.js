@@ -19,6 +19,7 @@ import {
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
+    DV_TAB_ROOT_WIKI,
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigationModes'
@@ -34,6 +35,7 @@ const SECTION_TITLES = {
     [DV_TAB_ROOT_CONTACTS]: 'Contacts',
     [DV_TAB_ROOT_CHATS]: 'Chats',
     [DV_TAB_ROOT_ARTIFACTS]: 'Artifacts',
+    [DV_TAB_ROOT_WIKI]: 'Wiki',
 }
 
 /**
@@ -168,13 +170,7 @@ export default function MainSectionTabsHeader({
     const sectionName = translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')
     const sectionTitle = (
         <AppPopover
-            content={
-                <ChangeObjectListModal
-                    closePopover={() => setSectionPickerOpen(false)}
-                    withArtifacts
-                    withWiki={!inAllProjects}
-                />
-            }
+            content={<ChangeObjectListModal closePopover={() => setSectionPickerOpen(false)} withArtifacts withWiki />}
             onClickOutside={() => setSectionPickerOpen(false)}
             isOpen={sectionPickerOpen}
             position={['bottom', 'left', 'right', 'top']}

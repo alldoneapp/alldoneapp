@@ -28,7 +28,7 @@ import BackButton from './Header/BackButton'
 import Assistants from './Assistants/Assistants'
 import AssistantSkills from './AssistantSkills/AssistantSkills'
 import { GLOBAL_PROJECT_ID } from './Assistants/assistantsHelper'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
 import { themed } from '../../Themes/colorMode'
@@ -125,13 +125,13 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         backgroundColor: themed.Surface,
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,
     },
     scrollPanelTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     scrollContainer: {
         flexDirection: 'column',

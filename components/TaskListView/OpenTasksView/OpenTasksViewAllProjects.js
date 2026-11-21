@@ -21,6 +21,7 @@ import { getTaskBearingProjectIndexes, getTaskColdStartDayKey } from '../../../u
 import { markNamedPerformanceTrace } from '../../../utils/performance/performanceLogger'
 
 import { themed } from '../../../Themes/colorMode'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../styles/global'
 
 // Task rows are spread across the active projects, and live Pixel traces showed that shrinking this
 // wave serialized even the first three task-bearing projects. Keep the user's assigned-task queries
@@ -458,7 +459,7 @@ export default function OpenTasksViewAllProjects() {
 
 const localStyles = StyleSheet.create({
     container: {
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
         backgroundColor: themed.Surface,
         marginBottom: 32,
     },
@@ -466,7 +467,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
     },
     containerForTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     deferredProjectPlaceholder: {
         minHeight: 360,
@@ -479,8 +480,8 @@ const localStyles = StyleSheet.create({
         pointerEvents: 'none',
         zIndex: 10,
         top: 56,
-        left: 104,
-        right: 104,
+        left: CONTENT_MARGIN,
+        right: CONTENT_MARGIN,
         minHeight: 360,
         paddingTop: 16,
         backgroundColor: themed.Surface,
@@ -490,7 +491,7 @@ const localStyles = StyleSheet.create({
         right: 16,
     },
     skippedProjectCatchUpSkeletonTablet: {
-        left: 56,
-        right: 56,
+        left: CONTENT_MARGIN_TABLET,
+        right: CONTENT_MARGIN_TABLET,
     },
 })

@@ -229,6 +229,11 @@ export const POPOVER_TABLET_WIDTH = 368
 export const POPOVER_DESKTOP_WIDTH = 432
 export const SIDEBAR_MENU_WIDTH = 263
 export const SIDEBAR_MENU_COLLAPSED_WIDTH = 56
+// The main views' side margins on desktop (104) and on a middle screen (56), as CSS variables with
+// those numbers as fallback: AnnaShell lets Alldone beside the chat use its pane's full width
+// (AT-3121, anna.css) without each view knowing about the pane.
+export const CONTENT_MARGIN = 'var(--ad-content-margin, 104px)'
+export const CONTENT_MARGIN_TABLET = 'var(--ad-content-margin-tablet, 56px)'
 export const SCREEN_BREAKPOINT_MIDDLE = 1052
 export const SCREEN_BREAKPOINT = 970
 export const SCREEN_BREAKPOINT_NAV = 818

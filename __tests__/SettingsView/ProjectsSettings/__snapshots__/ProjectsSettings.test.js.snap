@@ -240,8 +240,8 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
       dir={null}
       style={
         {
-          "marginLeft": "104px",
-          "marginRight": "104px",
+          "marginLeft": "var(--ad-content-margin, 104px)",
+          "marginRight": "var(--ad-content-margin, 104px)",
           "marginTop": "32px",
           "maxWidth": "700px",
         }

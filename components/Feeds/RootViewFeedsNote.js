@@ -7,6 +7,7 @@ import { useSelector } from 'react-redux'
 import URLsTasks, { URL_NOTE_DETAILS_FEED } from '../../URLSystem/Notes/URLsNotes'
 import Backend from '../../utils/BackendBridge'
 import { DV_TAB_NOTE_UPDATES } from '../../utils/TabNavigationConstants'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export default function RootViewFeedsNote({ projectId, note, noteId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -60,12 +61,12 @@ export default function RootViewFeedsNote({ projectId, note, noteId }) {
 const localStyles = StyleSheet.create({
     container: {
         marginBottom: 92,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 0,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

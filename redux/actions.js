@@ -2768,6 +2768,13 @@ export const navigateToAllProjectsNotes = options => {
     return action
 }
 
+export const navigateToAllProjectsWiki = () => {
+    const action = {
+        type: 'Navigate to all projects wiki',
+    }
+    return action
+}
+
 export const navigateToAllProjectsArtifacts = () => {
     const action = {
         type: 'Navigate to all projects artifacts',

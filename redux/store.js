@@ -20,6 +20,7 @@ import {
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
     DV_TAB_ROOT_UPDATES,
+    DV_TAB_ROOT_WIKI,
     DV_TAB_SETTINGS_PROFILE,
 } from '../utils/TabNavigationConstants'
 import { GOALS_OPEN_TAB_INDEX, GOAL_OPEN_TASKS_EXPANDED_SOMEDAY } from '../components/GoalsView/GoalsHelper'
@@ -2856,6 +2857,17 @@ export const theReducer = (state = initialState, action) => {
                 shortcutSelectedProjectIndex: null,
                 selectedSidebarTab: DV_TAB_ROOT_NOTES,
                 notesActiveTab: options.notesActiveTab || FOLLOWED_TAB,
+            }
+        }
+
+        case 'Navigate to all projects wiki': {
+            return {
+                ...state,
+                currentUser: state.loggedUser,
+                selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
+                selectedProjectIndex: ALL_PROJECTS_INDEX,
+                shortcutSelectedProjectIndex: null,
+                selectedSidebarTab: DV_TAB_ROOT_WIKI,
             }
         }
 

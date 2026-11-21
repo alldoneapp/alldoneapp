@@ -50,3 +50,31 @@ describe('the sidebar below the assistant strip', () => {
         })
     })
 })
+
+// AT-3121: in Both with the "Anna on top" sidebar AnnaShell draws the sidebar left of the chat, so
+// Alldone's pane has none floating over it and keeps no room for one.
+describe('inside the pane of a shell that draws the sidebar', () => {
+    const { AnnaShellSidebarContext } = require('../../Anna/AnnaShellSidebarContext')
+    const runInShell = state => {
+        useSelector.mockImplementation(selector => selector(state))
+        let result
+        const Probe = () => {
+            result = useCollapsibleSidebar()
+            return null
+        }
+        act(() => {
+            renderer.create(
+                <AnnaShellSidebarContext.Provider value={true}>
+                    <Probe />
+                </AnnaShellSidebarContext.Provider>
+            )
+        })
+        return result
+    }
+
+    it('keeps no room for a collapsed sidebar', () => {
+        expect(runInShell(stateWith({ sidebarExpanded: false })).overlay).toBe(false)
+        // Outside that pane (the shell's own sidebar among others) it floats as before.
+        expect(run(stateWith({ sidebarExpanded: false })).overlay).toBe(true)
+    })
+})

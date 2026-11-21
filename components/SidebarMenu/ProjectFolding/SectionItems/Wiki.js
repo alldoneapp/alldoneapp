@@ -1,13 +1,20 @@
 import React from 'react'
+import { useDispatch } from 'react-redux'
 
 import { translate } from '../../../../i18n/TranslationService'
+import { DV_TAB_ROOT_WIKI } from '../../../../utils/TabNavigationConstants'
 import SectionItemLayoutHeader from '../SectionItemLayoutHeader'
 import { openProjectWiki } from '../../../WikiView/wikiLinks'
+import { openAllProjectsSection } from './allProjectsSection'
 
-export default function Wiki({ projectId, projectColor, selected }) {
+// Without a project (All projects, AT-3121) it switches the section there.
+export default function Wiki({ projectId, projectColor, selected, navigateToRoot }) {
+    const dispatch = useDispatch()
+
     const onPress = e => {
         e?.preventDefault()
-        openProjectWiki(projectId)
+        if (projectId) openProjectWiki(projectId)
+        else openAllProjectsSection(dispatch, DV_TAB_ROOT_WIKI, navigateToRoot)
     }
 
     return (

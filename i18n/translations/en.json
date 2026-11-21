@@ -298,6 +298,7 @@
     "Search wiki pages": "Search wiki pages",
     "Clear wiki search": "Clear search",
     "No wiki pages match your search": "No wiki page matches your search.",
+    "No wiki pages in your projects yet": "No wiki pages in your projects yet",
     "Give feedback": "Give feedback",
     "Wiki paused at monthly cap": "Paused: the monthly Gold limit is reached. The wiki continues on %{date}, or right away when the limit is raised in the wiki settings.",
     "Wiki monthly cap reached": "The monthly Gold limit is reached. The wiki is paused until %{date}. Raise the limit and it continues right away.",

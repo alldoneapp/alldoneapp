@@ -47,6 +47,7 @@ import URLsAssistants, {
     URL_ASSISTANT_DETAILS_BACKLINKS_TASKS,
 } from '../../URLSystem/Assistants/URLsAssistants'
 import EditTask from '../TaskListView/TaskItem/EditTask'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 const BacklinksView = ({ project, linkedParentObject, externalStyle, parentObject }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -178,11 +179,11 @@ export default BacklinksView
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
         flexDirection: 'column',
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     containerMobile: {
         marginHorizontal: 0,

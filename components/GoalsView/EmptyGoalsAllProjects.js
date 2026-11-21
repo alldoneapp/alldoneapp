@@ -1,7 +1,7 @@
 import React from 'react'
 import { Text, View } from 'react-native'
 import Icon from '../Icon'
-import styles, { colors } from '../styles/global'
+import styles, { colors, CONTENT_MARGIN } from '../styles/global'
 import ProjectTag from '../Tags/ProjectTag'
 import { useSelector } from 'react-redux'
 import ModernImage from '../../utils/ModernImage'
@@ -57,7 +57,7 @@ const localStyles = {
     emptyInboxText: {
         marginTop: 32,
         maxWidth: 700,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
         alignItems: 'flex-start',
         flexDirection: 'row',
     },

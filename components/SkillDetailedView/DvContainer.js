@@ -10,7 +10,7 @@ import SharedHelper from '../../utils/SharedHelper'
 import Sections from './Sections'
 import NavigationBarContainer from './NavigationBarContainer'
 import { setDvIsFullScreen } from '../../redux/actions'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
@@ -79,12 +79,12 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         backgroundColor: themed.Surface,
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,
     },
     scrollPanelTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

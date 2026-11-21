@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors } from '../styles/global'
+import styles, { colors, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import Icon from '../Icon'
 import Button from '../UIControls/Button'
 import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
@@ -10,8 +10,13 @@ import ProjectHeader from '../TaskListView/Header/ProjectHeader'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { setNavigationRoute } from '../../redux/actions'
 import { DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
-import { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
+import ProjectHelper, {
+    checkIfSelectedAllProjects,
+    checkIfSelectedProject,
+} from '../SettingsView/ProjectsSettings/ProjectHelper'
+import AllProjectsWiki from './AllProjectsWiki'
 import URLsWiki, {
+    URL_ALL_PROJECTS_WIKI,
     URL_PROJECT_WIKI,
     URL_PROJECT_WIKI_PAGE,
     URL_PROJECT_WIKI_PAGE_CHANGE,
@@ -22,6 +27,7 @@ import WikiPageHistory from './WikiPageHistory'
 import WikiPageChange from './WikiPageChange'
 import WikiPageRecentChanges from './WikiPageRecentChanges'
 import WikiFeedbackButton from './WikiFeedbackButton'
+import WikiIndex from './WikiIndex'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import {
     setWikiSelectedRange,
@@ -124,46 +130,6 @@ function WikiSearch({ value, onChange }) {
                     <Icon name="x" size={18} color={colors.Text03} />
                 </TouchableOpacity>
             )}
-        </View>
-    )
-}
-
-function WikiIndex({ pages, selectedSlug, onSelect }) {
-    if (pages.length === 0) {
-        return (
-            <Text testID="wiki-search-empty" style={localStyles.searchEmpty}>
-                {translate('No wiki pages match your search')}
-            </Text>
-        )
-    }
-    return (
-        <View testID="wiki-index">
-            {pages.map(page => {
-                const selected = page.slug === selectedSlug
-                return (
-                    <TouchableOpacity
-                        key={page.slug}
-                        testID={`wiki-index-${page.slug}`}
-                        style={[localStyles.indexItem, selected && localStyles.indexItemSelected]}
-                        onPress={() => onSelect(page.slug)}
-                        accessible={false}
-                    >
-                        <Text style={[localStyles.indexTitle, selected && localStyles.indexTitleSelected]}>
-                            {page.title}
-                        </Text>
-                        {!!page.summary && (
-                            <Text style={localStyles.indexSummary} numberOfLines={2}>
-                                {page.summary}
-                            </Text>
-                        )}
-                        {!!page.updatedAt && (
-                            <Text testID={`wiki-index-updated-${page.slug}`} style={localStyles.indexUpdated}>
-                                {translate('Wiki page last updated', { date: formatWikiDate(page.updatedAt) })}
-                            </Text>
-                        )}
-                    </TouchableOpacity>
-                )
-            })}
         </View>
     )
 }
@@ -402,6 +368,8 @@ export function ProjectWiki({ project }) {
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
+                // The section card below the line, drawn only in the "Anna on top" sidebar for the wiki.
+                showRootSectionNavigation
                 customRight={
                     <Button
                         type={'ghost'}
@@ -448,13 +416,32 @@ export default function WikiView() {
     useTranslator()
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
+    const loggedUser = useSelector(state => state.loggedUser)
+    const project = loggedUserProjects[selectedProjectIndex]
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    // AT-3121: All projects has a wiki too, the newest pages of each project, in the user's project
+    // order as the base (like Notes and Artifacts).
+    const activeProjects = useMemo(
+        () =>
+            inAllProjects
+                ? ProjectHelper.sortProjects(
+                      ProjectHelper.getActiveProjects2(loggedUserProjects, loggedUser),
+                      loggedUser.uid
+                  )
+                : [],
+        [inAllProjects, loggedUserProjects, loggedUser.projectIds, loggedUser.archivedProjectIds]
+    )
 
     useEffect(() => {
         dispatch(setNavigationRoute(DV_TAB_ROOT_WIKI))
     }, [])
+
+    useEffect(() => {
+        if (inAllProjects) URLsWiki.push(URL_ALL_PROJECTS_WIKI)
+    }, [inAllProjects])
 
     return (
         <View
@@ -466,6 +453,8 @@ export default function WikiView() {
         >
             {checkIfSelectedProject(selectedProjectIndex) && project ? (
                 <ProjectWiki key={project.id} project={project} />
+            ) : inAllProjects ? (
+                <AllProjectsWiki projects={activeProjects} />
             ) : (
                 <View testID="wiki-choose-project" style={localStyles.emptyState}>
                     <Icon name="book-open" size={32} color={colors.Text03} />
@@ -478,13 +467,13 @@ export default function WikiView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     // An icon in the 56px project line, centred like the other header actions.
     settingsButton: {
@@ -558,38 +547,6 @@ const localStyles = StyleSheet.create({
         height: 32,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    searchEmpty: {
-        ...styles.body2,
-        color: colors.Text02,
-        paddingVertical: 16,
-        paddingHorizontal: 12,
-    },
-    indexItem: {
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 4,
-        marginBottom: 2,
-    },
-    indexItemSelected: {
-        backgroundColor: colors.Grey200,
-    },
-    indexTitle: {
-        ...styles.subtitle2,
-        color: colors.Text01,
-    },
-    indexTitleSelected: {
-        color: colors.Primary100,
-    },
-    indexSummary: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginTop: 2,
-    },
-    indexUpdated: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginTop: 2,
     },
     backLink: {
         flexDirection: 'row',

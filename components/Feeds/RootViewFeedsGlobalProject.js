@@ -17,6 +17,7 @@ import { FOLLOWED_TAB, ALL_TAB } from './Utils/FeedsConstants'
 import { HISTORICAL_MODE, LOADING_MODE, NEW_FEEDS_MODE } from './Utils/FeedsHelper'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export default function RootViewFeedsGlobalProject() {
     const dispatch = useDispatch()
@@ -197,13 +198,13 @@ export default function RootViewFeedsGlobalProject() {
 
 const localStyles = StyleSheet.create({
     container: {
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
         marginBottom: 8,
     },
     containerMobile: {
         paddingHorizontal: 16,
     },
     containerTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

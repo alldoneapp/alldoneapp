@@ -5,6 +5,7 @@ import {
     watchKnowledgeBase,
     watchKnowledgePages,
     watchKnowledgeRuns,
+    watchRecentKnowledgePages,
 } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 
@@ -33,6 +34,24 @@ export function useKnowledgePages(projectId) {
             () => setState(current => ({ ...current, loaded: true }))
         )
     }, [projectId])
+
+    return state
+}
+
+// The project's newest pages (AT-3121, All projects wiki); `loaded` once the first snapshot is in.
+export function useRecentKnowledgePages(projectId, limit) {
+    const [state, setState] = useState({ pages: [], loaded: false })
+
+    useEffect(() => {
+        setState({ pages: [], loaded: false })
+        if (!projectId) return undefined
+        return watchRecentKnowledgePages(
+            projectId,
+            limit,
+            pages => setState({ pages, loaded: true }),
+            () => setState(current => ({ ...current, loaded: true }))
+        )
+    }, [projectId, limit])
 
     return state
 }

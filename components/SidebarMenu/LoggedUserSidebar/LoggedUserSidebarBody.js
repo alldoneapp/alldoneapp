@@ -48,7 +48,8 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             <ArchivedProjects navigation={navigation} />
             {showTemplatesArea && <TemplateProjects navigation={navigation} scrollToBottom={scrollToBottom} />}
             <SharedProjectsList navigation={navigation} />
-            <SettingsItem />
+            {/* AT-3121: the "Anna on top" sidebar has the settings as the last row under All projects. */}
+            {!sectionsTop && <SettingsItem />}
             <FooterArea expanded={expanded} />
         </CustomScrollView>
     )

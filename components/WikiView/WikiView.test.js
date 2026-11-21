@@ -4,11 +4,16 @@ import renderer, { act } from 'react-test-renderer'
 
 const mockState = {
     selectedProjectIndex: 0,
-    loggedUserProjects: [{ id: 'p1', index: 0, color: '#123456' }],
+    loggedUserProjects: [
+        { id: 'p1', index: 0, color: '#123456' },
+        { id: 'p2', index: 1, color: '#654321' },
+        { id: 'p3', index: 2, color: '#abcdef' },
+    ],
+    loggedUser: { uid: 'u1', projectIds: ['p1', 'p2', 'p3'], archivedProjectIds: [] },
     smallScreenNavigation: false,
     isMiddleScreen: false,
 }
-const mockWatchers = { knowledgeBase: null, pages: null }
+const mockWatchers = { knowledgeBase: null, pages: null, recent: {} }
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
@@ -24,6 +29,10 @@ jest.mock('../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
         return () => {}
     }),
     watchKnowledgeRuns: jest.fn(() => () => {}),
+    watchRecentKnowledgePages: jest.fn((projectId, limit, onChange) => {
+        mockWatchers.recent[projectId] = { limit, onChange }
+        return () => {}
+    }),
     getKnowledgePageRevisions: jest.fn(),
     getKnowledgePageChange: jest.fn(),
     getKnowledgePageRange: jest.fn(),
@@ -52,12 +61,17 @@ jest.mock('../Icon', () => ({ __esModule: true, default: () => null, getIconGlyp
 jest.mock('../../URLSystem/Wiki/URLsWiki', () => ({
     __esModule: true,
     default: { push: jest.fn() },
+    URL_ALL_PROJECTS_WIKI: 'ALL_PROJECTS_WIKI',
     URL_PROJECT_WIKI: 'PROJECT_WIKI',
     URL_PROJECT_WIKI_PAGE: 'PROJECT_WIKI_PAGE',
     URL_PROJECT_WIKI_PAGE_CHANGE: 'PROJECT_WIKI_PAGE_CHANGE',
     URL_PROJECT_WIKI_PAGE_CHANGES_SINCE: 'PROJECT_WIKI_PAGE_CHANGES_SINCE',
 }))
-jest.mock('./wikiLinks', () => ({ openProjectWikiSettings: jest.fn(), openWikiSource: jest.fn() }))
+jest.mock('./wikiLinks', () => ({
+    openProjectWiki: jest.fn(),
+    openProjectWikiSettings: jest.fn(),
+    openWikiSource: jest.fn(),
+}))
 jest.mock('./WikiCorrectionForm', () => {
     const { Text: MockText } = require('react-native')
     return ({ page }) => <MockText testID="wiki-correction-form">{`correcting ${page.slug}`}</MockText>
@@ -71,7 +85,13 @@ jest.mock('../UIComponents/ModalShell/AppPopover', () => {
         </MockView>
     )
 })
-jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({ checkIfSelectedProject: index => index >= 0 }))
+jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    __esModule: true,
+    // The user's active projects in their own order.
+    default: { getActiveProjects2: projects => projects, sortProjects: projects => projects },
+    checkIfSelectedAllProjects: index => index === -1,
+    checkIfSelectedProject: index => index >= 0,
+}))
 jest.mock('../../redux/actions', () => ({
     setNavigationRoute: route => ({ type: 'setNavigationRoute', route }),
     showFloatPopup: () => ({ type: 'showFloatPopup' }),
@@ -101,7 +121,7 @@ import {
     undoKnowledgeCorrection,
 } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import WikiView from './WikiView'
-import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
+import { openProjectWiki, openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import {
     getWikiSelectedRevision,
     getWikiSelectedSince,
@@ -175,11 +195,55 @@ beforeEach(() => {
 })
 
 describe('WikiView', () => {
-    it('asks for a project in the all-projects view', () => {
-        mockState.selectedProjectIndex = -1
-        const component = mount()
+    // AT-3121: All projects has a wiki too: each project's newest pages, newest project first.
+    describe('in All projects', () => {
+        const deliverRecent = (projectId, pages) => act(() => mockWatchers.recent[projectId].onChange(pages))
+        const sections = component =>
+            component.root
+                .findAll(
+                    node => typeof node.props.testID === 'string' && /^wiki-all-projects-p\d$/.test(node.props.testID)
+                )
+                .map(node => node.props.testID.replace('wiki-all-projects-', ''))
+        const at = day => Date.UTC(2026, 10, day, 8)
 
-        expect(component.root.findAllByProps({ testID: 'wiki-choose-project' })).not.toHaveLength(0)
+        beforeEach(() => {
+            mockState.selectedProjectIndex = -1
+            mockWatchers.recent = {}
+        })
+
+        it('lists the newest pages of each project that has a wiki, the newest project first', () => {
+            const component = mount()
+            expect(URLsWiki.push).toHaveBeenCalledWith('ALL_PROJECTS_WIKI')
+            expect(mockWatchers.recent.p1.limit).toBe(5)
+            expect(textOf(component.toJSON())).toContain('Loading wiki')
+
+            deliverRecent('p1', [page('kunden', 'Kunden', { updatedAt: at(10) })])
+            deliverRecent('p2', [])
+            deliverRecent('p3', [page('roadmap', 'Roadmap', { updatedAt: at(20) }), page('team', 'Team')])
+
+            // p2 has no pages and takes no room; p3 changed last.
+            expect(sections(component)).toEqual(['p3', 'p1'])
+            expect(textOf(component.toJSON())).not.toContain('Loading wiki')
+        })
+
+        it('opens a page, or the whole wiki, in its project', () => {
+            const component = mount()
+            deliverRecent('p1', [page('kunden', 'Kunden')])
+            deliverRecent('p2', [])
+            deliverRecent('p3', [])
+
+            press(component, 'wiki-all-projects-p1-kunden')
+            expect(openProjectWiki).toHaveBeenCalledWith('p1', 'kunden')
+            press(component, 'wiki-all-projects-open-p1')
+            expect(openProjectWiki).toHaveBeenLastCalledWith('p1')
+        })
+
+        it('says so when none of the projects has wiki pages yet', () => {
+            const component = mount()
+            ;['p1', 'p2', 'p3'].forEach(projectId => deliverRecent(projectId, []))
+            expect(component.root.findAllByProps({ testID: 'wiki-all-projects-empty' })).not.toHaveLength(0)
+            expect(textOf(component.toJSON())).toContain('No wiki pages in your projects yet')
+        })
     })
 
     it('waits for both the settings and the pages before deciding what to show', () => {

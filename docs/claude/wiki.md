@@ -61,6 +61,16 @@ above this month's spending in the settings sets `nextRunAt` to now and enqueues
 Pinned by `knowledgeBaseCapNotice.test.js`, the monthly-cap cases in `knowledgeBaseIngest.test.js`
 and `knowledgeBaseSettings.test.js`.
 
+**All projects has a wiki too (AT-3121, 2026-11-21).** `/projects/wiki` (`URL_ALL_PROJECTS_WIKI`,
+`navigateToAllProjectsWiki`) shows `AllProjectsWiki`: for each active project with wiki pages its line
+and its five newest pages (`watchRecentKnowledgePages`: `orderBy('updatedAt', 'desc')`, twice the
+limit read so pages waiting for a rebuild can be dropped, the same visibility filter as the project
+view), then "All wiki pages". A page opens in its project's wiki (`openProjectWiki`). Projects without
+pages are hidden and the sections are ordered by their newest page, like Artifacts. The rows are the
+shared `WikiIndex`. There is no search across projects (it would mean reading every page of every
+project). Anna's workspace sync keeps the wiki when it moves to All projects. Pinned by the
+"in All projects" block of `WikiView.test.js` and `URLsWikiTrigger.test.js`.
+
 The wiki view is one column on every screen: the index (each page with its own "last updated"),
 then a page in its place with a back link. The line above the index is the wiki's last run, not a
 page's. "Give feedback" at the top of a page opens the same assistant topic the old footer link

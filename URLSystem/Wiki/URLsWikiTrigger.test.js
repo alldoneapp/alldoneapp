@@ -6,6 +6,7 @@ const mockState = {
 jest.mock('../../redux/store', () => ({ getState: () => mockState, dispatch: jest.fn() }))
 jest.mock('../../redux/actions', () => ({
     navigateToAllProjectsTasks: () => ({ type: 'navigateToAllProjectsTasks' }),
+    navigateToAllProjectsWiki: () => ({ type: 'navigateToAllProjectsWiki' }),
     setLastVisitedScreen: screens => ({ type: 'setLastVisitedScreen', screens }),
     setSelectedSidebarTab: tab => ({ type: 'setSelectedSidebarTab', tab }),
     storeCurrentUser: user => ({ type: 'storeCurrentUser', user }),
@@ -31,6 +32,7 @@ import store from '../../redux/store'
 import URLsTasks from '../Tasks/URLsTasks'
 import URLsWikiTrigger from './URLsWikiTrigger'
 import {
+    URL_ALL_PROJECTS_WIKI,
     URL_PROJECT_WIKI,
     URL_PROJECT_WIKI_PAGE,
     URL_PROJECT_WIKI_PAGE_CHANGE,
@@ -56,6 +58,17 @@ beforeEach(() => {
 })
 
 describe('wiki URLs', () => {
+    // AT-3121: All projects has a wiki of its own address.
+    it('opens the All projects wiki at /projects/wiki', () => {
+        expect(URLsWikiTrigger.match('/projects/wiki').key).toBe(URL_ALL_PROJECTS_WIKI)
+        expect(URLsWikiTrigger.match('/projects/wiki/kunden')).toBe(URL_NOT_MATCH)
+
+        URLsWikiTrigger.trigger(navigation, '/projects/wiki')
+        expect(navigation.navigate).toHaveBeenCalledWith('Root')
+        expect(store.dispatch).toHaveBeenCalledWith({ type: 'navigateToAllProjectsWiki' })
+        expect(window.location.pathname).toBe('/projects/wiki')
+    })
+
     it('matches the wiki and a page of it, and nothing that only looks similar', () => {
         expect(URLsWikiTrigger.match('/projects/project-a/wiki').key).toBe(URL_PROJECT_WIKI)
         const page = URLsWikiTrigger.match('/projects/project-a/wiki/kunden-und-partner')

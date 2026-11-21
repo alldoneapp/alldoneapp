@@ -51,7 +51,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import UserProfileSettings from './Profile/UserProfileSettings'
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { countBrokenConnections, countBrokenVmSubscriptions } from './Integrations/connectionHealth'
 import { getVmSubscriptionStatus } from '../../utils/backends/firestore'
@@ -235,13 +235,13 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         backgroundColor: themed.Surface,
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,
     },
     scrollPanelTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     scrollContainer: {
         flexDirection: 'column',

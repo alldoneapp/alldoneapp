@@ -51,7 +51,7 @@ import DueDateSinglePopup from '../UIComponents/DueDateSinglePopup'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 import { themed } from '../../Themes/colorMode'
@@ -318,13 +318,13 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         backgroundColor: themed.Surface,
-        paddingHorizontal: 104,
+        paddingHorizontal: CONTENT_MARGIN,
     },
     scrollPanelMobile: {
         paddingHorizontal: 16,
     },
     scrollPanelTablet: {
-        paddingHorizontal: 56,
+        paddingHorizontal: CONTENT_MARGIN_TABLET,
     },
     navigationBar: {
         marginHorizontal: -16,

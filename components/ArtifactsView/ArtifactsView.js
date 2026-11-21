@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors } from '../styles/global'
+import styles, { colors, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import Icon from '../Icon'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { setNavigationRoute } from '../../redux/actions'
@@ -117,13 +117,13 @@ export default function ArtifactsView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerMobile: {
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     containerAllProjects: {
         marginTop: 16,

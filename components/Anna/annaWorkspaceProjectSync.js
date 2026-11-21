@@ -8,7 +8,7 @@
 // Free of ProjectHelper and the store on purpose: both pull in the firestore client. The plan is
 // pure over the redux state shape; `syncAnnaWorkspaceProject` applies it.
 
-import { ROOT_ROUTES, DV_TAB_ROOT_GOALS, DV_TAB_ROOT_TASKS, DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
+import { ROOT_ROUTES, DV_TAB_ROOT_GOALS, DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 import { allGoals } from '../AllSections/allSectionHelper'
 import { ANNA_AUTOMATIC_PROJECT } from './annaProjectSelection'
 
@@ -20,8 +20,6 @@ const workspaceProjectId = ({ loggedUserProjects, selectedProjectIndex } = {}) =
         ? loggedUserProjects?.[selectedProjectIndex]?.id || null
         : null
 
-// The wiki is a per-project view; All projects has none.
-const PROJECT_ONLY_TABS = [DV_TAB_ROOT_WIKI]
 const PROJECT_TYPE_ACTIVE = 'active'
 
 /**
@@ -52,8 +50,7 @@ export function planAnnaWorkspaceProjectSync(state = {}, choiceId) {
     // Keep the kind of view (tasks, notes, goals, …); an object's detail view belongs to the old
     // project, so it goes back to the root list of the same kind.
     const onRoot = ROOT_ROUTES.includes(route)
-    let tab = ROOT_ROUTES.includes(selectedSidebarTab) ? selectedSidebarTab : DV_TAB_ROOT_TASKS
-    if (automatic && PROJECT_ONLY_TABS.includes(tab)) tab = DV_TAB_ROOT_TASKS
+    const tab = ROOT_ROUTES.includes(selectedSidebarTab) ? selectedSidebarTab : DV_TAB_ROOT_TASKS
     return {
         projectIndex,
         projectId: automatic ? null : choiceId,

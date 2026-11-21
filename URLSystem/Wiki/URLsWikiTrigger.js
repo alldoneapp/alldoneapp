@@ -2,6 +2,7 @@ import { findIndex } from 'lodash'
 
 import { URL_NOT_MATCH } from '../URLSystemTrigger'
 import URLsWiki, {
+    URL_ALL_PROJECTS_WIKI,
     URL_PROJECT_WIKI,
     URL_PROJECT_WIKI_PAGE,
     URL_PROJECT_WIKI_PAGE_CHANGE,
@@ -9,7 +10,13 @@ import URLsWiki, {
 } from './URLsWiki'
 import URLsTasks, { URL_ALL_PROJECTS_TASKS_OPEN } from '../Tasks/URLsTasks'
 import store from '../../redux/store'
-import { navigateToAllProjectsTasks, setSelectedSidebarTab, storeCurrentUser, switchProject } from '../../redux/actions'
+import {
+    navigateToAllProjectsTasks,
+    navigateToAllProjectsWiki,
+    setSelectedSidebarTab,
+    storeCurrentUser,
+    switchProject,
+} from '../../redux/actions'
 import { DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
 import { checkIfSelectedProject } from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { setWikiSelectedRange, setWikiSelectedSlug } from '../../components/WikiView/wikiNavigationState'
@@ -17,6 +24,7 @@ import { setWikiSelectedRange, setWikiSelectedSlug } from '../../components/Wiki
 class URLsWikiTrigger {
     static getRegexList = () => {
         return {
+            [URL_ALL_PROJECTS_WIKI]: new RegExp('^/projects/wiki$'),
             [URL_PROJECT_WIKI]: new RegExp('^/projects/(?<projectId>[\\w-]+)/wiki$'),
             [URL_PROJECT_WIKI_PAGE]: new RegExp('^/projects/(?<projectId>[\\w-]+)/wiki/(?<slug>[a-z0-9-]+)$'),
             [URL_PROJECT_WIKI_PAGE_CHANGE]: new RegExp(
@@ -39,10 +47,17 @@ class URLsWikiTrigger {
 
     static trigger = (navigation, pathname) => {
         const matchedObj = URLsWikiTrigger.match(pathname)
+        if (matchedObj.key === URL_ALL_PROJECTS_WIKI) return URLsWikiTrigger.processURLAllProjectsWiki(navigation)
         const params = matchedObj.matches.groups
         const revision = params.revision ? Number(params.revision) : null
         const since = params.since !== undefined ? Number(params.since) : null
         return URLsWikiTrigger.processURLProjectWiki(navigation, params.projectId, params.slug || null, revision, since)
+    }
+
+    static processURLAllProjectsWiki = navigation => {
+        navigation.navigate('Root')
+        store.dispatch(navigateToAllProjectsWiki())
+        URLsWiki.replace(URL_ALL_PROJECTS_WIKI)
     }
 
     // The wiki is for the project's members only, so there is no join flow: anyone else lands on the

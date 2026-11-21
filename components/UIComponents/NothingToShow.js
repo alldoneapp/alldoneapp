@@ -1,6 +1,6 @@
 import React from 'react'
 import { Text, View } from 'react-native'
-import styles, { colors } from '../styles/global'
+import styles, { colors, CONTENT_MARGIN } from '../styles/global'
 import { useDispatch, useSelector } from 'react-redux'
 import Button from '../UIControls/Button'
 import { hideFloatPopup, showGlobalSearchPopup } from '../../redux/actions'
@@ -58,7 +58,7 @@ const localStyles = {
     emptyInboxText: {
         marginTop: 32,
         maxWidth: 700,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     emptyInboxTextMobile: {
         marginHorizontal: 16,

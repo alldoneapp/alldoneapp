@@ -24,7 +24,7 @@ import { FOLLOWER_NOTES_TYPE } from '../../Followers/FollowerConstants'
 import ChatBoard from '../../ChatsView/ChatDV/ChatBoard'
 import useFollowingDataListener from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Common/useFollowingDataListener'
 import Icon from '../../Icon'
-import styles, { colors } from '../../styles/global'
+import styles, { colors, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { canOpenNoteSideChat, canShowNoteSideChat, getNoteSideChatWidth } from './sideChatHelper'
 
@@ -200,7 +200,16 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                 return <RootViewFeedsNote projectId={projectId} note={note} noteId={note.id} />
                             case DV_TAB_NOTE_CHAT:
                                 return (
-                                    <View style={{ flex: 1, marginHorizontal: mobile ? 0 : isMiddleScreen ? 56 : 104 }}>
+                                    <View
+                                        style={{
+                                            flex: 1,
+                                            marginHorizontal: mobile
+                                                ? 0
+                                                : isMiddleScreen
+                                                  ? CONTENT_MARGIN_TABLET
+                                                  : CONTENT_MARGIN,
+                                        }}
+                                    >
                                         <ChatBoard
                                             chat={{ id: note.id, type: 'notes' }}
                                             projectId={projectId}
@@ -227,10 +236,10 @@ const localStyles = StyleSheet.create({
         marginHorizontal: -16,
     },
     navigationBarTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     navigationBar: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     editorWithSideChat: {
         flex: 1,

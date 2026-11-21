@@ -298,6 +298,7 @@
     "Search wiki pages": "Wiki-Seiten durchsuchen",
     "Clear wiki search": "Suche löschen",
     "No wiki pages match your search": "Keine Wiki-Seite passt zu deiner Suche.",
+    "No wiki pages in your projects yet": "Noch keine Wiki-Seiten in deinen Projekten",
     "Give feedback": "Feedback geben",
     "Wiki paused at monthly cap": "Pausiert: Das monatliche Gold-Limit ist erreicht. Das Wiki läuft am %{date} weiter oder sofort, sobald das Limit in den Wiki-Einstellungen angehoben wird.",
     "Wiki monthly cap reached": "Das monatliche Gold-Limit ist erreicht. Das Wiki pausiert bis %{date}. Hebe das Limit an, damit es sofort weiterläuft.",

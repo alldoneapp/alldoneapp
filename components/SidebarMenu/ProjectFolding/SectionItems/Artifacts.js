@@ -1,13 +1,20 @@
 import React from 'react'
+import { useDispatch } from 'react-redux'
 
 import { translate } from '../../../../i18n/TranslationService'
+import { DV_TAB_ROOT_ARTIFACTS } from '../../../../utils/TabNavigationConstants'
 import SectionItemLayoutHeader from '../SectionItemLayoutHeader'
 import { openProjectArtifacts } from '../../../ArtifactsView/artifactLinks'
+import { openAllProjectsSection } from './allProjectsSection'
 
-export default function Artifacts({ projectId, projectColor, selected }) {
+// Without a project (All projects, AT-3121) it switches the section there.
+export default function Artifacts({ projectId, projectColor, selected, navigateToRoot }) {
+    const dispatch = useDispatch()
+
     const onPress = e => {
         e?.preventDefault()
-        openProjectArtifacts(projectId)
+        if (projectId) openProjectArtifacts(projectId)
+        else openAllProjectsSection(dispatch, DV_TAB_ROOT_ARTIFACTS, navigateToRoot)
     }
 
     return (

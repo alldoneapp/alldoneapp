@@ -24,6 +24,7 @@ import store from '../../redux/store'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
+import { CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 
 export default function GoalsView() {
     const dispatch = useDispatch()
@@ -140,7 +141,7 @@ export default function GoalsView() {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerSpace: {
         marginBottom: 32,
@@ -149,6 +150,6 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 16,
     },
     containerTablet: {
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
 })

@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import TagList from './TagList'
 import store from '../../../redux/store'
-import { colors } from '../../styles/global'
+import { colors, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../../styles/global'
 import BackButton from './BackButton'
 import SharedHelper from '../../../utils/SharedHelper'
 import DVHamburgButton from '../../UIControls/DVHamburgButton'
@@ -173,12 +173,12 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         justifyContent: 'space-between',
         paddingBottom: 24,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     containerTablet: {
         flexDirection: 'column',
         justifyContent: 'space-between',
-        marginHorizontal: 56,
+        marginHorizontal: CONTENT_MARGIN_TABLET,
     },
     containerMobile: {
         flexDirection: 'column',

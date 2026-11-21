@@ -1,6 +1,6 @@
 import React from 'react'
 import { Text, View } from 'react-native'
-import styles, { colors } from '../styles/global'
+import styles, { colors, CONTENT_MARGIN } from '../styles/global'
 import { shallowEqual, useSelector } from 'react-redux'
 import ModernImage from '../../utils/ModernImage'
 import { translate } from '../../i18n/TranslationService'
@@ -63,7 +63,7 @@ const localStyles = {
     emptyInboxText: {
         marginTop: 32,
         maxWidth: 700,
-        marginHorizontal: 104,
+        marginHorizontal: CONTENT_MARGIN,
     },
     emptyInboxTextMobile: {
         marginHorizontal: 16,
