@@ -28,6 +28,7 @@ import { getAssistantReplies, replyConfirmsProcessing } from './annaSubmissionRe
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
+import { AnnaMessagesSkeleton } from './AnnaConversationSkeleton'
 import AnnaCallAudioControls, { AnnaCallActions } from './AnnaCallAudioControls'
 import VoiceCallConnecting from '../UIComponents/VoiceCallConnecting'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
@@ -55,6 +56,11 @@ import { isAnnaProjectSelectable } from './annaProjectSelection'
 import { scopeAnnaThreads } from './annaThreadScope'
 
 const MESSAGES_PER_PAGE = 50
+// AT-3119: a loading day is smaller than the whole chat's first load (AnnaConversationSkeleton).
+const THREAD_SKELETON_ROWS = [
+    { own: false, lines: [88, 62] },
+    { own: true, lines: [58] },
+]
 // AT-3032: below this composer width the Templates button drops its label (icon only, same
 // accessible name), so +, Templates, mic, call and send stay on one row on the narrowest phones.
 export const ANNA_TEMPLATES_COMPACT_WIDTH = 360
@@ -955,7 +961,10 @@ function AnnaThreadMessages({
                     {translate('Earlier messages')}
                 </button>
             )}
-            {!messages.loaded && <p className="anna-muted">{translate('Loading your conversation…')}</p>}
+            {/* AT-3119: a thread without saved messages on this device shows their shape while they load. */}
+            {!messages.loaded && (
+                <AnnaMessagesSkeleton label={translate('Loading your conversation…')} rows={THREAD_SKELETON_ROWS} />
+            )}
             {offline && messages.loaded && displayedMessages.length === 0 && (
                 <p className="anna-muted">{translate('This conversation is not available offline yet.')}</p>
             )}

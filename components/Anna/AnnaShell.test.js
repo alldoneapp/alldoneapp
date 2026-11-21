@@ -191,6 +191,8 @@ let mockAssistant
 let mockSidebarNumbers
 let mockDefaultAssistant
 let mockUnmounts = 0
+// AT-3119: the order of shell renders (the hook call) and chat mounts, when a test records it.
+let mockRenderLog = null
 let mockProjectsMap = {}
 let mockExtraAssistants = {}
 jest.mock('react-redux', () => ({
@@ -231,6 +233,7 @@ jest.mock('./AnnaConversation', () => {
         __esModule: true,
         default: React.forwardRef((props, ref) => {
             mockConversationProps = props
+            mockRenderLog?.push('conversation')
             mockAppPane = React.useContext(require('./AnnaAppPaneContext').default)
             const input = React.useRef(null)
             React.useImperativeHandle(ref, () => ({
@@ -816,6 +819,7 @@ beforeEach(() => {
     mockProjectsMap = {}
     mockExtraAssistants = {}
     mockUnmounts = 0
+    mockRenderLog = null
     mockBrowserProps = null
     mockConversationProps = null
     mockSwitcherProps = {}
@@ -3703,6 +3707,79 @@ describe('leaving assistant mode returns the app in the pane to its embed window
         act(() => openInAnnaAppPane(storyBuilder))
         act(() => setAnnaMode(false))
         expect(iframeFrame()).toBeTruthy()
+    })
+})
+
+describe('first entry into assistant mode (AT-3119)', () => {
+    const skeleton = () => document.querySelector('[data-testid="anna-conversation-skeleton"]')
+    const composerSkeleton = () => document.querySelector('.anna-composer-skeleton')
+    const focusables = element =>
+        element.querySelectorAll('button, input, textarea, select, a[href], [tabindex], [contenteditable]')
+
+    it('mounts the chat in the same render that enters assistant mode from outside, so no frame is an empty card', () => {
+        setAnnaMode(false)
+        mockRenderLog = []
+        useAnnaConversation.mockImplementation((uid, options) => {
+            mockRenderLog.push(options.enabled ? 'active' : 'inactive')
+            return state
+        })
+        render(content(1))
+        expect(mockRenderLog).not.toContain('conversation')
+        mockRenderLog.length = 0
+        // Not through one of the shell's own controls (those flush `visited` themselves): assistant mode
+        // switched on from outside, as a restored layout, a link or another tab does.
+        act(() => setAnnaMode(true))
+        const firstActive = mockRenderLog.indexOf('active')
+        expect(firstActive).toBeGreaterThanOrEqual(0)
+        expect(mockRenderLog[firstActive + 1]).toBe('conversation')
+    })
+
+    it('shows the chat skeleton with an inert composer while a cold chat loads, then the chat', () => {
+        useAnnaConversation.mockReturnValue({ ...state, conversation: null, loading: true })
+        const view = render(content(1))
+        expect(skeleton()).not.toBeNull()
+        expect(skeleton().querySelector('[role="status"]').textContent).toBe('Loading conversation…')
+        expect(screen.getByLabelText('Persistent conversation')).toBeNull()
+        // Nothing in the placeholder can take focus or a draft that the real composer would drop.
+        expect(focusables(skeleton())).toHaveLength(0)
+        expect(focusables(composerSkeleton())).toHaveLength(0)
+        expect(composerSkeleton().getAttribute('aria-hidden')).toBe('true')
+        expect(composerSkeleton().querySelector('.anna-composer-skeleton-text').textContent).toBe(
+            'Loading conversation…'
+        )
+        useAnnaConversation.mockReturnValue(state)
+        view.rerender(content(1))
+        expect(skeleton()).toBeNull()
+        expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    })
+
+    it('opens a saved chat at once, without the skeleton', () => {
+        render(content(1))
+        expect(skeleton()).toBeNull()
+        expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    })
+
+    it('keeps the saved chat on screen while it refreshes in the background', () => {
+        useAnnaConversation.mockReturnValue({ ...state, loading: true })
+        render(content(1))
+        expect(skeleton()).toBeNull()
+        expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    })
+
+    it('explains an offline first entry instead of loading forever', () => {
+        useAnnaConversation.mockReturnValue({ ...state, conversation: null, loading: false, offline: true })
+        render(content(1))
+        expect(skeleton()).toBeNull()
+        expect(document.querySelector('.anna-conversation [role="status"]').textContent).toBe(
+            'This conversation is not available offline yet.'
+        )
+    })
+
+    it('replaces the skeleton with the error and retry when the first load fails', () => {
+        useAnnaConversation.mockReturnValue({ ...state, conversation: null, loading: false, error: 'Load failed' })
+        render(content(1))
+        expect(skeleton()).toBeNull()
+        expect(document.querySelector('.anna-conversation [role="alert"]').textContent).toContain('Load failed')
     })
 })
 
