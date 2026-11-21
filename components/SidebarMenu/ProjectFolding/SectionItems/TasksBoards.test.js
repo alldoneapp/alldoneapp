@@ -110,4 +110,8 @@ describe('TasksBoards', () => {
         expect(guestRows).not.toContain('wiki:p1')
         expect(guestRows).not.toContain('chats:p1')
     })
+
+    it('leaves the wiki and the chats out when the sidebar already has them on top (AT-3121)', () => {
+        expect(rows(mount({ showSectionLinks: false }))).toEqual(['user:me', 'user:derek', 'user:luis', 'settings'])
+    })
 })

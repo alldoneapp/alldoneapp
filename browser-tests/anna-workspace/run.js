@@ -1055,9 +1055,7 @@ async function checkAssistantOpenFocus(page, width) {
             `http://127.0.0.1:${server.address().port}/?assistant=0&assistantFocus=1&slowConversation=1&coldConversation=1`
         )
         await page.getByTestId('top-bar-assistant-mode').click()
-        // AT-3119: the cold chat shows its skeleton and an inert composer, never an empty card.
-        await page.getByTestId('anna-conversation-skeleton').waitFor({ state: 'visible' })
-        await page.locator('.anna-composer-skeleton').waitFor({ state: 'visible' })
+        await page.getByText('Loading conversation…', { exact: true }).waitFor({ state: 'visible' })
         if (!retainFocus) {
             if (mobile) await showWorkspace(page)
             await page.getByLabel('Workspace draft').focus()

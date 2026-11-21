@@ -28,6 +28,7 @@ export default function TasksBoards({
     projectType,
     isShared,
     globalAssistantIds,
+    showSectionLinks = true,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -150,8 +151,8 @@ export default function TasksBoards({
                 })}
 
             {/* Not behind "show more": a long member list must not hide the way into the wiki or the chats. */}
-            {!isShared && <WikiItem projectId={projectId} projectColor={projectColor} />}
-            {!isShared && <ChatsItem projectId={projectId} projectColor={projectColor} />}
+            {!isShared && showSectionLinks && <WikiItem projectId={projectId} projectColor={projectColor} />}
+            {!isShared && showSectionLinks && <ChatsItem projectId={projectId} projectColor={projectColor} />}
 
             {!isTemplate &&
                 !isGuideProject &&

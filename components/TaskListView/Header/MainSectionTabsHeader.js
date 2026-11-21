@@ -14,12 +14,24 @@ import store from '../../../redux/store'
 import { dismissAllPopups } from '../../../utils/HelperFunctions'
 import {
     DV_TAB_ROOT_ARTIFACTS,
+    DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
+import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+
+// AT-3121: with the sections on top of the sidebar the tabs give way to the section's name.
+const SECTION_TITLES = {
+    [DV_TAB_ROOT_TASKS]: 'Tasks',
+    [DV_TAB_ROOT_GOALS]: 'Goals',
+    [DV_TAB_ROOT_NOTES]: 'Notes',
+    [DV_TAB_ROOT_CONTACTS]: 'Contacts',
+    [DV_TAB_ROOT_CHATS]: 'Chats',
+    [DV_TAB_ROOT_ARTIFACTS]: 'Artifacts',
+}
 
 /**
  * Below this viewport width the five section labels no longer fit on one line in German or
@@ -51,6 +63,7 @@ export default function MainSectionTabsHeader({
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const sectionsTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
     const workspaceWidth = useSelector(state => state.screenDimensions?.width)
     const getViewportWidth = () =>
         typeof window !== 'undefined' && typeof window.innerWidth === 'number'
@@ -144,6 +157,46 @@ export default function MainSectionTabsHeader({
                 </TouchableOpacity>
             )
         })
+
+    const sectionTitle = (
+        <View style={localStyles.sectionTitle} testID="section-title">
+            <Text style={[localStyles.tabText, localStyles.tabTextSelected]} numberOfLines={1}>
+                {translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')}
+            </Text>
+        </View>
+    )
+
+    if (sectionsTop) {
+        return (
+            <View style={localStyles.container}>
+                <View
+                    style={
+                        useMobileLayout
+                            ? [localStyles.controlsRowMobile, localStyles.controlsRowSectionTitleMobile]
+                            : [localStyles.controlsRow, localStyles.controlsRowWithRight]
+                    }
+                >
+                    {useMobileLayout ? sectionTitle : <View style={localStyles.tabsRow}>{sectionTitle}</View>}
+                    {showRightArea &&
+                        (useMobileLayout ? (
+                            <View style={localStyles.mobileControlsContainer}>
+                                {sectionToggle && (
+                                    <View style={localStyles.sectionToggleRowMobile}>{sectionToggle}</View>
+                                )}
+                                {rightAccessory && (
+                                    <View style={localStyles.rightAccessoryRowMobile}>{rightAccessory}</View>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={localStyles.rightArea}>
+                                {sectionToggle && <View style={localStyles.sectionToggleRow}>{sectionToggle}</View>}
+                                {rightAccessory && <View style={localStyles.rightAccessoryRow}>{rightAccessory}</View>}
+                            </View>
+                        ))}
+                </View>
+            </View>
+        )
+    }
 
     return (
         <View style={localStyles.container}>
@@ -281,6 +334,14 @@ const localStyles = StyleSheet.create({
     },
     controlsRowCompact: {
         paddingHorizontal: 5,
+    },
+    controlsRowSectionTitleMobile: {
+        alignItems: 'center',
+    },
+    sectionTitle: {
+        height: 36,
+        justifyContent: 'center',
+        paddingHorizontal: 14,
     },
     controlsRowTight: {
         paddingHorizontal: 3,

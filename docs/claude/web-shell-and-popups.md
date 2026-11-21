@@ -225,6 +225,17 @@ for a guest of a shared project. Chats opens the same tab as the advanced sideba
 (`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
 Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
 
+**"Sections on top" sidebar (AT-3121, opt-in).** A third value of `loggedUser.sidebarNavigationMode`
+(`'sectionsTop'`, Settings → Sidebar navigation) next to simple (the default) and advanced. Tasks,
+Goals, Notes, Contacts, Chats, Artifacts and Wiki sit fixed above All projects
+(`SidebarMenu/SectionsTop/`); the projects below act as a filter, so a project or All projects press
+keeps the section on screen (`getSectionAfterProjectSwitch`; Goals swap `currentUser` to `allGoals`
+like the Goals row). Under the selected project it is the simple people list without its Wiki and
+Chats rows (`TasksBoards showSectionLinks`), and `isSimpleSidebarNavigation` stays true for it. The
+tab card above the lists (`MainSectionTabsHeader`) shows only the section's name and its toggle. The
+other two modes are unchanged. Pinned by `sectionsTopNavigation.test.js`,
+`MainSectionTabsHeaderCompact.test.js` and `TasksBoards.test.js`.
+
 **The whole two-line field takes a click (AT-3028).** Auto-expand sets Quill's container and
 editor to `height: auto`, so the contenteditable was one line tall inside the 56px field and the
 blank line under "Start a new chat" was dead frame. `assistantInput.css` gives the composer's

@@ -24,7 +24,7 @@ import Wiki from './SectionItems/Wiki'
 import Artifacts from './SectionItems/Artifacts'
 import NavigationService from '../../../utils/NavigationService'
 import TasksBoards from './SectionItems/TasksBoards'
-import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 
 export default function ProjectSectionList({ projectData, projectType, isShared, inAllProjects }) {
     const selectedNavItem = useSelector(state => state.selectedNavItem)
@@ -52,6 +52,8 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                     projectType={projectType}
                     isShared={isShared}
                     globalAssistantIds={projectData.globalAssistantIds}
+                    // AT-3121: with the sections on top, Wiki and Chats are already up there.
+                    showSectionLinks={!isSectionsTopSidebarNavigation(sidebarNavigationMode)}
                 />
             )}
         </View>

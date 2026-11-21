@@ -5,7 +5,7 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { translate } from '../../../i18n/TranslationService'
-import { sumTagCounts, useAutoAdvanceUnreadTag, useUnreadTriage } from './UnreadTriageContext'
+import { sumTagCounts, useUnreadTriage } from './UnreadTriageContext'
 import UnreadEmailSettingsPopup from './UnreadEmailSettingsPopup'
 import {
     UNREAD_SORT_NEWEST,
@@ -21,12 +21,10 @@ import {
 /**
  * One chip per tag with its count across the shown projects. "Unread" itself is the "all tags"
  * choice, so there is no separate "All" tag chip. A tag with nothing unread is hidden unless it is
- * the selected one, so the user can always switch back. When the selected tag runs out of unread
- * messages, the next tag with some is selected (AT-3120, useAutoAdvanceUnreadTag).
+ * the selected one, so the user can always switch back.
  */
 export function UnreadTriageTagChips({ projectIds }) {
     const triage = useUnreadTriage()
-    useAutoAdvanceUnreadTag(triage, projectIds)
     if (!triage) return null
 
     const { tagFilter, setTagFilter, projects } = triage

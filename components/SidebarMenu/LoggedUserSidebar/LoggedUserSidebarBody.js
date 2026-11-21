@@ -14,8 +14,11 @@ import ArchivedProjects from '../ArchivedProjects'
 import TemplateProjects from '../TemplateProjects'
 import SettingsItem from '../SettingsItem'
 import AdminItem from '../AdminItem'
+import SidebarSectionsTop from '../SectionsTop/SidebarSectionsTop'
+import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 
 export default function LoggedUserSidebarBody({ navigation, expanded, scrollView }) {
+    const sectionsTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
     const administratorUserId = useSelector(state => state.administratorUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.realTemplateProjectIds.length)
@@ -36,6 +39,7 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             showsVerticalScrollIndicator={false}
             indicatorStyle={[theme.scroll, !expanded && { opacity: 0 }]}
         >
+            {sectionsTop && <SidebarSectionsTop />}
             <AllProjects navigation={navigation} />
             <ActiveProjectsList navigation={navigation} />
             <AddProject scrollToBottom={scrollToBottom} />

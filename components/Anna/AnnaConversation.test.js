@@ -2794,33 +2794,3 @@ describe('project switch loading and scroll (AT-3036)', () => {
         })
     })
 })
-
-// AT-3119: a thread whose messages have no saved copy on this device yet shows their shape while
-// they load, never the welcome (it may well have messages) and never an empty section.
-describe('thread loading state (AT-3119)', () => {
-    const thread = { projectId: 'p1', chatId: 'anna_u1', id: 'anna_u1', dateKey: '20261120' }
-    const skeleton = () => container.querySelector('[data-testid="anna-messages-skeleton"]')
-
-    it('shows a message skeleton with a status label, then the messages', () => {
-        mockUnloadedThreads.add('anna_u1')
-        render({ threads: [thread] })
-        expect(skeleton()).not.toBeNull()
-        expect(skeleton().getAttribute('role')).toBe('status')
-        expect(skeleton().textContent).toBe('Loading your conversation…')
-        expect(container.querySelector('.anna-welcome')).toBeNull()
-        // The composer is usable meanwhile: the chat itself is resolved.
-        expect(container.querySelector('textarea')).not.toBeNull()
-        mockUnloadedThreads.delete('anna_u1')
-        mockMessages = [{ id: 'm-saved', creatorId: 'u1', created: 1, commentText: 'Saved message' }]
-        render({ threads: [thread] })
-        expect(skeleton()).toBeNull()
-        expect(container.querySelector('[role="log"]').textContent).toContain('Saved message')
-    })
-
-    it('shows saved messages at once, without the skeleton', () => {
-        mockMessages = [{ id: 'm-saved', creatorId: 'u1', created: 1, commentText: 'Saved message' }]
-        render({ threads: [thread] })
-        expect(skeleton()).toBeNull()
-        expect(container.querySelector('[role="log"]').textContent).toContain('Saved message')
-    })
-})

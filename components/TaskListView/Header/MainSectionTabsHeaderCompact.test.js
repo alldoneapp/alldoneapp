@@ -153,3 +153,46 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         act(() => tree.unmount())
     })
 })
+
+/**
+ * AT-3121: with the sidebar's "Sections on top" mode the sections are in the sidebar, so the card
+ * above the lists keeps only the section's name and its toggle (Open / Workflow / Done and so on).
+ */
+describe('MainSectionTabsHeader with the sections on top of the sidebar', () => {
+    const originalInnerWidth = window.innerWidth
+
+    beforeEach(() => {
+        mockState = {
+            ...buildState(),
+            selectedSidebarTab: 'ROOT_NOTES',
+            loggedUser: { realProjectIds: [], isAnonymous: false, sidebarNavigationMode: 'sectionsTop' },
+        }
+    })
+
+    afterEach(() => {
+        setViewportWidth(originalInnerWidth)
+        setLanguage('en')
+    })
+
+    it.each([1440, 600, 390])('shows the section name and no tabs at %ipx', width => {
+        setViewportWidth(width)
+        setLanguage('de')
+        const tree = renderHeader()
+
+        expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
+        expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
+        expect(tabLabels(tree)).toEqual(['Notizen'])
+    })
+
+    it('keeps the section toggle next to the name', () => {
+        setViewportWidth(1440)
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <MainSectionTabsHeader showSectionToggle={true} renderSectionToggle={() => <Text>toggle</Text>} />
+            )
+        })
+
+        expect(tabLabels(tree)).toEqual(['Notes', 'toggle'])
+    })
+})

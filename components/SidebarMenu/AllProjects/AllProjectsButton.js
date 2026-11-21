@@ -7,14 +7,18 @@ import {
     hideGlobalSearchPopup,
     navigateToAllProjectsTasks,
     setGlobalSearchResults,
+    setSelectedSidebarTab,
+    storeCurrentUser,
     updateFeedActiveTab,
 } from '../../../redux/actions'
+import store from '../../../redux/store'
+import { getSectionAfterProjectSwitch, getSectionCurrentUser } from '../SectionsTop/sectionsTopNavigation'
 import styles, { em2px } from '../../styles/global'
 import { PROJECT_TYPE_ACTIVE, PROJECT_TYPE_GUIDE } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
 import { checkIfSelectedAllProjects } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
 import { FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
-import { ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
+import { DV_TAB_ROOT_TASKS, ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
 import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
@@ -23,7 +27,7 @@ import useCollapsibleSidebar from '../Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../../hooks/UseOnHover'
 import AmountBadgeContainer from './AmountBadgeContainer'
 import ItemShortcut from '../Items/Common/ItemShortcut'
-import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 import AmountBadge from '../ProjectFolding/Common/AmountBadge'
 import getAllProjectsOpenTasksAmount from '../../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import AnnaWorkspaceNavigationContext from '../../Anna/AnnaWorkspaceNavigationContext'
@@ -47,6 +51,7 @@ export default function AllProjectsButton() {
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
+    const sectionsTop = isSectionsTopSidebarNavigation(sidebarNavigationMode)
 
     const { expanded } = useCollapsibleSidebar()
 
@@ -76,12 +81,19 @@ export default function AllProjectsButton() {
 
         if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
 
+        // AT-3121: with the sections on top, All projects keeps the section on screen.
+        const { loggedUser, selectedSidebarTab } = store.getState()
+        const keptTab = sectionsTop ? getSectionAfterProjectSwitch(selectedSidebarTab) : DV_TAB_ROOT_TASKS
+
         dispatch([
             hideFloatPopup(),
             updateFeedActiveTab(FOLLOWED_TAB),
             hideGlobalSearchPopup(),
             setGlobalSearchResults(null),
             navigateToAllProjectsTasks(),
+            ...(keptTab === DV_TAB_ROOT_TASKS
+                ? []
+                : [setSelectedSidebarTab(keptTab), storeCurrentUser(getSectionCurrentUser(keptTab, loggedUser))]),
         ])
     }
 
