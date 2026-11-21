@@ -243,8 +243,8 @@ version, which had the sections fixed at the top. The other two modes are unchan
   not when `narrow`.
 - **Projects**: the sidebar below is the advanced one (`isSimpleSidebarNavigation` is false): the
   selected project or All projects unfolds Tasks, Goals, Notes, Contacts, Chats, Artifacts and Wiki.
-  A project or All projects press keeps the section on screen (`getSectionAfterProjectSwitch`; Goals
-  swap `currentUser` to `allGoals`). The sidebar stops at the sections: no people under Tasks or
+  A project or All projects press opens its Tasks, as in the other modes (decided 2026-11-21; for a
+  while the section on screen was kept). The sidebar stops at the sections: no people under Tasks or
   Goals (`showBoards`), no media bar under Chats; a person's board is picked on the right, in the
   project line above the list (UserLine's "Switch user" picker). The Tasks row then counts the
   project's open tasks itself. The last row of a project (own projects only) is its settings
@@ -303,11 +303,11 @@ showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its 
   `isMiddleScreen`, which follows Alldone's own pane and so the narrowed card. `useAnnaChatWidth` adds
   those margins back (beyond the one card's 10px) to the room it measures, or Both would wait for a far
   wider window; it also returns the window width the shell uses.
-- Keep `SectionsTop/sectionsTopNavigation.js` free of heavy imports: ProjectItem uses it, and
-  `AnnaShell.test.js` (which mocks react-redux) imports ProjectItem.
+- Keep what ProjectItem imports for this mode (`SectionsTop/useAnnaAloneSidebar.js`) free of heavy
+  imports: `AnnaShell.test.js` (which mocks react-redux) imports ProjectItem.
 
 Pinned by `AnnaShell.test.js` ("Anna on top"), `SidebarAnnaButton.test.js`,
-`sidebarProjectNavigation.test.js`, `ProjectSectionList.test.js`, `sectionsTopNavigation.test.js`, `TasksBoards.test.js`,
+`sidebarProjectNavigation.test.js`, `ProjectSectionList.test.js`, `TasksBoards.test.js`,
 `MainSectionTabsHeaderCompact.test.js`, `HeaderPickerArrow.test.js`, `useAnnaChatWidth.test.js`,
 `CustomSideMenu.test.js` and
 `AnnaTopStrip.test.js`.

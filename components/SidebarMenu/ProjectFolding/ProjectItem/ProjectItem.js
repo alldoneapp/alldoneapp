@@ -21,10 +21,7 @@ import { updateShowAllProjectsByTime } from '../../../../utils/backends/Users/us
 import styles from '../../../styles/global'
 import NavigationService from '../../../../utils/NavigationService'
 import { FOLLOWED_TAB } from '../../../Feeds/Utils/FeedsConstants'
-import { DV_TAB_ROOT_ARTIFACTS, DV_TAB_ROOT_TASKS, ROOT_ROUTES } from '../../../../utils/TabNavigationConstants'
-import { isSectionsTopSidebarNavigation } from '../../../../utils/SidebarNavigationModes'
-import { getSectionAfterProjectSwitch, getSectionCurrentUser } from '../../SectionsTop/sectionsTopNavigation'
-import { openProjectArtifacts } from '../../../ArtifactsView/artifactLinks'
+import { DV_TAB_ROOT_TASKS, ROOT_ROUTES } from '../../../../utils/TabNavigationConstants'
 import { exitsOpenModals } from '../../../ModalsManager/modalsManager'
 import ProjectSectionList from '../ProjectSectionList'
 import { getTheme } from '../../../../Themes/Themes'
@@ -137,28 +134,18 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
                 ])
             }
 
-            // AT-3121: with the sections on top a project is a filter, so the section on screen stays.
-            const sectionsTop = isSectionsTopSidebarNavigation(loggedUser.sidebarNavigationMode)
-            const nextTab = sectionsTop
-                ? getSectionAfterProjectSwitch(store.getState().selectedSidebarTab)
-                : DV_TAB_ROOT_TASKS
-
+            // In every sidebar mode a project opens its tasks (AT-3121 kept the section for a while).
             dispatches = [
                 ...dispatches,
-                setSelectedSidebarTab(nextTab),
+                setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
                 setTaskViewToggleIndex(0),
                 setTaskViewToggleSection('Open'),
             ]
-            if (nextTab !== DV_TAB_ROOT_TASKS) {
-                dispatches.push(storeCurrentUser(getSectionCurrentUser(nextTab, loggedUser, isGuide)))
-            }
 
             if (smallScreenNavigation) dispatches.push(hideWebSideBar())
 
             if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
             dispatch(dispatches)
-            // The artifacts list writes no URL of its own; this one carries the new project.
-            if (nextTab === DV_TAB_ROOT_ARTIFACTS) openProjectArtifacts(projectId)
         }
     }
 

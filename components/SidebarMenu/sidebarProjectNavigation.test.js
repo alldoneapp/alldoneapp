@@ -15,6 +15,8 @@ jest.mock('../../redux/store', () => {
                 return action.store
             case 'Switch project':
                 return { ...state, selectedProjectIndex: action.index }
+            case 'Set selected sidebar tab':
+                return { ...state, selectedSidebarTab: action.tab }
             case 'Hide web side bar':
                 return { ...state, showWebSideBar: { ...state.showWebSideBar, visible: false } }
             case 'Set show web side bar':
@@ -197,6 +199,18 @@ describe("the sidebar with Anna on top ('sectionsTop')", () => {
         expect(onLeaveChat).toHaveBeenCalledTimes(1)
         expect(showAlldone).not.toHaveBeenCalled()
         expect(store.getState().selectedProjectIndex).toBe(1)
+    })
+
+    // Decided 2026-11-21: a project opens its tasks, as in the other modes; the section picker on the
+    // right switches the section.
+    it("opens the project's tasks, whatever section was on screen", () => {
+        renderWithAnna({ appShown: true, onLeaveChat: jest.fn(), showAlldone: jest.fn() })
+        act(() =>
+            store.dispatch({ type: 'Override store', store: { ...store.getState(), selectedSidebarTab: 'ROOT_NOTES' } })
+        )
+        act(() => project(1).click())
+        expect(store.getState().selectedProjectIndex).toBe(1)
+        expect(store.getState().selectedSidebarTab).toBe('ROOT_TASKS')
     })
 
     it('keeps the chat beside Alldone', () => {
