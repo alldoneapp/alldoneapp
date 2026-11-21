@@ -16,7 +16,8 @@ import { AnnaAppShownContext } from '../../Anna/AnnaTopStripContext'
  * AT-3121: Anna as one big button at the very top of the "Anna on top" sidebar. A press opens the
  * chat as it was last shown, or goes back to it when it is open. The sidebar marks only what the main
  * area shows: with Anna alone this button is the marked one; beside Alldone the section is, and the
- * button only has a ring around Anna's photo.
+ * button only has a ring around Anna's photo. Closed, it looks like any other row: no fill, no border
+ * (a white card with a blue border read as marked).
  */
 export default function SidebarAnnaButton() {
     const anna = useContext(AnnaSidebarModeContext)
@@ -95,9 +96,10 @@ const localStyles = StyleSheet.create({
         paddingVertical: 8,
         paddingHorizontal: 8,
         borderRadius: 12,
+        // Kept transparent at rest, so marking it does not move anything.
         borderWidth: 1,
-        borderColor: colors.UtilityBlue125,
-        backgroundColor: colors.Surface,
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
     },
     containerCollapsed: {
         marginHorizontal: 4,

@@ -410,11 +410,11 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
     // the click is over: moving it into the slot remounts it, and the browser re-renders between the
     // click's capture and bubble phases, so search, chats or updates would never get their click.
     const [stripHeld, setStripHeld] = useState(false)
-    // With the shell's sidebar the strip belongs to Alldone while Alldone is on screen; with Anna alone
-    // (or another screen in front) Alldone's slot is hidden, so the strip stays above the chat, right
-    // of the sidebar, and leaves the chat like everywhere else.
-    const stripOverAlldone = !active || (shellSidebar && visibleWorkspace && surface === 'alldone')
-    const stripInApp = stripOverAlldone && showTopStrip && !stripHeld
+    const stripInApp = !active && showTopStrip && !stripHeld
+    // AT-3121: with the shell's sidebar the strip spans everything right of it whenever the chat is
+    // open (above both in Both). While Alldone is on screen its actions act there and the chat stays;
+    // with Anna alone (or another screen in front) they leave the chat like everywhere else.
+    const alldoneShown = !active || (visibleWorkspace && surface === 'alldone')
     const [stripSlotClaims, setStripSlotClaims] = useState(0)
     const claimStripSlot = useCallback(() => {
         setStripSlotClaims(claims => claims + 1)
@@ -1282,9 +1282,6 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
         <span className="anna-small-avatar">{photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}</span>
     )
     const avatarPicks = mobile && assistantNamePicks
-    const chatAloneToggleLabel = chatOnly
-        ? translate('Alldone beside')
-        : translate('Only %{assistantName}', { assistantName: headerAssistantName })
     const pickerShown =
         pickerOptions.find(option => option.value === pickerValue) ||
         screenOptions.find(option => option.value === pickerValue)
@@ -1352,21 +1349,36 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
                         <Icon name="new-window" size={18} color="currentColor" />
                     </button>
                 )}
-                {/* AT-3121: with the Anna | Alldone switch in the sidebar there is no view switch in the
-                    strip, so the chat itself goes alone or back beside Alldone (not where the window is
-                    too narrow for both). No close button: Anna is a mode, left through the switch. */}
-                {sidebarCardSwitches && active && !narrow && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle"
-                        aria-label={chatAloneToggleLabel}
-                        title={chatAloneToggleLabel}
-                        data-testid="anna-chat-alone-toggle"
-                        onClick={() => selectLayout(chatOnly ? 'split' : 'chat')}
-                    >
-                        <Icon name={chatOnly ? 'minimize-2' : 'maximize-2'} size={18} color="currentColor" />
-                    </button>
-                )}
+                {/* AT-3121: the "Anna on top" sidebar has no view switch in the strip. Anna alone opens
+                    Both from here (two columns; not where the window is too narrow for both) and has no
+                    close button: she is a mode, left through the sidebar. In Both each side closes with
+                    its X: this one leaves Alldone alone, the screen's own leaves Anna alone. */}
+                {sidebarCardSwitches &&
+                    active &&
+                    !narrow &&
+                    (chatOnly ? (
+                        <button
+                            type="button"
+                            className="anna-pane-toggle"
+                            aria-label={translate('Both')}
+                            title={translate('Both')}
+                            data-testid="anna-open-both"
+                            onClick={() => selectLayout('split')}
+                        >
+                            <Icon name="columns" size={18} color="currentColor" />
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="anna-pane-toggle"
+                            aria-label={translate('Close chat')}
+                            title={translate('Close chat')}
+                            data-testid="anna-chat-close"
+                            onClick={closeChat}
+                        >
+                            <Icon name="x" size={18} color="currentColor" />
+                        </button>
+                    ))}
                 {mobile && (
                     // The phone's screen picker, at the far right (AT-3045): the assistant and its
                     // screens; Alldone is App in the switch, and leaving the chat is App too.
@@ -1424,7 +1436,7 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
               }
             : null
     // AT-3121: the Anna button at the top of the "Anna on top" sidebar. It opens the chat as it was
-    // last shown, alone or with Alldone beside it (alone the first time; the chat header's ⤢/⤡ switch
+    // last shown, alone or with Alldone beside it (alone the first time; Both and the X buttons switch
     // between the two), and with the chat already open it goes back to it: the composer, the latest
     // messages. A project, All projects or a section picked in the sidebar while Anna is alone leaves
     // the chat for Alldone (`onLeaveChat`, which keeps the page); beside Alldone the chat stays.
@@ -1468,8 +1480,8 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
             photo={photo}
             openTasksAmount={openTasksAmount}
             onSelect={selectLayout}
-            // AT-3121: over Alldone beside the chat the strip belongs to Alldone, and the chat stays.
-            onLeaveChat={active && !stripOverAlldone ? leaveChatFromStrip : undefined}
+            // AT-3121: with Alldone beside the chat its actions act there, and the chat stays.
+            onLeaveChat={active && !(shellSidebar && alldoneShown) ? leaveChatFromStrip : undefined}
             showSwitch={!sidebarCardSwitches}
         />
     )
@@ -1626,6 +1638,18 @@ export default function AnnaShell({ children, routeId, sidebar = null }) {
                             <span className="anna-working-dot" aria-hidden="true" />
                             {translate('%{assistantName} is working here', { assistantName })}
                         </div>
+                    )}
+                    {sidebarCardSwitches && active && !chatOnly && !singlePane && (
+                        <button
+                            type="button"
+                            className="anna-stage-close"
+                            aria-label={translate('Close %{screen}', { screen: pickerShownLabel })}
+                            title={translate('Close %{screen}', { screen: pickerShownLabel })}
+                            data-testid="anna-screen-close"
+                            onClick={() => selectLayout('chat')}
+                        >
+                            <Icon name="x" size={18} color="currentColor" />
+                        </button>
                     )}
                     {visibleWorkspace && pendingNotice}
                     {visibleWorkspace && navigationError && (

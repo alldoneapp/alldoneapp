@@ -15,6 +15,7 @@ import SidebarAnnaButton from './SidebarAnnaButton'
 import { AnnaSidebarModeContext } from '../../Anna/AnnaShellSidebarContext'
 import { AnnaAppShownContext } from '../../Anna/AnnaTopStripContext'
 import { setLanguage } from '../../../i18n/TranslationService'
+import { colors } from '../../styles/global'
 
 const mount = (anna, appShown = true) => {
     let tree
@@ -36,6 +37,12 @@ const ringColor = tree =>
         tree.root.findAll(node => node.type !== Text && StyleSheet.flatten(node.props?.style)?.borderRadius === 21)[0]
             .props.style
     ).borderColor
+
+const card = tree =>
+    StyleSheet.flatten(
+        tree.root.findAll(node => node.type !== Text && StyleSheet.flatten(node.props?.style)?.borderRadius === 12)[0]
+            .props.style
+    )
 
 const anna = (overrides = {}) => ({
     name: 'Anna Alldone',
@@ -74,6 +81,17 @@ describe('the Anna button', () => {
         const tree = mount(anna({ chatShown }), appShown)
         expect(button(tree).props.accessibilityState.selected).toBe(marked)
         expect(ringColor(tree)).toBe(ring)
+    })
+
+    // Closed (the chat's X in Both, or never opened) it is a plain row: nothing marks it.
+    it.each([
+        ['closed', false, true, false],
+        ['alone on screen', true, false, true],
+        ['beside Alldone', true, true, false],
+    ])('with the chat %s is filled and framed only when Anna is alone', (_, chatShown, appShown, filled) => {
+        const style = card(mount(anna({ chatShown }), appShown))
+        expect(style.backgroundColor).toBe(filled ? colors.UtilityBlue100 : 'transparent')
+        expect(style.borderColor).toBe(filled ? colors.Primary100 : 'transparent')
     })
 
     it('opens the chat, closing the phone menu first', () => {

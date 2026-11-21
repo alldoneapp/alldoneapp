@@ -3855,8 +3855,8 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         fireEvent.click(screen.getByLabelText('Anna button'))
         expect(shell().contains('anna-chat-only')).toBe(true)
         expect(probe().dataset.chatShown).toBe('true')
-        // ⤡ brings Alldone beside her.
-        fireEvent.click(document.querySelector('[data-testid="anna-chat-alone-toggle"]'))
+        // Both (two columns) brings Alldone beside her.
+        fireEvent.click(document.querySelector('[data-testid="anna-open-both"]'))
         expect(shell().contains('anna-chat-only')).toBe(false)
 
         // A project picked in the sidebar while Anna is alone leaves the chat (the sidebar decides when).
@@ -3885,20 +3885,32 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
     })
 
-    it('lets the chat go alone and come back beside Alldone from its header, with no close button', () => {
+    it('closes either side of Both with its X, and opens Both from Anna alone, who has no X', () => {
         setAnnaLayout('split')
         render(shellWithSidebar())
-        const alone = () => document.querySelector('[data-testid="anna-chat-alone-toggle"]')
+        const chatClose = () => document.querySelector('.anna-header [data-testid="anna-chat-close"]')
+        const screenClose = () => document.querySelector('.anna-stage [data-testid="anna-screen-close"]')
+        const openBoth = () => document.querySelector('.anna-header [data-testid="anna-open-both"]')
+        expect(chatClose().getAttribute('aria-label')).toBe('Close chat')
+        expect(screenClose().getAttribute('aria-label')).toBe('Close Alldone')
+        expect(openBoth()).toBeNull()
 
-        fireEvent.click(alone())
+        // The screen's X leaves Anna alone: a mode, left through the sidebar, so no X of her own.
+        fireEvent.click(screenClose())
         expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(chatClose()).toBeNull()
+        expect(screenClose()).toBeNull()
+        expect(openBoth().getAttribute('aria-label')).toBe('Both')
 
-        fireEvent.click(alone())
+        fireEvent.click(openBoth())
+        expect(shell().contains('anna-zoom-active')).toBe(true)
         expect(shell().contains('anna-chat-only')).toBe(false)
 
-        // Anna is a mode, left through the sidebar's switch, not an overlay to close.
-        expect(document.querySelector('[data-testid="anna-chat-close"]')).toBeNull()
-        expect(document.querySelector('.anna-header [aria-label="Close chat"]')).toBeNull()
+        // The chat's X ends assistant mode and leaves Alldone alone; the sidebar no longer marks Anna.
+        fireEvent.click(chatClose())
+        expect(shell().contains('anna-fullscreen')).toBe(true)
+        expect(new URLSearchParams(global.location.search).get('assistant')).toBeNull()
+        expect(probe().dataset.chatShown).toBe('false')
     })
 
     // Stands in for TopBarContainer on Alldone's root screen.
@@ -3929,13 +3941,21 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         expect(shell().contains('anna-fullscreen')).toBe(true)
     })
 
-    it('puts the strip over Alldone beside the chat, where its actions keep the chat', () => {
+    it('spans the strip over both sides in Both, where its actions keep the chat', () => {
         setAnnaLayout('split')
         render(shellWithSlot())
 
-        expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+        expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
+        expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
+        expect(strip().querySelector('.anna-strip-logo')).toBeNull()
         fireEvent.click(document.querySelector('[data-testid="strip-search"]'))
         expect(shell().contains('anna-zoom-active')).toBe(true)
+    })
+
+    it("puts the strip back in Alldone's top bar slot in plain Alldone", () => {
+        setAnnaMode(false)
+        render(shellWithSlot())
+        expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
     })
 
     it.each([
@@ -4004,7 +4024,8 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         expect(probe().dataset.shellDraws).toBe('false')
         expect(document.querySelector('.anna-strip-switch')).toBeTruthy()
         expect(document.querySelector('.anna-strip-home')).toBeNull()
-        expect(document.querySelector('[data-testid="anna-chat-alone-toggle"]')).toBeNull()
+        expect(document.querySelector('[data-testid="anna-open-both"]')).toBeNull()
         expect(document.querySelector('[data-testid="anna-chat-close"]')).toBeNull()
+        expect(document.querySelector('[data-testid="anna-screen-close"]')).toBeNull()
     })
 })

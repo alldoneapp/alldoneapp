@@ -233,9 +233,14 @@ version, which had the sections fixed at the top. The other two modes are unchan
 - **Anna button** (`SectionsTop/SidebarAnnaButton.js`, through `AnnaSidebarModeContext`): one big
   button at the very top. It opens the chat as it was last shown (alone the first time,
   `lastAnnaLayout`), and with the chat open it goes back to it (composer focused, latest messages).
-  There is no Anna | Alldone switch (tried and dropped) and no ✕ in the chat header: Anna is a mode,
-  not an overlay. The chat header has ⤢/⤡ (Anna alone / Alldone beside), on desktop and not when
-  `narrow`.
+  Marked only while the chat is on screen: filled and framed with Anna alone, a ring around the photo
+  beside Alldone; closed (the chat's ✕ ends assistant mode) it is a plain row with no fill or border.
+  There is no Anna | Alldone switch (tried and dropped). Anna alone has no ✕ (she is a mode, not an
+  overlay, left through the sidebar); her header has the two-columns button that opens Both
+  (`anna-open-both`). In Both each side closes with its ✕ (2026-11-21): the chat header's
+  (`anna-chat-close`, AnnaShell's `closeChat`) leaves Alldone alone, the one in the screen's top right
+  corner (`anna-screen-close`, `.anna-stage-close`, "Close %{screen}") leaves Anna alone. Desktop only,
+  not when `narrow`.
 - **Projects**: the sidebar below is the advanced one (`isSimpleSidebarNavigation` is false): the
   selected project or All projects unfolds Tasks, Goals, Notes, Contacts, Chats, Artifacts and Wiki.
   A project or All projects press keeps the section on screen (`getSectionAfterProjectSwitch`; Goals
@@ -274,11 +279,12 @@ showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its 
   AnnaShell's `sidebar`, it sits absolute in `.anna-shell-sidebar`, the layout and strip move by
   `--anna-shell-sidebar-width` (collapsed 56px, kept open 263px), and `AnnaShellSidebarContext` makes
   every `CustomSideMenu` inside the workspace render nothing. The workspace keeps its own 56px
-  collapsed-sidebar margin, so Alldone beside the chat starts with that gap. The strip sits in the
-  screens' slot over Alldone while Alldone is on screen (`stripOverAlldone`) and then does not leave
-  the chat. With Anna alone (or another screen in front) that slot is hidden, so the strip stays above
-  the chat, right of the sidebar, without its own logo, and leaves the chat like everywhere else. The
-  shell-wide `.anna-shell` resets in `anna.css` exclude `.anna-shell-sidebar *` like the workspace.
+  collapsed-sidebar margin, so Alldone beside the chat starts with that gap. With the chat open the
+  strip spans everything right of the sidebar, without its own logo (in Both above both sides, as
+  decided 2026-11-21); only plain Alldone puts it in the screens' slot. While Alldone is on screen
+  (`alldoneShown`) its actions act there and the chat stays; with Anna alone (or another screen in
+  front) they leave the chat like everywhere else. The shell-wide `.anna-shell` resets in `anna.css`
+  exclude `.anna-shell-sidebar *` like the workspace.
 - **Anna alone keeps Alldone's side margins**: the strip is the card it is in Alldone's slot and the
   chat card lines up below it with the 24px gap, both inset by `--anna-shell-content-margin`
   (`getDesktopTopBarMargins`: 104px, 56px on a middle screen). Middle screen is computed from the window

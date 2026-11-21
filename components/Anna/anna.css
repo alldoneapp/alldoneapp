@@ -2470,6 +2470,28 @@
     background: var(--anna-tint);
     color: var(--anna-accent);
 }
+/* AT-3121: in Both with the "Anna on top" sidebar the screen beside the chat closes with its own X,
+   in its top right corner, over the screen and clear of the bezel. */
+.anna-stage-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 41;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--anna-border);
+    border-radius: 8px;
+    background: var(--anna-surface);
+    color: var(--anna-muted);
+    box-shadow: 0 1px 4px rgba(4, 20, 47, 0.12);
+}
+.anna-stage-close:hover {
+    background: var(--anna-tint);
+    color: var(--anna-accent);
+}
 /* AT-3034: the chevron beside the assistant's name that picks another assistant. */
 .anna-assistant-picker {
     width: 24px;
